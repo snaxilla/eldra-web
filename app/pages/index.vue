@@ -1,76 +1,121 @@
+<script setup lang="ts">
+const { data: articles } = await useFetch('/api/articles')
+
+const featured = computed(() => articles.value?.[0] || null)
+const recent = computed(() => articles.value?.slice(0, 6) || [])
+</script>
+
 <template>
-  <div>
-    <UPageHero
-      title="Nuxt Starter Template"
-      description="A production-ready starter template powered by Nuxt UI. Build beautiful, accessible, and performant applications in minutes, not hours."
-      :links="[{
-        label: 'Get started',
-        to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt',
-        target: '_blank',
-        trailingIcon: 'i-lucide-arrow-right',
-        size: 'xl'
-      }, {
-        label: 'Use this template',
-        to: 'https://github.com/nuxt-ui-templates/starter',
-        target: '_blank',
-        icon: 'i-simple-icons-github',
-        size: 'xl',
-        color: 'neutral',
-        variant: 'subtle'
-      }]"
-    />
+  <div class="space-y-8">
+    <section class="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
+      <DashboardCard
+        title="Welcome to Eldra"
+        subtitle="A living world of characters, lore, factions, maps, and timelines."
+        icon="i-lucide-sparkles"
+      >
+        <div class="space-y-4">
+          <p class="text-sm leading-6 text-neutral-300">
+            This front page will become user-customizable with pinned articles, map panels,
+            active character cards, recent updates, and campaign-specific widgets.
+          </p>
 
-    <UPageSection
-      id="features"
-      title="Everything you need to build modern Nuxt apps"
-      description="Start with a solid foundation. This template includes all the essentials for building production-ready applications with Nuxt UI's powerful component system."
-      :features="[{
-        icon: 'i-lucide-rocket',
-        title: 'Production-ready from day one',
-        description: 'Pre-configured with TypeScript, ESLint, Tailwind CSS, and all the best practices. Focus on building features, not setting up tooling.'
-      }, {
-        icon: 'i-lucide-palette',
-        title: 'Beautiful by default',
-        description: 'Leveraging Nuxt UI\'s design system with automatic dark mode, consistent spacing, and polished components that look great out of the box.'
-      }, {
-        icon: 'i-lucide-zap',
-        title: 'Lightning fast',
-        description: 'Optimized for performance with SSR/SSG support, automatic code splitting, and edge-ready deployment. Your users will love the speed.'
-      }, {
-        icon: 'i-lucide-blocks',
-        title: '100+ components included',
-        description: 'Access Nuxt UI\'s comprehensive component library. From forms to navigation, everything is accessible, responsive, and customizable.'
-      }, {
-        icon: 'i-lucide-code-2',
-        title: 'Developer experience first',
-        description: 'Auto-imports, hot module replacement, and TypeScript support. Write less boilerplate and ship more features.'
-      }, {
-        icon: 'i-lucide-shield-check',
-        title: 'Built for scale',
-        description: 'Enterprise-ready architecture with proper error handling, SEO optimization, and security best practices built-in.'
-      }]"
-    />
+          <div class="flex flex-wrap gap-3">
+            <UButton
+              v-if="featured"
+              :to="`/article/${featured.slug}`"
+              icon="i-lucide-book-open"
+              color="primary"
+            >
+              Open Featured Article
+            </UButton>
 
-    <UPageSection>
-      <UPageCTA
-        title="Ready to build your next Nuxt app?"
-        description="Join thousands of developers building with Nuxt and Nuxt UI. Get this template and start shipping today."
-        variant="subtle"
-        :links="[{
-          label: 'Start building',
-          to: 'https://ui.nuxt.com/docs/getting-started/installation/nuxt',
-          target: '_blank',
-          trailingIcon: 'i-lucide-arrow-right',
-          color: 'neutral'
-        }, {
-          label: 'View on GitHub',
-          to: 'https://github.com/nuxt-ui-templates/starter',
-          target: '_blank',
-          icon: 'i-simple-icons-github',
-          color: 'neutral',
-          variant: 'outline'
-        }]"
-      />
-    </UPageSection>
+            <UButton
+              to="/section/maps"
+              icon="i-lucide-map"
+              color="neutral"
+              variant="soft"
+            >
+              View Maps
+            </UButton>
+          </div>
+        </div>
+      </DashboardCard>
+
+      <DashboardCard
+        title="Pinned"
+        subtitle="Starter widget area for quick access."
+        icon="i-lucide-pin"
+      >
+        <div class="space-y-3">
+          <NuxtLink
+            v-if="featured"
+            :to="`/article/${featured.slug}`"
+            class="block rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-200 hover:border-neutral-700"
+          >
+            Featured: {{ featured.title }}
+          </NuxtLink>
+
+          <NuxtLink
+            to="/section/characters"
+            class="block rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-200 hover:border-neutral-700"
+          >
+            Character Directory
+          </NuxtLink>
+
+          <NuxtLink
+            to="/section/locations"
+            class="block rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-200 hover:border-neutral-700"
+          >
+            Location Index
+          </NuxtLink>
+        </div>
+      </DashboardCard>
+    </section>
+
+    <section class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <DashboardCard
+        title="Recently Updated Articles"
+        subtitle="Your current article feed."
+        icon="i-lucide-scroll-text"
+      >
+        <div v-if="recent.length" class="grid gap-4 md:grid-cols-2">
+          <ArticleListCard
+            v-for="article in recent"
+            :key="article.id"
+            :article="article"
+          />
+        </div>
+
+        <div v-else class="rounded-xl border border-dashed border-neutral-800 bg-neutral-950 p-6 text-sm text-neutral-400">
+          No articles found yet.
+        </div>
+      </DashboardCard>
+
+      <div class="space-y-6">
+        <DashboardCard
+          title="World Modules"
+          subtitle="These will become full sections."
+          icon="i-lucide-layers-3"
+        >
+          <div class="grid gap-3">
+            <div class="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-300">Maps with interactive pins</div>
+            <div class="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-300">Timelines and event views</div>
+            <div class="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-300">Dynamic article linking</div>
+            <div class="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-300">User dashboards and pinned pages</div>
+          </div>
+        </DashboardCard>
+
+        <DashboardCard
+          title="Activity"
+          subtitle="Placeholder for recent edits and player activity."
+          icon="i-lucide-bell-ring"
+        >
+          <div class="space-y-3 text-sm text-neutral-400">
+            <div class="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">No recent activity yet.</div>
+            <div class="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3">Once auth is added, this becomes personalized.</div>
+          </div>
+        </DashboardCard>
+      </div>
+    </section>
   </div>
 </template>

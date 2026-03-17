@@ -17,7 +17,7 @@ const items = [
 <template>
   <aside
     :class="collapsed ? 'w-20' : 'w-72'"
-    class="h-screen shrink-0 border-r border-neutral-800 bg-neutral-950 transition-all duration-200"
+    class="h-screen shrink-0 border-r border-neutral-800 bg-neutral-950 transition-all duration-200 app-sidebar-fixed"
   >
     <div class="flex h-full flex-col">
       <div class="flex items-center justify-between border-b border-neutral-800 px-4 py-4">

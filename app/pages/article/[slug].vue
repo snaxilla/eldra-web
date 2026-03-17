@@ -7,7 +7,10 @@ const {
   error
 } = await useFetch(`/api/article-by-slug/${route.params.slug}`)
 
-const { data: blocks } = await useFetch(
+const {
+  data: blocks,
+  error: blocksError
+} = await useFetch(
   () => article.value ? `/api/article-blocks/${article.value.id}` : null
 )
 </script>
@@ -28,10 +31,6 @@ const { data: blocks } = await useFetch(
       <p class="mt-3 text-neutral-300">
         There is no accessible article with the slug <span class="font-mono text-neutral-100">{{ route.params.slug }}</span>.
       </p>
-    </div>
-
-    <div class="rounded-2xl border border-dashed border-neutral-800 bg-neutral-900 p-6 text-sm text-neutral-400">
-      Check that the article exists, has a slug, and that your Directus frontend role can read it.
     </div>
   </div>
 
@@ -64,7 +63,11 @@ const { data: blocks } = await useFetch(
         </div>
       </div>
 
-      <div v-if="blocks?.length">
+      <div v-if="blocksError" class="rounded-2xl border border-red-900 bg-red-950/40 p-6 text-sm text-red-200">
+        Failed to load blocks.
+      </div>
+
+      <div v-else-if="blocks?.length">
         <BlockRenderer
           v-for="block in blocks"
           :key="block.id"
@@ -75,6 +78,11 @@ const { data: blocks } = await useFetch(
       <div v-else class="rounded-2xl border border-dashed border-neutral-800 bg-neutral-900 p-6 text-sm text-neutral-400">
         No blocks found for this article yet.
       </div>
+
+      <details class="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-xs text-neutral-400">
+        <summary class="cursor-pointer text-neutral-200">Debug block payload</summary>
+        <pre class="mt-4 overflow-x-auto whitespace-pre-wrap">{{ JSON.stringify(blocks, null, 2) }}</pre>
+      </details>
     </section>
   </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SidebarUserPanel from "~/components/SidebarUserPanel.vue"
 const collapsed = useSidebar()
 
 const items = [
@@ -83,5 +84,6 @@ const items = [
         </div>
       </div>
     </div>
-  </aside>
+    <SidebarUserPanel />
+</aside>
 </template>

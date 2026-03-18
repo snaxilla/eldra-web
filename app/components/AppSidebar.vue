@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SidebarUserPanel from "~/components/SidebarUserPanel.vue"
+
 const collapsed = useSidebar()
 
 const items = [
@@ -75,15 +76,9 @@ const items = [
         </div>
       </div>
 
-      <div class="border-t border-neutral-800 p-3">
-        <div class="flex items-center gap-3 rounded-xl bg-neutral-900 px-3 py-3 text-sm text-neutral-300">
-          <UIcon name="i-lucide-user-circle-2" class="h-5 w-5 shrink-0" />
-          <span v-if="!collapsed">Guest User</span>
-        </div>
-      </div>
+      <SidebarUserPanel />
     </div>
-    <SidebarUserPanel />
-</aside>
+  </aside>
 </template>
 
 <style scoped>

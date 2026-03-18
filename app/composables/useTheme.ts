@@ -3,7 +3,6 @@ export type EldraTheme = {
   pageBg: string
   panelBg: string
   pageBgImage: string
-  panelBgImage: string
 }
 
 export const useThemeState = () =>
@@ -11,8 +10,7 @@ export const useThemeState = () =>
     key: 'midnight',
     pageBg: '#020617',
     panelBg: '#0f172a',
-    pageBgImage: '',
-    panelBgImage: ''
+    pageBgImage: ''
   }))
 
 function adjustColor(hex: string, percent: number) {
@@ -51,13 +49,7 @@ export const useThemeStyles = () => {
   }))
 
   const panelStyle = computed(() => ({
-    backgroundColor: theme.value.panelBg,
-    backgroundImage: theme.value.panelBgImage
-      ? `linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.22)), url("${theme.value.panelBgImage}")`
-      : 'none',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundRepeat: 'no-repeat'
+    backgroundColor: theme.value.panelBg
   }))
 
   const cardBg = computed(() => adjustColor(theme.value.panelBg, -10))

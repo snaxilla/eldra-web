@@ -5,7 +5,6 @@ const { theme } = useThemeStyles()
 
 const open = ref(false)
 const pageImageUrl = ref('')
-const panelImageUrl = ref('')
 
 const themeOptions = [
   { key: 'midnight', label: 'Midnight', pageBg: '#020617', panelBg: '#0f172a' },
@@ -14,8 +13,8 @@ const themeOptions = [
   { key: 'parchment', label: 'Parchment', pageBg: '#2b2620', panelBg: '#4a4032' },
   { key: 'storm', label: 'Storm', pageBg: '#0b132b', panelBg: '#1c2541' },
   { key: 'plum', label: 'Plum', pageBg: '#140f1f', panelBg: '#2d1e40' },
-  { key: 'rose', label: 'Rose', pageBg: '#2a1522', panelBg: '#5b2d4a' },
-  { key: 'lilac', label: 'Lilac', pageBg: '#1c1730', panelBg: '#5a4b8a' }
+  { key: 'rose', label: 'Rose', pageBg: '#2f1f2c', panelBg: '#b57aa1' },
+  { key: 'lilac', label: 'Lilac', pageBg: '#1c1730', panelBg: '#7f6bb3' }
 ]
 
 function setPreset(preset: { key: string, pageBg: string, panelBg: string }) {
@@ -28,15 +27,9 @@ function applyPageImage() {
   theme.value.pageBgImage = pageImageUrl.value.trim()
 }
 
-function applyPanelImage() {
-  theme.value.panelBgImage = panelImageUrl.value.trim()
-}
-
-function clearImages() {
+function clearImage() {
   pageImageUrl.value = ''
-  panelImageUrl.value = ''
   theme.value.pageBgImage = ''
-  theme.value.panelBgImage = ''
 }
 
 onMounted(() => {
@@ -48,14 +41,12 @@ onMounted(() => {
         key: saved.key || 'midnight',
         pageBg: saved.pageBg || '#020617',
         panelBg: saved.panelBg || '#0f172a',
-        pageBgImage: saved.pageBgImage || '',
-        panelBgImage: saved.panelBgImage || ''
+        pageBgImage: saved.pageBgImage || ''
       }
     } catch {}
   }
 
   pageImageUrl.value = theme.value.pageBgImage || ''
-  panelImageUrl.value = theme.value.panelBgImage || ''
 })
 
 watch(
@@ -118,37 +109,20 @@ watch(
         placeholder="https://example.com/page-bg.jpg"
         class="mb-3 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-500"
       />
-      <button
-        type="button"
-        class="mb-4 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-        @click="applyPageImage"
-      >
-        Apply Page Image
-      </button>
-
-      <div class="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">
-        Panel background image
-      </div>
-      <input
-        v-model="panelImageUrl"
-        type="text"
-        placeholder="https://example.com/panel-bg.jpg"
-        class="mb-3 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 outline-none placeholder:text-neutral-500"
-      />
       <div class="flex gap-2">
         <button
           type="button"
           class="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-          @click="applyPanelImage"
+          @click="applyPageImage"
         >
-          Apply Panel Image
+          Apply Image
         </button>
         <button
           type="button"
           class="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-          @click="clearImages"
+          @click="clearImage"
         >
-          Clear Images
+          Clear
         </button>
       </div>
     </div>

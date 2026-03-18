@@ -31,7 +31,9 @@
               placeholder="Search the world..."
               class="w-64"
             />
-            <ThemeChooserClient />
+            <ClientOnly>
+              <ThemeChooser />
+            </ClientOnly>
             <UButton color="neutral" variant="soft" icon="i-lucide-log-in">
               Login
             </UButton>
@@ -47,5 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import ThemeChooser from '~/components/ThemeChooser.vue'
+
 const collapsed = useSidebar()
 </script>

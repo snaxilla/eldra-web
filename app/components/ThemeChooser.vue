@@ -1,123 +1,70 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+
+const { theme } = useThemeStyles()
 
 const open = ref(false)
-
-const themeOptions = [
-  {
-    key: 'midnight',
-    label: 'Midnight',
-    page: '#020617',
-    panel: '#0f172a'
-  },
-  {
-    key: 'forest',
-    label: 'Forest',
-    page: '#081c15',
-    panel: '#1b4332'
-  },
-  {
-    key: 'ember',
-    label: 'Ember',
-    page: '#1a0f0f',
-    panel: '#3b1f1f'
-  },
-  {
-    key: 'parchment',
-    label: 'Parchment',
-    page: '#2b2620',
-    panel: '#4a4032'
-  },
-  {
-    key: 'storm',
-    label: 'Storm',
-    page: '#0b132b',
-    panel: '#1c2541'
-  },
-  {
-    key: 'plum',
-    label: 'Plum',
-    page: '#140f1f',
-    panel: '#2d1e40'
-  }
-]
-
-const selectedTheme = ref('midnight')
 const pageImageUrl = ref('')
 const panelImageUrl = ref('')
 
-function applyTheme(page: string, panel: string, pageImage: string, panelImage: string) {
-  document.documentElement.style.setProperty('--page-bg', page)
-  document.documentElement.style.setProperty('--panel-bg', panel)
-  document.documentElement.style.setProperty('--page-bg-image', pageImage || 'none')
-  document.documentElement.style.setProperty('--panel-bg-image', panelImage || 'none')
+const themeOptions = [
+  { key: 'midnight', label: 'Midnight', pageBg: '#020617', panelBg: '#0f172a' },
+  { key: 'forest', label: 'Forest', pageBg: '#081c15', panelBg: '#1b4332' },
+  { key: 'ember', label: 'Ember', pageBg: '#1a0f0f', panelBg: '#3b1f1f' },
+  { key: 'parchment', label: 'Parchment', pageBg: '#2b2620', panelBg: '#4a4032' },
+  { key: 'storm', label: 'Storm', pageBg: '#0b132b', panelBg: '#1c2541' },
+  { key: 'plum', label: 'Plum', pageBg: '#140f1f', panelBg: '#2d1e40' }
+]
+
+function setPreset(preset: { key: string, pageBg: string, panelBg: string }) {
+  theme.value.key = preset.key
+  theme.value.pageBg = preset.pageBg
+  theme.value.panelBg = preset.panelBg
 }
 
-function saveTheme(key: string, page: string, panel: string) {
-  selectedTheme.value = key
-  const pageImage = window.localStorage.getItem('eldra:pageBgImage') || 'none'
-  const panelImage = window.localStorage.getItem('eldra:panelBgImage') || 'none'
-
-  applyTheme(page, panel, pageImage, panelImage)
-
-  window.localStorage.setItem('eldra:themeKey', key)
-  window.localStorage.setItem('eldra:pageBg', page)
-  window.localStorage.setItem('eldra:panelBg', panel)
+function applyPageImage() {
+  theme.value.pageBgImage = pageImageUrl.value.trim()
 }
 
-function savePageImage() {
-  const value = pageImageUrl.value.trim()
-  const cssValue = value ? `url("${value}")` : 'none'
-  const page = window.localStorage.getItem('eldra:pageBg') || '#020617'
-  const panel = window.localStorage.getItem('eldra:panelBg') || '#0f172a'
-  const panelImage = window.localStorage.getItem('eldra:panelBgImage') || 'none'
-
-  applyTheme(page, panel, cssValue, panelImage)
-  window.localStorage.setItem('eldra:pageBgImage', cssValue)
-}
-
-function savePanelImage() {
-  const value = panelImageUrl.value.trim()
-  const cssValue = value ? `url("${value}")` : 'none'
-  const page = window.localStorage.getItem('eldra:pageBg') || '#020617'
-  const panel = window.localStorage.getItem('eldra:panelBg') || '#0f172a'
-  const pageImage = window.localStorage.getItem('eldra:pageBgImage') || 'none'
-
-  applyTheme(page, panel, pageImage, cssValue)
-  window.localStorage.setItem('eldra:panelBgImage', cssValue)
+function applyPanelImage() {
+  theme.value.panelBgImage = panelImageUrl.value.trim()
 }
 
 function clearImages() {
   pageImageUrl.value = ''
   panelImageUrl.value = ''
-
-  const page = window.localStorage.getItem('eldra:pageBg') || '#020617'
-  const panel = window.localStorage.getItem('eldra:panelBg') || '#0f172a'
-
-  applyTheme(page, panel, 'none', 'none')
-  window.localStorage.setItem('eldra:pageBgImage', 'none')
-  window.localStorage.setItem('eldra:panelBgImage', 'none')
+  theme.value.pageBgImage = ''
+  theme.value.panelBgImage = ''
 }
 
 onMounted(() => {
-  const savedThemeKey = window.localStorage.getItem('eldra:themeKey') || 'midnight'
-  const savedPage = window.localStorage.getItem('eldra:pageBg') || '#020617'
-  const savedPanel = window.localStorage.getItem('eldra:panelBg') || '#0f172a'
-  const savedPageImage = window.localStorage.getItem('eldra:pageBgImage') || 'none'
-  const savedPanelImage = window.localStorage.getItem('eldra:panelBgImage') || 'none'
-
-  selectedTheme.value = savedThemeKey
-
-  if (savedPageImage !== 'none') {
-    pageImageUrl.value = savedPageImage.replace(/^url\(["']?/, '').replace(/["']?\)$/, '')
+  const raw = window.localStorage.getItem('eldra:theme')
+  if (raw) {
+    try {
+      const saved = JSON.parse(raw)
+      theme.value = {
+        key: saved.key || 'midnight',
+        pageBg: saved.pageBg || '#020617',
+        panelBg: saved.panelBg || '#0f172a',
+        pageBgImage: saved.pageBgImage || '',
+        panelBgImage: saved.panelBgImage || ''
+      }
+    } catch {}
   }
 
-  if (savedPanelImage !== 'none') {
-    panelImageUrl.value = savedPanelImage.replace(/^url\(["']?/, '').replace(/["']?\)$/, '')
-  }
-
-  applyTheme(savedPage, savedPanel, savedPageImage, savedPanelImage)
+  pageImageUrl.value = theme.value.pageBgImage || ''
+  panelImageUrl.value = theme.value.panelBgImage || ''
 })
+
+watch(
+  theme,
+  (value) => {
+    if (import.meta.client) {
+      window.localStorage.setItem('eldra:theme', JSON.stringify(value))
+    }
+  },
+  { deep: true }
+)
 </script>
 
 <template>
@@ -127,7 +74,7 @@ onMounted(() => {
       class="inline-flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
       @click="open = !open"
     >
-      <span class="inline-block h-3 w-3 rounded-full border border-white/20 bg-[var(--panel-bg)]" />
+      <span class="inline-block h-3 w-3 rounded-full border border-white/20" :style="{ backgroundColor: theme.panelBg }" />
       Theme
     </button>
 
@@ -145,18 +92,18 @@ onMounted(() => {
 
       <div class="mb-4 grid grid-cols-2 gap-2">
         <button
-          v-for="theme in themeOptions"
-          :key="theme.key"
+          v-for="preset in themeOptions"
+          :key="preset.key"
           type="button"
           class="flex items-center gap-3 rounded-xl border px-3 py-2 text-left text-sm transition"
-          :class="selectedTheme === theme.key ? 'border-neutral-500 bg-neutral-800 text-white' : 'border-neutral-800 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'"
-          @click="saveTheme(theme.key, theme.page, theme.panel)"
+          :class="theme.key === preset.key ? 'border-neutral-500 bg-neutral-800 text-white' : 'border-neutral-800 bg-neutral-900 text-neutral-300 hover:bg-neutral-800'"
+          @click="setPreset(preset)"
         >
           <span class="flex gap-1">
-            <span class="inline-block h-4 w-4 rounded-full border border-white/20" :style="{ backgroundColor: theme.page }" />
-            <span class="inline-block h-4 w-4 rounded-full border border-white/20" :style="{ backgroundColor: theme.panel }" />
+            <span class="inline-block h-4 w-4 rounded-full border border-white/20" :style="{ backgroundColor: preset.pageBg }" />
+            <span class="inline-block h-4 w-4 rounded-full border border-white/20" :style="{ backgroundColor: preset.panelBg }" />
           </span>
-          {{ theme.label }}
+          {{ preset.label }}
         </button>
       </div>
 
@@ -172,7 +119,7 @@ onMounted(() => {
       <button
         type="button"
         class="mb-4 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-        @click="savePageImage"
+        @click="applyPageImage"
       >
         Apply Page Image
       </button>
@@ -190,7 +137,7 @@ onMounted(() => {
         <button
           type="button"
           class="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
-          @click="savePanelImage"
+          @click="applyPanelImage"
         >
           Apply Panel Image
         </button>

@@ -10,13 +10,16 @@ defineProps<{
     updated_at?: string | null
   }
 }>()
+
+const { softPanelStyle } = useThemeStyles()
 </script>
 
 <template>
   <NuxtLink
     v-if="article.slug"
     :to="`/article/${article.slug}`"
-    class="themed-soft block rounded-2xl border border-neutral-800 p-5 transition hover:border-neutral-700 hover:brightness-110"
+    :style="softPanelStyle"
+    class="block rounded-2xl border border-neutral-800 p-5 transition hover:border-neutral-700 hover:brightness-110"
   >
     <div class="mb-3 flex items-center justify-between gap-4">
       <h3 class="text-lg font-semibold text-neutral-100">
@@ -40,7 +43,8 @@ defineProps<{
 
   <div
     v-else
-    class="themed-soft block rounded-2xl border border-dashed border-neutral-800 p-5 opacity-70"
+    :style="softPanelStyle"
+    class="block rounded-2xl border border-dashed border-neutral-800 p-5 opacity-70"
   >
     <div class="mb-3 flex items-center justify-between gap-4">
       <h3 class="text-lg font-semibold text-neutral-100">

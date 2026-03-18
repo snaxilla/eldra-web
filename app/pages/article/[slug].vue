@@ -13,15 +13,17 @@ const {
 } = await useFetch(
   () => article.value ? `/api/article-blocks/${article.value.id}` : null
 )
+
+const { panelStyle } = useThemeStyles()
 </script>
 
 <template>
-  <div v-if="pending" class="themed-panel rounded-2xl border border-neutral-800 p-6 text-neutral-300">
+  <div v-if="pending" :style="panelStyle" class="rounded-2xl border border-neutral-800 p-6 text-neutral-300">
     Loading article...
   </div>
 
   <div v-else-if="error || !article" class="space-y-6">
-    <div class="themed-panel rounded-2xl border border-neutral-800 p-6">
+    <div :style="panelStyle" class="rounded-2xl border border-neutral-800 p-6">
       <div class="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">
         Article
       </div>
@@ -35,7 +37,7 @@ const {
   </div>
 
   <div v-else class="space-y-8">
-    <section class="themed-panel rounded-2xl border border-neutral-800 p-6">
+    <section :style="panelStyle" class="rounded-2xl border border-neutral-800 p-6">
       <div class="mb-3 flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-neutral-500">
         <span>{{ article.status || 'unknown status' }}</span>
         <span>•</span>
@@ -71,13 +73,14 @@ const {
         <div
           v-for="block in blocks"
           :key="block.id"
-          class="themed-panel rounded-2xl border border-neutral-800 p-5"
+          :style="panelStyle"
+          class="rounded-2xl border border-neutral-800 p-5"
         >
           <BlockRenderer :block="block" />
         </div>
       </div>
 
-      <div v-else class="themed-panel rounded-2xl border border-dashed border-neutral-800 p-6 text-sm text-neutral-400">
+      <div v-else :style="panelStyle" class="rounded-2xl border border-dashed border-neutral-800 p-6 text-sm text-neutral-400">
         No blocks found for this article yet.
       </div>
     </section>

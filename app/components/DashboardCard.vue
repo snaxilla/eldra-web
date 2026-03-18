@@ -4,10 +4,12 @@ defineProps<{
   subtitle?: string
   icon?: string
 }>()
+
+const { panelStyle } = useThemeStyles()
 </script>
 
 <template>
-  <div class="themed-panel rounded-2xl border border-neutral-800 p-5 shadow-sm">
+  <div :style="panelStyle" class="rounded-2xl border border-neutral-800 p-5 shadow-sm">
     <div class="mb-4 flex items-start justify-between gap-4">
       <div>
         <div class="text-lg font-semibold text-neutral-100">

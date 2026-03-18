@@ -1,5 +1,5 @@
 <template>
-  <div class="themed-page min-h-screen text-neutral-100">
+  <div class="min-h-screen text-neutral-100" :style="pageStyle">
     <AppSidebar />
 
     <div
@@ -52,4 +52,5 @@
 import ThemeChooser from '../components/ThemeChooser.vue'
 
 const collapsed = useSidebar()
+const { pageStyle } = useThemeStyles()
 </script>

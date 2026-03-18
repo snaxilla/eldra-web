@@ -13,6 +13,7 @@ const props = defineProps<{
 
 const config = useRuntimeConfig()
 const directusBase = (config.public?.directusUrl || '').replace(/\/$/, '')
+const { softPanelStyle } = useThemeStyles()
 
 const data = computed(() => props.block?.data || {})
 const templateName = computed(() => String(props.block?.template || '').toLowerCase())
@@ -104,7 +105,7 @@ function prettyKey(k: string) {
     <template v-if="hasCharacterShape">
       <div class="grid gap-6 lg:grid-cols-[280px_1fr]">
         <div class="space-y-4">
-          <div class="themed-soft overflow-hidden rounded-2xl border border-neutral-800">
+          <div :style="softPanelStyle" class="overflow-hidden rounded-2xl border border-neutral-800">
             <img
               v-if="portrait"
               :src="portrait"
@@ -116,7 +117,7 @@ function prettyKey(k: string) {
             </div>
           </div>
 
-          <div class="themed-soft rounded-2xl border border-neutral-800 p-4">
+          <div :style="softPanelStyle" class="rounded-2xl border border-neutral-800 p-4">
             <div class="mb-3 text-xs uppercase tracking-[0.2em] text-neutral-500">
               Character Details
             </div>
@@ -130,7 +131,8 @@ function prettyKey(k: string) {
               <div
                 v-for="(val, key) in overview"
                 :key="key"
-                class="themed-soft rounded-xl border border-neutral-800 px-3 py-3 text-sm"
+                :style="softPanelStyle"
+                class="rounded-xl border border-neutral-800 px-3 py-3 text-sm"
               >
                 <div class="text-xs text-neutral-500">{{ prettyKey(key) }}</div>
                 <div class="mt-1 font-medium text-neutral-100">{{ val }}</div>
@@ -156,7 +158,7 @@ function prettyKey(k: string) {
             </div>
 
             <div class="grid gap-3 sm:grid-cols-4 lg:grid-cols-8">
-              <div v-for="(value, key) in stats" :key="key" class="themed-soft rounded-xl border border-neutral-800 p-4 text-center">
+              <div v-for="(value, key) in stats" :key="key" :style="softPanelStyle" class="rounded-xl border border-neutral-800 p-4 text-center">
                 <div class="text-xs uppercase tracking-wide text-neutral-500">{{ key.toUpperCase() }}</div>
                 <div class="mt-2 text-2xl font-semibold text-neutral-100">{{ value }}</div>
               </div>
@@ -164,12 +166,12 @@ function prettyKey(k: string) {
           </div>
 
           <div v-if="personality || inventory" class="grid gap-4 md:grid-cols-2">
-            <div v-if="personality" class="themed-soft rounded-2xl border border-neutral-800 p-4">
+            <div v-if="personality" :style="softPanelStyle" class="rounded-2xl border border-neutral-800 p-4">
               <div class="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Personality</div>
               <div class="text-sm text-neutral-200" v-html="personality"></div>
             </div>
 
-            <div v-if="inventory" class="themed-soft rounded-2xl border border-neutral-800 p-4">
+            <div v-if="inventory" :style="softPanelStyle" class="rounded-2xl border border-neutral-800 p-4">
               <div class="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Inventory</div>
               <ul class="list-inside list-disc text-sm text-neutral-200">
                 <li v-for="(it, idx) in (Array.isArray(inventory) ? inventory : Object.values(inventory))" :key="idx">
@@ -208,7 +210,7 @@ function prettyKey(k: string) {
       <div class="space-y-4">
         <h3 v-if="data.title" class="text-xl font-semibold text-neutral-100">{{ data.title }}</h3>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div v-for="(v,k) in (data.stats || data.values)" :key="k" class="themed-soft rounded-xl border border-neutral-800 p-3">
+          <div v-for="(v,k) in (data.stats || data.values)" :key="k" :style="softPanelStyle" class="rounded-xl border border-neutral-800 p-3">
             <div class="text-xs uppercase tracking-wide text-neutral-500">{{ k }}</div>
             <div class="mt-1 text-base font-semibold text-neutral-100">{{ v }}</div>
           </div>
@@ -219,7 +221,7 @@ function prettyKey(k: string) {
     <template v-else>
       <div>
         <div v-if="data.title" class="mb-3 text-lg font-semibold text-neutral-100">{{ data.title }}</div>
-        <pre class="themed-soft overflow-x-auto whitespace-pre-wrap rounded-xl border border-neutral-800 p-4 text-xs text-neutral-400">{{ JSON.stringify(data, null, 2) }}</pre>
+        <pre :style="softPanelStyle" class="overflow-x-auto whitespace-pre-wrap rounded-xl border border-neutral-800 p-4 text-xs text-neutral-400">{{ JSON.stringify(data, null, 2) }}</pre>
       </div>
     </template>
   </div>

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { watchEffect } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
 const { state, displayName, isAdmin, fetchMe, logout } = useAuth()
 
-onMounted(async () => {
+// 🔥 This is the fix: always ensure auth state resolves
+watchEffect(async () => {
   if (!state.value.ready) {
     try {
       await fetchMe()

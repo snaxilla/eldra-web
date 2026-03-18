@@ -17,9 +17,9 @@ const items = [
 <template>
   <aside
     :class="collapsed ? 'w-20' : 'w-72'"
-    class="h-screen shrink-0 border-r border-neutral-800 bg-neutral-950 transition-all duration-200 app-sidebar-fixed"
+    class="fixed left-0 top-0 z-40 h-screen border-r border-neutral-800 bg-neutral-950 transition-all duration-200"
   >
-    <div class="flex h-full flex-col">
+    <div class="flex h-full flex-col overflow-hidden">
       <div class="flex items-center justify-between border-b border-neutral-800 px-4 py-4">
         <NuxtLink to="/" class="min-w-0">
           <div v-if="!collapsed" class="truncate text-lg font-bold tracking-wide text-neutral-100">
@@ -38,7 +38,7 @@ const items = [
         />
       </div>
 
-      <div class="flex-1 overflow-y-auto p-3">
+      <div class="flex-1 overflow-y-auto px-3 py-4 [scrollbar-width:none] [-ms-overflow-style:none]">
         <div class="space-y-1">
           <NuxtLink
             v-for="item in items"
@@ -83,3 +83,9 @@ const items = [
     </div>
   </aside>
 </template>
+
+<style scoped>
+div::-webkit-scrollbar {
+  display: none;
+}
+</style>

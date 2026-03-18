@@ -1,61 +1,24 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+:root {
+  --article-bg: #0b1220;
+  --article-bg-image: none;
+}
+
 html, body, #__nuxt {
   min-height: 100%;
 }
 
 body {
-  background: #0b1020;
+  background: #020617;
   color: #e5e7eb;
 }
-:root{
-  /* defaults — you can change these via the ThemeChooser */
-  --article-bg: rgba(10,14,20,0.95);
-  --article-bg-image: none; /* use "url('https://...')" to enable */
-  --article-bg-overlay: rgba(0,0,0,0.06);
-  --sidebar-width: 18rem;
-  --sidebar-width-collapsed: 5rem;
-}
 
-/* Ensure body uses neutral background */
-html,body,#__nuxt {
-  height:100%;
-  background-color: #05060a;
-}
-
-/* Article panel styling — used on article page sections and block cards (class .article-panel) */
 .article-panel {
-  background: var(--article-bg) !important;
-  background-image: var(--article-bg-image), linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.02));
+  background-color: var(--article-bg);
+  background-image: var(--article-bg-image);
   background-size: cover;
   background-position: center;
-  transition: background-color .18s ease, background-image .18s ease;
-  border-radius: 0.9rem;
-}
-
-/* If a background image is used, optionally blend a subtle overlay */
-.article-panel::after {
-  content: "";
-  display: block;
-  position: absolute;
-}
-
-/* Some safety: ensure panels keep padding and border look */
-.article-panel.rounded-2xl { position: relative; }
-
-/* Make block renderer cards a little lighter to stand out */
-.block-card {
-  background: rgba(255,255,255,0.02);
-}
-
-/* Keep the sidebar fixed and visually separated */
-.app-sidebar-fixed {
-  height: 100vh;
-  overflow: visible !important; /* no internal scrollbar visible */
-}
-
-/* Fix horizontal layout spacing for collapsed/expanded sidebar */
-@media (min-width: 1024px) {
-  main { min-height: calc(100vh - 6rem); }
+  background-repeat: no-repeat;
 }

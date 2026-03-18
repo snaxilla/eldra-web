@@ -31,7 +31,7 @@
               placeholder="Search the world..."
               class="w-64"
             />
-            <ThemeChooser />
+            <ThemeChooserClient />
             <UButton color="neutral" variant="soft" icon="i-lucide-log-in">
               Login
             </UButton>

@@ -1,13 +1,8 @@
 import { directusRequest } from '../../utils/directus'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{
-    email?: string
-    password?: string
-  }>(event)
-
-  const email = (body?.email || '').trim().toLowerCase()
-  const password = body?.password || ''
+  const body = await readBody(event)
+  const { email, password } = body
 
   if (!email || !password) {
     throw createError({
@@ -16,28 +11,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const loginResponse = await directusRequest<any>('/auth/login', {
+  const loginResponse = await directusRequest('/auth/login', {
     method: 'POST',
-    body: {
-      email,
-      password
-    }
+    body: { email, password }
   })
 
   const accessToken =
     loginResponse?.data?.access_token ||
-    loginResponse?.access_token ||
-    ''
-
-  const refreshToken =
-    loginResponse?.data?.refresh_token ||
-    loginResponse?.refresh_token ||
-    ''
-
-  const expires =
-    loginResponse?.data?.expires ||
-    loginResponse?.expires ||
-    60 * 60 * 8
+    loginResponse?.access_token
 
   if (!accessToken) {
     throw createError({
@@ -46,38 +27,23 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // 🔥 FIXED COOKIE CONFIG
   setCookie(event, 'eldra_session', accessToken, {
     httpOnly: true,
-    secure: true,
+    secure: false,          // 👈 KEY CHANGE
     sameSite: 'lax',
     path: '/',
-    maxAge: typeof expires === 'number' && expires > 0 ? expires : 60 * 60 * 8
+    maxAge: 60 * 60 * 8
   })
 
-  if (refreshToken) {
-    setCookie(event, 'eldra_refresh', refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30
-    })
-  }
-
-  const meResponse = await directusRequest<any>('/users/me', {
-    method: 'GET',
+  const me = await directusRequest('/users/me', {
     headers: {
       Authorization: `Bearer ${accessToken}`
-    },
-    query: {
-      fields: 'id,email,first_name,last_name,role.id,role.name,role.admin_access,role.app_access'
     }
   })
 
-  const user = meResponse?.data || meResponse || null
-
   return {
     ok: true,
-    user
+    user: me?.data || me
   }
 })

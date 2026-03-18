@@ -3,38 +3,32 @@ import { onMounted, ref } from 'vue'
 
 const color = ref('#0b1220')
 const image = ref('none')
+const ready = ref(false)
 
 function apply() {
-  if (!import.meta.client) return
-
   document.documentElement.style.setProperty('--article-bg', color.value)
   document.documentElement.style.setProperty('--article-bg-image', image.value)
-
-  localStorage.setItem('eldra:articleBg', color.value)
-  localStorage.setItem('eldra:articleBgImage', image.value)
 }
 
 onMounted(() => {
-  if (!import.meta.client) return
-
-  const savedColor = localStorage.getItem('eldra:articleBg')
-  const savedImage = localStorage.getItem('eldra:articleBgImage')
+  const savedColor = window.localStorage.getItem('eldra:articleBg')
+  const savedImage = window.localStorage.getItem('eldra:articleBgImage')
 
   if (savedColor) color.value = savedColor
   if (savedImage) image.value = savedImage
 
   apply()
+  ready.value = true
 })
 
 function pickColor(e: Event) {
   const c = (e.target as HTMLInputElement).value
   color.value = c
   apply()
+  window.localStorage.setItem('eldra:articleBg', color.value)
 }
 
 function pickImage() {
-  if (!import.meta.client) return
-
   const url = window.prompt('Enter image URL (leave blank to disable):', '')
   if (!url) {
     image.value = 'none'
@@ -43,11 +37,12 @@ function pickImage() {
   }
 
   apply()
+  window.localStorage.setItem('eldra:articleBgImage', image.value)
 }
 </script>
 
 <template>
-  <div class="flex items-center gap-3">
+  <div v-if="ready" class="flex items-center gap-3">
     <input
       type="color"
       :value="color"

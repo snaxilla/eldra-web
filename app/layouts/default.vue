@@ -15,13 +15,14 @@
 
           <div class="flex items-center gap-3">
             <UInput icon="i-lucide-search" placeholder="Search the world..." class="w-64" />
-            <ThemeChooser />
+            <ClientOnly>
+              <ThemeChooser />
+            </ClientOnly>
             <UButton color="neutral" variant="soft" icon="i-lucide-log-in">Login</UButton>
           </div>
         </div>
       </header>
 
-      <!-- main content must sit below the fixed header -->
       <main class="mx-auto max-w-7xl px-6 py-28">
         <slot />
       </main>
@@ -30,6 +31,5 @@
 </template>
 
 <script setup lang="ts">
-import ThemeChooser from '~/components/ThemeChooser.vue'
 const collapsed = useSidebar()
 </script>

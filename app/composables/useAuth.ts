@@ -13,6 +13,40 @@ type EldraUser = {
   role?: EldraUserRole
 }
 
+type AuthMeResponse = {
+  authenticated?: boolean
+  user?: EldraUser | null
+}
+
+type LoginResponse = {
+  ok?: boolean
+  user?: EldraUser | null
+}
+
+function normalizeUser(input: any): EldraUser | null {
+  if (!input) {
+    return null
+  }
+
+  const user = input?.data ? input.data : input
+  const role = user?.role?.data ? user.role.data : user?.role
+
+  return {
+    id: user?.id,
+    email: user?.email,
+    first_name: user?.first_name,
+    last_name: user?.last_name,
+    role: role
+      ? {
+          id: role?.id,
+          name: role?.name,
+          admin_access: !!role?.admin_access,
+          app_access: !!role?.app_access
+        }
+      : undefined
+  }
+}
+
 export const useAuthState = () =>
   useState<{
     ready: boolean
@@ -41,36 +75,37 @@ export function useAuth() {
   })
 
   async function fetchMe() {
-    const response = await $fetch<{
-      authenticated: boolean
-      user: EldraUser | null
-    }>('/api/auth/me', {
+    const response = await $fetch<AuthMeResponse>('/api/auth/me', {
       method: 'GET',
       credentials: 'include'
     })
 
+    const user = normalizeUser(response?.user)
+
     state.value.ready = true
     state.value.authenticated = !!response?.authenticated
-    state.value.user = response?.user || null
+    state.value.user = user
 
     return state.value
   }
 
   async function login(email: string, password: string) {
-    const response = await $fetch<{
-      ok: boolean
-      user: EldraUser
-    }>('/api/auth/login', {
+    const response = await $fetch<LoginResponse>('/api/auth/login', {
       method: 'POST',
       body: { email, password },
       credentials: 'include'
     })
 
+    const user = normalizeUser(response?.user)
+
     state.value.ready = true
     state.value.authenticated = true
-    state.value.user = response.user
+    state.value.user = user
 
-    return response
+    return {
+      ok: !!response?.ok,
+      user
+    }
   }
 
   async function logout() {

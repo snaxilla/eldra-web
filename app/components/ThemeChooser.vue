@@ -13,7 +13,9 @@ const themeOptions = [
   { key: 'ember', label: 'Ember', pageBg: '#1a0f0f', panelBg: '#3b1f1f' },
   { key: 'parchment', label: 'Parchment', pageBg: '#2b2620', panelBg: '#4a4032' },
   { key: 'storm', label: 'Storm', pageBg: '#0b132b', panelBg: '#1c2541' },
-  { key: 'plum', label: 'Plum', pageBg: '#140f1f', panelBg: '#2d1e40' }
+  { key: 'plum', label: 'Plum', pageBg: '#140f1f', panelBg: '#2d1e40' },
+  { key: 'rose', label: 'Rose', pageBg: '#2a1522', panelBg: '#5b2d4a' },
+  { key: 'lilac', label: 'Lilac', pageBg: '#1c1730', panelBg: '#5a4b8a' }
 ]
 
 function setPreset(preset: { key: string, pageBg: string, panelBg: string }) {
@@ -80,7 +82,7 @@ watch(
 
     <div
       v-if="open"
-      class="absolute right-0 top-12 z-50 w-96 rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl"
+      class="absolute right-0 top-12 z-50 w-[28rem] rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl"
     >
       <div class="mb-3 text-sm font-semibold text-neutral-100">
         Eldra Theme

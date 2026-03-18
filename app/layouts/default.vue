@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import ThemeChooser from '~/components/ThemeChooser.vue'
+import ThemeChooser from '../components/ThemeChooser.vue'
 
 const collapsed = useSidebar()
 </script>

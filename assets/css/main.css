@@ -2,8 +2,10 @@
 @import "@nuxt/ui";
 
 :root {
-  --article-bg: #0f172a;
-  --article-bg-image: none;
+  --page-bg: #020617;
+  --panel-bg: #0f172a;
+  --page-bg-image: none;
+  --panel-bg-image: none;
 }
 
 html, body, #__nuxt {
@@ -11,25 +13,41 @@ html, body, #__nuxt {
 }
 
 body {
-  background: #020617;
+  background-color: var(--page-bg);
+  background-image:
+    linear-gradient(rgba(2, 6, 23, 0.82), rgba(2, 6, 23, 0.82)),
+    var(--page-bg-image);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
   color: #e5e7eb;
 }
 
-.themed-panel {
-  background-color: var(--article-bg) !important;
+.themed-page {
+  background-color: var(--page-bg) !important;
   background-image:
-    linear-gradient(rgba(2, 6, 23, 0.72), rgba(2, 6, 23, 0.72)),
-    var(--article-bg-image);
+    linear-gradient(rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0.78)),
+    var(--page-bg-image);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+.themed-panel {
+  background-color: var(--panel-bg) !important;
+  background-image:
+    linear-gradient(rgba(2, 6, 23, 0.58), rgba(2, 6, 23, 0.58)),
+    var(--panel-bg-image);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
 .themed-soft {
-  background-color: color-mix(in srgb, var(--article-bg) 82%, black 18%) !important;
+  background-color: var(--panel-bg) !important;
   background-image:
-    linear-gradient(rgba(2, 6, 23, 0.64), rgba(2, 6, 23, 0.64)),
-    var(--article-bg-image);
+    linear-gradient(rgba(2, 6, 23, 0.72), rgba(2, 6, 23, 0.72)),
+    var(--panel-bg-image);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

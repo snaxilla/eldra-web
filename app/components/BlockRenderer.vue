@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// Clean BlockRenderer for character/profile and other structured blocks
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -92,7 +91,7 @@ function prettyKey(k: string) {
 </script>
 
 <template>
-  <div class="mb-5 rounded-2xl border border-neutral-800 bg-neutral-900 p-5 shadow-sm">
+  <div class="space-y-5">
     <div class="mb-3 flex items-center justify-between">
       <div class="text-xs uppercase tracking-[0.2em] text-neutral-400">
         {{ props.block.template || 'block' }}
@@ -102,12 +101,10 @@ function prettyKey(k: string) {
       </div>
     </div>
 
-    <!-- CHARACTER / PROFILE SHAPE -->
     <template v-if="hasCharacterShape">
       <div class="grid gap-6 lg:grid-cols-[280px_1fr]">
-        <!-- Left column: portrait + overview cards -->
         <div class="space-y-4">
-          <div class="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
+          <div class="themed-soft overflow-hidden rounded-2xl border border-neutral-800">
             <img
               v-if="portrait"
               :src="portrait"
@@ -119,7 +116,7 @@ function prettyKey(k: string) {
             </div>
           </div>
 
-          <div class="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div class="themed-soft rounded-2xl border border-neutral-800 p-4">
             <div class="mb-3 text-xs uppercase tracking-[0.2em] text-neutral-500">
               Character Details
             </div>
@@ -133,7 +130,7 @@ function prettyKey(k: string) {
               <div
                 v-for="(val, key) in overview"
                 :key="key"
-                class="rounded-xl border border-neutral-800 bg-neutral-900/40 px-3 py-3 text-sm"
+                class="themed-soft rounded-xl border border-neutral-800 px-3 py-3 text-sm"
               >
                 <div class="text-xs text-neutral-500">{{ prettyKey(key) }}</div>
                 <div class="mt-1 font-medium text-neutral-100">{{ val }}</div>
@@ -146,7 +143,6 @@ function prettyKey(k: string) {
           </div>
         </div>
 
-        <!-- Right column: description, stats, personality, inventory -->
         <div class="space-y-5">
           <div>
             <h3 v-if="title" class="text-2xl font-bold text-neutral-100">{{ title }}</h3>
@@ -160,7 +156,7 @@ function prettyKey(k: string) {
             </div>
 
             <div class="grid gap-3 sm:grid-cols-4 lg:grid-cols-8">
-              <div v-for="(value, key) in stats" :key="key" class="rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-center">
+              <div v-for="(value, key) in stats" :key="key" class="themed-soft rounded-xl border border-neutral-800 p-4 text-center">
                 <div class="text-xs uppercase tracking-wide text-neutral-500">{{ key.toUpperCase() }}</div>
                 <div class="mt-2 text-2xl font-semibold text-neutral-100">{{ value }}</div>
               </div>
@@ -168,16 +164,15 @@ function prettyKey(k: string) {
           </div>
 
           <div v-if="personality || inventory" class="grid gap-4 md:grid-cols-2">
-            <div v-if="personality" class="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div v-if="personality" class="themed-soft rounded-2xl border border-neutral-800 p-4">
               <div class="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Personality</div>
               <div class="text-sm text-neutral-200" v-html="personality"></div>
             </div>
 
-            <div v-if="inventory" class="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div v-if="inventory" class="themed-soft rounded-2xl border border-neutral-800 p-4">
               <div class="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-500">Inventory</div>
               <ul class="list-inside list-disc text-sm text-neutral-200">
                 <li v-for="(it, idx) in (Array.isArray(inventory) ? inventory : Object.values(inventory))" :key="idx">
-                  <!-- pretty-print simple objects -->
                   <template v-if="typeof it === 'object'">
                     {{ JSON.stringify(it) }}
                   </template>
@@ -192,7 +187,6 @@ function prettyKey(k: string) {
       </div>
     </template>
 
-    <!-- IMAGE block -->
     <template v-else-if="(templateName.includes('image') || data.image || data.image_url)">
       <div class="space-y-4">
         <h3 v-if="data.title" class="text-xl font-semibold text-neutral-100">{{ data.title }}</h3>
@@ -203,7 +197,6 @@ function prettyKey(k: string) {
       </div>
     </template>
 
-    <!-- TEXT/RICH block -->
     <template v-else-if="data.body || data.content || data.text">
       <div class="space-y-4">
         <h3 v-if="data.title" class="text-xl font-semibold text-neutral-100">{{ data.title }}</h3>
@@ -211,12 +204,11 @@ function prettyKey(k: string) {
       </div>
     </template>
 
-    <!-- stat-ish block -->
     <template v-else-if="data.stats || data.values">
       <div class="space-y-4">
         <h3 v-if="data.title" class="text-xl font-semibold text-neutral-100">{{ data.title }}</h3>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div v-for="(v,k) in (data.stats || data.values)" :key="k" class="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+          <div v-for="(v,k) in (data.stats || data.values)" :key="k" class="themed-soft rounded-xl border border-neutral-800 p-3">
             <div class="text-xs uppercase tracking-wide text-neutral-500">{{ k }}</div>
             <div class="mt-1 text-base font-semibold text-neutral-100">{{ v }}</div>
           </div>
@@ -224,11 +216,10 @@ function prettyKey(k: string) {
       </div>
     </template>
 
-    <!-- fallback: pretty JSON -->
     <template v-else>
       <div>
         <div v-if="data.title" class="mb-3 text-lg font-semibold text-neutral-100">{{ data.title }}</div>
-        <pre class="overflow-x-auto whitespace-pre-wrap rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-xs text-neutral-400">{{ JSON.stringify(data, null, 2) }}</pre>
+        <pre class="themed-soft overflow-x-auto whitespace-pre-wrap rounded-xl border border-neutral-800 p-4 text-xs text-neutral-400">{{ JSON.stringify(data, null, 2) }}</pre>
       </div>
     </template>
   </div>

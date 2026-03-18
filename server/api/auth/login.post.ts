@@ -1,4 +1,4 @@
-import { directusRequest, fetchDirectusMe } from '../../utils/directus'
+import { directusRequest } from '../../utils/directus'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{
@@ -64,7 +64,17 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const user = await fetchDirectusMe(event)
+  const meResponse = await directusRequest<any>('/users/me', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    query: {
+      fields: 'id,email,first_name,last_name,role.id,role.name,role.admin_access,role.app_access'
+    }
+  })
+
+  const user = meResponse?.data || meResponse || null
 
   return {
     ok: true,

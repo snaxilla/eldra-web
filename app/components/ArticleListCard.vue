@@ -16,7 +16,7 @@ defineProps<{
   <NuxtLink
     v-if="article.slug"
     :to="`/article/${article.slug}`"
-    class="block rounded-2xl border border-neutral-800 bg-neutral-900 p-5 transition hover:border-neutral-700 hover:bg-neutral-800"
+    class="themed-soft block rounded-2xl border border-neutral-800 p-5 transition hover:border-neutral-700 hover:brightness-110"
   >
     <div class="mb-3 flex items-center justify-between gap-4">
       <h3 class="text-lg font-semibold text-neutral-100">
@@ -40,7 +40,7 @@ defineProps<{
 
   <div
     v-else
-    class="block rounded-2xl border border-dashed border-neutral-800 bg-neutral-900 p-5 opacity-70"
+    class="themed-soft block rounded-2xl border border-dashed border-neutral-800 p-5 opacity-70"
   >
     <div class="mb-3 flex items-center justify-between gap-4">
       <h3 class="text-lg font-semibold text-neutral-100">

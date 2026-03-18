@@ -7,7 +7,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 shadow-sm">
+  <div class="themed-panel rounded-2xl border border-neutral-800 p-5 shadow-sm">
     <div class="mb-4 flex items-start justify-between gap-4">
       <div>
         <div class="text-lg font-semibold text-neutral-100">

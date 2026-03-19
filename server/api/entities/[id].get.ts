@@ -3,14 +3,14 @@ import { directusRequest } from '../../utils/directus'
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id') || ''
 
-  const response = await directusRequest(`/items/entities/${id}`, {
+  const entityRes = await directusRequest(`/items/entities/${id}`, {
     method: 'GET',
     query: {
       fields: 'id,title,slug,world.id,world.name,world.slug,system_key,entity_type,status,visibility,summary,date_created,date_updated'
     }
   })
 
-  const entity = response?.data
+  const entity = entityRes?.data
 
   if (!entity) {
     throw createError({
@@ -18,6 +18,28 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Entity not found'
     })
   }
+
+  const blocksRes = await directusRequest('/items/block_instances', {
+    method: 'GET',
+    query: {
+      filter: {
+        entity: {
+          _eq: id
+        }
+      },
+      sort: ['sort'],
+      fields: 'id,block_key,label,sort,repeatable,data'
+    }
+  })
+
+  const blocks = (blocksRes?.data || []).map((block: any) => ({
+    id: block.id,
+    blockKey: block.block_key,
+    label: block.label,
+    sort: block.sort,
+    repeatable: block.repeatable,
+    data: block.data
+  }))
 
   return {
     entity: {
@@ -40,6 +62,6 @@ export default defineEventHandler(async (event) => {
           slug: entity.world.slug
         }
       : null,
-    blocks: []
+    blocks
   }
 })

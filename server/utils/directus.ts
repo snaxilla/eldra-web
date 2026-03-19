@@ -11,6 +11,10 @@ function getDirectusUrl() {
   return url.replace(/\/+$/, '')
 }
 
+function getServiceToken() {
+  return process.env.DIRECTUS_TOKEN || ''
+}
+
 export function getSessionToken(event: H3Event) {
   return getCookie(event, 'eldra_session') || ''
 }
@@ -22,6 +26,29 @@ export async function directusRequest<T = any>(
   return await $fetch<T>(path, {
     baseURL: getDirectusUrl(),
     ...options
+  })
+}
+
+export async function directusServiceRequest<T = any>(
+  path: string,
+  options: Parameters<typeof $fetch<T>>[1] = {}
+) {
+  const token = getServiceToken()
+
+  if (!token) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'DIRECTUS_TOKEN is not set'
+    })
+  }
+
+  const headers = new Headers(options?.headers as HeadersInit | undefined)
+  headers.set('Authorization', `Bearer ${token}`)
+
+  return await $fetch<T>(path, {
+    baseURL: getDirectusUrl(),
+    ...options,
+    headers
   })
 }
 

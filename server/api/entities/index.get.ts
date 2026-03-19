@@ -1,10 +1,10 @@
-import { directusRequest } from '../../utils/directus'
+import { directusServiceRequest } from '../../utils/directus'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const worldId = typeof query.worldId === 'string' ? query.worldId : ''
 
-  const response = await directusRequest('/items/entities', {
+  const response = await directusServiceRequest('/items/entities', {
     method: 'GET',
     query: {
       filter: worldId

@@ -1,9 +1,9 @@
-import { directusRequest } from '../../utils/directus'
+import { directusServiceRequest } from '../../utils/directus'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') || ''
 
-  const worldResponse = await directusRequest('/items/worlds', {
+  const worldResponse = await directusServiceRequest('/items/worlds', {
     method: 'GET',
     query: {
       filter: {
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const entityResponse = await directusRequest('/items/entities', {
+  const entityResponse = await directusServiceRequest('/items/entities', {
     method: 'GET',
     query: {
       filter: {

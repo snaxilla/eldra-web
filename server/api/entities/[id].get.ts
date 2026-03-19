@@ -1,9 +1,9 @@
-import { directusRequest } from '../../utils/directus'
+import { directusServiceRequest } from '../../utils/directus'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id') || ''
 
-  const entityRes = await directusRequest(`/items/entities/${id}`, {
+  const entityRes = await directusServiceRequest(`/items/entities/${id}`, {
     method: 'GET',
     query: {
       fields: 'id,title,slug,world.id,world.name,world.slug,system_key,entity_type,status,visibility,summary,date_created,date_updated'
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const blocksRes = await directusRequest('/items/block_instances', {
+  const blocksRes = await directusServiceRequest('/items/block_instances', {
     method: 'GET',
     query: {
       filter: {

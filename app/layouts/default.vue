@@ -34,9 +34,6 @@
             <ClientOnly>
               <ThemeChooser />
             </ClientOnly>
-            <UButton color="neutral" variant="soft" icon="i-lucide-log-in">
-              Login
-            </UButton>
           </div>
         </div>
       </header>

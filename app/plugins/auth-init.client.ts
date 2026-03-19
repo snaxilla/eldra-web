@@ -1,9 +1,12 @@
+import { defineNuxtPlugin, useRoute } from '#app'
+import { watch } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
 export default defineNuxtPlugin(async () => {
+  const route = useRoute()
   const { state, fetchMe } = useAuth()
 
-  if (!state.value.ready) {
+  async function ensureAuthLoaded() {
     try {
       await fetchMe()
     } catch {
@@ -12,4 +15,15 @@ export default defineNuxtPlugin(async () => {
       state.value.user = null
     }
   }
+
+  if (!state.value.ready) {
+    await ensureAuthLoaded()
+  }
+
+  watch(
+    () => route.fullPath,
+    async () => {
+      await ensureAuthLoaded()
+    }
+  )
 })

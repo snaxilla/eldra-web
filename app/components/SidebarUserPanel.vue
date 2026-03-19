@@ -1,26 +1,15 @@
 <script setup lang="ts">
-import { watchEffect } from 'vue'
+import { computed } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 
-const { state, displayName, isAdmin, fetchMe, logout } = useAuth()
+const { state, displayName, isAdmin, logout } = useAuth()
 
-// 🔥 This is the fix: always ensure auth state resolves
-watchEffect(async () => {
-  if (!state.value.ready) {
-    try {
-      await fetchMe()
-    } catch {
-      state.value.ready = true
-      state.value.authenticated = false
-      state.value.user = null
-    }
-  }
-})
+const showAuthenticated = computed(() => state.value.ready && state.value.authenticated)
 </script>
 
 <template>
   <div class="mt-auto border-t border-neutral-800 p-4">
-    <template v-if="state.authenticated">
+    <template v-if="showAuthenticated">
       <div class="text-sm font-medium text-neutral-200 truncate">
         {{ displayName }}
       </div>
@@ -47,6 +36,10 @@ watchEffect(async () => {
         </button>
       </div>
     </template>
+
+    <div v-else-if="!state.ready" class="text-sm text-neutral-500">
+      Loading user...
+    </div>
 
     <NuxtLink
       v-else

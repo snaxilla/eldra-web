@@ -1,4 +1,4 @@
-import { directusServiceRequest } from '../../../../../../utils/directus'
+import { directusServiceRequest } from '../../../../../utils/directus'
 
 function getDirectusUrl() {
   const url = process.env.NUXT_PUBLIC_DIRECTUS_URL || ''
@@ -110,12 +110,8 @@ export default defineEventHandler(async (event) => {
     ok: true,
     entityId,
     blockKey,
-    blockInstanceId: block.id,
     file: {
       id: uploadedFile.id,
-      title: uploadedFile.title || title,
-      filename_download: uploadedFile.filename_download || filename,
-      type: uploadedFile.type || mimeType,
       assetUrl: `${getDirectusUrl()}/assets/${uploadedFile.id}`
     }
   }

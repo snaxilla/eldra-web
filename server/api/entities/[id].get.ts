@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const entityRes = await directusServiceRequest(`/items/entities/${id}`, {
     method: 'GET',
     query: {
-      fields: 'id,title,slug,world_id,system_key,entity_type,status,visibility,summary,date_created,date_updated'
+      fields: 'id,title,slug,world_id,system_key,entity_type,status,visibility,summary,created_at,updated_at'
     }
   })
 
@@ -63,8 +63,8 @@ export default defineEventHandler(async (event) => {
       status: entity.status,
       visibility: entity.visibility,
       summary: entity.summary,
-      createdAt: entity.date_created,
-      updatedAt: entity.date_updated
+      createdAt: entity.created_at || null,
+      updatedAt: entity.updated_at || null
     },
     world,
     blocks

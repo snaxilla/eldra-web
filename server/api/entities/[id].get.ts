@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const entityRes = await directusServiceRequest(`/items/entities/${id}`, {
     method: 'GET',
     query: {
-      fields: 'id,title,slug,world.id,world.name,world.slug,system_key,entity_type,status,visibility,summary,date_created,date_updated'
+      fields: 'id,title,slug,world_id,system_key,entity_type,status,visibility,summary,date_created,date_updated'
     }
   })
 
@@ -19,13 +19,24 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const worldRes = await directusServiceRequest('/items/worlds', {
+    method: 'GET',
+    query: {
+      filter: {
+        id: { _eq: entity.world_id }
+      },
+      limit: 1,
+      fields: 'id,name,slug'
+    }
+  })
+
+  const world = worldRes?.data?.[0] || null
+
   const blocksRes = await directusServiceRequest('/items/block_instances', {
     method: 'GET',
     query: {
       filter: {
-        entity: {
-          _eq: id
-        }
+        entity_id: { _eq: id }
       },
       sort: ['sort'],
       fields: 'id,block_key,label,sort,repeatable,data'
@@ -44,7 +55,7 @@ export default defineEventHandler(async (event) => {
   return {
     entity: {
       id: entity.id,
-      worldId: entity.world?.id || entity.world,
+      worldId: entity.world_id,
       systemKey: entity.system_key,
       entityType: entity.entity_type,
       title: entity.title,
@@ -55,13 +66,7 @@ export default defineEventHandler(async (event) => {
       createdAt: entity.date_created,
       updatedAt: entity.date_updated
     },
-    world: entity.world
-      ? {
-          id: entity.world.id,
-          name: entity.world.name,
-          slug: entity.world.slug
-        }
-      : null,
+    world,
     blocks
   }
 })

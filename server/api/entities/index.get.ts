@@ -8,19 +8,15 @@ export default defineEventHandler(async (event) => {
     method: 'GET',
     query: {
       filter: worldId
-        ? {
-            world: {
-              _eq: worldId
-            }
-          }
+        ? { world_id: { _eq: worldId } }
         : undefined,
-      fields: 'id,title,slug,world.id,world.name,world.slug,system_key,entity_type,status,visibility,summary,date_created,date_updated'
+      fields: 'id,title,slug,world_id,system_key,entity_type,status,visibility,summary,date_created,date_updated'
     }
   })
 
   const entities = (response?.data || []).map((entity: any) => ({
     id: entity.id,
-    worldId: entity.world?.id || entity.world,
+    worldId: entity.world_id,
     systemKey: entity.system_key,
     entityType: entity.entity_type,
     title: entity.title,
@@ -29,14 +25,7 @@ export default defineEventHandler(async (event) => {
     visibility: entity.visibility,
     summary: entity.summary,
     createdAt: entity.date_created,
-    updatedAt: entity.date_updated,
-    world: entity.world
-      ? {
-          id: entity.world.id,
-          name: entity.world.name,
-          slug: entity.world.slug
-        }
-      : null
+    updatedAt: entity.date_updated
   }))
 
   return {

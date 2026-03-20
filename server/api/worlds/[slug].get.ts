@@ -7,12 +7,10 @@ export default defineEventHandler(async (event) => {
     method: 'GET',
     query: {
       filter: {
-        slug: {
-          _eq: slug
-        }
+        slug: { _eq: slug }
       },
       limit: 1,
-      fields: 'id,name,slug,system_key,description,visibility,owner'
+      fields: 'id,name,slug,system_key,description,visibility,owner_id'
     }
   })
 
@@ -29,17 +27,12 @@ export default defineEventHandler(async (event) => {
     method: 'GET',
     query: {
       filter: {
-        world: {
-          _eq: world.id
-        }
-      },
-      aggregate: {
-        count: ['id']
+        world_id: { _eq: world.id }
       }
     }
   })
 
-  const entityCount = Number(entityResponse?.data?.[0]?.count?.id || 0)
+  const entityCount = Array.isArray(entityResponse?.data) ? entityResponse.data.length : 0
 
   return {
     world,

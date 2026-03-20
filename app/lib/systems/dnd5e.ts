@@ -112,7 +112,8 @@ const spellCoreBlock = {
     { key: 'ritual', label: 'Ritual', type: 'boolean', default: false, importAliases: ['ritual'] },
     { key: 'concentration', label: 'Concentration', type: 'boolean', default: false, importAliases: ['concentration'] },
     { key: 'description', label: 'Description', type: 'markdown', default: '', importAliases: ['entries', 'description'] },
-    { key: 'higher_level', label: 'At Higher Levels', type: 'markdown', default: '', importAliases: ['entriesHigherLevel'] }
+    { key: 'higher_level', label: 'At Higher Levels', type: 'markdown', default: '', importAliases: ['entriesHigherLevel'] },
+    { key: 'image', label: 'Image', type: 'image', default: '' }
   ]
 } as const
 
@@ -133,7 +134,8 @@ const itemCoreBlock = {
     { key: 'damage', label: 'Damage', type: 'text', default: '' },
     { key: 'damage_type', label: 'Damage Type', type: 'text', default: '' },
     { key: 'armor_class', label: 'Armor Class', type: 'number', min: 0, max: 99, step: 1, default: 0 },
-    { key: 'description', label: 'Description', type: 'markdown', default: '', importAliases: ['entries', 'description'] }
+    { key: 'description', label: 'Description', type: 'markdown', default: '', importAliases: ['entries', 'description'] },
+    { key: 'image', label: 'Image', type: 'image', default: '' }
   ]
 } as const
 
@@ -147,7 +149,8 @@ const featCoreBlock = {
   fields: [
     { key: 'name', label: 'Name', type: 'text', required: true, default: '', importAliases: ['name'] },
     { key: 'prerequisites', label: 'Prerequisites', type: 'textarea', default: '', importAliases: ['prerequisite'] },
-    { key: 'benefits', label: 'Benefits', type: 'markdown', default: '', importAliases: ['entries', 'description'] }
+    { key: 'benefits', label: 'Benefits', type: 'markdown', default: '', importAliases: ['entries', 'description'] },
+    { key: 'image', label: 'Image', type: 'image', default: '' }
   ]
 } as const
 
@@ -163,7 +166,8 @@ const speciesCoreBlock = {
     { key: 'size', label: 'Size', type: 'text', default: '', importAliases: ['size'] },
     { key: 'speed', label: 'Speed', type: 'text', default: '', importAliases: ['speed'] },
     { key: 'ability_score_increase', label: 'Ability Score Increase', type: 'textarea', default: '', importAliases: ['ability'] },
-    { key: 'traits', label: 'Traits', type: 'markdown', default: '', importAliases: ['entries', 'description'] }
+    { key: 'traits', label: 'Traits', type: 'markdown', default: '', importAliases: ['entries', 'description'] },
+    { key: 'image', label: 'Image', type: 'image', default: '' }
   ]
 } as const
 
@@ -181,7 +185,8 @@ const backgroundCoreBlock = {
     { key: 'languages', label: 'Languages', type: 'textarea', default: '' },
     { key: 'equipment', label: 'Equipment', type: 'markdown', default: '' },
     { key: 'feature_name', label: 'Feature Name', type: 'text', default: '' },
-    { key: 'feature_description', label: 'Feature Description', type: 'markdown', default: '' }
+    { key: 'feature_description', label: 'Feature Description', type: 'markdown', default: '' },
+    { key: 'image', label: 'Image', type: 'image', default: '' }
   ]
 } as const
 
@@ -200,7 +205,8 @@ const classCoreBlock = {
     { key: 'armor_proficiencies', label: 'Armor Proficiencies', type: 'textarea', default: '' },
     { key: 'weapon_proficiencies', label: 'Weapon Proficiencies', type: 'textarea', default: '' },
     { key: 'tool_proficiencies', label: 'Tool Proficiencies', type: 'textarea', default: '' },
-    { key: 'description', label: 'Description', type: 'markdown', default: '', importAliases: ['entries', 'description'] }
+    { key: 'description', label: 'Description', type: 'markdown', default: '', importAliases: ['entries', 'description'] },
+    { key: 'image', label: 'Image', type: 'image', default: '' }
   ]
 } as const
 

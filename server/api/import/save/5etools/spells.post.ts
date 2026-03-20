@@ -2,49 +2,48 @@ import { directusServiceRequest } from '../../../../utils/directus'
 import { preview5eToolsSpells } from '../../../../../app/lib/importers'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
+  try {
+    const body = await readBody(event)
 
-  const worldId = body?.worldId
-  let payload = body?.payload ?? body
+    const worldId = body?.worldId
+    let payload = body?.payload ?? body
 
-  if (!worldId) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'worldId is required'
-    })
-  }
-
-  if (typeof payload === 'string') {
-    try {
-      payload = JSON.parse(payload)
-    } catch {
+    if (!worldId) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Invalid JSON payload'
+        statusMessage: 'worldId is required'
       })
     }
-  }
 
-  const preview = preview5eToolsSpells(payload)
-
-  if (!preview.items.length) {
-    return {
-      created: [],
-      warnings: preview.warnings
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload)
+      } catch {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Invalid JSON payload'
+        })
+      }
     }
-  }
 
-  const createdEntities = []
+    const preview = preview5eToolsSpells(payload)
 
-  for (const item of preview.items) {
-    const now = new Date().toISOString()
+    if (!preview.items.length) {
+      return {
+        created: [],
+        warnings: preview.warnings
+      }
+    }
 
-    const entityRes = await directusServiceRequest('/items/entities', {
-      method: 'POST',
-      body: {
+    const createdEntities = []
+
+    for (const item of preview.items) {
+      const now = new Date().toISOString()
+
+      const entityBody = {
         title: item.title,
         slug: item.slug,
-        world_id: worldId,
+        world_id: Number(worldId),
         system_key: item.systemKey,
         entity_type: item.entityType,
         status: 'draft',
@@ -53,14 +52,16 @@ export default defineEventHandler(async (event) => {
         created_at: now,
         updated_at: now
       }
-    })
 
-    const entity = entityRes?.data
-
-    for (const block of item.blocks) {
-      await directusServiceRequest('/items/block_instances', {
+      const entityRes = await directusServiceRequest('/items/entities', {
         method: 'POST',
-        body: {
+        body: entityBody
+      })
+
+      const entity = entityRes?.data
+
+      for (const block of item.blocks) {
+        const blockBody = {
           entity_id: entity.id,
           block_key: block.blockKey,
           label: block.label,
@@ -68,18 +69,33 @@ export default defineEventHandler(async (event) => {
           repeatable: block.repeatable,
           data: block.data
         }
+
+        await directusServiceRequest('/items/block_instances', {
+          method: 'POST',
+          body: blockBody
+        })
+      }
+
+      createdEntities.push({
+        id: entity.id,
+        title: entity.title,
+        slug: entity.slug
       })
     }
 
-    createdEntities.push({
-      id: entity.id,
-      title: entity.title,
-      slug: entity.slug
+    return {
+      created: createdEntities,
+      warnings: preview.warnings
+    }
+  } catch (error: any) {
+    console.error('SPELL_IMPORT_SAVE_ERROR', {
+      message: error?.message,
+      statusCode: error?.statusCode,
+      statusMessage: error?.statusMessage,
+      data: error?.data,
+      causeData: error?.cause?.data
     })
-  }
 
-  return {
-    created: createdEntities,
-    warnings: preview.warnings
+    throw error
   }
 })

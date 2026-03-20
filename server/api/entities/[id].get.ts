@@ -5,7 +5,10 @@ function getDirectusUrl() {
   if (!url) {
     return ''
   }
-  return url.replace(/\/+$/, '')
+
+  return url
+    .replace(/\/+$/, '')
+    .replace(/^http:\/\//i, 'https://')
 }
 
 function enrichBlockDataWithImageUrl(data: any) {

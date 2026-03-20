@@ -31,18 +31,24 @@ export default defineEventHandler(async (event) => {
   })
 
   if (!upstream.ok) {
+    const errorText = await upstream.text().catch(() => '')
     throw createError({
       statusCode: upstream.status,
-      statusMessage: `Directus asset fetch failed with ${upstream.status}`
+      statusMessage: `Directus asset fetch failed: ${errorText || upstream.status}`
     })
   }
 
   const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
+  const contentLength = upstream.headers.get('content-length')
   const cacheControl = upstream.headers.get('cache-control') || 'public, max-age=3600'
-  const arrayBuffer = await upstream.arrayBuffer()
 
   setHeader(event, 'Content-Type', contentType)
   setHeader(event, 'Cache-Control', cacheControl)
 
-  return new Uint8Array(arrayBuffer)
+  if (contentLength) {
+    setHeader(event, 'Content-Length', contentLength)
+  }
+
+  const arrayBuffer = await upstream.arrayBuffer()
+  return Buffer.from(arrayBuffer)
 })

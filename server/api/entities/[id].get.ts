@@ -1,26 +1,14 @@
 import { directusServiceRequest } from '../../utils/directus'
 
-function getDirectusUrl() {
-  const url = process.env.NUXT_PUBLIC_DIRECTUS_URL || ''
-  if (!url) {
-    return ''
-  }
-
-  return url
-    .replace(/\/+$/, '')
-    .replace(/^http:\/\//i, 'https://')
-}
-
 function enrichBlockDataWithImageUrl(data: any) {
   if (!data || typeof data !== 'object') {
     return data
   }
 
   const out = { ...data }
-  const directusUrl = getDirectusUrl()
 
-  if (out.image && typeof out.image === 'string' && directusUrl) {
-    out.image_url = `${directusUrl}/assets/${out.image}`
+  if (out.image && typeof out.image === 'string') {
+    out.image_url = `/api/assets/${out.image}`
   }
 
   return out

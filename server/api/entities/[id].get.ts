@@ -1,5 +1,28 @@
 import { directusServiceRequest } from '../../utils/directus'
 
+function getDirectusUrl() {
+  const url = process.env.NUXT_PUBLIC_DIRECTUS_URL || ''
+  if (!url) {
+    return ''
+  }
+  return url.replace(/\/+$/, '')
+}
+
+function enrichBlockDataWithImageUrl(data: any) {
+  if (!data || typeof data !== 'object') {
+    return data
+  }
+
+  const out = { ...data }
+  const directusUrl = getDirectusUrl()
+
+  if (out.image && typeof out.image === 'string' && directusUrl) {
+    out.image_url = `${directusUrl}/assets/${out.image}`
+  }
+
+  return out
+}
+
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id') || ''
 
@@ -49,7 +72,7 @@ export default defineEventHandler(async (event) => {
     label: block.label,
     sort: block.sort,
     repeatable: block.repeatable,
-    data: block.data
+    data: enrichBlockDataWithImageUrl(block.data)
   }))
 
   return {

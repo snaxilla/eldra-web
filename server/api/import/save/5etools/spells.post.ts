@@ -1,5 +1,5 @@
 import { directusServiceRequest } from '../../../../utils/directus'
-import { preview5eToolsSpells } from '../../../../../../app/lib/importers'
+import { preview5eToolsSpells } from '../../../../../app/lib/importers'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -39,7 +39,6 @@ export default defineEventHandler(async (event) => {
   for (const item of preview.items) {
     const now = new Date().toISOString()
 
-    // 1. Create entity
     const entityRes = await directusServiceRequest('/items/entities', {
       method: 'POST',
       body: {
@@ -58,7 +57,6 @@ export default defineEventHandler(async (event) => {
 
     const entity = entityRes?.data
 
-    // 2. Create block_instances
     for (const block of item.blocks) {
       await directusServiceRequest('/items/block_instances', {
         method: 'POST',

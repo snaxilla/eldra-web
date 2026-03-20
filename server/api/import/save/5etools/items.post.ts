@@ -24,13 +24,42 @@ export default defineEventHandler(async (event) => {
     if (!preview.items.length) {
       return {
         created: [],
+        skipped: [],
         warnings: preview.warnings
       }
     }
 
     const createdEntities = []
+    const skippedEntities = []
 
     for (const item of preview.items) {
+      const existingRes = await directusServiceRequest('/items/entities', {
+        method: 'GET',
+        query: {
+          filter: {
+            _and: [
+              { world_id: { _eq: Number(worldId) } },
+              { entity_type: { _eq: item.entityType } },
+              { slug: { _eq: item.slug } }
+            ]
+          },
+          limit: 1,
+          fields: 'id,title,slug'
+        }
+      })
+
+      const existing = existingRes?.data?.[0]
+
+      if (existing) {
+        skippedEntities.push({
+          id: existing.id,
+          title: existing.title,
+          slug: existing.slug,
+          reason: 'duplicate_slug'
+        })
+        continue
+      }
+
       const now = new Date().toISOString()
 
       const entityRes = await directusServiceRequest('/items/entities', {
@@ -74,6 +103,7 @@ export default defineEventHandler(async (event) => {
 
     return {
       created: createdEntities,
+      skipped: skippedEntities,
       warnings: preview.warnings
     }
   } catch (error: any) {

@@ -16,14 +16,7 @@ export default defineEventHandler(async (event) => {
     }
 
     if (typeof payload === 'string') {
-      try {
-        payload = JSON.parse(payload)
-      } catch {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'Invalid JSON payload'
-        })
-      }
+      payload = JSON.parse(payload)
     }
 
     const preview = preview5eToolsSpells(payload)
@@ -31,48 +24,73 @@ export default defineEventHandler(async (event) => {
     if (!preview.items.length) {
       return {
         created: [],
+        skipped: [],
         warnings: preview.warnings
       }
     }
 
     const createdEntities = []
+    const skippedEntities = []
 
     for (const item of preview.items) {
-      const now = new Date().toISOString()
+      const existingRes = await directusServiceRequest('/items/entities', {
+        method: 'GET',
+        query: {
+          filter: {
+            _and: [
+              { world_id: { _eq: Number(worldId) } },
+              { entity_type: { _eq: item.entityType } },
+              { slug: { _eq: item.slug } }
+            ]
+          },
+          limit: 1,
+          fields: 'id,title,slug'
+        }
+      })
 
-      const entityBody = {
-        title: item.title,
-        slug: item.slug,
-        world_id: Number(worldId),
-        system_key: item.systemKey,
-        entity_type: item.entityType,
-        status: 'draft',
-        visibility: 'world',
-        summary: '',
-        created_at: now,
-        updated_at: now
+      const existing = existingRes?.data?.[0]
+
+      if (existing) {
+        skippedEntities.push({
+          id: existing.id,
+          title: existing.title,
+          slug: existing.slug,
+          reason: 'duplicate_slug'
+        })
+        continue
       }
+
+      const now = new Date().toISOString()
 
       const entityRes = await directusServiceRequest('/items/entities', {
         method: 'POST',
-        body: entityBody
+        body: {
+          title: item.title,
+          slug: item.slug,
+          world_id: Number(worldId),
+          system_key: item.systemKey,
+          entity_type: item.entityType,
+          status: 'draft',
+          visibility: 'world',
+          summary: '',
+          created_at: now,
+          updated_at: now
+        }
       })
 
       const entity = entityRes?.data
 
       for (const block of item.blocks) {
-        const blockBody = {
-          entity_id: entity.id,
-          block_key: block.blockKey,
-          label: block.label,
-          sort: block.sort,
-          repeatable: block.repeatable,
-          data: block.data
-        }
-
         await directusServiceRequest('/items/block_instances', {
           method: 'POST',
-          body: blockBody
+          body: {
+            entity_id: entity.id,
+            block_key: block.blockKey,
+            label: block.label,
+            sort: block.sort,
+            repeatable: block.repeatable,
+            data: block.data
+          }
         })
       }
 
@@ -85,17 +103,17 @@ export default defineEventHandler(async (event) => {
 
     return {
       created: createdEntities,
+      skipped: skippedEntities,
       warnings: preview.warnings
     }
   } catch (error: any) {
-    console.error('SPELL_IMPORT_SAVE_ERROR', {
-      message: error?.message,
-      statusCode: error?.statusCode,
-      statusMessage: error?.statusMessage,
-      data: error?.data,
-      causeData: error?.cause?.data
-    })
-
-    throw error
+    return {
+      debug: true,
+      message: error?.message || null,
+      statusCode: error?.statusCode || error?.response?.status || 500,
+      statusMessage: error?.statusMessage || null,
+      data: error?.data || null,
+      cause: error?.cause?.data || null
+    }
   }
 })

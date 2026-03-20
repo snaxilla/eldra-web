@@ -151,6 +151,22 @@ const featCoreBlock = {
   ]
 } as const
 
+const speciesCoreBlock = {
+  key: 'species_core',
+  label: 'Species Core',
+  icon: 'i-lucide-user',
+  category: 'core',
+  importTarget: true,
+  description: 'Core species definition.',
+  fields: [
+    { key: 'name', label: 'Name', type: 'text', required: true, default: '', importAliases: ['name'] },
+    { key: 'size', label: 'Size', type: 'text', default: '', importAliases: ['size'] },
+    { key: 'speed', label: 'Speed', type: 'text', default: '', importAliases: ['speed'] },
+    { key: 'ability_score_increase', label: 'Ability Score Increase', type: 'textarea', default: '', importAliases: ['ability'] },
+    { key: 'traits', label: 'Traits', type: 'markdown', default: '', importAliases: ['entries', 'description'] }
+  ]
+} as const
+
 const backgroundCoreBlock = {
   key: 'background_core',
   label: 'Background Core',
@@ -278,6 +294,15 @@ export const dnd5eSystem: EldraSystemSchema = {
       ]
     },
     {
+      entityType: 'species',
+      label: 'Species',
+      description: 'Species definitions and ancestry traits.',
+      blocks: [
+        'import_source',
+        'species_core'
+      ]
+    },
+    {
       entityType: 'class',
       label: 'Class',
       description: 'Base class definitions.',
@@ -315,6 +340,7 @@ export const dnd5eSystem: EldraSystemSchema = {
     itemCoreBlock,
     featCoreBlock,
     backgroundCoreBlock,
+    speciesCoreBlock,
     classCoreBlock,
     subclassCoreBlock,
     monsterCoreBlock

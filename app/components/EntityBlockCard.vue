@@ -10,16 +10,32 @@ const props = defineProps<{
   }
 }>()
 
+const config = useRuntimeConfig()
+
+const directusBase = computed(() => {
+  const raw = String(config.public?.directusUrl || '')
+  return raw.replace(/\/+$/, '').replace(/^http:\/\//i, 'https://')
+})
+
 const imageUrl = computed(() => {
   const data = props.block?.data || {}
-  return data.image_url || ''
+
+  if (data.image_url) {
+    return String(data.image_url).replace(/^http:\/\//i, 'https://')
+  }
+
+  if (data.image && typeof data.image === 'string' && directusBase.value) {
+    return `${directusBase.value}/assets/${data.image}`
+  }
+
+  return ''
 })
 
 const displayRows = computed(() => {
   const data = props.block?.data || {}
 
   return Object.entries(data)
-    .filter(([key]) => !['raw_json', 'image_url'].includes(key))
+    .filter(([key]) => !['raw_json', 'image', 'image_url'].includes(key))
     .map(([key, value]) => ({
       key,
       value:

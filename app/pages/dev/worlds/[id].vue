@@ -35,6 +35,9 @@ const recentEntries = [
 
 <template>
   <div class="space-y-6">
+    <div class="rounded-2xl border border-red-500 bg-red-950/80 p-4 text-2xl font-bold text-red-200">NEW WORLD PAGE FILE IS RENDERING</div>
+
+
     <section class="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
       <div class="relative h-[260px] md:h-[320px]">
         <img

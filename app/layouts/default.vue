@@ -1,6 +1,18 @@
 <script setup lang="ts">
 const collapsed = ref(false)
 
+
+const sidebarImage = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    const res = await $fetch('/api/admin/app-settings')
+    sidebarImage.value = res.sidebar_image_url
+  } catch (e) {
+    console.error('Failed to load sidebar image', e)
+  }
+})
+
 const navItems = [
   { label: 'Worlds', to: '/dev/worlds', icon: 'i-lucide-globe-2' },
   { label: 'Entities', to: '/dev/entities', icon: 'i-lucide-scroll-text' },

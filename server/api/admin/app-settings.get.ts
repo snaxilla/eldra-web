@@ -1,10 +1,9 @@
 export default defineEventHandler(async () => {
-  const config = useRuntimeConfig()
-  const baseUrl = String(config.public.directusUrl).replace(/\/$/, '')
-  const token = String(config.directusToken || '')
+  const baseUrl = 'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
+  const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
 
   const res = await fetch(
-    `${baseUrl}/items/app_settings?limit=1&fields=*,sidebar_image.*`,
+    `${baseUrl}/items/app_settings?limit=1&fields=*`,
     {
       headers: {
         Authorization: `Bearer ${token}`
@@ -12,20 +11,11 @@ export default defineEventHandler(async () => {
     }
   )
 
-  const json = await res.json()
-
-  if (!res.ok) {
-    throw createError({
-      statusCode: res.status,
-      statusMessage: json?.errors?.[0]?.message || json?.message || 'Failed to load app settings'
-    })
-  }
-
-  const record = json.data?.[0] || null
-  const file = record?.sidebar_image
+  const text = await res.text()
 
   return {
-    ...record,
-    sidebar_image_url: file ? `/api/assets/${typeof file === 'string' ? file : file.id}` : null
+    status: res.status,
+    ok: res.ok,
+    body: text
   }
 })

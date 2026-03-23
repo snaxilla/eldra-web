@@ -11,11 +11,19 @@ export default defineEventHandler(async () => {
     }
   )
 
-  const text = await res.text()
+  const json = await res.json()
+
+  if (!res.ok) {
+    throw createError({
+      statusCode: res.status,
+      statusMessage: json?.errors?.[0]?.message || json?.message || 'Failed to load app settings'
+    })
+  }
+
+  const record = json.data?.[0] || null
 
   return {
-    status: res.status,
-    ok: res.ok,
-    body: text
+    ...record,
+    sidebar_image_url: record?.sidebar_image ? `/api/assets/${record.sidebar_image}` : null
   }
 })

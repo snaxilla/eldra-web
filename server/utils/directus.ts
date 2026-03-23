@@ -19,6 +19,23 @@ export function getSessionToken(event: H3Event) {
   return getCookie(event, 'eldra_session') || ''
 }
 
+export async function directusServiceRequest(path: string, options: any = {}) {
+  const { baseUrl, serviceToken } = getRuntimeDirectusConfig()
+
+  const headers: Record<string, string> = {
+    ...(options.headers || {})
+  }
+
+  if (!headers.Authorization && serviceToken) {
+    headers.Authorization = `Bearer ${serviceToken}`
+  }
+
+  return await $fetch(`${baseUrl}${path}`, {
+    ...options,
+    headers
+  })
+}
+
 export async function directusRequest(path: string, options: any = {}, event?: H3Event) {
   const { baseUrl, serviceToken } = getRuntimeDirectusConfig()
 
@@ -44,9 +61,7 @@ export async function directusRequest(path: string, options: any = {}, event?: H
 export async function fetchDirectusMe(event: H3Event) {
   return await directusRequest(
     '/users/me?fields=id,email,first_name,last_name,role.id,role.name,role.admin_access,role.app_access',
-    {
-      method: 'GET'
-    },
+    { method: 'GET' },
     event
   )
 }

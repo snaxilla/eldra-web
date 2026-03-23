@@ -9,12 +9,12 @@ const navItems = [
 </script>
 
 <template>
-  <div class="h-screen overflow-hidden bg-[#16110d] text-white">
-    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(120,86,43,0.18),transparent_32%),radial-gradient(circle_at_top_right,rgba(214,178,94,0.08),transparent_22%),linear-gradient(180deg,#1a1410_0%,#130f0c_45%,#0d0a08_100%)]" />
+  <div class="h-screen overflow-hidden bg-[#ece3d4] text-[#2f2419]">
+    <div class="absolute inset-0 bg-[linear-gradient(180deg,#f3ecdf_0%,#e9decd_100%)]" />
 
     <aside
       :class="collapsed ? 'w-20' : 'w-72'"
-      class="fixed inset-y-0 left-0 z-40 overflow-hidden border-r border-[#b89a5a]/20 transition-all duration-300"
+      class="fixed inset-y-0 left-0 z-40 overflow-hidden border-r border-[#b89a5a]/25 transition-all duration-300"
     >
       <div class="absolute inset-0">
         <img
@@ -22,23 +22,23 @@ const navItems = [
           alt="Sidebar background"
           class="h-full w-full object-cover"
         >
-        <div class="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/80" />
-        <div class="absolute inset-0 bg-[#2b2012]/25" />
+        <div class="absolute inset-0 bg-gradient-to-b from-black/50 via-black/35 to-black/55" />
+        <div class="absolute inset-0 bg-[#3a2b18]/18" />
       </div>
 
       <div class="relative flex h-full flex-col backdrop-blur-[2px]">
         <div class="flex h-24 items-center justify-between px-4">
           <div v-if="!collapsed" class="min-w-0">
-            <div class="text-2xl font-semibold tracking-wide text-[#f5efe2]">
+            <div class="text-2xl font-semibold tracking-wide text-[#fff8ec]">
               Eldra
             </div>
-            <div class="text-xs uppercase tracking-[0.35em] text-[#d6c19a]/70">
+            <div class="text-xs uppercase tracking-[0.35em] text-[#ead7ae]/85">
               Worldbuilding
             </div>
           </div>
 
           <button
-            class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#d6b25e]/25 bg-black/25 text-[#f3dfb0] transition hover:bg-black/40 hover:text-white"
+            class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#e2c27a]/35 bg-black/20 text-[#f3dfb0] transition hover:bg-black/30 hover:text-white"
             @click="collapsed = !collapsed"
           >
             <UIcon
@@ -51,7 +51,7 @@ const navItems = [
         <nav class="px-3 pb-6">
           <div
             v-if="!collapsed"
-            class="mb-3 px-3 text-xs uppercase tracking-[0.3em] text-[#d6c19a]/55"
+            class="mb-3 px-3 text-xs uppercase tracking-[0.3em] text-[#f0dfb8]/75"
           >
             Navigation
           </div>
@@ -60,8 +60,8 @@ const navItems = [
             v-for="item in navItems"
             :key="item.to"
             :to="item.to"
-            class="group mb-2 flex items-center gap-3 rounded-2xl border border-transparent px-3 py-3 text-[#f2ead8]/80 transition hover:border-[#d6b25e]/20 hover:bg-black/25 hover:text-white"
-            active-class="border-[#d6b25e]/30 bg-[rgba(214,178,94,0.12)] text-white shadow-[0_0_0_1px_rgba(214,178,94,0.06)]"
+            class="group mb-2 flex items-center gap-3 rounded-2xl border border-transparent px-3 py-3 text-[#fff4de]/85 transition hover:border-[#e2c27a]/30 hover:bg-black/20 hover:text-white"
+            active-class="border-[#e2c27a]/35 bg-[rgba(255,248,231,0.16)] text-white shadow-[0_0_0_1px_rgba(226,194,122,0.08)]"
           >
             <UIcon :name="item.icon" class="h-5 w-5 shrink-0" />
             <span v-if="!collapsed" class="truncate text-sm font-medium">
@@ -71,12 +71,12 @@ const navItems = [
         </nav>
 
         <div v-if="!collapsed" class="mt-auto px-3 pb-3">
-          <div class="rounded-2xl border border-[#d6b25e]/20 bg-black/25 p-4">
-            <div class="text-xs uppercase tracking-[0.25em] text-[#d6c19a]/55">
+          <div class="rounded-2xl border border-[#e2c27a]/30 bg-black/20 p-4">
+            <div class="text-xs uppercase tracking-[0.25em] text-[#f0dfb8]/75">
               Eldra Dev
             </div>
-            <div class="mt-2 text-sm text-[#f2ead8]/80">
-              Forge the world first. Polish the tools second.
+            <div class="mt-2 text-sm text-[#fff4de]/88">
+              Build the world. Make it inviting.
             </div>
           </div>
         </div>

@@ -34,30 +34,28 @@ const recentEntries = [
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="rounded-2xl border border-red-500 bg-red-950/80 p-4 text-2xl font-bold text-red-200">NEW WORLD PAGE FILE IS RENDERING</div>
-
-
-    <section class="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-      <div class="relative h-[260px] md:h-[320px]">
+  <div class="space-y-8">
+    <section class="overflow-hidden rounded-[30px] border border-[#b89a5a]/25 bg-[rgba(20,16,11,0.45)] shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+      <div class="relative h-[290px] md:h-[360px]">
         <img
           src="https://picsum.photos/seed/eldra-hero/1600/700"
           alt="World banner"
           class="h-full w-full object-cover"
         >
-        <div class="absolute inset-0 bg-gradient-to-t from-[#08111f] via-[#08111f]/45 to-black/20" />
+        <div class="absolute inset-0 bg-gradient-to-r from-[rgba(9,7,5,0.75)] via-[rgba(9,7,5,0.35)] to-transparent" />
+        <div class="absolute inset-0 bg-gradient-to-t from-[rgba(7,16,26,0.8)] via-transparent to-transparent" />
 
-        <div class="absolute inset-x-0 bottom-0 p-6 md:p-8">
+        <div class="absolute inset-x-0 bottom-0 p-8 md:p-10">
           <div class="max-w-4xl">
-            <div class="mb-2 text-xs uppercase tracking-[0.4em] text-white/50">
+            <div class="mb-2 text-xs uppercase tracking-[0.45em] text-[#e3d4b2]/70">
               World {{ worldId }}
             </div>
 
-            <h1 class="text-4xl font-semibold tracking-[0.06em] text-[#d6b25e] md:text-6xl">
+            <h1 class="text-5xl font-semibold tracking-[0.08em] text-[#d6b25e] md:text-7xl">
               NAME
             </h1>
 
-            <p class="mt-3 max-w-2xl text-sm leading-6 text-white/75 md:text-base">
+            <p class="mt-4 max-w-2xl text-base leading-7 text-[#f3ecdd]/88">
               A living world of old powers, forgotten roads, contested kingdoms, and stories waiting to be written.
             </p>
           </div>
@@ -66,11 +64,11 @@ const recentEntries = [
     </section>
 
     <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.6fr_0.9fr]">
-      <div class="rounded-[24px] border border-white/10 bg-[rgba(255,255,255,0.04)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
+      <div class="rounded-[26px] border border-[#b89a5a]/20 bg-[rgba(22,18,14,0.55)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
         <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-xl font-semibold text-white">Recent Entries</h2>
-          <div class="text-xs uppercase tracking-[0.3em] text-white/35">
-            Latest activity
+          <h2 class="text-2xl font-semibold text-[#f5efe2]">Recent Entries</h2>
+          <div class="text-xs uppercase tracking-[0.35em] text-[#d8c39c]/45">
+            Latest Activity
           </div>
         </div>
 
@@ -78,7 +76,7 @@ const recentEntries = [
           <article
             v-for="entry in recentEntries"
             :key="entry.title"
-            class="group grid grid-cols-[120px_1fr] gap-4 rounded-2xl border border-white/8 bg-black/20 p-3 transition hover:border-white/15 hover:bg-black/25"
+            class="group grid grid-cols-[140px_1fr] gap-4 rounded-2xl border border-[#b89a5a]/12 bg-[rgba(10,8,6,0.38)] p-3 transition hover:border-[#d6b25e]/20 hover:bg-[rgba(10,8,6,0.48)]"
           >
             <div class="overflow-hidden rounded-xl">
               <img
@@ -89,15 +87,15 @@ const recentEntries = [
             </div>
 
             <div class="min-w-0">
-              <div class="mb-1 text-xs uppercase tracking-[0.3em] text-white/35">
+              <div class="mb-1 text-xs uppercase tracking-[0.35em] text-[#d8c39c]/45">
                 {{ entry.meta }}
               </div>
 
-              <h3 class="truncate text-lg font-semibold text-white">
+              <h3 class="truncate text-xl font-semibold text-[#f6f0e4]">
                 {{ entry.title }}
               </h3>
 
-              <p class="mt-2 line-clamp-3 text-sm leading-6 text-white/70">
+              <p class="mt-2 line-clamp-3 text-sm leading-7 text-[#ece2cf]/78">
                 {{ entry.summary }}
               </p>
             </div>
@@ -105,11 +103,11 @@ const recentEntries = [
         </div>
       </div>
 
-      <div class="rounded-[24px] border border-white/10 bg-[rgba(255,255,255,0.04)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
+      <div class="rounded-[26px] border border-[#b89a5a]/20 bg-[rgba(22,18,14,0.55)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
         <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-xl font-semibold text-white">Quick Links</h2>
-          <div class="text-xs uppercase tracking-[0.3em] text-white/35">
-            Jump points
+          <h2 class="text-2xl font-semibold text-[#f5efe2]">Quick Links</h2>
+          <div class="text-xs uppercase tracking-[0.35em] text-[#d8c39c]/45">
+            Jump Points
           </div>
         </div>
 
@@ -117,7 +115,7 @@ const recentEntries = [
           <button
             v-for="item in quickLinks"
             :key="item.label"
-            class="group overflow-hidden rounded-2xl border border-white/10 bg-black/20 text-left transition hover:border-white/20 hover:bg-black/25"
+            class="group overflow-hidden rounded-2xl border border-[#b89a5a]/15 bg-[rgba(10,8,6,0.38)] text-left transition hover:border-[#d6b25e]/25 hover:bg-[rgba(10,8,6,0.48)]"
           >
             <div class="aspect-square overflow-hidden">
               <img
@@ -128,7 +126,7 @@ const recentEntries = [
             </div>
 
             <div class="px-3 py-2">
-              <div class="truncate text-sm font-medium text-white/85">
+              <div class="truncate text-sm font-medium text-[#f2ead8]">
                 {{ item.label }}
               </div>
             </div>
@@ -137,12 +135,12 @@ const recentEntries = [
       </div>
     </section>
 
-    <section class="overflow-hidden rounded-[28px] border border-white/10 bg-[rgba(255,255,255,0.04)] shadow-[0_10px_30px_rgba(0,0,0,0.25)]">
-      <div class="border-b border-white/10 px-5 py-4">
+    <section class="overflow-hidden rounded-[30px] border border-[#b89a5a]/20 bg-[rgba(22,18,14,0.55)] shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
+      <div class="border-b border-[#b89a5a]/15 px-6 py-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-xl font-semibold text-white">World Map</h2>
-          <div class="text-xs uppercase tracking-[0.3em] text-white/35">
-            Visual overview
+          <h2 class="text-2xl font-semibold text-[#f5efe2]">World Map</h2>
+          <div class="text-xs uppercase tracking-[0.35em] text-[#d8c39c]/45">
+            Visual Overview
           </div>
         </div>
       </div>
@@ -151,20 +149,20 @@ const recentEntries = [
         <img
           src="https://picsum.photos/seed/eldra-map/1600/800"
           alt="World map"
-          class="h-[420px] w-full object-cover md:h-[560px]"
+          class="h-[430px] w-full object-cover md:h-[580px]"
         >
 
-        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#08111f]/30 to-transparent" />
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-[rgba(7,16,26,0.35)] to-transparent" />
 
-        <div class="absolute left-[18%] top-[58%] rounded-full bg-black/60 px-3 py-1 text-sm text-white backdrop-blur">
+        <div class="absolute left-[18%] top-[58%] rounded-full border border-white/10 bg-black/60 px-3 py-1 text-sm text-[#f6efdf] backdrop-blur">
           Dragonspire Mountains
         </div>
 
-        <div class="absolute left-[42%] top-[68%] rounded-full bg-black/60 px-3 py-1 text-sm text-white backdrop-blur">
+        <div class="absolute left-[42%] top-[68%] rounded-full border border-white/10 bg-black/60 px-3 py-1 text-sm text-[#f6efdf] backdrop-blur">
           Stonehold
         </div>
 
-        <div class="absolute right-[18%] top-[30%] rounded-full bg-black/60 px-3 py-1 text-sm text-white backdrop-blur">
+        <div class="absolute right-[18%] top-[30%] rounded-full border border-white/10 bg-black/60 px-3 py-1 text-sm text-[#f6efdf] backdrop-blur">
           Port of Aedier
         </div>
       </div>

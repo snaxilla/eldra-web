@@ -4,14 +4,18 @@ const collapsed = ref(false)
 
 const sidebarImage = ref<string | null>(null)
 
-onMounted(async () => {
+async function loadSidebarImage() {
   try {
     const res = await $fetch('/api/admin/app-settings')
     sidebarImage.value = res.sidebar_image_url
   } catch (e) {
     console.error('Failed to load sidebar image', e)
   }
-})
+}
+
+onMounted(loadSidebarImage)
+
+watch(() => useRoute().fullPath, loadSidebarImage)
 
 const navItems = [
   { label: 'Worlds', to: '/dev/worlds', icon: 'i-lucide-globe-2' },

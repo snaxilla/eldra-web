@@ -35,15 +35,15 @@ const recentEntries = [
 
 <template>
   <div class="space-y-8">
-    <section class="overflow-hidden rounded-[30px] border border-[#b89a5a]/25 bg-[rgba(20,16,11,0.45)] shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+    <section class="overflow-hidden rounded-[30px] border border-[#b89a5a]/25 bg-[rgba(30,22,16,0.62)] shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
       <div class="relative h-[290px] md:h-[360px]">
         <img
           src="https://picsum.photos/seed/eldra-hero/1600/700"
           alt="World banner"
           class="h-full w-full object-cover"
         >
-        <div class="absolute inset-0 bg-gradient-to-r from-[rgba(9,7,5,0.75)] via-[rgba(9,7,5,0.35)] to-transparent" />
-        <div class="absolute inset-0 bg-gradient-to-t from-[rgba(7,16,26,0.8)] via-transparent to-transparent" />
+        <div class="absolute inset-0 bg-gradient-to-r from-[rgba(20,12,8,0.78)] via-[rgba(20,12,8,0.35)] to-transparent" />
+        <div class="absolute inset-0 bg-gradient-to-t from-[rgba(24,16,11,0.85)] via-transparent to-transparent" />
 
         <div class="absolute inset-x-0 bottom-0 p-8 md:p-10">
           <div class="max-w-4xl">
@@ -64,7 +64,7 @@ const recentEntries = [
     </section>
 
     <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.6fr_0.9fr]">
-      <div class="rounded-[26px] border border-[#b89a5a]/20 bg-[rgba(22,18,14,0.55)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
+      <div class="rounded-[26px] border border-[#b89a5a]/20 bg-[rgba(28,21,16,0.68)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-2xl font-semibold text-[#f5efe2]">Recent Entries</h2>
           <div class="text-xs uppercase tracking-[0.35em] text-[#d8c39c]/45">
@@ -76,7 +76,7 @@ const recentEntries = [
           <article
             v-for="entry in recentEntries"
             :key="entry.title"
-            class="group grid grid-cols-[140px_1fr] gap-4 rounded-2xl border border-[#b89a5a]/12 bg-[rgba(10,8,6,0.38)] p-3 transition hover:border-[#d6b25e]/20 hover:bg-[rgba(10,8,6,0.48)]"
+            class="group grid grid-cols-[140px_1fr] gap-4 rounded-2xl border border-[#b89a5a]/12 bg-[rgba(12,9,7,0.45)] p-3 transition hover:border-[#d6b25e]/20 hover:bg-[rgba(12,9,7,0.56)]"
           >
             <div class="overflow-hidden rounded-xl">
               <img
@@ -103,7 +103,7 @@ const recentEntries = [
         </div>
       </div>
 
-      <div class="rounded-[26px] border border-[#b89a5a]/20 bg-[rgba(22,18,14,0.55)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
+      <div class="rounded-[26px] border border-[#b89a5a]/20 bg-[rgba(28,21,16,0.68)] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-2xl font-semibold text-[#f5efe2]">Quick Links</h2>
           <div class="text-xs uppercase tracking-[0.35em] text-[#d8c39c]/45">
@@ -115,7 +115,7 @@ const recentEntries = [
           <button
             v-for="item in quickLinks"
             :key="item.label"
-            class="group overflow-hidden rounded-2xl border border-[#b89a5a]/15 bg-[rgba(10,8,6,0.38)] text-left transition hover:border-[#d6b25e]/25 hover:bg-[rgba(10,8,6,0.48)]"
+            class="group overflow-hidden rounded-2xl border border-[#b89a5a]/15 bg-[rgba(12,9,7,0.45)] text-left transition hover:border-[#d6b25e]/25 hover:bg-[rgba(12,9,7,0.56)]"
           >
             <div class="aspect-square overflow-hidden">
               <img
@@ -135,7 +135,7 @@ const recentEntries = [
       </div>
     </section>
 
-    <section class="overflow-hidden rounded-[30px] border border-[#b89a5a]/20 bg-[rgba(22,18,14,0.55)] shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
+    <section class="overflow-hidden rounded-[30px] border border-[#b89a5a]/20 bg-[rgba(28,21,16,0.68)] shadow-[0_10px_30px_rgba(0,0,0,0.22)]">
       <div class="border-b border-[#b89a5a]/15 px-6 py-4">
         <div class="flex items-center justify-between">
           <h2 class="text-2xl font-semibold text-[#f5efe2]">World Map</h2>
@@ -152,7 +152,7 @@ const recentEntries = [
           class="h-[430px] w-full object-cover md:h-[580px]"
         >
 
-        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-[rgba(7,16,26,0.35)] to-transparent" />
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-[rgba(20,14,10,0.35)] to-transparent" />
 
         <div class="absolute left-[18%] top-[58%] rounded-full border border-white/10 bg-black/60 px-3 py-1 text-sm text-[#f6efdf] backdrop-blur">
           Dragonspire Mountains

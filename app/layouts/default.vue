@@ -9,7 +9,9 @@ const navItems = [
 </script>
 
 <template>
-  <div class="h-screen overflow-hidden bg-[#07101a] text-white">
+  <div class="h-screen overflow-hidden bg-[#16110d] text-white">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(120,86,43,0.18),transparent_32%),radial-gradient(circle_at_top_right,rgba(214,178,94,0.08),transparent_22%),linear-gradient(180deg,#1a1410_0%,#130f0c_45%,#0d0a08_100%)]" />
+
     <aside
       :class="collapsed ? 'w-20' : 'w-72'"
       class="fixed inset-y-0 left-0 z-40 overflow-hidden border-r border-[#b89a5a]/20 transition-all duration-300"
@@ -83,7 +85,7 @@ const navItems = [
 
     <main
       :class="collapsed ? 'ml-20' : 'ml-72'"
-      class="h-screen overflow-y-auto transition-all duration-300"
+      class="relative z-10 h-screen overflow-y-auto transition-all duration-300"
     >
       <div class="mx-auto max-w-7xl px-6 py-8 md:px-8">
         <slot />

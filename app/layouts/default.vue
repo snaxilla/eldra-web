@@ -1,27 +1,36 @@
 <script setup lang="ts">
 const collapsed = ref(false)
-
-
+const route = useRoute()
 const sidebarImage = ref<string | null>(null)
-
-async function loadSidebarImage() {
-  try {
-    const res = await $fetch('/api/admin/app-settings')
-    sidebarImage.value = res.sidebar_image_url
-  } catch (e) {
-    console.error('Failed to load sidebar image', e)
-  }
-}
-
-onMounted(loadSidebarImage)
-
-watch(() => useRoute().fullPath, loadSidebarImage)
 
 const navItems = [
   { label: 'Worlds', to: '/dev/worlds', icon: 'i-lucide-globe-2' },
   { label: 'Entities', to: '/dev/entities', icon: 'i-lucide-scroll-text' },
   { label: 'Maps', to: '/dev/maps', icon: 'i-lucide-map' }
 ]
+
+async function loadSidebarImage() {
+  try {
+    const res = await $fetch<{
+      sidebar_image_url?: string | null
+    }>('/api/admin/app-settings')
+
+    sidebarImage.value = res?.sidebar_image_url || null
+    console.log('sidebar image loaded:', sidebarImage.value)
+  } catch (e) {
+    console.error('Failed to load sidebar image', e)
+    sidebarImage.value = null
+  }
+}
+
+onMounted(loadSidebarImage)
+
+watch(
+  () => route.fullPath,
+  () => {
+    loadSidebarImage()
+  }
+)
 </script>
 
 <template>
@@ -34,7 +43,7 @@ const navItems = [
     >
       <div class="absolute inset-0">
         <img
-          src="https://picsum.photos/seed/eldra-sidebar/900/1600"
+          :src="sidebarImage || 'https://picsum.photos/seed/eldra-sidebar/900/1600'"
           alt="Sidebar background"
           class="h-full w-full object-cover"
         >

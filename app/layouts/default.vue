@@ -3,18 +3,25 @@ const collapsed = ref(false)
 const route = useRoute()
 const sidebarImage = ref<string | null>(null)
 
-const navItems = [
-  { label: 'Worlds', to: '/dev/worlds', icon: 'i-lucide-globe-2' },
-  { label: 'Entities', to: '/dev/entities', icon: 'i-lucide-scroll-text' },
-  { label: 'Maps', to: '/dev/maps', icon: 'i-lucide-map' }
-]
+const activeWorldId = computed(() => {
+  const match = route.path.match(/^\/worlds\/([^/]+)/)
+  return match?.[1] || null
+})
+
+const navItems = computed(() => {
+  const worldId = activeWorldId.value
+
+  return [
+    { label: 'Worlds', to: '/', icon: 'i-lucide-globe-2' },
+    { label: 'Entities', to: worldId ? `/worlds/${worldId}/entities` : '/', icon: 'i-lucide-scroll-text' },
+    { label: 'Maps', to: worldId ? `/worlds/${worldId}/maps` : '/', icon: 'i-lucide-map' }
+  ]
+})
 
 async function loadSidebarImage() {
   try {
-    const worldMatch = route.path.match(/^\/dev\/worlds\/([^/]+)$/)
-
-    if (worldMatch?.[1]) {
-      const world = await $fetch<{ sidebar_image_url?: string | null }>(`/api/worlds/${worldMatch[1]}`)
+    if (activeWorldId.value) {
+      const world = await $fetch<{ sidebar_image_url?: string | null }>(`/api/worlds/${activeWorldId.value}`)
       if (world?.sidebar_image_url) {
         sidebarImage.value = world.sidebar_image_url
         return
@@ -89,7 +96,7 @@ watch(
 
           <NuxtLink
             v-for="item in navItems"
-            :key="item.to"
+            :key="item.to + item.label"
             :to="item.to"
             class="group mb-2 flex items-center gap-3 rounded-2xl border border-transparent px-3 py-3 text-[#fff4de]/85 transition hover:border-[#e2c27a]/30 hover:bg-black/20 hover:text-white"
             active-class="border-[#e2c27a]/35 bg-[rgba(255,248,231,0.16)] text-white shadow-[0_0_0_1px_rgba(226,194,122,0.08)]"
@@ -119,6 +126,7 @@ watch(
       class="relative z-10 h-screen overflow-y-auto transition-all duration-300"
     >
       <div class="mx-auto max-w-7xl px-6 py-8 md:px-8">
+        <WorldContextBar />
         <slot />
       </div>
     </main>

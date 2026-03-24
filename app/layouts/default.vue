@@ -11,12 +11,18 @@ const navItems = [
 
 async function loadSidebarImage() {
   try {
-    const res = await $fetch<{
-      sidebar_image_url?: string | null
-    }>('/api/admin/app-settings')
+    const worldMatch = route.path.match(/^\/dev\/worlds\/([^/]+)$/)
 
-    sidebarImage.value = res?.sidebar_image_url || null
-    console.log('sidebar image loaded:', sidebarImage.value)
+    if (worldMatch?.[1]) {
+      const world = await $fetch<{ sidebar_image_url?: string | null }>(`/api/worlds/${worldMatch[1]}`)
+      if (world?.sidebar_image_url) {
+        sidebarImage.value = world.sidebar_image_url
+        return
+      }
+    }
+
+    const appSettings = await $fetch<{ sidebar_image_url?: string | null }>('/api/admin/app-settings')
+    sidebarImage.value = appSettings?.sidebar_image_url || null
   } catch (e) {
     console.error('Failed to load sidebar image', e)
     sidebarImage.value = null

@@ -2,6 +2,8 @@
 const route = useRoute()
 const worldId = route.params.id
 
+const { data: world, refresh } = await useFetch(`/api/worlds/${worldId}`)
+
 const quickLinks = [
   { label: 'Characters', image: 'https://picsum.photos/seed/eldra-char-1/200/200' },
   { label: 'Locations', image: 'https://picsum.photos/seed/eldra-char-2/200/200' },
@@ -31,6 +33,10 @@ const recentEntries = [
     meta: 'Location'
   }
 ]
+
+const bannerUrl = computed(() => {
+  return world.value?.banner_image_url || 'https://picsum.photos/seed/eldra-hero/1600/700'
+})
 </script>
 
 <template>
@@ -38,7 +44,7 @@ const recentEntries = [
     <section class="overflow-hidden rounded-[30px] border border-[#c8b28a] bg-[#f6efe2] shadow-[0_14px_35px_rgba(80,60,30,0.12)]">
       <div class="relative h-[290px] md:h-[360px]">
         <img
-          src="https://picsum.photos/seed/eldra-hero/1600/700"
+          :src="bannerUrl"
           alt="World banner"
           class="h-full w-full object-cover"
         >
@@ -50,11 +56,18 @@ const recentEntries = [
             </div>
 
             <h1 class="text-5xl font-semibold tracking-[0.08em] text-[#b38a2e] md:text-7xl">
-              NAME
+              {{ world?.name || 'Untitled World' }}
             </h1>
 
+            <p
+              v-if="world?.subtitle"
+              class="mt-3 max-w-2xl text-lg leading-7 text-[#5b4935]"
+            >
+              {{ world.subtitle }}
+            </p>
+
             <p class="mt-4 max-w-2xl text-base leading-7 text-[#3f3122]">
-              A living world of old powers, forgotten roads, contested kingdoms, and stories waiting to be written.
+              {{ world?.description || 'No world description yet.' }}
             </p>
           </div>
         </div>
@@ -129,37 +142,6 @@ const recentEntries = [
               </div>
             </div>
           </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="overflow-hidden rounded-[30px] border border-[#d7c4a0] bg-[#f8f2e8] shadow-[0_10px_24px_rgba(80,60,30,0.10)]">
-      <div class="border-b border-[#e4d6bc] px-6 py-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-2xl font-semibold text-[#2f2419]">World Map</h2>
-          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-            Visual Overview
-          </div>
-        </div>
-      </div>
-
-      <div class="relative">
-        <img
-          src="https://picsum.photos/seed/eldra-map/1600/800"
-          alt="World map"
-          class="h-[430px] w-full object-cover md:h-[580px]"
-        >
-
-        <div class="absolute left-[18%] top-[58%] rounded-full border border-white/50 bg-[rgba(255,248,236,0.88)] px-3 py-1 text-sm text-[#2f2419] shadow">
-          Dragonspire Mountains
-        </div>
-
-        <div class="absolute left-[42%] top-[68%] rounded-full border border-white/50 bg-[rgba(255,248,236,0.88)] px-3 py-1 text-sm text-[#2f2419] shadow">
-          Stonehold
-        </div>
-
-        <div class="absolute right-[18%] top-[30%] rounded-full border border-white/50 bg-[rgba(255,248,236,0.88)] px-3 py-1 text-sm text-[#2f2419] shadow">
-          Port of Aedier
         </div>
       </div>
     </section>

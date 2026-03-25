@@ -10,11 +10,12 @@ const activeWorldId = computed(() => {
 
 const navItems = computed(() => {
   const worldId = activeWorldId.value
+  console.log('activeWorldId:', worldId, 'route:', route.path)
 
   return [
     { label: 'Worlds', to: '/', icon: 'i-lucide-globe-2' },
-    { label: 'Entities', to: worldId ? `/worlds/${worldId}/entities` : '/', icon: 'i-lucide-scroll-text' },
-    { label: 'Maps', to: worldId ? `/worlds/${worldId}/maps` : '/', icon: 'i-lucide-map' }
+    { label: 'Entities', to: worldId ? `/worlds/${worldId}/entities` : '/__no-world__', icon: 'i-lucide-scroll-text' },
+    { label: 'Maps', to: worldId ? `/worlds/${worldId}/maps` : '/__no-world__', icon: 'i-lucide-map' }
   ]
 })
 

@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
 
   const res = await fetch(
-    `${baseUrl}/items/worlds?filter[id][_eq]=${id}&limit=1&fields=*`,
+    `${baseUrl}/items/worlds?fields=*&limit=100`,
     {
       headers: {
         Authorization: `Bearer ${token}`
@@ -25,11 +25,12 @@ export default defineEventHandler(async (event) => {
   if (!res.ok) {
     throw createError({
       statusCode: res.status,
-      statusMessage: json?.errors?.[0]?.message || json?.message || 'Failed to load world'
+      statusMessage: json?.errors?.[0]?.message || json?.message || 'Failed to load worlds'
     })
   }
 
-  const world = json?.data?.[0]
+  const worlds = Array.isArray(json?.data) ? json.data : []
+  const world = worlds.find((w: any) => String(w.id) === String(id))
 
   if (!world) {
     throw createError({

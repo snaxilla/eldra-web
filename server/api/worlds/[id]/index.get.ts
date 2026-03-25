@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
 
   const res = await fetch(
-    `${baseUrl}/items/worlds/${id}?fields=*`,
+    `${baseUrl}/items/worlds?filter[id][_eq]=${id}&limit=1&fields=*`,
     {
       headers: {
         Authorization: `Bearer ${token}`
@@ -29,7 +29,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const world = json.data
+  const world = json?.data?.[0]
+
+  if (!world) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'World not found'
+    })
+  }
 
   return {
     ...world,

@@ -15,36 +15,70 @@ function prettyLabel(value?: string) {
 
 function displayValue(value: any) {
   if (value === null || value === undefined || value === '') return null
+
   if (typeof value === 'object') {
     if (value.image_url) return value.image_url
     if (value.file_id) return `/api/assets/${value.file_id}`
     return JSON.stringify(value, null, 2)
   }
+
   return String(value)
+}
+
+function isLikelyImage(value: any) {
+  const resolved = String(displayValue(value) || '')
+  return resolved.startsWith('/api/assets/') || resolved.startsWith('http')
 }
 
 const heroImage = computed(() => {
   return entity.value?.image_url || world.value?.banner_image_url || null
 })
 
-const renderedBlocks = computed(() => {
-  return (entity.value?.blocks || []).map((block: any) => {
-    const entries = Object.entries(block.data || {}).filter(([key]) => key !== 'image')
-    return {
+const summaryText = computed(() => {
+  if (entity.value?.summary) return entity.value.summary
+
+  for (const block of entity.value?.blocks || []) {
+    if (block?.data?.summary) return block.data.summary
+    if (block?.data?.description) return block.data.description
+    if (block?.data?.bio) return block.data.bio
+  }
+
+  return null
+})
+
+const contentBlocks = computed(() => {
+  const blocks = entity.value?.blocks || []
+
+  return blocks
+    .filter((block: any) => block.block_key !== 'import_source')
+    .map((block: any) => ({
       ...block,
-      entries
-    }
-  })
+      entries: Object.entries(block.data || {})
+        .filter(([key]) => key !== 'image')
+        .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    }))
+    .filter((block: any) => block.entries.length > 0)
+})
+
+const importBlock = computed(() => {
+  return (entity.value?.blocks || []).find((block: any) => block.block_key === 'import_source') || null
+})
+
+const importEntries = computed(() => {
+  if (!importBlock.value) return []
+
+  return Object.entries(importBlock.value.data || {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
 })
 </script>
 
 <template>
   <div class="space-y-8">
-    <section class="overflow-hidden rounded-[30px] border border-[#d7c4a0] bg-[#f8f2e8] shadow-[0_12px_28px_rgba(80,60,30,0.10)]">
-      <div class="grid gap-0 lg:grid-cols-[360px_1fr]">
+    <section class="overflow-hidden rounded-[32px] border border-[#d7c4a0] bg-[#fbf6ee] shadow-[0_16px_34px_rgba(80,60,30,0.10)]">
+      <div class="grid gap-0 xl:grid-cols-[420px_1fr]">
         <div
           v-if="heroImage"
-          class="h-[420px] overflow-hidden border-b border-[#e4d6bc] bg-[#efe5d4] lg:h-full lg:border-b-0 lg:border-r"
+          class="min-h-[420px] overflow-hidden border-b border-[#e4d6bc] bg-[#efe5d4] xl:border-b-0 xl:border-r"
         >
           <img
             :src="heroImage"
@@ -53,16 +87,16 @@ const renderedBlocks = computed(() => {
           >
         </div>
 
-        <div class="p-8">
-          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+        <div class="p-8 md:p-10">
+          <div class="text-xs uppercase tracking-[0.38em] text-[#907a58]">
             {{ world?.name || 'World' }}
           </div>
 
-          <h1 class="mt-3 text-5xl font-semibold tracking-[0.04em] text-[#2f2419]">
+          <h1 class="mt-3 text-5xl font-semibold tracking-[0.02em] text-[#2f2419] md:text-6xl">
             {{ entity?.title || 'Untitled Entity' }}
           </h1>
 
-          <div class="mt-4 flex flex-wrap gap-2">
+          <div class="mt-5 flex flex-wrap gap-2">
             <div
               v-if="entity?.entity_type"
               class="rounded-full border border-[#cfb07a] bg-[#f7efdf] px-4 py-2 text-sm font-medium text-[#6b5333]"
@@ -85,77 +119,73 @@ const renderedBlocks = computed(() => {
             </div>
           </div>
 
-          <div class="mt-6 grid gap-4 md:grid-cols-2">
-            <div class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-4">
+          <p
+            v-if="summaryText"
+            class="mt-8 max-w-4xl text-lg leading-9 text-[#4f4030]"
+          >
+            {{ summaryText }}
+          </p>
+
+          <div class="mt-8 grid gap-4 md:grid-cols-2" v-if="entity?.slug || entity?.updated_at">
+            <div
+              v-if="entity?.slug"
+              class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-4"
+            >
               <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
                 Slug
               </div>
-              <div class="mt-2 text-lg text-[#2f2419]">
-                {{ entity?.slug || '—' }}
+              <div class="mt-2 text-base text-[#2f2419]">
+                {{ entity.slug }}
               </div>
             </div>
 
-            <div class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-4">
+            <div
+              v-if="entity?.updated_at"
+              class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-4"
+            >
               <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
                 Updated
               </div>
-              <div class="mt-2 text-lg text-[#2f2419]">
-                {{ entity?.updated_at || '—' }}
+              <div class="mt-2 text-base text-[#2f2419]">
+                {{ entity.updated_at }}
               </div>
             </div>
-          </div>
-
-          <div
-            v-if="entity?.summary"
-            class="mt-6 rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-5"
-          >
-            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-              Summary
-            </div>
-            <p class="mt-3 text-base leading-8 text-[#4f4030]">
-              {{ entity.summary }}
-            </p>
           </div>
         </div>
       </div>
     </section>
 
     <section
-      v-for="block in renderedBlocks"
+      v-for="block in contentBlocks"
       :key="block.id"
-      class="rounded-[28px] border border-[#d7c4a0] bg-[#f8f2e8] p-6 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
+      class="rounded-[30px] border border-[#d7c4a0] bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
     >
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-            {{ prettyLabel(block.block_key) }}
-          </div>
-          <h2 class="mt-2 text-3xl font-semibold text-[#2f2419]">
-            {{ block.label || prettyLabel(block.block_key) }}
-          </h2>
+      <div class="max-w-5xl">
+        <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+          {{ prettyLabel(block.block_key) }}
         </div>
 
-        <div class="rounded-full border border-[#cfb07a] bg-[#f7efdf] px-3 py-1 text-xs text-[#6b5333]">
-          Sort {{ block.sort }}
-        </div>
+        <h2 class="mt-2 text-3xl font-semibold text-[#2f2419]">
+          {{ block.label || prettyLabel(block.block_key) }}
+        </h2>
       </div>
 
-      <div class="mt-6 grid gap-4">
+      <div class="mt-8 space-y-5">
         <div
           v-for="[key, rawValue] in block.entries"
           :key="key"
-          class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-4"
+          class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-5"
         >
           <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
             {{ prettyLabel(key) }}
           </div>
 
-          <div class="mt-3">
-            <template v-if="String(displayValue(rawValue)).startsWith('/api/assets/') || String(displayValue(rawValue)).startsWith('http')">
+          <div class="mt-4">
+            <template v-if="isLikelyImage(rawValue)">
               <img
                 :src="String(displayValue(rawValue))"
                 :alt="prettyLabel(key)"
-                class="max-h-[420px] rounded-xl border border-[#e4d6bc] object-cover"
+                class="max-h-[520px] rounded-xl border border-[#e4d6bc] object-cover"
               >
             </template>
 
@@ -166,8 +196,44 @@ const renderedBlocks = computed(() => {
 
             <p
               v-else
-              class="whitespace-pre-wrap text-base leading-8 text-[#4f4030]"
+              class="whitespace-pre-wrap text-lg leading-9 text-[#4f4030]"
             >{{ displayValue(rawValue) || '—' }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section
+      v-if="importBlock && importEntries.length"
+      class="rounded-[30px] border border-[#d7c4a0] bg-[#f3eadc] p-6 md:p-8 shadow-[0_8px_18px_rgba(80,60,30,0.06)]"
+    >
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+            Reference Data
+          </div>
+          <h2 class="mt-2 text-2xl font-semibold text-[#2f2419]">
+            Import Source
+          </h2>
+        </div>
+
+        <div class="rounded-full border border-[#cfb07a] bg-[#f7efdf] px-3 py-1 text-xs text-[#6b5333]">
+          Developer / Admin
+        </div>
+      </div>
+
+      <div class="mt-6 grid gap-4 md:grid-cols-2">
+        <div
+          v-for="[key, rawValue] in importEntries"
+          :key="key"
+          class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-4"
+        >
+          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+            {{ prettyLabel(key) }}
+          </div>
+
+          <div class="mt-3 text-base leading-7 text-[#4f4030]">
+            {{ displayValue(rawValue) || '—' }}
           </div>
         </div>
       </div>

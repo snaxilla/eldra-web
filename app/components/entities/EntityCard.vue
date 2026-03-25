@@ -2,6 +2,7 @@
 const props = defineProps<{
   entity: {
     id: number | string
+    world_id?: number | string
     title?: string
     slug?: string
     entity_type?: string
@@ -12,19 +13,25 @@ const props = defineProps<{
   }
 }>()
 
-const routeTo = computed(() => `/dev/entities/${props.entity.id}`)
+const routeTo = computed(() => {
+  if (props.entity.world_id) {
+    return `/worlds/${props.entity.world_id}/entities/${props.entity.id}`
+  }
+
+  return '/'
+})
 
 const typeLabel = computed(() => {
   const value = props.entity.entity_type || 'entity'
   return value.charAt(0).toUpperCase() + value.slice(1)
 })
 
-const isCharacterLike = computed(() => {
+const isPortraitType = computed(() => {
   const type = (props.entity.entity_type || '').toLowerCase()
-  return ['character', 'npc', 'person', 'hero'].includes(type)
+  return ['character', 'npc', 'person', 'hero', 'species', 'class'].includes(type)
 })
 
-function excerpt(text?: string, max = 140) {
+function excerpt(text?: string, max = 120) {
   if (!text) return 'No summary yet.'
   return text.length > max ? `${text.slice(0, max).trim()}...` : text
 }
@@ -33,12 +40,12 @@ function excerpt(text?: string, max = 140) {
 <template>
   <NuxtLink
     :to="routeTo"
-    class="group overflow-hidden rounded-[26px] border border-[#d7c4a0] bg-[#fffaf2] shadow-[0_10px_24px_rgba(80,60,30,0.10)] transition hover:-translate-y-1 hover:border-[#cfa85a] hover:bg-[#fffdf8] hover:shadow-[0_16px_34px_rgba(80,60,30,0.16)]"
+    class="group overflow-hidden rounded-[28px] border border-[#d7c4a0] bg-[#fbf6ee] shadow-[0_10px_24px_rgba(80,60,30,0.08)] transition hover:-translate-y-1 hover:border-[#cfa85a] hover:shadow-[0_18px_34px_rgba(80,60,30,0.14)]"
   >
     <div
       v-if="entity.image_url"
-      :class="isCharacterLike ? 'h-72' : 'h-48'"
-      class="overflow-hidden border-b border-[#e4d6bc]"
+      :class="isPortraitType ? 'h-80' : 'h-52'"
+      class="overflow-hidden border-b border-[#e4d6bc] bg-[#efe5d4]"
     >
       <img
         :src="entity.image_url"
@@ -49,8 +56,8 @@ function excerpt(text?: string, max = 140) {
 
     <div
       v-else
-      :class="isCharacterLike ? 'h-72' : 'h-48'"
-      class="flex items-center justify-center border-b border-[#e4d6bc] bg-[linear-gradient(180deg,#efe3cd_0%,#e6d6bc_100%)]"
+      :class="isPortraitType ? 'h-80' : 'h-52'"
+      class="flex items-center justify-center border-b border-[#e4d6bc] bg-[linear-gradient(180deg,#f1e6d5_0%,#e7d8bf_100%)]"
     >
       <div class="text-center">
         <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
@@ -81,12 +88,12 @@ function excerpt(text?: string, max = 140) {
           </div>
         </div>
 
-        <div class="shrink-0 rounded-full border border-[#cfb07a] px-3 py-1 text-xs font-medium text-[#6b5333]">
+        <div class="shrink-0 rounded-full border border-[#cfb07a] bg-[#f7efdf] px-3 py-1 text-xs font-medium text-[#6b5333]">
           {{ typeLabel }}
         </div>
       </div>
 
-      <p class="mt-4 text-sm leading-7 text-[#4f4030]">
+      <p class="mt-4 min-h-[4.5rem] text-sm leading-7 text-[#4f4030]">
         {{ excerpt(entity.preview_text) }}
       </p>
 

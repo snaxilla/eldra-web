@@ -3,9 +3,16 @@ const route = useRoute()
 const worldId = route.params.id
 
 const { data: world } = await useFetch(`/api/worlds/${worldId}`)
-const { data: entities, pending, refresh } = await useFetch(`/api/worlds/${worldId}/entities`)
+const { data: entities } = await useFetch(`/api/worlds/${worldId}/entities`)
 
-const selectedType = ref('all')
+const selectedType = ref(typeof route.query.type === 'string' ? route.query.type : 'all')
+
+watch(
+  () => route.query.type,
+  (value) => {
+    selectedType.value = typeof value === 'string' ? value : 'all'
+  }
+)
 
 const entityTypes = computed(() => {
   const values = new Set<string>()
@@ -70,11 +77,7 @@ function labelForType(type: string) {
       </div>
     </section>
 
-    <section v-if="pending" class="rounded-[30px] border border-[#d7c4a0] bg-[#f8f2e8] p-8">
-      <div class="text-[#4f4030]">Loading entities...</div>
-    </section>
-
-    <section v-else-if="!filteredEntities.length" class="rounded-[30px] border border-[#d7c4a0] bg-[#f8f2e8] p-8">
+    <section v-if="!filteredEntities.length" class="rounded-[30px] border border-[#d7c4a0] bg-[#f8f2e8] p-8">
       <div class="text-[#4f4030]">No entities found for this filter yet.</div>
     </section>
 

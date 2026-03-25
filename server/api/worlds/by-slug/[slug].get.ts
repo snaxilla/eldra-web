@@ -1,4 +1,4 @@
-import { directusServiceRequest } from '../../utils/directus'
+import { directusServiceRequest } from '../../../utils/directus'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') || ''

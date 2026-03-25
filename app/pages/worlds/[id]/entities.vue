@@ -79,7 +79,7 @@ function labelForType(type: string) {
     </section>
 
     <section v-else class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-      <EntityCard
+      <EntitiesEntityCard
         v-for="entity in filteredEntities"
         :key="entity.id"
         :entity="entity"

@@ -30,6 +30,11 @@ function isLikelyImage(value: any) {
   return resolved.startsWith('/api/assets/') || resolved.startsWith('http')
 }
 
+function isLongText(value: any) {
+  const resolved = String(displayValue(value) || '')
+  return resolved.length > 140 || resolved.includes('\n')
+}
+
 const heroImage = computed(() => {
   return entity.value?.image_url || world.value?.banner_image_url || null
 })
@@ -46,18 +51,46 @@ const summaryText = computed(() => {
   return null
 })
 
-const contentBlocks = computed(() => {
-  const blocks = entity.value?.blocks || []
+const entityType = computed(() => String(entity.value?.entity_type || '').toLowerCase())
 
-  return blocks
-    .filter((block: any) => block.block_key !== 'import_source')
-    .map((block: any) => ({
-      ...block,
-      entries: Object.entries(block.data || {})
+const isCharacterLike = computed(() => {
+  return ['character', 'npc', 'person', 'hero', 'species'].includes(entityType.value)
+})
+
+const rawBlocks = computed(() => {
+  return (entity.value?.blocks || []).filter((block: any) => block.block_key !== 'import_source')
+})
+
+const normalizedBlocks = computed(() => {
+  return rawBlocks.value
+    .map((block: any) => {
+      const entries = Object.entries(block.data || {})
         .filter(([key]) => key !== 'image')
         .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    }))
-    .filter((block: any) => block.entries.length > 0)
+
+      const profileEntries = entries.filter(([, value]) => !isLikelyImage(value) && !isLongText(value))
+      const proseEntries = entries.filter(([, value]) => !isLikelyImage(value) && isLongText(value))
+      const imageEntries = entries.filter(([, value]) => isLikelyImage(value))
+
+      return {
+        ...block,
+        profileEntries,
+        proseEntries,
+        imageEntries
+      }
+    })
+    .filter((block: any) => block.profileEntries.length || block.proseEntries.length || block.imageEntries.length)
+})
+
+const primaryProfileBlock = computed(() => {
+  if (!isCharacterLike.value) return null
+
+  return normalizedBlocks.value.find((block: any) => block.profileEntries.length > 0) || null
+})
+
+const remainingBlocks = computed(() => {
+  if (!isCharacterLike.value) return normalizedBlocks.value
+  return normalizedBlocks.value.filter((block: any) => block.id !== primaryProfileBlock.value?.id)
 })
 
 const importBlock = computed(() => {
@@ -75,10 +108,14 @@ const importEntries = computed(() => {
 <template>
   <div class="space-y-8">
     <section class="overflow-hidden rounded-[32px] border border-[#d7c4a0] bg-[#fbf6ee] shadow-[0_16px_34px_rgba(80,60,30,0.10)]">
-      <div class="grid gap-0 xl:grid-cols-[420px_1fr]">
+      <div
+        :class="isCharacterLike ? 'xl:grid-cols-[420px_1fr]' : 'xl:grid-cols-[360px_1fr]'"
+        class="grid gap-0"
+      >
         <div
           v-if="heroImage"
-          class="min-h-[420px] overflow-hidden border-b border-[#e4d6bc] bg-[#efe5d4] xl:border-b-0 xl:border-r"
+          :class="isCharacterLike ? 'min-h-[540px]' : 'min-h-[420px]'"
+          class="overflow-hidden border-b border-[#e4d6bc] bg-[#efe5d4] xl:border-b-0 xl:border-r"
         >
           <img
             :src="heroImage"
@@ -126,6 +163,35 @@ const importEntries = computed(() => {
             {{ summaryText }}
           </p>
 
+          <div
+            v-if="isCharacterLike && primaryProfileBlock && primaryProfileBlock.profileEntries.length"
+            class="mt-8 rounded-[28px] border border-[#d7c4a0] bg-[#fffaf2] p-6 shadow-[0_8px_18px_rgba(80,60,30,0.05)]"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+              Profile
+            </div>
+
+            <h2 class="mt-2 text-2xl font-semibold text-[#2f2419]">
+              {{ primaryProfileBlock.label || prettyLabel(primaryProfileBlock.block_key) }}
+            </h2>
+
+            <div class="mt-6 grid gap-4 md:grid-cols-2">
+              <div
+                v-for="[key, rawValue] in primaryProfileBlock.profileEntries"
+                :key="key"
+                class="rounded-2xl border border-[#dfcfb1] bg-[#fbf6ee] p-4"
+              >
+                <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+                  {{ prettyLabel(key) }}
+                </div>
+
+                <div class="mt-3 text-base leading-7 text-[#4f4030]">
+                  {{ displayValue(rawValue) || '—' }}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-8 grid gap-4 md:grid-cols-2" v-if="entity?.slug || entity?.updated_at">
             <div
               v-if="entity?.slug"
@@ -156,7 +222,7 @@ const importEntries = computed(() => {
     </section>
 
     <section
-      v-for="block in contentBlocks"
+      v-for="block in remainingBlocks"
       :key="block.id"
       class="rounded-[30px] border border-[#d7c4a0] bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
     >
@@ -170,9 +236,31 @@ const importEntries = computed(() => {
         </h2>
       </div>
 
-      <div class="mt-8 space-y-5">
+      <div
+        v-if="block.profileEntries.length"
+        class="mt-8 grid gap-4 md:grid-cols-2"
+      >
         <div
-          v-for="[key, rawValue] in block.entries"
+          v-for="[key, rawValue] in block.profileEntries"
+          :key="key"
+          class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-4"
+        >
+          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+            {{ prettyLabel(key) }}
+          </div>
+
+          <div class="mt-3 text-base leading-7 text-[#4f4030]">
+            {{ displayValue(rawValue) || '—' }}
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="block.proseEntries.length"
+        class="mt-8 space-y-5"
+      >
+        <div
+          v-for="[key, rawValue] in block.proseEntries"
           :key="key"
           class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-5"
         >
@@ -181,23 +269,32 @@ const importEntries = computed(() => {
           </div>
 
           <div class="mt-4">
-            <template v-if="isLikelyImage(rawValue)">
-              <img
-                :src="String(displayValue(rawValue))"
-                :alt="prettyLabel(key)"
-                class="max-h-[520px] rounded-xl border border-[#e4d6bc] object-cover"
-              >
-            </template>
+            <p class="whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(rawValue) || '—' }}
+            </p>
+          </div>
+        </div>
+      </div>
 
-            <pre
-              v-else-if="typeof rawValue === 'object' && rawValue !== null"
-              class="overflow-x-auto whitespace-pre-wrap rounded-xl bg-[#f3eadc] p-4 text-sm leading-7 text-[#4f4030]"
-            >{{ displayValue(rawValue) }}</pre>
+      <div
+        v-if="block.imageEntries.length"
+        class="mt-8 space-y-5"
+      >
+        <div
+          v-for="[key, rawValue] in block.imageEntries"
+          :key="key"
+          class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-5"
+        >
+          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+            {{ prettyLabel(key) }}
+          </div>
 
-            <p
-              v-else
-              class="whitespace-pre-wrap text-lg leading-9 text-[#4f4030]"
-            >{{ displayValue(rawValue) || '—' }}</p>
+          <div class="mt-4">
+            <img
+              :src="String(displayValue(rawValue))"
+              :alt="prettyLabel(key)"
+              class="max-h-[520px] rounded-xl border border-[#e4d6bc] object-cover"
+            >
           </div>
         </div>
       </div>

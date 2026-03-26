@@ -4,7 +4,17 @@ const worldId = route.params.id
 const entityId = route.params.entityId
 
 const { data: world } = await useFetch(`/api/worlds/${worldId}`)
-const { data: entity } = await useFetch(`/api/worlds/${worldId}/entities/${entityId}`)
+const {
+  data: entity,
+  refresh: refreshEntity
+} = await useFetch(`/api/worlds/${worldId}/entities/${entityId}`)
+
+const selectedFile = ref<File | null>(null)
+const uploadedFileId = ref<string | null>(null)
+const uploadedPreviewUrl = ref<string | null>(null)
+const uploadProgress = ref(0)
+const uploadState = ref<'idle' | 'uploading' | 'uploaded' | 'applying' | 'done' | 'error'>('idle')
+const uploadMessage = ref('')
 
 function prettyLabel(value?: string) {
   if (!value) return ''
@@ -86,7 +96,7 @@ const typeTheme = computed(() => {
 })
 
 const heroImage = computed(() => {
-  return entity.value?.image_url || world.value?.banner_image_url || null
+  return uploadedPreviewUrl.value || entity.value?.image_url || world.value?.banner_image_url || null
 })
 
 const summaryText = computed(() => {
@@ -151,6 +161,92 @@ const importEntries = computed(() => {
   return Object.entries(importBlock.value.data || {})
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
 })
+
+function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  selectedFile.value = input.files?.[0] || null
+  uploadedFileId.value = null
+  uploadedPreviewUrl.value = null
+  uploadProgress.value = 0
+  uploadState.value = 'idle'
+  uploadMessage.value = ''
+}
+
+function uploadImage() {
+  if (!selectedFile.value) return
+
+  uploadState.value = 'uploading'
+  uploadProgress.value = 0
+  uploadMessage.value = ''
+
+  const formData = new FormData()
+  formData.append('file', selectedFile.value)
+
+  const xhr = new XMLHttpRequest()
+  xhr.open('POST', '/api/uploads/image')
+
+  xhr.upload.onprogress = (event) => {
+    if (event.lengthComputable) {
+      uploadProgress.value = Math.round((event.loaded / event.total) * 100)
+    }
+  }
+
+  xhr.onload = () => {
+    try {
+      const response = JSON.parse(xhr.responseText || '{}')
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        uploadedFileId.value = response.file_id
+        uploadedPreviewUrl.value = response.asset_url
+        uploadState.value = 'uploaded'
+        uploadMessage.value = 'Upload succeeded. Click Apply Image to attach it to this entity.'
+      } else {
+        uploadState.value = 'error'
+        uploadMessage.value = response.statusMessage || response.message || 'Upload failed.'
+      }
+    } catch {
+      uploadState.value = 'error'
+      uploadMessage.value = 'Upload failed.'
+    }
+  }
+
+  xhr.onerror = () => {
+    uploadState.value = 'error'
+    uploadMessage.value = 'Upload failed.'
+  }
+
+  xhr.send(formData)
+}
+
+async function applyImage() {
+  if (!uploadedFileId.value) return
+
+  uploadState.value = 'applying'
+  uploadMessage.value = ''
+
+  try {
+    await $fetch(`/api/worlds/${worldId}/entities/${entityId}/apply-image`, {
+      method: 'POST',
+      body: {
+        file_id: uploadedFileId.value
+      }
+    })
+
+    await refreshEntity()
+
+    uploadState.value = 'done'
+    uploadMessage.value = 'Image applied successfully.'
+    uploadedFileId.value = null
+    selectedFile.value = null
+    uploadProgress.value = 100
+  } catch (error: any) {
+    uploadState.value = 'error'
+    uploadMessage.value =
+      error?.data?.statusMessage ||
+      error?.statusMessage ||
+      'Failed to apply image.'
+  }
+}
 </script>
 
 <template>
@@ -167,30 +263,99 @@ const importEntries = computed(() => {
 
     <section
       class="overflow-hidden rounded-[34px] border bg-[#fbf6ee] shadow-[0_18px_38px_rgba(80,60,30,0.10)]"
-      :style="{
-        borderColor: typeTheme.border
-      }"
+      :style="{ borderColor: typeTheme.border }"
     >
       <div
         :class="isCharacterLike ? 'xl:grid-cols-[440px_1fr]' : 'xl:grid-cols-[380px_1fr]'"
         class="grid gap-0"
       >
         <div
-          v-if="heroImage"
           :class="isCharacterLike ? 'min-h-[580px]' : 'min-h-[440px]'"
           class="relative overflow-hidden border-b bg-[#efe5d4] xl:border-b-0 xl:border-r"
-          :style="{
-            borderColor: typeTheme.border
-          }"
+          :style="{ borderColor: typeTheme.border }"
         >
           <img
+            v-if="heroImage"
             :src="heroImage"
             :alt="entity?.title || 'Entity image'"
             class="h-full w-full object-cover"
           >
+
           <div
-            class="absolute inset-0 bg-gradient-to-t from-[rgba(20,14,10,0.18)] via-transparent to-transparent"
-          />
+            v-else
+            class="flex h-full min-h-[440px] items-center justify-center bg-[linear-gradient(180deg,#efe3cd_0%,#e6d6bc_100%)]"
+          >
+            <div class="text-center">
+              <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+                No Image Yet
+              </div>
+              <div class="mt-3 text-6xl text-[#b38a2e]">✦</div>
+            </div>
+          </div>
+
+          <div class="absolute inset-0 bg-gradient-to-t from-[rgba(20,14,10,0.18)] via-transparent to-transparent" />
+
+          <div class="absolute inset-x-0 bottom-0 p-5">
+            <div class="rounded-[24px] border border-white/30 bg-[rgba(255,248,236,0.88)] p-4 shadow-lg backdrop-blur">
+              <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+                Entity Image
+              </div>
+
+              <div class="mt-3 flex flex-col gap-3">
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="text-sm text-[#4f4030]"
+                  @change="onFileSelected"
+                >
+
+                <div
+                  v-if="uploadState === 'uploading' || uploadState === 'uploaded' || uploadState === 'applying' || uploadState === 'done'"
+                  class="space-y-2"
+                >
+                  <div class="h-3 overflow-hidden rounded-full bg-[#eadfc8]">
+                    <div
+                      class="h-full rounded-full bg-[#b38a2e] transition-all duration-300"
+                      :style="{ width: `${uploadProgress}%` }"
+                    />
+                  </div>
+
+                  <div class="text-sm text-[#6b5333]">
+                    {{ uploadProgress }}%
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    class="rounded-full border border-[#cfb07a] bg-[#f7efdf] px-4 py-2 text-sm font-medium text-[#6b5333] transition hover:bg-[#efe3cd] disabled:opacity-50"
+                    :disabled="!selectedFile || uploadState === 'uploading' || uploadState === 'applying'"
+                    @click="uploadImage"
+                  >
+                    {{ uploadState === 'uploading' ? 'Uploading...' : 'Upload Image' }}
+                  </button>
+
+                  <button
+                    class="rounded-full bg-[#b38a2e] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#9d7825] disabled:opacity-50"
+                    :disabled="!uploadedFileId || uploadState === 'applying'"
+                    @click="applyImage"
+                  >
+                    {{ uploadState === 'applying' ? 'Applying...' : 'Apply Image' }}
+                  </button>
+                </div>
+
+                <div
+                  v-if="uploadMessage"
+                  class="rounded-xl px-3 py-2 text-sm"
+                  :class="{
+                    'bg-emerald-50 text-emerald-700 border border-emerald-200': uploadState === 'uploaded' || uploadState === 'done',
+                    'bg-red-50 text-red-700 border border-red-200': uploadState === 'error'
+                  }"
+                >
+                  {{ uploadMessage }}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="p-8 md:p-10 xl:p-12">
@@ -256,9 +421,7 @@ const importEntries = computed(() => {
           <div
             v-if="isCharacterLike && primaryProfileBlock && primaryProfileBlock.profileEntries.length"
             class="mt-10 rounded-[28px] border bg-[#fffaf2] p-6 shadow-[0_8px_18px_rgba(80,60,30,0.05)]"
-            :style="{
-              borderColor: typeTheme.border
-            }"
+            :style="{ borderColor: typeTheme.border }"
           >
             <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
               Profile
@@ -273,9 +436,7 @@ const importEntries = computed(() => {
                 v-for="[key, rawValue] in primaryProfileBlock.profileEntries"
                 :key="key"
                 class="rounded-2xl border bg-[#fbf6ee] p-4"
-                :style="{
-                  borderColor: typeTheme.border
-                }"
+                :style="{ borderColor: typeTheme.border }"
               >
                 <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
                   {{ prettyLabel(key) }}
@@ -292,9 +453,7 @@ const importEntries = computed(() => {
             <div
               v-if="entity?.slug"
               class="rounded-2xl border bg-[#fffaf2] p-4"
-              :style="{
-                borderColor: typeTheme.border
-              }"
+              :style="{ borderColor: typeTheme.border }"
             >
               <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
                 Slug
@@ -307,9 +466,7 @@ const importEntries = computed(() => {
             <div
               v-if="entity?.updated_at"
               class="rounded-2xl border bg-[#fffaf2] p-4"
-              :style="{
-                borderColor: typeTheme.border
-              }"
+              :style="{ borderColor: typeTheme.border }"
             >
               <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
                 Updated
@@ -327,9 +484,7 @@ const importEntries = computed(() => {
       v-for="block in remainingBlocks"
       :key="block.id"
       class="rounded-[30px] border bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
-      :style="{
-        borderColor: typeTheme.border
-      }"
+      :style="{ borderColor: typeTheme.border }"
     >
       <div class="max-w-5xl">
         <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
@@ -349,9 +504,7 @@ const importEntries = computed(() => {
           v-for="[key, rawValue] in block.profileEntries"
           :key="key"
           class="rounded-2xl border bg-[#fffaf2] p-4"
-          :style="{
-            borderColor: typeTheme.border
-          }"
+          :style="{ borderColor: typeTheme.border }"
         >
           <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
             {{ prettyLabel(key) }}
@@ -371,9 +524,7 @@ const importEntries = computed(() => {
           v-for="[key, rawValue] in block.proseEntries"
           :key="key"
           class="rounded-2xl border bg-[#fffaf2] p-6"
-          :style="{
-            borderColor: typeTheme.border
-          }"
+          :style="{ borderColor: typeTheme.border }"
         >
           <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
             {{ prettyLabel(key) }}
@@ -395,9 +546,7 @@ const importEntries = computed(() => {
           v-for="[key, rawValue] in block.imageEntries"
           :key="key"
           class="rounded-2xl border bg-[#fffaf2] p-5"
-          :style="{
-            borderColor: typeTheme.border
-          }"
+          :style="{ borderColor: typeTheme.border }"
         >
           <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
             {{ prettyLabel(key) }}
@@ -417,9 +566,7 @@ const importEntries = computed(() => {
     <section
       v-if="importBlock && importEntries.length"
       class="rounded-[30px] border bg-[#f3eadc] p-6 md:p-8 shadow-[0_8px_18px_rgba(80,60,30,0.06)]"
-      :style="{
-        borderColor: typeTheme.border
-      }"
+      :style="{ borderColor: typeTheme.border }"
     >
       <div class="flex items-center justify-between gap-4">
         <div>
@@ -447,9 +594,7 @@ const importEntries = computed(() => {
           v-for="[key, rawValue] in importEntries"
           :key="key"
           class="rounded-2xl border bg-[#fffaf2] p-4"
-          :style="{
-            borderColor: typeTheme.border
-          }"
+          :style="{ borderColor: typeTheme.border }"
         >
           <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
             {{ prettyLabel(key) }}

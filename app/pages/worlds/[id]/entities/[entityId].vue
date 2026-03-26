@@ -46,6 +46,22 @@ function isLongText(value: any) {
   return resolved.length > 140 || resolved.includes('\n')
 }
 
+function asArray(value: any) {
+  if (Array.isArray(value)) return value
+  if (value === null || value === undefined || value === '') return []
+  return [value]
+}
+
+function joinList(value: any) {
+  const arr = asArray(value)
+  if (!arr.length) return null
+  return arr.join(', ')
+}
+
+function hasValue(value: any) {
+  return !(value === null || value === undefined || value === '')
+}
+
 const entityType = computed(() => String(entity.value?.entity_type || '').toLowerCase())
 
 const typeTheme = computed(() => {
@@ -480,88 +496,354 @@ async function applyImage() {
       </div>
     </section>
 
-    <section
-      v-for="block in remainingBlocks"
-      :key="block.id"
-      class="rounded-[30px] border bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
-      :style="{ borderColor: typeTheme.border }"
-    >
-      <div class="max-w-5xl">
+    <template v-for="block in remainingBlocks" :key="block.id">
+      <!-- Class -->
+      <section
+        v-if="block.block_key === 'class_core'"
+        class="rounded-[30px] border bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
+        :style="{ borderColor: typeTheme.border }"
+      >
         <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
           {{ prettyLabel(block.block_key) }}
         </div>
 
         <h2 class="mt-2 text-3xl font-semibold text-[#2f2419]">
-          {{ block.label || prettyLabel(block.block_key) }}
+          {{ block.label || 'Class Core' }}
         </h2>
-      </div>
 
-      <div
-        v-if="block.profileEntries.length"
-        class="mt-8 grid gap-4 md:grid-cols-2"
-      >
-        <div
-          v-for="[key, rawValue] in block.profileEntries"
-          :key="key"
-          class="rounded-2xl border bg-[#fffaf2] p-4"
-          :style="{ borderColor: typeTheme.border }"
-        >
-          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-            {{ prettyLabel(key) }}
+        <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div
+            v-if="hasValue(block.data?.name)"
+            class="rounded-2xl border bg-[#fffaf2] p-5"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Name</div>
+            <div class="mt-3 text-2xl font-semibold text-[#2f2419]">{{ block.data.name }}</div>
           </div>
 
-          <div class="mt-3 text-base leading-7 text-[#4f4030]">
-            {{ displayValue(rawValue) || '—' }}
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-if="block.proseEntries.length"
-        class="mt-8 space-y-5"
-      >
-        <div
-          v-for="[key, rawValue] in block.proseEntries"
-          :key="key"
-          class="rounded-2xl border bg-[#fffaf2] p-6"
-          :style="{ borderColor: typeTheme.border }"
-        >
-          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-            {{ prettyLabel(key) }}
+          <div
+            v-if="hasValue(block.data?.hit_die)"
+            class="rounded-2xl border bg-[#fffaf2] p-5"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Hit Die</div>
+            <div class="mt-3 text-2xl font-semibold text-[#2f2419]">{{ block.data.hit_die }}</div>
           </div>
 
-          <div class="mt-4">
-            <p class="whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
-              {{ displayValue(rawValue) || '—' }}
+          <div
+            v-if="hasValue(block.data?.primary_ability)"
+            class="rounded-2xl border bg-[#fffaf2] p-5"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Primary Ability</div>
+            <div class="mt-3 text-lg text-[#4f4030]">{{ joinList(block.data.primary_ability) }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.saving_throws)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-1"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Saving Throws</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ joinList(block.data.saving_throws) }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.armor_proficiencies)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Armor Proficiencies</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ joinList(block.data.armor_proficiencies) }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.weapon_proficiencies)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Weapon Proficiencies</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ joinList(block.data.weapon_proficiencies) }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.tool_proficiencies)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Tool Proficiencies</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ joinList(block.data.tool_proficiencies) }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.skills)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Skills</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ joinList(block.data.skills) }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.starting_equipment)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-3"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Starting Equipment</div>
+            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(block.data.starting_equipment) }}
+            </p>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.description)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-3"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Description</div>
+            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(block.data.description) }}
             </p>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div
-        v-if="block.imageEntries.length"
-        class="mt-8 space-y-5"
+      <!-- Species -->
+      <section
+        v-else-if="block.block_key === 'species_core'"
+        class="rounded-[30px] border bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
+        :style="{ borderColor: typeTheme.border }"
       >
-        <div
-          v-for="[key, rawValue] in block.imageEntries"
-          :key="key"
-          class="rounded-2xl border bg-[#fffaf2] p-5"
-          :style="{ borderColor: typeTheme.border }"
-        >
-          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-            {{ prettyLabel(key) }}
+        <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+          {{ prettyLabel(block.block_key) }}
+        </div>
+
+        <h2 class="mt-2 text-3xl font-semibold text-[#2f2419]">
+          {{ block.label || 'Species Core' }}
+        </h2>
+
+        <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div
+            v-for="field in [
+              ['name', block.data?.name],
+              ['size', block.data?.size],
+              ['speed', block.data?.speed],
+              ['vision', block.data?.vision],
+              ['languages', joinList(block.data?.languages)],
+              ['traits', joinList(block.data?.traits)]
+            ]"
+            :key="field[0]"
+            v-show="hasValue(field[1])"
+            class="rounded-2xl border bg-[#fffaf2] p-5"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">{{ prettyLabel(String(field[0])) }}</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ field[1] }}</div>
           </div>
 
-          <div class="mt-4">
-            <img
-              :src="String(displayValue(rawValue))"
-              :alt="prettyLabel(key)"
-              class="max-h-[560px] rounded-xl border border-[#e4d6bc] object-cover"
-            >
+          <div
+            v-if="hasValue(block.data?.description)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-3"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Description</div>
+            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(block.data.description) }}
+            </p>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <!-- Item -->
+      <section
+        v-else-if="block.block_key === 'item_core'"
+        class="rounded-[30px] border bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
+        :style="{ borderColor: typeTheme.border }"
+      >
+        <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+          {{ prettyLabel(block.block_key) }}
+        </div>
+
+        <h2 class="mt-2 text-3xl font-semibold text-[#2f2419]">
+          {{ block.label || 'Item Core' }}
+        </h2>
+
+        <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div
+            v-for="field in [
+              ['name', block.data?.name],
+              ['type', block.data?.type],
+              ['rarity', block.data?.rarity],
+              ['value', block.data?.value],
+              ['weight', block.data?.weight],
+              ['damage', block.data?.damage],
+              ['damage Type', block.data?.damage_type],
+              ['properties', joinList(block.data?.properties)]
+            ]"
+            :key="field[0]"
+            v-show="hasValue(field[1])"
+            class="rounded-2xl border bg-[#fffaf2] p-5"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">{{ field[0] }}</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ field[1] }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.description)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-4"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Description</div>
+            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(block.data.description) }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Spell -->
+      <section
+        v-else-if="block.block_key === 'spell_core'"
+        class="rounded-[30px] border bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
+        :style="{ borderColor: typeTheme.border }"
+      >
+        <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+          {{ prettyLabel(block.block_key) }}
+        </div>
+
+        <h2 class="mt-2 text-3xl font-semibold text-[#2f2419]">
+          {{ block.label || 'Spell Core' }}
+        </h2>
+
+        <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div
+            v-for="field in [
+              ['level', block.data?.level],
+              ['school', block.data?.school],
+              ['casting Time', block.data?.casting_time],
+              ['range', block.data?.range],
+              ['duration', block.data?.duration],
+              ['components', joinList(block.data?.components)],
+              ['attack/save', block.data?.attack_save],
+              ['damage/effect', block.data?.damage_effect]
+            ]"
+            :key="field[0]"
+            v-show="hasValue(field[1])"
+            class="rounded-2xl border bg-[#fffaf2] p-5"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">{{ field[0] }}</div>
+            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ field[1] }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.description)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-4"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Description</div>
+            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(block.data.description) }}
+            </p>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.higher_level)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-4"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">At Higher Levels</div>
+            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(block.data.higher_level) }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Fallback -->
+      <section
+        v-else
+        class="rounded-[30px] border bg-[#fbf6ee] p-6 md:p-8 shadow-[0_10px_24px_rgba(80,60,30,0.08)]"
+        :style="{ borderColor: typeTheme.border }"
+      >
+        <div class="max-w-5xl">
+          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+            {{ prettyLabel(block.block_key) }}
+          </div>
+
+          <h2 class="mt-2 text-3xl font-semibold text-[#2f2419]">
+            {{ block.label || prettyLabel(block.block_key) }}
+          </h2>
+        </div>
+
+        <div
+          v-if="block.profileEntries.length"
+          class="mt-8 grid gap-4 md:grid-cols-2"
+        >
+          <div
+            v-for="[key, rawValue] in block.profileEntries"
+            :key="key"
+            class="rounded-2xl border bg-[#fffaf2] p-4"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+              {{ prettyLabel(key) }}
+            </div>
+
+            <div class="mt-3 text-base leading-7 text-[#4f4030]">
+              {{ displayValue(rawValue) || '—' }}
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="block.proseEntries.length"
+          class="mt-8 space-y-5"
+        >
+          <div
+            v-for="[key, rawValue] in block.proseEntries"
+            :key="key"
+            class="rounded-2xl border bg-[#fffaf2] p-6"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+              {{ prettyLabel(key) }}
+            </div>
+
+            <div class="mt-4">
+              <p class="whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+                {{ displayValue(rawValue) || '—' }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="block.imageEntries.length"
+          class="mt-8 space-y-5"
+        >
+          <div
+            v-for="[key, rawValue] in block.imageEntries"
+            :key="key"
+            class="rounded-2xl border bg-[#fffaf2] p-5"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+              {{ prettyLabel(key) }}
+            </div>
+
+            <div class="mt-4">
+              <img
+                :src="String(displayValue(rawValue))"
+                :alt="prettyLabel(key)"
+                class="max-h-[560px] rounded-xl border border-[#e4d6bc] object-cover"
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+    </template>
 
     <section
       v-if="importBlock && importEntries.length"

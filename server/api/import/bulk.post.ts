@@ -1,4 +1,7 @@
 import { readBody, createError } from 'h3'
+import { readdir, readFile } from 'node:fs/promises'
+import { join, basename } from 'node:path'
+
 import { persistImportedEntities } from '../../utils/import-save'
 
 import { preview5eToolsSpells } from '../../../app/lib/importers/5etools-spells'
@@ -8,7 +11,23 @@ import { preview5eToolsFeats } from '../../../app/lib/importers/5etools-feats'
 import { preview5eToolsSpecies } from '../../../app/lib/importers/5etools-species'
 import { preview5eToolsClasses } from '../../../app/lib/importers/5etools-classes'
 
-function getPreviewFn(dataset: string) {
+const DATA_ROOT = '/opt/eldra/datasets/5etools-src/data'
+
+type DatasetKey =
+  | 'spells'
+  | 'items'
+  | 'backgrounds'
+  | 'feats'
+  | 'species'
+  | 'classes'
+
+type SourceMode = 'all' | 'one' | 'custom'
+
+function normalizeSourceCode(value: string | null | undefined) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function getPreviewFn(dataset: DatasetKey) {
   switch (dataset) {
     case 'spells': return preview5eToolsSpells
     case 'items': return preview5eToolsItems
@@ -16,88 +35,160 @@ function getPreviewFn(dataset: string) {
     case 'feats': return preview5eToolsFeats
     case 'species': return preview5eToolsSpecies
     case 'classes': return preview5eToolsClasses
-    default:
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Unsupported dataset: ${dataset}`
-      })
   }
 }
 
-function getDatasetUrl(dataset: string) {
+function getCollectionKeys(dataset: DatasetKey): string[] {
   switch (dataset) {
-    case 'spells': return 'https://5e.tools/data/spells/spells-phb.json'
-    case 'items': return 'https://5e.tools/data/items-base.json'
-    case 'backgrounds': return 'https://5e.tools/data/backgrounds.json'
-    case 'feats': return 'https://5e.tools/data/feats.json'
-    case 'species': return 'https://5e.tools/data/races.json'
-    case 'classes': return 'https://5e.tools/data/class/class-phb.json'
-    default:
-      throw createError({
-        statusCode: 400,
-        statusMessage: `No dataset URL configured for ${dataset}`
-      })
+    case 'spells': return ['spell']
+    case 'items': return ['item', 'baseitem', 'magicvariant']
+    case 'backgrounds': return ['background']
+    case 'feats': return ['feat']
+    case 'species': return ['race', 'species']
+    case 'classes': return ['class']
   }
 }
 
-function getCollectionKey(dataset: string) {
+function fileLooksRelevant(dataset: DatasetKey, filePath: string) {
+  const name = basename(filePath).toLowerCase()
+  const normalized = filePath.toLowerCase()
+
   switch (dataset) {
-    case 'spells': return 'spell'
-    case 'items': return 'item'
-    case 'backgrounds': return 'background'
-    case 'feats': return 'feat'
-    case 'species': return 'race'
-    case 'classes': return 'class'
-    default:
-      throw createError({
-        statusCode: 400,
-        statusMessage: `No collection key configured for ${dataset}`
-      })
+    case 'spells':
+      return normalized.includes('/spells/') && name.endsWith('.json')
+
+    case 'classes':
+      return normalized.includes('/class/') && name.endsWith('.json')
+
+    case 'items':
+      return (
+        name.startsWith('items') ||
+        normalized.includes('/items/') ||
+        name.includes('item')
+      ) && name.endsWith('.json')
+
+    case 'backgrounds':
+      return name.includes('background') && name.endsWith('.json')
+
+    case 'feats':
+      return name.includes('feat') && name.endsWith('.json')
+
+    case 'species':
+      return (
+        name.includes('race') ||
+        name.includes('species')
+      ) && name.endsWith('.json')
   }
 }
 
-function filterPayloadBySource(payload: any, dataset: string, source: string | null) {
-  if (!source) return payload
+async function walkJsonFiles(root: string, dataset: DatasetKey, out: string[] = []) {
+  const entries = await readdir(root, { withFileTypes: true })
 
-  const key = getCollectionKey(dataset)
+  for (const entry of entries) {
+    const full = join(root, entry.name)
 
-  if (Array.isArray(payload)) {
-    return payload.filter((item) => String(item?.source || '').trim() === source)
-  }
+    if (entry.isDirectory()) {
+      await walkJsonFiles(full, dataset, out)
+      continue
+    }
 
-  if (Array.isArray(payload?.[key])) {
-    return {
-      ...payload,
-      [key]: payload[key].filter((item: any) => String(item?.source || '').trim() === source)
+    if (!entry.isFile() || !entry.name.endsWith('.json')) {
+      continue
+    }
+
+    if (fileLooksRelevant(dataset, full)) {
+      out.push(full)
     }
   }
 
-  if (Array.isArray(payload?.data?.[key])) {
-    return {
-      ...payload,
-      data: {
-        ...payload.data,
-        [key]: payload.data[key].filter((item: any) => String(item?.source || '').trim() === source)
+  return out
+}
+
+function extractEntitiesFromJson(parsed: any, dataset: DatasetKey): any[] {
+  const keys = getCollectionKeys(dataset)
+  const found: any[] = []
+
+  for (const key of keys) {
+    if (Array.isArray(parsed?.[key])) {
+      found.push(...parsed[key])
+    }
+
+    if (Array.isArray(parsed?.data?.[key])) {
+      found.push(...parsed.data[key])
+    }
+  }
+
+  return found
+}
+
+async function loadDatasetEntries(dataset: DatasetKey): Promise<any[]> {
+  const files = await walkJsonFiles(DATA_ROOT, dataset)
+  const rows: any[] = []
+
+  for (const file of files) {
+    try {
+      const raw = await readFile(file, 'utf8')
+      const parsed = JSON.parse(raw)
+      const extracted = extractEntitiesFromJson(parsed, dataset)
+
+      if (extracted.length) {
+        rows.push(...extracted)
       }
+    } catch {
+      // ignore bad/irrelevant files
     }
   }
 
-  return payload
+  return rows
+}
+
+function filterBySource(rows: any[], source: string | null) {
+  if (!source) return rows
+
+  const wanted = normalizeSourceCode(source)
+
+  return rows.filter((row) => normalizeSourceCode(row?.source) === wanted)
+}
+
+function dedupeRows(rows: any[]) {
+  const seen = new Set<string>()
+  const output: any[] = []
+
+  for (const row of rows) {
+    const key = [
+      normalizeSourceCode(row?.source),
+      String(row?.name || '').trim().toLowerCase()
+    ].join('::')
+
+    if (!key || seen.has(key)) continue
+
+    seen.add(key)
+    output.push(row)
+  }
+
+  return output
 }
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
   const worldId = Number(body?.worldId)
-  const dataset = String(body?.dataset || '')
+  const dataset = String(body?.dataset || '') as DatasetKey
   const mode = String(body?.mode || 'upsert')
-  const sourceMode = String(body?.sourceMode || 'all')
+  const sourceMode = String(body?.sourceMode || 'all') as SourceMode
   const source = body?.source ? String(body.source).trim() : null
 
   if (!worldId || !dataset) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Missing worldId or dataset'
+    })
+  }
+
+  if (!['spells', 'items', 'backgrounds', 'feats', 'species', 'classes'].includes(dataset)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Unsupported dataset: ${dataset}`
     })
   }
 
@@ -113,37 +204,38 @@ export default defineEventHandler(async (event) => {
       dataset,
       source: null,
       mode,
+      matched: 0,
       created: [],
       updated: [],
       skipped: []
     }
   }
 
-  const datasetUrl = getDatasetUrl(dataset)
+  const allRows = await loadDatasetEntries(dataset)
+  const effectiveSource = sourceMode === 'all' ? null : source
+  const filteredRows = dedupeRows(filterBySource(allRows, effectiveSource))
 
-  let payload: any
-
-  try {
-    const res = await fetch(datasetUrl)
-    payload = await res.json()
-  } catch {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Failed to load dataset JSON for ${dataset}`
-    })
+  if (!filteredRows.length) {
+    return {
+      dataset,
+      source: effectiveSource,
+      mode,
+      matched: 0,
+      created: [],
+      updated: [],
+      skipped: []
+    }
   }
 
-  const effectiveSource = sourceMode === 'all' ? null : source
-  const filteredPayload = filterPayloadBySource(payload, dataset, effectiveSource)
-
   const previewFn = getPreviewFn(dataset)
-  const preview = previewFn(filteredPayload)
+  const preview = previewFn(filteredRows)
 
   if (!preview?.items?.length) {
     return {
       dataset,
       source: effectiveSource,
       mode,
+      matched: filteredRows.length,
       created: [],
       updated: [],
       skipped: []
@@ -159,6 +251,8 @@ export default defineEventHandler(async (event) => {
   return {
     dataset,
     source: effectiveSource,
+    mode,
+    matched: filteredRows.length,
     ...persisted
   }
 })

@@ -1,12 +1,12 @@
 import { readBody, createError } from 'h3'
-import { persistImportedEntities } from '~/server/utils/import-save'
+import { persistImportedEntities } from '../../utils/import-save'
 
-import { preview5eToolsSpells } from '~/app/lib/importers/5etools-spells'
-import { preview5eToolsItems } from '~/app/lib/importers/5etools-items'
-import { preview5eToolsBackgrounds } from '~/app/lib/importers/5etools-backgrounds'
-import { preview5eToolsFeats } from '~/app/lib/importers/5etools-feats'
-import { preview5eToolsSpecies } from '~/app/lib/importers/5etools-species'
-import { preview5eToolsClasses } from '~/app/lib/importers/5etools-classes'
+import { preview5eToolsSpells } from '../../../app/lib/importers/5etools-spells'
+import { preview5eToolsItems } from '../../../app/lib/importers/5etools-items'
+import { preview5eToolsBackgrounds } from '../../../app/lib/importers/5etools-backgrounds'
+import { preview5eToolsFeats } from '../../../app/lib/importers/5etools-feats'
+import { preview5eToolsSpecies } from '../../../app/lib/importers/5etools-species'
+import { preview5eToolsClasses } from '../../../app/lib/importers/5etools-classes'
 
 function getPreviewFn(dataset: string) {
   switch (dataset) {

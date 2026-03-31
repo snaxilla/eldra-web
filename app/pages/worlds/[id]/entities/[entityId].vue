@@ -628,9 +628,9 @@ async function applyImage() {
               ['name', block.data?.name],
               ['size', block.data?.size],
               ['speed', block.data?.speed],
-              ['vision', block.data?.vision],
+              ['ability score increase', block.data?.ability_score_increase],
               ['languages', joinList(block.data?.languages)],
-              ['traits', joinList(block.data?.traits)]
+              ['vision', block.data?.vision]
             ]"
             :key="field[0]"
             v-show="hasValue(field[1])"
@@ -639,6 +639,17 @@ async function applyImage() {
           >
             <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">{{ prettyLabel(String(field[0])) }}</div>
             <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ field[1] }}</div>
+          </div>
+
+          <div
+            v-if="hasValue(block.data?.traits)"
+            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-3"
+            :style="{ borderColor: typeTheme.border }"
+          >
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Traits</div>
+            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+              {{ displayValue(block.data.traits) }}
+            </p>
           </div>
 
           <div

@@ -99,7 +99,38 @@ function buildSpeciesPreview(raw: any): EldraImportPreviewEntity {
   setBlockValue(blocks, 'species_core', 'size', normalizeSize(raw))
   setBlockValue(blocks, 'species_core', 'speed', normalizeSpeed(raw))
   setBlockValue(blocks, 'species_core', 'ability_score_increase', normalizeAbility(raw))
-  setBlockValue(blocks, 'species_core', 'traits', textify(raw?.entries))
+  // --- Traits ---
+const traitSections = Array.isArray(raw?.entries)
+  ? raw.entries
+      .filter((e: any) => e?.type === 'entries' && e?.name && e?.entries)
+      .map((e: any) => {
+        return `## ${e.name}\n\n${textify(e.entries)}`
+      })
+      .join('\n\n')
+  : ''
+
+setBlockValue(blocks, 'species_core', 'traits', traitSections)
+
+// --- Description (fluff) ---
+let description = ''
+
+try {
+  const fluffData = require('/opt/eldra/datasets/5etools-src/data/fluff-races.json')
+
+  const match = (fluffData?.race || []).find(
+    (r: any) =>
+      r?.name === raw?.name &&
+      r?.source === raw?.source
+  )
+
+  if (match?.entries) {
+    description = textify(match.entries)
+  }
+} catch (err) {}
+
+if (description) {
+  setBlockValue(blocks, 'species_core', 'description', description)
+}
 
   return {
     systemKey: 'dnd5e',

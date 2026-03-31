@@ -129,7 +129,7 @@ const summaryText = computed(() => {
 })
 
 const isCharacterLike = computed(() => {
-  return ['character', 'npc', 'person', 'hero', 'species'].includes(entityType.value)
+  return ['character', 'npc', 'person', 'hero'].includes(entityType.value)
 })
 
 const rawBlocks = computed(() => {

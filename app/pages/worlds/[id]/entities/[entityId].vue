@@ -175,7 +175,7 @@ const importEntries = computed(() => {
   if (!importBlock.value) return []
 
   return Object.entries(importBlock.value.data || {})
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .filter(([key, value]) => key !== 'raw_json' && value !== null && value !== undefined && value !== '')
 })
 
 function onFileSelected(event: Event) {
@@ -622,45 +622,53 @@ async function applyImage() {
           {{ block.label || 'Species Core' }}
         </h2>
 
-        <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div
             v-for="field in [
-              ['name', block.data?.name],
-              ['size', block.data?.size],
-              ['speed', block.data?.speed],
-              ['ability score increase', block.data?.ability_score_increase],
-              ['languages', joinList(block.data?.languages)],
-              ['vision', block.data?.vision]
+              ['Name', block.data?.name],
+              ['Size', block.data?.size],
+              ['Speed', block.data?.speed],
+              ['Ability Score Increase', block.data?.ability_score_increase]
             ]"
             :key="field[0]"
             v-show="hasValue(field[1])"
             class="rounded-2xl border bg-[#fffaf2] p-5"
             :style="{ borderColor: typeTheme.border }"
           >
-            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">{{ prettyLabel(String(field[0])) }}</div>
-            <div class="mt-3 text-lg leading-8 text-[#4f4030]">{{ field[1] }}</div>
+            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+              {{ field[0] }}
+            </div>
+            <div class="mt-3 text-xl leading-8 text-[#2f2419]">
+              {{ field[1] }}
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="hasValue(block.data?.traits)"
+          class="mt-8 rounded-[26px] border bg-[#fffaf2] p-6 md:p-8"
+          :style="{ borderColor: typeTheme.border }"
+        >
+          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+            Traits
           </div>
 
-          <div
-            v-if="hasValue(block.data?.traits)"
-            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-3"
-            :style="{ borderColor: typeTheme.border }"
-          >
-            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Traits</div>
-            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
-              {{ displayValue(block.data.traits) }}
-            </p>
+          <div class="mt-5 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+            {{ displayValue(block.data.traits) }}
+          </div>
+        </div>
+
+        <div
+          v-if="hasValue(block.data?.description)"
+          class="mt-6 rounded-[26px] border bg-[#fffaf2] p-6 md:p-8"
+          :style="{ borderColor: typeTheme.border }"
+        >
+          <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
+            Description
           </div>
 
-          <div
-            v-if="hasValue(block.data?.description)"
-            class="rounded-2xl border bg-[#fffaf2] p-5 md:col-span-2 xl:col-span-3"
-            :style="{ borderColor: typeTheme.border }"
-          >
-            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">Description</div>
-            <p class="mt-4 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
-              {{ displayValue(block.data.description) }}
-            </p>
+          <div class="mt-5 whitespace-pre-wrap text-lg leading-9 text-[#4f4030]">
+            {{ displayValue(block.data.description) }}
           </div>
         </div>
       </section>

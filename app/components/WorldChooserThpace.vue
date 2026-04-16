@@ -12,17 +12,17 @@ function mountThpace() {
 
   const settings = {
     colors: [
-      '#0b1020',
+      '#08101f',
       '#172554',
-      '#4f46e5',
-      '#06b6d4',
-      '#7c3aed'
+      '#4338ca',
+      '#0891b2',
+      '#6d28d9'
     ],
-    triangleSize: 140,
-    bleed: 100,
-    noise: 60,
+    triangleSize: 160,
+    bleed: 120,
+    noise: 58,
     pointVariationX: 18,
-    pointVariationY: 28,
+    pointVariationY: 26,
     pointAnimationSpeed: 9000,
     animationOffset: 240,
     maxFps: 60,
@@ -31,7 +31,7 @@ function mountThpace() {
       count: [2, 4],
       interval: [5000, 9000],
       radius: [1, 2],
-      opacity: [0.08, 0.30],
+      opacity: [0.08, 0.24],
       variationX: [4, 12],
       variationY: [2, 6],
       color: '#dbeafe'
@@ -53,8 +53,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="pointer-events-none absolute inset-0 overflow-hidden rounded-[40px]">
+  <div class="pointer-events-none fixed inset-0 z-0 overflow-hidden">
     <canvas ref="canvasRef" class="absolute inset-0 h-full w-full" />
-    <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,17,0.28)_0%,rgba(2,6,17,0.18)_40%,rgba(2,6,17,0.42)_100%)]" />
+    <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,17,0.18)_0%,rgba(2,6,17,0.10)_42%,rgba(2,6,17,0.34)_100%)]" />
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_35%)]" />
   </div>
 </template>

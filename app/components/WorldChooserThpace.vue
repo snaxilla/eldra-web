@@ -24,6 +24,7 @@ function mountThpace() {
     pointAnimationSpeed: 8327,
     animationOffset: 171,
     maxFps: 144,
+    automaticResize: true,
     particleSettings: {
       count: [2, 4],
       interval: [5000, 9000],
@@ -33,7 +34,6 @@ function mountThpace() {
       variationY: [2, 6],
       color: '#7387d4'
     }
-  }
   }
 
   thpaceInstance = ThpaceGL.create(canvas, settings)

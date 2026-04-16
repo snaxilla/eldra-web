@@ -15,6 +15,7 @@ const showSidebar = computed(() => !!activeWorldId.value)
 <template>
   <div class="relative min-h-screen bg-[#060c14] text-slate-100">
     <CosmicBackdrop />
+    <div class="eldra-cosmic-glow" />
 
     <div class="relative z-10 flex min-h-screen">
       <AppSidebar />

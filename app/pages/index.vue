@@ -20,11 +20,7 @@ function worldSubtitle(world: any) {
 
 <template>
   <div class="relative space-y-12 lg:space-y-16">
-    <section class="gateway-stage px-8 py-16 sm:px-10 lg:px-14 lg:py-20">
-      <div class="absolute inset-0 opacity-[0.035]">
-        <div class="h-full w-full bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:56px_56px]" />
-      </div>
-
+    <section class="eld-gateway-hero px-8 py-16 sm:px-10 lg:px-14 lg:py-20">
       <div class="relative max-w-5xl">
         <div class="text-[12px] uppercase tracking-[0.42em] text-sky-300/90">
           Eldra Cosmos
@@ -44,10 +40,10 @@ function worldSubtitle(world: any) {
           <div class="rounded-full border border-sky-300/20 bg-sky-400/10 px-4 py-2 text-sm text-sky-100 backdrop-blur">
             Shared universe
           </div>
-          <div class="rounded-full border border-white/12 bg-white/[0.05] px-4 py-2 text-sm text-slate-100 backdrop-blur">
+          <div class="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-sm text-slate-100 backdrop-blur">
             Separate worlds
           </div>
-          <div class="rounded-full border border-white/12 bg-white/[0.05] px-4 py-2 text-sm text-slate-100 backdrop-blur">
+          <div class="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-sm text-slate-100 backdrop-blur">
             Play · Run · Build
           </div>
         </div>
@@ -65,7 +61,7 @@ function worldSubtitle(world: any) {
           </h2>
         </div>
 
-        <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 backdrop-blur">
+        <div class="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-slate-300 backdrop-blur">
           {{ worlds.length }} world<span v-if="worlds.length !== 1">s</span>
         </div>
       </div>
@@ -75,7 +71,7 @@ function worldSubtitle(world: any) {
           v-for="world in worlds"
           :key="world.id"
           :to="worldHref(world)"
-          class="gateway-portal-card group"
+          class="eld-gateway-card group"
         >
           <div class="relative h-[560px] overflow-hidden">
             <img
@@ -84,8 +80,8 @@ function worldSubtitle(world: any) {
               class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.05]"
             >
 
-            <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,10,16,0.12)_0%,rgba(6,10,16,0.28)_34%,rgba(4,8,14,0.92)_100%)]" />
-            <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(56,189,248,0.10),transparent_32%)]" />
+            <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,10,16,0.10)_0%,rgba(6,10,16,0.26)_34%,rgba(4,8,14,0.92)_100%)]" />
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(56,189,248,0.16),transparent_30%)]" />
 
             <div class="absolute inset-x-0 bottom-0 p-8 sm:p-10">
               <div class="max-w-3xl">
@@ -111,7 +107,7 @@ function worldSubtitle(world: any) {
 
                   <div
                     v-if="world.visibility"
-                    class="rounded-full border border-white/12 bg-white/[0.05] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-200 backdrop-blur"
+                    class="rounded-full border border-white/12 bg-white/[0.06] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-200 backdrop-blur"
                   >
                     {{ world.visibility }}
                   </div>
@@ -123,7 +119,7 @@ function worldSubtitle(world: any) {
                   Step through the gate
                 </div>
 
-                <div class="inline-flex items-center gap-2 rounded-full border border-white/14 bg-white/[0.08] px-5 py-2.5 text-sm font-medium text-white backdrop-blur transition group-hover:border-sky-300/25 group-hover:bg-sky-400/12">
+                <div class="inline-flex items-center gap-2 rounded-full border border-white/14 bg-white/[0.10] px-5 py-2.5 text-sm font-medium text-white backdrop-blur transition group-hover:border-sky-300/25 group-hover:bg-sky-400/12">
                   <span>Enter World</span>
                   <UIcon name="i-lucide-arrow-right" class="h-4 w-4" />
                 </div>
@@ -136,7 +132,7 @@ function worldSubtitle(world: any) {
 
     <section
       v-else
-      class="rounded-[36px] border border-dashed border-white/10 bg-white/[0.03] px-8 py-16 text-center backdrop-blur"
+      class="rounded-[36px] border border-dashed border-white/10 bg-white/[0.04] px-8 py-16 text-center backdrop-blur"
     >
       <div class="mx-auto max-w-2xl">
         <div class="text-[11px] uppercase tracking-[0.35em] text-slate-500">

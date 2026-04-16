@@ -13,8 +13,10 @@ const showSidebar = computed(() => !!activeWorldId.value)
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#0b1119] text-slate-100">
-    <div class="flex min-h-screen">
+  <div class="relative min-h-screen bg-[#060c14] text-slate-100">
+    <CosmicBackdrop />
+
+    <div class="relative z-10 flex min-h-screen">
       <AppSidebar />
 
       <div class="flex min-w-0 flex-1 flex-col">
@@ -22,7 +24,7 @@ const showSidebar = computed(() => !!activeWorldId.value)
 
         <main class="min-w-0 flex-1">
           <div
-            class="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+            class="mx-auto w-full px-4 py-5 sm:px-6 lg:px-8 lg:py-6"
             :class="showSidebar ? 'max-w-[1600px]' : 'max-w-[1800px]'"
           >
             <slot />

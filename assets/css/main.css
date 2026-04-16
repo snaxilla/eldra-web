@@ -52,3 +52,80 @@ body {
   background-position: center;
   background-repeat: no-repeat;
 }
+
+/* === Eldra Cosmic Background === */
+
+@keyframes eldrapulse {
+  0% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.42; }
+  50% { transform: scale(1.08) translate3d(1.5%, -1%, 0); opacity: 0.56; }
+  100% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.42; }
+}
+
+@keyframes eldradrift {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-1.2%, 1.2%, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes eldrastarfloat {
+  0% { transform: translateY(0); opacity: 0.22; }
+  50% { transform: translateY(-6px); opacity: 0.32; }
+  100% { transform: translateY(0); opacity: 0.22; }
+}
+
+.cosmic-bg-base {
+  background:
+    radial-gradient(circle at 18% 22%, rgba(56, 189, 248, 0.08), transparent 20%),
+    radial-gradient(circle at 82% 18%, rgba(99, 102, 241, 0.08), transparent 24%),
+    radial-gradient(circle at 52% 80%, rgba(168, 85, 247, 0.05), transparent 24%),
+    linear-gradient(180deg, #050b12 0%, #07101a 48%, #050a12 100%);
+}
+
+.cosmic-bg-stars,
+.cosmic-bg-stars-2 {
+  background-repeat: repeat;
+  animation: eldrastarfloat 10s ease-in-out infinite;
+}
+
+.cosmic-bg-stars {
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.8) 0.7px, transparent 1px),
+    radial-gradient(circle, rgba(125,211,252,0.55) 0.8px, transparent 1.1px),
+    radial-gradient(circle, rgba(255,255,255,0.45) 0.6px, transparent 1px);
+  background-size: 180px 180px, 260px 260px, 340px 340px;
+  background-position: 0 0, 40px 70px, 120px 30px;
+}
+
+.cosmic-bg-stars-2 {
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.45) 0.7px, transparent 1px),
+    radial-gradient(circle, rgba(96,165,250,0.35) 0.9px, transparent 1.2px);
+  background-size: 320px 320px, 460px 460px;
+  background-position: 60px 20px, 200px 140px;
+  animation-duration: 15s;
+}
+
+.cosmic-bg-nebula-1,
+.cosmic-bg-nebula-2 {
+  filter: blur(56px);
+  will-change: transform, opacity;
+}
+
+.cosmic-bg-nebula-1 {
+  background:
+    radial-gradient(circle at 30% 30%, rgba(14, 165, 233, 0.11), transparent 24%),
+    radial-gradient(circle at 66% 20%, rgba(99, 102, 241, 0.10), transparent 28%);
+  animation: eldrapulse 18s ease-in-out infinite;
+}
+
+.cosmic-bg-nebula-2 {
+  background:
+    radial-gradient(circle at 72% 68%, rgba(168, 85, 247, 0.08), transparent 26%),
+    radial-gradient(circle at 20% 78%, rgba(59, 130, 246, 0.06), transparent 24%);
+  animation: eldradrift 24s ease-in-out infinite;
+}
+
+.cosmic-vignette {
+  background:
+    radial-gradient(circle at center, transparent 48%, rgba(4, 8, 14, 0.18) 72%, rgba(3, 6, 10, 0.44) 100%);
+}

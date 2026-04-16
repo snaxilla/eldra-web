@@ -21,8 +21,8 @@ function worldSubtitle(world: any) {
 <template>
   <div class="relative space-y-12 lg:space-y-16">
     <section class="gateway-stage px-8 py-16 sm:px-10 lg:px-14 lg:py-20">
-      <div class="absolute inset-0 opacity-[0.08]">
-        <div class="h-full w-full bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:38px_38px]" />
+      <div class="absolute inset-0 opacity-[0.035]">
+        <div class="h-full w-full bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:56px_56px]" />
       </div>
 
       <div class="relative max-w-5xl">

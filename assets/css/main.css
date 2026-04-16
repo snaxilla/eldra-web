@@ -206,3 +206,102 @@ body {
   background:
     radial-gradient(circle at center, transparent 48%, rgba(4, 8, 14, 0.18) 72%, rgba(3, 6, 10, 0.44) 100%);
 }
+
+/* === Eldra Gateway Atmosphere Upgrade === */
+
+@keyframes eldrapulse-slow {
+  0% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.38; }
+  50% { transform: scale(1.14) translate3d(2%, -1%, 0); opacity: 0.62; }
+  100% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.38; }
+}
+
+@keyframes eldradrift-slow {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-2%, 1.5%, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes eldraparallax {
+  0% { transform: translateY(0px); opacity: 0.24; }
+  50% { transform: translateY(-10px); opacity: 0.34; }
+  100% { transform: translateY(0px); opacity: 0.24; }
+}
+
+.cosmic-bg-base {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(34, 211, 238, 0.16), transparent 20%),
+    radial-gradient(circle at 84% 14%, rgba(99, 102, 241, 0.16), transparent 24%),
+    radial-gradient(circle at 50% 82%, rgba(168, 85, 247, 0.10), transparent 26%),
+    radial-gradient(circle at 30% 65%, rgba(14, 165, 233, 0.08), transparent 18%),
+    linear-gradient(180deg, #02060d 0%, #050b14 30%, #040914 65%, #02060d 100%);
+}
+
+.cosmic-bg-stars,
+.cosmic-bg-stars-2 {
+  background-repeat: repeat;
+  animation: eldraparallax 14s ease-in-out infinite;
+}
+
+.cosmic-bg-stars {
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.9) 0.8px, transparent 1.1px),
+    radial-gradient(circle, rgba(125,211,252,0.70) 0.8px, transparent 1.2px),
+    radial-gradient(circle, rgba(255,255,255,0.45) 0.6px, transparent 1px);
+  background-size: 170px 170px, 240px 240px, 320px 320px;
+  background-position: 0 0, 40px 60px, 120px 20px;
+}
+
+.cosmic-bg-stars-2 {
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.4) 0.7px, transparent 1px),
+    radial-gradient(circle, rgba(96,165,250,0.28) 0.95px, transparent 1.2px);
+  background-size: 300px 300px, 430px 430px;
+  background-position: 50px 10px, 200px 140px;
+  animation-duration: 20s;
+}
+
+.cosmic-bg-nebula-1,
+.cosmic-bg-nebula-2 {
+  filter: blur(72px);
+  will-change: transform, opacity;
+}
+
+.cosmic-bg-nebula-1 {
+  background:
+    radial-gradient(circle at 22% 28%, rgba(34, 211, 238, 0.18), transparent 24%),
+    radial-gradient(circle at 68% 18%, rgba(99, 102, 241, 0.18), transparent 28%);
+  animation: eldrapulse-slow 24s ease-in-out infinite;
+}
+
+.cosmic-bg-nebula-2 {
+  background:
+    radial-gradient(circle at 76% 70%, rgba(168, 85, 247, 0.14), transparent 24%),
+    radial-gradient(circle at 20% 78%, rgba(59, 130, 246, 0.10), transparent 22%);
+  animation: eldradrift-slow 32s ease-in-out infinite;
+}
+
+.cosmic-vignette {
+  background:
+    radial-gradient(circle at center, transparent 42%, rgba(4, 8, 14, 0.20) 72%, rgba(1, 4, 8, 0.62) 100%);
+}
+
+.gateway-hero-glow {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06),
+    0 40px 100px rgba(0,0,0,0.42),
+    0 0 120px rgba(56, 189, 248, 0.08),
+    0 0 180px rgba(99, 102, 241, 0.06);
+}
+
+.gateway-world-card {
+  box-shadow:
+    0 24px 60px rgba(0,0,0,0.45),
+    0 0 60px rgba(59,130,246,0.05);
+}
+
+.gateway-world-card:hover {
+  box-shadow:
+    0 34px 90px rgba(0,0,0,0.54),
+    0 0 80px rgba(56,189,248,0.08),
+    0 0 120px rgba(99,102,241,0.06);
+}

@@ -19,110 +19,120 @@ function worldSubtitle(world: any) {
 </script>
 
 <template>
-  <div class="space-y-8 lg:space-y-10">
-    <section class="relative overflow-hidden rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_30%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.16),transparent_28%),linear-gradient(180deg,#101826_0%,#0b1119_100%)] px-6 py-10 shadow-[0_20px_60px_rgba(0,0,0,0.35)] sm:px-8 lg:px-10 lg:py-14">
-      <div class="absolute inset-0 opacity-[0.08]">
-        <div class="h-full w-full bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:32px_32px]" />
+  <div class="relative">
+    <section class="relative overflow-hidden rounded-[40px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,30,0.72)_0%,rgba(8,14,24,0.52)_100%)] px-8 py-14 sm:px-10 lg:px-14 lg:py-20 gateway-hero-glow">
+      <div class="absolute inset-0 opacity-[0.10]">
+        <div class="h-full w-full bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:36px_36px]" />
       </div>
 
-      <div class="relative max-w-4xl">
-        <div class="text-[11px] uppercase tracking-[0.38em] text-sky-300/80">
+      <div class="absolute -left-16 top-10 h-56 w-56 rounded-full bg-cyan-400/12 blur-3xl" />
+      <div class="absolute right-0 top-0 h-72 w-72 rounded-full bg-indigo-500/12 blur-3xl" />
+      <div class="absolute bottom-0 left-1/3 h-56 w-56 rounded-full bg-violet-500/10 blur-3xl" />
+
+      <div class="relative max-w-5xl">
+        <div class="text-[12px] uppercase tracking-[0.42em] text-sky-300/90">
           Eldra Cosmos
         </div>
 
-        <h1 class="mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
+        <h1 class="mt-5 max-w-4xl text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl">
           Choose a world to enter
         </h1>
 
-        <p class="mt-5 max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
-          Eldra is a shared universe of separate worlds. Each world carries its own history,
-          atmosphere, rules, characters, and mysteries. Step into one realm and continue building,
-          playing, or running the story inside it.
+        <p class="mt-7 max-w-3xl text-lg leading-9 text-slate-200 sm:text-xl">
+          Eldra is a shared universe of separate worlds. Each realm carries its own
+          atmosphere, rules, characters, and mysteries. Step through the gateway and
+          continue building, playing, or running the story inside it.
         </p>
 
-        <div class="mt-8 flex flex-wrap gap-3">
-          <div class="rounded-full border border-sky-400/20 bg-sky-400/10 px-4 py-2 text-sm text-sky-100">
+        <div class="mt-9 flex flex-wrap gap-3">
+          <div class="rounded-full border border-sky-300/20 bg-sky-400/10 px-4 py-2 text-sm text-sky-100 backdrop-blur">
             Shared universe
           </div>
-          <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200">
+          <div class="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-sm text-slate-100 backdrop-blur">
             Separate worlds
           </div>
-          <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200">
+          <div class="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-sm text-slate-100 backdrop-blur">
             Play · Run · Build
           </div>
         </div>
       </div>
     </section>
 
-    <section
-      v-if="worlds?.length"
-      class="rounded-[36px] border border-white/10 bg-[#0f1722]/70 p-4 shadow-[0_18px_48px_rgba(0,0,0,0.28)] sm:p-5 lg:p-6"
-    >
-      <div class="mb-5 flex items-center justify-between gap-4 px-2 sm:px-1">
+    <section v-if="worlds?.length" class="mt-14 space-y-8">
+      <div class="flex items-end justify-between gap-4">
         <div>
           <div class="text-[11px] uppercase tracking-[0.35em] text-slate-500">
             Available Worlds
           </div>
-          <h2 class="mt-2 text-2xl font-semibold tracking-tight text-white">
+          <h2 class="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Enter a realm
           </h2>
         </div>
 
-        <div class="hidden rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-slate-300 sm:block">
+        <div class="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 backdrop-blur">
           {{ worlds.length }} world<span v-if="worlds.length !== 1">s</span>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <div class="grid grid-cols-1 gap-8 2xl:grid-cols-2">
         <NuxtLink
           v-for="world in worlds"
           :key="world.id"
           :to="worldHref(world)"
-          class="group overflow-hidden rounded-[32px] border border-white/10 bg-[#101826] transition duration-300 hover:-translate-y-1 hover:border-sky-400/25 hover:shadow-[0_22px_50px_rgba(0,0,0,0.36)]"
+          class="group gateway-world-card relative overflow-hidden rounded-[36px] border border-white/10 bg-[#0b1220]/55 transition duration-300 hover:-translate-y-1 hover:border-sky-300/20"
         >
-          <div class="relative h-[260px] overflow-hidden sm:h-[320px]">
+          <div class="relative h-[520px] overflow-hidden">
             <img
               :src="worldImage(world)"
               :alt="world.name"
-              class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+              class="h-full w-full object-cover transition duration-700 group-hover:scale-[1.04]"
             >
-            <div class="absolute inset-0 bg-gradient-to-t from-[rgba(8,12,18,0.92)] via-[rgba(8,12,18,0.36)] to-[rgba(8,12,18,0.08)]" />
 
-            <div class="absolute inset-x-0 bottom-0 p-6 sm:p-7">
-              <div class="text-[11px] uppercase tracking-[0.38em] text-sky-200/80">
-                World
+            <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,10,16,0.18)_0%,rgba(6,10,16,0.40)_34%,rgba(4,8,14,0.88)_100%)]" />
+
+            <div class="absolute inset-x-0 top-0 h-32 bg-[linear-gradient(180deg,rgba(8,12,18,0.42)_0%,transparent_100%)]" />
+
+            <div class="absolute inset-x-0 bottom-0 p-8 sm:p-10">
+              <div class="max-w-3xl">
+                <div class="text-[11px] uppercase tracking-[0.42em] text-sky-200/80">
+                  World
+                </div>
+
+                <h3 class="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                  {{ world.name }}
+                </h3>
+
+                <p class="mt-5 text-base leading-8 text-slate-200 sm:text-lg">
+                  {{ worldSubtitle(world) }}
+                </p>
+
+                <div class="mt-7 flex flex-wrap gap-2">
+                  <div
+                    v-if="world.system_key"
+                    class="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-sky-100 backdrop-blur"
+                  >
+                    {{ world.system_key }}
+                  </div>
+
+                  <div
+                    v-if="world.visibility"
+                    class="rounded-full border border-white/12 bg-white/[0.05] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-200 backdrop-blur"
+                  >
+                    {{ world.visibility }}
+                  </div>
+                </div>
               </div>
 
-              <h3 class="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                {{ world.name }}
-              </h3>
+              <div class="mt-10 flex items-center justify-between gap-4">
+                <div class="text-[11px] uppercase tracking-[0.38em] text-slate-400">
+                  Step through the gate
+                </div>
 
-              <p class="mt-4 max-w-2xl text-sm leading-7 text-slate-200 sm:text-base">
-                {{ worldSubtitle(world) }}
-              </p>
-            </div>
-          </div>
-
-          <div class="flex items-center justify-between gap-4 border-t border-white/8 px-6 py-5 sm:px-7">
-            <div class="flex flex-wrap gap-2">
-              <div
-                v-if="world.system_key"
-                class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-sky-100"
-              >
-                {{ world.system_key }}
+                <div class="inline-flex items-center gap-2 rounded-full border border-white/14 bg-white/[0.07] px-5 py-2.5 text-sm font-medium text-white backdrop-blur transition group-hover:border-sky-300/25 group-hover:bg-sky-400/12">
+                  <span>Enter World</span>
+                  <UIcon name="i-lucide-arrow-right" class="h-4 w-4" />
+                </div>
               </div>
-
-              <div
-                v-if="world.visibility"
-                class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-300"
-              >
-                {{ world.visibility }}
-              </div>
-            </div>
-
-            <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-medium text-white transition group-hover:border-sky-400/25 group-hover:bg-sky-400/10">
-              <span>Enter World</span>
-              <UIcon name="i-lucide-arrow-right" class="h-4 w-4" />
             </div>
           </div>
         </NuxtLink>
@@ -131,7 +141,7 @@ function worldSubtitle(world: any) {
 
     <section
       v-else
-      class="rounded-[36px] border border-dashed border-white/10 bg-[#0f1722]/60 px-6 py-12 text-center shadow-[0_18px_48px_rgba(0,0,0,0.22)]"
+      class="mt-14 rounded-[36px] border border-dashed border-white/10 bg-white/[0.03] px-8 py-16 text-center backdrop-blur"
     >
       <div class="mx-auto max-w-2xl">
         <div class="text-[11px] uppercase tracking-[0.35em] text-slate-500">
@@ -143,7 +153,7 @@ function worldSubtitle(world: any) {
         </h2>
 
         <p class="mt-4 text-base leading-8 text-slate-300">
-          Create your first world and start building a place for players, characters, maps, and lore.
+          Create your first world and open a new realm for players, lore, characters, and maps.
         </p>
       </div>
     </section>

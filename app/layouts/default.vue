@@ -1,4 +1,15 @@
 <script setup lang="ts">
+const route = useRoute()
+
+const activeWorldId = computed(() => {
+  const match =
+    route.path.match(/^\/worlds\/([^/]+)/) ||
+    route.path.match(/^\/(?:play|run)\/worlds\/([^/]+)/)
+
+  return match?.[1] || null
+})
+
+const showSidebar = computed(() => !!activeWorldId.value)
 </script>
 
 <template>
@@ -10,7 +21,10 @@
         <AppTopbar />
 
         <main class="min-w-0 flex-1">
-          <div class="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div
+            class="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8"
+            :class="showSidebar ? 'max-w-[1600px]' : 'max-w-[1800px]'"
+          >
             <slot />
           </div>
         </main>

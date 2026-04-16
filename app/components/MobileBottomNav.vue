@@ -2,9 +2,14 @@
 const route = useRoute()
 
 const activeWorldId = computed(() => {
-  const match = route.path.match(/^\/worlds\/([^/]+)/) || route.path.match(/^\/(?:play|run)\/worlds\/([^/]+)/)
+  const match =
+    route.path.match(/^\/worlds\/([^/]+)/) ||
+    route.path.match(/^\/(?:play|run)\/worlds\/([^/]+)/)
+
   return match?.[1] || null
 })
+
+const showMobileNav = computed(() => !!activeWorldId.value)
 
 const currentWorkspace = computed(() => {
   const path = route.path
@@ -17,32 +22,37 @@ const currentWorkspace = computed(() => {
 const items = computed(() => {
   const worldId = activeWorldId.value
 
+  if (!worldId) return []
+
   if (currentWorkspace.value === 'play') {
     return [
-      { label: 'Play', to: worldId ? `/play/worlds/${worldId}` : '/play', icon: 'i-lucide-sword' },
-      { label: 'Build', to: worldId ? `/worlds/${worldId}` : '/', icon: 'i-lucide-compass' },
-      { label: 'Run', to: worldId ? `/run/worlds/${worldId}` : '/run', icon: 'i-lucide-shield' }
+      { label: 'Play', to: `/play/worlds/${worldId}`, icon: 'i-lucide-sword' },
+      { label: 'Build', to: `/worlds/${worldId}`, icon: 'i-lucide-compass' },
+      { label: 'Run', to: `/run/worlds/${worldId}`, icon: 'i-lucide-shield' }
     ]
   }
 
   if (currentWorkspace.value === 'run') {
     return [
-      { label: 'Run', to: worldId ? `/run/worlds/${worldId}` : '/run', icon: 'i-lucide-shield' },
-      { label: 'Build', to: worldId ? `/worlds/${worldId}` : '/', icon: 'i-lucide-compass' },
-      { label: 'Play', to: worldId ? `/play/worlds/${worldId}` : '/play', icon: 'i-lucide-sword' }
+      { label: 'Run', to: `/run/worlds/${worldId}`, icon: 'i-lucide-shield' },
+      { label: 'Build', to: `/worlds/${worldId}`, icon: 'i-lucide-compass' },
+      { label: 'Play', to: `/play/worlds/${worldId}`, icon: 'i-lucide-sword' }
     ]
   }
 
   return [
-    { label: 'Build', to: worldId ? `/worlds/${worldId}` : '/', icon: 'i-lucide-compass' },
-    { label: 'Play', to: worldId ? `/play/worlds/${worldId}` : '/play', icon: 'i-lucide-sword' },
-    { label: 'Run', to: worldId ? `/run/worlds/${worldId}` : '/run', icon: 'i-lucide-shield' }
+    { label: 'Build', to: `/worlds/${worldId}`, icon: 'i-lucide-compass' },
+    { label: 'Play', to: `/play/worlds/${worldId}`, icon: 'i-lucide-sword' },
+    { label: 'Run', to: `/run/worlds/${worldId}`, icon: 'i-lucide-shield' }
   ]
 })
 </script>
 
 <template>
-  <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0b1119]/92 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 backdrop-blur lg:hidden">
+  <nav
+    v-if="showMobileNav"
+    class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0b1119]/92 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 backdrop-blur lg:hidden"
+  >
     <div class="grid grid-cols-3 gap-2">
       <NuxtLink
         v-for="item in items"

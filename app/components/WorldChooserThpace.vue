@@ -12,30 +12,28 @@ function mountThpace() {
 
   const settings = {
     colors: [
-      '#08101f',
-      '#172554',
-      '#4338ca',
-      '#0891b2',
-      '#6d28d9'
+      '#4366a7',
+      '#3e2966',
+      '#0c0b0c'
     ],
-    triangleSize: 160,
-    bleed: 120,
-    noise: 58,
-    pointVariationX: 18,
-    pointVariationY: 26,
-    pointAnimationSpeed: 9000,
-    animationOffset: 240,
-    maxFps: 60,
-    automaticResize: true,
+    triangleSize: 10,
+    bleed: 81,
+    noise: -18,
+    pointVariationX: 50,
+    pointVariationY: 50,
+    pointAnimationSpeed: 8327,
+    animationOffset: 171,
+    maxFps: 144,
     particleSettings: {
       count: [2, 4],
       interval: [5000, 9000],
-      radius: [1, 2],
-      opacity: [0.08, 0.24],
-      variationX: [4, 12],
+      radius: [1.6, 2.9],
+      opacity: [0.24, 0.58],
+      variationX: [2.4, 17],
       variationY: [2, 6],
-      color: '#dbeafe'
+      color: '#7387d4'
     }
+  }
   }
 
   thpaceInstance = ThpaceGL.create(canvas, settings)

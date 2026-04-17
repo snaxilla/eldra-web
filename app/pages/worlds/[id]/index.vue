@@ -1,22 +1,27 @@
 <script setup lang="ts">
+definePageMeta({
+  layout: 'world-map'
+})
+
 const route = useRoute()
 
 const worldId = computed(() => String(route.params.id || ''))
 
-const mode = computed<'play' | 'run' | 'build'>(() => {
-  const path = route.path
-  if (path.startsWith('/run')) return 'run'
-  if (path.startsWith('/build')) return 'build'
-  return 'build'
-})
+const mode = ref<'play' | 'build'>('play')
+const leftCollapsed = ref(false)
+const rightCollapsed = ref(false)
+
+/*
+  Temporary role stub until auth/persistence exists.
+  Later this becomes session/user-role driven.
+*/
+const canSeeDm = ref(true)
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: entities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`)
 
 const mapImageUrl = computed(() => {
-  return world.value?.banner_image_url ||
-    world.value?.sidebar_image_url ||
-    'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1600&q=80'
+  return 'https://cdn2.inkarnate.com/cdn-cgi/image/width=1800,height=1200/https://cdn2.inkarnate.com/1371150-76035032-2ad2-11f1-8e2a-4258fccd0246'
 })
 
 const pins = ref([
@@ -75,14 +80,26 @@ const selectedPinId = ref<string | null>(pins.value[0]?.id || null)
 const selectedPin = computed(() => {
   return pins.value.find((pin) => pin.id === selectedPinId.value) || null
 })
+
+const gridStyle = computed(() => {
+  const left = leftCollapsed.value ? '68px' : '280px'
+  const right = rightCollapsed.value ? '52px' : '380px'
+  return {
+    gridTemplateColumns: `${left} minmax(0,1fr) ${right}`
+  }
+})
 </script>
 
 <template>
-  <div class="fixed inset-x-0 bottom-0 top-10 lg:top-0">
-    <div class="grid h-full grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_380px]">
+  <div class="h-screen w-screen overflow-hidden bg-[#050913]">
+    <div class="grid h-full" :style="gridStyle">
       <WorldTreePanel
         :world="world"
         :entities="entities || []"
+        :collapsed="leftCollapsed"
+        :mode="mode"
+        @toggle-collapse="leftCollapsed = !leftCollapsed"
+        @set-mode="mode = $event"
       />
 
       <section class="relative min-w-0 bg-[#09111a]">
@@ -108,6 +125,9 @@ const selectedPin = computed(() => {
         :world-name="world?.name || 'World'"
         :selected-pin="selectedPin"
         :mode="mode"
+        :collapsed="rightCollapsed"
+        :can-see-dm="canSeeDm"
+        @toggle-collapse="rightCollapsed = !rightCollapsed"
       />
     </div>
   </div>

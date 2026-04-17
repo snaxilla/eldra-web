@@ -1,259 +1,114 @@
 <script setup lang="ts">
 const route = useRoute()
-const worldId = route.params.id
 
-const { data: world } = await useFetch(`/api/worlds/${worldId}`)
-const { data: entities } = await useFetch(`/api/worlds/${worldId}/entities`)
+const worldId = computed(() => String(route.params.id || ''))
 
-function prettyLabel(value?: string) {
-  if (!value) return ''
-  return value
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, char => char.toUpperCase())
-}
-
-function excerpt(text?: string, max = 160) {
-  if (!text) return 'No description yet.'
-  return text.length > max ? `${text.slice(0, max).trim()}...` : text
-}
-
-const bannerUrl = computed(() => {
-  return world.value?.banner_image_url || 'https://picsum.photos/seed/eldra-hero/1600/700'
+const mode = computed<'play' | 'run' | 'build'>(() => {
+  const path = route.path
+  if (path.startsWith('/run')) return 'run'
+  if (path.startsWith('/build')) return 'build'
+  return 'build'
 })
 
-const recentEntries = computed(() => {
-  const list = Array.isArray(entities.value) ? [...entities.value] : []
+const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+const { data: entities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`)
 
-  return list
-    .sort((a: any, b: any) => {
-      const aTime = new Date(a.updated_at || a.created_at || 0).getTime()
-      const bTime = new Date(b.updated_at || b.created_at || 0).getTime()
-      return bTime - aTime
-    })
-    .slice(0, 4)
+const mapImageUrl = computed(() => {
+  return world.value?.banner_image_url ||
+    world.value?.sidebar_image_url ||
+    'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1600&q=80'
 })
 
-const quickLinks = computed(() => {
-  const list = Array.isArray(entities.value) ? entities.value : []
-  const buckets = new Map<string, any[]>()
-
-  for (const entity of list) {
-    const type = entity?.entity_type || 'entity'
-    if (!buckets.has(type)) buckets.set(type, [])
-    buckets.get(type)!.push(entity)
+const pins = ref([
+  {
+    id: 'bend-pluris-river',
+    title: 'Bend in the Pluris River',
+    x: 44,
+    y: 44,
+    color: '#ef4444',
+    icon: 'i-lucide-map-pin',
+    summary:
+      'The Pluris River, long and mighty, has many legends and ballads told across Varin. Many old tales warn about what waits in the deeper waters and the forgotten woods nearby.',
+    image: 'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=900&q=80',
+    articleTo: `/worlds/${worldId.value}/entities/1`,
+    dm: {
+      enemies: [
+        { name: 'Bullywog', image: 'https://i.imgur.com/h7X9bKx.png' },
+        { name: 'Water Hag', image: 'https://i.imgur.com/Fi0Tj6j.png' }
+      ],
+      items: [
+        { name: 'Broken Staff of Yeir', image: 'https://i.imgur.com/t3i1YF9.png' }
+      ],
+      npcs: [
+        { name: 'Dolores', image: 'https://i.imgur.com/h8h2K8B.png' }
+      ]
+    }
+  },
+  {
+    id: 'north-crossing',
+    title: 'North Crossing',
+    x: 39,
+    y: 20,
+    color: '#111827',
+    icon: 'i-lucide-diamond'
+  },
+  {
+    id: 'lake-watch',
+    title: 'Lake Watch',
+    x: 66,
+    y: 18,
+    color: '#111827',
+    icon: 'i-lucide-diamond'
+  },
+  {
+    id: 'southern-road',
+    title: 'Southern Road',
+    x: 48,
+    y: 73,
+    color: '#111827',
+    icon: 'i-lucide-diamond'
   }
+])
 
-  return Array.from(buckets.entries())
-    .map(([type, items]) => {
-      const withImage = items.find((item: any) => item.image_url)
-      const first = withImage || items[0]
+const selectedPinId = ref<string | null>(pins.value[0]?.id || null)
 
-      return {
-        type,
-        count: items.length,
-        label: prettyLabel(type),
-        image_url: first?.image_url || null,
-        href: `/worlds/${worldId}/entities?type=${encodeURIComponent(type)}`
-      }
-    })
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 6)
-})
-
-const featuredEntities = computed(() => {
-  const list = Array.isArray(entities.value) ? entities.value : []
-
-  return list
-    .filter((entity: any) => entity.image_url)
-    .slice(0, 3)
+const selectedPin = computed(() => {
+  return pins.value.find((pin) => pin.id === selectedPinId.value) || null
 })
 </script>
 
 <template>
-  <div class="space-y-8">
-    <section class="overflow-hidden rounded-[30px] border border-[#c8b28a] bg-[#f6efe2] shadow-[0_14px_35px_rgba(80,60,30,0.12)]">
-      <div class="relative h-[290px] md:h-[360px]">
-        <img
-          :src="bannerUrl"
-          alt="World banner"
-          class="h-full w-full object-cover"
-        >
-        <div class="absolute inset-0 bg-gradient-to-r from-[rgba(35,25,15,0.22)] via-[rgba(35,25,15,0.10)] to-transparent" />
-        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[rgba(245,236,223,0.78)] via-[rgba(245,236,223,0.22)] to-transparent p-8 md:p-10">
-          <div class="max-w-4xl">
-            <div class="mb-2 text-xs uppercase tracking-[0.45em] text-[#6c5a40]">
-              World {{ worldId }}
-            </div>
+  <div class="fixed inset-x-0 bottom-0 top-10 lg:top-0">
+    <div class="grid h-full grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_380px]">
+      <WorldTreePanel
+        :world="world"
+        :entities="entities || []"
+      />
 
-            <h1 class="text-5xl font-semibold tracking-[0.08em] text-[#b38a2e] md:text-7xl">
-              {{ world?.name || 'Untitled World' }}
-            </h1>
-
-            <p
-              v-if="world?.subtitle"
-              class="mt-3 max-w-2xl text-lg leading-7 text-[#5b4935]"
-            >
-              {{ world.subtitle }}
-            </p>
-
-            <p class="mt-4 max-w-2xl text-base leading-7 text-[#3f3122]">
-              {{ world?.description || 'No world description yet.' }}
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.55fr_0.95fr]">
-      <div class="rounded-[26px] border border-[#d7c4a0] bg-[#f8f2e8] p-5 shadow-[0_10px_24px_rgba(80,60,30,0.10)]">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-2xl font-semibold text-[#2f2419]">Recent Entries</h2>
+      <section class="relative min-w-0 bg-[#09111a]">
+        <div class="absolute left-4 top-4 z-20">
           <NuxtLink
-            :to="`/worlds/${worldId}/entities`"
-            class="text-xs uppercase tracking-[0.35em] text-[#907a58] transition hover:text-[#6b5333]"
+            to="/"
+            class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.9)] px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
           >
-            Browse All
+            <UIcon name="i-lucide-orbit" class="h-4 w-4 text-sky-300" />
+            <span>{{ world?.name || 'World' }}</span>
           </NuxtLink>
         </div>
 
-        <div v-if="!recentEntries.length" class="rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-6 text-[#4f4030]">
-          No entities yet for this world.
-        </div>
+        <WorldMapStage
+          :map-image-url="mapImageUrl"
+          :pins="pins"
+          :selected-pin-id="selectedPinId"
+          @select-pin="selectedPinId = $event"
+        />
+      </section>
 
-        <div v-else class="space-y-4">
-          <NuxtLink
-            v-for="entry in recentEntries"
-            :key="entry.id"
-            :to="`/worlds/${worldId}/entities/${entry.id}`"
-            class="group grid grid-cols-[140px_1fr] gap-4 rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-3 transition hover:border-[#cfa85a] hover:bg-[#fffdf8]"
-          >
-            <div class="overflow-hidden rounded-xl border border-[#e4d6bc] bg-[#efe5d4]">
-              <img
-                v-if="entry.image_url"
-                :src="entry.image_url"
-                :alt="entry.title"
-                class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-              >
-              <div
-                v-else
-                class="flex h-full min-h-[110px] items-center justify-center bg-[linear-gradient(180deg,#efe3cd_0%,#e6d6bc_100%)]"
-              >
-                <div class="text-center">
-                  <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-                    {{ prettyLabel(entry.entity_type) }}
-                  </div>
-                  <div class="mt-2 text-3xl text-[#b38a2e]">✦</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="min-w-0">
-              <div class="mb-1 text-xs uppercase tracking-[0.35em] text-[#907a58]">
-                {{ prettyLabel(entry.entity_type) }}
-              </div>
-
-              <h3 class="truncate text-2xl font-semibold text-[#2d2318]">
-                {{ entry.title }}
-              </h3>
-
-              <p class="mt-2 line-clamp-3 text-sm leading-7 text-[#4f4030]">
-                {{ excerpt(entry.preview_text || entry.summary) }}
-              </p>
-            </div>
-          </NuxtLink>
-        </div>
-      </div>
-
-      <div class="space-y-6">
-        <div class="rounded-[26px] border border-[#d7c4a0] bg-[#f8f2e8] p-5 shadow-[0_10px_24px_rgba(80,60,30,0.10)]">
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-2xl font-semibold text-[#2f2419]">Quick Links</h2>
-            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-              Type Buckets
-            </div>
-          </div>
-
-          <div v-if="!quickLinks.length" class="text-[#4f4030]">
-            No entity types available yet.
-          </div>
-
-          <div v-else class="grid grid-cols-2 gap-3">
-            <NuxtLink
-              v-for="item in quickLinks"
-              :key="item.type"
-              :to="item.href"
-              class="group overflow-hidden rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] text-left transition hover:border-[#cfa85a] hover:bg-[#fffdf8]"
-            >
-              <div class="aspect-square overflow-hidden border-b border-[#e4d6bc] bg-[#efe5d4]">
-                <img
-                  v-if="item.image_url"
-                  :src="item.image_url"
-                  :alt="item.label"
-                  class="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                >
-                <div
-                  v-else
-                  class="flex h-full items-center justify-center bg-[linear-gradient(180deg,#efe3cd_0%,#e6d6bc_100%)]"
-                >
-                  <div class="text-center">
-                    <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-                      {{ item.label }}
-                    </div>
-                    <div class="mt-2 text-3xl text-[#b38a2e]">✦</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="px-3 py-3">
-                <div class="truncate text-sm font-medium text-[#2f2419]">
-                  {{ item.label }}
-                </div>
-                <div class="mt-1 text-xs uppercase tracking-[0.25em] text-[#907a58]">
-                  {{ item.count }} entries
-                </div>
-              </div>
-            </NuxtLink>
-          </div>
-        </div>
-
-        <div
-          v-if="featuredEntities.length"
-          class="rounded-[26px] border border-[#d7c4a0] bg-[#f8f2e8] p-5 shadow-[0_10px_24px_rgba(80,60,30,0.10)]"
-        >
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-2xl font-semibold text-[#2f2419]">Featured</h2>
-            <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-              With Artwork
-            </div>
-          </div>
-
-          <div class="space-y-3">
-            <NuxtLink
-              v-for="entry in featuredEntities"
-              :key="entry.id"
-              :to="`/worlds/${worldId}/entities/${entry.id}`"
-              class="group flex items-center gap-3 rounded-2xl border border-[#dfcfb1] bg-[#fffaf2] p-3 transition hover:border-[#cfa85a] hover:bg-[#fffdf8]"
-            >
-              <div class="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[#e4d6bc] bg-[#efe5d4]">
-                <img
-                  :src="entry.image_url"
-                  :alt="entry.title"
-                  class="h-full w-full object-cover"
-                >
-              </div>
-
-              <div class="min-w-0">
-                <div class="text-xs uppercase tracking-[0.35em] text-[#907a58]">
-                  {{ prettyLabel(entry.entity_type) }}
-                </div>
-                <div class="truncate text-lg font-semibold text-[#2d2318]">
-                  {{ entry.title }}
-                </div>
-              </div>
-            </NuxtLink>
-          </div>
-        </div>
-      </div>
-    </section>
+      <WorldArticlePanel
+        :world-name="world?.name || 'World'"
+        :selected-pin="selectedPin"
+        :mode="mode"
+      />
+    </div>
   </div>
 </template>

@@ -1,17 +1,14 @@
 <script setup lang="ts">
 definePageMeta({
-  layout: 'world-map'
+  layout: 'world-workspace'
 })
 
 const route = useRoute()
-
 const worldId = computed(() => String(route.params.id || ''))
 
-const mode = ref<'play' | 'build'>('play')
-const leftCollapsed = ref(false)
 const rightCollapsed = ref(false)
-
 const canSeeDm = ref(true)
+const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
@@ -76,26 +73,17 @@ const selectedPin = computed(() => {
   return pins.value.find((pin) => pin.id === selectedPinId.value) || null
 })
 
-const gridStyle = computed(() => {
-  const left = leftCollapsed.value ? '68px' : '280px'
+const contentGridStyle = computed(() => {
   const right = rightCollapsed.value ? '52px' : '380px'
   return {
-    gridTemplateColumns: `${left} minmax(0,1fr) ${right}`
+    gridTemplateColumns: `minmax(0,1fr) ${right}`
   }
 })
 </script>
 
 <template>
-  <div class="h-screen w-screen overflow-hidden bg-[#050913]">
-    <div class="grid h-full" :style="gridStyle">
-      <WorldTreePanel
-        :world="world"
-        :collapsed="leftCollapsed"
-        :mode="mode"
-        @toggle-collapse="leftCollapsed = !leftCollapsed"
-        @set-mode="mode = $event"
-      />
-
+  <div class="h-full w-full overflow-hidden bg-[#050913]">
+    <div class="grid h-full" :style="contentGridStyle">
       <section class="relative min-w-0 bg-[#09111a]">
         <div class="absolute left-4 top-4 z-20">
           <NuxtLink

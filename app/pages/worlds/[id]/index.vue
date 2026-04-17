@@ -11,14 +11,9 @@ const mode = ref<'play' | 'build'>('play')
 const leftCollapsed = ref(false)
 const rightCollapsed = ref(false)
 
-/*
-  Temporary role stub until auth/persistence exists.
-  Later this becomes session/user-role driven.
-*/
 const canSeeDm = ref(true)
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: entities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`)
 
 const mapImageUrl = computed(() => {
   return 'https://cdn2.inkarnate.com/cdn-cgi/image/width=1800,height=1200/https://cdn2.inkarnate.com/1371150-76035032-2ad2-11f1-8e2a-4258fccd0246'
@@ -95,7 +90,6 @@ const gridStyle = computed(() => {
     <div class="grid h-full" :style="gridStyle">
       <WorldTreePanel
         :world="world"
-        :entities="entities || []"
         :collapsed="leftCollapsed"
         :mode="mode"
         @toggle-collapse="leftCollapsed = !leftCollapsed"

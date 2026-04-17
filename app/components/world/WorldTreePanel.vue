@@ -1,9 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+type NavChild = {
+  label: string
+  to?: string
+}
+
+type NavItem = {
+  key: string
+  label: string
+  icon: string
+  to?: string
+  children?: NavChild[]
+}
+
 const props = defineProps<{
   world: any
-  entities: any[]
   collapsed: boolean
   mode: 'play' | 'build'
 }>()
@@ -13,28 +25,127 @@ const emit = defineEmits<{
   (e: 'set-mode', mode: 'play' | 'build'): void
 }>()
 
-const openGroups = ref<Record<string, boolean>>({})
+const search = ref('')
 
-const grouped = computed(() => {
-  const groups: Record<string, any[]> = {}
+const worldId = computed(() => String(props.world?.id || ''))
+const searchLower = computed(() => search.value.trim().toLowerCase())
 
-  for (const entity of props.entities || []) {
-    const key = entity.entity_type || 'other'
-    if (!groups[key]) groups[key] = []
-    groups[key].push(entity)
+const openGroups = ref<Record<string, boolean>>({
+  world_map: true,
+  locations: true,
+  maps: true
+})
+
+const navItems = computed<NavItem[]>(() => [
+  {
+    key: 'world_map',
+    label: 'World Map',
+    icon: 'i-lucide-map',
+    to: `/worlds/${worldId.value}`,
+    children: [
+      { label: 'Named Country Map' },
+      { label: 'Named Area Map' },
+      { label: 'Named Detail Map' }
+    ]
+  },
+  {
+    key: 'overview',
+    label: 'Overview',
+    icon: 'i-lucide-layout-dashboard',
+    to: `/worlds/${worldId.value}`
+  },
+  {
+    key: 'characters',
+    label: 'Characters',
+    icon: 'i-lucide-users',
+    to: `/worlds/${worldId.value}/characters`
+  },
+  {
+    key: 'locations',
+    label: 'Locations',
+    icon: 'i-lucide-map-pinned',
+    to: `/worlds/${worldId.value}/locations`,
+    children: [
+      { label: 'Named Country Article' },
+      { label: 'Named Area Article' },
+      { label: 'Named City/Village Article' }
+    ]
+  },
+  {
+    key: 'spells',
+    label: 'Spells',
+    icon: 'i-lucide-sparkles',
+    to: `/worlds/${worldId.value}/entities?type=spell`
+  },
+  {
+    key: 'races',
+    label: 'Races',
+    icon: 'i-lucide-users-round',
+    to: `/worlds/${worldId.value}/entities?type=species`
+  },
+  {
+    key: 'items',
+    label: 'Items',
+    icon: 'i-lucide-swords',
+    to: `/worlds/${worldId.value}/entities?type=item`
+  },
+  {
+    key: 'enemies',
+    label: 'Enemies',
+    icon: 'i-lucide-skull',
+    to: `/worlds/${worldId.value}/entities?type=monster`
+  },
+  {
+    key: 'classes',
+    label: 'Classes',
+    icon: 'i-lucide-shield',
+    to: `/worlds/${worldId.value}/entities?type=class`
+  },
+  {
+    key: 'maps',
+    label: 'Maps',
+    icon: 'i-lucide-images',
+    to: `/worlds/${worldId.value}/maps`,
+    children: [
+      { label: 'All Maps' },
+      { label: 'World Map' }
+    ]
+  },
+  {
+    key: 'other',
+    label: 'Other',
+    icon: 'i-lucide-library',
+    to: `/worlds/${worldId.value}/entities`
+  },
+  {
+    key: 'importer',
+    label: 'Importer',
+    icon: 'i-lucide-download',
+    to: '/dev/import/bulk'
   }
+])
 
-  return Object.entries(groups)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, items]) => {
-      if (!(key in openGroups.value)) openGroups.value[key] = true
+const filteredNavItems = computed(() => {
+  const q = searchLower.value
+  if (!q) return navItems.value
 
-      return {
-        key,
-        label: key.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()),
-        items: items.sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')))
+  return navItems.value
+    .map((item) => {
+      const itemMatch = item.label.toLowerCase().includes(q)
+      const filteredChildren = (item.children || []).filter((child) =>
+        child.label.toLowerCase().includes(q)
+      )
+
+      if (itemMatch || filteredChildren.length) {
+        return {
+          ...item,
+          children: filteredChildren.length ? filteredChildren : item.children
+        }
       }
+
+      return null
     })
+    .filter(Boolean) as NavItem[]
 })
 
 function toggleGroup(key: string) {
@@ -84,9 +195,21 @@ function toggleGroup(key: string) {
           Build
         </button>
       </div>
+
+      <div class="mt-4">
+        <div class="relative">
+          <UIcon name="i-lucide-search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input
+            v-model="search"
+            type="text"
+            placeholder="Search world..."
+            class="w-full rounded-2xl border border-white/10 bg-white/[0.04] py-3 pl-10 pr-4 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/25"
+          >
+        </div>
+      </div>
     </div>
 
-    <div v-if="collapsed" class="flex flex-1 flex-col items-center gap-3 px-2 py-4">
+    <div v-if="collapsed" class="flex flex-1 flex-col items-center gap-3 overflow-y-auto px-2 py-4">
       <button
         type="button"
         class="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
@@ -102,35 +225,73 @@ function toggleGroup(key: string) {
       >
         <UIcon name="i-lucide-pencil-ruler" class="h-5 w-5" />
       </button>
+
+      <div class="my-2 h-px w-full bg-white/10" />
+
+      <NuxtLink
+        v-for="item in filteredNavItems"
+        :key="item.key"
+        :to="item.to || '#'"
+        class="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
+        :title="item.label"
+      >
+        <UIcon :name="item.icon" class="h-5 w-5" />
+      </NuxtLink>
     </div>
 
     <div v-else class="min-h-0 flex-1 overflow-y-auto p-4">
-      <div class="space-y-4">
+      <div class="space-y-3">
         <div
-          v-for="group in grouped"
-          :key="group.key"
+          v-for="item in filteredNavItems"
+          :key="item.key"
           class="rounded-[22px] border border-white/10 bg-white/[0.03]"
         >
-          <button
-            type="button"
-            class="flex w-full items-center justify-between border-b border-white/10 px-4 py-3 text-left text-xs uppercase tracking-[0.28em] text-slate-500"
-            @click="toggleGroup(group.key)"
-          >
-            <span>{{ group.label }}</span>
-            <UIcon :name="openGroups[group.key] ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="h-4 w-4" />
-          </button>
-
-          <div v-if="openGroups[group.key]" class="p-2">
-            <NuxtLink
-              v-for="item in group.items"
-              :key="item.id"
-              :to="`/worlds/${world?.id}/entities/${item.id}`"
-              class="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
+          <div v-if="item.children?.length">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between px-4 py-3 text-left"
+              @click="toggleGroup(item.key)"
             >
-              <UIcon name="i-lucide-file-text" class="h-4 w-4 text-slate-500" />
-              <span class="truncate">{{ item.title }}</span>
-            </NuxtLink>
+              <div class="flex items-center gap-3">
+                <UIcon :name="item.icon" class="h-4 w-4 text-slate-400" />
+                <span class="text-sm font-medium text-slate-200">{{ item.label }}</span>
+              </div>
+
+              <UIcon
+                :name="openGroups[item.key] ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                class="h-4 w-4 text-slate-500"
+              />
+            </button>
+
+            <div v-if="openGroups[item.key]" class="border-t border-white/10 px-3 pb-3 pt-2">
+              <NuxtLink
+                v-if="item.to"
+                :to="item.to"
+                class="mb-2 flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
+              >
+                <UIcon name="i-lucide-arrow-right" class="h-4 w-4 text-slate-500" />
+                <span>Open {{ item.label }}</span>
+              </NuxtLink>
+
+              <div
+                v-for="child in item.children"
+                :key="child.label"
+                class="flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-400"
+              >
+                <UIcon name="i-lucide-corner-down-right" class="h-4 w-4 text-slate-600" />
+                <span>{{ child.label }}</span>
+              </div>
+            </div>
           </div>
+
+          <NuxtLink
+            v-else
+            :to="item.to || '#'"
+            class="flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.05] hover:text-white"
+          >
+            <UIcon :name="item.icon" class="h-4 w-4 text-slate-400" />
+            <span>{{ item.label }}</span>
+          </NuxtLink>
         </div>
       </div>
     </div>

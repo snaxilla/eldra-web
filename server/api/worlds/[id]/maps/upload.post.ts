@@ -1,4 +1,4 @@
-import { createMap, uploadFile } from '../../../../../utils/directus-maps'
+import { createMap, uploadFile } from '../../../../utils/directus-maps'
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')

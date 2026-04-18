@@ -1,5 +1,3 @@
-import FormData from 'form-data'
-
 type MapType = 'world' | 'country' | 'area' | 'detail'
 
 type DirectusMapRecord = {
@@ -23,7 +21,8 @@ const FIELD_MAP = {
 }
 
 function baseUrl() {
-  return (process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
+  const url = process.env.NUXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL || ''
+  return url.replace(/\/$/, '')
 }
 
 function token() {
@@ -50,7 +49,7 @@ async function dxFetch(path: string, options: RequestInit = {}) {
 function extractFileId(value: any): string | null {
   if (!value) return null
   if (typeof value === 'string') return value
-  if (typeof value === 'object' && value.id) return value.id
+  if (typeof value === 'object' && value.id) return String(value.id)
   return null
 }
 
@@ -84,19 +83,16 @@ export async function listMaps(worldId: string) {
 
 export async function uploadFile(buffer: Buffer, filename: string, mime: string) {
   const form = new FormData()
+  const blob = new Blob([buffer], { type: mime || 'application/octet-stream' })
 
-  form.append('file', buffer, {
-    filename,
-    contentType: mime
-  })
+  form.append('file', blob, filename)
 
   const res = await fetch(`${baseUrl()}/files`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token()}`,
-      ...form.getHeaders()
+      Authorization: `Bearer ${token()}`
     },
-    body: form as any
+    body: form
   })
 
   if (!res.ok) {

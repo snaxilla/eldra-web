@@ -37,7 +37,7 @@ async function dxFetch(path: string, options: RequestInit = {}) {
     ...options,
     headers: {
       Authorization: `Bearer ${token()}`,
-      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options.body && typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {})
     }
   })
@@ -74,6 +74,15 @@ function normalize(item: any): DirectusMapRecord {
   }
 }
 
+function getFormLength(form: FormData): Promise<number> {
+  return new Promise((resolve, reject) => {
+    form.getLength((err, length) => {
+      if (err) reject(err)
+      else resolve(length)
+    })
+  })
+}
+
 export async function listMaps(worldId: string) {
   const params = new URLSearchParams()
   params.set('filter[world][_eq]', worldId)
@@ -92,14 +101,23 @@ export async function uploadFile(buffer: Buffer, filename: string, mime: string)
     contentType: mime || 'application/octet-stream'
   })
 
+  const contentLength = await getFormLength(form)
+
   const res = await axios.post(`${baseUrl()}/files`, form, {
     headers: {
       Authorization: `Bearer ${token()}`,
-      ...form.getHeaders()
+      ...form.getHeaders(),
+      'Content-Length': String(contentLength)
     },
     maxBodyLength: Infinity,
-    maxContentLength: Infinity
+    maxContentLength: Infinity,
+    validateStatus: () => true
   })
+
+  if (res.status < 200 || res.status >= 300) {
+    const payload = typeof res.data === 'string' ? res.data : JSON.stringify(res.data)
+    throw new Error(payload)
+  }
 
   return res.data.data
 }

@@ -1,3 +1,6 @@
+import axios from 'axios'
+import FormData from 'form-data'
+
 type MapType = 'world' | 'country' | 'area' | 'detail'
 
 type DirectusMapRecord = {
@@ -83,24 +86,22 @@ export async function listMaps(worldId: string) {
 
 export async function uploadFile(buffer: Buffer, filename: string, mime: string) {
   const form = new FormData()
-  const blob = new Blob([buffer], { type: mime || 'application/octet-stream' })
 
-  form.append('file', blob, filename)
-
-  const res = await fetch(`${baseUrl()}/files`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token()}`
-    },
-    body: form
+  form.append('file', buffer, {
+    filename,
+    contentType: mime || 'application/octet-stream'
   })
 
-  if (!res.ok) {
-    throw new Error(await res.text())
-  }
+  const res = await axios.post(`${baseUrl()}/files`, form, {
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      ...form.getHeaders()
+    },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity
+  })
 
-  const json = await res.json()
-  return json.data
+  return res.data.data
 }
 
 export async function createMap(worldId: string, title: string, type: MapType, fileId: string) {

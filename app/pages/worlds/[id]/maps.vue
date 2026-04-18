@@ -9,80 +9,93 @@ const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-
-type MapRecord = {
-  id: string
-  title: string
-  type: 'world' | 'country' | 'area' | 'detail'
-  image: string
-  isDefaultWorldMap?: boolean
-}
-
-const maps = ref<MapRecord[]>([
-  {
-    id: 'map-1',
-    title: 'Varin World Map',
-    type: 'world',
-    image: 'https://cdn2.inkarnate.com/cdn-cgi/image/width=1800,height=1200/https://cdn2.inkarnate.com/1371150-76035032-2ad2-11f1-8e2a-4258fccd0246',
-    isDefaultWorldMap: true
-  },
-  {
-    id: 'map-2',
-    title: 'Northern Reach',
-    type: 'country',
-    image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80'
-  },
-  {
-    id: 'map-3',
-    title: 'Pluris River Basin',
-    type: 'area',
-    image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80'
-  }
-])
+const {
+  data: maps,
+  refresh: refreshMaps
+} = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
+  default: () => []
+})
 
 const search = ref('')
 const showUploadForm = ref(false)
 
 const uploadTitle = ref('')
 const uploadType = ref<'world' | 'country' | 'area' | 'detail'>('area')
-const uploadFileName = ref('')
+const uploadFile = ref<File | null>(null)
+const uploadBusy = ref(false)
+const uploadError = ref('')
+const uploadSuccess = ref('')
 
 const filteredMaps = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return maps.value
+  const list = maps.value || []
 
-  return maps.value.filter((map) =>
-    map.title.toLowerCase().includes(q) ||
-    map.type.toLowerCase().includes(q)
+  if (!q) return list
+
+  return list.filter((map: any) =>
+    String(map.title || '').toLowerCase().includes(q) ||
+    String(map.type || '').toLowerCase().includes(q)
   )
 })
 
-function setAsWorldMap(id: string) {
-  for (const map of maps.value) {
-    map.isDefaultWorldMap = map.id === id
+function onFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  uploadFile.value = target.files?.[0] || null
+}
+
+async function uploadMap() {
+  uploadError.value = ''
+  uploadSuccess.value = ''
+
+  if (!uploadTitle.value.trim()) {
+    uploadError.value = 'Map title is required.'
+    return
+  }
+
+  if (!uploadFile.value) {
+    uploadError.value = 'Please choose a map image.'
+    return
+  }
+
+  uploadBusy.value = true
+
+  try {
+    const form = new FormData()
+    form.append('title', uploadTitle.value.trim())
+    form.append('type', uploadType.value)
+    form.append('file', uploadFile.value)
+
+    await $fetch(`/api/worlds/${worldId.value}/maps/upload`, {
+      method: 'POST',
+      body: form
+    })
+
+    uploadTitle.value = ''
+    uploadType.value = 'area'
+    uploadFile.value = null
+    showUploadForm.value = false
+    uploadSuccess.value = 'Map uploaded successfully.'
+    await refreshMaps()
+  } catch (error: any) {
+    uploadError.value = error?.data?.statusMessage || error?.message || 'Upload failed.'
+  } finally {
+    uploadBusy.value = false
   }
 }
 
-function fakePickFile(event: Event) {
-  const target = event.target as HTMLInputElement
-  uploadFileName.value = target.files?.[0]?.name || ''
-}
+async function setAsWorldMap(mapId: string) {
+  uploadError.value = ''
+  uploadSuccess.value = ''
 
-function fakeAddMap() {
-  if (!uploadTitle.value.trim()) return
-
-  maps.value.unshift({
-    id: `map-${Date.now()}`,
-    title: uploadTitle.value.trim(),
-    type: uploadType.value,
-    image: 'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1200&q=80',
-    isDefaultWorldMap: false
-  })
-
-  uploadTitle.value = ''
-  uploadType.value = 'area'
-  uploadFileName.value = ''
-  showUploadForm.value = false
+  try {
+    await $fetch(`/api/worlds/${worldId.value}/maps/${mapId}/set-default`, {
+      method: 'POST'
+    })
+    uploadSuccess.value = 'Default world map updated.'
+    await refreshMaps()
+  } catch (error: any) {
+    uploadError.value = error?.data?.statusMessage || error?.message || 'Could not set default world map.'
+  }
 }
 </script>
 
@@ -111,6 +124,15 @@ function fakeAddMap() {
           >
             {{ showUploadForm ? 'Close Upload' : 'Upload Map' }}
           </button>
+        </div>
+      </div>
+
+      <div class="mt-4 space-y-2">
+        <div v-if="uploadSuccess" class="text-sm text-emerald-300">
+          {{ uploadSuccess }}
+        </div>
+        <div v-if="uploadError" class="text-sm text-red-300">
+          {{ uploadError }}
         </div>
       </div>
 
@@ -172,19 +194,20 @@ function fakeAddMap() {
                   type="file"
                   accept="image/*"
                   class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
-                  @change="fakePickFile"
+                  @change="onFileChange"
                 >
-                <div v-if="uploadFileName" class="mt-2 text-xs text-slate-500">
-                  Selected: {{ uploadFileName }}
+                <div v-if="uploadFile" class="mt-2 text-xs text-slate-500">
+                  Selected: {{ uploadFile.name }}
                 </div>
               </div>
 
               <button
                 type="button"
-                class="w-full rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm font-medium text-sky-100 transition hover:bg-sky-400/15"
-                @click="fakeAddMap"
+                class="w-full rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm font-medium text-sky-100 transition hover:bg-sky-400/15 disabled:opacity-50"
+                :disabled="uploadBusy"
+                @click="uploadMap"
               >
-                Add Map
+                {{ uploadBusy ? 'Uploading...' : 'Add Map' }}
               </button>
             </div>
           </section>
@@ -203,14 +226,14 @@ function fakeAddMap() {
         </section>
 
         <section>
-          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div v-if="filteredMaps.length" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <article
               v-for="map in filteredMaps"
               :key="map.id"
               class="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]"
             >
               <div class="relative h-56 overflow-hidden bg-[#0b1220]">
-                <img :src="map.image" :alt="map.title" class="h-full w-full object-cover">
+                <img :src="map.imageUrl" :alt="map.title" class="h-full w-full object-cover">
 
                 <div v-if="map.isDefaultWorldMap" class="absolute left-3 top-3">
                   <div class="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-sky-100 backdrop-blur">
@@ -259,6 +282,18 @@ function fakeAddMap() {
                 </div>
               </div>
             </article>
+          </div>
+
+          <div
+            v-else
+            class="rounded-[28px] border border-dashed border-white/10 bg-white/[0.03] p-10 text-center"
+          >
+            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
+              No Maps
+            </div>
+            <div class="mt-3 text-lg text-slate-300">
+              Upload your first map in Build mode.
+            </div>
           </div>
         </section>
       </div>

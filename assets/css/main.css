@@ -1033,3 +1033,14 @@ cat >> assets/css/main.css <<'EOF'
     0 0 120px rgba(168,85,247,0.08),
     0 0 100px rgba(56,189,248,0.08);
 }
+
+/* subtle cosmic glow overlay */
+.eldra-cosmic-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 25% 25%, rgba(168,85,247,0.15), transparent 40%),
+    radial-gradient(circle at 75% 20%, rgba(34,211,238,0.15), transparent 40%),
+    radial-gradient(circle at 50% 80%, rgba(59,130,246,0.12), transparent 40%);
+}

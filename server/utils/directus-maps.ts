@@ -1,3 +1,5 @@
+import FormData from 'form-data'
+
 type MapType = 'world' | 'country' | 'area' | 'detail'
 
 type DirectusMapRecord = {
@@ -16,7 +18,7 @@ const FIELD_MAP = {
   title: 'title',
   type: 'type',
   world: 'world',
-  file: 'image_file', // 👈 IMPORTANT FIX
+  file: 'image_file',
   isDefaultWorldMap: 'is_default_world_map'
 }
 
@@ -82,15 +84,27 @@ export async function listMaps(worldId: string) {
 
 export async function uploadFile(buffer: Buffer, filename: string, mime: string) {
   const form = new FormData()
-  const blob = new Blob([buffer], { type: mime })
-  form.append('file', blob, filename)
 
-  const res = await dxFetch('/files', {
-    method: 'POST',
-    body: form
+  form.append('file', buffer, {
+    filename,
+    contentType: mime
   })
 
-  return res.data
+  const res = await fetch(`${baseUrl()}/files`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      ...form.getHeaders()
+    },
+    body: form as any
+  })
+
+  if (!res.ok) {
+    throw new Error(await res.text())
+  }
+
+  const json = await res.json()
+  return json.data
 }
 
 export async function createMap(worldId: string, title: string, type: MapType, fileId: string) {

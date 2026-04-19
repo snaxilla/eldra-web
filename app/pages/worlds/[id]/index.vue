@@ -5,15 +5,30 @@ definePageMeta({
 
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
+const selectedMapSlug = computed(() => String(route.query.map || ''))
 
 const rightCollapsed = ref(false)
 const canSeeDm = ref(true)
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+const { data: maps } = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
+  default: () => []
+})
+
+const activeMap = computed(() => {
+  const list = maps.value || []
+
+  if (selectedMapSlug.value) {
+    const bySlug = list.find((m: any) => String(m.slug || '') === selectedMapSlug.value)
+    if (bySlug) return bySlug
+  }
+
+  return list.find((m: any) => m.isDefaultWorldMap) || list[0] || null
+})
 
 const mapImageUrl = computed(() => {
-  return 'https://cdn2.inkarnate.com/cdn-cgi/image/width=1800,height=1200/https://cdn2.inkarnate.com/1371150-76035032-2ad2-11f1-8e2a-4258fccd0246'
+  return activeMap.value?.imageUrl || ''
 })
 
 const pins = ref([
@@ -40,30 +55,6 @@ const pins = ref([
         { name: 'Dolores', image: 'https://i.imgur.com/h8h2K8B.png' }
       ]
     }
-  },
-  {
-    id: 'north-crossing',
-    title: 'North Crossing',
-    x: 39,
-    y: 20,
-    color: '#111827',
-    icon: 'i-lucide-diamond'
-  },
-  {
-    id: 'lake-watch',
-    title: 'Lake Watch',
-    x: 66,
-    y: 18,
-    color: '#111827',
-    icon: 'i-lucide-diamond'
-  },
-  {
-    id: 'southern-road',
-    title: 'Southern Road',
-    x: 48,
-    y: 73,
-    color: '#111827',
-    icon: 'i-lucide-diamond'
   }
 ])
 
@@ -95,12 +86,21 @@ const contentGridStyle = computed(() => {
           </NuxtLink>
         </div>
 
-        <WorldMapStage
-          :map-image-url="mapImageUrl"
-          :pins="pins"
-          :selected-pin-id="selectedPinId"
-          @select-pin="selectedPinId = $event"
-        />
+        <div v-if="mapImageUrl">
+          <WorldMapStage
+            :map-image-url="mapImageUrl"
+            :pins="pins"
+            :selected-pin-id="selectedPinId"
+            @select-pin="selectedPinId = $event"
+          />
+        </div>
+
+        <div v-else class="flex h-full items-center justify-center">
+          <div class="text-center">
+            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">No Map Selected</div>
+            <div class="mt-3 text-lg text-slate-300">Upload a map and set one as the default world map.</div>
+          </div>
+        </div>
       </section>
 
       <WorldArticlePanel

@@ -25,7 +25,12 @@ const FIELD_MAP = {
   isDefaultWorldMap: 'is_default_world_map'
 }
 
-function baseUrl() {
+function serverBaseUrl() {
+  const url = process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || ''
+  return url.replace(/\/$/, '')
+}
+
+function publicBaseUrl() {
   const url = process.env.NUXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL || ''
   return url.replace(/\/$/, '')
 }
@@ -44,7 +49,7 @@ function slugify(input: string) {
 }
 
 async function dxFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${baseUrl()}${path}`, {
+  const res = await fetch(`${serverBaseUrl()}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token()}`,
@@ -69,7 +74,7 @@ function extractFileId(value: any): string | null {
 
 function fileUrl(fileId: string | null) {
   if (!fileId) return ''
-  return `${baseUrl()}/assets/${fileId}`
+  return `${publicBaseUrl()}/assets/${fileId}`
 }
 
 function normalize(item: any): DirectusMapRecord {
@@ -115,7 +120,7 @@ export async function uploadFile(buffer: Buffer, filename: string, mime: string)
 
   const contentLength = await getFormLength(form)
 
-  const res = await axios.post(`${baseUrl()}/files`, form, {
+  const res = await axios.post(`${serverBaseUrl()}/files`, form, {
     headers: {
       Authorization: `Bearer ${token()}`,
       ...form.getHeaders(),
@@ -136,7 +141,6 @@ export async function uploadFile(buffer: Buffer, filename: string, mime: string)
 
 export async function createMap(worldId: string, title: string, type: MapType, fileId: string) {
   const existing = await listMaps(worldId)
-
   const slug = slugify(title)
 
   const res = await dxFetch(`/items/${MAPS_COLLECTION}`, {

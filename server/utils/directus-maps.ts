@@ -15,16 +15,6 @@ type DirectusMapRecord = {
 
 const MAPS_COLLECTION = 'maps'
 
-const FIELD_MAP = {
-  id: 'id',
-  title: 'title',
-  slug: 'slug',
-  type: 'type',
-  world: 'world',
-  file: 'image_file',
-  isDefaultWorldMap: 'is_default_world_map'
-}
-
 function serverBaseUrl() {
   const url = process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || ''
   return url.replace(/\/$/, '')
@@ -73,15 +63,15 @@ function fileUrl(fileId: string | null) {
 }
 
 function normalize(item: any): DirectusMapRecord {
-  const fileId = extractFileId(item?.[FIELD_MAP.file])
+  const fileId = extractFileId(item?.image_file)
 
   return {
-    id: item?.[FIELD_MAP.id],
-    title: item?.[FIELD_MAP.title],
-    slug: item?.[FIELD_MAP.slug] || '',
-    type: item?.[FIELD_MAP.type],
+    id: item?.id ?? '',
+    title: item?.title ?? '',
+    slug: item?.slug ?? '',
+    type: item?.type ?? 'area',
     imageUrl: fileUrl(fileId),
-    isDefaultWorldMap: Boolean(item?.[FIELD_MAP.isDefaultWorldMap]),
+    isDefaultWorldMap: Boolean(item?.is_default_world_map),
     directusFileId: fileId
   }
 }
@@ -98,8 +88,13 @@ function getFormLength(form: FormData): Promise<number> {
 export async function listMaps(worldId: string) {
   const params = new URLSearchParams()
   params.set('filter[world][_eq]', worldId)
-  params.set('fields[]', '*')
-  params.set('fields[]', 'image_file.*')
+  params.set('fields[]', 'id')
+  params.set('fields[]', 'title')
+  params.set('fields[]', 'slug')
+  params.set('fields[]', 'type')
+  params.set('fields[]', 'is_default_world_map')
+  params.set('fields[]', 'image_file')
+  params.set('fields[]', 'image_file.id')
 
   const res = await dxFetch(`/items/${MAPS_COLLECTION}?${params.toString()}`)
   return (res.data || []).map(normalize)

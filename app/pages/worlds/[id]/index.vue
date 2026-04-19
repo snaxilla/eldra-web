@@ -85,7 +85,7 @@ const contentGridStyle = computed(() => {
         </div>
 
         <div v-if="mapImageUrl">
-          <WorldMapStage
+          <WorldMapLeaflet
             :map-image-url="mapImageUrl"
             :pins="pins"
             :selected-pin-id="selectedPinId"

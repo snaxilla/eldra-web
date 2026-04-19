@@ -38,6 +38,7 @@ async function dxFetch(path: string, options: RequestInit = {}) {
     ...options,
     headers: {
       Authorization: `Bearer ${token()}`,
+      Accept: 'application/json',
       ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {})
     }

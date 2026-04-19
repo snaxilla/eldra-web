@@ -30,11 +30,6 @@ function serverBaseUrl() {
   return url.replace(/\/$/, '')
 }
 
-function publicBaseUrl() {
-  const url = process.env.NUXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL || ''
-  return url.replace(/\/$/, '')
-}
-
 function token() {
   return process.env.DIRECTUS_TOKEN || ''
 }
@@ -74,7 +69,7 @@ function extractFileId(value: any): string | null {
 
 function fileUrl(fileId: string | null) {
   if (!fileId) return ''
-  return `${publicBaseUrl()}/assets/${fileId}`
+  return `/api/assets/${fileId}`
 }
 
 function normalize(item: any): DirectusMapRecord {
@@ -159,13 +154,14 @@ export async function createMap(worldId: string, title: string, type: MapType, f
 }
 
 export async function setDefault(worldId: string, mapId: string) {
-  const maps = await listMaps(worldId)
+  const rawList = await dxFetch(`/items/${MAPS_COLLECTION}?filter[world][_eq]=${encodeURIComponent(worldId)}&fields[]=id`)
+  const rows = rawList.data || []
 
-  for (const m of maps) {
-    await dxFetch(`/items/${MAPS_COLLECTION}/${m.id}`, {
+  for (const row of rows) {
+    await dxFetch(`/items/${MAPS_COLLECTION}/${row.id}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        is_default_world_map: String(m.id) === String(mapId)
+        is_default_world_map: String(row.id) === String(mapId)
       })
     })
   }

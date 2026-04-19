@@ -27,9 +27,7 @@ const activeMap = computed(() => {
   return list.find((m: any) => m.isDefaultWorldMap) || list[0] || null
 })
 
-const mapImageUrl = computed(() => {
-  return activeMap.value?.imageUrl || ''
-})
+const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
 
 const pins = ref([
   {

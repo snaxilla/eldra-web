@@ -6,6 +6,7 @@ type MapType = 'world' | 'country' | 'area' | 'detail'
 type DirectusMapRecord = {
   id: string | number
   title: string
+  slug: string
   type: MapType
   imageUrl: string
   isDefaultWorldMap: boolean
@@ -17,6 +18,7 @@ const MAPS_COLLECTION = 'maps'
 const FIELD_MAP = {
   id: 'id',
   title: 'title',
+  slug: 'slug',
   type: 'type',
   world: 'world',
   file: 'image_file',
@@ -32,12 +34,21 @@ function token() {
   return process.env.DIRECTUS_TOKEN || ''
 }
 
+function slugify(input: string) {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `map-${Date.now()}`
+}
+
 async function dxFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(`${baseUrl()}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token()}`,
-      ...(options.body && typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+      ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {})
     }
   })
@@ -67,6 +78,7 @@ function normalize(item: any): DirectusMapRecord {
   return {
     id: item?.[FIELD_MAP.id],
     title: item?.[FIELD_MAP.title],
+    slug: item?.[FIELD_MAP.slug] || '',
     type: item?.[FIELD_MAP.type],
     imageUrl: fileUrl(fileId),
     isDefaultWorldMap: Boolean(item?.[FIELD_MAP.isDefaultWorldMap]),
@@ -125,10 +137,13 @@ export async function uploadFile(buffer: Buffer, filename: string, mime: string)
 export async function createMap(worldId: string, title: string, type: MapType, fileId: string) {
   const existing = await listMaps(worldId)
 
+  const slug = slugify(title)
+
   const res = await dxFetch(`/items/${MAPS_COLLECTION}`, {
     method: 'POST',
     body: JSON.stringify({
       title,
+      slug,
       type,
       world: Number(worldId),
       image_file: fileId,

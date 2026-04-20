@@ -22,12 +22,29 @@ export default defineEventHandler(async (event) => {
     }
   })
 
-  const text = await res.text()
+  const json = await res.json()
 
-  return {
-    ok: res.ok,
-    status: res.status,
-    url,
-    raw: text
+  if (!res.ok) {
+    throw createError({
+      statusCode: res.status,
+      statusMessage: json?.errors?.[0]?.message || 'Failed to load maps'
+    })
   }
+
+  return (json?.data || []).map((item: any) => {
+    const fileId =
+      typeof item?.image_file === 'string'
+        ? item.image_file
+        : item?.image_file?.id || null
+
+    return {
+      id: item?.id ?? '',
+      title: item?.title ?? '',
+      slug: item?.slug ?? '',
+      type: item?.type ?? 'area',
+      imageUrl: fileId ? `/api/assets/${fileId}` : '',
+      isDefaultWorldMap: Boolean(item?.is_default_world_map),
+      directusFileId: fileId
+    }
+  })
 })

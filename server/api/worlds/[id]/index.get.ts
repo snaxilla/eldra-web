@@ -8,17 +8,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const baseUrl = 'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
-  const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
+  const baseUrl = (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
+  const token = process.env.DIRECTUS_TOKEN || ''
 
-  const res = await fetch(
-    `${baseUrl}/items/worlds?fields=*&limit=100`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+  const res = await fetch(`${baseUrl}/items/worlds?fields=*&limit=100`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json'
     }
-  )
+  })
 
   const json = await res.json()
 

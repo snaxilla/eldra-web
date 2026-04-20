@@ -78,7 +78,7 @@ function normalize(item: any): MapRecord {
     title: String(item?.title || ''),
     slug: String(item?.slug || ''),
     type: (item?.type || 'area') as MapType,
-    imageUrl: fileId ? `/api/assets/${fileId}` : '',
+    imageUrl: fileId ? `/api/asset-proxy/${fileId}` : '',
     isDefaultWorldMap: Boolean(item?.is_default_world_map),
     directusFileId: fileId ? String(fileId) : null
   }

@@ -1,54 +1,60 @@
 export default defineEventHandler(async (event) => {
-  const id = getRouterParam(event, 'id') || ''
-  const directusUrl = (process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/+$/, '')
-  const token = process.env.DIRECTUS_TOKEN || ''
+  const id = String(getRouterParam(event, 'id') || '')
 
   if (!id) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Asset id is required'
+      statusMessage: 'Missing asset id'
     })
   }
 
-  if (!directusUrl) {
+  const baseUrl = (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
+  const token = process.env.DIRECTUS_TOKEN || ''
+
+  if (!baseUrl || !token) {
     throw createError({
       statusCode: 500,
-      statusMessage: 'NUXT_PUBLIC_DIRECTUS_URL is not set'
+      statusMessage: 'Missing Directus configuration'
     })
   }
 
-  if (!token) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'DIRECTUS_TOKEN is not set'
-    })
-  }
-
-  const upstream = await fetch(`${directusUrl}/assets/${id}`, {
+  const res = await fetch(`${baseUrl}/assets/${encodeURIComponent(id)}`, {
     headers: {
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
+      Accept: '*/*'
     }
   })
 
-  if (!upstream.ok) {
-    const errorText = await upstream.text().catch(() => '')
+  if (!res.ok) {
+    const text = await res.text()
     throw createError({
-      statusCode: upstream.status,
-      statusMessage: `Directus asset fetch failed: ${errorText || upstream.status}`
+      statusCode: res.status,
+      statusMessage: text || `Failed to load asset ${id}`
     })
   }
 
-  const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
-  const contentLength = upstream.headers.get('content-length')
-  const cacheControl = upstream.headers.get('cache-control') || 'public, max-age=3600'
+  const contentType = res.headers.get('content-type')
+  const contentLength = res.headers.get('content-length')
+  const cacheControl = res.headers.get('cache-control')
+  const etag = res.headers.get('etag')
 
-  setHeader(event, 'Content-Type', contentType)
-  setHeader(event, 'Cache-Control', cacheControl)
-
-  if (contentLength) {
-    setHeader(event, 'Content-Length', contentLength)
+  if (contentType) {
+    setHeader(event, 'content-type', contentType)
   }
 
-  const arrayBuffer = await upstream.arrayBuffer()
-  return Buffer.from(arrayBuffer)
+  if (contentLength) {
+    setHeader(event, 'content-length', contentLength)
+  }
+
+  if (cacheControl) {
+    setHeader(event, 'cache-control', cacheControl)
+  } else {
+    setHeader(event, 'cache-control', 'public, max-age=3600')
+  }
+
+  if (etag) {
+    setHeader(event, 'etag', etag)
+  }
+
+  return res.body
 })

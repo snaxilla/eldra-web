@@ -12,7 +12,7 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const {
   data: maps,
   refresh: refreshMaps
-} = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
+} = await useFetch(() => `/api/map-data/world/${worldId.value}`, {
   default: () => []
 })
 
@@ -34,7 +34,8 @@ const filteredMaps = computed(() => {
 
   return list.filter((map: any) =>
     String(map.title || '').toLowerCase().includes(q) ||
-    String(map.type || '').toLowerCase().includes(q)
+    String(map.type || '').toLowerCase().includes(q) ||
+    String(map.slug || '').toLowerCase().includes(q)
   )
 })
 
@@ -65,7 +66,7 @@ async function uploadMap() {
     form.append('type', uploadType.value)
     form.append('file', uploadFile.value)
 
-    await $fetch(`/api/worlds/${worldId.value}/maps/upload`, {
+    await $fetch(`/api/map-data/upload/${worldId.value}`, {
       method: 'POST',
       body: form
     })
@@ -88,7 +89,7 @@ async function setAsWorldMap(mapId: string) {
   uploadSuccess.value = ''
 
   try {
-    await $fetch(`/api/worlds/${worldId.value}/maps/${mapId}/set-default`, {
+    await $fetch(`/api/map-data/set-default/${mapId}`, {
       method: 'POST'
     })
     uploadSuccess.value = 'Default world map updated.'
@@ -111,8 +112,7 @@ async function setAsWorldMap(mapId: string) {
             Maps
           </h1>
           <p class="mt-3 max-w-2xl text-base leading-7 text-slate-400">
-            Upload and organize your world, country, area, and detail maps. One map can be designated
-            as the default world map.
+            Upload and organize your world, country, area, and detail maps.
           </p>
         </div>
 
@@ -211,18 +211,6 @@ async function setAsWorldMap(mapId: string) {
               </button>
             </div>
           </section>
-
-          <section class="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-              Notes
-            </div>
-
-            <ul class="mt-4 space-y-3 text-sm leading-7 text-slate-400">
-              <li>Only one map can be marked as the default world map.</li>
-              <li>Nested maps will be linkable later.</li>
-              <li>Pin placement and article linking will be editable in Build mode.</li>
-            </ul>
-          </section>
         </section>
 
         <section>
@@ -233,7 +221,7 @@ async function setAsWorldMap(mapId: string) {
               class="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]"
             >
               <div class="relative h-56 overflow-hidden bg-[#0b1220]">
-                <img :src="map.imageUrl" :alt="map.title" class="h-full w-full object-cover">
+                <img v-if="map.imageUrl" :src="map.imageUrl" :alt="map.title" class="h-full w-full object-cover">
 
                 <div v-if="map.isDefaultWorldMap" class="absolute left-3 top-3">
                   <div class="rounded-full border border-sky-300/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-sky-100 backdrop-blur">
@@ -249,7 +237,10 @@ async function setAsWorldMap(mapId: string) {
                       {{ map.type }}
                     </div>
                     <div class="mt-2 text-2xl font-semibold text-white">
-                      {{ map.title }}
+                      {{ map.title || 'Untitled Map' }}
+                    </div>
+                    <div class="mt-2 text-sm text-slate-500">
+                      {{ map.slug || 'no-slug' }}
                     </div>
                   </div>
 

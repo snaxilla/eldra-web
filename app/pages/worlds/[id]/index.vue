@@ -12,7 +12,7 @@ const canSeeDm = ref(true)
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: maps } = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
+const { data: maps } = await useFetch(() => `/api/map-data/world/${worldId.value}`, {
   default: () => []
 })
 

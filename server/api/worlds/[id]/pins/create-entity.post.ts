@@ -58,6 +58,11 @@ function normalizeEntityType(pinType: string | null | undefined) {
   return 'location'
 }
 
+function buildSystemKey(worldId: number, title: string) {
+  const slug = slugify(title) || `entity-${Date.now()}`
+  return `world-${worldId}-${slug}`
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = Number(getRouterParam(event, 'id'))
   const body = await readBody(event)
@@ -76,6 +81,7 @@ export default defineEventHandler(async (event) => {
 
   const entityType = normalizeEntityType(pinType)
   const slugBase = slugify(title) || `entity-${Date.now()}`
+  const systemKey = buildSystemKey(worldId, title)
 
   const createdEntity = await dxFetch('/items/entities', {
     method: 'POST',
@@ -83,6 +89,7 @@ export default defineEventHandler(async (event) => {
       world_id: worldId,
       title,
       slug: slugBase,
+      system_key: systemKey,
       entity_type: entityType,
       status: 'draft',
       summary: summary || null
@@ -116,6 +123,7 @@ export default defineEventHandler(async (event) => {
     id: Number(entity.id),
     title: String(entity.title || title),
     slug: entity.slug ? String(entity.slug) : slugBase,
+    system_key: entity.system_key ? String(entity.system_key) : systemKey,
     entity_type: entity.entity_type ? String(entity.entity_type) : entityType
   }
 })

@@ -4,6 +4,7 @@ definePageMeta({
 })
 
 const route = useRoute()
+const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
 
@@ -66,6 +67,11 @@ const selectedPin = computed(() => pins.value.find((p) => p.id === selectedPinId
 const selectedPinReadMoreUrl = computed(() => {
   if (!selectedPin.value?.entity?.id) return null
   return `/worlds/${worldId.value}/entities/${selectedPin.value.entity.id}`
+})
+
+const selectedPinMapUrl = computed(() => {
+  if (!selectedPin.value?.linkedMap?.slug) return null
+  return `/worlds/${worldId.value}?map=${selectedPin.value.linkedMap.slug}`
 })
 
 const showPinEditor = ref(false)
@@ -134,6 +140,7 @@ function openNewPinEditor(coords: { x: number; y: number }) {
     pinType: 'location',
     icon: 'marker',
     entityId: null,
+    linkedMapId: null,
     summary: '',
     image: null,
     imageUrl: null,
@@ -163,6 +170,7 @@ function editPin(pin: any) {
     pinType: pin.pinType || 'location',
     icon: pin.icon || 'marker',
     entityId: pin.entityId ?? null,
+    linkedMapId: pin.linkedMapId ?? null,
     summary: pin.summary || '',
     image: pin.imageFileId || null,
     imageUrl: pin.imageUrl || null,
@@ -194,6 +202,7 @@ async function savePin() {
     pinType: editingPin.value.pinType || null,
     icon: editingPin.value.icon || 'marker',
     entityId: normalizeEntityId(editingPin.value.entityId),
+    linkedMapId: editingPin.value.linkedMapId || null,
     summary: editingPin.value.summary?.trim() ? editingPin.value.summary.trim() : null,
     image: editingPin.value.image || null,
     inheritFromEntity: editingPin.value.inheritFromEntity === true,
@@ -335,9 +344,25 @@ const entityOptions = computed(() => {
     .sort((a, b) => a.label.localeCompare(b.label))
 })
 
+const mapOptions = computed(() => {
+  return (maps.value || [])
+    .filter((m: any) => String(m.id) !== String(activeMap.value?.id || ''))
+    .map((m: any) => ({
+      id: String(m.id),
+      title: String(m.title || 'Untitled Map'),
+      slug: m.slug ? String(m.slug) : null,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title))
+})
+
 function iconLabel(icon: string | null | undefined) {
   const match = ICON_OPTIONS.find((opt) => opt.value === icon)
   return match?.label || 'Marker'
+}
+
+function openLinkedMap() {
+  if (!selectedPin.value?.linkedMap?.slug) return
+  router.push(`/worlds/${worldId.value}?map=${selectedPin.value.linkedMap.slug}`)
 }
 </script>
 
@@ -457,22 +482,48 @@ function iconLabel(icon: string | null | undefined) {
               </div>
 
               <div
-                v-else
+                v-if="selectedPin.hasLinkedMap"
+                class="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs text-violet-200"
+              >
+                Linked Map
+              </div>
+
+              <div
+                v-if="!selectedPin.hasLinkedEntity && !selectedPin.hasLinkedMap"
                 class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-200"
               >
                 Pin Note
               </div>
             </div>
+
+            <div
+              v-if="selectedPin.linkedMap"
+              class="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+            >
+              <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Destination Map</div>
+              <div class="mt-2 text-sm font-medium text-white">{{ selectedPin.linkedMap.title }}</div>
+            </div>
           </div>
 
           <div class="border-t border-white/10 p-5">
-            <NuxtLink
-              v-if="selectedPinReadMoreUrl"
-              :to="selectedPinReadMoreUrl"
-              class="block rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
-            >
-              Read More
-            </NuxtLink>
+            <div class="flex gap-3">
+              <NuxtLink
+                v-if="selectedPinReadMoreUrl"
+                :to="selectedPinReadMoreUrl"
+                class="flex-1 rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+              >
+                Read More
+              </NuxtLink>
+
+              <button
+                v-if="selectedPinMapUrl"
+                type="button"
+                class="flex-1 rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-center text-sm font-medium text-violet-100 transition hover:bg-violet-400/20"
+                @click="openLinkedMap"
+              >
+                Open Map
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -660,6 +711,28 @@ function iconLabel(icon: string | null | undefined) {
 
                 <p class="mt-2 text-xs text-slate-500">
                   Only map-relevant entity types are shown here.
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Link Destination Map</label>
+                <select
+                  v-model="editingPin.linkedMapId"
+                  class="w-full rounded-xl border border-white/10 bg-[rgba(15,23,42,0.92)] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-violet-400/40 focus:bg-[rgba(15,23,42,1)]"
+                >
+                  <option :value="null" class="bg-slate-900 text-slate-100">No linked map</option>
+                  <option
+                    v-for="mapOption in mapOptions"
+                    :key="mapOption.id"
+                    :value="mapOption.id"
+                    class="bg-slate-900 text-slate-100"
+                  >
+                    {{ mapOption.title }}
+                  </option>
+                </select>
+
+                <p class="mt-2 text-xs text-slate-500">
+                  Choose a destination map for drill-down navigation.
                 </p>
               </div>
 

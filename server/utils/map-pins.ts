@@ -2,6 +2,7 @@ type ResolvedPinRecord = {
   id: string
   mapId: string
   entityId: number | null
+  linkedMapId: string | null
   title: string
   x: number
   y: number
@@ -20,10 +21,17 @@ type ResolvedPinRecord = {
     summary: string | null
     image_url: string | null
   }
+  linkedMap: null | {
+    id: string
+    title: string
+    slug: string | null
+    imageUrl: string | null
+  }
   resolvedTitle: string
   resolvedSummary: string | null
   resolvedImageUrl: string | null
   hasLinkedEntity: boolean
+  hasLinkedMap: boolean
 }
 
 function baseUrl() {
@@ -123,6 +131,28 @@ async function loadEntityPreview(entityId: number | null) {
   }
 }
 
+async function loadLinkedMapPreview(linkedMapId: string | null) {
+  if (!linkedMapId) return null
+
+  const mapJson = await dxFetch(`/items/maps/${linkedMapId}?fields=*`)
+  const map = mapJson?.data
+  if (!map) return null
+
+  let imageUrl: string | null = null
+  if (map.image) {
+    imageUrl = `/api/assets/${String(map.image)}`
+  } else if (map.image_file) {
+    imageUrl = `/api/assets/${String(map.image_file)}`
+  }
+
+  return {
+    id: String(map.id),
+    title: String(map.title || 'Untitled Map'),
+    slug: map.slug ? String(map.slug) : null,
+    imageUrl,
+  }
+}
+
 function normalizeBoolean(value: any) {
   if (value === true) return true
   if (value === false) return false
@@ -134,7 +164,12 @@ function normalizeBoolean(value: any) {
 
 async function resolvePin(item: any): Promise<ResolvedPinRecord> {
   const entityId = item?.entity_id ? Number(item.entity_id) : null
-  const entity = await loadEntityPreview(entityId)
+  const linkedMapId = item?.linked_map_id ? String(item.linked_map_id) : null
+
+  const [entity, linkedMap] = await Promise.all([
+    loadEntityPreview(entityId),
+    loadLinkedMapPreview(linkedMapId),
+  ])
 
   const pinTitle = item?.title ? String(item.title) : ''
   const pinSummary = item?.summary ? String(item.summary) : null
@@ -143,7 +178,7 @@ async function resolvePin(item: any): Promise<ResolvedPinRecord> {
   const pinIcon = item?.icon ? String(item.icon) : null
   const inheritFromEntity = normalizeBoolean(item?.inherit_from_entity)
 
-  const resolvedTitle = pinTitle || entity?.title || 'Untitled Pin'
+  const resolvedTitle = pinTitle || entity?.title || linkedMap?.title || 'Untitled Pin'
   const resolvedSummary = pinSummary || (inheritFromEntity ? entity?.summary || null : null)
   const resolvedImageUrl = pinImageUrl || (inheritFromEntity ? entity?.image_url || null : null)
 
@@ -151,6 +186,7 @@ async function resolvePin(item: any): Promise<ResolvedPinRecord> {
     id: String(item?.id || ''),
     mapId: String(item?.map_id || ''),
     entityId,
+    linkedMapId,
     title: pinTitle,
     x: Number(item?.x ?? 0),
     y: Number(item?.y ?? 0),
@@ -162,10 +198,12 @@ async function resolvePin(item: any): Promise<ResolvedPinRecord> {
     imageUrl: pinImageUrl,
     inheritFromEntity,
     entity,
+    linkedMap,
     resolvedTitle,
     resolvedSummary,
     resolvedImageUrl,
     hasLinkedEntity: !!entity,
+    hasLinkedMap: !!linkedMap,
   }
 }
 
@@ -175,6 +213,7 @@ export async function listPinsForMap(mapId: string): Promise<ResolvedPinRecord[]
   params.append('fields[]', 'id')
   params.append('fields[]', 'map_id')
   params.append('fields[]', 'entity_id')
+  params.append('fields[]', 'linked_map_id')
   params.append('fields[]', 'title')
   params.append('fields[]', 'x')
   params.append('fields[]', 'y')
@@ -202,6 +241,7 @@ export async function createPin(data: {
   pinType?: string | null
   icon?: string | null
   entityId?: number | null
+  linkedMapId?: string | null
   summary?: string | null
   image?: string | null
   inheritFromEntity?: boolean
@@ -217,6 +257,7 @@ export async function createPin(data: {
       pin_type: data.pinType || null,
       icon: data.icon || null,
       entity_id: data.entityId || null,
+      linked_map_id: data.linkedMapId || null,
       summary: data.summary || null,
       image: data.image || null,
       inherit_from_entity: data.inheritFromEntity ?? true,
@@ -234,6 +275,7 @@ export async function updatePin(pinId: string, data: Partial<{
   pinType: string | null
   icon: string | null
   entityId: number | null
+  linkedMapId: string | null
   summary: string | null
   image: string | null
   inheritFromEntity: boolean
@@ -247,6 +289,7 @@ export async function updatePin(pinId: string, data: Partial<{
   if (data.pinType !== undefined) body.pin_type = data.pinType
   if (data.icon !== undefined) body.icon = data.icon
   if (data.entityId !== undefined) body.entity_id = data.entityId
+  if (data.linkedMapId !== undefined) body.linked_map_id = data.linkedMapId
   if (data.summary !== undefined) body.summary = data.summary
   if (data.image !== undefined) body.image = data.image
   if (data.inheritFromEntity !== undefined) body.inherit_from_entity = data.inheritFromEntity

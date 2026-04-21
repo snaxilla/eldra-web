@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
     pinType: normalizeString(body.pinType),
     icon: normalizeString(body.icon) || 'marker',
     entityId: normalizeEntityId(body.entityId),
+    linkedMapId: normalizeString(body.linkedMapId),
     summary: normalizeString(body.summary),
     image: normalizeString(body.image),
     inheritFromEntity: body.inheritFromEntity !== false,

@@ -14,7 +14,7 @@ const { data: maps } = await useFetch(() => `/api/map-data/world/${worldId.value
   default: () => []
 })
 
-const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
   default: () => []
 })
 
@@ -71,6 +71,9 @@ const selectedPinReadMoreUrl = computed(() => {
 const showPinEditor = ref(false)
 const savingPin = ref(false)
 const saveError = ref('')
+const creatingEntity = ref(false)
+const createEntityError = ref('')
+const createEntitySuccess = ref('')
 const editingPin = ref<any | null>(null)
 
 const PIN_TYPE_OPTIONS = [
@@ -102,6 +105,16 @@ const ICON_OPTIONS = [
   { label: 'Book', value: 'book', symbol: '☰' },
 ]
 
+const MAP_RELEVANT_ENTITY_TYPES = new Set([
+  'location',
+  'region',
+  'settlement',
+  'city',
+  'landmark',
+  'quest',
+  'poi',
+])
+
 function normalizeEntityId(value: any) {
   if (value === undefined || value === null || value === '' || value === 'null') return null
   const num = Number(value)
@@ -110,6 +123,9 @@ function normalizeEntityId(value: any) {
 
 function openNewPinEditor(coords: { x: number; y: number }) {
   saveError.value = ''
+  createEntityError.value = ''
+  createEntitySuccess.value = ''
+
   editingPin.value = {
     title: '',
     x: coords.x,
@@ -123,6 +139,7 @@ function openNewPinEditor(coords: { x: number; y: number }) {
     imageUrl: null,
     inheritFromEntity: true,
   }
+
   showPinEditor.value = true
   selectedPinId.value = null
 }
@@ -134,6 +151,9 @@ function onMapClick(coords: { x: number; y: number }) {
 
 function editPin(pin: any) {
   saveError.value = ''
+  createEntityError.value = ''
+  createEntitySuccess.value = ''
+
   editingPin.value = {
     id: pin.id,
     title: pin.title || '',
@@ -148,6 +168,7 @@ function editPin(pin: any) {
     imageUrl: pin.imageUrl || null,
     inheritFromEntity: pin.inheritFromEntity !== false,
   }
+
   showPinEditor.value = true
 }
 
@@ -155,6 +176,8 @@ function closePinEditor() {
   showPinEditor.value = false
   editingPin.value = null
   saveError.value = ''
+  createEntityError.value = ''
+  createEntitySuccess.value = ''
 }
 
 async function savePin() {
@@ -217,6 +240,47 @@ async function savePin() {
   }
 }
 
+async function createArticleFromPin() {
+  if (!editingPin.value) return
+
+  createEntityError.value = ''
+  createEntitySuccess.value = ''
+
+  const title = String(editingPin.value.title || '').trim()
+  if (!title) {
+    createEntityError.value = 'Give the pin a title before creating an article.'
+    return
+  }
+
+  creatingEntity.value = true
+
+  try {
+    const created = await $fetch(`/api/worlds/${worldId.value}/pins/create-entity`, {
+      method: 'POST',
+      body: {
+        title,
+        summary: editingPin.value.summary?.trim() || null,
+        pinType: editingPin.value.pinType || 'location',
+        image: editingPin.value.image || null,
+      }
+    })
+
+    editingPin.value.entityId = created.id
+    createEntitySuccess.value = `Created article: ${created.title}`
+
+    await refreshWorldEntities()
+  } catch (e: any) {
+    console.error('Failed to create article from pin', e)
+    createEntityError.value =
+      e?.data?.statusMessage ||
+      e?.data?.message ||
+      e?.message ||
+      'Failed to create article.'
+  } finally {
+    creatingEntity.value = false
+  }
+}
+
 async function deletePin(pinId: string) {
   try {
     await $fetch(`/api/map-pins/${pinId}`, {
@@ -261,11 +325,14 @@ async function uploadPinImage(event: Event) {
 }
 
 const entityOptions = computed(() => {
-  return (worldEntities.value || []).map((entity: any) => ({
-    label: entity.title || `Entity ${entity.id}`,
-    value: Number(entity.id),
-    type: entity.entity_type || 'entity',
-  }))
+  return (worldEntities.value || [])
+    .filter((entity: any) => MAP_RELEVANT_ENTITY_TYPES.has(String(entity.entity_type || '').toLowerCase()))
+    .map((entity: any) => ({
+      label: entity.title || `Entity ${entity.id}`,
+      value: Number(entity.id),
+      type: entity.entity_type || 'entity',
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 })
 
 function iconLabel(icon: string | null | undefined) {
@@ -322,7 +389,6 @@ function iconLabel(icon: string | null | undefined) {
       </div>
     </div>
 
-    <!-- Play mode preview sidebar -->
     <Transition
       enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
@@ -412,7 +478,6 @@ function iconLabel(icon: string | null | undefined) {
       </div>
     </Transition>
 
-    <!-- Build mode selected pin quick actions -->
     <Transition
       enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
@@ -453,7 +518,6 @@ function iconLabel(icon: string | null | undefined) {
       </div>
     </Transition>
 
-    <!-- Build mode editor sidebar -->
     <Transition
       enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
@@ -485,6 +549,14 @@ function iconLabel(icon: string | null | undefined) {
             <div class="space-y-5">
               <div v-if="saveError" class="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 {{ saveError }}
+              </div>
+
+              <div v-if="createEntityError" class="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {{ createEntityError }}
+              </div>
+
+              <div v-if="createEntitySuccess" class="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                {{ createEntitySuccess }}
               </div>
 
               <div>
@@ -559,20 +631,36 @@ function iconLabel(icon: string | null | undefined) {
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Link Existing Article</label>
+                <div class="mb-1.5 flex items-center justify-between gap-3">
+                  <label class="block text-xs uppercase tracking-[0.25em] text-slate-500">Link Existing Article</label>
+                  <button
+                    type="button"
+                    class="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50"
+                    :disabled="creatingEntity || !String(editingPin.title || '').trim()"
+                    @click="createArticleFromPin"
+                  >
+                    {{ creatingEntity ? 'Creating…' : 'Create Article From Pin' }}
+                  </button>
+                </div>
+
                 <select
                   v-model="editingPin.entityId"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                  class="w-full rounded-xl border border-white/10 bg-[rgba(15,23,42,0.92)] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400/40 focus:bg-[rgba(15,23,42,1)]"
                 >
-                  <option :value="null">No linked article (pin-only note)</option>
+                  <option :value="null" class="bg-slate-900 text-slate-100">No linked article (pin-only note)</option>
                   <option
                     v-for="entity in entityOptions"
                     :key="entity.value"
                     :value="entity.value"
+                    class="bg-slate-900 text-slate-100"
                   >
                     {{ entity.label }} ({{ entity.type }})
                   </option>
                 </select>
+
+                <p class="mt-2 text-xs text-slate-500">
+                  Only map-relevant entity types are shown here.
+                </p>
               </div>
 
               <div>

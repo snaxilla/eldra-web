@@ -30,17 +30,6 @@ const activeMap = computed(() => {
   return list.find((m: any) => m.isDefaultWorldMap) || list[0] || null
 })
 
-const worldRootMap = computed(() => {
-  const list = maps.value || []
-  return list.find((m: any) => m.isDefaultWorldMap) || list[0] || null
-})
-
-const parentMap = computed(() => {
-  const parentId = activeMap.value?.parentMapId
-  if (!parentId) return null
-  return (maps.value || []).find((m: any) => String(m.id) === String(parentId)) || null
-})
-
 const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
 
 const pins = ref<any[]>([])
@@ -136,19 +125,6 @@ function normalizeEntityId(value: any) {
   if (value === undefined || value === null || value === '' || value === 'null') return null
   const num = Number(value)
   return Number.isFinite(num) ? num : null
-}
-
-function goToMapBySlug(slug: string | null | undefined) {
-  if (!slug) return
-  router.push(`/worlds/${worldId.value}?map=${slug}`)
-}
-
-function goToWorldRootMap() {
-  if (worldRootMap.value?.slug) {
-    router.push(`/worlds/${worldId.value}?map=${worldRootMap.value.slug}`)
-    return
-  }
-  router.push(`/worlds/${worldId.value}`)
 }
 
 function openNewPinEditor(coords: { x: number; y: number }) {
@@ -394,28 +370,17 @@ function openLinkedMap() {
   <div class="relative h-full w-full overflow-hidden bg-[#09111a]">
 
     <div class="absolute left-4 top-4 z-20 flex items-center gap-3">
-      <button
-        type="button"
+      <NuxtLink
+        to="/"
         class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.9)] px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
-        @click="goToWorldRootMap"
       >
         <UIcon name="i-lucide-orbit" class="h-4 w-4 text-sky-300" />
-        <span>World Map</span>
-      </button>
-
-      <button
-        v-if="parentMap && String(parentMap.id) !== String(worldRootMap?.id || '')"
-        type="button"
-        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.88)] px-4 py-2 text-sm text-slate-200 backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
-        @click="goToMapBySlug(parentMap.slug)"
-      >
-        <UIcon name="i-lucide-chevron-right" class="h-4 w-4 text-slate-400" />
-        <span>{{ parentMap.title }}</span>
-      </button>
+        <span>{{ world?.name || 'World' }}</span>
+      </NuxtLink>
 
       <div
         v-if="activeMap"
-        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.96)] px-4 py-2 text-sm text-slate-100 backdrop-blur"
+        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.9)] px-4 py-2 text-sm text-slate-200 backdrop-blur"
       >
         <UIcon name="i-lucide-map" class="h-4 w-4 text-sky-300" />
         <span>{{ activeMap.title }}</span>

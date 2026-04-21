@@ -72,6 +72,13 @@ function formatMapType(value: string | null | undefined) {
   return match?.label || (raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Unknown')
 }
 
+function parentTitle(map: any) {
+  const parentId = map?.parentMapId ? String(map.parentMapId) : null
+  if (!parentId) return 'No parent'
+  const found = (maps.value || []).find((m: any) => String(m.id) === parentId)
+  return found?.title || `Unknown (${parentId})`
+}
+
 async function uploadMap() {
   uploadError.value = ''
   uploadSuccess.value = ''
@@ -137,6 +144,7 @@ async function saveParentMap(mapId: string) {
       success: boolean
       mapId: string
       parentMapId: string | null
+      title: string | null
     }>(`/api/worlds/${worldId.value}/maps/${mapId}/set-parent`, {
       method: 'POST',
       body: {
@@ -312,7 +320,11 @@ function parentOptionsFor(mapId: string) {
                   </option>
                 </select>
 
-                <div v-if="parentSaveMsg[map.id]" class="mt-2 text-xs text-slate-400">
+                <div class="mt-2 text-xs text-slate-500">
+                  Current Parent: {{ parentTitle(map) }}
+                </div>
+
+                <div v-if="parentSaveMsg[map.id]" class="mt-1 text-xs text-slate-400">
                   {{ parentSaveMsg[map.id] }}
                 </div>
               </div>

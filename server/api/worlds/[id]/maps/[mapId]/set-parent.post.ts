@@ -61,17 +61,22 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const patched = await dxFetch(`/items/maps/${mapId}`, {
+  await dxFetch(`/items/maps/${mapId}`, {
     method: 'PATCH',
     body: JSON.stringify({
       parent_map_id: parentMapId
     })
   })
 
+  const verify = await dxFetch(`/items/maps/${mapId}?fields=id,title,parent_map_id,slug`)
+  const map = verify?.data || null
+
   return {
     success: true,
-    mapId,
-    parentMapId: patched?.data?.parent_map_id ? String(patched.data.parent_map_id) : null,
-    data: patched?.data || null
+    mapId: map?.id ? String(map.id) : mapId,
+    title: map?.title ? String(map.title) : null,
+    slug: map?.slug ? String(map.slug) : null,
+    parentMapId: map?.parent_map_id ? String(map.parent_map_id) : null,
+    raw: map
   }
 })

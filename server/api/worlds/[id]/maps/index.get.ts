@@ -75,5 +75,7 @@ export default defineEventHandler(async (event) => {
   params.set('sort', 'title')
 
   const json = await dxFetch(`/items/maps?${params.toString()}`)
-  return (json?.data || []).map(normalizeMap)
+  const rows = Array.isArray(json?.data) ? json.data : []
+
+  return rows.map(normalizeMap)
 })

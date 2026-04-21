@@ -1,5 +1,16 @@
 import { createPin } from '../../utils/map-pins'
 
+function normalizeEntityId(value: any): number | null {
+  if (value === undefined || value === null || value === '' || value === 'null') return null
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+function normalizeString(value: any): string | null {
+  if (value === undefined || value === null || value === '') return null
+  return String(value)
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
@@ -12,12 +23,12 @@ export default defineEventHandler(async (event) => {
     title: String(body.title || 'Untitled Pin'),
     x: Number(body.x),
     y: Number(body.y),
-    color: body.color || null,
-    pinType: body.pinType || null,
-    icon: body.icon || 'marker',
-    entityId: body.entityId ? Number(body.entityId) : null,
-    summary: body.summary || null,
-    image: body.image || null,
+    color: normalizeString(body.color),
+    pinType: normalizeString(body.pinType),
+    icon: normalizeString(body.icon) || 'marker',
+    entityId: normalizeEntityId(body.entityId),
+    summary: normalizeString(body.summary),
+    image: normalizeString(body.image),
     inheritFromEntity: body.inheritFromEntity !== false,
   })
 })

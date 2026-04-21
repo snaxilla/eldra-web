@@ -70,6 +70,7 @@ const selectedPinReadMoreUrl = computed(() => {
 
 const showPinEditor = ref(false)
 const savingPin = ref(false)
+const saveError = ref('')
 const editingPin = ref<any | null>(null)
 
 const PIN_TYPE_OPTIONS = [
@@ -101,9 +102,14 @@ const ICON_OPTIONS = [
   { label: 'Book', value: 'book', symbol: '☰' },
 ]
 
-function onMapClick(coords: { x: number; y: number }) {
-  if (mode.value !== 'build') return
+function normalizeEntityId(value: any) {
+  if (value === undefined || value === null || value === '' || value === 'null') return null
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
 
+function openNewPinEditor(coords: { x: number; y: number }) {
+  saveError.value = ''
   editingPin.value = {
     title: '',
     x: coords.x,
@@ -117,11 +123,17 @@ function onMapClick(coords: { x: number; y: number }) {
     imageUrl: null,
     inheritFromEntity: true,
   }
-
   showPinEditor.value = true
+  selectedPinId.value = null
+}
+
+function onMapClick(coords: { x: number; y: number }) {
+  if (mode.value !== 'build') return
+  openNewPinEditor(coords)
 }
 
 function editPin(pin: any) {
+  saveError.value = ''
   editingPin.value = {
     id: pin.id,
     title: pin.title || '',
@@ -130,57 +142,61 @@ function editPin(pin: any) {
     color: pin.color || '#3b82f6',
     pinType: pin.pinType || 'location',
     icon: pin.icon || 'marker',
-    entityId: pin.entityId || null,
+    entityId: pin.entityId ?? null,
     summary: pin.summary || '',
     image: pin.imageFileId || null,
     imageUrl: pin.imageUrl || null,
     inheritFromEntity: pin.inheritFromEntity !== false,
   }
-
   showPinEditor.value = true
+}
+
+function closePinEditor() {
+  showPinEditor.value = false
+  editingPin.value = null
+  saveError.value = ''
 }
 
 async function savePin() {
   if (!editingPin.value || !activeMap.value?.id) return
 
+  saveError.value = ''
   savingPin.value = true
+
+  const payload = {
+    title: String(editingPin.value.title || '').trim(),
+    x: Number(editingPin.value.x),
+    y: Number(editingPin.value.y),
+    color: editingPin.value.color || null,
+    pinType: editingPin.value.pinType || null,
+    icon: editingPin.value.icon || 'marker',
+    entityId: normalizeEntityId(editingPin.value.entityId),
+    summary: editingPin.value.summary?.trim() ? editingPin.value.summary.trim() : null,
+    image: editingPin.value.image || null,
+    inheritFromEntity: editingPin.value.inheritFromEntity === true,
+  }
 
   try {
     if (editingPin.value.id) {
       const updated = await $fetch(`/api/map-pins/${editingPin.value.id}`, {
         method: 'PATCH',
-        body: {
-          title: editingPin.value.title,
-          x: editingPin.value.x,
-          y: editingPin.value.y,
-          color: editingPin.value.color,
-          pinType: editingPin.value.pinType,
-          icon: editingPin.value.icon,
-          entityId: editingPin.value.entityId,
-          summary: editingPin.value.summary,
-          image: editingPin.value.image,
-          inheritFromEntity: editingPin.value.inheritFromEntity,
-        }
+        body: payload
       })
 
       const idx = pins.value.findIndex((p) => p.id === editingPin.value.id)
-      if (idx !== -1) pins.value[idx] = updated
+      if (idx !== -1) {
+        pins.value[idx] = updated
+      } else {
+        pins.value.push(updated)
+      }
+
       selectedPinId.value = updated.id
     } else {
       const created = await $fetch('/api/map-pins', {
         method: 'POST',
         body: {
           mapId: activeMap.value.id,
-          title: editingPin.value.title,
-          x: editingPin.value.x,
-          y: editingPin.value.y,
-          color: editingPin.value.color,
-          pinType: editingPin.value.pinType,
-          icon: editingPin.value.icon,
-          entityId: editingPin.value.entityId,
-          summary: editingPin.value.summary,
-          image: editingPin.value.image,
-          inheritFromEntity: editingPin.value.inheritFromEntity,
+          ...payload
         }
       })
 
@@ -188,10 +204,14 @@ async function savePin() {
       selectedPinId.value = created.id
     }
 
-    showPinEditor.value = false
-    editingPin.value = null
-  } catch (e) {
+    closePinEditor()
+  } catch (e: any) {
     console.error('Failed to save pin', e)
+    saveError.value =
+      e?.data?.statusMessage ||
+      e?.data?.message ||
+      e?.message ||
+      'Failed to save pin.'
   } finally {
     savingPin.value = false
   }
@@ -205,6 +225,7 @@ async function deletePin(pinId: string) {
 
     pins.value = pins.value.filter((p) => p.id !== pinId)
     if (selectedPinId.value === pinId) selectedPinId.value = null
+    if (editingPin.value?.id === pinId) closePinEditor()
   } catch (e) {
     console.error('Failed to delete pin', e)
   }
@@ -215,6 +236,8 @@ async function uploadPinImage(event: Event) {
   const file = input.files?.[0]
 
   if (!file || !editingPin.value) return
+
+  saveError.value = ''
 
   const formData = new FormData()
   formData.append('file', file)
@@ -227,8 +250,13 @@ async function uploadPinImage(event: Event) {
 
     editingPin.value.image = result.file_id
     editingPin.value.imageUrl = result.image_url
-  } catch (e) {
+  } catch (e: any) {
     console.error('Failed to upload pin image', e)
+    saveError.value =
+      e?.data?.statusMessage ||
+      e?.data?.message ||
+      e?.message ||
+      'Failed to upload image.'
   }
 }
 
@@ -294,6 +322,7 @@ function iconLabel(icon: string | null | undefined) {
       </div>
     </div>
 
+    <!-- Play mode preview sidebar -->
     <Transition
       enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
@@ -383,6 +412,7 @@ function iconLabel(icon: string | null | undefined) {
       </div>
     </Transition>
 
+    <!-- Build mode selected pin quick actions -->
     <Transition
       enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
@@ -423,173 +453,187 @@ function iconLabel(icon: string | null | undefined) {
       </div>
     </Transition>
 
+    <!-- Build mode editor sidebar -->
     <Transition
-      enter-from-class="translate-y-full opacity-0"
+      enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
-      leave-to-class="translate-y-full opacity-0"
+      leave-to-class="translate-x-full opacity-0"
       leave-active-class="transition duration-200"
     >
       <div
         v-if="showPinEditor && editingPin"
-        class="absolute bottom-0 inset-x-0 z-40 mx-auto max-w-2xl rounded-t-[24px] border-t border-white/12 bg-[rgba(8,16,27,0.98)] p-6 shadow-2xl backdrop-blur"
+        class="absolute right-0 top-0 z-40 h-full w-[420px] border-l border-white/10 bg-[rgba(8,16,27,0.98)] shadow-2xl backdrop-blur"
       >
-        <div class="mb-5 flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-white">
-            {{ editingPin.id ? 'Edit Pin' : 'Place Pin' }}
-          </h3>
+        <div class="flex h-full flex-col">
+          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+            <div>
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Build Mode</div>
+              <h3 class="mt-1 text-lg font-semibold text-white">
+                {{ editingPin.id ? 'Edit Pin' : 'Place Pin' }}
+              </h3>
+            </div>
 
-          <button
-            class="text-slate-400 transition hover:text-white"
-            @click="showPinEditor = false; editingPin = null"
-          >
-            <UIcon name="i-lucide-x" class="h-5 w-5" />
-          </button>
-        </div>
-
-        <div class="grid gap-4 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Title</label>
-            <input
-              v-model="editingPin.title"
-              type="text"
-              placeholder="e.g. Stonehold"
-              class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+            <button
+              class="text-slate-400 transition hover:text-white"
+              @click="closePinEditor"
             >
+              <UIcon name="i-lucide-x" class="h-5 w-5" />
+            </button>
           </div>
 
-          <div>
-            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Type</label>
-            <div class="flex flex-wrap gap-2">
+          <div class="flex-1 overflow-y-auto px-5 py-5">
+            <div class="space-y-5">
+              <div v-if="saveError" class="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {{ saveError }}
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Title</label>
+                <input
+                  v-model="editingPin.title"
+                  type="text"
+                  placeholder="e.g. Stonehold"
+                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                >
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Type</label>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="opt in PIN_TYPE_OPTIONS"
+                    :key="opt.value"
+                    type="button"
+                    class="rounded-full border px-3 py-1 text-xs font-medium transition"
+                    :class="editingPin.pinType === opt.value
+                      ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                      : 'border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'"
+                    @click="editingPin.pinType = opt.value"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Color</label>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="c in PIN_COLORS"
+                    :key="c"
+                    type="button"
+                    class="h-7 w-7 rounded-full border-2 transition"
+                    :style="{ background: c, borderColor: editingPin.color === c ? 'white' : 'transparent' }"
+                    @click="editingPin.color = c"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Marker Style</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    v-for="opt in ICON_OPTIONS"
+                    :key="opt.value"
+                    type="button"
+                    class="rounded-xl border px-3 py-2 text-left transition"
+                    :class="editingPin.icon === opt.value
+                      ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                      : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                    @click="editingPin.icon = opt.value"
+                  >
+                    <div class="text-lg leading-none">{{ opt.symbol }}</div>
+                    <div class="mt-1 text-xs">{{ opt.label }}</div>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Summary / Blurb</label>
+                <textarea
+                  v-model="editingPin.summary"
+                  rows="4"
+                  placeholder="Short map preview summary..."
+                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                />
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Link Existing Article</label>
+                <select
+                  v-model="editingPin.entityId"
+                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                >
+                  <option :value="null">No linked article (pin-only note)</option>
+                  <option
+                    v-for="entity in entityOptions"
+                    :key="entity.value"
+                    :value="entity.value"
+                  >
+                    {{ entity.label }} ({{ entity.type }})
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Preview Image</label>
+
+                <div
+                  v-if="editingPin.imageUrl"
+                  class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+                >
+                  <img
+                    :src="editingPin.imageUrl"
+                    alt="Pin preview"
+                    class="h-40 w-full object-cover"
+                  >
+                </div>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
+                  @change="uploadPinImage"
+                >
+              </div>
+
+              <div>
+                <label class="flex items-start gap-3 text-sm text-slate-300">
+                  <input
+                    v-model="editingPin.inheritFromEntity"
+                    type="checkbox"
+                    class="mt-0.5 h-4 w-4 rounded border-white/10 bg-white/[0.05]"
+                  >
+                  <span>Use linked article summary/image when pin fields are empty</span>
+                </label>
+              </div>
+
+              <div class="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-2 text-xs text-slate-500">
+                x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-white/10 p-5">
+            <div class="flex gap-3">
               <button
-                v-for="opt in PIN_TYPE_OPTIONS"
-                :key="opt.value"
                 type="button"
-                class="rounded-full border px-3 py-1 text-xs font-medium transition"
-                :class="editingPin.pinType === opt.value
-                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                  : 'border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'"
-                @click="editingPin.pinType = opt.value"
+                class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]"
+                @click="closePinEditor"
               >
-                {{ opt.label }}
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                class="flex-1 rounded-xl border border-sky-400/25 bg-sky-400/15 py-2.5 text-sm font-medium text-sky-100 transition hover:bg-sky-400/25 disabled:opacity-50"
+                :disabled="!String(editingPin.title || '').trim() || savingPin"
+                @click="savePin"
+              >
+                {{ savingPin ? 'Saving…' : (editingPin.id ? 'Update Pin' : 'Save Pin') }}
               </button>
             </div>
           </div>
-
-          <div>
-            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Color</label>
-            <div class="flex gap-2">
-              <button
-                v-for="c in PIN_COLORS"
-                :key="c"
-                type="button"
-                class="h-7 w-7 rounded-full border-2 transition"
-                :style="{ background: c, borderColor: editingPin.color === c ? 'white' : 'transparent' }"
-                @click="editingPin.color = c"
-              />
-            </div>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Marker Style</label>
-            <div class="grid grid-cols-3 gap-2 md:grid-cols-4">
-              <button
-                v-for="opt in ICON_OPTIONS"
-                :key="opt.value"
-                type="button"
-                class="rounded-xl border px-3 py-2 text-left transition"
-                :class="editingPin.icon === opt.value
-                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                @click="editingPin.icon = opt.value"
-              >
-                <div class="text-lg leading-none">{{ opt.symbol }}</div>
-                <div class="mt-1 text-xs">{{ opt.label }}</div>
-              </button>
-            </div>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Summary / Blurb</label>
-            <textarea
-              v-model="editingPin.summary"
-              rows="4"
-              placeholder="Short map preview summary..."
-              class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
-            />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Link Existing Article</label>
-            <select
-              v-model="editingPin.entityId"
-              class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
-            >
-              <option :value="null">No linked article (pin-only note)</option>
-              <option
-                v-for="entity in entityOptions"
-                :key="entity.value"
-                :value="entity.value"
-              >
-                {{ entity.label }} ({{ entity.type }})
-              </option>
-            </select>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Preview Image</label>
-
-            <div
-              v-if="editingPin.imageUrl"
-              class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
-            >
-              <img
-                :src="editingPin.imageUrl"
-                alt="Pin preview"
-                class="h-40 w-full object-cover"
-              >
-            </div>
-
-            <input
-              type="file"
-              accept="image/*"
-              class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
-              @change="uploadPinImage"
-            >
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="flex items-center gap-3 text-sm text-slate-300">
-              <input
-                v-model="editingPin.inheritFromEntity"
-                type="checkbox"
-                class="h-4 w-4 rounded border-white/10 bg-white/[0.05]"
-              >
-              <span>Use linked article summary/image when pin fields are empty</span>
-            </label>
-          </div>
-
-          <div class="md:col-span-2 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-2 text-xs text-slate-500">
-            x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
-          </div>
-        </div>
-
-        <div class="mt-5 flex gap-3">
-          <button
-            type="button"
-            class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]"
-            @click="showPinEditor = false; editingPin = null"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            class="flex-1 rounded-xl border border-sky-400/25 bg-sky-400/15 py-2.5 text-sm font-medium text-sky-100 transition hover:bg-sky-400/25 disabled:opacity-50"
-            :disabled="!editingPin.title.trim() || savingPin"
-            @click="savePin"
-          >
-            {{ savingPin ? 'Saving…' : (editingPin.id ? 'Update Pin' : 'Save Pin') }}
-          </button>
         </div>
       </div>
     </Transition>

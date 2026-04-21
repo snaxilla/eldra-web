@@ -29,11 +29,12 @@ let L: any = null
 let map: any = null
 let imageOverlay: any = null
 let markerLayer: any = null
+let currentBounds: any = null
 
 function makePinHtml(pin: Pin, selected: boolean) {
   const bg = pin.color || '#3b82f6'
   const ring = selected ? '#ffffff' : 'rgba(255,255,255,0.45)'
-  const scale = selected ? 'scale(1.2)' : 'scale(1)'
+  const scale = selected ? 'scale(1.15)' : 'scale(1)'
 
   return `
     <div style="
@@ -98,6 +99,7 @@ async function ensureMap() {
 
 function clearMap() {
   if (markerLayer) markerLayer.clearLayers()
+
   if (imageOverlay && map) {
     map.removeLayer(imageOverlay)
     imageOverlay = null
@@ -106,6 +108,7 @@ function clearMap() {
 
 function renderPins() {
   if (!L || !map || !markerLayer) return
+
   markerLayer.clearLayers()
 
   for (const pin of props.pins || []) {
@@ -138,59 +141,93 @@ function renderPins() {
 
 function getCoverZoom(bounds: any) {
   if (!map) return 0
+
   const size = map.getSize()
   const nw = map.project(bounds.getNorthWest(), 0)
   const se = map.project(bounds.getSouthEast(), 0)
+
   const imageWidth = Math.abs(se.x - nw.x)
   const imageHeight = Math.abs(se.y - nw.y)
+
   if (!imageWidth || !imageHeight || !size.x || !size.y) return 0
+
   const coverScale = Math.max(size.x / imageWidth, size.y / imageHeight)
   const zoom = Math.log2(coverScale)
+
   return Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), zoom))
 }
 
 async function renderMap() {
   if (!props.mapImageUrl) return
+
   await ensureMap()
   if (!L || !map) return
 
   clearMap()
 
   const { width, height } = await loadImageDimensions(props.mapImageUrl)
-  const bounds = L.latLngBounds([0, 0], [height, width])
-  imageOverlay = L.imageOverlay(props.mapImageUrl, bounds).addTo(map)
+  currentBounds = L.latLngBounds([0, 0], [height, width])
 
-  const center = bounds.getCenter()
-  const coverZoom = getCoverZoom(bounds)
-  map.setView(center, coverZoom, { animate: false })
-  map.setMaxBounds(bounds)
+  imageOverlay = L.imageOverlay(props.mapImageUrl, currentBounds).addTo(map)
+
+  const center = currentBounds.getCenter()
+  const coverZoom = getCoverZoom(currentBounds)
+
+  map.setMaxBounds(currentBounds)
   map.options.maxBoundsViscosity = 1.0
+  map.setView(center, coverZoom, { animate: false })
 
   renderPins()
 
   requestAnimationFrame(() => {
     if (!map) return
     map.invalidateSize()
+    map.setMaxBounds(currentBounds)
     map.setView(center, coverZoom, { animate: false })
   })
 }
 
-watch(() => props.mapImageUrl, async () => {
-  await nextTick()
-  await renderMap()
-}, { immediate: true })
+watch(
+  () => props.mapImageUrl,
+  async () => {
+    await nextTick()
+    await renderMap()
+  },
+  { immediate: true }
+)
 
-watch(() => props.pins, () => renderPins(), { deep: true })
-watch(() => props.selectedPinId, () => renderPins())
-watch(() => props.buildMode, () => {
-  if (!map) return
-  map.getContainer().style.cursor = props.buildMode ? 'crosshair' : ''
+watch(
+  () => props.pins,
+  () => {
+    renderPins()
+  },
+  { deep: true }
+)
+
+watch(
+  () => props.selectedPinId,
+  () => {
+    renderPins()
+  }
+)
+
+watch(
+  () => props.buildMode,
+  () => {
+    if (!map) return
+    map.getContainer().style.cursor = props.buildMode ? 'crosshair' : ''
+  }
+)
+
+onMounted(async () => {
+  await renderMap()
 })
 
-onMounted(async () => { await renderMap() })
-
 onBeforeUnmount(() => {
-  if (map) { map.remove(); map = null }
+  if (map) {
+    map.remove()
+    map = null
+  }
 })
 </script>
 
@@ -206,6 +243,18 @@ onBeforeUnmount(() => {
   height: 100%;
   background: #09111a;
   font-family: inherit;
+}
+
+/* Keep the actual map under your shell overlays */
+:deep(.leaflet-pane),
+:deep(.leaflet-top),
+:deep(.leaflet-bottom) {
+  z-index: 1 !important;
+}
+
+/* Controls above the map, but still below your page UI */
+:deep(.leaflet-control-container) {
+  z-index: 10 !important;
 }
 
 :deep(.leaflet-control-zoom) {

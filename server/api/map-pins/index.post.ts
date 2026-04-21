@@ -15,5 +15,8 @@ export default defineEventHandler(async (event) => {
     color: body.color || null,
     pinType: body.pinType || null,
     entityId: body.entityId ? Number(body.entityId) : null,
+    summary: body.summary || null,
+    image: body.image || null,
+    inheritFromEntity: body.inheritFromEntity !== false,
   })
 })

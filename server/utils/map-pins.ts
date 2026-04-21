@@ -1,7 +1,4 @@
-import axios from 'axios'
-import FormData from 'form-data'
-
-export type PinRecord = {
+type ResolvedPinRecord = {
   id: string
   mapId: string
   entityId: number | null
@@ -10,14 +7,30 @@ export type PinRecord = {
   y: number
   color: string | null
   pinType: string | null
+  summary: string | null
+  imageFileId: string | null
+  imageUrl: string | null
+  inheritFromEntity: boolean
+  entity: null | {
+    id: number
+    title: string
+    slug: string | null
+    entity_type: string | null
+    summary: string | null
+    image_url: string | null
+  }
+  resolvedTitle: string
+  resolvedSummary: string | null
+  resolvedImageUrl: string | null
+  hasLinkedEntity: boolean
 }
 
 function baseUrl() {
-  return (process.env.NUXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL || '').replace(/\/$/, '')
+  return 'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
 }
 
 function token() {
-  return process.env.DIRECTUS_TOKEN || ''
+  return 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
 }
 
 async function dxFetch(path: string, options: RequestInit = {}) {
@@ -32,29 +45,121 @@ async function dxFetch(path: string, options: RequestInit = {}) {
 
   const text = await res.text()
   let json: any = null
-  try { json = text ? JSON.parse(text) : null } catch { json = null }
+
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {
+    json = null
+  }
 
   if (!res.ok) {
-    throw new Error(json?.errors?.[0]?.message || text || `Directus error (${res.status})`)
+    throw new Error(json?.errors?.[0]?.message || json?.message || text || `Directus error (${res.status})`)
   }
 
   return json
 }
 
-function normalize(item: any): PinRecord {
+function extractEntityImageUrl(blocks: any[] = []) {
+  for (const block of blocks) {
+    const image = block?.data?.image
+
+    if (!image) continue
+
+    if (typeof image === 'string') {
+      return `/api/assets/${image}`
+    }
+
+    if (typeof image === 'object') {
+      if (image.image_url) return image.image_url
+      if (image.file_id) return `/api/assets/${image.file_id}`
+      if (image.id) return `/api/assets/${image.id}`
+    }
+  }
+
+  return null
+}
+
+function extractEntitySummary(entity: any, blocks: any[] = []) {
+  if (entity?.summary) return String(entity.summary)
+
+  for (const block of blocks) {
+    if (block?.data?.summary) return String(block.data.summary)
+    if (block?.data?.description) return String(block.data.description)
+    if (block?.data?.bio) return String(block.data.bio)
+  }
+
+  return null
+}
+
+async function loadEntityPreview(entityId: number | null) {
+  if (!entityId) return null
+
+  const entityJson = await dxFetch(`/items/entities/${entityId}?fields=*`)
+  const entity = entityJson?.data
+
+  if (!entity) return null
+
+  const blocksJson = await dxFetch(
+    `/items/block_instances?filter[entity_id][_eq]=${entityId}&sort=sort&fields=*`
+  )
+
+  const blocks = Array.isArray(blocksJson?.data) ? blocksJson.data : []
+
   return {
-    id: String(item?.id || ''),
-    mapId: String(item?.map_id || ''),
-    entityId: item?.entity_id ? Number(item.entity_id) : null,
-    title: String(item?.title || ''),
-    x: Number(item?.x ?? 0),
-    y: Number(item?.y ?? 0),
-    color: item?.color || null,
-    pinType: item?.pin_type || null,
+    id: Number(entity.id),
+    title: String(entity.title || ''),
+    slug: entity.slug ? String(entity.slug) : null,
+    entity_type: entity.entity_type ? String(entity.entity_type) : null,
+    summary: extractEntitySummary(entity, blocks),
+    image_url: extractEntityImageUrl(blocks),
   }
 }
 
-export async function listPinsForMap(mapId: string): Promise<PinRecord[]> {
+function normalizeBoolean(value: any) {
+  if (value === true) return true
+  if (value === false) return false
+  if (value === 1 || value === '1') return true
+  if (value === 0 || value === '0') return false
+  if (value == null) return true
+  return Boolean(value)
+}
+
+async function resolvePin(item: any): Promise<ResolvedPinRecord> {
+  const entityId = item?.entity_id ? Number(item.entity_id) : null
+  const entity = await loadEntityPreview(entityId)
+
+  const pinTitle = item?.title ? String(item.title) : ''
+  const pinSummary = item?.summary ? String(item.summary) : null
+  const pinImageFileId = item?.image ? String(item.image) : null
+  const pinImageUrl = pinImageFileId ? `/api/assets/${pinImageFileId}` : null
+  const inheritFromEntity = normalizeBoolean(item?.inherit_from_entity)
+
+  const resolvedTitle = pinTitle || entity?.title || 'Untitled Pin'
+  const resolvedSummary = pinSummary || (inheritFromEntity ? entity?.summary || null : null)
+  const resolvedImageUrl = pinImageUrl || (inheritFromEntity ? entity?.image_url || null : null)
+
+  return {
+    id: String(item?.id || ''),
+    mapId: String(item?.map_id || ''),
+    entityId,
+    title: pinTitle,
+    x: Number(item?.x ?? 0),
+    y: Number(item?.y ?? 0),
+    color: item?.color ? String(item.color) : null,
+    pinType: item?.pin_type ? String(item.pin_type) : null,
+    summary: pinSummary,
+    imageFileId: pinImageFileId,
+    imageUrl: pinImageUrl,
+    inheritFromEntity,
+    entity,
+    resolvedTitle,
+    resolvedSummary,
+    resolvedImageUrl,
+    hasLinkedEntity: !!entity,
+  }
+}
+
+export async function listPinsForMap(mapId: string): Promise<ResolvedPinRecord[]> {
   const params = new URLSearchParams()
   params.set('filter[map_id][_eq]', mapId)
   params.append('fields[]', 'id')
@@ -65,11 +170,16 @@ export async function listPinsForMap(mapId: string): Promise<PinRecord[]> {
   params.append('fields[]', 'y')
   params.append('fields[]', 'color')
   params.append('fields[]', 'pin_type')
+  params.append('fields[]', 'summary')
+  params.append('fields[]', 'image')
+  params.append('fields[]', 'inherit_from_entity')
   params.set('sort', 'sort')
   params.set('limit', '500')
 
   const json = await dxFetch(`/items/map_pins?${params.toString()}`)
-  return (json?.data || []).map(normalize)
+  const items = Array.isArray(json?.data) ? json.data : []
+
+  return await Promise.all(items.map(resolvePin))
 }
 
 export async function createPin(data: {
@@ -80,7 +190,10 @@ export async function createPin(data: {
   color?: string | null
   pinType?: string | null
   entityId?: number | null
-}): Promise<PinRecord> {
+  summary?: string | null
+  image?: string | null
+  inheritFromEntity?: boolean
+}) {
   const json = await dxFetch('/items/map_pins', {
     method: 'POST',
     body: JSON.stringify({
@@ -91,9 +204,13 @@ export async function createPin(data: {
       color: data.color || null,
       pin_type: data.pinType || null,
       entity_id: data.entityId || null,
+      summary: data.summary || null,
+      image: data.image || null,
+      inherit_from_entity: data.inheritFromEntity ?? true,
     })
   })
-  return normalize(json?.data)
+
+  return await resolvePin(json?.data)
 }
 
 export async function updatePin(pinId: string, data: Partial<{
@@ -103,22 +220,32 @@ export async function updatePin(pinId: string, data: Partial<{
   color: string | null
   pinType: string | null
   entityId: number | null
-}>): Promise<PinRecord> {
+  summary: string | null
+  image: string | null
+  inheritFromEntity: boolean
+}>){
   const body: any = {}
+
   if (data.title !== undefined) body.title = data.title
   if (data.x !== undefined) body.x = data.x
   if (data.y !== undefined) body.y = data.y
   if (data.color !== undefined) body.color = data.color
   if (data.pinType !== undefined) body.pin_type = data.pinType
   if (data.entityId !== undefined) body.entity_id = data.entityId
+  if (data.summary !== undefined) body.summary = data.summary
+  if (data.image !== undefined) body.image = data.image
+  if (data.inheritFromEntity !== undefined) body.inherit_from_entity = data.inheritFromEntity
 
   const json = await dxFetch(`/items/map_pins/${pinId}`, {
     method: 'PATCH',
     body: JSON.stringify(body)
   })
-  return normalize(json?.data)
+
+  return await resolvePin(json?.data)
 }
 
 export async function deletePin(pinId: string): Promise<void> {
-  await dxFetch(`/items/map_pins/${pinId}`, { method: 'DELETE' })
+  await dxFetch(`/items/map_pins/${pinId}`, {
+    method: 'DELETE'
+  })
 }

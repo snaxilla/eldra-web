@@ -27,7 +27,7 @@ type ResolvedPinRecord = {
 }
 
 function baseUrl() {
-  return (process.env.NUXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL || '').replace(/\/$/, '')
+  return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
 
 function token() {
@@ -35,7 +35,9 @@ function token() {
 }
 
 async function dxFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${baseUrl()}${path}`, {
+  const url = `${baseUrl()}${path}`
+
+  const res = await fetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${token()}`,
@@ -54,7 +56,12 @@ async function dxFetch(path: string, options: RequestInit = {}) {
   }
 
   if (!res.ok) {
-    throw new Error(json?.errors?.[0]?.message || json?.message || text || `Directus error (${res.status})`)
+    throw new Error(
+      json?.errors?.[0]?.message ||
+      json?.message ||
+      text ||
+      `Directus error (${res.status}) at ${url}`
+    )
   }
 
   return json
@@ -230,7 +237,7 @@ export async function updatePin(pinId: string, data: Partial<{
   summary: string | null
   image: string | null
   inheritFromEntity: boolean
-}>){
+}>) {
   const body: any = {}
 
   if (data.title !== undefined) body.title = data.title

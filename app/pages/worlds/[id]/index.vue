@@ -35,10 +35,25 @@ const worldRootMap = computed(() => {
   return list.find((m: any) => m.isDefaultWorldMap) || list[0] || null
 })
 
-const parentMap = computed(() => {
-  const parentId = activeMap.value?.parentMapId
-  if (!parentId) return null
-  return (maps.value || []).find((m: any) => String(m.id) === String(parentId)) || null
+const ancestorMaps = computed(() => {
+  const list = maps.value || []
+  const byId = new Map(list.map((m: any) => [String(m.id), m]))
+  const chain: any[] = []
+  const seen = new Set<string>()
+
+  let cursor = activeMap.value?.parentMapId ? byId.get(String(activeMap.value.parentMapId)) : null
+
+  while (cursor) {
+    const id = String(cursor.id)
+    if (seen.has(id)) break
+    seen.add(id)
+    chain.unshift(cursor)
+
+    const nextParentId = cursor.parentMapId ? String(cursor.parentMapId) : null
+    cursor = nextParentId ? byId.get(nextParentId) : null
+  }
+
+  return chain
 })
 
 const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
@@ -404,17 +419,18 @@ function openLinkedMap() {
       </button>
 
       <button
-        v-if="parentMap && String(parentMap.id) !== String(worldRootMap?.id || '')"
+        v-for="ancestor in ancestorMaps"
+        :key="ancestor.id"
         type="button"
         class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.88)] px-4 py-2 text-sm text-slate-200 backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
-        @click="goToMapBySlug(parentMap.slug)"
+        @click="goToMapBySlug(ancestor.slug)"
       >
         <UIcon name="i-lucide-chevron-right" class="h-4 w-4 text-slate-400" />
-        <span>{{ parentMap.title }}</span>
+        <span>{{ ancestor.title }}</span>
       </button>
 
       <div
-        v-if="activeMap"
+        v-if="activeMap && String(activeMap.id) !== String(worldRootMap?.id || '')"
         class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.96)] px-4 py-2 text-sm text-slate-100 backdrop-blur"
       >
         <UIcon name="i-lucide-map" class="h-4 w-4 text-sky-300" />

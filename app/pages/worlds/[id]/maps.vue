@@ -16,6 +16,13 @@ const {
   default: () => []
 })
 
+const MAP_TYPE_OPTIONS = [
+  { label: 'World', value: 'world' },
+  { label: 'Country', value: 'country' },
+  { label: 'Area', value: 'area' },
+  { label: 'Detail', value: 'detail' },
+]
+
 const search = ref('')
 const showUploadForm = ref(false)
 
@@ -57,6 +64,12 @@ const filteredMaps = computed(() => {
 function onFileChange(event: Event) {
   const target = event.target as HTMLInputElement
   uploadFile.value = target.files?.[0] || null
+}
+
+function formatMapType(value: string | null | undefined) {
+  const raw = String(value || '').toLowerCase()
+  const match = MAP_TYPE_OPTIONS.find((opt) => opt.value === raw)
+  return match?.label || (raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Unknown')
 }
 
 async function uploadMap() {
@@ -120,12 +133,23 @@ async function saveParentMap(mapId: string) {
   parentSaveBusy.value[mapId] = true
 
   try {
-    await $fetch(`/api/worlds/${worldId.value}/maps/${mapId}/set-parent`, {
+    const result = await $fetch<{
+      success: boolean
+      mapId: string
+      parentMapId: string | null
+    }>(`/api/worlds/${worldId.value}/maps/${mapId}/set-parent`, {
       method: 'POST',
       body: {
         parentMapId: parentDrafts.value[mapId] || null
       }
     })
+
+    parentDrafts.value[mapId] = result.parentMapId
+
+    const target = (maps.value || []).find((m: any) => String(m.id) === String(mapId))
+    if (target) {
+      target.parentMapId = result.parentMapId
+    }
 
     parentSaveMsg.value[mapId] = 'Parent saved.'
     await refreshMaps()
@@ -197,15 +221,20 @@ function parentOptionsFor(mapId: string) {
 
           <div>
             <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Type</label>
-            <select
-              v-model="uploadType"
-              class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none"
-            >
-              <option value="world">World</option>
-              <option value="country">Country</option>
-              <option value="area">Area</option>
-              <option value="detail">Detail</option>
-            </select>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="opt in MAP_TYPE_OPTIONS"
+                :key="opt.value"
+                type="button"
+                class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                :class="uploadType === opt.value
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                @click="uploadType = opt.value as any"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
           </div>
 
           <div class="md:col-span-2">
@@ -261,7 +290,7 @@ function parentOptionsFor(mapId: string) {
               </span>
 
               <span class="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs text-slate-300">
-                {{ map.type }}
+                {{ formatMapType(map.type) }}
               </span>
             </div>
 

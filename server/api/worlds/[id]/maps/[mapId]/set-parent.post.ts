@@ -61,7 +61,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const json = await dxFetch(`/items/maps/${mapId}`, {
+  const patched = await dxFetch(`/items/maps/${mapId}`, {
     method: 'PATCH',
     body: JSON.stringify({
       parent_map_id: parentMapId
@@ -70,6 +70,8 @@ export default defineEventHandler(async (event) => {
 
   return {
     success: true,
-    data: json?.data || null
+    mapId,
+    parentMapId: patched?.data?.parent_map_id ? String(patched.data.parent_map_id) : null,
+    data: patched?.data || null
   }
 })

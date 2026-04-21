@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
     y: body.y,
     color: body.color,
     pinType: body.pinType,
+    icon: body.icon,
     entityId: body.entityId,
     summary: body.summary,
     image: body.image,

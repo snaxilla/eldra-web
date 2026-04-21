@@ -7,6 +7,7 @@ type ResolvedPinRecord = {
   y: number
   color: string | null
   pinType: string | null
+  icon: string | null
   summary: string | null
   imageFileId: string | null
   imageUrl: string | null
@@ -26,11 +27,11 @@ type ResolvedPinRecord = {
 }
 
 function baseUrl() {
-  return 'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
+  return (process.env.NUXT_PUBLIC_DIRECTUS_URL || process.env.DIRECTUS_URL || '').replace(/\/$/, '')
 }
 
 function token() {
-  return 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
+  return process.env.DIRECTUS_TOKEN || ''
 }
 
 async function dxFetch(path: string, options: RequestInit = {}) {
@@ -132,6 +133,7 @@ async function resolvePin(item: any): Promise<ResolvedPinRecord> {
   const pinSummary = item?.summary ? String(item.summary) : null
   const pinImageFileId = item?.image ? String(item.image) : null
   const pinImageUrl = pinImageFileId ? `/api/assets/${pinImageFileId}` : null
+  const pinIcon = item?.icon ? String(item.icon) : null
   const inheritFromEntity = normalizeBoolean(item?.inherit_from_entity)
 
   const resolvedTitle = pinTitle || entity?.title || 'Untitled Pin'
@@ -147,6 +149,7 @@ async function resolvePin(item: any): Promise<ResolvedPinRecord> {
     y: Number(item?.y ?? 0),
     color: item?.color ? String(item.color) : null,
     pinType: item?.pin_type ? String(item.pin_type) : null,
+    icon: pinIcon,
     summary: pinSummary,
     imageFileId: pinImageFileId,
     imageUrl: pinImageUrl,
@@ -170,6 +173,7 @@ export async function listPinsForMap(mapId: string): Promise<ResolvedPinRecord[]
   params.append('fields[]', 'y')
   params.append('fields[]', 'color')
   params.append('fields[]', 'pin_type')
+  params.append('fields[]', 'icon')
   params.append('fields[]', 'summary')
   params.append('fields[]', 'image')
   params.append('fields[]', 'inherit_from_entity')
@@ -189,6 +193,7 @@ export async function createPin(data: {
   y: number
   color?: string | null
   pinType?: string | null
+  icon?: string | null
   entityId?: number | null
   summary?: string | null
   image?: string | null
@@ -203,6 +208,7 @@ export async function createPin(data: {
       y: data.y,
       color: data.color || null,
       pin_type: data.pinType || null,
+      icon: data.icon || null,
       entity_id: data.entityId || null,
       summary: data.summary || null,
       image: data.image || null,
@@ -219,6 +225,7 @@ export async function updatePin(pinId: string, data: Partial<{
   y: number
   color: string | null
   pinType: string | null
+  icon: string | null
   entityId: number | null
   summary: string | null
   image: string | null
@@ -231,6 +238,7 @@ export async function updatePin(pinId: string, data: Partial<{
   if (data.y !== undefined) body.y = data.y
   if (data.color !== undefined) body.color = data.color
   if (data.pinType !== undefined) body.pin_type = data.pinType
+  if (data.icon !== undefined) body.icon = data.icon
   if (data.entityId !== undefined) body.entity_id = data.entityId
   if (data.summary !== undefined) body.summary = data.summary
   if (data.image !== undefined) body.image = data.image

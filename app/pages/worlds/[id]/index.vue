@@ -31,7 +31,6 @@ const activeMap = computed(() => {
 
 const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
 
-// pins
 const pins = ref<any[]>([])
 const selectedPinId = ref<string | null>(null)
 const loadingPins = ref(false)
@@ -58,7 +57,6 @@ watch(
   { immediate: true }
 )
 
-// selected pin
 function selectPin(id: string) {
   selectedPinId.value = selectedPinId.value === id ? null : id
 }
@@ -70,10 +68,8 @@ const selectedPinReadMoreUrl = computed(() => {
   return `/worlds/${worldId.value}/entities/${selectedPin.value.entity.id}`
 })
 
-// editor
 const showPinEditor = ref(false)
 const savingPin = ref(false)
-
 const editingPin = ref<any | null>(null)
 
 const PIN_TYPE_OPTIONS = [
@@ -90,6 +86,21 @@ const PIN_COLORS = [
   '#8b5cf6', '#ec4899', '#06b6d4', '#f97316',
 ]
 
+const ICON_OPTIONS = [
+  { label: 'Marker', value: 'marker', symbol: '●' },
+  { label: 'City', value: 'city', symbol: '▦' },
+  { label: 'Castle', value: 'castle', symbol: '♜' },
+  { label: 'Tower', value: 'tower', symbol: '▮' },
+  { label: 'Dungeon', value: 'dungeon', symbol: '⛓' },
+  { label: 'Temple', value: 'temple', symbol: '⛪' },
+  { label: 'Camp', value: 'camp', symbol: '△' },
+  { label: 'Harbor', value: 'harbor', symbol: '⚓' },
+  { label: 'Ruins', value: 'ruins', symbol: '◫' },
+  { label: 'Quest', value: 'quest', symbol: '★' },
+  { label: 'Skull', value: 'skull', symbol: '☠' },
+  { label: 'Book', value: 'book', symbol: '☰' },
+]
+
 function onMapClick(coords: { x: number; y: number }) {
   if (mode.value !== 'build') return
 
@@ -99,6 +110,7 @@ function onMapClick(coords: { x: number; y: number }) {
     y: coords.y,
     color: '#3b82f6',
     pinType: 'location',
+    icon: 'marker',
     entityId: null,
     summary: '',
     image: null,
@@ -117,6 +129,7 @@ function editPin(pin: any) {
     y: pin.y,
     color: pin.color || '#3b82f6',
     pinType: pin.pinType || 'location',
+    icon: pin.icon || 'marker',
     entityId: pin.entityId || null,
     summary: pin.summary || '',
     image: pin.imageFileId || null,
@@ -142,6 +155,7 @@ async function savePin() {
           y: editingPin.value.y,
           color: editingPin.value.color,
           pinType: editingPin.value.pinType,
+          icon: editingPin.value.icon,
           entityId: editingPin.value.entityId,
           summary: editingPin.value.summary,
           image: editingPin.value.image,
@@ -162,6 +176,7 @@ async function savePin() {
           y: editingPin.value.y,
           color: editingPin.value.color,
           pinType: editingPin.value.pinType,
+          icon: editingPin.value.icon,
           entityId: editingPin.value.entityId,
           summary: editingPin.value.summary,
           image: editingPin.value.image,
@@ -224,12 +239,16 @@ const entityOptions = computed(() => {
     type: entity.entity_type || 'entity',
   }))
 })
+
+function iconLabel(icon: string | null | undefined) {
+  const match = ICON_OPTIONS.find((opt) => opt.value === icon)
+  return match?.label || 'Marker'
+}
 </script>
 
 <template>
   <div class="relative h-full w-full overflow-hidden bg-[#09111a]">
 
-    <!-- Top chips -->
     <div class="absolute left-4 top-4 z-20 flex items-center gap-3">
       <NuxtLink
         to="/"
@@ -248,7 +267,6 @@ const entityOptions = computed(() => {
       </div>
     </div>
 
-    <!-- Build badge -->
     <div
       v-if="mode === 'build'"
       class="pointer-events-none absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-400/10 px-4 py-2 text-sm font-medium text-amber-200 backdrop-blur"
@@ -257,7 +275,6 @@ const entityOptions = computed(() => {
       Build Mode — click map to place pin
     </div>
 
-    <!-- Map -->
     <div v-if="mapImageUrl" class="absolute inset-0 z-0">
       <WorldMapLeaflet
         :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
@@ -277,7 +294,6 @@ const entityOptions = computed(() => {
       </div>
     </div>
 
-    <!-- Play mode right sidebar -->
     <Transition
       enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
@@ -334,6 +350,10 @@ const entityOptions = computed(() => {
             </p>
 
             <div class="mt-6 flex flex-wrap gap-2">
+              <div class="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-slate-200">
+                {{ iconLabel(selectedPin.icon) }}
+              </div>
+
               <div
                 v-if="selectedPin.hasLinkedEntity"
                 class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-xs text-sky-200"
@@ -363,7 +383,6 @@ const entityOptions = computed(() => {
       </div>
     </Transition>
 
-    <!-- Build mode selected pin actions -->
     <Transition
       enter-from-class="translate-x-full opacity-0"
       enter-active-class="transition duration-200"
@@ -380,6 +399,10 @@ const entityOptions = computed(() => {
 
         <div class="text-xl font-semibold text-white">
           {{ selectedPin.resolvedTitle }}
+        </div>
+
+        <div class="mt-2 text-sm text-slate-400">
+          Icon: {{ iconLabel(selectedPin.icon) }}
         </div>
 
         <div class="mt-4 flex gap-2">
@@ -400,7 +423,6 @@ const entityOptions = computed(() => {
       </div>
     </Transition>
 
-    <!-- Pin editor -->
     <Transition
       enter-from-class="translate-y-full opacity-0"
       enter-active-class="transition duration-200"
@@ -464,6 +486,25 @@ const entityOptions = computed(() => {
                 :style="{ background: c, borderColor: editingPin.color === c ? 'white' : 'transparent' }"
                 @click="editingPin.color = c"
               />
+            </div>
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Marker Style</label>
+            <div class="grid grid-cols-3 gap-2 md:grid-cols-4">
+              <button
+                v-for="opt in ICON_OPTIONS"
+                :key="opt.value"
+                type="button"
+                class="rounded-xl border px-3 py-2 text-left transition"
+                :class="editingPin.icon === opt.value
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                @click="editingPin.icon = opt.value"
+              >
+                <div class="text-lg leading-none">{{ opt.symbol }}</div>
+                <div class="mt-1 text-xs">{{ opt.label }}</div>
+              </button>
             </div>
           </div>
 

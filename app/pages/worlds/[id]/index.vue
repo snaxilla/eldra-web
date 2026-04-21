@@ -11,7 +11,7 @@ const selectedMapSlug = computed(() => String(route.query.map || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: maps } = await useFetch(() => `/api/map-data/world/${worldId.value}`, {
+const { data: maps } = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
   default: () => []
 })
 
@@ -28,6 +28,17 @@ const activeMap = computed(() => {
   }
 
   return list.find((m: any) => m.isDefaultWorldMap) || list[0] || null
+})
+
+const worldRootMap = computed(() => {
+  const list = maps.value || []
+  return list.find((m: any) => m.isDefaultWorldMap) || list[0] || null
+})
+
+const parentMap = computed(() => {
+  const parentId = activeMap.value?.parentMapId
+  if (!parentId) return null
+  return (maps.value || []).find((m: any) => String(m.id) === String(parentId)) || null
 })
 
 const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
@@ -125,6 +136,19 @@ function normalizeEntityId(value: any) {
   if (value === undefined || value === null || value === '' || value === 'null') return null
   const num = Number(value)
   return Number.isFinite(num) ? num : null
+}
+
+function goToMapBySlug(slug: string | null | undefined) {
+  if (!slug) return
+  router.push(`/worlds/${worldId.value}?map=${slug}`)
+}
+
+function goToWorldRootMap() {
+  if (worldRootMap.value?.slug) {
+    router.push(`/worlds/${worldId.value}?map=${worldRootMap.value.slug}`)
+    return
+  }
+  router.push(`/worlds/${worldId.value}`)
 }
 
 function openNewPinEditor(coords: { x: number; y: number }) {
@@ -370,17 +394,28 @@ function openLinkedMap() {
   <div class="relative h-full w-full overflow-hidden bg-[#09111a]">
 
     <div class="absolute left-4 top-4 z-20 flex items-center gap-3">
-      <NuxtLink
-        to="/"
+      <button
+        type="button"
         class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.9)] px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
+        @click="goToWorldRootMap"
       >
         <UIcon name="i-lucide-orbit" class="h-4 w-4 text-sky-300" />
-        <span>{{ world?.name || 'World' }}</span>
-      </NuxtLink>
+        <span>World Map</span>
+      </button>
+
+      <button
+        v-if="parentMap && String(parentMap.id) !== String(worldRootMap?.id || '')"
+        type="button"
+        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.88)] px-4 py-2 text-sm text-slate-200 backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
+        @click="goToMapBySlug(parentMap.slug)"
+      >
+        <UIcon name="i-lucide-chevron-right" class="h-4 w-4 text-slate-400" />
+        <span>{{ parentMap.title }}</span>
+      </button>
 
       <div
         v-if="activeMap"
-        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.9)] px-4 py-2 text-sm text-slate-200 backdrop-blur"
+        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.96)] px-4 py-2 text-sm text-slate-100 backdrop-blur"
       >
         <UIcon name="i-lucide-map" class="h-4 w-4 text-sky-300" />
         <span>{{ activeMap.title }}</span>
@@ -414,12 +449,7 @@ function openLinkedMap() {
       </div>
     </div>
 
-    <Transition
-      enter-from-class="translate-x-full opacity-0"
-      enter-active-class="transition duration-200"
-      leave-to-class="translate-x-full opacity-0"
-      leave-active-class="transition duration-200"
-    >
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="selectedPin && mode === 'play'"
         class="absolute right-0 top-0 z-30 h-full w-[380px] border-l border-white/10 bg-[rgba(8,16,27,0.96)] shadow-2xl backdrop-blur"
@@ -529,12 +559,7 @@ function openLinkedMap() {
       </div>
     </Transition>
 
-    <Transition
-      enter-from-class="translate-x-full opacity-0"
-      enter-active-class="transition duration-200"
-      leave-to-class="translate-x-full opacity-0"
-      leave-active-class="transition duration-200"
-    >
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="selectedPin && mode === 'build' && !showPinEditor"
         class="absolute bottom-6 right-6 z-30 w-80 rounded-[20px] border border-amber-300/20 bg-[rgba(8,16,27,0.95)] p-5 shadow-2xl backdrop-blur"
@@ -569,12 +594,7 @@ function openLinkedMap() {
       </div>
     </Transition>
 
-    <Transition
-      enter-from-class="translate-x-full opacity-0"
-      enter-active-class="transition duration-200"
-      leave-to-class="translate-x-full opacity-0"
-      leave-active-class="transition duration-200"
-    >
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="showPinEditor && editingPin"
         class="absolute right-0 top-0 z-40 h-full w-[420px] border-l border-white/10 bg-[rgba(8,16,27,0.98)] shadow-2xl backdrop-blur"

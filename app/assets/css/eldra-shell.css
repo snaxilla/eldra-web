@@ -1,0 +1,38 @@
+/* Eldra shell polish
+   Subtle depth only. No layout changes.
+*/
+
+.eldra-shell-bg {
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(56, 189, 248, 0.08), transparent),
+    radial-gradient(900px 500px at 90% 0%, rgba(139, 92, 246, 0.06), transparent),
+    linear-gradient(to bottom, #060c16, #09111a 40%, #0b1622);
+}
+
+.eldra-shell-glow {
+  background:
+    radial-gradient(800px 400px at 50% -100px, rgba(56, 189, 248, 0.06), transparent);
+}
+
+.eldra-panel {
+  background: linear-gradient(
+    to bottom,
+    rgba(12, 22, 36, 0.82),
+    rgba(8, 16, 27, 0.82)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.eldra-panel-soft {
+  background: rgba(8, 16, 27, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.eldra-empty {
+  background: rgba(8, 16, 27, 0.45);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+}

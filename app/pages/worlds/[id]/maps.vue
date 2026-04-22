@@ -13,13 +13,35 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const maps = ref<any[]>([])
 const mapsLoading = ref(false)
 
+function normalizeMap(row: any) {
+  return {
+    id: String(row?.id || ''),
+    title: String(row?.title || 'Untitled Map'),
+    slug: row?.slug ? String(row.slug) : '',
+    type: row?.type ? String(row.type) : 'area',
+    worldId: row?.worldId ?? row?.world_id ?? null,
+    parentMapId:
+      row?.parentMapId !== undefined
+        ? (row.parentMapId ? String(row.parentMapId) : null)
+        : row?.parent_map_id
+          ? String(row.parent_map_id)
+          : null,
+    isDefaultWorldMap:
+      row?.isDefaultWorldMap !== undefined
+        ? row.isDefaultWorldMap === true || row.isDefaultWorldMap === 1
+        : row?.is_default_world_map === true || row?.is_default_world_map === 1,
+    imageUrl: row?.imageUrl || row?.image_url || null,
+    directusFileId: row?.directusFileId || row?.directus_file_id || null,
+  }
+}
+
 async function loadMaps() {
   mapsLoading.value = true
   try {
     const result = await $fetch<any[]>(`/api/worlds/${worldId.value}/maps`, {
       query: { t: Date.now() }
     })
-    maps.value = Array.isArray(result) ? result : []
+    maps.value = Array.isArray(result) ? result.map(normalizeMap) : []
   } catch (error) {
     console.error('Failed to load maps', error)
     maps.value = []
@@ -157,8 +179,9 @@ async function saveParentMap(mapId: string) {
     const result = await $fetch<{
       success: boolean
       mapId: string
-      parentMapId: string | null
-      title: string | null
+      parentMapId?: string | null
+      parent_map_id?: string | null
+      title?: string | null
       raw?: any
     }>(`/api/worlds/${worldId.value}/maps/${mapId}/set-parent`, {
       method: 'POST',
@@ -167,15 +190,21 @@ async function saveParentMap(mapId: string) {
       }
     })
 
-    parentDrafts.value[mapId] = result.parentMapId
+    const persistedParentId =
+      result?.parentMapId !== undefined
+        ? (result.parentMapId ? String(result.parentMapId) : null)
+        : result?.parent_map_id
+          ? String(result.parent_map_id)
+          : null
+
+    parentDrafts.value[mapId] = persistedParentId
 
     const target = (maps.value || []).find((m: any) => String(m.id) === String(mapId))
     if (target) {
-      target.parentMapId = result.parentMapId
+      target.parentMapId = persistedParentId
     }
 
-    parentSaveMsg.value[mapId] = `Parent saved.${result.parentMapId ? '' : ' (No parent)'}`
-
+    parentSaveMsg.value[mapId] = 'Parent saved.'
     await loadMaps()
   } catch (error: any) {
     parentSaveMsg.value[mapId] =

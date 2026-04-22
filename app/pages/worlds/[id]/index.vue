@@ -18,13 +18,35 @@ const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(()
 const maps = ref<any[]>([])
 const mapsLoading = ref(false)
 
+function normalizeMap(row: any) {
+  return {
+    id: String(row?.id || ''),
+    title: String(row?.title || 'Untitled Map'),
+    slug: row?.slug ? String(row.slug) : '',
+    type: row?.type ? String(row.type) : 'area',
+    worldId: row?.worldId ?? row?.world_id ?? null,
+    parentMapId:
+      row?.parentMapId !== undefined
+        ? (row.parentMapId ? String(row.parentMapId) : null)
+        : row?.parent_map_id
+          ? String(row.parent_map_id)
+          : null,
+    isDefaultWorldMap:
+      row?.isDefaultWorldMap !== undefined
+        ? row.isDefaultWorldMap === true || row.isDefaultWorldMap === 1
+        : row?.is_default_world_map === true || row?.is_default_world_map === 1,
+    imageUrl: row?.imageUrl || row?.image_url || null,
+    directusFileId: row?.directusFileId || row?.directus_file_id || null,
+  }
+}
+
 async function loadMaps() {
   mapsLoading.value = true
   try {
     const result = await $fetch<any[]>(`/api/worlds/${worldId.value}/maps`, {
       query: { t: Date.now() }
     })
-    maps.value = Array.isArray(result) ? result : []
+    maps.value = Array.isArray(result) ? result.map(normalizeMap) : []
   } catch (e) {
     console.error('Failed to load maps', e)
     maps.value = []

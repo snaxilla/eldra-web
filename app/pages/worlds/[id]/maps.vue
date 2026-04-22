@@ -204,7 +204,7 @@ async function saveParentMap(mapId: string) {
       target.parentMapId = persistedParentId
     }
 
-    parentSaveMsg.value[mapId] = 'Parent saved.'
+    parentSaveMsg.value[mapId] = `Parent saved. Persisted: ${persistedParentId || 'null'}`
     await loadMaps()
   } catch (error: any) {
     parentSaveMsg.value[mapId] =
@@ -371,6 +371,10 @@ function parentOptionsFor(mapId: string) {
 
                 <div class="mt-2 text-xs text-slate-500">
                   Current Parent: {{ parentTitle(map) }}
+                </div>
+
+                <div class="mt-1 font-mono text-[11px] text-slate-500">
+                  map.id={{ map.id }} | map.parentMapId={{ map.parentMapId || 'null' }} | draft={{ parentDrafts[map.id] || 'null' }}
                 </div>
 
                 <div v-if="parentSaveMsg[map.id]" class="mt-1 text-xs text-slate-400">

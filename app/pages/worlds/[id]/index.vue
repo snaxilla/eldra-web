@@ -9,7 +9,6 @@ const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
 
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
-const showPins = useState<boolean>('world-map-show-pins', () => true)
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
@@ -25,6 +24,7 @@ function normalizeMap(row: any) {
     title: String(row?.title || 'Untitled Map'),
     slug: row?.slug ? String(row.slug) : '',
     type: row?.type ? String(row.type) : 'area',
+    worldId: row?.worldId ?? row?.world_id ?? null,
     parentMapId:
       row?.parentMapId !== undefined
         ? (row.parentMapId ? String(row.parentMapId) : null)
@@ -122,35 +122,11 @@ watch(
   { immediate: true }
 )
 
-watch(showPins, (value) => {
-  if (!value) selectedPinId.value = null
-})
-
 function selectPin(id: string) {
   selectedPinId.value = selectedPinId.value === id ? null : id
 }
 
-function shouldPinBeVisible(pin: any) {
-  if (!showPins.value) return false
-
-  // Future-ready visibility rules:
-  // - pin.visibility = 'public' | 'discovered' | 'gm' | 'private'
-  // - pin.discovered = true/false
-  // - pin.allowedRoles / pin.allowedUsers
-  const visibility = String(pin?.visibility || 'public')
-
-  if (visibility === 'hidden') return false
-  if (visibility === 'discovered' && pin?.discovered === false) return false
-
-  // For now, anything not explicitly hidden is visible when pins are enabled.
-  return true
-}
-
-const visiblePins = computed(() => {
-  return (pins.value || []).filter(shouldPinBeVisible)
-})
-
-const selectedPin = computed(() => visiblePins.value.find((p) => p.id === selectedPinId.value) || null)
+const selectedPin = computed(() => pins.value.find((p) => p.id === selectedPinId.value) || null)
 
 const selectedPinReadMoreUrl = computed(() => {
   if (!selectedPin.value?.entity?.id) return null
@@ -510,9 +486,9 @@ function openLinkedMap() {
 
     <div v-if="mapImageUrl" class="absolute inset-0 z-0">
       <WorldMapLeaflet
-        :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}-${showPins ? 'pins-on' : 'pins-off'}`"
+        :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
         :map-image-url="mapImageUrl"
-        :pins="visiblePins"
+        :pins="pins"
         :selected-pin-id="selectedPinId"
         :build-mode="mode === 'build'"
         @select-pin="selectPin"

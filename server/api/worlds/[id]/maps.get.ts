@@ -48,12 +48,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const params = new URLSearchParams()
-  params.set('filter[world_id][_eq]', worldId)
+
+  // Use the exposed relation field, not raw world_id
+  params.set('filter[world][_eq]', worldId)
+
   params.append('fields[]', 'id')
   params.append('fields[]', 'title')
   params.append('fields[]', 'slug')
   params.append('fields[]', 'type')
-  params.append('fields[]', 'world_id')
   params.append('fields[]', 'parent_map_id')
   params.append('fields[]', 'is_default_world_map')
   params.append('fields[]', 'image')
@@ -71,7 +73,6 @@ export default defineEventHandler(async (event) => {
       title: String(row?.title || 'Untitled Map'),
       slug: row?.slug ? String(row.slug) : '',
       type: row?.type ? String(row.type) : 'area',
-      worldId: row?.world_id ?? null,
       parentMapId: row?.parent_map_id ? String(row.parent_map_id) : null,
       isDefaultWorldMap: row?.is_default_world_map === true || row?.is_default_world_map === 1,
       directusFileId: imageFileId ? String(imageFileId) : null,

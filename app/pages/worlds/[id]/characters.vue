@@ -143,7 +143,7 @@ const characterCounts = computed(() => {
 <template>
   <div class="h-full overflow-y-auto bg-[#09111a]">
     <div class="mx-auto max-w-[1700px] space-y-6 p-6">
-      <section class="rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] p-6 shadow-xl">
+      <section class="rounded-[24px] border border-white/10 eldra-panel p-6 shadow-xl">
         <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Characters</div>
@@ -229,14 +229,14 @@ const characterCounts = computed(() => {
 
       <section
         v-if="pending"
-        class="rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] p-6 text-slate-400 shadow-xl"
+        class="rounded-[24px] border border-white/10 eldra-panel p-6 text-slate-400 shadow-xl"
       >
         Loading characters...
       </section>
 
       <section
         v-else-if="!filteredCharacters.length"
-        class="rounded-[24px] border border-dashed border-white/10 bg-[rgba(8,16,27,0.55)] p-10 text-center shadow-xl"
+        class="rounded-[24px] eldra-empty p-10 text-center shadow-xl"
       >
         <div class="text-lg font-medium text-white">No characters found</div>
         <p class="mt-2 text-sm text-slate-400">
@@ -252,7 +252,7 @@ const characterCounts = computed(() => {
           v-for="character in filteredCharacters"
           :key="character.id"
           :to="`/worlds/${worldId}/entities/${character.id}`"
-          class="group overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] shadow-xl transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-[rgba(10,20,34,0.88)]"
+          class="group overflow-hidden rounded-[24px] border border-white/10 eldra-panel shadow-xl transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-[rgba(10,20,34,0.88)]"
         >
           <div class="flex min-h-[168px]">
             <div class="relative w-[112px] shrink-0 border-r border-white/10 bg-black/20">

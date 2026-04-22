@@ -49,7 +49,15 @@ export default defineEventHandler(async (event) => {
 
   const params = new URLSearchParams()
   params.set('filter[world_id][_eq]', worldId)
-  params.set('fields', '*')
+  params.append('fields[]', 'id')
+  params.append('fields[]', 'title')
+  params.append('fields[]', 'slug')
+  params.append('fields[]', 'type')
+  params.append('fields[]', 'world_id')
+  params.append('fields[]', 'parent_map_id')
+  params.append('fields[]', 'is_default_world_map')
+  params.append('fields[]', 'image')
+  params.append('fields[]', 'image_file')
   params.set('sort', 'title')
 
   const json = await dxFetch(`/items/maps?${params.toString()}`)
@@ -67,11 +75,7 @@ export default defineEventHandler(async (event) => {
       parentMapId: row?.parent_map_id ? String(row.parent_map_id) : null,
       isDefaultWorldMap: row?.is_default_world_map === true || row?.is_default_world_map === 1,
       directusFileId: imageFileId ? String(imageFileId) : null,
-      imageUrl: imageFileId ? `/api/assets/${imageFileId}` : null,
-
-      // temporary debug so we can see exactly what this route received
-      _debug_parent_map_id: row?.parent_map_id ?? null,
-      _debug_world_id: row?.world_id ?? null
+      imageUrl: imageFileId ? `/api/assets/${imageFileId}` : null
     }
   })
 })

@@ -21,34 +21,20 @@ async function dxFetch(path: string, options: RequestInit = {}) {
 
   try {
     json = text ? JSON.parse(text) : null
-  } catch {
-    json = null
-  }
+  } catch {}
 
   if (!res.ok) {
     throw createError({
       statusCode: res.status,
-      statusMessage: json?.errors?.[0]?.message || json?.message || text || `Directus error (${res.status})`
+      statusMessage:
+        json?.errors?.[0]?.message ||
+        json?.message ||
+        text ||
+        `Directus error (${res.status})`
     })
   }
 
   return json
-}
-
-function normalizeMap(item: any) {
-  const imageFileId = item?.image || item?.image_file || null
-
-  return {
-    id: String(item?.id || ''),
-    title: String(item?.title || 'Untitled Map'),
-    slug: item?.slug ? String(item.slug) : '',
-    type: item?.type ? String(item.type) : 'area',
-    worldId: item?.world_id ? Number(item.world_id) : null,
-    parentMapId: item?.parent_map_id ? String(item.parent_map_id) : null,
-    isDefaultWorldMap: item?.is_default_world_map === true || item?.is_default_world_map === 1,
-    directusFileId: imageFileId ? String(imageFileId) : null,
-    imageUrl: imageFileId ? `/api/assets/${imageFileId}` : null,
-  }
 }
 
 export default defineEventHandler(async (event) => {
@@ -63,6 +49,8 @@ export default defineEventHandler(async (event) => {
 
   const params = new URLSearchParams()
   params.set('filter[world_id][_eq]', worldId)
+
+  // ✅ THIS IS THE FIX
   params.append('fields[]', 'id')
   params.append('fields[]', 'title')
   params.append('fields[]', 'slug')
@@ -72,10 +60,25 @@ export default defineEventHandler(async (event) => {
   params.append('fields[]', 'is_default_world_map')
   params.append('fields[]', 'image')
   params.append('fields[]', 'image_file')
+
   params.set('sort', 'title')
 
   const json = await dxFetch(`/items/maps?${params.toString()}`)
   const rows = Array.isArray(json?.data) ? json.data : []
 
-  return rows.map(normalizeMap)
+  return rows.map((row: any) => {
+    const imageFileId = row?.image || row?.image_file || null
+
+    return {
+      id: String(row?.id || ''),
+      title: String(row?.title || 'Untitled Map'),
+      slug: row?.slug ? String(row.slug) : '',
+      type: row?.type ? String(row.type) : 'area',
+      worldId: row?.world_id ? Number(row.world_id) : null,
+      parentMapId: row?.parent_map_id ? String(row.parent_map_id) : null,
+      isDefaultWorldMap: row?.is_default_world_map === true || row?.is_default_world_map === 1,
+      directusFileId: imageFileId ? String(imageFileId) : null,
+      imageUrl: imageFileId ? `/api/assets/${imageFileId}` : null
+    }
+  })
 })

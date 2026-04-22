@@ -46,31 +46,28 @@ function getMarkerSymbol(icon: string | null | undefined) {
   return symbols[value] || '●'
 }
 
-function markerSizeForZoom(selected = false) {
-  if (!leafletMap) return selected ? 22 : 18
+function markerScaleForZoom(selected = false) {
+  if (!leafletMap) return selected ? 1.15 : 1
 
   const zoom = Number(leafletMap.getZoom?.() ?? 0)
 
-  // Clamped zoom curve:
-  // - zoomed out: smaller
-  // - medium zoom: readable
-  // - zoomed in: slightly bigger, but capped
-  const base = clamp(16 + zoom * 1.8, 12, 22)
-  return selected ? clamp(base + 4, 16, 26) : base
+  // Safe visual scaling only:
+  // zoomed out -> smaller, zoomed in -> a bit larger, never huge
+  const base = clamp(0.72 + ((zoom + 2) * 0.12), 0.65, 1.15)
+  return selected ? clamp(base + 0.14, 0.8, 1.3) : base
 }
 
 function markerHtml(pin: any, selected = false) {
-  const size = markerSizeForZoom(selected)
   const color = String(pin?.color || '#3b82f6')
   const symbol = getMarkerSymbol(pin?.icon)
-  const halo = selected ? '0 0 0 3px rgba(255,255,255,0.25)' : '0 0 0 1px rgba(255,255,255,0.08)'
-  const fontSize = Math.max(10, Math.round(size * 0.52))
+  const scale = markerScaleForZoom(selected)
+  const halo = selected ? '0 0 0 3px rgba(255,255,255,0.25)' : '0 0 0 1px rgba(255,255,255,0.10)'
 
   return `
     <div
       style="
-        width:${size}px;
-        height:${size}px;
+        width:22px;
+        height:22px;
         border-radius:999px;
         background:${color};
         color:white;
@@ -79,10 +76,11 @@ function markerHtml(pin: any, selected = false) {
         justify-content:center;
         box-shadow:${halo}, 0 6px 16px rgba(0,0,0,0.35);
         border:1px solid rgba(255,255,255,0.35);
-        font-size:${fontSize}px;
+        font-size:11px;
         font-weight:700;
         line-height:1;
-        transform: translateZ(0);
+        transform: translateZ(0) scale(${scale});
+        transform-origin:center center;
         user-select:none;
       "
       title="${String(pin?.resolvedTitle || pin?.title || 'Pin').replace(/"/g, '&quot;')}"
@@ -96,13 +94,13 @@ function createMarker(pin: any) {
   if (!L) return null
 
   const selected = String(pin.id) === String(props.selectedPinId || '')
-  const size = markerSizeForZoom(selected)
 
+  // Keep icon box fixed so anchor math stays stable.
   const icon = L.divIcon({
     className: 'eldra-map-pin',
     html: markerHtml(pin, selected),
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
   })
 
   const marker = L.marker([Number(pin.y || 0), Number(pin.x || 0)], {
@@ -153,6 +151,15 @@ async function loadImageSize(src: string) {
   })
 }
 
+function fitMapToImage() {
+  if (!leafletMap || !imageBounds) return
+
+  leafletMap.fitBounds(imageBounds, {
+    animate: false,
+    padding: [24, 24],
+  })
+}
+
 async function initMap() {
   if (!process.client || !mapEl.value || !props.mapImageUrl) return
 
@@ -184,19 +191,29 @@ async function initMap() {
   imageOverlay = L.imageOverlay(props.mapImageUrl, imageBounds).addTo(leafletMap)
   markersLayer = L.layerGroup().addTo(leafletMap)
 
-  leafletMap.fitBounds(imageBounds, {
-    animate: false,
-    padding: [24, 24],
-  })
+  fitMapToImage()
+  renderMarkers()
 
   leafletMap.on('click', emitMapClick)
   leafletMap.on('zoomend', renderMarkers)
 
-  renderMarkers()
-
+  // Important: force Leaflet to recompute after layout settles.
   nextTick(() => {
-    leafletMap?.invalidateSize?.()
+    leafletMap?.invalidateSize?.(false)
+    fitMapToImage()
+    renderMarkers()
   })
+
+  setTimeout(() => {
+    leafletMap?.invalidateSize?.(false)
+    fitMapToImage()
+    renderMarkers()
+  }, 60)
+
+  setTimeout(() => {
+    leafletMap?.invalidateSize?.(false)
+    renderMarkers()
+  }, 180)
 }
 
 function destroyMap() {
@@ -229,6 +246,15 @@ watch(
   }
 )
 
+watch(
+  () => props.mapImageUrl,
+  async () => {
+    destroyMap()
+    await nextTick()
+    await initMap()
+  }
+)
+
 onMounted(async () => {
   await initMap()
 })
@@ -248,6 +274,11 @@ onBeforeUnmount(() => {
   font-family: inherit;
 }
 
+:deep(.leaflet-control-zoom) {
+  margin-top: 18px;
+  margin-left: 18px;
+}
+
 :deep(.leaflet-control-zoom a) {
   background: rgba(8, 16, 27, 0.92);
   color: white;
@@ -256,5 +287,10 @@ onBeforeUnmount(() => {
 
 :deep(.leaflet-control-zoom a:hover) {
   background: rgba(15, 23, 42, 0.98);
+}
+
+:deep(.leaflet-div-icon) {
+  background: transparent;
+  border: 0;
 }
 </style>

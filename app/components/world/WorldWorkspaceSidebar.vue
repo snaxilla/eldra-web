@@ -9,6 +9,8 @@ type NavItem = {
   children?: { label: string; to?: string }[]
 }
 
+const showPins = useState<boolean>('world-map-show-pins', () => true)
+
 const props = defineProps<{
   world: any
   collapsed: boolean
@@ -213,6 +215,31 @@ function toggleGroup(key: string) {
     </div>
 
     <div v-else class="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+
+      <div class="px-4 pb-4">
+        <div class="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+          <div class="mb-2 text-[11px] uppercase tracking-[0.3em] text-slate-500">
+            Map Pins
+          </div>
+
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition"
+            :class="showPins
+              ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/20'
+              : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]'"
+            @click="showPins = !showPins"
+          >
+            <span>{{ showPins ? 'Pins Visible' : 'Pins Hidden' }}</span>
+            <UIcon :name="showPins ? 'i-lucide-eye' : 'i-lucide-eye-off'" class="h-4 w-4" />
+          </button>
+
+          <div class="mt-2 text-xs text-slate-500">
+            Hide map markers without deleting them.
+          </div>
+        </div>
+      </div>
+
       <nav class="space-y-1">
         <div
           v-for="item in filteredNavItems"

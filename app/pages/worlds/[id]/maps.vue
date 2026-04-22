@@ -12,6 +12,7 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
 const maps = ref<any[]>([])
 const mapsLoading = ref(false)
+const mapsLoadError = ref('')
 
 function normalizeMap(row: any) {
   return {
@@ -37,14 +38,21 @@ function normalizeMap(row: any) {
 
 async function loadMaps() {
   mapsLoading.value = true
+  mapsLoadError.value = ''
+
   try {
     const result = await $fetch<any[]>(`/api/worlds/${worldId.value}/maps`, {
       query: { t: Date.now() }
     })
     maps.value = Array.isArray(result) ? result.map(normalizeMap) : []
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to load maps', error)
     maps.value = []
+    mapsLoadError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to load maps.'
   } finally {
     mapsLoading.value = false
   }
@@ -181,8 +189,6 @@ async function saveParentMap(mapId: string) {
       mapId: string
       parentMapId?: string | null
       parent_map_id?: string | null
-      title?: string | null
-      raw?: any
     }>(`/api/worlds/${worldId.value}/maps/${mapId}/set-parent`, {
       method: 'POST',
       body: {
@@ -253,6 +259,13 @@ function parentOptionsFor(mapId: string) {
             </button>
           </div>
         </div>
+      </section>
+
+      <section
+        v-if="mapsLoadError"
+        class="rounded-[24px] border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-200 shadow-xl"
+      >
+        {{ mapsLoadError }}
       </section>
 
       <section
@@ -371,10 +384,6 @@ function parentOptionsFor(mapId: string) {
 
                 <div class="mt-2 text-xs text-slate-500">
                   Current Parent: {{ parentTitle(map) }}
-                </div>
-
-                <div class="mt-1 font-mono text-[11px] text-slate-500">
-                  map.id={{ map.id }} | map.parentMapId={{ map.parentMapId || 'null' }} | draft={{ parentDrafts[map.id] || 'null' }}
                 </div>
 
                 <div v-if="parentSaveMsg[map.id]" class="mt-1 text-xs text-slate-400">

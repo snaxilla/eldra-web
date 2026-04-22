@@ -4,6 +4,15 @@ const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
 
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+
+const showPinsCookie = useCookie<string>('eldra-show-pins', {
+  default: () => 'true'
+})
+const showPins = useState<boolean>('world-map-show-pins', () => showPinsCookie.value != 'false')
+
+watch(showPins, (value) => {
+  showPinsCookie.value = value ? 'true' : 'false'
+})
 const leftCollapsed = useState<boolean>('world-workspace-left-collapsed', () => false)
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)

@@ -9,6 +9,7 @@ const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
 
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+const showPins = useState<boolean>('world-map-show-pins', () => true)
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
@@ -97,7 +98,32 @@ const ancestorMaps = computed(() => {
 const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
 
 const pins = ref<any[]>([])
+
+function isPinVisible(pin: any) {
+  if (!showPins.value) return false
+
+  // Future-ready visibility model:
+  // pin.visibility = 'public' | 'discovered' | 'gm' | 'private'
+  // pin.discovered = true/false
+  // pin.allowed_roles / pin.allowed_users
+  const visibility = String(pin?.visibility || 'public')
+
+  if (visibility === 'hidden') return false
+  if (visibility === 'discovered' && pin?.discovered === false) return false
+
+  return true
+}
+
+const visiblePins = computed(() => {
+  return (pins.value || []).filter(isPinVisible)
+})
 const selectedPinId = ref<string | null>(null)
+
+watch(showPins, (value) => {
+  if (!value) {
+    selectedPinId.value = null
+  }
+})
 const loadingPins = ref(false)
 
 async function fetchPins() {
@@ -488,7 +514,7 @@ function openLinkedMap() {
       <WorldMapLeaflet
         :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
         :map-image-url="mapImageUrl"
-        :pins="pins"
+        :pins="visiblePins"
         :selected-pin-id="selectedPinId"
         :build-mode="mode === 'build'"
         @select-pin="selectPin"

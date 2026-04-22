@@ -11,13 +11,29 @@ const selectedMapSlug = computed(() => String(route.query.map || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: maps } = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
-  default: () => []
-})
-
 const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
   default: () => []
 })
+
+const maps = ref<any[]>([])
+const mapsLoading = ref(false)
+
+async function loadMaps() {
+  mapsLoading.value = true
+  try {
+    const result = await $fetch<any[]>(`/api/worlds/${worldId.value}/maps`, {
+      query: { t: Date.now() }
+    })
+    maps.value = Array.isArray(result) ? result : []
+  } catch (e) {
+    console.error('Failed to load maps', e)
+    maps.value = []
+  } finally {
+    mapsLoading.value = false
+  }
+}
+
+await loadMaps()
 
 const activeMap = computed(() => {
   const list = maps.value || []

@@ -9,12 +9,26 @@ const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const {
-  data: maps,
-  refresh: refreshMaps
-} = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
-  default: () => []
-})
+
+const maps = ref<any[]>([])
+const mapsLoading = ref(false)
+
+async function loadMaps() {
+  mapsLoading.value = true
+  try {
+    const result = await $fetch<any[]>(`/api/worlds/${worldId.value}/maps`, {
+      query: { t: Date.now() }
+    })
+    maps.value = Array.isArray(result) ? result : []
+  } catch (error) {
+    console.error('Failed to load maps', error)
+    maps.value = []
+  } finally {
+    mapsLoading.value = false
+  }
+}
+
+await loadMaps()
 
 const MAP_TYPE_OPTIONS = [
   { label: 'World', value: 'world' },
@@ -38,7 +52,7 @@ const parentSaveBusy = ref<Record<string, boolean>>({})
 const parentSaveMsg = ref<Record<string, string>>({})
 
 watch(
-  () => maps.value,
+  maps,
   (list) => {
     const next: Record<string, string | null> = {}
     for (const map of list || []) {
@@ -112,7 +126,7 @@ async function uploadMap() {
     uploadSuccess.value = 'Map uploaded.'
     showUploadForm.value = false
 
-    await refreshMaps()
+    await loadMaps()
   } catch (error: any) {
     uploadError.value =
       error?.data?.statusMessage ||
@@ -129,7 +143,7 @@ async function setAsWorldMap(mapId: string) {
     await $fetch(`/api/worlds/${worldId.value}/maps/${mapId}/set-default`, {
       method: 'POST'
     })
-    await refreshMaps()
+    await loadMaps()
   } catch (error) {
     console.error('Failed to set default world map', error)
   }
@@ -145,6 +159,7 @@ async function saveParentMap(mapId: string) {
       mapId: string
       parentMapId: string | null
       title: string | null
+      raw?: any
     }>(`/api/worlds/${worldId.value}/maps/${mapId}/set-parent`, {
       method: 'POST',
       body: {
@@ -159,8 +174,9 @@ async function saveParentMap(mapId: string) {
       target.parentMapId = result.parentMapId
     }
 
-    parentSaveMsg.value[mapId] = 'Parent saved.'
-    await refreshMaps()
+    parentSaveMsg.value[mapId] = `Parent saved.${result.parentMapId ? '' : ' (No parent)'}`
+
+    await loadMaps()
   } catch (error: any) {
     parentSaveMsg.value[mapId] =
       error?.data?.statusMessage ||
@@ -276,7 +292,11 @@ function parentOptionsFor(mapId: string) {
         </div>
       </section>
 
-      <section class="grid gap-5 lg:grid-cols-2">
+      <section v-if="mapsLoading" class="rounded-[24px] border border-white/10 bg-[rgba(8,16,27,0.78)] p-6 text-slate-400 shadow-xl">
+        Loading maps...
+      </section>
+
+      <section v-else class="grid gap-5 lg:grid-cols-2">
         <article
           v-for="map in filteredMaps"
           :key="map.id"

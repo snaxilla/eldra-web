@@ -52,21 +52,22 @@ export default defineEventHandler(async (event) => {
   // Use the exposed relation field, not raw world_id
   params.set('filter[world][_eq]', worldId)
 
+  // Only request fields we actually need
   params.append('fields[]', 'id')
   params.append('fields[]', 'title')
   params.append('fields[]', 'slug')
   params.append('fields[]', 'type')
   params.append('fields[]', 'parent_map_id')
   params.append('fields[]', 'is_default_world_map')
-  params.append('fields[]', 'image')
   params.append('fields[]', 'image_file')
+
   params.set('sort', 'title')
 
   const json = await dxFetch(`/items/maps?${params.toString()}`)
   const rows = Array.isArray(json?.data) ? json.data : []
 
   return rows.map((row: any) => {
-    const imageFileId = row?.image || row?.image_file || null
+    const imageFileId = row?.image_file || null
 
     return {
       id: String(row?.id || ''),

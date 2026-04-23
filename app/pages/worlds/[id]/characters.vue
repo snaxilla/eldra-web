@@ -5,21 +5,33 @@ definePageMeta({
 
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
+const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
 const typeFilter = ref<'all' | 'npc' | 'npc_sheet' | 'pc'>('all')
+
 const showCreatePanel = ref(false)
+const showEditPanel = ref(false)
 const creating = ref(false)
+const updating = ref(false)
+const deleting = ref(false)
+
 const createError = ref('')
 const createSuccess = ref('')
+const editError = ref('')
+const editSuccess = ref('')
+const deleteError = ref('')
+
 const selectedCharacterId = ref<string | null>(null)
+const confirmDelete = ref(false)
 
 const form = reactive({
   title: '',
   characterType: 'npc' as 'npc' | 'npc_sheet' | 'pc',
   summary: '',
   image: null as File | null,
-  imagePreviewUrl: ''
+  imagePreviewUrl: '',
+  clearImage: false
 })
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
@@ -97,24 +109,10 @@ function typeBadgeClass(type: string) {
 }
 
 function imageUrlFor(entity: any) {
-  if (entity?.image_url) return String(entity.image_url)
   if (entity?.imageUrl) return String(entity.imageUrl)
-
+  if (entity?.image_url) return String(entity.image_url)
   if (entity?.image?.id) return `/api/assets/${entity.image.id}`
-  if (typeof entity?.image === 'string' || typeof entity?.image === 'number') {
-    return `/api/assets/${entity.image}`
-  }
-
-  if (entity?.image_file?.id) return `/api/assets/${entity.image_file.id}`
-  if (typeof entity?.image_file === 'string' || typeof entity?.image_file === 'number') {
-    return `/api/assets/${entity.image_file}`
-  }
-
-  if (entity?.portrait?.id) return `/api/assets/${entity.portrait.id}`
-  if (typeof entity?.portrait === 'string' || typeof entity?.portrait === 'number') {
-    return `/api/assets/${entity.portrait}`
-  }
-
+  if (typeof entity?.image === 'string' || typeof entity?.image === 'number') return `/api/assets/${entity.image}`
   return null
 }
 
@@ -197,10 +195,12 @@ function isSelected(character: any) {
 
 function selectCharacter(character: any) {
   selectedCharacterId.value = String(character?.stringId || character?.id || '')
+  confirmDelete.value = false
 }
 
 function clearSelectedCharacter() {
   selectedCharacterId.value = null
+  confirmDelete.value = false
 }
 
 function resetForm() {
@@ -209,8 +209,24 @@ function resetForm() {
   form.summary = ''
   form.image = null
   form.imagePreviewUrl = ''
+  form.clearImage = false
   createError.value = ''
   createSuccess.value = ''
+  editError.value = ''
+  editSuccess.value = ''
+}
+
+function setFormFromCharacter(character: any) {
+  resetForm()
+  form.title = String(character?.displayTitle || '')
+  form.characterType =
+    character?.normalizedType === 'pc' ? 'pc' :
+    character?.normalizedType === 'npc_sheet' ? 'npc_sheet' :
+    'npc'
+  form.summary = String(character?.displaySummary || '')
+  form.image = null
+  form.imagePreviewUrl = character?.imageUrl ? String(character.imageUrl) : ''
+  form.clearImage = false
 }
 
 function openCreatePanel() {
@@ -224,20 +240,44 @@ function closeCreatePanel() {
   createSuccess.value = ''
 }
 
+function openEditPanel() {
+  if (!selectedCharacter.value) return
+  setFormFromCharacter(selectedCharacter.value)
+  showEditPanel.value = true
+  confirmDelete.value = false
+}
+
+function closeEditPanel() {
+  showEditPanel.value = false
+  editError.value = ''
+  editSuccess.value = ''
+  form.image = null
+  form.clearImage = false
+}
+
 function onImageChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0] || null
 
   form.image = file
+  form.clearImage = false
 
-  if (form.imagePreviewUrl) {
+  if (form.imagePreviewUrl && form.imagePreviewUrl.startsWith('blob:')) {
     URL.revokeObjectURL(form.imagePreviewUrl)
-    form.imagePreviewUrl = ''
   }
+  form.imagePreviewUrl = ''
 
   if (file) {
     form.imagePreviewUrl = URL.createObjectURL(file)
+  } else if (selectedCharacter.value?.imageUrl) {
+    form.imagePreviewUrl = String(selectedCharacter.value.imageUrl)
   }
+}
+
+function removeCurrentImage() {
+  form.image = null
+  form.imagePreviewUrl = ''
+  form.clearImage = true
 }
 
 async function createCharacter() {
@@ -267,7 +307,6 @@ async function createCharacter() {
     })
 
     await refresh()
-    createSuccess.value = 'Character created.'
     closeCreatePanel()
 
     if (created?.id) {
@@ -284,8 +323,85 @@ async function createCharacter() {
   }
 }
 
+async function updateCharacter() {
+  if (!selectedCharacter.value) return
+
+  editError.value = ''
+  editSuccess.value = ''
+
+  if (!form.title.trim()) {
+    editError.value = 'Character name is required.'
+    return
+  }
+
+  updating.value = true
+
+  try {
+    const body = new FormData()
+    body.append('title', form.title.trim())
+    body.append('characterType', form.characterType)
+    body.append('summary', form.summary.trim())
+    body.append('clearImage', form.clearImage ? 'true' : 'false')
+
+    if (form.image) {
+      body.append('image', form.image)
+    }
+
+    const updated = await $fetch<any>(`/api/worlds/${worldId.value}/characters/${selectedCharacter.value.id}/update`, {
+      method: 'POST',
+      body
+    })
+
+    await refresh()
+    closeEditPanel()
+
+    if (updated?.id) {
+      selectedCharacterId.value = String(updated.id)
+    }
+  } catch (error: any) {
+    editError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to update character.'
+  } finally {
+    updating.value = false
+  }
+}
+
+async function deleteCharacter() {
+  if (!selectedCharacter.value) return
+
+  deleteError.value = ''
+  deleting.value = true
+
+  try {
+    const deletingId = String(selectedCharacter.value.id)
+    await $fetch(`/api/worlds/${worldId.value}/characters/${deletingId}`, {
+      method: 'DELETE'
+    })
+
+    await refresh()
+
+    if (selectedCharacterId.value === deletingId) {
+      selectedCharacterId.value = null
+    }
+
+    confirmDelete.value = false
+    closeEditPanel()
+  } catch (error: any) {
+    deleteError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to delete character.'
+  } finally {
+    deleting.value = false
+  }
+}
+
 onBeforeUnmount(() => {
-  if (form.imagePreviewUrl) {
+  if (form.imagePreviewUrl && form.imagePreviewUrl.startsWith('blob:')) {
     URL.revokeObjectURL(form.imagePreviewUrl)
   }
 })
@@ -511,19 +627,63 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="border-t border-white/10 p-5">
-            <div class="flex gap-3">
-              <NuxtLink
-                :to="`/worlds/${worldId}/entities/${selectedCharacter.id}`"
-                class="flex-1 rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
-              >
-                Read More
-              </NuxtLink>
+            <div v-if="deleteError" class="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {{ deleteError }}
+            </div>
+
+            <div class="grid gap-3">
+              <div class="flex gap-3">
+                <NuxtLink
+                  :to="`/worlds/${worldId}/entities/${selectedCharacter.id}`"
+                  class="flex-1 rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+                >
+                  Read More
+                </NuxtLink>
+
+                <button
+                  type="button"
+                  class="flex-1 rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-center text-sm font-medium text-violet-100 transition hover:bg-violet-400/20"
+                >
+                  Open Sheet
+                </button>
+              </div>
+
+              <div v-if="mode === 'build'" class="flex gap-3">
+                <button
+                  type="button"
+                  class="flex-1 rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-center text-sm font-medium text-amber-100 transition hover:bg-amber-400/20"
+                  @click="openEditPanel"
+                >
+                  Edit
+                </button>
+
+                <button
+                  v-if="!confirmDelete"
+                  type="button"
+                  class="flex-1 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-sm font-medium text-red-100 transition hover:bg-red-500/20"
+                  @click="confirmDelete = true"
+                >
+                  Delete
+                </button>
+
+                <button
+                  v-else
+                  type="button"
+                  class="flex-1 rounded-xl border border-red-500/30 bg-red-500/20 px-4 py-3 text-center text-sm font-medium text-red-50 transition hover:bg-red-500/30 disabled:opacity-50"
+                  :disabled="deleting"
+                  @click="deleteCharacter"
+                >
+                  {{ deleting ? 'Deleting…' : 'Confirm Delete' }}
+                </button>
+              </div>
 
               <button
+                v-if="mode === 'build' && confirmDelete"
                 type="button"
-                class="flex-1 rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-center text-sm font-medium text-violet-100 transition hover:bg-violet-400/20"
+                class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]"
+                @click="confirmDelete = false"
               >
-                Open Sheet
+                Cancel Delete
               </button>
             </div>
           </div>
@@ -557,10 +717,6 @@ onBeforeUnmount(() => {
                 {{ createError }}
               </div>
 
-              <div v-if="createSuccess" class="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                {{ createSuccess }}
-              </div>
-
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Name</label>
                 <input
@@ -574,38 +730,9 @@ onBeforeUnmount(() => {
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Archetype</label>
                 <div class="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    class="rounded-xl border px-3 py-2 text-sm font-medium transition"
-                    :class="form.characterType === 'npc'
-                      ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                      : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                    @click="form.characterType = 'npc'"
-                  >
-                    NPC
-                  </button>
-
-                  <button
-                    type="button"
-                    class="rounded-xl border px-3 py-2 text-sm font-medium transition"
-                    :class="form.characterType === 'npc_sheet'
-                      ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                      : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                    @click="form.characterType = 'npc_sheet'"
-                  >
-                    NPC+
-                  </button>
-
-                  <button
-                    type="button"
-                    class="rounded-xl border px-3 py-2 text-sm font-medium transition"
-                    :class="form.characterType === 'pc'
-                      ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                      : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                    @click="form.characterType = 'pc'"
-                  >
-                    PC
-                  </button>
+                  <button type="button" class="rounded-xl border px-3 py-2 text-sm font-medium transition" :class="form.characterType === 'npc' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="form.characterType = 'npc'">NPC</button>
+                  <button type="button" class="rounded-xl border px-3 py-2 text-sm font-medium transition" :class="form.characterType === 'npc_sheet' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="form.characterType = 'npc_sheet'">NPC+</button>
+                  <button type="button" class="rounded-xl border px-3 py-2 text-sm font-medium transition" :class="form.characterType === 'pc' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="form.characterType = 'pc'">PC</button>
                 </div>
               </div>
 
@@ -660,6 +787,118 @@ onBeforeUnmount(() => {
                 @click="createCharacter"
               >
                 {{ creating ? 'Creating…' : 'Create Character' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+      <div
+        v-if="showEditPanel"
+        class="fixed right-0 top-0 z-50 h-full w-[420px] border-l border-white/10 bg-[rgba(8,16,27,0.96)] shadow-2xl backdrop-blur"
+      >
+        <div class="flex h-full flex-col">
+          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+            <div>
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Characters</div>
+              <h3 class="mt-1 text-lg font-semibold text-white">Edit Character</h3>
+            </div>
+
+            <button
+              class="text-slate-400 transition hover:text-white"
+              @click="closeEditPanel"
+            >
+              <UIcon name="i-lucide-x" class="h-5 w-5" />
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-5 py-5">
+            <div class="space-y-5">
+              <div v-if="editError" class="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {{ editError }}
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Name</label>
+                <input
+                  v-model="form.title"
+                  type="text"
+                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                >
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Archetype</label>
+                <div class="grid grid-cols-3 gap-2">
+                  <button type="button" class="rounded-xl border px-3 py-2 text-sm font-medium transition" :class="form.characterType === 'npc' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="form.characterType = 'npc'">NPC</button>
+                  <button type="button" class="rounded-xl border px-3 py-2 text-sm font-medium transition" :class="form.characterType === 'npc_sheet' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="form.characterType = 'npc_sheet'">NPC+</button>
+                  <button type="button" class="rounded-xl border px-3 py-2 text-sm font-medium transition" :class="form.characterType === 'pc' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="form.characterType = 'pc'">PC</button>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Summary</label>
+                <textarea
+                  v-model="form.summary"
+                  rows="5"
+                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                />
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Portrait</label>
+
+                <div
+                  v-if="form.imagePreviewUrl"
+                  class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+                >
+                  <img
+                    :src="form.imagePreviewUrl"
+                    alt="Character preview"
+                    class="h-56 w-full object-cover"
+                  >
+                </div>
+
+                <div class="flex gap-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
+                    @change="onImageChange"
+                  >
+
+                  <button
+                    v-if="form.imagePreviewUrl"
+                    type="button"
+                    class="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-100 transition hover:bg-red-500/20"
+                    @click="removeCurrentImage"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-white/10 p-5">
+            <div class="flex gap-3">
+              <button
+                type="button"
+                class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]"
+                @click="closeEditPanel"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                class="flex-1 rounded-xl border border-amber-400/25 bg-amber-400/15 py-2.5 text-sm font-medium text-amber-100 transition hover:bg-amber-400/25 disabled:opacity-50"
+                :disabled="!form.title.trim() || updating"
+                @click="updateCharacter"
+              >
+                {{ updating ? 'Saving…' : 'Save Changes' }}
               </button>
             </div>
           </div>

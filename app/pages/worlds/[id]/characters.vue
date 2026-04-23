@@ -141,7 +141,7 @@ const characterCounts = computed(() => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-[#09111a]">
+  <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1700px] space-y-6 p-6">
       <section class="rounded-[24px] border border-white/10 eldra-panel p-6 shadow-xl">
         <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">

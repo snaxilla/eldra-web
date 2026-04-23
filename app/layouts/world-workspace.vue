@@ -29,7 +29,7 @@ const pageKey = computed(() => {
 })
 
 const {
-  data: presentation,
+  data: fetchedPresentation,
   refresh: refreshPresentation
 } = await useFetch(() => `/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
   default: () => ({
@@ -42,8 +42,39 @@ const {
   watch: [worldId, pageKey]
 })
 
-const presentationMode = computed(() => String(presentation.value?.presentationMode || 'neutral'))
-const backgroundImageUrl = computed(() => String(presentation.value?.backgroundImageUrl || ''))
+const presentationState = ref({
+  worldKey: '',
+  pageKey: '',
+  presentationMode: 'neutral',
+  backgroundFileId: null as string | null,
+  backgroundImageUrl: null as string | null
+})
+
+watch(
+  fetchedPresentation,
+  (value) => {
+    if (!value) return
+    presentationState.value = {
+      worldKey: String(value.worldKey || worldId.value || ''),
+      pageKey: String(value.pageKey || pageKey.value || ''),
+      presentationMode: String(value.presentationMode || 'neutral'),
+      backgroundFileId: value.backgroundFileId ? String(value.backgroundFileId) : null,
+      backgroundImageUrl: value.backgroundImageUrl ? String(value.backgroundImageUrl) : null
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+const presentationMode = computed(() => String(presentationState.value.presentationMode || 'neutral'))
+const backgroundImageUrl = computed(() => {
+  if (presentationState.value.backgroundImageUrl) {
+    return String(presentationState.value.backgroundImageUrl)
+  }
+  if (presentationState.value.backgroundFileId) {
+    return `/api/assets/${presentationState.value.backgroundFileId}`
+  }
+  return ''
+})
 
 const bgBusy = ref(false)
 const bgMessage = ref('')
@@ -59,13 +90,28 @@ async function setPresentationMode(nextMode: 'immersive' | 'muted' | 'neutral') 
   bgMessage.value = ''
 
   try {
-    await $fetch(`/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
+    const saved = await $fetch<{
+      success: boolean
+      worldKey: string
+      pageKey: string
+      presentationMode: string
+      backgroundFileId: string | null
+      backgroundImageUrl: string | null
+    }>(`/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
       method: 'POST',
       body: {
         presentationMode: nextMode,
-        backgroundFileId: presentation.value?.backgroundFileId || null
+        backgroundFileId: presentationState.value.backgroundFileId || null
       }
     })
+
+    presentationState.value = {
+      worldKey: saved.worldKey,
+      pageKey: saved.pageKey,
+      presentationMode: saved.presentationMode || nextMode,
+      backgroundFileId: saved.backgroundFileId || null,
+      backgroundImageUrl: saved.backgroundImageUrl || (saved.backgroundFileId ? `/api/assets/${saved.backgroundFileId}` : null)
+    }
 
     await refreshPresentation()
     bgMessage.value = `Mode set to ${nextMode}.`
@@ -105,13 +151,31 @@ async function onBackgroundFileChange(event: Event) {
       }
     )
 
-    await $fetch(`/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
+    const saved = await $fetch<{
+      success: boolean
+      worldKey: string
+      pageKey: string
+      presentationMode: string
+      backgroundFileId: string | null
+      backgroundImageUrl: string | null
+    }>(`/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
       method: 'POST',
       body: {
-        presentationMode: presentationMode.value || 'immersive',
+        presentationMode: presentationMode.value === 'neutral' ? 'immersive' : presentationMode.value,
         backgroundFileId: uploaded.fileId
       }
     })
+
+    presentationState.value = {
+      worldKey: saved.worldKey,
+      pageKey: saved.pageKey,
+      presentationMode: saved.presentationMode || 'immersive',
+      backgroundFileId: saved.backgroundFileId || uploaded.fileId || null,
+      backgroundImageUrl:
+        saved.backgroundImageUrl ||
+        uploaded.imageUrl ||
+        (saved.backgroundFileId ? `/api/assets/${saved.backgroundFileId}` : null)
+    }
 
     await refreshPresentation()
     bgMessage.value = 'Background updated.'
@@ -124,6 +188,47 @@ async function onBackgroundFileChange(event: Event) {
   } finally {
     bgBusy.value = false
     input.value = ''
+  }
+}
+
+async function clearBackground() {
+  bgBusy.value = true
+  bgMessage.value = ''
+
+  try {
+    const saved = await $fetch<{
+      success: boolean
+      worldKey: string
+      pageKey: string
+      presentationMode: string
+      backgroundFileId: string | null
+      backgroundImageUrl: string | null
+    }>(`/api/worlds/${worldId.value}/presentation/${pageKey.value}`, {
+      method: 'POST',
+      body: {
+        presentationMode: presentationMode.value,
+        backgroundFileId: null
+      }
+    })
+
+    presentationState.value = {
+      worldKey: saved.worldKey,
+      pageKey: saved.pageKey,
+      presentationMode: saved.presentationMode || presentationMode.value,
+      backgroundFileId: null,
+      backgroundImageUrl: null
+    }
+
+    await refreshPresentation()
+    bgMessage.value = 'Background cleared.'
+  } catch (error: any) {
+    bgMessage.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to clear background.'
+  } finally {
+    bgBusy.value = false
   }
 }
 </script>
@@ -147,16 +252,16 @@ async function onBackgroundFileChange(event: Event) {
         <!-- neutral base -->
         <div class="absolute inset-0 bg-[linear-gradient(to_bottom,#09111a,#0b1521_40%,#0d1826)]"></div>
 
-        <!-- optional page background -->
+        <!-- obvious diagnostic background layer -->
         <div
           v-if="backgroundImageUrl && presentationMode !== 'neutral'"
           class="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300"
           :style="{
-            backgroundImage: `url(${backgroundImageUrl})`,
-            opacity: presentationMode === 'immersive' ? '0.42' : '0.18',
+            backgroundImage: `url('${backgroundImageUrl}')`,
+            opacity: presentationMode === 'immersive' ? '0.55' : '0.22',
             filter: presentationMode === 'immersive'
-              ? 'saturate(0.95) contrast(1.02)'
-              : 'grayscale(0.18) saturate(0.72) brightness(0.86)'
+              ? 'saturate(1.02) contrast(1.02)'
+              : 'grayscale(0.10) saturate(0.78) brightness(0.90)'
           }"
         />
 
@@ -166,8 +271,8 @@ async function onBackgroundFileChange(event: Event) {
           class="absolute inset-0"
           :style="{
             background: presentationMode === 'immersive'
-              ? 'linear-gradient(to bottom, rgba(5,10,18,0.48), rgba(8,14,22,0.62) 32%, rgba(9,17,26,0.78) 72%, rgba(10,18,28,0.88))'
-              : 'linear-gradient(to bottom, rgba(7,12,19,0.62), rgba(8,14,22,0.76) 38%, rgba(9,17,26,0.88))'
+              ? 'linear-gradient(to bottom, rgba(5,10,18,0.40), rgba(8,14,22,0.52) 32%, rgba(9,17,26,0.66) 72%, rgba(10,18,28,0.78))'
+              : 'linear-gradient(to bottom, rgba(7,12,19,0.58), rgba(8,14,22,0.72) 38%, rgba(9,17,26,0.84))'
           }"
         />
 
@@ -243,7 +348,7 @@ async function onBackgroundFileChange(event: Event) {
               type="button"
               class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
               :disabled="bgBusy"
-              @click="$fetch(`/api/worlds/${worldId}/presentation/${pageKey}`, { method: 'POST', body: { presentationMode, backgroundFileId: null } }).then(refreshPresentation)"
+              @click="clearBackground"
             >
               Clear
             </button>
@@ -256,6 +361,13 @@ async function onBackgroundFileChange(event: Event) {
             class="hidden"
             @change="onBackgroundFileChange"
           >
+
+          <div
+            v-if="backgroundImageUrl"
+            class="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black/20"
+          >
+            <img :src="backgroundImageUrl" alt="Background preview" class="h-24 w-full object-cover">
+          </div>
 
           <div class="mt-3 text-xs text-slate-500">
             Future state: Build Mode plus DM/Admin permission only.

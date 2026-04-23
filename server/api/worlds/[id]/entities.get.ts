@@ -1,37 +1,44 @@
-function extractImageUrl(blocks: any[] = []) {
-  for (const block of blocks) {
-    const image = block?.data?.image
-
-    if (!image) continue
-
-    if (typeof image === 'string') {
-      return `/api/assets/${image}`
-    }
-
-    if (typeof image === 'object') {
-      if (image.image_url) return image.image_url
-      if (image.file_id) return `/api/assets/${image.file_id}`
-      if (image.id) return `/api/assets/${image.id}`
-    }
-  }
-
-  return null
+function baseUrl() {
+  return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
 
-function extractSummary(entity: any, blocks: any[] = []) {
-  if (entity?.summary) return entity.summary
+function token() {
+  return process.env.DIRECTUS_TOKEN || ''
+}
 
-  for (const block of blocks) {
-    if (block?.data?.summary) return block.data.summary
-    if (block?.data?.description) return block.data.description
-    if (block?.data?.bio) return block.data.bio
+async function dxFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
+  })
+
+  const text = await res.text()
+  let json: any = null
+
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {}
+
+  if (!res.ok) {
+    throw createError({
+      statusCode: res.status,
+      statusMessage:
+        json?.errors?.[0]?.message ||
+        json?.message ||
+        text ||
+        `Directus error (${res.status})`
+    })
   }
 
-  return ''
+  return json
 }
 
 export default defineEventHandler(async (event) => {
-  const worldId = getRouterParam(event, 'id')
+  const worldId = String(getRouterParam(event, 'id') || '')
 
   if (!worldId) {
     throw createError({
@@ -40,71 +47,50 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const baseUrl = 'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
-  const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
+  const params = new URLSearchParams()
+  params.set('filter[world_id][_eq]', worldId)
+  params.set('sort', 'title')
 
-  const entitiesRes = await fetch(
-    `${baseUrl}/items/entities?filter[world_id][_eq]=${worldId}&sort=-updated_at&fields=*`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }
-  )
+  params.append('fields[]', 'id')
+  params.append('fields[]', 'title')
+  params.append('fields[]', 'slug')
+  params.append('fields[]', 'summary')
+  params.append('fields[]', 'entity_type')
+  params.append('fields[]', 'character_type')
+  params.append('fields[]', 'has_sheet')
+  params.append('fields[]', 'role')
+  params.append('fields[]', 'system_key')
 
-  const entitiesJson = await entitiesRes.json()
+  params.append('fields[]', 'image')
+  params.append('fields[]', 'image.id')
+  params.append('fields[]', 'image.filename_disk')
+  params.append('fields[]', 'image.title')
 
-  if (!entitiesRes.ok) {
-    throw createError({
-      statusCode: entitiesRes.status,
-      statusMessage: entitiesJson?.errors?.[0]?.message || entitiesJson?.message || 'Failed to load entities'
-    })
-  }
+  params.append('fields[]', 'image_file')
+  params.append('fields[]', 'image_file.id')
 
-  const entities = Array.isArray(entitiesJson.data) ? entitiesJson.data : []
+  params.append('fields[]', 'portrait')
+  params.append('fields[]', 'portrait.id')
 
-  if (!entities.length) {
-    return []
-  }
+  const json = await dxFetch(`/items/entities?${params.toString()}`)
+  const rows = Array.isArray(json?.data) ? json.data : []
 
-  const ids = entities.map((e: any) => e.id).join(',')
-
-  const blocksRes = await fetch(
-    `${baseUrl}/items/block_instances?filter[entity_id][_in]=${ids}&sort=sort&fields=*`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }
-  )
-
-  const blocksJson = await blocksRes.json()
-
-  if (!blocksRes.ok) {
-    throw createError({
-      statusCode: blocksRes.status,
-      statusMessage: blocksJson?.errors?.[0]?.message || blocksJson?.message || 'Failed to load blocks'
-    })
-  }
-
-  const blocks = Array.isArray(blocksJson.data) ? blocksJson.data : []
-
-  const blocksByEntity = new Map<number, any[]>()
-
-  for (const block of blocks) {
-    const entityId = Number(block.entity_id)
-    if (!blocksByEntity.has(entityId)) blocksByEntity.set(entityId, [])
-    blocksByEntity.get(entityId)!.push(block)
-  }
-
-  return entities.map((entity: any) => {
-    const entityBlocks = blocksByEntity.get(Number(entity.id)) || []
+  return rows.map((row: any) => {
+    const imageId =
+      row?.image?.id ||
+      row?.image ||
+      row?.image_file?.id ||
+      row?.image_file ||
+      row?.portrait?.id ||
+      row?.portrait ||
+      null
 
     return {
-      ...entity,
-      blocks: entityBlocks,
-      image_url: extractImageUrl(entityBlocks),
-      preview_text: extractSummary(entity, entityBlocks)
+      ...row,
+      image: row?.image ?? null,
+      image_file: row?.image_file ?? null,
+      portrait: row?.portrait ?? null,
+      imageUrl: imageId ? `/api/assets/${imageId}` : null
     }
   })
 })

@@ -135,6 +135,8 @@ export async function createEntityRecord(args: CreateEntityArgs) {
     slug,
     summary: summary ? String(summary).trim() : null,
     entity_type: String(entityType || '').trim(),
+    status: 'draft',
+    visibility: 'world',
     ...extra
   }
 

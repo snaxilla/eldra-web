@@ -406,8 +406,8 @@ onBeforeUnmount(() => {
             :key="character.id"
             class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,28,42,0.92),rgba(10,18,28,0.9))] shadow-xl transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
             :class="isSelected(character)
-              ? 'border-amber-300/90 shadow-[0_0_0_4px_rgba(251,191,36,0.45),0_18px_40px_rgba(0,0,0,0.38)]'
-              : ''"
+              ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(34,46,67,0.98),rgba(16,26,40,0.96))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.25),0_22px_48px_rgba(0,0,0,0.42)]'
+              : 'opacity-95'"
             @click="selectCharacter(character)"
           >
             <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">

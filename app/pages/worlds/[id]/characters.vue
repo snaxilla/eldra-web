@@ -17,13 +17,24 @@ const updating = ref(false)
 const deleting = ref(false)
 
 const createError = ref('')
-const createSuccess = ref('')
 const editError = ref('')
-const editSuccess = ref('')
 const deleteError = ref('')
 
 const selectedCharacterId = ref<string | null>(null)
 const confirmDelete = ref(false)
+
+const presentationState = useState<{
+  worldKey: string
+  pageKey: string
+  presentationMode: string
+  backgroundFileId: string | null
+  backgroundImageUrl: string | null
+}>('world-page-presentation')
+
+const presentationRefreshNonce = useState<number>('world-page-presentation-refresh-nonce', () => 0)
+const presentationBusy = ref(false)
+const presentationMessage = ref('')
+const hiddenBgInput = ref<HTMLInputElement | null>(null)
 
 const form = reactive({
   title: '',
@@ -99,12 +110,8 @@ function typeLabel(type: string) {
 }
 
 function typeBadgeClass(type: string) {
-  if (type === 'pc') {
-    return 'border-sky-400/20 bg-sky-400/10 text-sky-200'
-  }
-  if (type === 'npc_sheet') {
-    return 'border-violet-400/20 bg-violet-400/10 text-violet-200'
-  }
+  if (type === 'pc') return 'border-sky-400/20 bg-sky-400/10 text-sky-200'
+  if (type === 'npc_sheet') return 'border-violet-400/20 bg-violet-400/10 text-violet-200'
   return 'border-white/10 bg-white/[0.05] text-slate-300'
 }
 
@@ -211,9 +218,7 @@ function resetForm() {
   form.imagePreviewUrl = ''
   form.clearImage = false
   createError.value = ''
-  createSuccess.value = ''
   editError.value = ''
-  editSuccess.value = ''
 }
 
 function setFormFromCharacter(character: any) {
@@ -237,7 +242,6 @@ function openCreatePanel() {
 function closeCreatePanel() {
   showCreatePanel.value = false
   createError.value = ''
-  createSuccess.value = ''
 }
 
 function openEditPanel() {
@@ -250,7 +254,6 @@ function openEditPanel() {
 function closeEditPanel() {
   showEditPanel.value = false
   editError.value = ''
-  editSuccess.value = ''
   form.image = null
   form.clearImage = false
 }
@@ -282,7 +285,6 @@ function removeCurrentImage() {
 
 async function createCharacter() {
   createError.value = ''
-  createSuccess.value = ''
 
   if (!form.title.trim()) {
     createError.value = 'Character name is required.'
@@ -327,7 +329,6 @@ async function updateCharacter() {
   if (!selectedCharacter.value) return
 
   editError.value = ''
-  editSuccess.value = ''
 
   if (!form.title.trim()) {
     editError.value = 'Character name is required.'
@@ -400,6 +401,150 @@ async function deleteCharacter() {
   }
 }
 
+async function setPresentationMode(nextMode: 'immersive' | 'muted' | 'neutral') {
+  presentationBusy.value = true
+  presentationMessage.value = ''
+
+  try {
+    const saved = await $fetch<{
+      success: boolean
+      worldKey: string
+      pageKey: string
+      presentationMode: string
+      backgroundFileId: string | null
+      backgroundImageUrl: string | null
+    }>(`/api/worlds/${worldId.value}/presentation/characters`, {
+      method: 'POST',
+      body: {
+        presentationMode: nextMode,
+        backgroundFileId: presentationState.value?.backgroundFileId || null
+      }
+    })
+
+    presentationState.value = {
+      worldKey: saved.worldKey,
+      pageKey: saved.pageKey,
+      presentationMode: saved.presentationMode || nextMode,
+      backgroundFileId: saved.backgroundFileId || null,
+      backgroundImageUrl: saved.backgroundImageUrl || (saved.backgroundFileId ? `/api/assets/${saved.backgroundFileId}` : null)
+    }
+
+    presentationRefreshNonce.value++
+    presentationMessage.value = `Mode set to ${nextMode}.`
+  } catch (error: any) {
+    presentationMessage.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to save presentation mode.'
+  } finally {
+    presentationBusy.value = false
+  }
+}
+
+function triggerBackgroundUpload() {
+  hiddenBgInput.value?.click()
+}
+
+async function onBackgroundFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+
+  if (!file) return
+
+  presentationBusy.value = true
+  presentationMessage.value = ''
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const uploaded = await $fetch<{ success: boolean; fileId: string | null; imageUrl: string | null }>(
+      `/api/worlds/${worldId.value}/presentation/upload-background`,
+      {
+        method: 'POST',
+        body: formData
+      }
+    )
+
+    const saved = await $fetch<{
+      success: boolean
+      worldKey: string
+      pageKey: string
+      presentationMode: string
+      backgroundFileId: string | null
+      backgroundImageUrl: string | null
+    }>(`/api/worlds/${worldId.value}/presentation/characters`, {
+      method: 'POST',
+      body: {
+        presentationMode: (presentationState.value?.presentationMode || 'neutral') === 'neutral' ? 'immersive' : (presentationState.value?.presentationMode || 'immersive'),
+        backgroundFileId: uploaded.fileId
+      }
+    })
+
+    presentationState.value = {
+      worldKey: saved.worldKey,
+      pageKey: saved.pageKey,
+      presentationMode: saved.presentationMode || 'immersive',
+      backgroundFileId: saved.backgroundFileId || uploaded.fileId || null,
+      backgroundImageUrl: saved.backgroundImageUrl || uploaded.imageUrl || null
+    }
+
+    presentationRefreshNonce.value++
+    presentationMessage.value = 'Background updated.'
+  } catch (error: any) {
+    presentationMessage.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to upload background.'
+  } finally {
+    presentationBusy.value = false
+    input.value = ''
+  }
+}
+
+async function clearBackground() {
+  presentationBusy.value = true
+  presentationMessage.value = ''
+
+  try {
+    const saved = await $fetch<{
+      success: boolean
+      worldKey: string
+      pageKey: string
+      presentationMode: string
+      backgroundFileId: string | null
+      backgroundImageUrl: string | null
+    }>(`/api/worlds/${worldId.value}/presentation/characters`, {
+      method: 'POST',
+      body: {
+        presentationMode: presentationState.value?.presentationMode || 'neutral',
+        backgroundFileId: null
+      }
+    })
+
+    presentationState.value = {
+      worldKey: saved.worldKey,
+      pageKey: saved.pageKey,
+      presentationMode: saved.presentationMode || 'neutral',
+      backgroundFileId: null,
+      backgroundImageUrl: null
+    }
+
+    presentationRefreshNonce.value++
+    presentationMessage.value = 'Background cleared.'
+  } catch (error: any) {
+    presentationMessage.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to clear background.'
+  } finally {
+    presentationBusy.value = false
+  }
+}
+
 onBeforeUnmount(() => {
   if (form.imagePreviewUrl && form.imagePreviewUrl.startsWith('blob:')) {
     URL.revokeObjectURL(form.imagePreviewUrl)
@@ -410,7 +555,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
-      <div :class="selectedCharacter ? 'pr-[380px]' : ''" class="transition-all duration-200">
+      <div :class="selectedCharacter || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
         <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -449,74 +594,26 @@ onBeforeUnmount(() => {
             >
 
             <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                :class="typeFilter === 'all'
-                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                @click="typeFilter = 'all'"
-              >
-                All ({{ characterCounts.all }})
-              </button>
-
-              <button
-                type="button"
-                class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                :class="typeFilter === 'npc'
-                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                @click="typeFilter = 'npc'"
-              >
-                NPCs ({{ characterCounts.npc }})
-              </button>
-
-              <button
-                type="button"
-                class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                :class="typeFilter === 'npc_sheet'
-                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                @click="typeFilter = 'npc_sheet'"
-              >
-                NPC+ ({{ characterCounts.npc_sheet }})
-              </button>
-
-              <button
-                type="button"
-                class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                :class="typeFilter === 'pc'
-                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                @click="typeFilter = 'pc'"
-              >
-                PCs ({{ characterCounts.pc }})
-              </button>
+              <button type="button" class="rounded-full border px-3 py-2 text-xs font-medium transition" :class="typeFilter === 'all' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="typeFilter = 'all'">All ({{ characterCounts.all }})</button>
+              <button type="button" class="rounded-full border px-3 py-2 text-xs font-medium transition" :class="typeFilter === 'npc' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="typeFilter = 'npc'">NPCs ({{ characterCounts.npc }})</button>
+              <button type="button" class="rounded-full border px-3 py-2 text-xs font-medium transition" :class="typeFilter === 'npc_sheet' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="typeFilter = 'npc_sheet'">NPC+ ({{ characterCounts.npc_sheet }})</button>
+              <button type="button" class="rounded-full border px-3 py-2 text-xs font-medium transition" :class="typeFilter === 'pc' ? 'border-sky-300/30 bg-sky-400/15 text-sky-100' : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'" @click="typeFilter = 'pc'">PCs ({{ characterCounts.pc }})</button>
             </div>
           </div>
         </section>
 
-        <section
-          v-if="pending"
-          class="mt-6 eldra-panel rounded-[24px] p-6 text-slate-300 shadow-xl"
-        >
+        <section v-if="pending" class="mt-6 eldra-panel rounded-[24px] p-6 text-slate-300 shadow-xl">
           Loading characters...
         </section>
 
-        <section
-          v-else-if="!filteredCharacters.length"
-          class="mt-6 eldra-empty rounded-[24px] p-10 text-center shadow-xl"
-        >
+        <section v-else-if="!filteredCharacters.length" class="mt-6 eldra-empty rounded-[24px] p-10 text-center shadow-xl">
           <div class="text-lg font-medium text-white">No characters found</div>
           <p class="mt-2 text-sm text-slate-300">
             Add characters manually or import supporting content, then come back here to manage the roster.
           </p>
         </section>
 
-        <section
-          v-else
-          class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
-        >
+        <section v-else class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           <div
             v-for="character in filteredCharacters"
             :key="character.id"
@@ -528,16 +625,8 @@ onBeforeUnmount(() => {
           >
             <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">
               <div class="border-r border-white/10 bg-black/20">
-                <img
-                  v-if="character.imageUrl"
-                  :src="character.imageUrl"
-                  :alt="character.displayTitle"
-                  class="h-full w-full object-cover"
-                >
-                <div
-                  v-else
-                  class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900/90 to-slate-800/80 text-2xl font-semibold text-slate-200"
-                >
+                <img v-if="character.imageUrl" :src="character.imageUrl" :alt="character.displayTitle" class="h-full w-full object-cover">
+                <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900/90 to-slate-800/80 text-2xl font-semibold text-slate-200">
                   {{ initialsFor(character.displayTitle) }}
                 </div>
               </div>
@@ -550,10 +639,7 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
 
-                  <span
-                    class="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium"
-                    :class="typeBadgeClass(character.normalizedType)"
-                  >
+                  <span class="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium" :class="typeBadgeClass(character.normalizedType)">
                     {{ typeLabel(character.normalizedType) }}
                   </span>
                 </div>
@@ -574,20 +660,17 @@ onBeforeUnmount(() => {
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
-        v-if="selectedCharacter"
+        v-if="selectedCharacter || mode === 'build'"
         class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.94)] backdrop-blur"
       >
-        <div class="flex h-full flex-col">
+        <div v-if="selectedCharacter" class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
             <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">{{ mode === 'build' ? 'Character Build' : 'Summary' }}</div>
 
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <h2 class="truncate text-2xl font-semibold text-white">{{ selectedCharacter.displayTitle }}</h2>
-                <span
-                  class="rounded-full border px-2.5 py-1 text-[11px] font-medium"
-                  :class="typeBadgeClass(selectedCharacter.normalizedType)"
-                >
+                <span class="rounded-full border px-2.5 py-1 text-[11px] font-medium" :class="typeBadgeClass(selectedCharacter.normalizedType)">
                   {{ typeLabel(selectedCharacter.normalizedType) }}
                 </span>
               </div>
@@ -603,21 +686,11 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="flex-1 overflow-y-auto px-5 py-5">
-            <div
-              v-if="selectedCharacter.imageUrl"
-              class="overflow-hidden rounded-2xl border border-white/10 bg-black/20"
-            >
-              <img
-                :src="selectedCharacter.imageUrl"
-                :alt="selectedCharacter.displayTitle"
-                class="h-72 w-full object-cover"
-              >
+            <div v-if="selectedCharacter.imageUrl" class="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+              <img :src="selectedCharacter.imageUrl" :alt="selectedCharacter.displayTitle" class="h-72 w-full object-cover">
             </div>
 
-            <div
-              v-else
-              class="flex h-72 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300"
-            >
+            <div v-else class="flex h-72 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300">
               {{ initialsFor(selectedCharacter.displayTitle) }}
             </div>
 
@@ -688,6 +761,99 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
+
+        <div v-else class="flex h-full flex-col">
+          <div class="border-b border-white/10 px-5 py-5">
+            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Page Build</div>
+            <div class="mt-3 text-2xl font-semibold text-white">Characters</div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-5 py-5">
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                class="rounded-xl border px-3 py-2 text-xs font-medium transition"
+                :class="(presentationState?.presentationMode || 'neutral') === 'immersive'
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                :disabled="presentationBusy"
+                @click="setPresentationMode('immersive')"
+              >
+                Immersive
+              </button>
+
+              <button
+                type="button"
+                class="rounded-xl border px-3 py-2 text-xs font-medium transition"
+                :class="(presentationState?.presentationMode || 'neutral') === 'muted'
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                :disabled="presentationBusy"
+                @click="setPresentationMode('muted')"
+              >
+                Muted
+              </button>
+
+              <button
+                type="button"
+                class="rounded-xl border px-3 py-2 text-xs font-medium transition"
+                :class="(presentationState?.presentationMode || 'neutral') === 'neutral'
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                :disabled="presentationBusy"
+                @click="setPresentationMode('neutral')"
+              >
+                Neutral
+              </button>
+            </div>
+
+            <div class="mt-4 flex gap-2">
+              <button
+                type="button"
+                class="flex-1 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/20 disabled:opacity-50"
+                :disabled="presentationBusy"
+                @click="triggerBackgroundUpload"
+              >
+                {{ presentationBusy ? 'Working…' : 'Set Background' }}
+              </button>
+
+              <button
+                type="button"
+                class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
+                :disabled="presentationBusy"
+                @click="clearBackground"
+              >
+                Clear
+              </button>
+            </div>
+
+            <input
+              ref="hiddenBgInput"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="onBackgroundFileChange"
+            >
+
+            <div
+              v-if="presentationState?.backgroundImageUrl"
+              class="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+            >
+              <img :src="presentationState.backgroundImageUrl" alt="Background preview" class="h-28 w-full object-cover">
+            </div>
+
+            <div class="mt-4 text-xs leading-6 text-slate-500">
+              Build-mode page controls live here when nothing is selected. Later this becomes DM/Admin-gated instead of build-mode-only.
+            </div>
+
+            <div
+              v-if="presentationMessage"
+              class="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300"
+            >
+              {{ presentationMessage }}
+            </div>
+          </div>
+        </div>
       </aside>
     </Transition>
 
@@ -703,10 +869,7 @@ onBeforeUnmount(() => {
               <h3 class="mt-1 text-lg font-semibold text-white">Create Character</h3>
             </div>
 
-            <button
-              class="text-slate-400 transition hover:text-white"
-              @click="closeCreatePanel"
-            >
+            <button class="text-slate-400 transition hover:text-white" @click="closeCreatePanel">
               <UIcon name="i-lucide-x" class="h-5 w-5" />
             </button>
           </div>
@@ -719,12 +882,7 @@ onBeforeUnmount(() => {
 
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Name</label>
-                <input
-                  v-model="form.title"
-                  type="text"
-                  placeholder="e.g. Lillian Greyskull"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
-                >
+                <input v-model="form.title" type="text" placeholder="e.g. Lillian Greyskull" class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]">
               </div>
 
               <div>
@@ -738,54 +896,28 @@ onBeforeUnmount(() => {
 
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Summary</label>
-                <textarea
-                  v-model="form.summary"
-                  rows="5"
-                  placeholder="A quick summary for the card and overview..."
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
-                />
+                <textarea v-model="form.summary" rows="5" placeholder="A quick summary for the card and overview..." class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]" />
               </div>
 
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Portrait</label>
 
-                <div
-                  v-if="form.imagePreviewUrl"
-                  class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
-                >
-                  <img
-                    :src="form.imagePreviewUrl"
-                    alt="Character preview"
-                    class="h-56 w-full object-cover"
-                  >
+                <div v-if="form.imagePreviewUrl" class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                  <img :src="form.imagePreviewUrl" alt="Character preview" class="h-56 w-full object-cover">
                 </div>
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
-                  @change="onImageChange"
-                >
+                <input type="file" accept="image/*" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]" @change="onImageChange">
               </div>
             </div>
           </div>
 
           <div class="border-t border-white/10 p-5">
             <div class="flex gap-3">
-              <button
-                type="button"
-                class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]"
-                @click="closeCreatePanel"
-              >
+              <button type="button" class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]" @click="closeCreatePanel">
                 Cancel
               </button>
 
-              <button
-                type="button"
-                class="flex-1 rounded-xl border border-emerald-400/25 bg-emerald-400/15 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/25 disabled:opacity-50"
-                :disabled="!form.title.trim() || creating"
-                @click="createCharacter"
-              >
+              <button type="button" class="flex-1 rounded-xl border border-emerald-400/25 bg-emerald-400/15 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/25 disabled:opacity-50" :disabled="!form.title.trim() || creating" @click="createCharacter">
                 {{ creating ? 'Creating…' : 'Create Character' }}
               </button>
             </div>
@@ -806,10 +938,7 @@ onBeforeUnmount(() => {
               <h3 class="mt-1 text-lg font-semibold text-white">Edit Character</h3>
             </div>
 
-            <button
-              class="text-slate-400 transition hover:text-white"
-              @click="closeEditPanel"
-            >
+            <button class="text-slate-400 transition hover:text-white" @click="closeEditPanel">
               <UIcon name="i-lucide-x" class="h-5 w-5" />
             </button>
           </div>
@@ -822,11 +951,7 @@ onBeforeUnmount(() => {
 
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Name</label>
-                <input
-                  v-model="form.title"
-                  type="text"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
-                >
+                <input v-model="form.title" type="text" class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]">
               </div>
 
               <div>
@@ -840,34 +965,18 @@ onBeforeUnmount(() => {
 
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Summary</label>
-                <textarea
-                  v-model="form.summary"
-                  rows="5"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
-                />
+                <textarea v-model="form.summary" rows="5" class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]" />
               </div>
 
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Portrait</label>
 
-                <div
-                  v-if="form.imagePreviewUrl"
-                  class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
-                >
-                  <img
-                    :src="form.imagePreviewUrl"
-                    alt="Character preview"
-                    class="h-56 w-full object-cover"
-                  >
+                <div v-if="form.imagePreviewUrl" class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                  <img :src="form.imagePreviewUrl" alt="Character preview" class="h-56 w-full object-cover">
                 </div>
 
                 <div class="flex gap-3">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
-                    @change="onImageChange"
-                  >
+                  <input type="file" accept="image/*" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]" @change="onImageChange">
 
                   <button
                     v-if="form.imagePreviewUrl"
@@ -884,20 +993,11 @@ onBeforeUnmount(() => {
 
           <div class="border-t border-white/10 p-5">
             <div class="flex gap-3">
-              <button
-                type="button"
-                class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]"
-                @click="closeEditPanel"
-              >
+              <button type="button" class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]" @click="closeEditPanel">
                 Cancel
               </button>
 
-              <button
-                type="button"
-                class="flex-1 rounded-xl border border-amber-400/25 bg-amber-400/15 py-2.5 text-sm font-medium text-amber-100 transition hover:bg-amber-400/25 disabled:opacity-50"
-                :disabled="!form.title.trim() || updating"
-                @click="updateCharacter"
-              >
+              <button type="button" class="flex-1 rounded-xl border border-amber-400/25 bg-amber-400/15 py-2.5 text-sm font-medium text-amber-100 transition hover:bg-amber-400/25 disabled:opacity-50" :disabled="!form.title.trim() || updating" @click="updateCharacter">
                 {{ updating ? 'Saving…' : 'Save Changes' }}
               </button>
             </div>

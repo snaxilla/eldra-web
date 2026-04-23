@@ -161,7 +161,7 @@ const selectedCharacter = computed(() => {
 watch(
   filteredCharacters,
   (list) => {
-    if (!list.length) {
+    if (!list.length && selectedCharacterId.value) {
       selectedCharacterId.value = null
       return
     }
@@ -279,249 +279,252 @@ onBeforeUnmount(() => {
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div class="min-w-0 space-y-6">
-          <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
-            <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-              <div>
-                <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Characters</div>
-                <h1 class="mt-2 text-3xl font-semibold text-white">{{ world?.name || 'World' }}</h1>
-                <p class="mt-2 max-w-3xl text-sm text-slate-300">
-                  Browse player characters, NPCs, and sheet-enabled combatants in one roster-first view.
-                </p>
-              </div>
-
-              <div class="flex flex-col gap-3 sm:flex-row">
-                <button
-                  type="button"
-                  class="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/20"
-                  @click="openCreatePanel"
-                >
-                  Add Character
-                </button>
-
-                <button
-                  type="button"
-                  class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
-                  @click="refresh()"
-                >
-                  Refresh
-                </button>
-              </div>
+      <div class="pr-[380px]">
+        <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
+          <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Characters</div>
+              <h1 class="mt-2 text-3xl font-semibold text-white">{{ world?.name || 'World' }}</h1>
+              <p class="mt-2 max-w-3xl text-sm text-slate-300">
+                Browse player characters, NPCs, and sheet-enabled combatants in one roster-first view.
+              </p>
             </div>
 
-            <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <input
-                v-model="search"
-                type="text"
-                placeholder="Search characters..."
-                class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
+            <div class="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                class="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2.5 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/20"
+                @click="openCreatePanel"
               >
+                Add Character
+              </button>
 
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                  :class="typeFilter === 'all'
-                    ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                    : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                  @click="typeFilter = 'all'"
-                >
-                  All ({{ characterCounts.all }})
-                </button>
-
-                <button
-                  type="button"
-                  class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                  :class="typeFilter === 'npc'
-                    ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                    : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                  @click="typeFilter = 'npc'"
-                >
-                  NPCs ({{ characterCounts.npc }})
-                </button>
-
-                <button
-                  type="button"
-                  class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                  :class="typeFilter === 'npc_sheet'
-                    ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                    : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                  @click="typeFilter = 'npc_sheet'"
-                >
-                  NPC+ ({{ characterCounts.npc_sheet }})
-                </button>
-
-                <button
-                  type="button"
-                  class="rounded-full border px-3 py-2 text-xs font-medium transition"
-                  :class="typeFilter === 'pc'
-                    ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                    : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
-                  @click="typeFilter = 'pc'"
-                >
-                  PCs ({{ characterCounts.pc }})
-                </button>
-              </div>
+              <button
+                type="button"
+                class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+                @click="refresh()"
+              >
+                Refresh
+              </button>
             </div>
-          </section>
+          </div>
 
-          <section
-            v-if="pending"
-            class="eldra-panel rounded-[24px] p-6 text-slate-300 shadow-xl"
-          >
-            Loading characters...
-          </section>
-
-          <section
-            v-else-if="!filteredCharacters.length"
-            class="eldra-empty rounded-[24px] p-10 text-center shadow-xl"
-          >
-            <div class="text-lg font-medium text-white">No characters found</div>
-            <p class="mt-2 text-sm text-slate-300">
-              Add characters manually or import supporting content, then come back here to manage the roster.
-            </p>
-          </section>
-
-          <section
-            v-else
-            class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
-          >
-            <div
-              v-for="character in filteredCharacters"
-              :key="character.id"
-              class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,28,42,0.92),rgba(10,18,28,0.9))] shadow-xl transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
-              :class="isSelected(character)
-                ? 'border-amber-300/70 shadow-[0_0_0_3px_rgba(251,191,36,0.32),0_18px_40px_rgba(0,0,0,0.34)]'
-                : ''"
-              @click="selectCharacter(character)"
+          <div class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              v-model="search"
+              type="text"
+              placeholder="Search characters..."
+              class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
             >
-              <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">
-                <div class="border-r border-white/10 bg-black/20">
-                  <img
-                    v-if="character.imageUrl"
-                    :src="character.imageUrl"
-                    :alt="character.displayTitle"
-                    class="h-full w-full object-cover"
-                  >
-                  <div
-                    v-else
-                    class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900/90 to-slate-800/80 text-2xl font-semibold text-slate-200"
-                  >
-                    {{ initialsFor(character.displayTitle) }}
-                  </div>
-                </div>
 
-                <div class="flex min-w-0 flex-col p-5">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                      <div class="truncate text-[1.55rem] font-semibold leading-tight text-white">
-                        {{ character.displayTitle }}
-                      </div>
-                    </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="rounded-full border px-3 py-2 text-xs font-medium transition"
+                :class="typeFilter === 'all'
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                @click="typeFilter = 'all'"
+              >
+                All ({{ characterCounts.all }})
+              </button>
 
-                    <span
-                      class="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium"
-                      :class="typeBadgeClass(character.normalizedType)"
-                    >
-                      {{ typeLabel(character.normalizedType) }}
-                    </span>
-                  </div>
+              <button
+                type="button"
+                class="rounded-full border px-3 py-2 text-xs font-medium transition"
+                :class="typeFilter === 'npc'
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                @click="typeFilter = 'npc'"
+              >
+                NPCs ({{ characterCounts.npc }})
+              </button>
 
-                  <p class="mt-4 line-clamp-4 text-base leading-8 text-slate-200">
-                    {{ character.displaySummary || 'No summary yet.' }}
-                  </p>
+              <button
+                type="button"
+                class="rounded-full border px-3 py-2 text-xs font-medium transition"
+                :class="typeFilter === 'npc_sheet'
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                @click="typeFilter = 'npc_sheet'"
+              >
+                NPC+ ({{ characterCounts.npc_sheet }})
+              </button>
 
-                  <div class="mt-auto pt-5 text-sm font-medium text-sky-200 transition group-hover:text-sky-100">
-                    Select Character →
-                  </div>
+              <button
+                type="button"
+                class="rounded-full border px-3 py-2 text-xs font-medium transition"
+                :class="typeFilter === 'pc'
+                  ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
+                  : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                @click="typeFilter = 'pc'"
+              >
+                PCs ({{ characterCounts.pc }})
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section
+          v-if="pending"
+          class="mt-6 eldra-panel rounded-[24px] p-6 text-slate-300 shadow-xl"
+        >
+          Loading characters...
+        </section>
+
+        <section
+          v-else-if="!filteredCharacters.length"
+          class="mt-6 eldra-empty rounded-[24px] p-10 text-center shadow-xl"
+        >
+          <div class="text-lg font-medium text-white">No characters found</div>
+          <p class="mt-2 text-sm text-slate-300">
+            Add characters manually or import supporting content, then come back here to manage the roster.
+          </p>
+        </section>
+
+        <section
+          v-else
+          class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
+        >
+          <div
+            v-for="character in filteredCharacters"
+            :key="character.id"
+            class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,28,42,0.92),rgba(10,18,28,0.9))] shadow-xl transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
+            :class="isSelected(character)
+              ? 'border-amber-300/80 shadow-[0_0_0_4px_rgba(251,191,36,0.35),0_18px_40px_rgba(0,0,0,0.34)]'
+              : ''"
+            @click="selectCharacter(character)"
+          >
+            <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">
+              <div class="border-r border-white/10 bg-black/20">
+                <img
+                  v-if="character.imageUrl"
+                  :src="character.imageUrl"
+                  :alt="character.displayTitle"
+                  class="h-full w-full object-cover"
+                >
+                <div
+                  v-else
+                  class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900/90 to-slate-800/80 text-2xl font-semibold text-slate-200"
+                >
+                  {{ initialsFor(character.displayTitle) }}
                 </div>
               </div>
-            </div>
-          </section>
-        </div>
 
-        <aside class="min-w-0">
-          <div
-            v-if="selectedCharacter"
-            class="eldra-panel sticky top-6 rounded-[24px] p-5 shadow-2xl"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
+              <div class="flex min-w-0 flex-col p-5">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="truncate text-[1.55rem] font-semibold leading-tight text-white">
+                      {{ character.displayTitle }}
+                    </div>
+                  </div>
 
-                <div class="mt-3 flex flex-wrap items-center gap-2">
-                  <h2 class="text-2xl font-semibold text-white">{{ selectedCharacter.displayTitle }}</h2>
                   <span
-                    class="rounded-full border px-2.5 py-1 text-[11px] font-medium"
-                    :class="typeBadgeClass(selectedCharacter.normalizedType)"
+                    class="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                    :class="typeBadgeClass(character.normalizedType)"
                   >
-                    {{ typeLabel(selectedCharacter.normalizedType) }}
+                    {{ typeLabel(character.normalizedType) }}
                   </span>
                 </div>
+
+                <p class="mt-4 line-clamp-4 text-base leading-8 text-slate-200">
+                  {{ character.displaySummary || 'No summary yet.' }}
+                </p>
+
+                <div class="mt-auto pt-5 text-sm font-medium text-sky-200 transition group-hover:text-sky-100">
+                  Select Character →
+                </div>
               </div>
-
-              <button
-                type="button"
-                class="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
-                @click="clearSelectedCharacter"
-              >
-                <UIcon name="i-lucide-x" class="h-4 w-4" />
-              </button>
             </div>
+          </div>
+        </section>
+      </div>
+    </div>
 
-            <div
-              v-if="selectedCharacter.imageUrl"
-              class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+    <aside
+      class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.94)] backdrop-blur"
+    >
+      <div v-if="selectedCharacter" class="flex h-full flex-col">
+        <div class="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+          <div class="min-w-0">
+            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <h2 class="truncate text-2xl font-semibold text-white">{{ selectedCharacter.displayTitle }}</h2>
+              <span
+                class="rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                :class="typeBadgeClass(selectedCharacter.normalizedType)"
+              >
+                {{ typeLabel(selectedCharacter.normalizedType) }}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
+            @click="clearSelectedCharacter"
+          >
+            <UIcon name="i-lucide-x" class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-5 py-5">
+          <div
+            v-if="selectedCharacter.imageUrl"
+            class="overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+          >
+            <img
+              :src="selectedCharacter.imageUrl"
+              :alt="selectedCharacter.displayTitle"
+              class="h-72 w-full object-cover"
             >
-              <img
-                :src="selectedCharacter.imageUrl"
-                :alt="selectedCharacter.displayTitle"
-                class="h-64 w-full object-cover"
-              >
-            </div>
-
-            <div
-              v-else
-              class="mt-5 flex h-64 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300"
-            >
-              {{ initialsFor(selectedCharacter.displayTitle) }}
-            </div>
-
-            <p class="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-200">
-              {{ selectedCharacter.displaySummary || 'No summary yet.' }}
-            </p>
-
-            <div class="mt-6 flex gap-3">
-              <NuxtLink
-                :to="`/worlds/${worldId}/entities/${selectedCharacter.id}`"
-                class="flex-1 rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
-              >
-                Read More
-              </NuxtLink>
-
-              <button
-                type="button"
-                class="flex-1 rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-center text-sm font-medium text-violet-100 transition hover:bg-violet-400/20"
-              >
-                Open Sheet
-              </button>
-            </div>
           </div>
 
           <div
             v-else
-            class="eldra-panel sticky top-6 rounded-[24px] p-6 text-center shadow-2xl"
+            class="flex h-72 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300"
           >
-            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
-            <div class="mt-6 text-lg font-medium text-white">No character selected</div>
-            <p class="mt-2 text-sm leading-7 text-slate-300">
-              Click a character card to preview their summary here before opening the full article.
-            </p>
+            {{ initialsFor(selectedCharacter.displayTitle) }}
           </div>
-        </aside>
+
+          <p class="mt-5 whitespace-pre-wrap text-sm leading-8 text-slate-200">
+            {{ selectedCharacter.displaySummary || 'No summary yet.' }}
+          </p>
+        </div>
+
+        <div class="border-t border-white/10 p-5">
+          <div class="flex gap-3">
+            <NuxtLink
+              :to="`/worlds/${worldId}/entities/${selectedCharacter.id}`"
+              class="flex-1 rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+            >
+              Read More
+            </NuxtLink>
+
+            <button
+              type="button"
+              class="flex-1 rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-center text-sm font-medium text-violet-100 transition hover:bg-violet-400/20"
+            >
+              Open Sheet
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <div v-else class="flex h-full flex-col">
+        <div class="border-b border-white/10 px-5 py-5">
+          <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
+          <div class="mt-3 text-2xl font-semibold text-white">No character selected</div>
+        </div>
+
+        <div class="flex flex-1 items-center justify-center px-6 text-center">
+          <p class="text-sm leading-8 text-slate-300">
+            Click a character card to preview their summary here before opening the full article.
+          </p>
+        </div>
+      </div>
+    </aside>
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div

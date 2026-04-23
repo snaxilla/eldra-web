@@ -141,6 +141,8 @@ const filteredCharacters = computed(() => {
     .sort((a: any, b: any) => a.displayTitle.localeCompare(b.displayTitle))
 })
 
+const selectedCharacterId = ref<string | null>(null)
+
 const characterCounts = computed(() => {
   const list = characterEntities.value
   return {
@@ -344,11 +346,11 @@ onBeforeUnmount(() => {
         v-else
         class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
       >
-        <NuxtLink
+        <div
           v-for="character in filteredCharacters"
           :key="character.id"
-          :to="`/worlds/${worldId}/entities/${character.id}`"
-          class="group eldra-panel overflow-hidden rounded-[24px] shadow-xl transition hover:-translate-y-0.5 hover:border-white/20"
+          @click="selectedCharacterId = character.id"
+          class="group eldra-panel cursor-pointer overflow-hidden rounded-[24px] shadow-xl transition hover:-translate-y-0.5 hover:border-white/20"
         >
           <div class="flex min-h-[168px]">
             <div class="relative w-[112px] shrink-0 border-r border-white/10 bg-black/20">
@@ -389,7 +391,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-        </NuxtLink>
+        </div>
       </section>
     </div>
 

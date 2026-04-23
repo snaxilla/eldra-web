@@ -97,8 +97,8 @@ function typeBadgeClass(type: string) {
 }
 
 function imageUrlFor(entity: any) {
-  if (entity?.imageUrl) return String(entity.imageUrl)
   if (entity?.image_url) return String(entity.image_url)
+  if (entity?.imageUrl) return String(entity.imageUrl)
 
   if (entity?.image?.id) return `/api/assets/${entity.image.id}`
   if (typeof entity?.image === 'string' || typeof entity?.image === 'number') {
@@ -406,8 +406,8 @@ onBeforeUnmount(() => {
             :key="character.id"
             class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,28,42,0.92),rgba(10,18,28,0.9))] shadow-xl transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
             :class="isSelected(character)
-              ? 'scale-[1.03] border-amber-300 shadow-[0_0_0_5px_rgba(251,191,36,0.72),0_0_32px_rgba(251,191,36,0.28),0_18px_40px_rgba(0,0,0,0.42)] bg-[linear-gradient(to_bottom,rgba(30,42,62,0.98),rgba(14,24,36,0.96))]'
-              : 'opacity-95'"
+              ? 'border-amber-300/90 shadow-[0_0_0_4px_rgba(251,191,36,0.45),0_18px_40px_rgba(0,0,0,0.38)]'
+              : ''"
             @click="selectCharacter(character)"
           >
             <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">

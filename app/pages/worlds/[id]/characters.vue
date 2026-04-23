@@ -12,6 +12,7 @@ const showCreatePanel = ref(false)
 const creating = ref(false)
 const createError = ref('')
 const createSuccess = ref('')
+const selectedCharacterId = ref<string | null>(null)
 
 const form = reactive({
   title: '',
@@ -113,6 +114,7 @@ const characterEntities = computed(() => {
         imageUrl: imageUrlFor(entity),
         displayTitle: String(entity?.title || 'Untitled Character'),
         displaySummary: String(entity?.summary || '').trim(),
+        stringId: String(entity?.id || '')
       }
     })
 })
@@ -141,8 +143,6 @@ const filteredCharacters = computed(() => {
     .sort((a: any, b: any) => a.displayTitle.localeCompare(b.displayTitle))
 })
 
-const selectedCharacterId = ref<string | null>(null)
-
 const characterCounts = computed(() => {
   const list = characterEntities.value
   return {
@@ -152,6 +152,40 @@ const characterCounts = computed(() => {
     pc: list.filter((c: any) => c.normalizedType === 'pc').length,
   }
 })
+
+const selectedCharacter = computed(() => {
+  if (!selectedCharacterId.value) return null
+  return filteredCharacters.value.find((c: any) => String(c.stringId) === String(selectedCharacterId.value)) || null
+})
+
+watch(
+  filteredCharacters,
+  (list) => {
+    if (!list.length) {
+      selectedCharacterId.value = null
+      return
+    }
+
+    if (!selectedCharacterId.value) {
+      selectedCharacterId.value = String(list[0].stringId)
+      return
+    }
+
+    const stillExists = list.some((c: any) => String(c.stringId) === String(selectedCharacterId.value))
+    if (!stillExists) {
+      selectedCharacterId.value = String(list[0].stringId)
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+function isSelected(character: any) {
+  return String(selectedCharacterId.value || '') === String(character?.stringId || character?.id || '')
+}
+
+function selectCharacter(character: any) {
+  selectedCharacterId.value = String(character?.stringId || character?.id || '')
+}
 
 function resetForm() {
   form.title = ''
@@ -211,7 +245,7 @@ async function createCharacter() {
       body.append('image', form.image)
     }
 
-    await $fetch(`/api/worlds/${worldId.value}/characters/create`, {
+    const created = await $fetch<any>(`/api/worlds/${worldId.value}/characters/create`, {
       method: 'POST',
       body
     })
@@ -219,6 +253,10 @@ async function createCharacter() {
     await refresh()
     createSuccess.value = 'Character created.'
     closeCreatePanel()
+
+    if (created?.id) {
+      selectedCharacterId.value = String(created.id)
+    }
   } catch (error: any) {
     createError.value =
       error?.data?.statusMessage ||
@@ -344,54 +382,114 @@ onBeforeUnmount(() => {
 
       <section
         v-else
-        class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
+        class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]"
       >
-        <div
-          v-for="character in filteredCharacters"
-          :key="character.id"
-          @click="selectedCharacterId = character.id"
-          class="group eldra-panel cursor-pointer overflow-hidden rounded-[24px] shadow-xl transition hover:-translate-y-0.5 hover:border-white/20"
-        >
-          <div class="flex min-h-[168px]">
-            <div class="relative w-[112px] shrink-0 border-r border-white/10 bg-black/20">
-              <img
-                v-if="character.imageUrl"
-                :src="character.imageUrl"
-                :alt="character.displayTitle"
-                class="h-full w-full object-cover"
-              >
-              <div
-                v-else
-                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-800/80 to-slate-950 text-2xl font-semibold text-slate-300"
-              >
-                {{ initialsFor(character.displayTitle) }}
+        <div class="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+          <div
+            v-for="character in filteredCharacters"
+            :key="character.id"
+            class="group eldra-panel cursor-pointer overflow-hidden rounded-[24px] shadow-xl transition hover:-translate-y-0.5 hover:border-white/20"
+            :class="isSelected(character)
+              ? 'border-amber-300/40 bg-[rgba(20,30,46,0.95)] shadow-[0_0_0_2px_rgba(251,191,36,0.28),0_18px_40px_rgba(0,0,0,0.34)]'
+              : ''"
+            @click="selectCharacter(character)"
+          >
+            <div class="flex min-h-[168px]">
+              <div class="relative w-[112px] shrink-0 border-r border-white/10 bg-black/20">
+                <img
+                  v-if="character.imageUrl"
+                  :src="character.imageUrl"
+                  :alt="character.displayTitle"
+                  class="h-full w-full object-cover"
+                >
+                <div
+                  v-else
+                  class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-800/80 to-slate-950 text-2xl font-semibold text-slate-300"
+                >
+                  {{ initialsFor(character.displayTitle) }}
+                </div>
               </div>
-            </div>
 
-            <div class="flex min-w-0 flex-1 flex-col p-5">
-              <div class="flex flex-wrap items-center gap-2">
-                <div class="truncate text-lg font-semibold text-white">
-                  {{ character.displayTitle }}
+              <div class="flex min-w-0 flex-1 flex-col p-5">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="truncate text-lg font-semibold text-white">
+                    {{ character.displayTitle }}
+                  </div>
+
+                  <span
+                    class="rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                    :class="typeBadgeClass(character.normalizedType)"
+                  >
+                    {{ typeLabel(character.normalizedType) }}
+                  </span>
                 </div>
 
-                <span
-                  class="rounded-full border px-2.5 py-1 text-[11px] font-medium"
-                  :class="typeBadgeClass(character.normalizedType)"
-                >
-                  {{ typeLabel(character.normalizedType) }}
-                </span>
-              </div>
+                <p class="mt-4 line-clamp-3 text-sm leading-6 text-slate-200">
+                  {{ character.displaySummary || 'No summary yet.' }}
+                </p>
 
-              <p class="mt-4 line-clamp-3 text-sm leading-6 text-slate-200">
-                {{ character.displaySummary || 'No summary yet.' }}
-              </p>
-
-              <div class="mt-auto pt-4 text-xs font-medium text-sky-200 transition group-hover:text-sky-100">
-                Open Character →
+                <div class="mt-auto pt-4 text-xs font-medium text-sky-200 transition group-hover:text-sky-100">
+                  Select Character →
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        <aside
+          v-if="selectedCharacter"
+          class="eldra-panel sticky top-6 h-fit rounded-[24px] p-5 shadow-2xl"
+        >
+          <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
+
+          <div class="mt-2 flex items-center gap-2">
+            <h2 class="text-2xl font-semibold text-white">{{ selectedCharacter.displayTitle }}</h2>
+            <span
+              class="rounded-full border px-2.5 py-1 text-[11px] font-medium"
+              :class="typeBadgeClass(selectedCharacter.normalizedType)"
+            >
+              {{ typeLabel(selectedCharacter.normalizedType) }}
+            </span>
+          </div>
+
+          <div
+            v-if="selectedCharacter.imageUrl"
+            class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+          >
+            <img
+              :src="selectedCharacter.imageUrl"
+              :alt="selectedCharacter.displayTitle"
+              class="h-64 w-full object-cover"
+            >
+          </div>
+
+          <div
+            v-else
+            class="mt-5 flex h-64 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300"
+          >
+            {{ initialsFor(selectedCharacter.displayTitle) }}
+          </div>
+
+          <p class="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-200">
+            {{ selectedCharacter.displaySummary || 'No summary yet.' }}
+          </p>
+
+          <div class="mt-6 flex gap-3">
+            <NuxtLink
+              :to="`/worlds/${worldId}/entities/${selectedCharacter.id}`"
+              class="flex-1 rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+            >
+              Read More
+            </NuxtLink>
+
+            <button
+              type="button"
+              class="flex-1 rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-center text-sm font-medium text-violet-100 transition hover:bg-violet-400/20"
+            >
+              Open Sheet
+            </button>
+          </div>
+        </aside>
       </section>
     </div>
 

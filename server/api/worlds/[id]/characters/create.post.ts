@@ -130,10 +130,8 @@ export default defineEventHandler(async (event) => {
   const baseSlug = slugify(title) || 'character'
   const slug = `${baseSlug}-${Date.now().toString().slice(-6)}`
 
-  const worldValue = /^\d+$/.test(worldId) ? Number(worldId) : worldId
-
   const payload: Record<string, any> = {
-    world: worldValue,
+    world_id: Number(worldId),
     title,
     slug,
     summary: summary || null,

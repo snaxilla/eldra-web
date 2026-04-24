@@ -13,3 +13,4 @@ export {
   preview5eToolsSpecies,
   preview5eToolsSpells
 }
+export { preview5eToolsMonsters } from './5etools-monsters'

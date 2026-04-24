@@ -89,7 +89,7 @@ export async function persistImportedEntities(options: {
           entity_type: item.entityType,
           status: 'draft',
           visibility: 'world',
-          summary: '',
+          summary: (item as any).summary || '',
           updated_at: now
         }
       })
@@ -142,7 +142,7 @@ export async function persistImportedEntities(options: {
         entity_type: item.entityType,
         status: 'draft',
         visibility: 'world',
-        summary: '',
+        summary: (item as any).summary || '',
         created_at: now,
         updated_at: now
       }

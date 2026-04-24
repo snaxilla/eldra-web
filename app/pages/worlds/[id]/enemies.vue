@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { render5eText } from '~/utils/render5e'
 definePageMeta({
   layout: 'world-workspace'
 })
@@ -305,7 +306,7 @@ function clearSelectedEnemy() {
               class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
             >
               <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
-              {{ selectedEnemy.summary }}
+              {{ render5eText(selectedEnemy.summary) }}
             </div>
 
             <div
@@ -324,7 +325,7 @@ function clearSelectedEnemy() {
                     <div class="font-medium text-white">{{ action.name }}</div>
                     <div class="text-[11px] uppercase tracking-[0.15em] text-slate-500">{{ actionTypeLabel(action.action_type) }}</div>
                   </div>
-                  <div class="mt-2 text-sm leading-7 text-slate-200">{{ action.text }}</div>
+                  <div class="mt-2 text-sm leading-7 text-slate-200">{{ render5eText(action.text) }}</div>
                 </div>
               </div>
             </div>

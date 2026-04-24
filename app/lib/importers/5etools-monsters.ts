@@ -74,6 +74,11 @@ function extractMonstersFromPayload(payload: any): any[] {
   if (Array.isArray(payload)) return payload
   if (Array.isArray(payload?.monster)) return payload.monster
   if (Array.isArray(payload?.data?.monster)) return payload.data.monster
+
+  if (payload && typeof payload === 'object' && typeof payload.name === 'string') {
+    return [payload]
+  }
+
   return []
 }
 
@@ -87,6 +92,23 @@ function normalizeActionEntries(items: any[] | undefined, actionType: string) {
   }))
 }
 
+function extractMonsterSummary(monster: any) {
+  const fluffSummary =
+    firstString(monster?.fluff?.entries) ||
+    firstString(monster?.entries) ||
+    ''
+
+  if (fluffSummary) return fluffSummary
+
+  const traitSummary = firstString(monster?.trait)
+  if (traitSummary) return traitSummary
+
+  const actionSummary = firstString(monster?.action)
+  if (actionSummary) return actionSummary
+
+  return ''
+}
+
 export function preview5eToolsMonsters(payload: any) {
   const monsters = extractMonstersFromPayload(payload)
   const warnings: string[] = []
@@ -98,7 +120,7 @@ export function preview5eToolsMonsters(payload: any) {
     const slug = source ? `${slugBase}-${source}` : slugBase
 
     const fluffText = flattenEntries(monster?.fluff?.entries || [])
-    const summary = firstString(monster?.fluff?.entries) || firstString(monster?.action) || ''
+    const summary = extractMonsterSummary(monster)
 
     const actions = [
       ...normalizeActionEntries(monster?.trait, 'trait'),

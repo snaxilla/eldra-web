@@ -9,6 +9,9 @@ const worldId = computed(() => String(route.params.id || ''))
 
 const search = ref('')
 const selectedEnemyId = ref<string | null>(null)
+const confirmDelete = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: enemies, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/enemies`, {
@@ -100,6 +103,38 @@ function selectEnemy(enemy: any) {
 
 function clearSelectedEnemy() {
   selectedEnemyId.value = null
+  confirmDelete.value = false
+}
+
+async function deleteEnemy() {
+  if (!selectedEnemy.value) return
+
+  deleteError.value = ''
+  deleting.value = true
+
+  try {
+    const id = selectedEnemy.value.id
+
+    await $fetch(`/api/worlds/${worldId.value}/enemies/${id}`, {
+      method: 'DELETE'
+    })
+
+    await refresh()
+
+    if (selectedEnemyId.value === String(id)) {
+      selectedEnemyId.value = null
+    }
+
+    confirmDelete.value = false
+  } catch (error: any) {
+    deleteError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to delete enemy.'
+  } finally {
+    deleting.value = false
+  }
 }
 </script>
 

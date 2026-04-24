@@ -6,6 +6,7 @@ definePageMeta({
 
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
+const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
 const selectedEnemyId = ref<string | null>(null)

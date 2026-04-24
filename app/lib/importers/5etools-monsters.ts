@@ -92,18 +92,63 @@ function normalizeActionEntries(items: any[] | undefined, actionType: string) {
   }))
 }
 
+function looksLikeDescriptiveParagraph(value: string) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (text.length < 40) return false
+  if (!/[a-z]/i.test(text)) return false
+  if (text.includes('|')) return false
+  return true
+}
+
+function findFirstDescriptiveText(value: any): string {
+  if (value == null) return ''
+
+  if (typeof value === 'string') {
+    const text = value.trim()
+    return looksLikeDescriptiveParagraph(text) ? text : ''
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findFirstDescriptiveText(item)
+      if (found) return found
+    }
+    return ''
+  }
+
+  if (typeof value === 'object') {
+    if (typeof value.entry === 'string') {
+      const text = value.entry.trim()
+      if (looksLikeDescriptiveParagraph(text)) return text
+    }
+
+    if (Array.isArray(value.entries)) {
+      const found = findFirstDescriptiveText(value.entries)
+      if (found) return found
+    }
+
+    if (Array.isArray(value.items)) {
+      const found = findFirstDescriptiveText(value.items)
+      if (found) return found
+    }
+  }
+
+  return ''
+}
+
 function extractMonsterSummary(monster: any) {
   const fluffSummary =
-    firstString(monster?.fluff?.entries) ||
-    firstString(monster?.entries) ||
+    findFirstDescriptiveText(monster?.fluff?.entries) ||
+    findFirstDescriptiveText(monster?.entries) ||
     ''
 
   if (fluffSummary) return fluffSummary
 
-  const traitSummary = firstString(monster?.trait)
+  const traitSummary = findFirstDescriptiveText(monster?.trait)
   if (traitSummary) return traitSummary
 
-  const actionSummary = firstString(monster?.action)
+  const actionSummary = findFirstDescriptiveText(monster?.action)
   if (actionSummary) return actionSummary
 
   return ''

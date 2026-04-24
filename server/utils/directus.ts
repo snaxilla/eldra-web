@@ -2,8 +2,20 @@ import type { H3Event } from 'h3'
 
 function getRuntimeDirectusConfig() {
   const config = useRuntimeConfig()
-  const baseUrl = String(config.public.directusUrl || '').replace(/\/$/, '')
-  const serviceToken = String(config.directusToken || '')
+
+  const baseUrl = String(
+    process.env.DIRECTUS_URL ||
+    (config as any).directusUrl ||
+    process.env.NUXT_PUBLIC_DIRECTUS_URL ||
+    config.public.directusUrl ||
+    ''
+  ).replace(/\/$/, '')
+
+  const serviceToken = String(
+    process.env.DIRECTUS_TOKEN ||
+    config.directusToken ||
+    ''
+  )
 
   if (!baseUrl) {
     throw createError({

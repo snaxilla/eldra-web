@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { render5eText } from '~/utils/render5e'
 definePageMeta({
   layout: 'world-workspace'
 })
+
+import { render5eText } from '~/utils/render5e'
 
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
@@ -64,6 +65,61 @@ function actionTypeLabel(value: string) {
   return 'Action'
 }
 
+function looksLikeDescriptiveParagraph(value: string) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (text.length < 40) return false
+  if (!/[a-z]/i.test(text)) return false
+  if (text.includes('|')) return false
+  return true
+}
+
+function findFirstDescriptiveText(value: any): string {
+  if (value == null) return ''
+
+  if (typeof value === 'string') {
+    const text = value.trim()
+    return looksLikeDescriptiveParagraph(text) ? text : ''
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findFirstDescriptiveText(item)
+      if (found) return found
+    }
+    return ''
+  }
+
+  if (typeof value === 'object') {
+    if (typeof value.entry === 'string') {
+      const text = value.entry.trim()
+      if (looksLikeDescriptiveParagraph(text)) return text
+    }
+
+    if (Array.isArray(value.entries)) {
+      const found = findFirstDescriptiveText(value.entries)
+      if (found) return found
+    }
+
+    if (Array.isArray(value.items)) {
+      const found = findFirstDescriptiveText(value.items)
+      if (found) return found
+    }
+  }
+
+  return ''
+}
+
+function getEnemySummary(enemy: any) {
+  const fluffSummary = findFirstDescriptiveText(enemy?.monsterProfile?.fluff_json?.entries)
+  if (fluffSummary) return fluffSummary
+
+  const storedSummary = String(enemy?.summary || '').trim()
+  if (looksLikeDescriptiveParagraph(storedSummary)) return storedSummary
+
+  return storedSummary
+}
+
 const filteredEnemies = computed(() => {
   const q = search.value.trim().toLowerCase()
 
@@ -86,6 +142,11 @@ const selectedEnemy = computed(() => {
   return (enemies.value || []).find((enemy: any) => String(enemy.id) === String(selectedEnemyId.value)) || null
 })
 
+const selectedEnemySummary = computed(() => {
+  if (!selectedEnemy.value) return ''
+  return getEnemySummary(selectedEnemy.value)
+})
+
 watch(filteredEnemies, (items) => {
   if (!items.length && selectedEnemyId.value) {
     selectedEnemyId.value = null
@@ -100,6 +161,7 @@ watch(filteredEnemies, (items) => {
 
 function selectEnemy(enemy: any) {
   selectedEnemyId.value = String(enemy.id)
+  confirmDelete.value = false
 }
 
 function clearSelectedEnemy() {
@@ -338,11 +400,11 @@ async function deleteEnemy() {
             </div>
 
             <div
-              v-if="selectedEnemy.summary"
+              v-if="selectedEnemySummary"
               class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
             >
               <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
-              {{ render5eText(selectedEnemy.summary) }}
+              {{ render5eText(selectedEnemySummary) }}
             </div>
 
             <div
@@ -367,7 +429,32 @@ async function deleteEnemy() {
             </div>
           </div>
 
+          <div v-if="deleteError" class="px-5 pt-3 text-sm text-red-300">
+            {{ deleteError }}
+          </div>
+
           <div class="border-t border-white/10 p-5">
+            <div v-if="mode === 'build'" class="flex gap-3 mb-3">
+              <button
+                v-if="!confirmDelete"
+                type="button"
+                class="flex-1 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100 hover:bg-red-500/20"
+                @click="confirmDelete = true"
+              >
+                Delete
+              </button>
+
+              <button
+                v-else
+                type="button"
+                class="flex-1 rounded-xl border border-red-500/30 bg-red-500/20 px-4 py-3 text-sm text-red-50 disabled:opacity-50"
+                :disabled="deleting"
+                @click="deleteEnemy"
+              >
+                {{ deleting ? 'Deleting…' : 'Confirm Delete' }}
+              </button>
+            </div>
+
             <NuxtLink
               :to="`/worlds/${worldId}/entities/${selectedEnemy.id}`"
               class="block rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"

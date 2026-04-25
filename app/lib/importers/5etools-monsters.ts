@@ -22,7 +22,6 @@ function firstString(value: any): string {
   }
   if (value && typeof value === 'object') {
     if (typeof value.entry === 'string') return value.entry
-    if (typeof value.name === 'string') return value.name
     if (Array.isArray(value.entries)) return firstString(value.entries)
     if (Array.isArray(value.items)) return firstString(value.items)
   }
@@ -70,6 +69,14 @@ function flattenEntries(value: any): string {
   return ''
 }
 
+function normalizeSource(value: any) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function monsterKey(name: any, source: any) {
+  return `${String(name || '').trim().toLowerCase()}|${normalizeSource(source)}`
+}
+
 function extractMonstersFromPayload(payload: any): any[] {
   if (Array.isArray(payload)) return payload
   if (Array.isArray(payload?.monster)) return payload.monster
@@ -80,6 +87,36 @@ function extractMonstersFromPayload(payload: any): any[] {
   }
 
   return []
+}
+
+function extractMonsterFluffFromPayload(payload: any): any[] {
+  if (!payload) return []
+
+  if (Array.isArray(payload?.monsterFluff)) return payload.monsterFluff
+  if (Array.isArray(payload?.data?.monsterFluff)) return payload.data.monsterFluff
+
+  if (Array.isArray(payload?.fluff?.monsterFluff)) return payload.fluff.monsterFluff
+
+  if (payload?.monsterFluff && typeof payload.monsterFluff === 'object' && typeof payload.monsterFluff.name === 'string') {
+    return [payload.monsterFluff]
+  }
+
+  if (payload && typeof payload === 'object' && typeof payload.name === 'string' && (payload.entries || payload.images)) {
+    return [payload]
+  }
+
+  return []
+}
+
+function buildMonsterFluffMap(payload: any) {
+  const fluffItems = extractMonsterFluffFromPayload(payload)
+  const map = new Map<string, any>()
+
+  for (const fluff of fluffItems) {
+    map.set(monsterKey(fluff?.name, fluff?.source), fluff)
+  }
+
+  return map
 }
 
 function normalizeActionEntries(items: any[] | undefined, actionType: string) {
@@ -137,25 +174,20 @@ function findFirstDescriptiveText(value: any): string {
   return ''
 }
 
-function extractMonsterSummary(monster: any) {
+function extractMonsterSummary(monster: any, fluff: any) {
   const fluffSummary =
+    findFirstDescriptiveText(fluff?.entries) ||
     findFirstDescriptiveText(monster?.fluff?.entries) ||
     findFirstDescriptiveText(monster?.entries) ||
     ''
 
   if (fluffSummary) return fluffSummary
-
-  const traitSummary = findFirstDescriptiveText(monster?.trait)
-  if (traitSummary) return traitSummary
-
-  const actionSummary = findFirstDescriptiveText(monster?.action)
-  if (actionSummary) return actionSummary
-
   return ''
 }
 
 export function preview5eToolsMonsters(payload: any) {
   const monsters = extractMonstersFromPayload(payload)
+  const fluffMap = buildMonsterFluffMap(payload)
   const warnings: string[] = []
 
   const items = monsters.map((monster: any) => {
@@ -164,8 +196,13 @@ export function preview5eToolsMonsters(payload: any) {
     const source = String(monster?.source || '').trim().toLowerCase()
     const slug = source ? `${slugBase}-${source}` : slugBase
 
-    const fluffText = flattenEntries(monster?.fluff?.entries || [])
-    const summary = extractMonsterSummary(monster)
+    const matchedFluff =
+      fluffMap.get(monsterKey(monster?.name, monster?.source)) ||
+      monster?.fluff ||
+      null
+
+    const fluffText = flattenEntries(matchedFluff?.entries || [])
+    const summary = extractMonsterSummary(monster, matchedFluff)
 
     const actions = [
       ...normalizeActionEntries(monster?.trait, 'trait'),
@@ -246,11 +283,11 @@ export function preview5eToolsMonsters(payload: any) {
           action_tags_json: monster?.actionTags ?? null,
           language_tags_json: monster?.languageTags ?? null,
           misc_tags_json: monster?.miscTags ?? null,
-          has_fluff: monster?.hasFluff === true,
-          has_fluff_images: monster?.hasFluffImages === true,
+          has_fluff: !!matchedFluff,
+          has_fluff_images: !!matchedFluff?.images?.length,
           token_name: monster?.token?.name ?? null,
           token_source: monster?.token?.source ?? null,
-          fluff_json: monster?.fluff ?? null,
+          fluff_json: matchedFluff ?? null,
           raw_payload_json: monster ?? null
         },
         actions

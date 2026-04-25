@@ -9,6 +9,7 @@ const worldId = computed(() => String(route.params.id || ''))
 const importType = ref<'monsters' | 'items' | 'spells' | 'species' | 'classes' | 'backgrounds'>('monsters')
 const mode = ref<'create' | 'update' | 'upsert'>('upsert')
 const payloadText = ref('')
+const fluffPayloadText = ref('')
 const previewBusy = ref(false)
 const saveBusy = ref(false)
 const resultMessage = ref('')
@@ -42,6 +43,30 @@ const endpointMap: Record<string, { preview: string; save: string }> = {
   }
 }
 
+function buildPayload() {
+  const payload = JSON.parse(payloadText.value)
+
+  if (importType.value === 'monsters' && fluffPayloadText.value.trim()) {
+    const fluffPayload = JSON.parse(fluffPayloadText.value)
+
+    if (Array.isArray(fluffPayload?.monsterFluff)) {
+      return {
+        ...payload,
+        monsterFluff: fluffPayload.monsterFluff
+      }
+    }
+
+    if (Array.isArray(fluffPayload?.data?.monsterFluff)) {
+      return {
+        ...payload,
+        monsterFluff: fluffPayload.data.monsterFluff
+      }
+    }
+  }
+
+  return payload
+}
+
 async function runPreview() {
   resultMessage.value = ''
   previewResult.value = null
@@ -54,7 +79,7 @@ async function runPreview() {
   previewBusy.value = true
 
   try {
-    const payload = JSON.parse(payloadText.value)
+    const payload = buildPayload()
     const endpoint = endpointMap[importType.value].preview
 
     previewResult.value = await $fetch(endpoint, {
@@ -86,7 +111,7 @@ async function runSave() {
   saveBusy.value = true
 
   try {
-    const payload = JSON.parse(payloadText.value)
+    const payload = buildPayload()
     const endpoint = endpointMap[importType.value].save
 
     saveResult.value = await $fetch(endpoint, {
@@ -113,7 +138,7 @@ async function runSave() {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <div class="mx-auto max-w-[1600px] p-6">
+    <div class="mx-auto max-w-[1700px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div class="space-y-6">
           <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
@@ -160,14 +185,26 @@ async function runSave() {
               </div>
             </div>
 
-            <div class="mt-6">
-              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">5etools JSON Payload</label>
-              <textarea
-                v-model="payloadText"
-                rows="24"
-                placeholder="Paste raw 5etools JSON here..."
-                class="min-h-[420px] w-full rounded-2xl border border-white/10 bg-[#07101a]/90 px-4 py-4 font-mono text-sm text-slate-100 outline-none transition focus:border-sky-400/30"
-              />
+            <div class="mt-6 grid gap-6" :class="importType === 'monsters' ? 'xl:grid-cols-2' : 'grid-cols-1'">
+              <div>
+                <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">5etools JSON Payload</label>
+                <textarea
+                  v-model="payloadText"
+                  rows="24"
+                  placeholder="Paste raw 5etools JSON here..."
+                  class="min-h-[420px] w-full rounded-2xl border border-white/10 bg-[#07101a]/90 px-4 py-4 font-mono text-sm text-slate-100 outline-none transition focus:border-sky-400/30"
+                />
+              </div>
+
+              <div v-if="importType === 'monsters'">
+                <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Monster Fluff JSON (Optional)</label>
+                <textarea
+                  v-model="fluffPayloadText"
+                  rows="24"
+                  placeholder='Paste raw fluff-bestiary JSON here (monsterFluff)...'
+                  class="min-h-[420px] w-full rounded-2xl border border-white/10 bg-[#07101a]/90 px-4 py-4 font-mono text-sm text-slate-100 outline-none transition focus:border-sky-400/30"
+                />
+              </div>
             </div>
 
             <div class="mt-5 flex flex-wrap gap-3">

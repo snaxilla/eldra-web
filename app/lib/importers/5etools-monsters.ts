@@ -273,6 +273,7 @@ export function preview5eToolsMonsters(payload: any) {
           raw_payload_json: monster ?? null
         },
         monsterProfile: {
+          fluff_markdown: monster?.fluffMarkdown || null,
           source: monster?.source ?? null,
           page: monster?.page ?? null,
           reference_sources_json: monster?.referenceSources ?? null,

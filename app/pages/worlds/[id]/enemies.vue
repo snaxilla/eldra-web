@@ -144,6 +144,11 @@ const selectedEnemy = computed(() => {
 
 const selectedEnemySummary = computed(() => {
   if (!selectedEnemy.value) return ''
+
+  if (selectedEnemy.value?.monsterProfile?.fluff_markdown) {
+    return selectedEnemy.value.monsterProfile.fluff_markdown
+  }
+  if (!selectedEnemy.value) return ''
   return getEnemySummary(selectedEnemy.value)
 })
 

@@ -1,4 +1,15 @@
-function extractImageUrl(blocks: any[] = []) {
+import { directusServiceRequest } from '../../../../../utils/directus'
+
+function extractImageUrl(entity: any, blocks: any[] = []) {
+  if (entity?.image) {
+    if (typeof entity.image === 'string') return `/api/assets/${entity.image}`
+    if (typeof entity.image === 'object') {
+      if (entity.image.image_url) return entity.image.image_url
+      if (entity.image.file_id) return `/api/assets/${entity.image.file_id}`
+      if (entity.image.id) return `/api/assets/${entity.image.id}`
+    }
+  }
+
   for (const block of blocks) {
     const image = block?.data?.image
 
@@ -19,8 +30,8 @@ function extractImageUrl(blocks: any[] = []) {
 }
 
 export default defineEventHandler(async (event) => {
-  const worldId = getRouterParam(event, 'id')
-  const entityId = getRouterParam(event, 'entityId')
+  const worldId = Number(getRouterParam(event, 'id') || 0)
+  const entityId = Number(getRouterParam(event, 'entityId') || 0)
 
   if (!worldId || !entityId) {
     throw createError({
@@ -29,59 +40,78 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const baseUrl = 'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
-  const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
-
-  const entityRes = await fetch(
-    `${baseUrl}/items/entities/${entityId}?fields=*`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+  const entityRes = await directusServiceRequest(`/items/entities/${entityId}`, {
+    method: 'GET',
+    query: {
+      fields: '*'
     }
-  )
+  })
 
-  const entityJson = await entityRes.json()
+  const entity = entityRes?.data || null
 
-  if (!entityRes.ok) {
-    throw createError({
-      statusCode: entityRes.status,
-      statusMessage: entityJson?.errors?.[0]?.message || entityJson?.message || 'Failed to load entity'
-    })
-  }
-
-  const entity = entityJson.data
-
-  if (!entity || String(entity.world_id) !== String(worldId)) {
+  if (!entity || Number(entity.world_id) !== worldId) {
     throw createError({
       statusCode: 404,
       statusMessage: 'Entity not found in this world'
     })
   }
 
-  const blocksRes = await fetch(
-    `${baseUrl}/items/block_instances?filter[entity_id][_eq]=${entityId}&sort=sort&fields=*`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
+  const [blocksRes, statblockRes, actionsRes, monsterProfileRes] = await Promise.all([
+    directusServiceRequest('/items/block_instances', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _eq: entityId }
+        },
+        sort: 'sort',
+        limit: -1,
+        fields: '*'
       }
-    }
-  )
-
-  const blocksJson = await blocksRes.json()
-
-  if (!blocksRes.ok) {
-    throw createError({
-      statusCode: blocksRes.status,
-      statusMessage: blocksJson?.errors?.[0]?.message || blocksJson?.message || 'Failed to load entity blocks'
+    }),
+    directusServiceRequest('/items/entity_statblocks', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _eq: entityId }
+        },
+        limit: 1,
+        fields: '*'
+      }
+    }),
+    directusServiceRequest('/items/entity_actions', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _eq: entityId }
+        },
+        sort: 'action_type,sort_order',
+        limit: -1,
+        fields: '*'
+      }
+    }),
+    directusServiceRequest('/items/monster_profiles', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _eq: entityId }
+        },
+        limit: 1,
+        fields: '*'
+      }
     })
-  }
+  ])
 
-  const blocks = Array.isArray(blocksJson.data) ? blocksJson.data : []
+  const blocks = Array.isArray(blocksRes?.data) ? blocksRes.data : []
+  const statblock = Array.isArray(statblockRes?.data) ? (statblockRes.data[0] || null) : null
+  const actions = Array.isArray(actionsRes?.data) ? actionsRes.data : []
+  const monsterProfile = Array.isArray(monsterProfileRes?.data) ? (monsterProfileRes.data[0] || null) : null
 
   return {
     ...entity,
     blocks,
-    image_url: extractImageUrl(blocks)
+    statblock,
+    actions,
+    monsterProfile,
+    imageUrl: extractImageUrl(entity, blocks)
   }
 })

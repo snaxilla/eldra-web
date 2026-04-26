@@ -4,6 +4,7 @@ definePageMeta({
 })
 
 import { render5eText } from '~/utils/render5e'
+import { renderMarkdown } from '~/utils/renderMarkdown'
 
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
@@ -409,7 +410,10 @@ async function deleteEnemy() {
               class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
             >
               <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
-              {{ render5eText(selectedEnemySummary) }}
+              <div
+                class="markdown-content prose prose-invert max-w-none prose-headings:mb-3 prose-headings:mt-4 prose-p:my-3 prose-ul:my-3 prose-li:my-1 prose-strong:text-white"
+                v-html="renderMarkdown(selectedEnemySummary)"
+              ></div>
             </div>
 
             <div

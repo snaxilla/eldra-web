@@ -1,4 +1,4 @@
-import { directusServiceRequest } from '../../../../../utils/directus'
+import { directusServiceRequest } from '../../../../utils/directus'
 
 function extractImageUrl(entity: any, blocks: any[] = []) {
   if (entity?.image) {

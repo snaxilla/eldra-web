@@ -411,7 +411,7 @@ async function deleteEnemy() {
             >
               <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
               <div
-                class="markdown-content prose prose-invert max-w-none text-[15px] leading-7 prose-p:my-4 prose-p:text-slate-200 prose-headings:mt-5 prose-headings:mb-3 prose-headings:font-semibold prose-headings:text-white prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-white prose-em:text-slate-100 prose-ul:my-4 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-4 prose-ol:pl-5 prose-li:my-1 prose-li:text-slate-200 prose-blockquote:my-5 prose-blockquote:rounded-xl prose-blockquote:border-l-4 prose-blockquote:border-sky-400/30 prose-blockquote:bg-white/[0.03] prose-blockquote:px-4 prose-blockquote:py-3 prose-blockquote:italic prose-blockquote:text-slate-200 prose-hr:border-white/10 prose-table:my-4 prose-table:w-full prose-th:border prose-th:border-white/10 prose-th:bg-white/[0.04] prose-th:px-2 prose-th:py-2 prose-th:text-slate-200 prose-td:border prose-td:border-white/10 prose-td:px-2 prose-td:py-2 prose-td:text-slate-300"
+                class="markdown-content text-[15px] leading-7 text-slate-200"
                 v-html="renderMarkdown(selectedEnemySummary)"
               ></div>
             </div>
@@ -478,12 +478,105 @@ async function deleteEnemy() {
 </template>
 
 <style scoped>
+:deep(.markdown-content) {
+  color: rgb(226 232 240);
+  font-size: 15px;
+  line-height: 1.9;
+}
+
 :deep(.markdown-content > :first-child) {
   margin-top: 0 !important;
 }
 
 :deep(.markdown-content > :last-child) {
   margin-bottom: 0 !important;
+}
+
+:deep(.markdown-content h1) {
+  margin: 0 0 0.9rem 0;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: white;
+}
+
+:deep(.markdown-content h2) {
+  margin: 1.25rem 0 0.75rem 0;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: white;
+}
+
+:deep(.markdown-content h3) {
+  margin: 1rem 0 0.55rem 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: white;
+}
+
+:deep(.markdown-content p) {
+  margin: 0.85rem 0;
+}
+
+:deep(.markdown-content strong) {
+  color: white;
+  font-weight: 700;
+}
+
+:deep(.markdown-content em) {
+  color: rgb(241 245 249);
+  font-style: italic;
+}
+
+:deep(.markdown-content ul),
+:deep(.markdown-content ol) {
+  margin: 1rem 0;
+  padding-left: 1.35rem;
+}
+
+:deep(.markdown-content li) {
+  margin: 0.35rem 0;
+}
+
+:deep(.markdown-content blockquote) {
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border-left: 4px solid rgba(56, 189, 248, 0.35);
+  background: rgba(255,255,255,0.04);
+  border-radius: 0.85rem;
+  color: rgb(226 232 240);
+  font-style: italic;
+}
+
+:deep(.markdown-content hr) {
+  margin: 1.25rem 0;
+  border: 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+:deep(.markdown-content table) {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 0.85rem;
+}
+
+:deep(.markdown-content th) {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.05);
+  color: white;
+  text-align: left;
+  font-weight: 600;
+}
+
+:deep(.markdown-content td) {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgb(203 213 225);
 }
 
 :deep(.markdown-content code) {

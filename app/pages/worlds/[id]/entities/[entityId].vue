@@ -16,7 +16,7 @@ const imageError = ref('')
 const imageSuccess = ref('')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: entity, refresh: refreshEntity } = await useFetch(
+const { data: entity, refresh: refreshEntity } = await useAsyncData('entity', () => $fetch(
   () => `/api/worlds/${worldId.value}/entities/${entityId.value}`
 )
 
@@ -81,6 +81,7 @@ async function onImageSelected(event: Event) {
 <template>
   <div class="h-full overflow-y-auto bg-[#09111a] p-8">
     <div class="mx-auto max-w-6xl">
+      <pre class="text-xs text-red-400 mb-4">DEBUG ENTITY: {{ entity }}</pre>
       <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
         {{ world?.name || 'World' }}
       </div>

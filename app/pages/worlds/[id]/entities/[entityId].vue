@@ -16,8 +16,13 @@ const imageError = ref('')
 const imageSuccess = ref('')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: entity, refresh: refreshEntity } = await useAsyncData('entity', () => $fetch(
-  () => `/api/worlds/${worldId.value}/entities/${entityId.value}`
+
+const { data: entity, refresh: refreshEntity } = await useAsyncData(
+  `entity-${worldId.value}-${entityId.value}`,
+  () => $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}`),
+  {
+    watch: [worldId, entityId]
+  }
 )
 
 const entityImageUrl = computed(() => {

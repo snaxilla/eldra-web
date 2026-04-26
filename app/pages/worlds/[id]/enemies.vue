@@ -411,7 +411,7 @@ async function deleteEnemy() {
             >
               <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
               <div
-                class="markdown-content prose prose-invert max-w-none prose-headings:mb-3 prose-headings:mt-4 prose-p:my-3 prose-ul:my-3 prose-li:my-1 prose-strong:text-white"
+                class="markdown-content prose prose-invert max-w-none text-[15px] leading-7 prose-p:my-4 prose-p:text-slate-200 prose-headings:mt-5 prose-headings:mb-3 prose-headings:font-semibold prose-headings:text-white prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-strong:text-white prose-em:text-slate-100 prose-ul:my-4 prose-ul:list-disc prose-ul:pl-5 prose-ol:my-4 prose-ol:pl-5 prose-li:my-1 prose-li:text-slate-200 prose-blockquote:my-5 prose-blockquote:rounded-xl prose-blockquote:border-l-4 prose-blockquote:border-sky-400/30 prose-blockquote:bg-white/[0.03] prose-blockquote:px-4 prose-blockquote:py-3 prose-blockquote:italic prose-blockquote:text-slate-200 prose-hr:border-white/10 prose-table:my-4 prose-table:w-full prose-th:border prose-th:border-white/10 prose-th:bg-white/[0.04] prose-th:px-2 prose-th:py-2 prose-th:text-slate-200 prose-td:border prose-td:border-white/10 prose-td:px-2 prose-td:py-2 prose-td:text-slate-300"
                 v-html="renderMarkdown(selectedEnemySummary)"
               ></div>
             </div>
@@ -476,3 +476,36 @@ async function deleteEnemy() {
     </Transition>
   </div>
 </template>
+
+<style scoped>
+:deep(.markdown-content > :first-child) {
+  margin-top: 0 !important;
+}
+
+:deep(.markdown-content > :last-child) {
+  margin-bottom: 0 !important;
+}
+
+:deep(.markdown-content code) {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  border-radius: 0.4rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.9em;
+}
+
+:deep(.markdown-content pre) {
+  overflow-x: auto;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+:deep(.markdown-content pre code) {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+</style>
+

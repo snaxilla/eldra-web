@@ -84,7 +84,7 @@ async function onImageSelected(event: Event) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-[#09111a] p-8">
+  <div class="h-full overflow-y-auto bg-transparent p-8">
     <div class="mx-auto max-w-6xl">
       <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
         {{ world?.name || 'World' }}

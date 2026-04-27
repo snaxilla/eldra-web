@@ -5,7 +5,7 @@ const props = withDefaults(defineProps<{
   title: string
   description?: string
 }>(), {
-  description: 'Build-mode page controls live here when nothing is selected. Later this becomes DM/Admin-gated instead of build-mode-only.'
+  description: 'Build-mode page controls live here for this page view.'
 })
 
 const presentationState = useState<{

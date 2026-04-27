@@ -23,7 +23,13 @@ const pageKey = computed(() => {
   const worldIndex = parts.findIndex(p => p === 'worlds')
 
   if (worldIndex === -1) return 'global'
+
   const maybePage = parts[worldIndex + 2]
+  const maybeChild = parts[worldIndex + 3]
+
+  if (maybePage === 'entities' && maybeChild) {
+    return 'entity-article'
+  }
 
   return maybePage || 'world-map'
 })

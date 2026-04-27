@@ -135,7 +135,7 @@ async function onImageSelected(event: Event) {
           </div>
         </section>
 
-        <section class="mt-6 rounded-[28px] border border-white/10 bg-[rgba(8,16,27,0.66)] p-7 backdrop-blur">
+        <section class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(20,31,48,0.42),rgba(8,16,27,0.34))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
           <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
             Article
           </div>
@@ -156,7 +156,7 @@ async function onImageSelected(event: Event) {
       </div>
     </div>
 
-    <aside class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.92)] backdrop-blur">
+    <aside class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(10,18,28,0.78),rgba(8,16,27,0.68))] backdrop-blur-xl">
       <div class="flex h-full flex-col">
         <div class="border-b border-white/10 px-5 py-5">
           <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Entity</div>
@@ -172,7 +172,7 @@ async function onImageSelected(event: Event) {
               <img
                 :src="entityImageUrl"
                 :alt="entity?.title || 'Entity image'"
-                class="h-full w-full object-cover"
+                class="h-full w-full object-cover object-[center_15%]"
               >
             </div>
 

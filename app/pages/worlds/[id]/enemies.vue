@@ -276,7 +276,7 @@ async function deleteEnemy() {
                   v-if="enemy.imageUrl"
                   :src="enemy.imageUrl"
                   :alt="enemy.title"
-                  class="h-full w-full object-cover"
+                  class="h-full w-full object-cover object-[center_18%]"
                 >
                 <div
                   v-else
@@ -335,7 +335,7 @@ async function deleteEnemy() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="selectedEnemy"
-        class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.94)] backdrop-blur"
+        class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(10,18,28,0.78),rgba(8,16,27,0.68))] backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
@@ -361,7 +361,7 @@ async function deleteEnemy() {
               <img
                 :src="selectedEnemy.imageUrl"
                 :alt="selectedEnemy.title"
-                class="h-64 w-full object-cover"
+                class="h-64 w-full object-cover object-[center_12%]"
               >
             </div>
 

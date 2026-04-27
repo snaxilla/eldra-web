@@ -625,7 +625,7 @@ onBeforeUnmount(() => {
           >
             <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">
               <div class="border-r border-white/10 bg-black/20">
-                <img v-if="character.imageUrl" :src="character.imageUrl" :alt="character.displayTitle" class="h-full w-full object-cover">
+                <img v-if="character.imageUrl" :src="character.imageUrl" :alt="character.displayTitle" class="h-full w-full object-cover object-[center_15%]">
                 <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900/90 to-slate-800/80 text-2xl font-semibold text-slate-200">
                   {{ initialsFor(character.displayTitle) }}
                 </div>
@@ -687,7 +687,7 @@ onBeforeUnmount(() => {
 
           <div class="flex-1 overflow-y-auto px-5 py-5">
             <div v-if="selectedCharacter.imageUrl" class="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-              <img :src="selectedCharacter.imageUrl" :alt="selectedCharacter.displayTitle" class="h-72 w-full object-cover">
+              <img :src="selectedCharacter.imageUrl" :alt="selectedCharacter.displayTitle" class="h-72 w-full object-cover object-[center_15%]">
             </div>
 
             <div v-else class="flex h-72 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300">
@@ -839,7 +839,7 @@ onBeforeUnmount(() => {
               v-if="presentationState?.backgroundImageUrl"
               class="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
             >
-              <img :src="presentationState.backgroundImageUrl" alt="Background preview" class="h-28 w-full object-cover">
+              <img :src="presentationState.backgroundImageUrl" alt="Background preview" class="h-28 w-full object-cover object-[center_15%]">
             </div>
 
             <div class="mt-4 text-xs leading-6 text-slate-500">
@@ -903,7 +903,7 @@ onBeforeUnmount(() => {
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Portrait</label>
 
                 <div v-if="form.imagePreviewUrl" class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-                  <img :src="form.imagePreviewUrl" alt="Character preview" class="h-56 w-full object-cover">
+                  <img :src="form.imagePreviewUrl" alt="Character preview" class="h-56 w-full object-cover object-[center_15%]">
                 </div>
 
                 <input type="file" accept="image/*" class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]" @change="onImageChange">

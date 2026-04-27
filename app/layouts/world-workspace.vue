@@ -117,10 +117,10 @@ const backgroundImageUrl = computed(() => {
           class="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300"
           :style="{
             backgroundImage: `url('${backgroundImageUrl}')`,
-            opacity: presentationMode === 'immersive' ? '0.55' : '0.22',
+            opacity: presentationMode === 'immersive' ? '0.50' : '0.20',
             filter: presentationMode === 'immersive'
-              ? 'saturate(1.02) contrast(1.02)'
-              : 'grayscale(0.10) saturate(0.78) brightness(0.90)'
+              ? 'saturate(1.04) contrast(1.01) brightness(0.98)'
+              : 'grayscale(0.06) saturate(0.82) brightness(0.92)'
           }"
         />
 
@@ -129,8 +129,8 @@ const backgroundImageUrl = computed(() => {
           class="absolute inset-0"
           :style="{
             background: presentationMode === 'immersive'
-              ? 'linear-gradient(to bottom, rgba(5,10,18,0.40), rgba(8,14,22,0.52) 32%, rgba(9,17,26,0.66) 72%, rgba(10,18,28,0.78))'
-              : 'linear-gradient(to bottom, rgba(7,12,19,0.58), rgba(8,14,22,0.72) 38%, rgba(9,17,26,0.84))'
+              ? 'linear-gradient(to bottom, rgba(5,10,18,0.28), rgba(8,14,22,0.42) 32%, rgba(9,17,26,0.56) 72%, rgba(10,18,28,0.68))'
+              : 'linear-gradient(to bottom, rgba(7,12,19,0.46), rgba(8,14,22,0.60) 38%, rgba(9,17,26,0.74))'
           }"
         />
 

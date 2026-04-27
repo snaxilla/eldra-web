@@ -182,7 +182,7 @@ async function clearBackground() {
 </script>
 
 <template>
-  <div class="rounded-[28px] border border-white/10 bg-[rgba(8,16,27,0.72)] p-5 backdrop-blur">
+  <div class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(20,31,48,0.52),rgba(8,16,27,0.46))] p-5 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
     <input
       ref="hiddenBgInput"
       type="file"

@@ -1,18 +1,35 @@
-import { directusServiceRequest } from '../../../../../utils/directus'
+function baseUrl() {
+  return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
+}
 
-function extractUploadedFileId(payload: any): string | null {
-  const candidate =
-    payload?.data?.id ||
-    payload?.id ||
-    payload?.data?.[0]?.id ||
-    payload?.[0]?.id ||
-    payload?.file?.id ||
-    payload?.data?.file?.id ||
-    payload?.files?.[0]?.id ||
-    payload?.data?.files?.[0]?.id ||
-    null
+function token() {
+  return process.env.DIRECTUS_TOKEN || ''
+}
 
-  return candidate ? String(candidate) : null
+async function dxFetch(path: string, options: any = {}) {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      ...(options.headers || {})
+    }
+  })
+
+  const text = await res.text()
+  let json: any = null
+
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {}
+
+  if (!res.ok) {
+    throw createError({
+      statusCode: res.status,
+      statusMessage: json?.errors?.[0]?.message || json?.message || text || `Directus request failed (${res.status})`
+    })
+  }
+
+  return json
 }
 
 export default defineEventHandler(async (event) => {
@@ -27,21 +44,25 @@ export default defineEventHandler(async (event) => {
   }
 
   const parts = await readMultipartFormData(event)
-  const filePart = parts?.find((part) => part.name === 'file')
 
-  if (!filePart?.data?.length) {
+  if (!parts?.length) {
     throw createError({
       statusCode: 400,
       statusMessage: 'No file uploaded'
     })
   }
 
-  const entityRes = await directusServiceRequest(`/items/entities/${entityId}`, {
-    method: 'GET',
-    query: { fields: '*' }
-  })
+  const filePart = parts.find((part) => part.type && String(part.type).startsWith('image/'))
 
-  const entity = entityRes?.data || null
+  if (!filePart?.data) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'No image file found in upload'
+    })
+  }
+
+  const entityJson = await dxFetch(`/items/entities/${entityId}?fields=*`)
+  const entity = entityJson?.data || null
 
   if (!entity || String(entity.world_id) !== String(worldId)) {
     throw createError({
@@ -50,43 +71,37 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const config = useRuntimeConfig()
-  const baseUrl = String(config.public.directusUrl || '').replace(/\/$/, '')
-  const token = String(config.directusToken || '')
-
-  if (!baseUrl) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Directus URL is not configured'
-    })
-  }
-
   const form = new FormData()
-  const blob = new Blob([filePart.data], {
-    type: filePart.type || 'application/octet-stream'
-  })
-
+  const blob = new Blob([filePart.data], { type: filePart.type || 'application/octet-stream' })
   form.append('file', blob, filePart.filename || 'entity-image-upload')
 
-  const uploadRes = await fetch(`${baseUrl}/files`, {
+  const uploadRes = await fetch(`${baseUrl()}/files`, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: {
+      Authorization: `Bearer ${token()}`
+    },
     body: form
   })
 
-  const uploadJson = await uploadRes.json().catch(() => null)
+  const uploadText = await uploadRes.text()
+  let uploadJson: any = null
+
+  try {
+    uploadJson = uploadText ? JSON.parse(uploadText) : null
+  } catch {}
 
   if (!uploadRes.ok) {
     throw createError({
-      statusCode: uploadRes.status || 500,
+      statusCode: uploadRes.status,
       statusMessage:
         uploadJson?.errors?.[0]?.message ||
         uploadJson?.message ||
-        'Failed to upload image to Directus'
+        uploadText ||
+        `Directus upload error (${uploadRes.status})`
     })
   }
 
-  const fileId = extractUploadedFileId(uploadJson)
+  const fileId = uploadJson?.data?.id ? String(uploadJson.data.id) : null
 
   if (!fileId) {
     throw createError({
@@ -95,16 +110,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await directusServiceRequest(`/items/entities/${entityId}`, {
+  const patchJson = await dxFetch(`/items/entities/${entityId}`, {
     method: 'PATCH',
-    body: {
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
       image: fileId
-    }
+    })
   })
 
   return {
-    ok: true,
-    file_id: fileId,
-    asset_url: `/api/assets/${fileId}`
+    success: true,
+    fileId,
+    imageUrl: `/api/assets/${fileId}`,
+    entity: patchJson?.data || null
   }
 })

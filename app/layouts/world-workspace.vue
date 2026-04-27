@@ -96,7 +96,7 @@ const backgroundImageUrl = computed(() => {
 </script>
 
 <template>
-  <div class="h-screen w-screen overflow-hidden text-slate-100 bg-[#07101a]">
+  <div class="h-screen w-screen overflow-hidden text-slate-100 bg-[#0a0d12]">
     <div
       class="grid h-full"
       :style="{ gridTemplateColumns: leftCollapsed ? '68px minmax(0,1fr)' : '280px minmax(0,1fr)' }"
@@ -110,17 +110,17 @@ const backgroundImageUrl = computed(() => {
       />
 
       <div class="min-w-0 overflow-hidden relative">
-        <div class="absolute inset-0 bg-[linear-gradient(to_bottom,#09111a,#0b1521_40%,#0d1826)]"></div>
+        <div class="absolute inset-0 bg-[linear-gradient(to_bottom,#0b0d12,#0d1117_40%,#10141b)]"></div>
 
         <div
           v-if="backgroundImageUrl && presentationMode !== 'neutral'"
           class="absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300"
           :style="{
             backgroundImage: `url('${backgroundImageUrl}')`,
-            opacity: presentationMode === 'immersive' ? '0.50' : '0.20',
+            opacity: presentationMode === 'immersive' ? '0.42' : '0.18',
             filter: presentationMode === 'immersive'
-              ? 'saturate(1.04) contrast(1.01) brightness(0.98)'
-              : 'grayscale(0.06) saturate(0.82) brightness(0.92)'
+              ? 'saturate(1.02) contrast(1.01) brightness(0.98)'
+              : 'grayscale(0.08) saturate(0.78) brightness(0.92)'
           }"
         />
 
@@ -129,8 +129,8 @@ const backgroundImageUrl = computed(() => {
           class="absolute inset-0"
           :style="{
             background: presentationMode === 'immersive'
-              ? 'linear-gradient(to bottom, rgba(5,10,18,0.28), rgba(8,14,22,0.42) 32%, rgba(9,17,26,0.56) 72%, rgba(10,18,28,0.68))'
-              : 'linear-gradient(to bottom, rgba(7,12,19,0.46), rgba(8,14,22,0.60) 38%, rgba(9,17,26,0.74))'
+              ? 'linear-gradient(to bottom, rgba(9,11,15,0.20), rgba(12,15,20,0.34) 32%, rgba(14,18,24,0.48) 72%, rgba(16,20,26,0.60))'
+              : 'linear-gradient(to bottom, rgba(10,12,16,0.36), rgba(13,16,21,0.50) 38%, rgba(16,20,26,0.64))'
           }"
         />
 

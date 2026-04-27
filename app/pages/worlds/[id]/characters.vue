@@ -617,9 +617,9 @@ onBeforeUnmount(() => {
           <div
             v-for="character in filteredCharacters"
             :key="character.id"
-            class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,28,42,0.92),rgba(10,18,28,0.9))] shadow-xl transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
+            class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.44),rgba(12,16,22,0.30))] shadow-xl transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
             :class="isSelected(character)
-              ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(34,46,67,0.98),rgba(16,26,40,0.96))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.25),0_22px_48px_rgba(0,0,0,0.42)]'
+              ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(38,42,48,0.70),rgba(16,20,26,0.52))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.25),0_22px_48px_rgba(0,0,0,0.42)]'
               : 'opacity-95'"
             @click="selectCharacter(character)"
           >

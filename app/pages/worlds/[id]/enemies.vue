@@ -211,7 +211,7 @@ async function deleteEnemy() {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
       <div :class="selectedEnemy || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
-        <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
+        <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Enemies</div>
@@ -264,9 +264,9 @@ async function deleteEnemy() {
           <div
             v-for="enemy in filteredEnemies"
             :key="enemy.id"
-            class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,28,42,0.92),rgba(10,18,28,0.9))] shadow-xl transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
+            class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.44),rgba(12,16,22,0.30))] backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
             :class="selectedEnemyId === String(enemy.id)
-              ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(34,46,67,0.98),rgba(16,26,40,0.96))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.25),0_22px_48px_rgba(0,0,0,0.42)]'
+              ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(38,42,48,0.70),rgba(16,20,26,0.52))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.22),0_22px_48px_rgba(0,0,0,0.34)]'
               : 'opacity-95'"
             @click="selectEnemy(enemy)"
           >
@@ -335,7 +335,7 @@ async function deleteEnemy() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="selectedEnemy"
-        class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(10,18,28,0.78),rgba(8,16,27,0.68))] backdrop-blur-xl"
+        class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.72),rgba(10,13,18,0.62))] backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">

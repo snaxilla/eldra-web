@@ -104,7 +104,7 @@ async function onImageSelected(event: Event) {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
       <div class="pr-[380px] transition-all duration-200">
-        <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
+        <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
           <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
             {{ world?.name || 'World' }}
           </div>
@@ -135,7 +135,7 @@ async function onImageSelected(event: Event) {
           </div>
         </section>
 
-        <section class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(20,31,48,0.42),rgba(8,16,27,0.34))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
+        <section class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]">
           <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
             Article
           </div>
@@ -156,7 +156,7 @@ async function onImageSelected(event: Event) {
       </div>
     </div>
 
-    <aside class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(10,18,28,0.78),rgba(8,16,27,0.68))] backdrop-blur-xl">
+    <aside class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.72),rgba(10,13,18,0.62))] backdrop-blur-xl">
       <div class="flex h-full flex-col">
         <div class="border-b border-white/10 px-5 py-5">
           <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Entity</div>
@@ -164,7 +164,7 @@ async function onImageSelected(event: Event) {
         </div>
 
         <div class="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-          <div class="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]">
+          <div class="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.28),rgba(12,16,22,0.20))] backdrop-blur-lg">
             <div
               v-if="entityImageUrl"
               class="aspect-[4/3] w-full bg-black/20"
@@ -217,7 +217,7 @@ async function onImageSelected(event: Event) {
             description="Build-mode page controls live here for this article view."
           />
 
-          <div class="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+          <div class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg">
             <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
               Summary
             </div>
@@ -229,7 +229,7 @@ async function onImageSelected(event: Event) {
 
           <div
             v-if="entity?.statblock"
-            class="rounded-[28px] border border-white/10 bg-white/[0.03] p-5"
+            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
           >
             <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
               Statblock
@@ -247,7 +247,7 @@ async function onImageSelected(event: Event) {
 
           <div
             v-if="entity?.actions?.length"
-            class="rounded-[28px] border border-white/10 bg-white/[0.03] p-5"
+            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
           >
             <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
               Actions

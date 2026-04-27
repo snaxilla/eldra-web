@@ -210,7 +210,7 @@ async function deleteEnemy() {
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
-      <div :class="selectedEnemy ? 'pr-[380px]' : ''" class="transition-all duration-200">
+      <div :class="selectedEnemy || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
         <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -315,6 +315,22 @@ async function deleteEnemy() {
         </section>
       </div>
     </div>
+
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+      <aside
+        v-if="mode === 'build' && !selectedEnemy"
+        class="fixed right-0 top-0 z-20 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.94)] backdrop-blur"
+      >
+        <div class="p-5">
+          <WorldPagePresentationPanel
+            :world-id="worldId"
+            page-key="enemies"
+            title="Enemies"
+            description="Build-mode page controls live here when nothing is selected. Later this becomes DM/Admin-gated instead of build-mode-only."
+          />
+        </div>
+      </aside>
+    </Transition>
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside

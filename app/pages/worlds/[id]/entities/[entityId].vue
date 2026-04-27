@@ -181,6 +181,13 @@ async function onImageSelected(event: Event) {
         </div>
 
         <div class="space-y-6">
+          <WorldPagePresentationPanel
+            v-if="mode === 'build'"
+            :world-id="worldId"
+            page-key="entity-article"
+            title="Entity Article"
+            description="Build-mode page controls live here for this article view."
+          />
           <div class="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
             <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
               Summary

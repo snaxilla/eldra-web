@@ -45,8 +45,25 @@ const articleMarkdown = computed(() => {
   )
 })
 
-const articleHtml = computed(() => {
-  return renderMarkdown(articleMarkdown.value || '')
+const articleHtml = computed(() => renderMarkdown(articleMarkdown.value || ''))
+
+const derivedSummary = computed(() => {
+  const explicit = String(entity.value?.summary || '').trim()
+  if (explicit) return explicit
+
+  const markdown = String(articleMarkdown.value || '').trim()
+  if (!markdown) return ''
+
+  const cleaned = markdown
+    .replace(/^#.*$/gm, '')
+    .replace(/^>.*$/gm, '')
+    .replace(/[*_`#>-]/g, '')
+    .replace(/\|/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0] || ''
+  return firstSentence.slice(0, 280).trim()
 })
 
 async function onImageSelected(event: Event) {
@@ -84,35 +101,69 @@ async function onImageSelected(event: Event) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent p-8">
-    <div class="mx-auto max-w-6xl">
-      <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-        {{ world?.name || 'World' }}
-      </div>
+  <div class="h-full overflow-y-auto bg-transparent">
+    <div class="mx-auto max-w-[1900px] p-6">
+      <div class="pr-[380px] transition-all duration-200">
+        <section class="eldra-panel rounded-[24px] p-6 shadow-xl">
+          <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
+            {{ world?.name || 'World' }}
+          </div>
 
-      <div class="mt-3 flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-        <div class="min-w-0">
-          <h1 class="text-5xl font-semibold tracking-tight text-white">
-            {{ entity?.title || 'Entity' }}
-          </h1>
+          <div class="mt-3 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div class="min-w-0">
+              <h1 class="text-5xl font-semibold tracking-tight text-white">
+                {{ entity?.title || 'Entity' }}
+              </h1>
 
-          <div class="mt-4 flex flex-wrap gap-2">
-            <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-slate-300">
-              {{ entity?.entity_type || 'entity' }}
-            </div>
-            <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-slate-300">
-              {{ entity?.slug || 'no-slug' }}
-            </div>
-            <div
-              v-if="entity?.statblock?.challenge_rating"
-              class="rounded-full border border-red-400/20 bg-red-400/10 px-3 py-1.5 text-sm text-red-200"
-            >
-              CR {{ entity.statblock.challenge_rating }}
+              <div class="mt-4 flex flex-wrap gap-2">
+                <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-slate-300">
+                  {{ entity?.entity_type || 'entity' }}
+                </div>
+
+                <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-slate-300">
+                  {{ entity?.slug || 'no-slug' }}
+                </div>
+
+                <div
+                  v-if="entity?.statblock?.challenge_rating"
+                  class="rounded-full border border-red-400/20 bg-red-400/10 px-3 py-1.5 text-sm text-red-200"
+                >
+                  CR {{ entity.statblock.challenge_rating }}
+                </div>
+              </div>
             </div>
           </div>
+        </section>
+
+        <section class="mt-6 rounded-[28px] border border-white/10 bg-[rgba(8,16,27,0.66)] p-7 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
+            Article
+          </div>
+
+          <div
+            v-if="articleMarkdown"
+            class="markdown-content mt-6 text-[15px] leading-7 text-slate-200"
+            v-html="articleHtml"
+          ></div>
+
+          <p
+            v-else
+            class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
+          >
+            No article content yet.
+          </p>
+        </section>
+      </div>
+    </div>
+
+    <aside class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.92)] backdrop-blur">
+      <div class="flex h-full flex-col">
+        <div class="border-b border-white/10 px-5 py-5">
+          <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Entity</div>
+          <h2 class="mt-3 truncate text-2xl font-semibold text-white">{{ entity?.title || 'Entity' }}</h2>
         </div>
 
-        <div class="w-full max-w-sm shrink-0">
+        <div class="flex-1 overflow-y-auto px-5 py-5 space-y-5">
           <div class="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03]">
             <div
               v-if="entityImageUrl"
@@ -157,30 +208,7 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div class="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div class="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-            Article
-          </div>
-
-          <div
-            v-if="articleMarkdown"
-            class="markdown-content mt-5 text-[15px] leading-7 text-slate-200"
-            v-html="articleHtml"
-          ></div>
-
-          <p
-            v-else
-            class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
-          >
-            No article content yet.
-          </p>
-        </div>
-
-        <div class="space-y-6">
           <WorldPagePresentationPanel
             v-if="mode === 'build'"
             :world-id="worldId"
@@ -188,13 +216,14 @@ async function onImageSelected(event: Event) {
             title="Entity Article"
             description="Build-mode page controls live here for this article view."
           />
+
           <div class="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
             <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
               Summary
             </div>
 
             <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-200">
-              {{ entity?.summary || 'No summary yet.' }}
+              {{ derivedSummary || 'No summary yet.' }}
             </p>
           </div>
 
@@ -245,7 +274,7 @@ async function onImageSelected(event: Event) {
           </div>
         </div>
       </div>
-    </div>
+    </aside>
   </div>
 </template>
 

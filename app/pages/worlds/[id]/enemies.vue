@@ -53,6 +53,32 @@ function formatLanguages(value: any) {
 function formatCreatureType(value: any) {
   if (!value) return '—'
 
+  // Handle stringified JSON
+  if (typeof value === 'string' && value.trim().startsWith('{')) {
+    try {
+      value = JSON.parse(value)
+    } catch {}
+  }
+
+  if (typeof value === 'string') return value
+
+  if (typeof value === 'object') {
+    const baseType = String(value.type || '').trim()
+    const tags = Array.isArray(value.tags)
+      ? value.tags.filter(Boolean).map((t: any) => String(t))
+      : []
+
+    if (baseType && tags.length) {
+      return `${baseType} (${tags.join(', ')})`
+    }
+
+    if (baseType) return baseType
+  }
+
+  return String(value)
+}
+  if (!value) return '—'
+
   if (typeof value === 'string') return value
 
   if (typeof value === 'object') {

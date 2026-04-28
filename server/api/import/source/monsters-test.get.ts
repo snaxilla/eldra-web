@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 
 export default defineEventHandler(async () => {
-  const basePath = '/opt/5etools-src/data/bestiary/bestiary-xmm.json'
-  const fluffPath = '/opt/5etools-src/data/bestiary/fluff-bestiary-xmm.json'
+  const basePath = '/opt/eldra/datasets/5etools-src/data/bestiary/bestiary-xmm.json'
+  const fluffPath = '/opt/eldra/datasets/5etools-src/data/bestiary/fluff-bestiary-xmm.json'
 
   try {
     const baseRaw = await readFile(basePath, 'utf8')

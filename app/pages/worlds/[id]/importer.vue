@@ -527,7 +527,7 @@ onMounted(async () => {
                       {{ saveBusy ? 'Importing Source…' : `Import Source (${monsterSource?.toUpperCase() || '—'})` }}
                     </button>
                   </div>
-                </template>\n
+                </template>
 <style scoped>
 :deep(select) {
   color-scheme: dark;
@@ -640,7 +640,7 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-</template>\n
+</template>
 <style scoped>
 :deep(select) {
   color-scheme: dark;

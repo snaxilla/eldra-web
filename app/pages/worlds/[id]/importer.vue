@@ -420,7 +420,7 @@ onMounted(async () => {
                 >
                   <option value="" disabled>Select a source</option>
                   <option v-for="src in monsterSources" :key="src.source" :value="src.source">
-                    {{ src.source.toUpperCase() }}<span v-if="src.hasFluff"> • fluff</span>
+                    {{ src.source.toUpperCase() }}{{ src.hasFluff ? ' • fluff' : '' }}
                   </option>
                 </select>
               </div>

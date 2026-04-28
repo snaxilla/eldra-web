@@ -13,9 +13,27 @@ function fluffKeyOf(entry: any) {
   return `${name}::${source}`
 }
 
+function matchesQuery(monster: any, q: string) {
+  if (!q) return true
+
+  const needle = q.toLowerCase()
+
+  return [
+    monster?.name,
+    monster?.source,
+    typeof monster?.cr === 'string' ? monster.cr : null,
+    monster?.type && typeof monster.type === 'string' ? monster.type : null
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(needle))
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const source = safeSource(String(query.source || ''))
+  const q = String(query.q || '').trim()
+  const limitRaw = Number(query.limit || 0)
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 0
 
   if (!source) {
     throw createError({
@@ -48,7 +66,11 @@ export default defineEventHandler(async (event) => {
       if (key !== '::') fluffMap.set(key, entry)
     }
 
-    const items = monsters.map((monster: any) => {
+    const filtered = monsters.filter((monster: any) => matchesQuery(monster, q))
+
+    const sliced = limit > 0 ? filtered.slice(0, limit) : filtered
+
+    const items = sliced.map((monster: any) => {
       const key = fluffKeyOf(monster)
       const matchedFluff = fluffMap.get(key) || null
 
@@ -67,9 +89,12 @@ export default defineEventHandler(async (event) => {
     return {
       ok: true,
       source,
+      q,
       basePath,
       fluffPath,
-      monsterCount: monsters.length,
+      totalMonsterCount: monsters.length,
+      filteredCount: filtered.length,
+      returnedCount: items.length,
       fluffCount: fluff.length,
       matchedCount: items.filter((it: any) => it.hasFluff).length,
       items

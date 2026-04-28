@@ -388,7 +388,7 @@ onMounted(async () => {
                 <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Import Type</label>
                 <select
                   v-model="importType"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none"
+                  class="w-full rounded-xl border border-white/10 bg-[#11161d] px-4 py-3 text-sm text-white outline-none"
                 >
                   <option value="monsters">Monsters / Enemies</option>
                   <option value="items">Items</option>
@@ -403,7 +403,7 @@ onMounted(async () => {
                 <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Save Mode</label>
                 <select
                   v-model="mode"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none"
+                  class="w-full rounded-xl border border-white/10 bg-[#11161d] px-4 py-3 text-sm text-white outline-none"
                 >
                   <option value="create">Create Only</option>
                   <option value="update">Update Only</option>
@@ -415,7 +415,7 @@ onMounted(async () => {
                 <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Source</label>
                 <select
                   v-model="monsterSource"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none"
+                  class="w-full rounded-xl border border-white/10 bg-[#11161d] px-4 py-3 text-sm text-white outline-none"
                   :disabled="monsterSourcesBusy"
                 >
                   <option value="" disabled>Select a source</option>
@@ -527,7 +527,18 @@ onMounted(async () => {
                       {{ saveBusy ? 'Importing Source…' : `Import Source (${monsterSource?.toUpperCase() || '—'})` }}
                     </button>
                   </div>
-                </template>
+                </template>\n
+<style scoped>
+:deep(select) {
+  color-scheme: dark;
+}
+
+:deep(select option) {
+  background-color: #11161d;
+  color: #f1f5f9;
+}
+</style>
+
 
                 <div
                   v-else
@@ -629,4 +640,15 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-</template>
+</template>\n
+<style scoped>
+:deep(select) {
+  color-scheme: dark;
+}
+
+:deep(select option) {
+  background-color: #11161d;
+  color: #f1f5f9;
+}
+</style>
+

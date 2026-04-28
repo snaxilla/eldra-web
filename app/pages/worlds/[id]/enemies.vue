@@ -50,6 +50,25 @@ function formatLanguages(value: any) {
   return String(value)
 }
 
+function formatCreatureType(value: any) {
+  if (!value) return '—'
+
+  if (typeof value === 'string') return value
+
+  if (typeof value === 'object') {
+    const baseType = String(value.type || '').trim()
+    const tags = Array.isArray(value.tags) ? value.tags.filter(Boolean).map((t: any) => String(t)) : []
+
+    if (baseType && tags.length) {
+      return `${baseType} (${tags.join(', ')})`
+    }
+
+    if (baseType) return baseType
+  }
+
+  return String(value)
+}
+
 function scoreMod(score: number | null | undefined) {
   if (typeof score !== 'number') return ''
   const mod = Math.floor((score - 10) / 2)
@@ -300,7 +319,7 @@ async function deleteEnemy() {
                 </div>
 
                 <div class="mt-4 space-y-1.5 text-sm text-slate-200">
-                  <div><span class="text-slate-400">Type:</span> {{ enemy.statblock?.creature_type || '—' }}</div>
+                  <div><span class="text-slate-400">Type:</span> {{ formatCreatureType(enemy.statblock?.creature_type) }}</div>
                   <div><span class="text-slate-400">Size:</span> {{ formatSize(enemy.statblock?.size_json) }}</div>
                   <div><span class="text-slate-400">AC:</span> {{ enemy.statblock?.armor_class ?? '—' }}</div>
                   <div><span class="text-slate-400">HP:</span> {{ enemy.statblock?.hit_points_average ?? '—' }}</div>
@@ -374,7 +393,7 @@ async function deleteEnemy() {
                 <div><span class="text-slate-400">CR:</span> <span class="text-white">{{ selectedEnemy.statblock?.challenge_rating || '—' }}</span></div>
                 <div><span class="text-slate-400">AC:</span> <span class="text-white">{{ selectedEnemy.statblock?.armor_class ?? '—' }}</span></div>
                 <div><span class="text-slate-400">HP:</span> <span class="text-white">{{ selectedEnemy.statblock?.hit_points_average ?? '—' }}</span></div>
-                <div><span class="text-slate-400">Type:</span> <span class="text-white">{{ selectedEnemy.statblock?.creature_type || '—' }}</span></div>
+                <div><span class="text-slate-400">Type:</span> <span class="text-white">{{ formatCreatureType(selectedEnemy.statblock?.creature_type) }}</span></div>
                 <div><span class="text-slate-400">Size:</span> <span class="text-white">{{ formatSize(selectedEnemy.statblock?.size_json) }}</span></div>
                 <div><span class="text-slate-400">Align:</span> <span class="text-white">{{ formatAlignment(selectedEnemy.statblock?.alignment_json) }}</span></div>
               </div>

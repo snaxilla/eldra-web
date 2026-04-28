@@ -1,3 +1,24 @@
+function normalizeCreatureType(value: any) {
+  if (!value) return null
+
+  if (typeof value === 'string') return value
+
+  if (typeof value === 'object') {
+    const baseType = String(value.type || '').trim()
+    const tags = Array.isArray(value.tags)
+      ? value.tags.filter(Boolean).map((t: any) => String(t))
+      : []
+
+    if (baseType && tags.length) {
+      return `${baseType} (${tags.join(', ')})`
+    }
+
+    if (baseType) return baseType
+  }
+
+  return String(value)
+}
+
 function slugify(value: string) {
   return String(value || '')
     .toLowerCase()
@@ -250,7 +271,7 @@ export function preview5eToolsMonsters(payload: any) {
         statblock: {
           profile_kind: 'monster',
           size_json: monster?.size ?? null,
-          creature_type: typeof monster?.type === 'string' ? monster.type : JSON.stringify(monster?.type ?? null),
+          creature_type: normalizeCreatureType(monster?.type),
           alignment_json: monster?.alignment ?? null,
           armor_class: typeof monster?.ac?.[0] === 'number' ? monster.ac[0] : (typeof monster?.ac === 'number' ? monster.ac : null),
           armor_class_json: monster?.ac ?? null,

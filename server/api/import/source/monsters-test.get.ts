@@ -4,22 +4,32 @@ export default defineEventHandler(async () => {
   const basePath = '/opt/5etools-src/data/bestiary/bestiary-xmm.json'
   const fluffPath = '/opt/5etools-src/data/bestiary/fluff-bestiary-xmm.json'
 
-  const baseRaw = await readFile(basePath, 'utf8')
-  const fluffRaw = await readFile(fluffPath, 'utf8')
+  try {
+    const baseRaw = await readFile(basePath, 'utf8')
+    const fluffRaw = await readFile(fluffPath, 'utf8')
 
-  const baseJson = JSON.parse(baseRaw)
-  const fluffJson = JSON.parse(fluffRaw)
+    const baseJson = JSON.parse(baseRaw)
+    const fluffJson = JSON.parse(fluffRaw)
 
-  const monsters = Array.isArray(baseJson?.monster) ? baseJson.monster : []
-  const fluff = Array.isArray(fluffJson?.monsterFluff) ? fluffJson.monsterFluff : []
+    const monsters = Array.isArray(baseJson?.monster) ? baseJson.monster : []
+    const fluff = Array.isArray(fluffJson?.monsterFluff) ? fluffJson.monsterFluff : []
 
-  return {
-    ok: true,
-    basePath,
-    fluffPath,
-    monsterCount: monsters.length,
-    fluffCount: fluff.length,
-    firstMonster: monsters[0]?.name || null,
-    firstFluff: fluff[0]?.name || null
+    return {
+      ok: true,
+      basePath,
+      fluffPath,
+      monsterCount: monsters.length,
+      fluffCount: fluff.length,
+      firstMonster: monsters[0]?.name || null,
+      firstFluff: fluff[0]?.name || null
+    }
+  } catch (error: any) {
+    return {
+      ok: false,
+      basePath,
+      fluffPath,
+      errorMessage: error?.message || String(error),
+      errorCode: error?.code || null
+    }
   }
 })

@@ -53,7 +53,6 @@ function formatLanguages(value: any) {
 function formatCreatureType(value: any) {
   if (!value) return '—'
 
-  // Handle stringified JSON
   if (typeof value === 'string' && value.trim().startsWith('{')) {
     try {
       value = JSON.parse(value)

@@ -76,23 +76,6 @@ function formatCreatureType(value: any) {
 
   return String(value)
 }
-  if (!value) return '—'
-
-  if (typeof value === 'string') return value
-
-  if (typeof value === 'object') {
-    const baseType = String(value.type || '').trim()
-    const tags = Array.isArray(value.tags) ? value.tags.filter(Boolean).map((t: any) => String(t)) : []
-
-    if (baseType && tags.length) {
-      return `${baseType} (${tags.join(', ')})`
-    }
-
-    if (baseType) return baseType
-  }
-
-  return String(value)
-}
 
 function scoreMod(score: number | null | undefined) {
   if (typeof score !== 'number') return ''

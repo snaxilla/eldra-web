@@ -475,7 +475,7 @@ onMounted(async () => {
                   </div>
 
                   <div
-                    v-else-if="!monsterResults.length"
+                    v-if="!selectedMonsterItem()"-if="!monsterResults.length"
                     class="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
                   >
                     No monsters found.
@@ -541,7 +541,7 @@ onMounted(async () => {
 
 
                 <div
-                  v-else
+                  v-if="!selectedMonsterItem()"
                   class="mt-4 rounded-xl border border-white/10 bg-[#07101a]/90 p-4 text-sm text-slate-300"
                 >
                   Select a monster to preview or import.
@@ -614,7 +614,7 @@ onMounted(async () => {
             >{{ JSON.stringify(previewResult, null, 2) }}</pre>
 
             <div
-              v-else
+              v-if="!selectedMonsterItem()"
               class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
             >
               No preview loaded yet.
@@ -630,7 +630,7 @@ onMounted(async () => {
             >{{ JSON.stringify(saveResult, null, 2) }}</pre>
 
             <div
-              v-else
+              v-if="!selectedMonsterItem()"
               class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
             >
               No import run yet.

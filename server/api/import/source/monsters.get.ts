@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
+
+const BESTIARY_DIR = '/opt/eldra/datasets/5etools-src/data/bestiary'
 
 function safeSource(value: string) {
   return String(value || '')
@@ -18,86 +20,131 @@ function matchesQuery(monster: any, q: string) {
 
   const needle = q.toLowerCase()
 
+  const typeValue = (() => {
+    if (typeof monster?.type === 'string') return monster.type
+    if (monster?.type && typeof monster.type === 'object') {
+      const base = String(monster.type.type || '').trim()
+      const tags = Array.isArray(monster.type.tags)
+        ? monster.type.tags.map((t: any) => String(t))
+        : []
+      return [base, ...tags].filter(Boolean).join(' ')
+    }
+    return ''
+  })()
+
   return [
     monster?.name,
     monster?.source,
     typeof monster?.cr === 'string' ? monster.cr : null,
-    monster?.type && typeof monster.type === 'string' ? monster.type : null
+    typeValue
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(needle))
 }
 
-export default defineEventHandler(async (event) => {
-  const query = getQuery(event)
-  const source = safeSource(String(query.source || ''))
-  const q = String(query.q || '').trim()
-  const limitRaw = Number(query.limit || 0)
-  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 0
+async function readJson(path: string) {
+  const raw = await readFile(path, 'utf8')
+  return JSON.parse(raw)
+}
 
-  if (!source) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing source query parameter'
-    })
+async function loadOneSource(source: string) {
+  const basePath = `${BESTIARY_DIR}/bestiary-${source}.json`
+  const fluffPath = `${BESTIARY_DIR}/fluff-bestiary-${source}.json`
+
+  const baseJson = await readJson(basePath)
+  const monsters = Array.isArray(baseJson?.monster) ? baseJson.monster : []
+
+  let fluff: any[] = []
+  try {
+    const fluffJson = await readJson(fluffPath)
+    fluff = Array.isArray(fluffJson?.monsterFluff) ? fluffJson.monsterFluff : []
+  } catch {
+    fluff = []
   }
 
-  const basePath = `/opt/eldra/datasets/5etools-src/data/bestiary/bestiary-${source}.json`
-  const fluffPath = `/opt/eldra/datasets/5etools-src/data/bestiary/fluff-bestiary-${source}.json`
+  const fluffMap = new Map<string, any>()
+  for (const entry of fluff) {
+    const key = fluffKeyOf(entry)
+    if (key !== '::') fluffMap.set(key, entry)
+  }
+
+  return {
+    source,
+    basePath,
+    fluffPath,
+    monsters,
+    fluff,
+    fluffMap
+  }
+}
+
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event)
+  const source = safeSource(String(query.source || 'all')) || 'all'
+  const q = String(query.q || '').trim()
+  const limitRaw = Number(query.limit || 50)
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50
 
   try {
-    const baseRaw = await readFile(basePath, 'utf8')
-    const baseJson = JSON.parse(baseRaw)
-    const monsters = Array.isArray(baseJson?.monster) ? baseJson.monster : []
+    let sourcesToLoad: string[] = []
 
-    let fluff: any[] = []
-    try {
-      const fluffRaw = await readFile(fluffPath, 'utf8')
-      const fluffJson = JSON.parse(fluffRaw)
-      fluff = Array.isArray(fluffJson?.monsterFluff) ? fluffJson.monsterFluff : []
-    } catch {
-      fluff = []
+    if (source === 'all') {
+      const files = await readdir(BESTIARY_DIR)
+      sourcesToLoad = files
+        .filter((name) => /^bestiary-[a-z0-9-]+\.json$/i.test(name))
+        .map((name) => name.replace(/^bestiary-/, '').replace(/\.json$/, ''))
+        .sort()
+    } else {
+      sourcesToLoad = [source]
     }
 
-    const fluffMap = new Map<string, any>()
+    const loaded = await Promise.all(sourcesToLoad.map((src) => loadOneSource(src)))
 
-    for (const entry of fluff) {
-      const key = fluffKeyOf(entry)
-      if (key !== '::') fluffMap.set(key, entry)
-    }
+    let totalMonsterCount = 0
+    let totalFluffCount = 0
+    const items: any[] = []
 
-    const filtered = monsters.filter((monster: any) => matchesQuery(monster, q))
+    for (const dataset of loaded) {
+      totalMonsterCount += dataset.monsters.length
+      totalFluffCount += dataset.fluff.length
 
-    const sliced = limit > 0 ? filtered.slice(0, limit) : filtered
+      for (const monster of dataset.monsters) {
+        if (!matchesQuery(monster, q)) continue
 
-    const items = sliced.map((monster: any) => {
-      const key = fluffKeyOf(monster)
-      const matchedFluff = fluffMap.get(key) || null
+        const key = fluffKeyOf(monster)
+        const matchedFluff = dataset.fluffMap.get(key) || null
 
-      return {
-        name: monster?.name || null,
-        source: monster?.source || null,
-        cr: monster?.cr || null,
-        type: monster?.type || null,
-        size: monster?.size || null,
-        hasFluff: !!matchedFluff,
-        monster,
-        fluff: matchedFluff
+        items.push({
+          name: monster?.name || null,
+          source: monster?.source || dataset.source || null,
+          cr: monster?.cr || null,
+          type: monster?.type || null,
+          size: monster?.size || null,
+          hasFluff: !!matchedFluff,
+          monster,
+          fluff: matchedFluff
+        })
       }
+    }
+
+    items.sort((a, b) => {
+      const byName = String(a?.name || '').localeCompare(String(b?.name || ''))
+      if (byName !== 0) return byName
+      return String(a?.source || '').localeCompare(String(b?.source || ''))
     })
+
+    const sliced = items.slice(0, limit)
 
     return {
       ok: true,
       source,
       q,
-      basePath,
-      fluffPath,
-      totalMonsterCount: monsters.length,
-      filteredCount: filtered.length,
-      returnedCount: items.length,
-      fluffCount: fluff.length,
-      matchedCount: items.filter((it: any) => it.hasFluff).length,
-      items
+      totalMonsterCount,
+      filteredCount: items.length,
+      returnedCount: sliced.length,
+      fluffCount: totalFluffCount,
+      matchedCount: sliced.filter((it: any) => it.hasFluff).length,
+      items: sliced
     }
   } catch (error: any) {
     throw createError({

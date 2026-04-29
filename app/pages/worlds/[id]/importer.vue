@@ -17,7 +17,7 @@ const resultMessage = ref('')
 const previewResult = ref<any>(null)
 const saveResult = ref<any>(null)
 
-const monsterSource = ref('')
+const monsterSource = ref('all')
 const monsterSearch = ref('')
 const monsterSourcesBusy = ref(false)
 const monsterResultsBusy = ref(false)
@@ -77,6 +77,13 @@ function monsterItemKey(item: any) {
   return `${String(item?.name || '').toLowerCase()}::${String(item?.source || '').toLowerCase()}`
 }
 
+
+const selectedMonsterLabel = computed(() => {
+  const item = selectedMonsterItem()
+  if (!item) return ''
+  return `${String(item?.name || '')}${item?.source ? ` (${String(item.source).toUpperCase()})` : ''}`
+})
+
 function buildMonsterPayload(itemOrItems: any | any[]) {
   const items = Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems]
 
@@ -103,8 +110,8 @@ async function loadMonsterSources() {
     const res = await $fetch<{ ok: boolean; sources: any[] }>('/api/import/source/monster-sources')
     monsterSources.value = Array.isArray(res?.sources) ? res.sources : []
 
-    if (!monsterSource.value && monsterSources.value.length) {
-      monsterSource.value = monsterSources.value[0].source
+    if (!monsterSource.value) {
+      monsterSource.value = 'all'
     }
   } catch (error: any) {
     resultMessage.value =
@@ -418,7 +425,7 @@ onMounted(async () => {
                   class="w-full rounded-xl border border-white/10 bg-[#11161d] px-4 py-3 text-sm text-white outline-none"
                   :disabled="monsterSourcesBusy"
                 >
-                  <option value="" disabled>Select a source</option>
+                  <option value="all">ALL SOURCES</option>
                   <option v-for="src in monsterSources" :key="src.source" :value="src.source">
                     {{ src.source.toUpperCase() }}{{ src.hasFluff ? ' • fluff' : '' }}
                   </option>
@@ -488,7 +495,7 @@ onMounted(async () => {
 
                 <template v-if="selectedMonsterItem()">
                   <div class="mt-3 text-2xl font-semibold text-white">
-                    {{ selectedMonsterItem()?.name }}
+                    {{ selectedMonsterLabel }}
                   </div>
 
                   <div class="mt-2 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-400">
@@ -521,7 +528,7 @@ onMounted(async () => {
                     <button
                       type="button"
                       class="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm font-medium text-amber-100 transition hover:bg-amber-400/20 disabled:opacity-50"
-                      :disabled="saveBusy || !monsterSource"
+                      :disabled="saveBusy || !monsterSource || monsterSource === 'all'"
                       @click="importMonsterSource"
                     >
                       {{ saveBusy ? 'Importing Source…' : `Import Source (${monsterSource?.toUpperCase() || '—'})` }}

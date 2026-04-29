@@ -195,6 +195,24 @@ function findFirstDescriptiveText(value: any): string {
   return ''
 }
 
+function getRemoteMonsterImageUrl(fluff: any) {
+  const firstImage = Array.isArray(fluff?.images) ? fluff.images[0] : null
+  const href = firstImage?.href || null
+
+  if (!href) return null
+
+  if (typeof href?.url === 'string' && href.url.trim()) {
+    return href.url.trim()
+  }
+
+  if (href?.type === 'internal' && typeof href?.path === 'string' && href.path.trim()) {
+    const cleaned = href.path.replace(/^\/+/, '')
+    return `https://5e.tools/img/${cleaned}`
+  }
+
+  return null
+}
+
 function extractMonsterSummary(monster: any, fluff: any) {
   const fluffSummary =
     findFirstDescriptiveText(fluff?.entries) ||
@@ -253,7 +271,14 @@ export function preview5eToolsMonsters(payload: any) {
           sort: 0,
           repeatable: false,
           data: {
-            text: overviewBlockText
+            text: overviewBlockText,
+            ...(getRemoteMonsterImageUrl(matchedFluff)
+              ? {
+                  image: {
+                    image_url: getRemoteMonsterImageUrl(matchedFluff)
+                  }
+                }
+              : {})
           }
         },
         {

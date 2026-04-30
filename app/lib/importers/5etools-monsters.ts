@@ -207,7 +207,7 @@ function getRemoteMonsterImageUrl(fluff: any) {
 
   if (href?.type === 'internal' && typeof href?.path === 'string' && href.path.trim()) {
     const cleaned = href.path.replace(/^\/+/, '')
-    return `https://5e.tools/img/${cleaned}`
+    return `/api/5etools-img/${cleaned}`
   }
 
   return null

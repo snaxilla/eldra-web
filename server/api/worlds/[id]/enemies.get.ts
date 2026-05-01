@@ -85,13 +85,27 @@ export default defineEventHandler(async (event) => {
     }
   })
 
+  const blocksRes = await directusServiceRequest('/items/block_instances', {
+    method: 'GET',
+    query: {
+      filter: {
+        entity_id: { _in: entityIds }
+      },
+      sort: 'entity_id,sort',
+      limit: -1,
+      fields: '*'
+    }
+  })
+
   const statblocks = Array.isArray(statblocksRes?.data) ? statblocksRes.data : []
   const actions = Array.isArray(actionsRes?.data) ? actionsRes.data : []
   const monsterProfiles = Array.isArray(monsterProfilesRes?.data) ? monsterProfilesRes.data : []
+  const blocks = Array.isArray(blocksRes?.data) ? blocksRes.data : []
 
   const statblockByEntityId = new Map<number, any>()
   const monsterProfileByEntityId = new Map<number, any>()
   const actionsByEntityId = new Map<number, any[]>()
+  const blocksByEntityId = new Map<number, any[]>()
 
   for (const row of statblocks) {
     statblockByEntityId.set(Number(row.entity_id), row)
@@ -109,11 +123,21 @@ export default defineEventHandler(async (event) => {
     actionsByEntityId.get(entityId)!.push(row)
   }
 
+  for (const row of blocks) {
+    const entityId = Number(row.entity_id)
+    if (!blocksByEntityId.has(entityId)) {
+      blocksByEntityId.set(entityId, [])
+    }
+    blocksByEntityId.get(entityId)!.push(row)
+  }
+
   return entities.map((entity: any) => {
     const entityId = Number(entity.id)
     const statblock = statblockByEntityId.get(entityId) || null
     const monsterProfile = monsterProfileByEntityId.get(entityId) || null
     const entityActions = actionsByEntityId.get(entityId) || []
+    const entityBlocks = blocksByEntityId.get(entityId) || []
+    const derivedImageUrl = extractImageUrl(entityBlocks)
 
     return {
       id: entity.id,
@@ -122,7 +146,9 @@ export default defineEventHandler(async (event) => {
       summary: entity.summary || '',
       entityType: entity.entity_type,
       image: entity.image || null,
-      imageUrl: entity.image ? `/api/assets/${entity.image}` : null,
+      imageUrl: entity.image ? `/api/assets/${entity.image}` : derivedImageUrl,
+      image_url: derivedImageUrl,
+      blocks: entityBlocks,
       statblock,
       actions: entityActions,
       monsterProfile

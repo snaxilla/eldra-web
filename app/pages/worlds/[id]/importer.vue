@@ -670,8 +670,6 @@ onMounted(async () => {
             </div>
           </section>
 
-          <section class="eldra-panel rounded-[24px] p-5 shadow-xl">
-            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Save Result</div>
           <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-5 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
             <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Save Result</div>
 

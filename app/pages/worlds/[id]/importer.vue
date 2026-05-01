@@ -6,7 +6,9 @@ definePageMeta({
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
 
-const importType = ref<'monsters' | 'items' | 'spells' | 'species' | 'classes' | 'backgrounds'>('monsters')
+type ImportType = 'monsters' | 'items' | 'spells' | 'species' | 'classes' | 'backgrounds'
+
+const importType = ref<ImportType>('monsters')
 const mode = ref<'create' | 'update' | 'upsert'>('upsert')
 
 const payloadText = ref('')
@@ -18,13 +20,13 @@ const previewResult = ref<any>(null)
 const saveResult = ref<any>(null)
 const previewTab = ref<'preview' | 'raw'>('preview')
 
-const monsterSource = ref('all')
-const monsterSearch = ref('')
-const monsterSourcesBusy = ref(false)
-const monsterResultsBusy = ref(false)
-const monsterSources = ref<Array<{ source: string; file: string; fluffFile: string; hasFluff: boolean }>>([])
-const monsterResults = ref<any[]>([])
-const selectedMonsterKey = ref<string>('')
+const sourceSelection = ref('all')
+const sourceSearch = ref('')
+const sourceSourcesBusy = ref(false)
+const sourceResultsBusy = ref(false)
+const sourceOptions = ref<Array<{ source: string }>>([])
+const sourceResults = ref<any[]>([])
+const selectedSourceKey = ref<string>('')
 
 const endpointMap: Record<string, { preview: string; save: string }> = {
   monsters: {
@@ -53,6 +55,33 @@ const endpointMap: Record<string, { preview: string; save: string }> = {
   }
 }
 
+const sourceRouteMap: Record<ImportType, { sources: string; search: string }> = {
+  monsters: {
+    sources: '/api/import/source/monster-sources',
+    search: '/api/import/source/monsters'
+  },
+  spells: {
+    sources: '/api/import/source/spell-sources',
+    search: '/api/import/source/spells'
+  },
+  items: {
+    sources: '/api/import/source/item-sources',
+    search: '/api/import/source/items'
+  },
+  species: {
+    sources: '/api/import/source/species-sources',
+    search: '/api/import/source/species'
+  },
+  classes: {
+    sources: '/api/import/source/class-sources',
+    search: '/api/import/source/classes'
+  },
+  backgrounds: {
+    sources: '/api/import/source/background-sources',
+    search: '/api/import/source/backgrounds'
+  }
+}
+
 const previewMonsterItem = computed(() => {
   if (!previewResult.value?.items?.length) return null
   return previewResult.value.items[0]
@@ -75,118 +104,124 @@ function buildManualPayload() {
   return payload
 }
 
-function selectedMonsterItem() {
-  return monsterResults.value.find((item: any) => monsterItemKey(item) === selectedMonsterKey.value) || null
-}
-
-function monsterItemKey(item: any) {
+function sourceItemKey(item: any) {
   return `${String(item?.name || '').toLowerCase()}::${String(item?.source || '').toLowerCase()}`
 }
 
+function selectedSourceItem() {
+  return sourceResults.value.find((item: any) => sourceItemKey(item) === selectedSourceKey.value) || null
+}
 
-const selectedMonsterLabel = computed(() => {
-  const item = selectedMonsterItem()
+const selectedSourceLabel = computed(() => {
+  const item = selectedSourceItem()
   if (!item) return ''
   return `${String(item?.name || '')}${item?.source ? ` (${String(item.source).toUpperCase()})` : ''}`
 })
 
-function buildMonsterPayload(itemOrItems: any | any[]) {
+function buildPayloadForType(type: ImportType, itemOrItems: any | any[]) {
   const items = Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems]
 
-  const monster = items
-    .map((item: any) => item?.monster)
-    .filter(Boolean)
-
-  const monsterFluff = items
-    .map((item: any) => item?.fluff)
-    .filter(Boolean)
-
-  return {
-    monster,
-    monsterFluff
+  if (type === 'monsters') {
+    const monster = items.map((item: any) => item?.monster).filter(Boolean)
+    const monsterFluff = items.map((item: any) => item?.fluff).filter(Boolean)
+    return { monster, monsterFluff }
   }
+
+  const payload: Record<string, any[]> = {}
+
+  for (const item of items) {
+    const kind = String(item?.kind || '').trim()
+    const raw = item?.raw
+    if (!kind || !raw) continue
+    if (!payload[kind]) payload[kind] = []
+    payload[kind].push(raw)
+  }
+
+  return payload
 }
 
-async function loadMonsterSources() {
-  if (importType.value !== 'monsters') return
-
-  monsterSourcesBusy.value = true
+async function loadSources() {
+  sourceSourcesBusy.value = true
 
   try {
-    const res = await $fetch<{ ok: boolean; sources: any[] }>('/api/import/source/monster-sources')
-    monsterSources.value = Array.isArray(res?.sources) ? res.sources : []
+    const routes = sourceRouteMap[importType.value]
+    const res = await $fetch<{ ok: boolean; sources: any[] }>(routes.sources)
+    sourceOptions.value = Array.isArray(res?.sources) ? res.sources : []
 
-    if (!monsterSource.value) {
-      monsterSource.value = 'all'
+    if (!sourceSelection.value) {
+      sourceSelection.value = 'all'
     }
   } catch (error: any) {
     resultMessage.value =
       error?.data?.statusMessage ||
       error?.data?.message ||
       error?.message ||
-      'Failed to load monster sources.'
+      'Failed to load sources.'
   } finally {
-    monsterSourcesBusy.value = false
+    sourceSourcesBusy.value = false
   }
 }
 
-async function searchMonsterSource() {
-  if (importType.value !== 'monsters' || !monsterSource.value) {
-    monsterResults.value = []
-    selectedMonsterKey.value = ''
+async function searchSource() {
+  if (!sourceSelection.value) {
+    sourceResults.value = []
+    selectedSourceKey.value = ''
     return
   }
 
-  monsterResultsBusy.value = true
+  sourceResultsBusy.value = true
 
   try {
+    const routes = sourceRouteMap[importType.value]
     const params = new URLSearchParams()
-    params.set('source', monsterSource.value)
-    if (monsterSearch.value.trim()) params.set('q', monsterSearch.value.trim())
+    params.set('source', sourceSelection.value)
+    if (sourceSearch.value.trim()) params.set('q', sourceSearch.value.trim())
     params.set('limit', '50')
 
-    const res = await $fetch<any>(`/api/import/source/monsters?${params.toString()}`)
-    monsterResults.value = Array.isArray(res?.items) ? res.items : []
+    const res = await $fetch<any>(`${routes.search}?${params.toString()}`)
+    sourceResults.value = Array.isArray(res?.items) ? res.items : []
 
-    if (monsterResults.value.length) {
-      const existing = monsterResults.value.some((item: any) => monsterItemKey(item) === selectedMonsterKey.value)
+    if (sourceResults.value.length) {
+      const existing = sourceResults.value.some((item: any) => sourceItemKey(item) === selectedSourceKey.value)
       if (!existing) {
-        selectedMonsterKey.value = monsterItemKey(monsterResults.value[0])
+        selectedSourceKey.value = sourceItemKey(sourceResults.value[0])
       }
     } else {
-      selectedMonsterKey.value = ''
+      selectedSourceKey.value = ''
     }
   } catch (error: any) {
     resultMessage.value =
       error?.data?.statusMessage ||
       error?.data?.message ||
       error?.message ||
-      'Failed to search monster source.'
+      'Failed to search source.'
   } finally {
-    monsterResultsBusy.value = false
+    sourceResultsBusy.value = false
   }
 }
 
-async function previewSelectedMonster() {
+async function previewSelectedSourceItem() {
   resultMessage.value = ''
   previewResult.value = null
 
-  const item = selectedMonsterItem()
+  const item = selectedSourceItem()
   if (!item) {
-    resultMessage.value = 'Select a monster first.'
+    resultMessage.value = 'Select an entry first.'
     return
   }
 
   previewBusy.value = true
 
   try {
-    const payload = buildMonsterPayload(item)
+    const payload = buildPayloadForType(importType.value, item)
+    const endpoint = endpointMap[importType.value].preview
 
-    previewResult.value = await $fetch(endpointMap.monsters.preview, {
+    previewResult.value = await $fetch(endpoint, {
       method: 'POST',
       body: { payload }
     })
 
+    previewTab.value = 'preview'
     resultMessage.value = 'Preview loaded.'
   } catch (error: any) {
     resultMessage.value =
@@ -199,22 +234,23 @@ async function previewSelectedMonster() {
   }
 }
 
-async function importSelectedMonster() {
+async function importSelectedSourceItem() {
   resultMessage.value = ''
   saveResult.value = null
 
-  const item = selectedMonsterItem()
+  const item = selectedSourceItem()
   if (!item) {
-    resultMessage.value = 'Select a monster first.'
+    resultMessage.value = 'Select an entry first.'
     return
   }
 
   saveBusy.value = true
 
   try {
-    const payload = buildMonsterPayload(item)
+    const payload = buildPayloadForType(importType.value, item)
+    const endpoint = endpointMap[importType.value].save
 
-    saveResult.value = await $fetch(endpointMap.monsters.save, {
+    saveResult.value = await $fetch(endpoint, {
       method: 'POST',
       body: {
         worldId: Number(worldId.value),
@@ -223,7 +259,7 @@ async function importSelectedMonster() {
       }
     })
 
-    resultMessage.value = 'Monster imported.'
+    resultMessage.value = 'Import completed.'
   } catch (error: any) {
     resultMessage.value =
       error?.data?.statusMessage ||
@@ -235,32 +271,34 @@ async function importSelectedMonster() {
   }
 }
 
-async function importMonsterSource() {
+async function importSelectedSourceBulk() {
   resultMessage.value = ''
   saveResult.value = null
 
-  if (!monsterSource.value) {
-    resultMessage.value = 'Choose a source first.'
+  if (!sourceSelection.value || sourceSelection.value === 'all') {
+    resultMessage.value = 'Choose a specific source first.'
     return
   }
 
   saveBusy.value = true
 
   try {
+    const routes = sourceRouteMap[importType.value]
     const params = new URLSearchParams()
-    params.set('source', monsterSource.value)
+    params.set('source', sourceSelection.value)
 
-    const res = await $fetch<any>(`/api/import/source/monsters?${params.toString()}`)
+    const res = await $fetch<any>(`${routes.search}?${params.toString()}`)
     const items = Array.isArray(res?.items) ? res.items : []
 
     if (!items.length) {
-      resultMessage.value = 'No monsters found in that source.'
+      resultMessage.value = 'No entries found in that source.'
       return
     }
 
-    const payload = buildMonsterPayload(items)
+    const payload = buildPayloadForType(importType.value, items)
+    const endpoint = endpointMap[importType.value].save
 
-    saveResult.value = await $fetch(endpointMap.monsters.save, {
+    saveResult.value = await $fetch(endpoint, {
       method: 'POST',
       body: {
         worldId: Number(worldId.value),
@@ -269,7 +307,7 @@ async function importMonsterSource() {
       }
     })
 
-    resultMessage.value = `Imported source ${monsterSource.value}.`
+    resultMessage.value = `Imported source ${sourceSelection.value}.`
   } catch (error: any) {
     resultMessage.value =
       error?.data?.statusMessage ||
@@ -301,6 +339,7 @@ async function runPreview() {
       body: { payload }
     })
 
+    previewTab.value = 'preview'
     resultMessage.value = 'Preview loaded.'
   } catch (error: any) {
     resultMessage.value =
@@ -349,30 +388,31 @@ async function runSave() {
   }
 }
 
-watch(importType, async (value) => {
-  if (value === 'monsters') {
-    await loadMonsterSources()
-    await searchMonsterSource()
-  }
+watch(importType, async () => {
+  sourceSelection.value = 'all'
+  sourceSearch.value = ''
+  sourceOptions.value = []
+  sourceResults.value = []
+  selectedSourceKey.value = ''
+  previewResult.value = null
+  saveResult.value = null
+  previewTab.value = 'preview'
+
+  await loadSources()
+  await searchSource()
 })
 
-watch(monsterSource, async () => {
-  if (importType.value === 'monsters') {
-    await searchMonsterSource()
-  }
+watch(sourceSelection, async () => {
+  await searchSource()
 })
 
-watch(monsterSearch, async () => {
-  if (importType.value === 'monsters') {
-    await searchMonsterSource()
-  }
+watch(sourceSearch, async () => {
+  await searchSource()
 })
 
 onMounted(async () => {
-  if (importType.value === 'monsters') {
-    await loadMonsterSources()
-    await searchMonsterSource()
-  }
+  await loadSources()
+  await searchSource()
 })
 </script>
 
@@ -424,100 +464,104 @@ onMounted(async () => {
                 </select>
               </div>
 
-              <div v-if="importType === 'monsters'">
+              <div>
                 <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Source</label>
                 <select
-                  v-model="monsterSource"
+                  v-model="sourceSelection"
                   class="w-full rounded-xl border border-white/10 bg-[#11161d] px-4 py-3 text-sm text-white outline-none"
-                  :disabled="monsterSourcesBusy"
+                  :disabled="sourceSourcesBusy"
                 >
                   <option value="all">ALL SOURCES</option>
-                  <option v-for="src in monsterSources" :key="src.source" :value="src.source">
-                    {{ src.source.toUpperCase() }}{{ src.hasFluff ? ' • fluff' : '' }}
+                  <option v-for="src in sourceOptions" :key="src.source" :value="src.source">
+                    {{ src.source.toUpperCase() }}
                   </option>
                 </select>
               </div>
             </div>
 
-            <div v-if="importType === 'monsters'" class="mt-6 grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div class="mt-6 grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
               <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                 <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Search Source</label>
                 <input
-                  v-model="monsterSearch"
+                  v-model="sourceSearch"
                   type="text"
-                  placeholder="Search monsters..."
+                  placeholder="Search entries..."
                   class="w-full rounded-xl border border-white/10 bg-[#07101a]/90 px-4 py-3 text-sm text-white outline-none"
                 >
 
                 <div class="mt-4 text-xs uppercase tracking-[0.2em] text-slate-500">
-                  Results <span class="text-slate-400">({{ monsterResults.length }})</span>
+                  Results <span class="text-slate-400">({{ sourceResults.length }})</span>
                 </div>
 
                 <div class="mt-3 max-h-[520px] space-y-2 overflow-auto pr-1">
                   <button
-                    v-for="item in monsterResults"
-                    :key="monsterItemKey(item)"
+                    v-for="item in sourceResults"
+                    :key="sourceItemKey(item)"
                     type="button"
                     class="w-full rounded-xl border px-4 py-3 text-left transition"
-                    :class="selectedMonsterKey === monsterItemKey(item)
+                    :class="selectedSourceKey === sourceItemKey(item)
                       ? 'border-sky-400/30 bg-sky-400/12 text-sky-100'
                       : 'border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.07]'"
-                    @click="selectedMonsterKey = monsterItemKey(item)"
+                    @click="selectedSourceKey = sourceItemKey(item)"
                   >
                     <div class="flex items-start justify-between gap-3">
                       <div class="min-w-0">
                         <div class="truncate font-medium">{{ item.name }}</div>
                         <div class="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
-                          {{ item.source }} <span v-if="item.cr">• CR {{ item.cr }}</span>
+                          {{ item.source }}
+                          <span v-if="item.level !== undefined && item.level !== null"> • Lvl {{ item.level }}</span>
+                          <span v-else-if="item.rarity"> • {{ item.rarity }}</span>
+                          <span v-else-if="item.hitDie"> • d{{ item.hitDie }}</span>
+                          <span v-else-if="item.school"> • {{ item.school }}</span>
+                          <span v-else-if="item.itemType"> • {{ item.itemType }}</span>
                         </div>
                       </div>
                       <div
-                        class="shrink-0 rounded-full border px-2 py-1 text-[10px]"
-                        :class="item.hasFluff ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[0.04] text-slate-400'"
+                        class="shrink-0 rounded-full border px-2 py-1 text-[10px] border-white/10 bg-white/[0.04] text-slate-400"
                       >
-                        {{ item.hasFluff ? 'Fluff' : 'Base' }}
+                        {{ item.kind }}
                       </div>
                     </div>
                   </button>
 
                   <div
-                    v-if="monsterResultsBusy"
+                    v-if="sourceResultsBusy"
                     class="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
                   >
                     Loading source results...
                   </div>
 
                   <div
-                    v-if="!selectedMonsterItem()"-if="!monsterResults.length"
+                    v-else-if="!sourceResults.length"
                     class="rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
                   >
-                    No monsters found.
+                    No entries found.
                   </div>
                 </div>
               </div>
 
               <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                <div class="text-xs uppercase tracking-[0.25em] text-slate-500">Selected Monster</div>
+                <div class="text-xs uppercase tracking-[0.25em] text-slate-500">Selected Entry</div>
 
-                <template v-if="selectedMonsterItem()">
+                <template v-if="selectedSourceItem()">
                   <div class="mt-3 text-2xl font-semibold text-white">
-                    {{ selectedMonsterLabel }}
+                    {{ selectedSourceLabel }}
                   </div>
 
                   <div class="mt-2 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-slate-400">
-                    <span>{{ selectedMonsterItem()?.source }}</span>
-                    <span v-if="selectedMonsterItem()?.cr">• CR {{ selectedMonsterItem()?.cr }}</span>
-                    <span v-if="selectedMonsterItem()?.hasFluff">• Fluff</span>
+                    <span>{{ importType }}</span>
+                    <span v-if="selectedSourceItem()?.source">• {{ selectedSourceItem()?.source }}</span>
+                    <span v-if="selectedSourceItem()?.kind">• {{ selectedSourceItem()?.kind }}</span>
                   </div>
 
-                  <pre class="mt-5 max-h-[420px] overflow-auto rounded-2xl border border-white/10 bg-[#07101a]/90 p-4 text-xs text-slate-200">{{ JSON.stringify(selectedMonsterItem(), null, 2) }}</pre>
+                  <pre class="mt-5 max-h-[420px] overflow-auto rounded-2xl border border-white/10 bg-[#07101a]/90 p-4 text-xs text-slate-200">{{ JSON.stringify(selectedSourceItem(), null, 2) }}</pre>
 
                   <div class="mt-5 flex flex-wrap gap-3">
                     <button
                       type="button"
                       class="rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-sm font-medium text-sky-100 transition hover:bg-sky-400/20 disabled:opacity-50"
                       :disabled="previewBusy"
-                      @click="previewSelectedMonster"
+                      @click="previewSelectedSourceItem"
                     >
                       {{ previewBusy ? 'Previewing…' : 'Preview Selected' }}
                     </button>
@@ -526,7 +570,7 @@ onMounted(async () => {
                       type="button"
                       class="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-400/20 disabled:opacity-50"
                       :disabled="saveBusy"
-                      @click="importSelectedMonster"
+                      @click="importSelectedSourceItem"
                     >
                       {{ saveBusy ? 'Importing…' : 'Import Selected' }}
                     </button>
@@ -534,30 +578,19 @@ onMounted(async () => {
                     <button
                       type="button"
                       class="rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm font-medium text-amber-100 transition hover:bg-amber-400/20 disabled:opacity-50"
-                      :disabled="saveBusy || !monsterSource || monsterSource === 'all'"
-                      @click="importMonsterSource"
+                      :disabled="saveBusy || !sourceSelection || sourceSelection === 'all'"
+                      @click="importSelectedSourceBulk"
                     >
-                      {{ saveBusy ? 'Importing Source…' : `Import Source (${monsterSource?.toUpperCase() || '—'})` }}
+                      {{ saveBusy ? 'Importing Source…' : `Import Source (${sourceSelection?.toUpperCase() || '—'})` }}
                     </button>
                   </div>
                 </template>
-<style scoped>
-:deep(select) {
-  color-scheme: dark;
-}
-
-:deep(select option) {
-  background-color: #11161d;
-  color: #f1f5f9;
-}
-</style>
-
 
                 <div
-                  v-if="!selectedMonsterItem()"
+                  v-else
                   class="mt-4 rounded-xl border border-white/10 bg-[#07101a]/90 p-4 text-sm text-slate-300"
                 >
-                  Select a monster to preview or import.
+                  Select an entry to preview or import.
                 </div>
               </div>
             </div>
@@ -679,7 +712,7 @@ onMounted(async () => {
             >{{ JSON.stringify(saveResult, null, 2) }}</pre>
 
             <div
-              v-if="!selectedMonsterItem()"
+              v-else
               class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
             >
               No import run yet.
@@ -690,6 +723,7 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
 <style scoped>
 :deep(select) {
   color-scheme: dark;
@@ -700,4 +734,3 @@ onMounted(async () => {
   color: #f1f5f9;
 }
 </style>
-

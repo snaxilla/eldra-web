@@ -16,6 +16,7 @@ const saveBusy = ref(false)
 const resultMessage = ref('')
 const previewResult = ref<any>(null)
 const saveResult = ref<any>(null)
+const previewTab = ref<'preview' | 'raw'>('preview')
 
 const monsterSource = ref('all')
 const monsterSearch = ref('')
@@ -51,6 +52,11 @@ const endpointMap: Record<string, { preview: string; save: string }> = {
     save: '/api/import/save/5etools/backgrounds'
   }
 }
+
+const previewMonsterItem = computed(() => {
+  if (!previewResult.value?.items?.length) return null
+  return previewResult.value.items[0]
+})
 
 function buildManualPayload() {
   const payload = JSON.parse(payloadText.value)
@@ -612,22 +618,60 @@ onMounted(async () => {
         </div>
 
         <aside class="space-y-6">
-          <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-5 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
-            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Preview Result</div>
+          <section class="eldra-panel rounded-[24px] p-5 shadow-xl">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Preview Result</div>
+
+              <div class="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1">
+                <button
+                  type="button"
+                  class="rounded-lg px-3 py-1.5 text-xs font-medium transition"
+                  :class="previewTab === 'preview' ? 'bg-sky-400/20 text-sky-100' : 'text-slate-400 hover:text-slate-200'"
+                  @click="previewTab = 'preview'"
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg px-3 py-1.5 text-xs font-medium transition"
+                  :class="previewTab === 'raw' ? 'bg-sky-400/20 text-sky-100' : 'text-slate-400 hover:text-slate-200'"
+                  @click="previewTab = 'raw'"
+                >
+                  Raw JSON
+                </button>
+              </div>
+            </div>
+
+            <div
+              v-if="previewResult && previewTab === 'preview'"
+              class="mt-4"
+            >
+              <ImporterMonsterPreviewPanel
+                v-if="importType === 'monsters' && previewMonsterItem"
+                :item="previewMonsterItem"
+              />
+
+              <pre
+                v-else
+                class="max-h-[420px] overflow-auto rounded-2xl border border-white/10 bg-[#07101a]/90 p-4 text-xs text-slate-200"
+              >{{ JSON.stringify(previewResult, null, 2) }}</pre>
+            </div>
 
             <pre
-              v-if="previewResult"
+              v-else-if="previewResult && previewTab === 'raw'"
               class="mt-4 max-h-[420px] overflow-auto rounded-2xl border border-white/10 bg-[#07101a]/90 p-4 text-xs text-slate-200"
             >{{ JSON.stringify(previewResult, null, 2) }}</pre>
 
             <div
-              v-if="!selectedMonsterItem()"
+              v-else
               class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
             >
               No preview loaded yet.
             </div>
           </section>
 
+          <section class="eldra-panel rounded-[24px] p-5 shadow-xl">
+            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Save Result</div>
           <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-5 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
             <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Save Result</div>
 

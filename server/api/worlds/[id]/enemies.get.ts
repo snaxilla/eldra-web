@@ -1,5 +1,25 @@
 import { directusServiceRequest } from '../../../utils/directus'
 
+function extractImageUrl(blocks: any[] = []) {
+  for (const block of blocks) {
+    const image = block?.data?.image
+
+    if (!image) continue
+
+    if (typeof image === 'string') {
+      return `/api/assets/${image}`
+    }
+
+    if (typeof image === 'object') {
+      if (image.image_url) return image.image_url
+      if (image.file_id) return `/api/assets/${image.file_id}`
+      if (image.id) return `/api/assets/${image.id}`
+    }
+  }
+
+  return null
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = Number(getRouterParam(event, 'id') || 0)
 

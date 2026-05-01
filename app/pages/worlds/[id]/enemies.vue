@@ -21,6 +21,23 @@ const { data: enemies, pending, refresh } = await useFetch(() => `/api/worlds/${
   default: () => []
 })
 
+function imageUrlForEnemy(enemy: any) {
+  if (enemy?.imageUrl) return String(enemy.imageUrl)
+  if (enemy?.image_url) return String(enemy.image_url)
+
+  const image = enemy?.blocks?.find?.((block: any) => block?.data?.image)?.data?.image
+  if (!image) return null
+
+  if (typeof image === 'string') return `/api/assets/${image}`
+  if (typeof image === 'object') {
+    if (image.image_url) return image.image_url
+    if (image.file_id) return `/api/assets/${image.file_id}`
+    if (image.id) return `/api/assets/${image.id}`
+  }
+
+  return null
+}
+
 function initialsFor(name: string) {
   const words = String(name || '')
     .trim()
@@ -300,8 +317,8 @@ async function deleteEnemy() {
             <div class="grid min-h-[240px] grid-cols-[112px_minmax(0,1fr)]">
               <div class="border-r border-white/10 bg-black/20">
                 <img
-                  v-if="enemy.imageUrl"
-                  :src="enemy.imageUrl"
+                  v-if="imageUrlForEnemy(enemy)"
+                  :src="imageUrlForEnemy(enemy)"
                   :alt="enemy.title"
                   class="h-full w-full object-cover object-[center_18%]"
                 >

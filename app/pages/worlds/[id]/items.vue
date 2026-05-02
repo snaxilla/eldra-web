@@ -5,12 +5,12 @@ definePageMeta({
 </script>
 
 <template>
-  <WorldEntityCollectionPage
+  <WorldEntityInteractivePage
     entity-type="item"
+    page-key="items"
     title="Items"
     eyebrow="Items"
-    description="Browse imported items, equipment, and magical objects for this world."
+    description="Browse imported items, equipment, and magical objects."
     search-placeholder="Search items..."
-    empty-message="No items have been imported into this world yet."
   />
 </template>

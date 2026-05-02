@@ -5,12 +5,12 @@ definePageMeta({
 </script>
 
 <template>
-  <WorldEntityCollectionPage
+  <WorldEntityInteractivePage
     entity-type="background"
+    page-key="backgrounds"
     title="Backgrounds"
     eyebrow="Backgrounds"
-    description="Browse imported backgrounds and character origin content."
+    description="Browse imported backgrounds."
     search-placeholder="Search backgrounds..."
-    empty-message="No backgrounds have been imported into this world yet."
   />
 </template>

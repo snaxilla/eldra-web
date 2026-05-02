@@ -1,0 +1,513 @@
+<script setup lang="ts">
+import { renderMarkdown } from '~/utils/renderMarkdown'
+
+const props = defineProps<{
+  entityType: string
+  pageKey: string
+  title: string
+  eyebrow?: string
+  description?: string
+  searchPlaceholder?: string
+  emptyMessage?: string
+}>()
+
+const route = useRoute()
+const worldId = computed(() => String(route.params.id || ''))
+const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+
+const search = ref('')
+const selectedEntityId = ref<string | null>(null)
+
+const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
+const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+  default: () => []
+})
+
+const { data: selectedEntityDetail, pending: selectedPending } = await useFetch(
+  () => selectedEntityId.value ? `/api/worlds/${worldId.value}/entities/${selectedEntityId.value}` : null,
+  {
+    default: () => null,
+    watch: [selectedEntityId]
+  }
+)
+
+function normalizeEntityType(value: any) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function initialsFor(name: string) {
+  const words = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+
+  if (!words.length) return '?'
+  return words.map(w => w[0]?.toUpperCase() || '').join('')
+}
+
+function imageUrlForEntity(entity: any) {
+  if (entity?.imageUrl) return String(entity.imageUrl)
+  if (entity?.image_url) return String(entity.image_url)
+
+  const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
+  for (const block of blocks) {
+    const image = block?.data?.image
+    if (!image) continue
+
+    if (typeof image === 'string') return `/api/assets/${image}`
+
+    if (typeof image === 'object') {
+      if (image.image_url) return image.image_url
+      if (image.file_id) return `/api/assets/${image.file_id}`
+      if (image.id) return `/api/assets/${image.id}`
+    }
+  }
+
+  return null
+}
+
+function looksLikeDescriptiveParagraph(value: string) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (text.length < 40) return false
+  if (!/[a-z]/i.test(text)) return false
+  if (text.includes('|')) return false
+  return true
+}
+
+function findFirstDescriptiveText(value: any): string {
+  if (value == null) return ''
+
+  if (typeof value === 'string') {
+    const text = value.trim()
+    return looksLikeDescriptiveParagraph(text) ? text : ''
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findFirstDescriptiveText(item)
+      if (found) return found
+    }
+    return ''
+  }
+
+  if (typeof value === 'object') {
+    if (typeof value.entry === 'string') {
+      const text = value.entry.trim()
+      if (looksLikeDescriptiveParagraph(text)) return text
+    }
+
+    if (Array.isArray(value.entries)) {
+      const found = findFirstDescriptiveText(value.entries)
+      if (found) return found
+    }
+
+    if (Array.isArray(value.items)) {
+      const found = findFirstDescriptiveText(value.items)
+      if (found) return found
+    }
+  }
+
+  return ''
+}
+
+function summaryForEntity(entity: any) {
+  const direct = String(entity?.summary || '').trim()
+  if (direct) return direct
+
+  const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
+  const overview = blocks.find((block: any) => {
+    const key = String(block?.block_key || block?.blockKey || '')
+    return key === 'overview'
+  })
+
+  const text = String(overview?.data?.text || '').trim()
+  if (text) return text
+
+  return ''
+}
+
+const filteredEntities = computed(() => {
+  const q = search.value.trim().toLowerCase()
+
+  return (entities.value || [])
+    .filter((entity: any) => normalizeEntityType(entity?.entity_type || entity?.entityType) === normalizeEntityType(props.entityType))
+    .filter((entity: any) => {
+      if (!q) return true
+
+      return [
+        entity?.title,
+        entity?.slug,
+        summaryForEntity(entity)
+      ]
+        .filter(Boolean)
+        .some((value: any) => String(value).toLowerCase().includes(q))
+    })
+})
+
+const selectedEntity = computed(() => {
+  if (!selectedEntityId.value) return null
+  return (entities.value || []).find((entity: any) => String(entity.id) === String(selectedEntityId.value)) || null
+})
+
+const selectedSummary = computed(() => {
+  const detail = selectedEntityDetail.value
+  if (!detail) return ''
+
+  const direct = String(detail?.summary || '').trim()
+  if (direct) return direct
+
+  const overviewText = summaryForEntity(detail)
+  if (overviewText) return overviewText
+
+  return findFirstDescriptiveText(detail?.blocks?.map((block: any) => block?.data))
+})
+
+watch(filteredEntities, (items) => {
+  if (!items.length && selectedEntityId.value) {
+    selectedEntityId.value = null
+    return
+  }
+
+  if (selectedEntityId.value) {
+    const stillExists = items.some((entity: any) => String(entity.id) === String(selectedEntityId.value))
+    if (!stillExists) selectedEntityId.value = null
+  }
+}, { deep: true })
+
+function selectEntity(entity: any) {
+  selectedEntityId.value = String(entity.id)
+}
+
+function clearSelectedEntity() {
+  selectedEntityId.value = null
+}
+</script>
+
+<template>
+  <div class="h-full overflow-y-auto bg-transparent">
+    <div class="mx-auto max-w-[1900px] p-6">
+      <div :class="selectedEntity || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
+        <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
+          <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">{{ eyebrow || title }}</div>
+              <h1 class="mt-2 text-3xl font-semibold text-white">{{ world?.name || title }}</h1>
+              <p class="mt-2 max-w-3xl text-sm text-slate-300">
+                {{ description || `Browse imported ${title.toLowerCase()} for this world.` }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+              @click="refresh()"
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div class="mt-5">
+            <input
+              v-model="search"
+              type="text"
+              :placeholder="searchPlaceholder || `Search ${title.toLowerCase()}...`"
+              class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
+            >
+          </div>
+        </section>
+
+        <section
+          v-if="pending"
+          class="mt-6 eldra-panel rounded-[24px] p-6 text-slate-300 shadow-xl"
+        >
+          Loading {{ title.toLowerCase() }}...
+        </section>
+
+        <section
+          v-else-if="!filteredEntities.length"
+          class="mt-6 eldra-empty rounded-[24px] p-10 text-center shadow-xl"
+        >
+          <div class="text-lg font-medium text-white">No {{ title.toLowerCase() }} found</div>
+          <p class="mt-2 text-sm text-slate-300">
+            {{ emptyMessage || `Import ${title.toLowerCase()} from the Importer page, then come back here to browse them.` }}
+          </p>
+        </section>
+
+        <section
+          v-else
+          class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
+        >
+          <div
+            v-for="entity in filteredEntities"
+            :key="entity.id"
+            class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.44),rgba(12,16,22,0.30))] backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
+            :class="selectedEntityId === String(entity.id)
+              ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(38,42,48,0.70),rgba(16,20,26,0.52))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.22),0_22px_48px_rgba(0,0,0,0.34)]'
+              : 'opacity-95'"
+            @click="selectEntity(entity)"
+          >
+            <div class="grid min-h-[240px] grid-cols-[112px_minmax(0,1fr)]">
+              <div class="border-r border-white/10 bg-black/20">
+                <img
+                  v-if="imageUrlForEntity(entity)"
+                  :src="imageUrlForEntity(entity)"
+                  :alt="entity.title"
+                  class="h-full w-full object-cover object-[center_18%]"
+                >
+                <div
+                  v-else
+                  class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900/90 to-slate-800/80 text-2xl font-semibold text-slate-200"
+                >
+                  {{ initialsFor(entity.title) }}
+                </div>
+              </div>
+
+              <div class="flex min-w-0 flex-col p-5">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="truncate text-[1.55rem] font-semibold leading-tight text-white">
+                      {{ entity.title }}
+                    </div>
+                  </div>
+
+                  <span class="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
+                    {{ entityType }}
+                  </span>
+                </div>
+
+                <div class="mt-4 text-sm leading-7 text-slate-200 line-clamp-5">
+                  {{ summaryForEntity(entity) || 'Select to preview →' }}
+                </div>
+
+                <div class="mt-auto pt-5 text-sm font-medium text-sky-200 transition group-hover:text-sky-100">
+                  Select {{ title.replace(/s$/i, '') }} →
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+      <aside
+        v-if="mode === 'build' && !selectedEntity"
+        class="fixed right-0 top-0 z-20 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.94)] backdrop-blur"
+      >
+        <div class="p-5">
+          <WorldPagePresentationPanel
+            :world-id="worldId"
+            :page-key="pageKey"
+            :title="title"
+            description="Build-mode page controls live here when nothing is selected. Later this becomes DM/Admin-gated instead of build-mode-only."
+          />
+        </div>
+      </aside>
+    </Transition>
+
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+      <aside
+        v-if="selectedEntity"
+        class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.72),rgba(10,13,18,0.62))] backdrop-blur-xl"
+      >
+        <div class="flex h-full flex-col">
+          <div class="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+            <div class="min-w-0">
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
+              <h2 class="mt-3 truncate text-2xl font-semibold text-white">{{ selectedEntity.title }}</h2>
+            </div>
+
+            <button
+              type="button"
+              class="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
+              @click="clearSelectedEntity"
+            >
+              <UIcon name="i-lucide-x" class="h-4 w-4" />
+            </button>
+          </div>
+
+          <div class="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+            <div v-if="selectedPending" class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300">
+              Loading summary...
+            </div>
+
+            <template v-else>
+              <div
+                v-if="imageUrlForEntity(selectedEntityDetail || selectedEntity)"
+                class="overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+              >
+                <img
+                  :src="imageUrlForEntity(selectedEntityDetail || selectedEntity)"
+                  :alt="selectedEntity.title"
+                  class="h-64 w-full object-cover object-[center_12%]"
+                >
+              </div>
+
+              <div
+                v-else
+                class="flex h-64 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300"
+              >
+                {{ initialsFor(selectedEntity.title) }}
+              </div>
+
+              <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <div class="grid grid-cols-1 gap-3 text-sm">
+                  <div><span class="text-slate-400">Title:</span> <span class="text-white">{{ selectedEntity.title }}</span></div>
+                  <div><span class="text-slate-400">Type:</span> <span class="text-white">{{ entityType }}</span></div>
+                  <div><span class="text-slate-400">Slug:</span> <span class="text-white">{{ selectedEntity.slug || '—' }}</span></div>
+                </div>
+              </div>
+
+              <div
+                v-if="selectedSummary"
+                class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
+              >
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
+                <div
+                  class="markdown-content text-[15px] leading-7 text-slate-200"
+                  v-html="renderMarkdown(selectedSummary)"
+                ></div>
+              </div>
+            </template>
+          </div>
+
+          <div class="border-t border-white/10 p-5">
+            <NuxtLink
+              :to="`/worlds/${worldId}/entities/${selectedEntity.id}`"
+              class="block rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+            >
+              Open Article
+            </NuxtLink>
+          </div>
+        </div>
+      </aside>
+    </Transition>
+  </div>
+</template>
+
+<style scoped>
+:deep(.markdown-content) {
+  color: rgb(226 232 240);
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+:deep(.markdown-content > :first-child) {
+  margin-top: 0 !important;
+}
+
+:deep(.markdown-content > :last-child) {
+  margin-bottom: 0 !important;
+}
+
+:deep(.markdown-content h1) {
+  margin: 0 0 0.9rem 0;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: white;
+}
+
+:deep(.markdown-content h2) {
+  margin: 1.25rem 0 0.75rem 0;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: white;
+}
+
+:deep(.markdown-content h3) {
+  margin: 1rem 0 0.55rem 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: white;
+}
+
+:deep(.markdown-content p) {
+  margin: 0.85rem 0;
+}
+
+:deep(.markdown-content strong) {
+  color: white;
+  font-weight: 700;
+}
+
+:deep(.markdown-content em) {
+  color: rgb(241 245 249);
+  font-style: italic;
+}
+
+:deep(.markdown-content ul),
+:deep(.markdown-content ol) {
+  margin: 1rem 0;
+  padding-left: 1.35rem;
+}
+
+:deep(.markdown-content li) {
+  margin: 0.35rem 0;
+}
+
+:deep(.markdown-content blockquote) {
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border-left: 4px solid rgba(56, 189, 248, 0.35);
+  background: rgba(255,255,255,0.04);
+  border-radius: 0.85rem;
+  color: rgb(226 232 240);
+  font-style: italic;
+}
+
+:deep(.markdown-content hr) {
+  margin: 1.25rem 0;
+  border: 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+:deep(.markdown-content table) {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 0.85rem;
+}
+
+:deep(.markdown-content th) {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.05);
+  color: white;
+  text-align: left;
+  font-weight: 600;
+}
+
+:deep(.markdown-content td) {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgb(203 213 225);
+}
+
+:deep(.markdown-content code) {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  border-radius: 0.4rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.9em;
+}
+
+:deep(.markdown-content pre) {
+  overflow-x: auto;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+:deep(.markdown-content pre code) {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+</style>

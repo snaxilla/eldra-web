@@ -5,12 +5,12 @@ definePageMeta({
 </script>
 
 <template>
-  <WorldEntityCollectionPage
+  <WorldEntityInteractivePage
     entity-type="class"
+    page-key="classes"
     title="Classes"
     eyebrow="Classes"
-    description="Browse imported class references and player-facing class content."
+    description="Browse imported class references."
     search-placeholder="Search classes..."
-    empty-message="No classes have been imported into this world yet."
   />
 </template>

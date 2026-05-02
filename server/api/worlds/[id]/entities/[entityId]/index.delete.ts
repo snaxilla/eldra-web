@@ -1,4 +1,4 @@
-import { directusServiceRequest } from '~/server/utils/directus'
+import { directusServiceRequest } from '../../../../../utils/directus'
 
 async function deleteMany(collection: string, entityId: string) {
   const res = await directusServiceRequest(`/items/${collection}`, {

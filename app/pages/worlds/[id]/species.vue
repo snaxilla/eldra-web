@@ -10,7 +10,7 @@ definePageMeta({
     page-key="species"
     title="Species"
     eyebrow="Species"
-    description="Browse imported species and races."
+    description="Browse imported species and race references for this world."
     search-placeholder="Search species..."
   />
 </template>

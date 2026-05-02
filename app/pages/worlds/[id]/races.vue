@@ -5,12 +5,12 @@ definePageMeta({
 </script>
 
 <template>
-  <WorldEntityCollectionPage
+  <WorldEntityInteractivePage
     entity-type="species"
+    page-key="races"
     title="Races"
     eyebrow="Races"
     description="Browse imported races and species references for this world."
     search-placeholder="Search races..."
-    empty-message="No races or species have been imported into this world yet."
   />
 </template>

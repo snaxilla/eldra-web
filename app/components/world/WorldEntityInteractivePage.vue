@@ -55,7 +55,7 @@ function imageUrlForEntity(entity: any) {
     const image = block?.data?.image
     if (!image) continue
 
-    if (typeof image === 'string') return `/api/assets/${image}`
+    if (typeof image === 'string' && image.trim()) return `/api/assets/${image}`
 
     if (typeof image === 'object') {
       if (image.image_url) return image.image_url
@@ -112,20 +112,65 @@ function findFirstDescriptiveText(value: any): string {
   return ''
 }
 
+function blockByKey(entity: any, key: string) {
+  const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
+  return blocks.find((block: any) => String(block?.block_key || block?.blockKey || '') === key) || null
+}
+
+function itemCore(entity: any) {
+  return blockByKey(entity, 'item_core')?.data || null
+}
+
+function spellCore(entity: any) {
+  return blockByKey(entity, 'spell_core')?.data || null
+}
+
 function summaryForEntity(entity: any) {
   const direct = String(entity?.summary || '').trim()
   if (direct) return direct
 
-  const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
-  const overview = blocks.find((block: any) => {
-    const key = String(block?.block_key || block?.blockKey || '')
-    return key === 'overview'
-  })
+  const overview = blockByKey(entity, 'overview')
+  const overviewText = String(overview?.data?.text || '').trim()
+  if (overviewText) return overviewText
 
-  const text = String(overview?.data?.text || '').trim()
-  if (text) return text
+  const itemDescription = String(itemCore(entity)?.description || '').trim()
+  if (itemDescription) return itemDescription
+
+  const spellDescription = String(spellCore(entity)?.description || '').trim()
+  if (spellDescription) return spellDescription
 
   return ''
+}
+
+function itemMetaLines(entity: any) {
+  const core = itemCore(entity)
+  if (!core) return []
+
+  return [
+    core.item_type ? `Type: ${core.item_type}` : '',
+    core.rarity ? `Rarity: ${core.rarity}` : '',
+    core.damage ? `Damage: ${core.damage}${core.damage_type ? ` ${core.damage_type}` : ''}` : '',
+    core.armor_class ? `AC: ${core.armor_class}` : '',
+    core.weight ? `Weight: ${core.weight}` : '',
+    core.value ? `Value: ${core.value}` : '',
+    core.attunement ? 'Requires Attunement' : ''
+  ].filter(Boolean)
+}
+
+function spellMetaLines(entity: any) {
+  const core = spellCore(entity)
+  if (!core) return []
+
+  return [
+    core.level !== undefined && core.level !== null ? `Level: ${core.level}` : '',
+    core.school ? `School: ${core.school}` : '',
+    core.casting_time ? `Casting: ${core.casting_time}` : '',
+    core.range ? `Range: ${core.range}` : '',
+    core.duration ? `Duration: ${core.duration}` : '',
+    core.components ? `Components: ${core.components}` : '',
+    core.ritual ? 'Ritual' : '',
+    core.concentration ? 'Concentration' : ''
+  ].filter(Boolean)
 }
 
 const filteredEntities = computed(() => {
@@ -139,7 +184,9 @@ const filteredEntities = computed(() => {
       return [
         entity?.title,
         entity?.slug,
-        summaryForEntity(entity)
+        summaryForEntity(entity),
+        ...itemMetaLines(entity),
+        ...spellMetaLines(entity)
       ]
         .filter(Boolean)
         .some((value: any) => String(value).toLowerCase().includes(q))
@@ -277,8 +324,20 @@ function clearSelectedEntity() {
                   </span>
                 </div>
 
-                <div class="mt-4 text-sm leading-7 text-slate-200 line-clamp-5">
-                  {{ summaryForEntity(entity) || 'Select to preview →' }}
+                <div class="mt-4 space-y-1 text-sm text-slate-200">
+                  <template v-if="entityType === 'item'">
+                    <div v-for="line in itemMetaLines(entity).slice(0, 3)" :key="line">{{ line }}</div>
+                  </template>
+
+                  <template v-else-if="entityType === 'spell'">
+                    <div v-for="line in spellMetaLines(entity).slice(0, 4)" :key="line">{{ line }}</div>
+                  </template>
+
+                  <template v-else>
+                    <div class="leading-7 line-clamp-5">
+                      {{ summaryForEntity(entity) || 'Select to preview →' }}
+                    </div>
+                  </template>
                 </div>
 
                 <div class="mt-auto pt-5 text-sm font-medium text-sky-200 transition group-hover:text-sky-100">
@@ -358,6 +417,22 @@ function clearSelectedEntity() {
                   <div><span class="text-slate-400">Type:</span> <span class="text-white">{{ entityType }}</span></div>
                   <div><span class="text-slate-400">Slug:</span> <span class="text-white">{{ selectedEntity.slug || '—' }}</span></div>
                 </div>
+              </div>
+
+              <div
+                v-if="entityType === 'item' && itemCore(selectedEntityDetail || selectedEntity)"
+                class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
+              >
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Item Details</div>
+                <div v-for="line in itemMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
+              </div>
+
+              <div
+                v-if="entityType === 'spell' && spellCore(selectedEntityDetail || selectedEntity)"
+                class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
+              >
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Spell Details</div>
+                <div v-for="line in spellMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
               </div>
 
               <div

@@ -1,40 +1,41 @@
-function baseUrl() {
-  return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
-}
+import { directusServiceRequest } from '../../utils/directus'
 
-function token() {
-  return process.env.DIRECTUS_TOKEN || ''
-}
+function extractImageUrl(blocks: any[] = []) {
+  for (const block of blocks) {
+    const image = block?.data?.image
+    if (!image) continue
 
-async function dxFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${baseUrl()}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token()}`,
-      ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {})
+    if (typeof image === 'string' && image.trim()) {
+      return `/api/assets/${image}`
     }
-  })
 
-  const text = await res.text()
-  let json: any = null
-
-  try {
-    json = text ? JSON.parse(text) : null
-  } catch {}
-
-  if (!res.ok) {
-    throw createError({
-      statusCode: res.status,
-      statusMessage:
-        json?.errors?.[0]?.message ||
-        json?.message ||
-        text ||
-        `Directus error (${res.status})`
-    })
+    if (typeof image === 'object') {
+      if (image.image_url) return image.image_url
+      if (image.file_id) return `/api/assets/${image.file_id}`
+      if (image.id) return `/api/assets/${image.id}`
+    }
   }
 
-  return json
+  return null
+}
+
+function extractOverviewText(blocks: any[] = []) {
+  const overview = blocks.find((block: any) => {
+    const key = String(block?.block_key || block?.blockKey || '')
+    return key === 'overview'
+  })
+
+  return String(overview?.data?.text || '').trim() || null
+}
+
+function extractCoreText(blocks: any[] = []) {
+  const itemCore = blocks.find((block: any) => String(block?.block_key || '') === 'item_core')
+  if (itemCore?.data?.description) return String(itemCore.data.description).trim()
+
+  const spellCore = blocks.find((block: any) => String(block?.block_key || '') === 'spell_core')
+  if (spellCore?.data?.description) return String(spellCore.data.description).trim()
+
+  return null
 }
 
 export default defineEventHandler(async (event) => {
@@ -47,28 +48,73 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const params = new URLSearchParams()
-  params.set('filter[world_id][_eq]', worldId)
-  params.set('sort', 'title')
+  const entitiesRes = await directusServiceRequest('/items/entities', {
+    method: 'GET',
+    query: {
+      filter: {
+        world_id: { _eq: worldId }
+      },
+      sort: 'title',
+      limit: -1,
+      fields: [
+        'id',
+        'title',
+        'slug',
+        'world_id',
+        'system_key',
+        'entity_type',
+        'status',
+        'visibility',
+        'summary',
+        'created_at',
+        'updated_at',
+        'image'
+      ].join(',')
+    }
+  })
 
-  params.append('fields[]', 'id')
-  params.append('fields[]', 'title')
-  params.append('fields[]', 'slug')
-  params.append('fields[]', 'world_id')
-  params.append('fields[]', 'system_key')
-  params.append('fields[]', 'entity_type')
-  params.append('fields[]', 'status')
-  params.append('fields[]', 'visibility')
-  params.append('fields[]', 'summary')
-  params.append('fields[]', 'created_at')
-  params.append('fields[]', 'updated_at')
-  params.append('fields[]', 'image')
+  const rows = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
+  const entityIds = rows.map((row: any) => row.id).filter(Boolean)
 
-  const json = await dxFetch(`/items/entities?${params.toString()}`)
-  const rows = Array.isArray(json?.data) ? json.data : []
+  let blocks: any[] = []
+  if (entityIds.length) {
+    const blocksRes = await directusServiceRequest('/items/block_instances', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _in: entityIds }
+        },
+        sort: 'entity_id,sort',
+        limit: -1,
+        fields: '*'
+      }
+    })
 
-  return rows.map((row: any) => ({
-    ...row,
-    imageUrl: row?.image ? `/api/assets/${row.image}` : null
-  }))
+    blocks = Array.isArray(blocksRes?.data) ? blocksRes.data : []
+  }
+
+  const blocksByEntityId = new Map<number, any[]>()
+
+  for (const block of blocks) {
+    const entityId = Number(block.entity_id)
+    if (!blocksByEntityId.has(entityId)) {
+      blocksByEntityId.set(entityId, [])
+    }
+    blocksByEntityId.get(entityId)!.push(block)
+  }
+
+  return rows.map((row: any) => {
+    const entityBlocks = blocksByEntityId.get(Number(row.id)) || []
+    const derivedImageUrl = row?.image ? `/api/assets/${row.image}` : extractImageUrl(entityBlocks)
+    const overviewText = extractOverviewText(entityBlocks)
+    const coreText = extractCoreText(entityBlocks)
+
+    return {
+      ...row,
+      blocks: entityBlocks,
+      imageUrl: derivedImageUrl,
+      image_url: derivedImageUrl,
+      summary: String(row?.summary || '').trim() || overviewText || coreText || ''
+    }
+  })
 })

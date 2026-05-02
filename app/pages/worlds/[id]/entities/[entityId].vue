@@ -25,6 +25,16 @@ const { data: entity, refresh: refreshEntity } = await useAsyncData(
   }
 )
 
+function blockByKey(key: string) {
+  return entity.value?.blocks?.find?.((block: any) => {
+    const blockKey = String(block?.block_key || block?.blockKey || '')
+    return blockKey === key
+  }) || null
+}
+
+const itemCore = computed(() => blockByKey('item_core')?.data || null)
+const spellCore = computed(() => blockByKey('spell_core')?.data || null)
+
 const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return entity.value.imageUrl
   if (entity.value?.image_url) return entity.value.image_url
@@ -39,6 +49,8 @@ const articleMarkdown = computed(() => {
     entity.value?.monsterProfile?.fluff_markdown ||
     entity.value?.fluff_markdown ||
     entity.value?.summary_markdown ||
+    itemCore.value?.description ||
+    spellCore.value?.description ||
     entity.value?.blocks?.find?.((block: any) => block?.block_key === 'overview' || block?.blockKey === 'overview')?.data?.text ||
     entity.value?.summary ||
     ''
@@ -65,6 +77,38 @@ const derivedSummary = computed(() => {
   const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0] || ''
   return firstSentence.slice(0, 280).trim()
 })
+
+function itemMetaLines() {
+  const core = itemCore.value
+  if (!core) return []
+
+  return [
+    core.item_type ? `Type: ${core.item_type}` : '',
+    core.rarity ? `Rarity: ${core.rarity}` : '',
+    core.damage ? `Damage: ${core.damage}${core.damage_type ? ` ${core.damage_type}` : ''}` : '',
+    core.armor_class ? `Armor Class: ${core.armor_class}` : '',
+    core.weight ? `Weight: ${core.weight}` : '',
+    core.value ? `Value: ${core.value}` : '',
+    core.attunement ? 'Requires Attunement' : ''
+  ].filter(Boolean)
+}
+
+function spellMetaLines() {
+  const core = spellCore.value
+  if (!core) return []
+
+  return [
+    core.level !== undefined && core.level !== null ? `Level: ${core.level}` : '',
+    core.school ? `School: ${core.school}` : '',
+    core.casting_time ? `Casting Time: ${core.casting_time}` : '',
+    core.range ? `Range: ${core.range}` : '',
+    core.duration ? `Duration: ${core.duration}` : '',
+    core.components ? `Components: ${core.components}` : '',
+    core.ritual ? 'Ritual' : '',
+    core.concentration ? 'Concentration' : '',
+    core.higher_level ? `At Higher Levels: ${core.higher_level}` : ''
+  ].filter(Boolean)
+}
 
 async function onImageSelected(event: Event) {
   const input = event.target as HTMLInputElement
@@ -132,6 +176,26 @@ async function onImageSelected(event: Event) {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section
+          v-if="itemCore"
+          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
+        >
+          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Item Details</div>
+          <div class="mt-5 grid gap-3 text-sm text-slate-200">
+            <div v-for="line in itemMetaLines()" :key="line">{{ line }}</div>
+          </div>
+        </section>
+
+        <section
+          v-if="spellCore"
+          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
+        >
+          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Spell Details</div>
+          <div class="mt-5 grid gap-3 text-sm text-slate-200">
+            <div v-for="line in spellMetaLines()" :key="line">{{ line }}</div>
           </div>
         </section>
 
@@ -225,6 +289,26 @@ async function onImageSelected(event: Event) {
             <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-200">
               {{ derivedSummary || 'No summary yet.' }}
             </p>
+          </div>
+
+          <div
+            v-if="itemCore"
+            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
+          >
+            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Item Details</div>
+            <div class="mt-4 space-y-2 text-sm text-slate-200">
+              <div v-for="line in itemMetaLines()" :key="line">{{ line }}</div>
+            </div>
+          </div>
+
+          <div
+            v-if="spellCore"
+            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
+          >
+            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Spell Details</div>
+            <div class="mt-4 space-y-2 text-sm text-slate-200">
+              <div v-for="line in spellMetaLines()" :key="line">{{ line }}</div>
+            </div>
           </div>
 
           <div
@@ -378,5 +462,27 @@ async function onImageSelected(event: Event) {
   padding: 0.65rem 0.75rem;
   border: 1px solid rgba(255,255,255,0.08);
   color: rgb(203 213 225);
+}
+
+:deep(.markdown-content code) {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  border-radius: 0.4rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.9em;
+}
+
+:deep(.markdown-content pre) {
+  overflow-x: auto;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+:deep(.markdown-content pre code) {
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 </style>

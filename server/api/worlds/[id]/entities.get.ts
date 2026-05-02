@@ -1,4 +1,4 @@
-import { directusServiceRequest } from '../../utils/directus'
+import { directusServiceRequest } from '../../../utils/directus'
 
 function extractImageUrl(blocks: any[] = []) {
   for (const block of blocks) {

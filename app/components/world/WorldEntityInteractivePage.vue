@@ -17,6 +17,8 @@ const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
 const selectedEntityId = ref<string | null>(null)
+const deletingEntity = ref(false)
+const deleteError = ref('')
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
@@ -125,6 +127,18 @@ function spellCore(entity: any) {
   return blockByKey(entity, 'spell_core')?.data || null
 }
 
+function speciesCore(entity: any) {
+  return blockByKey(entity, 'species_core')?.data || null
+}
+
+function classCore(entity: any) {
+  return blockByKey(entity, 'class_core')?.data || null
+}
+
+function backgroundCore(entity: any) {
+  return blockByKey(entity, 'background_core')?.data || null
+}
+
 function summaryForEntity(entity: any) {
   const direct = String(entity?.summary || '').trim()
   if (direct) return direct
@@ -138,6 +152,15 @@ function summaryForEntity(entity: any) {
 
   const spellDescription = String(spellCore(entity)?.description || '').trim()
   if (spellDescription) return spellDescription
+
+  const speciesDescription = String(speciesCore(entity)?.description || '').trim()
+  if (speciesDescription) return speciesDescription
+
+  const classDescription = String(classCore(entity)?.description || '').trim()
+  if (classDescription) return classDescription
+
+  const backgroundDescription = String(backgroundCore(entity)?.description || '').trim()
+  if (backgroundDescription) return backgroundDescription
 
   return ''
 }
@@ -173,6 +196,35 @@ function spellMetaLines(entity: any) {
   ].filter(Boolean)
 }
 
+function speciesMetaLines(entity: any) {
+  const core = speciesCore(entity)
+  if (!core) return []
+
+  return [
+    core.size ? `Size: ${core.size}` : '',
+    core.speed ? `Speed: ${core.speed}` : ''
+  ].filter(Boolean)
+}
+
+function classMetaLines(entity: any) {
+  const core = classCore(entity)
+  if (!core) return []
+
+  return [
+    core.hit_die ? `Hit Die: ${core.hit_die}` : '',
+    core.primary_ability ? `Primary Ability: ${core.primary_ability}` : ''
+  ].filter(Boolean)
+}
+
+function backgroundMetaLines(entity: any) {
+  const core = backgroundCore(entity)
+  if (!core) return []
+
+  return [
+    core.feature ? `Feature: ${core.feature}` : ''
+  ].filter(Boolean)
+}
+
 const filteredEntities = computed(() => {
   const q = search.value.trim().toLowerCase()
 
@@ -186,7 +238,10 @@ const filteredEntities = computed(() => {
         entity?.slug,
         summaryForEntity(entity),
         ...itemMetaLines(entity),
-        ...spellMetaLines(entity)
+        ...spellMetaLines(entity),
+        ...speciesMetaLines(entity),
+        ...classMetaLines(entity),
+        ...backgroundMetaLines(entity)
       ]
         .filter(Boolean)
         .some((value: any) => String(value).toLowerCase().includes(q))
@@ -225,10 +280,39 @@ watch(filteredEntities, (items) => {
 
 function selectEntity(entity: any) {
   selectedEntityId.value = String(entity.id)
+  deleteError.value = ''
 }
 
 function clearSelectedEntity() {
   selectedEntityId.value = null
+  deleteError.value = ''
+}
+
+async function deleteSelectedEntity() {
+  if (!selectedEntity.value || deletingEntity.value) return
+
+  const ok = window.confirm(`Delete "${selectedEntity.value.title}"? This cannot be undone.`)
+  if (!ok) return
+
+  deleteError.value = ''
+  deletingEntity.value = true
+
+  try {
+    await $fetch(`/api/worlds/${worldId.value}/entities/${selectedEntity.value.id}`, {
+      method: 'DELETE'
+    })
+
+    selectedEntityId.value = null
+    await refresh()
+  } catch (error: any) {
+    deleteError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to delete entity.'
+  } finally {
+    deletingEntity.value = false
+  }
 }
 </script>
 
@@ -331,6 +415,18 @@ function clearSelectedEntity() {
 
                   <template v-else-if="entityType === 'spell'">
                     <div v-for="line in spellMetaLines(entity).slice(0, 4)" :key="line">{{ line }}</div>
+                  </template>
+
+                  <template v-else-if="entityType === 'species'">
+                    <div v-for="line in speciesMetaLines(entity).slice(0, 3)" :key="line">{{ line }}</div>
+                  </template>
+
+                  <template v-else-if="entityType === 'class'">
+                    <div v-for="line in classMetaLines(entity).slice(0, 3)" :key="line">{{ line }}</div>
+                  </template>
+
+                  <template v-else-if="entityType === 'background'">
+                    <div v-for="line in backgroundMetaLines(entity).slice(0, 2)" :key="line">{{ line }}</div>
                   </template>
 
                   <template v-else>
@@ -436,6 +532,30 @@ function clearSelectedEntity() {
               </div>
 
               <div
+                v-if="entityType === 'species' && speciesCore(selectedEntityDetail || selectedEntity)"
+                class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
+              >
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Species Details</div>
+                <div v-for="line in speciesMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
+              </div>
+
+              <div
+                v-if="entityType === 'class' && classCore(selectedEntityDetail || selectedEntity)"
+                class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
+              >
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Class Details</div>
+                <div v-for="line in classMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
+              </div>
+
+              <div
+                v-if="entityType === 'background' && backgroundCore(selectedEntityDetail || selectedEntity)"
+                class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
+              >
+                <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Background Details</div>
+                <div v-for="line in backgroundMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
+              </div>
+
+              <div
                 v-if="selectedSummary"
                 class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
               >
@@ -448,7 +568,21 @@ function clearSelectedEntity() {
             </template>
           </div>
 
-          <div class="border-t border-white/10 p-5">
+          <div class="border-t border-white/10 p-5 space-y-3">
+            <button
+              v-if="mode === 'build'"
+              type="button"
+              class="block w-full rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-sm font-medium text-red-100 transition hover:bg-red-400/20 disabled:opacity-50"
+              :disabled="deletingEntity"
+              @click="deleteSelectedEntity"
+            >
+              {{ deletingEntity ? 'Deleting…' : 'Delete Entity' }}
+            </button>
+
+            <div v-if="deleteError" class="text-sm text-red-300">
+              {{ deleteError }}
+            </div>
+
             <NuxtLink
               :to="`/worlds/${worldId}/entities/${selectedEntity.id}`"
               class="block rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"

@@ -34,6 +34,9 @@ function blockByKey(key: string) {
 
 const itemCore = computed(() => blockByKey('item_core')?.data || null)
 const spellCore = computed(() => blockByKey('spell_core')?.data || null)
+const speciesCore = computed(() => blockByKey('species_core')?.data || null)
+const classCore = computed(() => blockByKey('class_core')?.data || null)
+const backgroundCore = computed(() => blockByKey('background_core')?.data || null)
 
 const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return entity.value.imageUrl
@@ -51,6 +54,9 @@ const articleMarkdown = computed(() => {
     entity.value?.summary_markdown ||
     itemCore.value?.description ||
     spellCore.value?.description ||
+    speciesCore.value?.description ||
+    classCore.value?.description ||
+    backgroundCore.value?.description ||
     entity.value?.blocks?.find?.((block: any) => block?.block_key === 'overview' || block?.blockKey === 'overview')?.data?.text ||
     entity.value?.summary ||
     ''
@@ -107,6 +113,35 @@ function spellMetaLines() {
     core.ritual ? 'Ritual' : '',
     core.concentration ? 'Concentration' : '',
     core.higher_level ? `At Higher Levels: ${core.higher_level}` : ''
+  ].filter(Boolean)
+}
+
+function speciesMetaLines() {
+  const core = speciesCore.value
+  if (!core) return []
+
+  return [
+    core.size ? `Size: ${core.size}` : '',
+    core.speed ? `Speed: ${core.speed}` : ''
+  ].filter(Boolean)
+}
+
+function classMetaLines() {
+  const core = classCore.value
+  if (!core) return []
+
+  return [
+    core.hit_die ? `Hit Die: ${core.hit_die}` : '',
+    core.primary_ability ? `Primary Ability: ${core.primary_ability}` : ''
+  ].filter(Boolean)
+}
+
+function backgroundMetaLines() {
+  const core = backgroundCore.value
+  if (!core) return []
+
+  return [
+    core.feature ? `Feature: ${core.feature}` : ''
   ].filter(Boolean)
 }
 
@@ -196,6 +231,36 @@ async function onImageSelected(event: Event) {
           <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Spell Details</div>
           <div class="mt-5 grid gap-3 text-sm text-slate-200">
             <div v-for="line in spellMetaLines()" :key="line">{{ line }}</div>
+          </div>
+        </section>
+
+        <section
+          v-if="speciesCore"
+          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
+        >
+          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Species Details</div>
+          <div class="mt-5 grid gap-3 text-sm text-slate-200">
+            <div v-for="line in speciesMetaLines()" :key="line">{{ line }}</div>
+          </div>
+        </section>
+
+        <section
+          v-if="classCore"
+          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
+        >
+          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Class Details</div>
+          <div class="mt-5 grid gap-3 text-sm text-slate-200">
+            <div v-for="line in classMetaLines()" :key="line">{{ line }}</div>
+          </div>
+        </section>
+
+        <section
+          v-if="backgroundCore"
+          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
+        >
+          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Background Details</div>
+          <div class="mt-5 grid gap-3 text-sm text-slate-200">
+            <div v-for="line in backgroundMetaLines()" :key="line">{{ line }}</div>
           </div>
         </section>
 
@@ -308,6 +373,36 @@ async function onImageSelected(event: Event) {
             <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Spell Details</div>
             <div class="mt-4 space-y-2 text-sm text-slate-200">
               <div v-for="line in spellMetaLines()" :key="line">{{ line }}</div>
+            </div>
+          </div>
+
+          <div
+            v-if="speciesCore"
+            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
+          >
+            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Species Details</div>
+            <div class="mt-4 space-y-2 text-sm text-slate-200">
+              <div v-for="line in speciesMetaLines()" :key="line">{{ line }}</div>
+            </div>
+          </div>
+
+          <div
+            v-if="classCore"
+            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
+          >
+            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Class Details</div>
+            <div class="mt-4 space-y-2 text-sm text-slate-200">
+              <div v-for="line in classMetaLines()" :key="line">{{ line }}</div>
+            </div>
+          </div>
+
+          <div
+            v-if="backgroundCore"
+            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
+          >
+            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Background Details</div>
+            <div class="mt-4 space-y-2 text-sm text-slate-200">
+              <div v-for="line in backgroundMetaLines()" :key="line">{{ line }}</div>
             </div>
           </div>
 

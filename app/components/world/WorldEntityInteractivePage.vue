@@ -139,6 +139,76 @@ function backgroundCore(entity: any) {
   return blockByKey(entity, 'background_core')?.data || null
 }
 
+function formatSimpleValue(value: any): string {
+  if (value == null || value === '') return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+
+  if (Array.isArray(value)) {
+    return value.map(formatSimpleValue).filter(Boolean).join(', ')
+  }
+
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .map(([k, v]) => `${k}: ${formatSimpleValue(v)}`)
+      .filter(Boolean)
+      .join(', ')
+  }
+
+  return String(value)
+}
+
+function formatSpeed(value: any): string {
+  if (value == null || value === '') return ''
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(formatSpeed).filter(Boolean).join(', ')
+  }
+
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .map(([k, v]) => {
+        if (typeof v === 'boolean') return v ? k : ''
+        return `${k}: ${formatSimpleValue(v)}`
+      })
+      .filter(Boolean)
+      .join(', ')
+  }
+
+  return String(value)
+}
+
+function formatSize(value: any): string {
+  return formatSimpleValue(value)
+}
+
+function formatPrimaryAbility(value: any): string {
+  if (value == null || value === '') return ''
+
+  if (typeof value === 'string') return value.toUpperCase()
+
+  if (Array.isArray(value)) {
+    return value.map(formatPrimaryAbility).filter(Boolean).join(', ')
+  }
+
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .map(([k, v]) => {
+        if (typeof v === 'boolean') return v ? k.toUpperCase() : ''
+        return `${k.toUpperCase()}: ${formatSimpleValue(v)}`
+      })
+      .filter(Boolean)
+      .join(', ')
+  }
+
+  return String(value)
+}
+
 function summaryForEntity(entity: any) {
   const direct = String(entity?.summary || '').trim()
   if (direct) return direct
@@ -200,9 +270,12 @@ function speciesMetaLines(entity: any) {
   const core = speciesCore(entity)
   if (!core) return []
 
+  const size = formatSize(core.size ?? core.size_json ?? core.race_size)
+  const speed = formatSpeed(core.speed ?? core.speed_json ?? core.race_speed)
+
   return [
-    core.size ? `Size: ${core.size}` : '',
-    core.speed ? `Speed: ${core.speed}` : ''
+    size ? `Size: ${size}` : '',
+    speed ? `Speed: ${speed}` : ''
   ].filter(Boolean)
 }
 
@@ -210,9 +283,12 @@ function classMetaLines(entity: any) {
   const core = classCore(entity)
   if (!core) return []
 
+  const hitDie = core.hit_die ?? core.hitDie ?? core.hd
+  const primaryAbility = core.primary_ability ?? core.primaryAbility ?? core.spellcasting_ability
+
   return [
-    core.hit_die ? `Hit Die: ${core.hit_die}` : '',
-    core.primary_ability ? `Primary Ability: ${core.primary_ability}` : ''
+    hitDie ? `Hit Die: ${formatSimpleValue(hitDie)}` : '',
+    primaryAbility ? `Primary Ability: ${formatPrimaryAbility(primaryAbility)}` : ''
   ].filter(Boolean)
 }
 

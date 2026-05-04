@@ -25,6 +25,16 @@ const { data: entity, refresh: refreshEntity } = await useAsyncData(
   }
 )
 
+const classFeaturesUrl = computed(() => {
+  if (entity.value?.entity_type !== 'class') return null
+  return `/api/worlds/${worldId.value}/entities/${entityId.value}/class-features`
+})
+
+const { data: hydratedClassFeatures } = await useFetch(classFeaturesUrl, {
+  default: () => null,
+  watch: [classFeaturesUrl]
+})
+
 function blockByKey(key: string) {
   return entity.value?.blocks?.find?.((block: any) => {
     const blockKey = String(block?.block_key || block?.blockKey || '')
@@ -194,6 +204,7 @@ const articleMarkdown = computed(() => {
     buildSpeciesArticleMarkdown() ||
     classCore.value?.description ||
     classCore.value?.features ||
+    hydratedClassFeatures.value?.markdown ||
     buildClassArticleMarkdown() ||
     backgroundCore.value?.description ||
     entity.value?.blocks?.find?.((block: any) => block?.block_key === 'overview' || block?.blockKey === 'overview')?.data?.text ||

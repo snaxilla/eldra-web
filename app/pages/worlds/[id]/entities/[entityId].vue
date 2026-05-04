@@ -189,6 +189,7 @@ const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return entity.value.imageUrl
   if (entity.value?.image_url) return entity.value.image_url
   if (entity.value?.image) return `/api/assets/${entity.value.image}`
+  if (entity.value?.entity_type === 'class' && hydratedClassFeatures.value?.imageUrl) return hydratedClassFeatures.value.imageUrl
   return ''
 })
 
@@ -254,6 +255,9 @@ const classFeatureLevels = computed(() => {
 const derivedSummary = computed(() => {
   const explicit = String(entity.value?.summary || '').trim()
   if (explicit) return explicit
+
+  const classSummary = String(hydratedClassFeatures.value?.summary || '').trim()
+  if (classSummary) return classSummary
 
   const markdown = String(articleMarkdown.value || '').trim()
   if (!markdown) return ''
@@ -551,8 +555,33 @@ async function onImageSelected(event: Event) {
         </section>
 
         <section class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]">
-          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-            Article
+          <div class="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
+                Article
+              </div>
+
+              <div
+                v-if="entity?.entity_type === 'class' && hydratedClassFeatures?.summary"
+                class="mt-4 max-w-4xl rounded-2xl border border-amber-400/15 bg-amber-400/[0.06] p-4 text-sm leading-7 text-amber-50/90"
+              >
+                {{ hydratedClassFeatures.summary }}
+              </div>
+            </div>
+
+            <div
+              v-if="entity?.entity_type === 'class' && hydratedClassFeatures?.featureCount"
+              class="grid min-w-[220px] grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm"
+            >
+              <div>
+                <div class="text-xs uppercase tracking-[0.22em] text-slate-500">Features</div>
+                <div class="mt-1 text-2xl font-semibold text-white">{{ hydratedClassFeatures.featureCount }}</div>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-[0.22em] text-slate-500">Hydrated</div>
+                <div class="mt-1 text-2xl font-semibold text-emerald-200">{{ hydratedClassFeatures.foundCount }}</div>
+              </div>
+            </div>
           </div>
 
           <div

@@ -139,7 +139,29 @@ function backgroundCore(entity: any) {
   return blockByKey(entity, 'background_core')?.data || null
 }
 
+function parseJsonishValue(value: any): any {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  if (!trimmed) return value
+
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return value
+    }
+  }
+
+  return value
+}
+
 function formatSimpleValue(value: any): string {
+  value = parseJsonishValue(value)
+
   if (value == null || value === '') return ''
   if (typeof value === 'string') return value
   if (typeof value === 'number') return String(value)
@@ -188,6 +210,8 @@ function formatSize(value: any): string {
 }
 
 function formatPrimaryAbility(value: any): string {
+  value = parseJsonishValue(value)
+
   if (value == null || value === '') return ''
 
   if (typeof value === 'string') return value.toUpperCase()
@@ -223,10 +247,10 @@ function summaryForEntity(entity: any) {
   const spellDescription = String(spellCore(entity)?.description || '').trim()
   if (spellDescription) return spellDescription
 
-  const speciesDescription = String(speciesCore(entity)?.description || '').trim()
+  const speciesDescription = String(speciesCore(entity)?.description || speciesCore(entity)?.traits || '').trim()
   if (speciesDescription) return speciesDescription
 
-  const classDescription = String(classCore(entity)?.description || '').trim()
+  const classDescription = String(classCore(entity)?.description || classCore(entity)?.features || '').trim()
   if (classDescription) return classDescription
 
   const backgroundDescription = String(backgroundCore(entity)?.description || '').trim()

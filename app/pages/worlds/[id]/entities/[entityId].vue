@@ -55,7 +55,9 @@ const articleMarkdown = computed(() => {
     itemCore.value?.description ||
     spellCore.value?.description ||
     speciesCore.value?.description ||
+    speciesCore.value?.traits ||
     classCore.value?.description ||
+    classCore.value?.features ||
     backgroundCore.value?.description ||
     entity.value?.blocks?.find?.((block: any) => block?.block_key === 'overview' || block?.blockKey === 'overview')?.data?.text ||
     entity.value?.summary ||
@@ -84,7 +86,29 @@ const derivedSummary = computed(() => {
   return firstSentence.slice(0, 280).trim()
 })
 
+function parseJsonishValue(value: any): any {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  if (!trimmed) return value
+
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return value
+    }
+  }
+
+  return value
+}
+
 function formatSimpleValue(value: any): string {
+  value = parseJsonishValue(value)
+
   if (value == null || value === '') return ''
   if (typeof value === 'string') return value
   if (typeof value === 'number') return String(value)
@@ -133,6 +157,8 @@ function formatSize(value: any): string {
 }
 
 function formatPrimaryAbility(value: any): string {
+  value = parseJsonishValue(value)
+
   if (value == null || value === '') return ''
 
   if (typeof value === 'string') return value.toUpperCase()

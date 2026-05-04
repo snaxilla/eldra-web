@@ -215,6 +215,42 @@ const articleMarkdown = computed(() => {
 
 const articleHtml = computed(() => renderMarkdown(articleMarkdown.value || ''))
 
+const classFeatureCards = computed(() => {
+  const features = hydratedClassFeatures.value?.features
+  if (!Array.isArray(features)) return []
+
+  return features
+    .filter((feature: any) => feature?.found || feature?.markdown)
+    .map((feature: any, index: number) => {
+      const level = feature?.level || null
+      const name = String(feature?.name || `Feature ${index + 1}`)
+      const id = `feature-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`
+
+      return {
+        ...feature,
+        id,
+        name,
+        level,
+        markdown: String(feature?.markdown || '').trim(),
+        source: feature?.source || null
+      }
+    })
+})
+
+const classFeatureLevels = computed(() => {
+  const seen = new Set()
+  return classFeatureCards.value
+    .filter((feature: any) => feature.level)
+    .filter((feature: any) => {
+      const key = String(feature.level)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .map((feature: any) => feature.level)
+})
+
+
 const derivedSummary = computed(() => {
   const explicit = String(entity.value?.summary || '').trim()
   if (explicit) return explicit
@@ -520,7 +556,67 @@ async function onImageSelected(event: Event) {
           </div>
 
           <div
-            v-if="articleMarkdown"
+            v-if="entity?.entity_type === 'class' && classFeatureCards.length"
+            class="mt-6 space-y-5"
+          >
+            <div class="sticky top-4 z-10 rounded-2xl border border-white/10 bg-[#0b111b]/90 p-4 backdrop-blur-xl">
+              <div class="mb-3 text-xs uppercase tracking-[0.25em] text-slate-500">Class Outline</div>
+
+              <div class="flex flex-wrap gap-2">
+                <a
+                  v-for="level in classFeatureLevels"
+                  :key="level"
+                  :href="`#class-level-${level}`"
+                  class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-400/20"
+                >
+                  Level {{ level }}
+                </a>
+              </div>
+            </div>
+
+            <div class="space-y-5">
+              <article
+                v-for="feature in classFeatureCards"
+                :key="feature.id"
+                :id="feature.level ? `class-level-${feature.level}` : feature.id"
+                class="scroll-mt-28 overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,24,34,0.72),rgba(10,14,22,0.50))] shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
+              >
+                <header class="border-b border-white/10 bg-white/[0.03] px-5 py-4">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span
+                      v-if="feature.level"
+                      class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100"
+                    >
+                      Level {{ feature.level }}
+                    </span>
+
+                    <span class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                      Feature
+                    </span>
+
+                    <span
+                      v-if="feature.source"
+                      class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
+                    >
+                      {{ feature.source }}
+                    </span>
+                  </div>
+
+                  <h2 class="mt-3 text-2xl font-semibold tracking-tight text-white">
+                    {{ feature.name }}
+                  </h2>
+                </header>
+
+                <div
+                  class="markdown-content px-5 py-5 text-[15px] leading-7 text-slate-200"
+                  v-html="renderMarkdown(feature.markdown)"
+                ></div>
+              </article>
+            </div>
+          </div>
+
+          <div
+            v-else-if="articleMarkdown"
             class="markdown-content mt-6 text-[15px] leading-7 text-slate-200"
             v-html="articleHtml"
           ></div>

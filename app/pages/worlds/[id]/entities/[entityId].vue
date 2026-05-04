@@ -38,6 +38,143 @@ const speciesCore = computed(() => blockByKey('species_core')?.data || null)
 const classCore = computed(() => blockByKey('class_core')?.data || null)
 const backgroundCore = computed(() => blockByKey('background_core')?.data || null)
 
+function blockDataByKey(key: string) {
+  return blockByKey(key)?.data || null
+}
+
+function importSourceRawJson() {
+  const data = blockDataByKey('import_source')
+  return data?.raw_json || data?.rawJson || null
+}
+
+function clean5eText(value: any): string {
+  return String(value || '')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function entriesToMarkdown(value: any): string {
+  if (!value) return ''
+
+  if (typeof value === 'string') return clean5eText(value)
+
+  if (Array.isArray(value)) {
+    return value.map(entriesToMarkdown).filter(Boolean).join('\n\n')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name) parts.push(`## ${clean5eText(value.name)}`)
+    if (value.entry) parts.push(clean5eText(value.entry))
+    if (value.entries) parts.push(entriesToMarkdown(value.entries))
+    if (value.items) parts.push(entriesToMarkdown(value.items))
+
+    return parts.filter(Boolean).join('\n\n')
+  }
+
+  return ''
+}
+
+function choiceList(value: any): string {
+  if (!value) return ''
+
+  if (typeof value === 'string') return clean5eText(value)
+
+  if (Array.isArray(value)) {
+    return value.map(choiceList).filter(Boolean).join(', ')
+  }
+
+  if (typeof value === 'object') {
+    if (Array.isArray(value.from)) return value.from.map(clean5eText).join(', ')
+    if (value.choose) return choiceList(value.choose)
+    return Object.values(value).map(choiceList).filter(Boolean).join(', ')
+  }
+
+  return String(value)
+}
+
+function classFeatureName(value: any): string {
+  if (!value) return ''
+
+  if (typeof value === 'string') {
+    const parts = value.split('|')
+    const name = parts[0] || value
+    const level = parts[3]
+    return level ? `Level ${level}: ${name}` : name
+  }
+
+  if (typeof value === 'object') {
+    return classFeatureName(value.classFeature || value.name || '')
+  }
+
+  return String(value)
+}
+
+function buildClassArticleMarkdown(): string {
+  const raw = importSourceRawJson()
+  if (!raw) return ''
+
+  const parts: string[] = []
+
+  const intro = entriesToMarkdown(raw.entries)
+  if (intro) parts.push(intro)
+
+  const profs: string[] = []
+
+  if (raw.proficiency) {
+    profs.push(`**Saving Throws:** ${choiceList(raw.proficiency).toUpperCase()}`)
+  }
+
+  if (raw.startingProficiencies) {
+    const armor = choiceList(raw.startingProficiencies.armor)
+    const weapons = choiceList(raw.startingProficiencies.weapons)
+    const tools = choiceList(raw.startingProficiencies.tools)
+    const skills = choiceList(raw.startingProficiencies.skills)
+
+    if (armor) profs.push(`**Armor Training:** ${armor}`)
+    if (weapons) profs.push(`**Weapon Proficiencies:** ${weapons}`)
+    if (tools) profs.push(`**Tool Proficiencies:** ${tools}`)
+    if (skills) profs.push(`**Skill Proficiencies:** ${skills}`)
+  }
+
+  if (profs.length) {
+    parts.push(`## Proficiencies\n\n${profs.join('\n\n')}`)
+  }
+
+  if (raw.startingEquipment?.entries?.length) {
+    parts.push(`## Starting Equipment\n\n${entriesToMarkdown(raw.startingEquipment.entries)}`)
+  }
+
+  if (Array.isArray(raw.classFeatures) && raw.classFeatures.length) {
+    const features = raw.classFeatures
+      .map(classFeatureName)
+      .filter(Boolean)
+      .map((line: string) => `- ${clean5eText(line)}`)
+      .join('\n')
+
+    if (features) parts.push(`## Class Features\n\n${features}`)
+  }
+
+  return parts.filter(Boolean).join('\n\n')
+}
+
+function buildSpeciesArticleMarkdown(): string {
+  const core = speciesCore.value
+  const raw = importSourceRawJson()
+
+  return (
+    String(core?.description || '').trim() ||
+    String(core?.traits || '').trim() ||
+    entriesToMarkdown(raw?.entries) ||
+    ''
+  )
+}
+
+
 const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return entity.value.imageUrl
   if (entity.value?.image_url) return entity.value.image_url
@@ -54,10 +191,10 @@ const articleMarkdown = computed(() => {
     entity.value?.summary_markdown ||
     itemCore.value?.description ||
     spellCore.value?.description ||
-    speciesCore.value?.description ||
-    speciesCore.value?.traits ||
+    buildSpeciesArticleMarkdown() ||
     classCore.value?.description ||
     classCore.value?.features ||
+    buildClassArticleMarkdown() ||
     backgroundCore.value?.description ||
     entity.value?.blocks?.find?.((block: any) => block?.block_key === 'overview' || block?.blockKey === 'overview')?.data?.text ||
     entity.value?.summary ||

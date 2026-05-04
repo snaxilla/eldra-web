@@ -22,34 +22,15 @@ function clean5eText(value: any): string {
 
 function entriesToMarkdown(value: any): string {
   if (!value) return ''
-
   if (typeof value === 'string') return clean5eText(value)
-
-  if (Array.isArray(value)) {
-    return value.map(entriesToMarkdown).filter(Boolean).join('\n\n')
-  }
+  if (Array.isArray(value)) return value.map(entriesToMarkdown).filter(Boolean).join('\n\n')
 
   if (typeof value === 'object') {
     const parts: string[] = []
-
     if (value.name) parts.push(`### ${clean5eText(value.name)}`)
     if (value.entry) parts.push(clean5eText(value.entry))
     if (value.entries) parts.push(entriesToMarkdown(value.entries))
-    if (value.items) {
-      const items = Array.isArray(value.items)
-        ? value.items.map((item: any) => `- ${entriesToMarkdown(item)}`).join('\n')
-        : entriesToMarkdown(value.items)
-
-      if (items) parts.push(items)
-    }
-
-    if (value.rows && Array.isArray(value.rows)) {
-      const rows = value.rows
-        .map((row: any) => Array.isArray(row) ? row.map(clean5eText).join(' | ') : clean5eText(row))
-        .join('\n')
-      if (rows) parts.push(rows)
-    }
-
+    if (value.items) parts.push(entriesToMarkdown(value.items))
     return parts.filter(Boolean).join('\n\n')
   }
 
@@ -85,9 +66,82 @@ function featureMatches(feature: any, ref: ReturnType<typeof parseFeatureRef>) {
 
 async function readClassDataset(className: string) {
   const slug = slugifyClassName(className)
-  const path = `${CLASS_DIR}/class-${slug}.json`
-  const raw = await readFile(path, 'utf8')
+  const raw = await readFile(`${CLASS_DIR}/class-${slug}.json`, 'utf8')
   return JSON.parse(raw)
+}
+
+async function readClassFluff(className: string) {
+  const slug = slugifyClassName(className)
+
+  try {
+    const raw = await readFile(`${CLASS_DIR}/fluff-class-${slug}.json`, 'utf8')
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function sourceRank(source: any) {
+  const src = String(source || '').trim().toLowerCase()
+  if (src === 'xphb') return 0
+  if (src === 'phb') return 1
+  return 2
+}
+
+function chooseClassFluff(fluffDataset: any, rawClass: any) {
+  const items = Array.isArray(fluffDataset?.classFluff) ? fluffDataset.classFluff : []
+  const className = String(rawClass?.name || '').trim().toLowerCase()
+  const classSource = String(rawClass?.source || '').trim().toLowerCase()
+
+  return items
+    .filter((item: any) => String(item?.name || '').trim().toLowerCase() === className)
+    .sort((a: any, b: any) => {
+      const aSource = String(a?.source || '').trim().toLowerCase()
+      const bSource = String(b?.source || '').trim().toLowerCase()
+
+      if (aSource === classSource && bSource !== classSource) return -1
+      if (bSource === classSource && aSource !== classSource) return 1
+
+      return sourceRank(aSource) - sourceRank(bSource)
+    })[0] || null
+}
+
+function firstFluffText(fluff: any): string {
+  const text = entriesToMarkdown(fluff?.entries || [])
+    .replace(/^#+\s+/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  if (!text) return ''
+
+  return (
+    text
+      .split('\n\n')
+      .map((part) => part.trim())
+      .find((part) => part.length > 80) ||
+    text.split('\n\n')[0] ||
+    ''
+  )
+}
+
+function firstFluffImageUrl(fluff: any): string {
+  const images = Array.isArray(fluff?.images) ? fluff.images : []
+
+  for (const image of images) {
+    const path =
+      image?.href?.path ||
+      image?.path ||
+      image?.href?.url ||
+      image?.url ||
+      ''
+
+    if (!path) continue
+    if (/^https?:\/\//i.test(path)) return path
+
+    return `/api/5etools-img/${String(path).replace(/^\/+/, '')}`
+  }
+
+  return ''
 }
 
 export default defineEventHandler(async (event) => {
@@ -95,43 +149,28 @@ export default defineEventHandler(async (event) => {
   const entityId = String(getRouterParam(event, 'entityId') || '')
 
   if (!worldId || !entityId) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing world or entity id'
-    })
+    throw createError({ statusCode: 400, statusMessage: 'Missing world or entity id' })
   }
 
   const entityRes = await directusServiceRequest(`/items/entities/${entityId}`, {
     method: 'GET',
-    query: {
-      fields: '*'
-    }
+    query: { fields: '*' }
   })
 
   const entity = entityRes?.data || null
 
   if (!entity || String(entity.world_id) !== String(worldId)) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: 'Entity not found'
-    })
+    throw createError({ statusCode: 404, statusMessage: 'Entity not found' })
   }
 
   if (String(entity.entity_type || '') !== 'class') {
-    return {
-      ok: true,
-      entityId,
-      features: [],
-      markdown: ''
-    }
+    return { ok: true, entityId, features: [], markdown: '' }
   }
 
   const blocksRes = await directusServiceRequest('/items/block_instances', {
     method: 'GET',
     query: {
-      filter: {
-        entity_id: { _eq: entityId }
-      },
+      filter: { entity_id: { _eq: entityId } },
       sort: 'sort',
       limit: -1,
       fields: '*'
@@ -143,15 +182,13 @@ export default defineEventHandler(async (event) => {
   const rawClass = importBlock?.data?.raw_json || null
 
   if (!rawClass?.name) {
-    return {
-      ok: true,
-      entityId,
-      features: [],
-      markdown: ''
-    }
+    return { ok: true, entityId, features: [], markdown: '' }
   }
 
   const dataset = await readClassDataset(rawClass.name)
+  const fluffDataset = await readClassFluff(rawClass.name)
+  const matchedFluff = chooseClassFluff(fluffDataset, rawClass)
+
   const datasetFeatures = Array.isArray(dataset?.classFeature) ? dataset.classFeature : []
   const refs = Array.isArray(rawClass?.classFeatures) ? rawClass.classFeatures : []
 
@@ -188,11 +225,19 @@ export default defineEventHandler(async (event) => {
     })
     .join('\n\n---\n\n')
 
+  const fallbackSummary =
+    firstFluffText(matchedFluff) ||
+    features.find((feature: any) => String(feature?.markdown || '').trim())?.markdown?.split('\n\n')?.[0] ||
+    ''
+
   return {
     ok: true,
     entityId,
     className: rawClass.name,
     classSource: rawClass.source || null,
+    summary: fallbackSummary,
+    imageUrl: firstFluffImageUrl(matchedFluff),
+    fluff: matchedFluff,
     featureCount: features.length,
     foundCount: features.filter((feature: any) => feature.found).length,
     features,

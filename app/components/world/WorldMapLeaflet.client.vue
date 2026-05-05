@@ -301,7 +301,20 @@ async function renderMap() {
     map.setMaxZoom(maxZoom)
     map.options.zoomSnap = 1
 
-    tileLayer = L.tileLayer(String(props.tilePath), {
+    const tileTemplate = String(props.tilePath)
+
+    const EldraTileLayer = L.TileLayer.extend({
+      getTileUrl(coords: any) {
+        const y = -coords.y - 1
+
+        return tileTemplate
+          .replace('{z}', String(coords.z))
+          .replace('{x}', String(coords.x))
+          .replace('{y}', String(y))
+      }
+    })
+
+    tileLayer = new EldraTileLayer(tileTemplate, {
       tileSize: 256,
       minZoom,
       maxZoom,
@@ -309,7 +322,6 @@ async function renderMap() {
       minNativeZoom: minZoom,
       bounds: currentBounds,
       noWrap: true,
-      tms: false,
       attribution: ''
     }).addTo(map)
   } else {

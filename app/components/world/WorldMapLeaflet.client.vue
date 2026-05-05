@@ -145,6 +145,24 @@ function loadImageDimensions(src: string): Promise<{ width: number; height: numb
   })
 }
 
+function usingTiles() {
+  return Boolean(
+    props.tileEnabled &&
+    props.tilePath &&
+    props.tileOriginalWidth &&
+    props.tileOriginalHeight
+  )
+}
+
+function tileMaxZoomValue() {
+  const value = Number(props.tileMaxZoom)
+  return Number.isFinite(value) ? value : 7
+}
+
+function mapCoordinateScale() {
+  return usingTiles() ? Math.pow(2, tileMaxZoomValue()) : 1
+}
+
 async function ensureMap() {
   if (!rootEl.value || map) return
 
@@ -166,7 +184,8 @@ async function ensureMap() {
   map.on('click', (e: any) => {
     if (!props.buildMode) return
     const { lat, lng } = e.latlng
-    emit('map-click', { x: lng, y: lat })
+    const scale = mapCoordinateScale()
+    emit('map-click', { x: lng * scale, y: lat * scale })
   })
 
   markerLayer = L.layerGroup().addTo(map)
@@ -192,7 +211,7 @@ function renderPins() {
   markerLayer.clearLayers()
 
   for (const pin of props.pins || []) {
-    const marker = L.marker(L.latLng(pin.y, pin.x), {
+    const marker = L.marker(L.latLng(pin.y / mapCoordinateScale(), pin.x / mapCoordinateScale()), {
       icon: L.divIcon({
         className: 'eldra-leaflet-pin',
         html: makePinHtml(pin, pin.id === props.selectedPinId),
@@ -239,32 +258,31 @@ function getCoverZoom(bounds: any) {
 }
 
 async function renderMap() {
-  if (!props.mapImageUrl && !props.tileEnabled) return
+  if (!props.mapImageUrl && !usingTiles()) return
 
   await ensureMap()
   if (!L || !map) return
 
   clearMap()
 
-  const useTiles =
-    props.tileEnabled &&
-    props.tilePath &&
-    props.tileOriginalWidth &&
-    props.tileOriginalHeight
+  const useTiles = usingTiles()
+  const maxZoom = tileMaxZoomValue()
+  const scale = mapCoordinateScale()
 
-  const width = useTiles
-    ? Number(props.tileOriginalWidth)
-    : (await loadImageDimensions(props.mapImageUrl)).width
+  const dimensions = useTiles
+    ? {
+        width: Number(props.tileOriginalWidth),
+        height: Number(props.tileOriginalHeight)
+      }
+    : await loadImageDimensions(props.mapImageUrl)
 
-  const height = useTiles
-    ? Number(props.tileOriginalHeight)
-    : (await loadImageDimensions(props.mapImageUrl)).height
+  const mapWidth = useTiles ? dimensions.width / scale : dimensions.width
+  const mapHeight = useTiles ? dimensions.height / scale : dimensions.height
 
-  currentBounds = L.latLngBounds([0, 0], [height, width])
+  currentBounds = L.latLngBounds([0, 0], [mapHeight, mapWidth])
 
   if (useTiles) {
     const minZoom = Number.isFinite(Number(props.tileMinZoom)) ? Number(props.tileMinZoom) : 0
-    const maxZoom = Number.isFinite(Number(props.tileMaxZoom)) ? Number(props.tileMaxZoom) : 7
 
     map.setMinZoom(minZoom)
     map.setMaxZoom(maxZoom)
@@ -274,6 +292,8 @@ async function renderMap() {
       tileSize: 256,
       minZoom,
       maxZoom,
+      maxNativeZoom: maxZoom,
+      minNativeZoom: minZoom,
       bounds: currentBounds,
       noWrap: true,
       tms: false,
@@ -288,11 +308,11 @@ async function renderMap() {
   }
 
   const center = currentBounds.getCenter()
-  const coverZoom = useTiles ? Number(props.tileMinZoom || 0) : getCoverZoom(currentBounds)
+  const startZoom = useTiles ? Number(props.tileMinZoom || 0) : getCoverZoom(currentBounds)
 
   map.setMaxBounds(currentBounds)
   map.options.maxBoundsViscosity = 1.0
-  map.setView(center, coverZoom, { animate: false })
+  map.setView(center, startZoom, { animate: false })
 
   renderPins()
 
@@ -300,7 +320,7 @@ async function renderMap() {
     if (!map) return
     map.invalidateSize()
     map.setMaxBounds(currentBounds)
-    map.setView(center, coverZoom, { animate: false })
+    map.setView(center, startZoom, { animate: false })
   })
 }
 

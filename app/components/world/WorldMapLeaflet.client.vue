@@ -269,6 +269,19 @@ async function renderMap() {
   const maxZoom = tileMaxZoomValue()
   const scale = mapCoordinateScale()
 
+  console.log('[EldraMap] renderMap props', {
+    mapImageUrl: props.mapImageUrl,
+    tileEnabled: props.tileEnabled,
+    tilePath: props.tilePath,
+    tileMinZoom: props.tileMinZoom,
+    tileMaxZoom: props.tileMaxZoom,
+    tileOriginalWidth: props.tileOriginalWidth,
+    tileOriginalHeight: props.tileOriginalHeight,
+    useTiles,
+    maxZoom,
+    scale
+  })
+
   const dimensions = useTiles
     ? {
         width: Number(props.tileOriginalWidth),

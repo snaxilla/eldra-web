@@ -11,6 +11,15 @@ type DirectusMapRecord = {
   imageUrl: string
   isDefaultWorldMap: boolean
   directusFileId: string | null
+  tileEnabled?: boolean
+  tileStatus?: string
+  tilePath?: string | null
+  tileMinZoom?: number | null
+  tileMaxZoom?: number | null
+  tileFormat?: string | null
+  tileOriginalWidth?: number | null
+  tileOriginalHeight?: number | null
+  tileError?: string | null
 }
 
 const MAPS_COLLECTION = 'maps'
@@ -73,7 +82,16 @@ function normalize(item: any): DirectusMapRecord {
     type: item?.type ?? 'area',
     imageUrl: fileUrl(fileId),
     isDefaultWorldMap: Boolean(item?.is_default_world_map),
-    directusFileId: fileId
+    directusFileId: fileId,
+    tileEnabled: Boolean(item?.tile_enabled),
+    tileStatus: item?.tile_status || 'none',
+    tilePath: item?.tile_path || null,
+    tileMinZoom: item?.tile_min_zoom ?? null,
+    tileMaxZoom: item?.tile_max_zoom ?? null,
+    tileFormat: item?.tile_format || null,
+    tileOriginalWidth: item?.tile_original_width ?? null,
+    tileOriginalHeight: item?.tile_original_height ?? null,
+    tileError: item?.tile_error || null
   }
 }
 
@@ -96,6 +114,15 @@ export async function listMaps(worldId: string) {
   params.append('fields[]', 'is_default_world_map')
   params.append('fields[]', 'image_file')
   params.append('fields[]', 'image_file.id')
+  params.append('fields[]', 'tile_enabled')
+  params.append('fields[]', 'tile_status')
+  params.append('fields[]', 'tile_path')
+  params.append('fields[]', 'tile_min_zoom')
+  params.append('fields[]', 'tile_max_zoom')
+  params.append('fields[]', 'tile_format')
+  params.append('fields[]', 'tile_original_width')
+  params.append('fields[]', 'tile_original_height')
+  params.append('fields[]', 'tile_error')
 
   const res = await dxFetch(`/items/${MAPS_COLLECTION}?${params.toString()}`)
   return (res.data || []).map(normalize)
@@ -130,7 +157,7 @@ export async function uploadFile(buffer: Buffer, filename: string, mime: string)
   return res.data.data
 }
 
-export async function createMap(worldId: string, title: string, type: MapType, fileId: string) {
+export async function createMap(worldId: string, title: string, type: MapType, fileId: string, extra: Record<string, any> = {}) {
   const existing = await listMaps(worldId)
   const slug = slugify(title)
 
@@ -142,8 +169,18 @@ export async function createMap(worldId: string, title: string, type: MapType, f
       type,
       world: Number(worldId),
       image_file: fileId,
-      is_default_world_map: existing.length === 0
+      is_default_world_map: existing.length === 0,
+      ...extra
     })
+  })
+
+  return normalize(res.data)
+}
+
+export async function updateMap(mapId: string, patch: Record<string, any>) {
+  const res = await dxFetch(`/items/${MAPS_COLLECTION}/${mapId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch)
   })
 
   return normalize(res.data)

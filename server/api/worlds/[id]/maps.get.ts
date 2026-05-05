@@ -37,6 +37,13 @@ async function dxFetch(path: string, options: RequestInit = {}) {
   return json
 }
 
+function fileId(value: any) {
+  if (!value) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'object' && value.id) return String(value.id)
+  return null
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
 
@@ -49,10 +56,7 @@ export default defineEventHandler(async (event) => {
 
   const params = new URLSearchParams()
 
-  // Use the exposed relation field, not raw world_id
   params.set('filter[world][_eq]', worldId)
-
-  // Only request fields we actually need
   params.append('fields[]', 'id')
   params.append('fields[]', 'title')
   params.append('fields[]', 'slug')
@@ -60,24 +64,42 @@ export default defineEventHandler(async (event) => {
   params.append('fields[]', 'parent_map_id')
   params.append('fields[]', 'is_default_world_map')
   params.append('fields[]', 'image_file')
-
+  params.append('fields[]', 'image_file.id')
+  params.append('fields[]', 'tile_enabled')
+  params.append('fields[]', 'tile_status')
+  params.append('fields[]', 'tile_path')
+  params.append('fields[]', 'tile_min_zoom')
+  params.append('fields[]', 'tile_max_zoom')
+  params.append('fields[]', 'tile_format')
+  params.append('fields[]', 'tile_original_width')
+  params.append('fields[]', 'tile_original_height')
+  params.append('fields[]', 'tile_error')
   params.set('sort', 'title')
 
-  const json = await dxFetch(`/items/maps?${params.toString()}`)
-  const rows = Array.isArray(json?.data) ? json.data : []
+  const res = await dxFetch(`/items/maps?${params.toString()}`)
+  const rows = Array.isArray(res?.data) ? res.data : []
 
   return rows.map((row: any) => {
-    const imageFileId = row?.image_file || null
+    const imageFileId = fileId(row?.image_file)
 
     return {
       id: String(row?.id || ''),
       title: String(row?.title || 'Untitled Map'),
-      slug: row?.slug ? String(row.slug) : '',
-      type: row?.type ? String(row.type) : 'area',
+      slug: String(row?.slug || ''),
+      type: String(row?.type || 'area'),
       parentMapId: row?.parent_map_id ? String(row.parent_map_id) : null,
-      isDefaultWorldMap: row?.is_default_world_map === true || row?.is_default_world_map === 1,
-      directusFileId: imageFileId ? String(imageFileId) : null,
-      imageUrl: imageFileId ? `/api/assets/${imageFileId}` : null
+      isDefaultWorldMap: Boolean(row?.is_default_world_map),
+      directusFileId: imageFileId,
+      imageUrl: imageFileId ? `/api/assets/${imageFileId}` : null,
+      tileEnabled: Boolean(row?.tile_enabled),
+      tileStatus: row?.tile_status || 'none',
+      tilePath: row?.tile_path || null,
+      tileMinZoom: row?.tile_min_zoom ?? null,
+      tileMaxZoom: row?.tile_max_zoom ?? null,
+      tileFormat: row?.tile_format || null,
+      tileOriginalWidth: row?.tile_original_width ?? null,
+      tileOriginalHeight: row?.tile_original_height ?? null,
+      tileError: row?.tile_error || null
     }
   })
 })

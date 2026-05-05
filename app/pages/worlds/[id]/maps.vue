@@ -73,6 +73,8 @@ const showUploadForm = ref(false)
 const uploadTitle = ref('')
 const uploadType = ref<'world' | 'country' | 'area' | 'detail'>('area')
 const uploadFile = ref<File | null>(null)
+const generateTiles = ref(true)
+const tileMaxZoom = ref(7)
 const uploadBusy = ref(false)
 const uploadError = ref('')
 const uploadSuccess = ref('')
@@ -144,6 +146,8 @@ async function uploadMap() {
     formData.append('title', uploadTitle.value.trim())
     formData.append('type', uploadType.value)
     formData.append('file', uploadFile.value)
+    formData.append('generateTiles', generateTiles.value ? 'true' : 'false')
+    formData.append('tileMaxZoom', String(tileMaxZoom.value || 7))
 
     await $fetch(`/api/worlds/${worldId.value}/maps/upload`, {
       method: 'POST',
@@ -153,7 +157,7 @@ async function uploadMap() {
     uploadTitle.value = ''
     uploadType.value = 'area'
     uploadFile.value = null
-    uploadSuccess.value = 'Map uploaded.'
+    uploadSuccess.value = generateTiles.value ? 'Map uploaded and tiled.' : 'Map uploaded.'
     showUploadForm.value = false
 
     await loadMaps()
@@ -312,6 +316,33 @@ function parentOptionsFor(mapId: string) {
               @change="onFileChange"
             >
           </div>
+
+          <div class="md:col-span-2 rounded-2xl border border-sky-400/15 bg-sky-400/[0.06] p-4">
+            <label class="flex items-start gap-3 text-sm text-slate-200">
+              <input
+                v-model="generateTiles"
+                type="checkbox"
+                class="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900"
+              >
+              <span>
+                <span class="block font-medium text-sky-100">Generate zoom tiles</span>
+                <span class="mt-1 block text-xs leading-5 text-slate-400">
+                  Best for huge world maps. Upload will take longer, but players load only visible map tiles instead of the full image.
+                </span>
+              </span>
+            </label>
+
+            <div v-if="generateTiles" class="mt-4 max-w-xs">
+              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">Max Zoom</label>
+              <input
+                v-model.number="tileMaxZoom"
+                type="number"
+                min="0"
+                max="10"
+                class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none"
+              >
+            </div>
+          </div>
         </div>
 
         <div v-if="uploadError" class="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -361,6 +392,20 @@ function parentOptionsFor(mapId: string) {
 
               <span class="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs text-slate-300">
                 {{ formatMapType(map.type) }}
+              </span>
+
+              <span
+                v-if="map.tileEnabled"
+                class="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-200"
+              >
+                Tiled {{ map.tileMinZoom }}-{{ map.tileMaxZoom }}
+              </span>
+
+              <span
+                v-else-if="map.tileStatus && map.tileStatus !== 'none'"
+                class="rounded-full border border-yellow-400/20 bg-yellow-400/10 px-2.5 py-1 text-xs text-yellow-200"
+              >
+                Tiles: {{ map.tileStatus }}
               </span>
             </div>
 

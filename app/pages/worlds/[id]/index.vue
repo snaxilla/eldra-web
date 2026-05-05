@@ -522,6 +522,12 @@ function openLinkedMap() {
       <WorldMapLeaflet
         :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
         :map-image-url="mapImageUrl"
+        :tile-enabled="activeMap?.tileEnabled"
+        :tile-path="activeMap?.tilePath"
+        :tile-min-zoom="activeMap?.tileMinZoom"
+        :tile-max-zoom="activeMap?.tileMaxZoom"
+        :tile-original-width="activeMap?.tileOriginalWidth"
+        :tile-original-height="activeMap?.tileOriginalHeight"
         :pins="visiblePins"
         :selected-pin-id="selectedPinId"
         :build-mode="mode === 'build'"

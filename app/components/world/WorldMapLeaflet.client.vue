@@ -14,6 +14,12 @@ type Pin = {
 
 const props = defineProps<{
   mapImageUrl: string
+  tileEnabled?: boolean
+  tilePath?: string | null
+  tileMinZoom?: number | null
+  tileMaxZoom?: number | null
+  tileOriginalWidth?: number | null
+  tileOriginalHeight?: number | null
   pins: Pin[]
   selectedPinId?: string | null
   buildMode?: boolean
@@ -29,6 +35,7 @@ const rootEl = ref<HTMLDivElement | null>(null)
 let L: any = null
 let map: any = null
 let imageOverlay: any = null
+let tileLayer: any = null
 let markerLayer: any = null
 let currentBounds: any = null
 
@@ -172,6 +179,11 @@ function clearMap() {
     map.removeLayer(imageOverlay)
     imageOverlay = null
   }
+
+  if (tileLayer && map) {
+    map.removeLayer(tileLayer)
+    tileLayer = null
+  }
 }
 
 function renderPins() {
@@ -227,20 +239,56 @@ function getCoverZoom(bounds: any) {
 }
 
 async function renderMap() {
-  if (!props.mapImageUrl) return
+  if (!props.mapImageUrl && !props.tileEnabled) return
 
   await ensureMap()
   if (!L || !map) return
 
   clearMap()
 
-  const { width, height } = await loadImageDimensions(props.mapImageUrl)
+  const useTiles =
+    props.tileEnabled &&
+    props.tilePath &&
+    props.tileOriginalWidth &&
+    props.tileOriginalHeight
+
+  const width = useTiles
+    ? Number(props.tileOriginalWidth)
+    : (await loadImageDimensions(props.mapImageUrl)).width
+
+  const height = useTiles
+    ? Number(props.tileOriginalHeight)
+    : (await loadImageDimensions(props.mapImageUrl)).height
+
   currentBounds = L.latLngBounds([0, 0], [height, width])
 
-  imageOverlay = L.imageOverlay(props.mapImageUrl, currentBounds).addTo(map)
+  if (useTiles) {
+    const minZoom = Number.isFinite(Number(props.tileMinZoom)) ? Number(props.tileMinZoom) : 0
+    const maxZoom = Number.isFinite(Number(props.tileMaxZoom)) ? Number(props.tileMaxZoom) : 7
+
+    map.setMinZoom(minZoom)
+    map.setMaxZoom(maxZoom)
+    map.options.zoomSnap = 1
+
+    tileLayer = L.tileLayer(String(props.tilePath), {
+      tileSize: 256,
+      minZoom,
+      maxZoom,
+      bounds: currentBounds,
+      noWrap: true,
+      tms: false,
+      attribution: ''
+    }).addTo(map)
+  } else {
+    map.setMinZoom(-5)
+    map.setMaxZoom(5)
+    map.options.zoomSnap = 0.25
+
+    imageOverlay = L.imageOverlay(props.mapImageUrl, currentBounds).addTo(map)
+  }
 
   const center = currentBounds.getCenter()
-  const coverZoom = getCoverZoom(currentBounds)
+  const coverZoom = useTiles ? Number(props.tileMinZoom || 0) : getCoverZoom(currentBounds)
 
   map.setMaxBounds(currentBounds)
   map.options.maxBoundsViscosity = 1.0
@@ -257,7 +305,15 @@ async function renderMap() {
 }
 
 watch(
-  () => props.mapImageUrl,
+  () => [
+    props.mapImageUrl,
+    props.tileEnabled,
+    props.tilePath,
+    props.tileMinZoom,
+    props.tileMaxZoom,
+    props.tileOriginalWidth,
+    props.tileOriginalHeight
+  ],
   async () => {
     await nextTick()
     await renderMap()

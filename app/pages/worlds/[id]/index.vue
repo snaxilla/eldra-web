@@ -38,6 +38,14 @@ function normalizeMap(row: any) {
         : row?.is_default_world_map === true || row?.is_default_world_map === 1,
     imageUrl: row?.imageUrl || row?.image_url || null,
     directusFileId: row?.directusFileId || row?.directus_file_id || null,
+    tileEnabled: row?.tileEnabled === true || row?.tile_enabled === true || row?.tile_enabled === 1,
+    tileStatus: row?.tileStatus || row?.tile_status || 'none',
+    tilePath: row?.tilePath || row?.tile_path || null,
+    tileMinZoom: row?.tileMinZoom ?? row?.tile_min_zoom ?? null,
+    tileMaxZoom: row?.tileMaxZoom ?? row?.tile_max_zoom ?? null,
+    tileOriginalWidth: row?.tileOriginalWidth ?? row?.tile_original_width ?? null,
+    tileOriginalHeight: row?.tileOriginalHeight ?? row?.tile_original_height ?? null,
+    tileError: row?.tileError || row?.tile_error || null,
   }
 }
 

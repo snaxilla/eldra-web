@@ -193,6 +193,18 @@ const entityImageUrl = computed(() => {
   return ''
 })
 
+const imageLightboxOpen = ref(false)
+
+function openImageLightbox() {
+  if (!entityImageUrl.value) return
+  imageLightboxOpen.value = true
+}
+
+function closeImageLightbox() {
+  imageLightboxOpen.value = false
+}
+
+
 const articleMarkdown = computed(() => {
   if (!entity.value) return ''
 
@@ -568,24 +580,10 @@ async function onImageSelected(event: Event) {
                 {{ hydratedClassFeatures.summary }}
               </div>
             </div>
+            </div>
 
             <div
-              v-if="entity?.entity_type === 'class' && hydratedClassFeatures?.featureCount"
-              class="grid min-w-[220px] grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm"
-            >
-              <div>
-                <div class="text-xs uppercase tracking-[0.22em] text-slate-500">Features</div>
-                <div class="mt-1 text-2xl font-semibold text-white">{{ hydratedClassFeatures.featureCount }}</div>
-              </div>
-              <div>
-                <div class="text-xs uppercase tracking-[0.22em] text-slate-500">Hydrated</div>
-                <div class="mt-1 text-2xl font-semibold text-emerald-200">{{ hydratedClassFeatures.foundCount }}</div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            v-if="entity?.entity_type === 'class' && classFeatureCards.length"
+              v-if="entity?.entity_type === 'class' && classFeatureCards.length"
             class="mt-6 space-y-5"
           >
             <div class="sticky top-4 z-10 rounded-2xl border border-white/10 bg-[#0b111b]/90 p-4 backdrop-blur-xl">
@@ -830,6 +828,41 @@ async function onImageSelected(event: Event) {
       </div>
     </aside>
   </div>
+    <Teleport to="body">
+      <Transition
+        enter-from-class="opacity-0"
+        enter-active-class="transition duration-150"
+        leave-to-class="opacity-0"
+        leave-active-class="transition duration-150"
+      >
+        <div
+          v-if="imageLightboxOpen && entityImageUrl"
+          class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+          @click.self="closeImageLightbox"
+        >
+          <div class="relative max-h-[92vh] max-w-[92vw]">
+            <button
+              type="button"
+              class="absolute right-3 top-3 z-10 rounded-xl border border-white/10 bg-black/65 p-2 text-slate-200 backdrop-blur transition hover:bg-black/85 hover:text-white"
+              @click="closeImageLightbox"
+            >
+              <UIcon name="i-lucide-x" class="h-5 w-5" />
+            </button>
+
+            <img
+              :src="entityImageUrl"
+              :alt="entity?.title || 'Image preview'"
+              class="max-h-[92vh] max-w-[92vw] rounded-2xl border border-white/10 object-contain shadow-[0_30px_100px_rgba(0,0,0,0.65)]"
+            >
+
+            <div class="pointer-events-none absolute bottom-3 left-3 right-3 rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-sm text-slate-100 backdrop-blur">
+              {{ entity?.title || 'Image preview' }}
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
 </template>
 
 <style scoped>

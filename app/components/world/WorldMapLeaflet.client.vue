@@ -117,13 +117,13 @@ function makePinHtml(pin: Pin, selected: boolean) {
 
   return `
     <div style="
-      width: 34px;
-      height: 44px;
+      width: 28px;
+      height: 36px;
       filter: drop-shadow(0 10px 18px rgba(0,0,0,0.35));
       transform: ${selected ? 'scale(1.08)' : 'scale(1)'};
       transition: transform 140ms ease;
     ">
-      <svg width="34" height="44" viewBox="0 0 34 44" xmlns="http://www.w3.org/2000/svg">
+      <svg width="28" height="36" viewBox="0 0 34 44" xmlns="http://www.w3.org/2000/svg">
         <path
           d="M17 1.5C8.44 1.5 1.5 8.44 1.5 17c0 11.17 12.63 22.62 14.1 23.92a2.1 2.1 0 0 0 2.8 0C19.87 39.62 32.5 28.17 32.5 17 32.5 8.44 25.56 1.5 17 1.5Z"
           fill="${bg}"
@@ -222,9 +222,9 @@ function renderPins() {
       icon: L.divIcon({
         className: 'eldra-leaflet-pin',
         html: makePinHtml(pin, pin.id === props.selectedPinId),
-        iconSize: [34, 44],
-        iconAnchor: [17, 42],
-        tooltipAnchor: [0, -36],
+        iconSize: [28, 36],
+        iconAnchor: [14, 34],
+        tooltipAnchor: [0, -30],
       }),
     })
 
@@ -237,7 +237,7 @@ function renderPins() {
       marker.bindTooltip(pin.title, {
         permanent: false,
         direction: 'top',
-        offset: [0, -36],
+        offset: [0, -30],
         className: 'eldra-pin-tooltip',
       })
     }
@@ -276,18 +276,6 @@ async function renderMap() {
   const maxZoom = tileMaxZoomValue()
   const scale = mapCoordinateScale()
 
-  console.log('[EldraMap] renderMap props', {
-    mapImageUrl: props.mapImageUrl,
-    tileEnabled: props.tileEnabled,
-    tilePath: props.tilePath,
-    tileMinZoom: props.tileMinZoom,
-    tileMaxZoom: props.tileMaxZoom,
-    tileOriginalWidth: props.tileOriginalWidth,
-    tileOriginalHeight: props.tileOriginalHeight,
-    useTiles,
-    maxZoom,
-    scale
-  })
 
   const dimensions = useTiles
     ? {
@@ -308,7 +296,7 @@ async function renderMap() {
 
     map.setMinZoom(minZoom)
     map.setMaxZoom(maxZoom)
-    map.options.zoomSnap = 1
+    map.options.zoomSnap = 0.25
 
     tileLayer = L.tileLayer(String(props.tilePath), {
       tileSize: 256,
@@ -330,7 +318,7 @@ async function renderMap() {
   }
 
   const center = currentBounds.getCenter()
-  const startZoom = useTiles ? Number(props.tileMinZoom || 0) : getCoverZoom(currentBounds)
+  const startZoom = getCoverZoom(currentBounds)
 
   map.setMaxBounds(currentBounds)
   map.options.maxBoundsViscosity = 1.0

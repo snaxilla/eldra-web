@@ -447,6 +447,31 @@ function backgroundMetaLines() {
   ].filter(Boolean)
 }
 
+
+const detailSections = computed(() => {
+  const sections: Array<{ title: string; lines: string[] }> = []
+
+  if (itemCore.value) sections.push({ title: 'Item Details', lines: itemMetaLines() })
+  if (spellCore.value) sections.push({ title: 'Spell Details', lines: spellMetaLines() })
+  if (speciesCore.value) sections.push({ title: 'Species Details', lines: speciesMetaLines() })
+  if (classCore.value) sections.push({ title: 'Class Details', lines: classMetaLines() })
+  if (backgroundCore.value) sections.push({ title: 'Background Details', lines: backgroundMetaLines() })
+
+  return sections.filter((section) => section.lines.length)
+})
+
+const contextDrawerOpen = ref(false)
+const contextDrawerTitle = ref('')
+const contextDrawerMarkdown = ref('')
+
+const contextDrawerHtml = computed(() => renderMarkdown(contextDrawerMarkdown.value || ''))
+
+function closeContextDrawer() {
+  contextDrawerOpen.value = false
+  contextDrawerTitle.value = ''
+  contextDrawerMarkdown.value = ''
+}
+
 async function onImageSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input?.files?.[0]
@@ -483,209 +508,68 @@ async function onImageSelected(event: Event) {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <div class="mx-auto max-w-[1900px] p-6">
-      <div class="pr-[380px] transition-all duration-200">
-        <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
-          <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
-            {{ world?.name || 'World' }}
-          </div>
-
-          <div class="mt-3 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div class="min-w-0">
-              <h1 class="text-5xl font-semibold tracking-tight text-white">
-                {{ entity?.title || 'Entity' }}
-              </h1>
-
-              <div class="mt-4 flex flex-wrap gap-2">
-                <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-slate-300">
-                  {{ entity?.entity_type || 'entity' }}
-                </div>
-
-                <div class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-slate-300">
-                  {{ entity?.slug || 'no-slug' }}
-                </div>
-
-                <div
-                  v-if="entity?.statblock?.challenge_rating"
-                  class="rounded-full border border-red-400/20 bg-red-400/10 px-3 py-1.5 text-sm text-red-200"
-                >
-                  CR {{ entity.statblock.challenge_rating }}
-                </div>
-              </div>
+    <div class="mx-auto max-w-[1500px] p-6">
+      <section class="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.48),rgba(12,16,22,0.30))] backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.22)]">
+        <div class="grid gap-0 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div class="p-7">
+            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
+              {{ world?.name || 'World' }}
             </div>
-          </div>
-        </section>
 
-        <section
-          v-if="itemCore"
-          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
-        >
-          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Item Details</div>
-          <div class="mt-5 grid gap-3 text-sm text-slate-200">
-            <div v-for="line in itemMetaLines()" :key="line">{{ line }}</div>
-          </div>
-        </section>
+            <h1 class="mt-4 text-5xl font-semibold tracking-tight text-white">
+              {{ entity?.title || 'Entity' }}
+            </h1>
 
-        <section
-          v-if="spellCore"
-          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
-        >
-          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Spell Details</div>
-          <div class="mt-5 grid gap-3 text-sm text-slate-200">
-            <div v-for="line in spellMetaLines()" :key="line">{{ line }}</div>
-          </div>
-        </section>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <div class="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-sm text-slate-300">
+                {{ entity?.entity_type || 'entity' }}
+              </div>
 
-        <section
-          v-if="speciesCore"
-          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
-        >
-          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Species Details</div>
-          <div class="mt-5 grid gap-3 text-sm text-slate-200">
-            <div v-for="line in speciesMetaLines()" :key="line">{{ line }}</div>
-          </div>
-        </section>
-
-        <section
-          v-if="classCore"
-          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
-        >
-          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Class Details</div>
-          <div class="mt-5 grid gap-3 text-sm text-slate-200">
-            <div v-for="line in classMetaLines()" :key="line">{{ line }}</div>
-          </div>
-        </section>
-
-        <section
-          v-if="backgroundCore"
-          class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]"
-        >
-          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Background Details</div>
-          <div class="mt-5 grid gap-3 text-sm text-slate-200">
-            <div v-for="line in backgroundMetaLines()" :key="line">{{ line }}</div>
-          </div>
-        </section>
-
-        <section class="mt-6 rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.34),rgba(12,16,22,0.24))] p-7 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.14)]">
-          <div class="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-                Article
+              <div class="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-sm text-slate-300">
+                {{ entity?.slug || 'no-slug' }}
               </div>
 
               <div
-                v-if="entity?.entity_type === 'class' && hydratedClassFeatures?.summary"
-                class="mt-4 max-w-4xl rounded-2xl border border-amber-400/15 bg-amber-400/[0.06] p-4 text-sm leading-7 text-amber-50/90"
+                v-if="entity?.statblock?.challenge_rating"
+                class="rounded-full border border-red-400/20 bg-red-400/10 px-3 py-1.5 text-sm text-red-200"
               >
-                {{ hydratedClassFeatures.summary }}
+                CR {{ entity.statblock.challenge_rating }}
               </div>
-            </div>
             </div>
 
             <div
-              v-if="entity?.entity_type === 'class' && classFeatureCards.length"
-            class="mt-6 space-y-5"
-          >
-            <div class="sticky top-4 z-10 rounded-2xl border border-white/10 bg-[#0b111b]/90 p-4 backdrop-blur-xl">
-              <div class="mb-3 text-xs uppercase tracking-[0.25em] text-slate-500">Class Outline</div>
-
-              <div class="flex flex-wrap gap-2">
-                <a
-                  v-for="level in classFeatureLevels"
-                  :key="level"
-                  :href="`#class-level-${level}`"
-                  class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-400/20"
-                >
-                  Level {{ level }}
-                </a>
-              </div>
-            </div>
-
-            <div class="space-y-5">
-              <article
-                v-for="feature in classFeatureCards"
-                :key="feature.id"
-                :id="feature.level ? `class-level-${feature.level}` : feature.id"
-                class="scroll-mt-28 overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,24,34,0.72),rgba(10,14,22,0.50))] shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
-              >
-                <header class="border-b border-white/10 bg-white/[0.03] px-5 py-4">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span
-                      v-if="feature.level"
-                      class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100"
-                    >
-                      Level {{ feature.level }}
-                    </span>
-
-                    <span class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
-                      Feature
-                    </span>
-
-                    <span
-                      v-if="feature.source"
-                      class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
-                    >
-                      {{ feature.source }}
-                    </span>
-                  </div>
-
-                  <h2 class="mt-3 text-2xl font-semibold tracking-tight text-white">
-                    {{ feature.name }}
-                  </h2>
-                </header>
-
-                <div
-                  class="markdown-content px-5 py-5 text-[15px] leading-7 text-slate-200"
-                  v-html="renderMarkdown(feature.markdown)"
-                ></div>
-              </article>
+              v-if="derivedSummary"
+              class="mt-6 max-w-4xl rounded-2xl border border-amber-400/15 bg-amber-400/[0.06] p-5 text-[15px] leading-8 text-amber-50/90"
+            >
+              {{ derivedSummary }}
             </div>
           </div>
 
-          <div
-            v-else-if="articleMarkdown"
-            class="markdown-content mt-6 text-[15px] leading-7 text-slate-200"
-            v-html="articleHtml"
-          ></div>
-
-          <p
-            v-else
-            class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
-          >
-            No article content yet.
-          </p>
-        </section>
-      </div>
-    </div>
-
-    <aside class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.72),rgba(10,13,18,0.62))] backdrop-blur-xl">
-      <div class="flex h-full flex-col">
-        <div class="border-b border-white/10 px-5 py-5">
-          <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Entity</div>
-          <h2 class="mt-3 truncate text-2xl font-semibold text-white">{{ entity?.title || 'Entity' }}</h2>
-        </div>
-
-        <div class="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-          <div class="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.28),rgba(12,16,22,0.20))] backdrop-blur-lg">
-            <div
+          <div class="border-t border-white/10 bg-black/10 p-5 lg:border-l lg:border-t-0">
+            <button
               v-if="entityImageUrl"
-              class="aspect-[4/3] w-full bg-black/20"
+              type="button"
+              class="group block w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/30 text-left shadow-[0_18px_55px_rgba(0,0,0,0.26)]"
+              @click="openImageLightbox"
             >
               <img
                 :src="entityImageUrl"
                 :alt="entity?.title || 'Entity image'"
-                class="h-full w-full object-cover object-[center_15%]"
+                class="aspect-[4/3] w-full object-cover object-[center_15%] transition duration-200 group-hover:scale-[1.02]"
               >
-            </div>
+              <div class="border-t border-white/10 px-4 py-3 text-xs uppercase tracking-[0.25em] text-slate-400">
+                Click to view image
+              </div>
+            </button>
 
             <div
               v-else
-              class="flex aspect-[4/3] items-center justify-center bg-white/[0.03] text-4xl font-semibold text-slate-400"
+              class="flex aspect-[4/3] items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.03] text-5xl font-semibold text-slate-400"
             >
               {{ (entity?.title || 'E').slice(0, 2).toUpperCase() }}
             </div>
 
-            <div v-if="mode === 'build'" class="border-t border-white/10 p-4">
+            <div v-if="mode === 'build'" class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
               <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">
                 Article Image
               </label>
@@ -710,124 +594,171 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <WorldPagePresentationPanel
-            v-if="mode === 'build'"
-            :world-id="worldId"
-            page-key="entity-article"
-            title="Entity Article"
-            description="Build-mode page controls live here for this article view."
-          />
+      <WorldPagePresentationPanel
+        v-if="mode === 'build'"
+        :world-id="worldId"
+        page-key="entity-article"
+        title="Entity Article"
+        description="Build-mode page controls live here for this article view."
+        class="mt-6"
+      />
 
-          <div class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg">
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-              Summary
-            </div>
-
-            <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-200">
-              {{ derivedSummary || 'No summary yet.' }}
-            </p>
+      <section
+        v-if="detailSections.length"
+        class="mt-6 grid gap-4 lg:grid-cols-2"
+      >
+        <article
+          v-for="section in detailSections"
+          :key="section.title"
+          class="rounded-[26px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.38),rgba(12,16,22,0.26))] p-6 backdrop-blur-xl shadow-[0_18px_55px_rgba(0,0,0,0.16)]"
+        >
+          <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
+            {{ section.title }}
           </div>
 
-          <div
-            v-if="itemCore"
-            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
-          >
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Item Details</div>
-            <div class="mt-4 space-y-2 text-sm text-slate-200">
-              <div v-for="line in itemMetaLines()" :key="line">{{ line }}</div>
+          <div class="mt-5 grid gap-3 text-sm leading-7 text-slate-200">
+            <div
+              v-for="line in section.lines"
+              :key="line"
+              class="rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3"
+            >
+              {{ line }}
             </div>
           </div>
+        </article>
+      </section>
 
-          <div
-            v-if="spellCore"
-            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
-          >
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Spell Details</div>
-            <div class="mt-4 space-y-2 text-sm text-slate-200">
-              <div v-for="line in spellMetaLines()" :key="line">{{ line }}</div>
-            </div>
-          </div>
+      <section class="mt-6 rounded-[30px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.42),rgba(12,16,22,0.30))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
+        <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
+          Article
+        </div>
 
-          <div
-            v-if="speciesCore"
-            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
-          >
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Species Details</div>
-            <div class="mt-4 space-y-2 text-sm text-slate-200">
-              <div v-for="line in speciesMetaLines()" :key="line">{{ line }}</div>
-            </div>
-          </div>
-
-          <div
-            v-if="classCore"
-            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
-          >
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Class Details</div>
-            <div class="mt-4 space-y-2 text-sm text-slate-200">
-              <div v-for="line in classMetaLines()" :key="line">{{ line }}</div>
-            </div>
-          </div>
-
-          <div
-            v-if="backgroundCore"
-            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
-          >
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Background Details</div>
-            <div class="mt-4 space-y-2 text-sm text-slate-200">
-              <div v-for="line in backgroundMetaLines()" :key="line">{{ line }}</div>
-            </div>
-          </div>
-
-          <div
-            v-if="entity?.statblock"
-            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
-          >
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-              Statblock
+        <div
+          v-if="entity?.entity_type === 'class' && classFeatureCards.length"
+          class="mt-6 space-y-5"
+        >
+          <div class="rounded-2xl border border-white/10 bg-[#0b111b]/90 p-4 backdrop-blur-xl">
+            <div class="mb-3 text-xs uppercase tracking-[0.25em] text-slate-500">
+              Class Outline
             </div>
 
-            <div class="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-200">
-              <div><span class="text-slate-400">CR:</span> {{ entity.statblock.challenge_rating || '—' }}</div>
-              <div><span class="text-slate-400">AC:</span> {{ entity.statblock.armor_class ?? '—' }}</div>
-              <div><span class="text-slate-400">HP:</span> {{ entity.statblock.hit_points_average ?? '—' }}</div>
-              <div><span class="text-slate-400">Type:</span> {{ entity.statblock.creature_type || '—' }}</div>
-              <div><span class="text-slate-400">Size:</span> {{ Array.isArray(entity.statblock.size_json) ? entity.statblock.size_json.join(' / ') : (entity.statblock.size_json || '—') }}</div>
-              <div><span class="text-slate-400">Align:</span> {{ Array.isArray(entity.statblock.alignment_json) ? entity.statblock.alignment_json.join(' / ') : (entity.statblock.alignment_json || '—') }}</div>
-            </div>
-          </div>
-
-          <div
-            v-if="entity?.actions?.length"
-            class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.30),rgba(12,16,22,0.22))] p-5 backdrop-blur-lg"
-          >
-            <div class="text-xs uppercase tracking-[0.3em] text-slate-500">
-              Actions
-            </div>
-
-            <div class="mt-4 space-y-4">
-              <div
-                v-for="action in entity.actions"
-                :key="action.id"
-                class="rounded-2xl border border-white/10 bg-black/10 p-4"
+            <div class="flex flex-wrap gap-2">
+              <a
+                v-for="level in classFeatureLevels"
+                :key="level"
+                :href="`#class-level-${level}`"
+                class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-400/20"
               >
-                <div class="flex items-center justify-between gap-3">
-                  <div class="font-medium text-white">{{ action.name }}</div>
-                  <div class="text-[11px] uppercase tracking-[0.15em] text-slate-500">
-                    {{ action.action_type || 'action' }}
-                  </div>
-                </div>
+                Level {{ level }}
+              </a>
+            </div>
+          </div>
 
-                <div class="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-200">
-                  {{ action.text }}
-                </div>
+          <article
+            v-for="feature in classFeatureCards"
+            :key="feature.id"
+            :id="feature.level ? `class-level-${feature.level}` : feature.id"
+            class="scroll-mt-28 overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(18,24,34,0.76),rgba(10,14,22,0.54))] shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
+          >
+            <header class="border-b border-white/10 bg-white/[0.03] px-5 py-4">
+              <div class="flex flex-wrap items-center gap-2">
+                <span
+                  v-if="feature.level"
+                  class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100"
+                >
+                  Level {{ feature.level }}
+                </span>
+
+                <span class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+                  Feature
+                </span>
+
+                <span
+                  v-if="feature.source"
+                  class="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
+                >
+                  {{ feature.source }}
+                </span>
               </div>
+
+              <h2 class="mt-3 text-2xl font-semibold tracking-tight text-white">
+                {{ feature.name }}
+              </h2>
+            </header>
+
+            <div
+              class="markdown-content px-5 py-5 text-[15px] leading-7 text-slate-200"
+              v-html="renderMarkdown(feature.markdown)"
+            ></div>
+          </article>
+        </div>
+
+        <div
+          v-else-if="articleMarkdown"
+          class="markdown-content mt-6 text-[16px] leading-8 text-slate-200"
+          v-html="articleHtml"
+        ></div>
+
+        <p
+          v-else
+          class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
+        >
+          No article content yet.
+        </p>
+      </section>
+    </div>
+
+    <Transition
+      enter-from-class="translate-x-full opacity-0"
+      enter-active-class="transition duration-200"
+      leave-to-class="translate-x-full opacity-0"
+      leave-active-class="transition duration-200"
+    >
+      <aside
+        v-if="contextDrawerOpen"
+        class="fixed right-0 top-0 z-40 h-full w-[380px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.88),rgba(10,13,18,0.78))] backdrop-blur-xl"
+      >
+        <div class="flex h-full flex-col">
+          <div class="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-5">
+            <div>
+              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
+                Context
+              </div>
+              <h2 class="mt-3 text-2xl font-semibold text-white">
+                {{ contextDrawerTitle || 'Linked Context' }}
+              </h2>
+            </div>
+
+            <button
+              type="button"
+              class="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
+              @click="closeContextDrawer"
+            >
+              <UIcon name="i-lucide-x" class="h-5 w-5" />
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-5">
+            <div
+              v-if="contextDrawerMarkdown"
+              class="markdown-content text-sm leading-7 text-slate-200"
+              v-html="contextDrawerHtml"
+            ></div>
+
+            <div
+              v-else
+              class="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-sm leading-7 text-slate-300"
+            >
+              Linked 5eTools-style article context will appear here once we wire inline links.
             </div>
           </div>
         </div>
-      </div>
-    </aside>
-  </div>
+      </aside>
+    </Transition>
+
     <Teleport to="body">
       <Transition
         enter-from-class="opacity-0"
@@ -862,7 +793,7 @@ async function onImageSelected(event: Event) {
         </div>
       </Transition>
     </Teleport>
-
+  </div>
 </template>
 
 <style scoped>

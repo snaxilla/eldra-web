@@ -448,14 +448,26 @@ function backgroundMetaLines() {
 }
 
 
+
+const heroMetaLines = computed(() => {
+  if (classCore.value) return classMetaLines()
+  if (speciesCore.value) return speciesMetaLines()
+  if (spellCore.value) return spellMetaLines().slice(0, 4)
+  if (itemCore.value) return itemMetaLines().slice(0, 4)
+  if (backgroundCore.value) return backgroundMetaLines()
+  return []
+})
+
 const detailSections = computed(() => {
   const sections: Array<{ title: string; lines: string[] }> = []
 
-  if (itemCore.value) sections.push({ title: 'Item Details', lines: itemMetaLines() })
-  if (spellCore.value) sections.push({ title: 'Spell Details', lines: spellMetaLines() })
-  if (speciesCore.value) sections.push({ title: 'Species Details', lines: speciesMetaLines() })
-  if (classCore.value) sections.push({ title: 'Class Details', lines: classMetaLines() })
-  if (backgroundCore.value) sections.push({ title: 'Background Details', lines: backgroundMetaLines() })
+  // Keep this area for richer secondary panels later.
+  // Core facts are promoted into the article hero so they do not feel duplicated/random.
+  if (false && itemCore.value) sections.push({ title: 'Item Details', lines: itemMetaLines() })
+  if (false && spellCore.value) sections.push({ title: 'Spell Details', lines: spellMetaLines() })
+  if (false && speciesCore.value) sections.push({ title: 'Species Details', lines: speciesMetaLines() })
+  if (false && classCore.value) sections.push({ title: 'Class Details', lines: classMetaLines() })
+  if (false && backgroundCore.value) sections.push({ title: 'Background Details', lines: backgroundMetaLines() })
 
   return sections.filter((section) => section.lines.length)
 })
@@ -510,13 +522,55 @@ async function onImageSelected(event: Event) {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1500px] p-6">
       <section class="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.48),rgba(12,16,22,0.30))] backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.22)]">
-        <div class="grid gap-0 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div class="grid gap-0 lg:grid-cols-[460px_minmax(0,1fr)]">
+          <div class="border-b border-white/10 bg-black/10 p-5 lg:border-b-0 lg:border-r">
+            <button
+              v-if="entityImageUrl"
+              type="button"
+              class="group block w-full overflow-hidden rounded-[26px] border border-white/10 bg-black/30 text-left shadow-[0_18px_55px_rgba(0,0,0,0.26)]"
+              @click="openImageLightbox"
+            >
+              <img
+                :src="entityImageUrl"
+                :alt="entity?.title || 'Entity image'"
+                class="aspect-[3/4] w-full object-cover object-[center_15%] transition duration-200 group-hover:scale-[1.02]"
+              >
+              <div class="border-t border-white/10 px-4 py-3 text-xs uppercase tracking-[0.25em] text-slate-400">
+                Click to view image
+              </div>
+            </button>
+
+            <div
+              v-else
+              class="flex aspect-[3/4] items-center justify-center rounded-[26px] border border-white/10 bg-white/[0.03] text-6xl font-semibold text-slate-400"
+            >
+              {{ (entity?.title || 'E').slice(0, 2).toUpperCase() }}
+            </div>
+
+            <div v-if="mode === 'build'" class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">
+                Article Image
+              </label>
+
+              <input
+                type="file"
+                accept="image/*"
+                class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border file:border-white/10 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:text-slate-100"
+                @change="onImageSelected"
+              >
+
+              <div v-if="uploadingImage" class="mt-2 text-sm text-slate-300">Uploading image...</div>
+              <div v-if="imageSuccess" class="mt-2 text-sm text-emerald-300">{{ imageSuccess }}</div>
+              <div v-if="imageError" class="mt-2 text-sm text-red-300">{{ imageError }}</div>
+            </div>
+          </div>
+
           <div class="p-7">
             <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
               {{ world?.name || 'World' }}
             </div>
 
-            <h1 class="mt-4 text-5xl font-semibold tracking-tight text-white">
+            <h1 class="mt-4 text-6xl font-semibold tracking-tight text-white">
               {{ entity?.title || 'Entity' }}
             </h1>
 
@@ -538,60 +592,23 @@ async function onImageSelected(event: Event) {
             </div>
 
             <div
-              v-if="derivedSummary"
-              class="mt-6 max-w-4xl rounded-2xl border border-amber-400/15 bg-amber-400/[0.06] p-5 text-[15px] leading-8 text-amber-50/90"
+              v-if="heroMetaLines.length"
+              class="mt-6 grid gap-3 md:grid-cols-2"
             >
-              {{ derivedSummary }}
-            </div>
-          </div>
-
-          <div class="border-t border-white/10 bg-black/10 p-5 lg:border-l lg:border-t-0">
-            <button
-              v-if="entityImageUrl"
-              type="button"
-              class="group block w-full overflow-hidden rounded-[24px] border border-white/10 bg-black/30 text-left shadow-[0_18px_55px_rgba(0,0,0,0.26)]"
-              @click="openImageLightbox"
-            >
-              <img
-                :src="entityImageUrl"
-                :alt="entity?.title || 'Entity image'"
-                class="aspect-[4/3] w-full object-cover object-[center_15%] transition duration-200 group-hover:scale-[1.02]"
+              <div
+                v-for="line in heroMetaLines"
+                :key="line"
+                class="rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-slate-200"
               >
-              <div class="border-t border-white/10 px-4 py-3 text-xs uppercase tracking-[0.25em] text-slate-400">
-                Click to view image
+                {{ line }}
               </div>
-            </button>
+            </div>
 
             <div
-              v-else
-              class="flex aspect-[4/3] items-center justify-center rounded-[24px] border border-white/10 bg-white/[0.03] text-5xl font-semibold text-slate-400"
+              v-if="derivedSummary"
+              class="mt-6 rounded-2xl border border-amber-400/15 bg-amber-400/[0.06] p-5 text-[15px] leading-8 text-amber-50/90"
             >
-              {{ (entity?.title || 'E').slice(0, 2).toUpperCase() }}
-            </div>
-
-            <div v-if="mode === 'build'" class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-500">
-                Article Image
-              </label>
-
-              <input
-                type="file"
-                accept="image/*"
-                class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border file:border-white/10 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:text-slate-100"
-                @change="onImageSelected"
-              >
-
-              <div v-if="uploadingImage" class="mt-2 text-sm text-slate-300">
-                Uploading image...
-              </div>
-
-              <div v-if="imageSuccess" class="mt-2 text-sm text-emerald-300">
-                {{ imageSuccess }}
-              </div>
-
-              <div v-if="imageError" class="mt-2 text-sm text-red-300">
-                {{ imageError }}
-              </div>
+              {{ derivedSummary }}
             </div>
           </div>
         </div>

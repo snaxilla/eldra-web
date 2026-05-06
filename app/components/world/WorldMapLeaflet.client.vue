@@ -185,7 +185,10 @@ async function ensureMap() {
     if (!props.buildMode) return
     const { lat, lng } = e.latlng
     const scale = mapCoordinateScale()
-    emit('map-click', { x: lng * scale, y: lat * scale })
+    emit('map-click', {
+      x: usingTiles() ? lng * scale : lng,
+      y: usingTiles() ? -lat * scale : lat
+    })
   })
 
   markerLayer = L.layerGroup().addTo(map)
@@ -211,7 +214,11 @@ function renderPins() {
   markerLayer.clearLayers()
 
   for (const pin of props.pins || []) {
-    const marker = L.marker(L.latLng(pin.y / mapCoordinateScale(), pin.x / mapCoordinateScale()), {
+    const scale = mapCoordinateScale()
+    const lat = usingTiles() ? -(pin.y / scale) : pin.y
+    const lng = usingTiles() ? pin.x / scale : pin.x
+
+    const marker = L.marker(L.latLng(lat, lng), {
       icon: L.divIcon({
         className: 'eldra-leaflet-pin',
         html: makePinHtml(pin, pin.id === props.selectedPinId),
@@ -292,7 +299,9 @@ async function renderMap() {
   const mapWidth = useTiles ? dimensions.width / scale : dimensions.width
   const mapHeight = useTiles ? dimensions.height / scale : dimensions.height
 
-  currentBounds = L.latLngBounds([0, 0], [mapHeight, mapWidth])
+  currentBounds = useTiles
+    ? L.latLngBounds([-mapHeight, 0], [0, mapWidth])
+    : L.latLngBounds([0, 0], [mapHeight, mapWidth])
 
   if (useTiles) {
     const minZoom = Number.isFinite(Number(props.tileMinZoom)) ? Number(props.tileMinZoom) : 0
@@ -301,20 +310,7 @@ async function renderMap() {
     map.setMaxZoom(maxZoom)
     map.options.zoomSnap = 1
 
-    const tileTemplate = String(props.tilePath)
-
-    const EldraTileLayer = L.TileLayer.extend({
-      getTileUrl(coords: any) {
-        const y = -coords.y - 1
-
-        return tileTemplate
-          .replace('{z}', String(coords.z))
-          .replace('{x}', String(coords.x))
-          .replace('{y}', String(y))
-      }
-    })
-
-    tileLayer = new EldraTileLayer(tileTemplate, {
+    tileLayer = L.tileLayer(String(props.tilePath), {
       tileSize: 256,
       minZoom,
       maxZoom,
@@ -322,6 +318,7 @@ async function renderMap() {
       minNativeZoom: minZoom,
       bounds: currentBounds,
       noWrap: true,
+      tms: false,
       attribution: ''
     }).addTo(map)
   } else {

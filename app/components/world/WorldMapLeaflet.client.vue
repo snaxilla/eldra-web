@@ -117,13 +117,13 @@ function makePinHtml(pin: Pin, selected: boolean) {
 
   return `
     <div style="
-      width: 28px;
-      height: 36px;
+      width: 20px;
+      height: 28px;
       filter: drop-shadow(0 10px 18px rgba(0,0,0,0.35));
       transform: ${selected ? 'scale(1.08)' : 'scale(1)'};
       transition: transform 140ms ease;
     ">
-      <svg width="28" height="36" viewBox="0 0 34 44" xmlns="http://www.w3.org/2000/svg">
+      <svg width="20" height="28" viewBox="0 0 34 44" xmlns="http://www.w3.org/2000/svg">
         <path
           d="M17 1.5C8.44 1.5 1.5 8.44 1.5 17c0 11.17 12.63 22.62 14.1 23.92a2.1 2.1 0 0 0 2.8 0C19.87 39.62 32.5 28.17 32.5 17 32.5 8.44 25.56 1.5 17 1.5Z"
           fill="${bg}"
@@ -222,9 +222,9 @@ function renderPins() {
       icon: L.divIcon({
         className: 'eldra-leaflet-pin',
         html: makePinHtml(pin, pin.id === props.selectedPinId),
-        iconSize: [28, 36],
-        iconAnchor: [14, 34],
-        tooltipAnchor: [0, -30],
+        iconSize: [20, 28],
+        iconAnchor: [10, 27],
+        tooltipAnchor: [0, -24],
       }),
     })
 
@@ -237,7 +237,7 @@ function renderPins() {
       marker.bindTooltip(pin.title, {
         permanent: false,
         direction: 'top',
-        offset: [0, -30],
+        offset: [0, -24],
         className: 'eldra-pin-tooltip',
       })
     }

@@ -99,21 +99,21 @@ const countLabel = computed(() => filteredEntities.value.length)
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1700px] p-6">
-      <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
+      <section class="rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
         <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
+            <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
               {{ eyebrow || title }}
             </div>
             <h1 class="mt-2 text-3xl font-semibold text-white">{{ title }}</h1>
-            <p class="mt-2 max-w-3xl text-sm text-slate-300">
+            <p class="mt-2 max-w-3xl text-sm text-zinc-300">
               {{ description || `Browse imported ${title.toLowerCase()} in this world.` }}
             </p>
           </div>
 
           <button
             type="button"
-            class="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/[0.08]"
+            class="rounded-none border border-stone-500/20 bg-[#151515]/70 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/[0.08]"
             @click="refresh()"
           >
             Refresh
@@ -125,29 +125,29 @@ const countLabel = computed(() => filteredEntities.value.length)
             v-model="search"
             type="text"
             :placeholder="searchPlaceholder || `Search ${title.toLowerCase()}...`"
-            class="w-full rounded-2xl border border-white/10 bg-[#07101a]/90 px-4 py-4 text-sm text-slate-100 outline-none transition focus:border-sky-400/30"
+            class="w-full rounded-none border border-stone-500/20 bg-[#07101a]/90 px-4 py-4 text-sm text-zinc-100 outline-none transition focus:border-sky-400/30"
           >
         </div>
       </section>
 
-      <div v-if="pending" class="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-sm text-slate-300">
+      <div v-if="pending" class="mt-6 rounded-none border border-stone-500/20 bg-[#151515]/70 p-5 text-sm text-zinc-300">
         Loading {{ title.toLowerCase() }}...
       </div>
 
       <div
         v-else-if="!filteredEntities.length"
-        class="mt-6 rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-10 text-center"
+        class="mt-6 rounded-none border border-dashed border-stone-500/20 bg-[#121212]/70 p-10 text-center"
       >
-        <div class="text-xs uppercase tracking-[0.35em] text-slate-500">{{ title }}</div>
+        <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">{{ title }}</div>
         <div class="mt-3 text-2xl font-semibold text-white">Nothing here yet</div>
-        <p class="mt-3 text-sm text-slate-300">
+        <p class="mt-3 text-sm text-zinc-300">
           {{ emptyMessage || `No ${title.toLowerCase()} have been imported into this world yet.` }}
         </p>
       </div>
 
       <div v-else class="mt-6">
-        <div class="mb-4 text-xs uppercase tracking-[0.3em] text-slate-500">
-          Results <span class="text-slate-400">({{ countLabel }})</span>
+        <div class="mb-4 text-xs uppercase tracking-[0.3em] text-zinc-500">
+          Results <span class="text-zinc-400">({{ countLabel }})</span>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -155,10 +155,10 @@ const countLabel = computed(() => filteredEntities.value.length)
             v-for="entity in filteredEntities"
             :key="entity.id"
             :to="`/worlds/${worldId}/entities/${entity.id}`"
-            class="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_right,rgba(31,58,138,0.22),rgba(17,24,39,0.38))] transition hover:border-sky-400/20 hover:bg-[linear-gradient(to_right,rgba(31,58,138,0.30),rgba(17,24,39,0.52))]"
+            class="overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_right,rgba(31,58,138,0.22),rgba(17,24,39,0.38))] transition hover:border-sky-400/20 hover:bg-[linear-gradient(to_right,rgba(31,58,138,0.30),rgba(17,24,39,0.52))]"
           >
             <div class="grid min-h-[220px] grid-cols-[120px_minmax(0,1fr)]">
-              <div class="overflow-hidden border-r border-white/10 bg-[linear-gradient(to_bottom,rgba(30,58,138,0.26),rgba(15,23,42,0.32))]">
+              <div class="overflow-hidden border-r border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(30,58,138,0.26),rgba(15,23,42,0.32))]">
                 <img
                   v-if="imageUrlForEntity(entity)"
                   :src="imageUrlForEntity(entity)"
@@ -167,7 +167,7 @@ const countLabel = computed(() => filteredEntities.value.length)
                 >
                 <div
                   v-else
-                  class="flex h-full w-full items-center justify-center text-4xl font-semibold text-slate-300"
+                  class="flex h-full w-full items-center justify-center text-4xl font-semibold text-zinc-300"
                 >
                   {{ initialsFor(entity.title || '') }}
                 </div>
@@ -180,13 +180,13 @@ const countLabel = computed(() => filteredEntities.value.length)
                   </h2>
 
                   <div
-                    class="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-slate-400"
+                    class="shrink-0 rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-zinc-400"
                   >
                     {{ entityType }}
                   </div>
                 </div>
 
-                <p class="mt-4 line-clamp-5 text-sm leading-7 text-slate-300">
+                <p class="mt-4 line-clamp-5 text-sm leading-7 text-zinc-300">
                   {{ summaryForEntity(entity) || 'Open article →' }}
                 </p>
 

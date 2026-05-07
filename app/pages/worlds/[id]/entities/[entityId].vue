@@ -472,6 +472,7 @@ const detailSections = computed(() => {
   return sections.filter((section) => section.lines.length)
 })
 
+const buildDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const contextDrawerTitle = ref('')
 const contextDrawerMarkdown = ref('')
@@ -614,15 +615,6 @@ async function onImageSelected(event: Event) {
         </div>
       </section>
 
-      <WorldPagePresentationPanel
-        v-if="mode === 'build'"
-        :world-id="worldId"
-        page-key="entity-article"
-        title="Entity Article"
-        description="Build-mode page controls live here for this article view."
-        class="mt-6"
-      />
-
       <section
         v-if="detailSections.length"
         class="mt-6 grid gap-4 lg:grid-cols-2"
@@ -648,7 +640,17 @@ async function onImageSelected(event: Event) {
         </article>
       </section>
 
-      <section class="mt-6 rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.66),rgba(8,8,8,0.52))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
+            <div v-if="mode === 'build'" class="mt-4 flex justify-end">
+        <button
+          type="button"
+          class="border border-yellow-700/35 bg-[#151515]/70 px-4 py-2 text-sm font-medium text-yellow-100 transition hover:bg-yellow-900/20"
+          @click="buildDrawerOpen = true"
+        >
+          Page Build
+        </button>
+      </div>
+
+<section class="mt-6 rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.66),rgba(8,8,8,0.52))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
         <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
           Article
         </div>
@@ -727,6 +729,45 @@ async function onImageSelected(event: Event) {
         </p>
       </section>
     </div>
+
+
+    <Transition
+      enter-from-class="translate-x-full opacity-0"
+      enter-active-class="transition duration-200"
+      leave-to-class="translate-x-full opacity-0"
+      leave-active-class="transition duration-200"
+    >
+      <aside
+        v-if="buildDrawerOpen"
+        class="fixed right-0 top-0 z-40 h-full w-[420px] border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,14,14,0.94),rgba(5,5,5,0.90))] backdrop-blur-xl"
+      >
+        <div class="flex h-full flex-col">
+          <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
+            <div>
+              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">Build</div>
+              <h2 class="mt-3 text-2xl font-semibold text-white">Page Build</h2>
+            </div>
+
+            <button
+              type="button"
+              class="border border-stone-500/20 bg-[#151515]/70 p-2 text-zinc-300 transition hover:bg-[#222] hover:text-white"
+              @click="buildDrawerOpen = false"
+            >
+              <UIcon name="i-lucide-x" class="h-5 w-5" />
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-5">
+            <WorldPagePresentationPanel
+              :world-id="worldId"
+              page-key="entity-article"
+              title="Entity Article"
+              description="Build-mode page controls live here for this article view."
+            />
+          </div>
+        </div>
+      </aside>
+    </Transition>
 
     <Transition
       enter-from-class="translate-x-full opacity-0"

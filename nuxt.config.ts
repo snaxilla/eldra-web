@@ -11,7 +11,7 @@ export default defineNuxtConfig({
     public: {
       directusUrl:
         process.env.NUXT_PUBLIC_DIRECTUS_URL ||
-        'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
+        'https://directus.theledouxs.com'
     }
   },
 

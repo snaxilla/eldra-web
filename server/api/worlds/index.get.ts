@@ -1,5 +1,5 @@
 export default defineEventHandler(async () => {
-  const baseUrl = 'http://ledouxvps-directus-269351-187-77-194-11.traefik.me'
+  const baseUrl = 'https://directus.theledouxs.com'
   const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
 
   const res = await fetch(

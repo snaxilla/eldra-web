@@ -521,13 +521,13 @@ async function onImageSelected(event: Event) {
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1500px] p-6">
-      <section class="overflow-hidden rounded-[20px] border border-amber-100/10 bg-[linear-gradient(to_bottom,rgba(25,23,19,0.58),rgba(13,12,10,0.38))] backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.22)]">
+      <section class="overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.72),rgba(8,8,8,0.58))] backdrop-blur-xl shadow-[0_16px_40px_rgba(0,0,0,0.42)]">
         <div class="grid gap-0 lg:grid-cols-[460px_minmax(0,1fr)]">
-          <div class="border-b border-amber-100/10 bg-black/10 p-5 lg:border-b-0 lg:border-r">
+          <div class="border-b border-stone-500/20 bg-[#050505]/20 p-5 lg:border-b-0 lg:border-r">
             <button
               v-if="entityImageUrl"
               type="button"
-              class="group block w-full overflow-hidden rounded-[16px] border border-amber-100/10 bg-black/30 text-left shadow-[0_18px_55px_rgba(0,0,0,0.26)]"
+              class="group block w-full overflow-hidden rounded-none border border-stone-500/20 bg-[#050505]/35 text-left shadow-[0_14px_34px_rgba(0,0,0,0.45)]"
               @click="openImageLightbox"
             >
               <img
@@ -535,38 +535,38 @@ async function onImageSelected(event: Event) {
                 :alt="entity?.title || 'Entity image'"
                 class="aspect-[3/4] w-full object-cover object-[center_15%] transition duration-200 group-hover:scale-[1.02]"
               >
-              <div class="border-t border-amber-100/10 px-4 py-3 text-xs uppercase tracking-[0.25em] text-stone-400">
+              <div class="border-t border-stone-500/20 px-4 py-3 text-xs uppercase tracking-[0.25em] text-zinc-400">
                 Click to view image
               </div>
             </button>
 
             <div
               v-else
-              class="flex aspect-[3/4] items-center justify-center rounded-[16px] border border-amber-100/10 bg-stone-100/[0.03] text-6xl font-semibold text-stone-400"
+              class="flex aspect-[3/4] items-center justify-center rounded-none border border-stone-500/20 bg-[#121212]/70 text-6xl font-semibold text-zinc-400"
             >
               {{ (entity?.title || 'E').slice(0, 2).toUpperCase() }}
             </div>
 
-            <div v-if="mode === 'build'" class="mt-4 rounded-2xl border border-amber-100/10 bg-stone-100/[0.04] p-4">
-              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-stone-500">
+            <div v-if="mode === 'build'" class="mt-4 rounded-none border border-stone-500/20 bg-[#151515]/70 p-4">
+              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-zinc-500">
                 Article Image
               </label>
 
               <input
                 type="file"
                 accept="image/*"
-                class="block w-full text-sm text-stone-300 file:mr-4 file:rounded-xl file:border file:border-amber-100/10 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:text-slate-100"
+                class="block w-full text-sm text-zinc-300 file:mr-4 file:rounded-none file:border file:border-stone-500/20 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:text-slate-100"
                 @change="onImageSelected"
               >
 
-              <div v-if="uploadingImage" class="mt-2 text-sm text-stone-300">Uploading image...</div>
+              <div v-if="uploadingImage" class="mt-2 text-sm text-zinc-300">Uploading image...</div>
               <div v-if="imageSuccess" class="mt-2 text-sm text-emerald-300">{{ imageSuccess }}</div>
               <div v-if="imageError" class="mt-2 text-sm text-red-300">{{ imageError }}</div>
             </div>
           </div>
 
           <div class="p-7">
-            <div class="text-xs uppercase tracking-[0.35em] text-stone-500">
+            <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
               {{ world?.name || 'World' }}
             </div>
 
@@ -575,17 +575,17 @@ async function onImageSelected(event: Event) {
             </h1>
 
             <div class="mt-4 flex flex-wrap gap-2">
-              <div class="rounded-full border border-amber-100/10 bg-stone-100/[0.045] px-3 py-1.5 text-sm text-stone-300">
+              <div class="rounded-none border border-stone-500/20 bg-[#171717]/70 px-3 py-1.5 text-sm text-zinc-300">
                 {{ entity?.entity_type || 'entity' }}
               </div>
 
-              <div class="rounded-full border border-amber-100/10 bg-stone-100/[0.045] px-3 py-1.5 text-sm text-stone-300">
+              <div class="rounded-none border border-stone-500/20 bg-[#171717]/70 px-3 py-1.5 text-sm text-zinc-300">
                 {{ entity?.slug || 'no-slug' }}
               </div>
 
               <div
                 v-if="entity?.statblock?.challenge_rating"
-                class="rounded-full border border-red-400/20 bg-red-400/10 px-3 py-1.5 text-sm text-red-200"
+                class="rounded-none border border-red-400/20 bg-red-400/10 px-3 py-1.5 text-sm text-red-200"
               >
                 CR {{ entity.statblock.challenge_rating }}
               </div>
@@ -598,7 +598,7 @@ async function onImageSelected(event: Event) {
               <div
                 v-for="line in heroMetaLines"
                 :key="line"
-                class="rounded-2xl border border-amber-100/10 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-stone-200"
+                class="rounded-none border border-stone-500/20 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-zinc-200"
               >
                 {{ line }}
               </div>
@@ -606,7 +606,7 @@ async function onImageSelected(event: Event) {
 
             <div
               v-if="derivedSummary"
-              class="mt-6 rounded-2xl border border-amber-400/15 bg-amber-400/[0.06] p-5 text-[15px] leading-8 text-amber-50/90"
+              class="mt-6 rounded-none border border-yellow-700/30 bg-[linear-gradient(to_bottom,rgba(92,72,34,0.18),rgba(20,20,20,0.34))] p-5 text-[15px] leading-8 text-amber-50/90"
             >
               {{ derivedSummary }}
             </div>
@@ -630,17 +630,17 @@ async function onImageSelected(event: Event) {
         <article
           v-for="section in detailSections"
           :key="section.title"
-          class="rounded-[16px] border border-amber-100/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.38),rgba(12,16,22,0.26))] p-6 backdrop-blur-xl shadow-[0_18px_55px_rgba(0,0,0,0.16)]"
+          class="rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.38),rgba(12,16,22,0.26))] p-6 backdrop-blur-xl shadow-[0_18px_55px_rgba(0,0,0,0.16)]"
         >
-          <div class="text-xs uppercase tracking-[0.3em] text-stone-500">
+          <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
             {{ section.title }}
           </div>
 
-          <div class="mt-5 grid gap-3 text-sm leading-7 text-stone-200">
+          <div class="mt-5 grid gap-3 text-sm leading-7 text-zinc-200">
             <div
               v-for="line in section.lines"
               :key="line"
-              class="rounded-xl border border-amber-100/10 bg-white/[0.035] px-4 py-3"
+              class="rounded-none border border-stone-500/20 bg-white/[0.035] px-4 py-3"
             >
               {{ line }}
             </div>
@@ -648,8 +648,8 @@ async function onImageSelected(event: Event) {
         </article>
       </section>
 
-      <section class="mt-6 rounded-[20px] border border-amber-100/10 bg-[linear-gradient(to_bottom,rgba(24,22,18,0.52),rgba(13,12,10,0.38))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
-        <div class="text-xs uppercase tracking-[0.3em] text-stone-500">
+      <section class="mt-6 rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.66),rgba(8,8,8,0.52))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
+        <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
           Article
         </div>
 
@@ -657,8 +657,8 @@ async function onImageSelected(event: Event) {
           v-if="entity?.entity_type === 'class' && classFeatureCards.length"
           class="mt-6 space-y-5"
         >
-          <div class="rounded-2xl border border-amber-100/10 bg-[#0b111b]/90 p-4 backdrop-blur-xl">
-            <div class="mb-3 text-xs uppercase tracking-[0.25em] text-stone-500">
+          <div class="rounded-none border border-stone-500/20 bg-[#101010]/92 p-4 backdrop-blur-xl">
+            <div class="mb-3 text-xs uppercase tracking-[0.25em] text-zinc-500">
               Class Outline
             </div>
 
@@ -667,7 +667,7 @@ async function onImageSelected(event: Event) {
                 v-for="level in classFeatureLevels"
                 :key="level"
                 :href="`#class-level-${level}`"
-                class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:bg-sky-400/20"
+                class="rounded-none border border-zinc-500/30 bg-zinc-900/50 px-3 py-1.5 text-xs font-medium text-zinc-100 transition hover:bg-zinc-800/80"
               >
                 Level {{ level }}
               </a>
@@ -678,24 +678,24 @@ async function onImageSelected(event: Event) {
             v-for="feature in classFeatureCards"
             :key="feature.id"
             :id="feature.level ? `class-level-${feature.level}` : feature.id"
-            class="scroll-mt-28 overflow-hidden rounded-[14px] border border-amber-100/10 bg-[linear-gradient(to_bottom,rgba(25,23,19,0.78),rgba(10,14,22,0.54))] shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
+            class="scroll-mt-28 overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(25,23,19,0.78),rgba(10,14,22,0.54))] shadow-[0_12px_32px_rgba(0,0,0,0.42)]"
           >
-            <header class="border-b border-amber-100/10 bg-stone-100/[0.03] px-5 py-4">
+            <header class="border-b border-stone-500/20 bg-[#121212]/70 px-5 py-4">
               <div class="flex flex-wrap items-center gap-2">
                 <span
                   v-if="feature.level"
-                  class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100"
+                  class="rounded-none border border-yellow-700/35 bg-yellow-900/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100"
                 >
                   Level {{ feature.level }}
                 </span>
 
-                <span class="rounded-full border border-amber-100/10 bg-stone-100/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-300">
+                <span class="rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-300">
                   Feature
                 </span>
 
                 <span
                   v-if="feature.source"
-                  class="rounded-full border border-amber-100/10 bg-stone-100/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-stone-400"
+                  class="rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400"
                 >
                   {{ feature.source }}
                 </span>
@@ -707,7 +707,7 @@ async function onImageSelected(event: Event) {
             </header>
 
             <div
-              class="markdown-content px-5 py-5 text-[15px] leading-7 text-stone-200"
+              class="markdown-content px-5 py-5 text-[15px] leading-7 text-zinc-200"
               v-html="renderMarkdown(feature.markdown)"
             ></div>
           </article>
@@ -715,7 +715,7 @@ async function onImageSelected(event: Event) {
 
         <div
           v-else-if="articleMarkdown"
-          class="markdown-content mt-6 text-[16px] leading-8 text-stone-200"
+          class="markdown-content mt-6 text-[16px] leading-8 text-zinc-200"
           v-html="articleHtml"
         ></div>
 
@@ -736,12 +736,12 @@ async function onImageSelected(event: Event) {
     >
       <aside
         v-if="contextDrawerOpen"
-        class="fixed right-0 top-0 z-40 h-full w-[380px] border-l border-amber-100/10 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.88),rgba(10,13,18,0.78))] backdrop-blur-xl"
+        class="fixed right-0 top-0 z-40 h-full w-[380px] border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.88),rgba(10,13,18,0.78))] backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-amber-100/10 px-5 py-5">
+          <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-stone-500">
+              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
                 Context
               </div>
               <h2 class="mt-3 text-2xl font-semibold text-white">
@@ -751,7 +751,7 @@ async function onImageSelected(event: Event) {
 
             <button
               type="button"
-              class="rounded-xl border border-amber-100/10 bg-stone-100/[0.04] p-2 text-stone-300 transition hover:bg-white/[0.08] hover:text-white"
+              class="rounded-none border border-stone-500/20 bg-[#151515]/70 p-2 text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
               @click="closeContextDrawer"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -761,13 +761,13 @@ async function onImageSelected(event: Event) {
           <div class="flex-1 overflow-y-auto p-5">
             <div
               v-if="contextDrawerMarkdown"
-              class="markdown-content text-sm leading-7 text-stone-200"
+              class="markdown-content text-sm leading-7 text-zinc-200"
               v-html="contextDrawerHtml"
             ></div>
 
             <div
               v-else
-              class="rounded-2xl border border-amber-100/10 bg-stone-100/[0.04] p-5 text-sm leading-7 text-stone-300"
+              class="rounded-none border border-stone-500/20 bg-[#151515]/70 p-5 text-sm leading-7 text-zinc-300"
             >
               Linked 5eTools-style article context will appear here once we wire inline links.
             </div>
@@ -785,13 +785,13 @@ async function onImageSelected(event: Event) {
       >
         <div
           v-if="imageLightboxOpen && entityImageUrl"
-          class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+          class="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050505]/90 p-4 backdrop-blur-sm"
           @click.self="closeImageLightbox"
         >
           <div class="relative max-h-[92vh] max-w-[92vw]">
             <button
               type="button"
-              class="absolute right-3 top-3 z-10 rounded-xl border border-amber-100/10 bg-black/65 p-2 text-stone-200 backdrop-blur transition hover:bg-black/85 hover:text-white"
+              class="absolute right-3 top-3 z-10 rounded-none border border-stone-500/20 bg-[#050505]/75 p-2 text-zinc-200 backdrop-blur transition hover:bg-[#050505]/90 hover:text-white"
               @click="closeImageLightbox"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -800,10 +800,10 @@ async function onImageSelected(event: Event) {
             <img
               :src="entityImageUrl"
               :alt="entity?.title || 'Image preview'"
-              class="max-h-[92vh] max-w-[92vw] rounded-2xl border border-amber-100/10 object-contain shadow-[0_30px_100px_rgba(0,0,0,0.65)]"
+              class="max-h-[92vh] max-w-[92vw] rounded-none border border-stone-500/20 object-contain shadow-[0_30px_100px_rgba(0,0,0,0.65)]"
             >
 
-            <div class="pointer-events-none absolute bottom-3 left-3 right-3 rounded-xl border border-amber-100/10 bg-black/55 px-4 py-3 text-sm text-slate-100 backdrop-blur">
+            <div class="pointer-events-none absolute bottom-3 left-3 right-3 rounded-none border border-stone-500/20 bg-[#050505]/70 px-4 py-3 text-sm text-slate-100 backdrop-blur">
               {{ entity?.title || 'Image preview' }}
             </div>
           </div>

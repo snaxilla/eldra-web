@@ -11,6 +11,7 @@ const props = defineProps<{
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
 const search = ref('')
+const classImageCache = ref<Record<string, string>>({})
 
 const {
   data: entities,
@@ -28,6 +29,13 @@ function imageUrlForEntity(entity: any) {
   if (entity?.imageUrl) return String(entity.imageUrl)
   if (entity?.image_url) return String(entity.image_url)
 
+  const id = String(entity?.id || '')
+  const type = normalizeEntityType(entity?.entityType || entity?.entity_type)
+
+  if (type === 'class' && id && classImageCache.value[id]) {
+    return classImageCache.value[id]
+  }
+
   const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
   for (const block of blocks) {
     const image = block?.data?.image
@@ -43,6 +51,22 @@ function imageUrlForEntity(entity: any) {
   }
 
   return null
+}
+
+async function hydrateClassImages(list: any[]) {
+  const classes = (list || []).filter((entity: any) =>
+    normalizeEntityType(entity?.entityType || entity?.entity_type) === 'class'
+  )
+
+  await Promise.all(classes.map(async (entity: any) => {
+    const id = String(entity?.id || '')
+    if (!id || entity?.imageUrl || entity?.image_url || classImageCache.value[id]) return
+
+    try {
+      const result: any = await $fetch(`/api/worlds/${worldId.value}/entities/${id}/class-features`)
+      if (result?.imageUrl) classImageCache.value[id] = String(result.imageUrl)
+    } catch {}
+  }))
 }
 
 function summaryForEntity(entity: any) {
@@ -94,6 +118,14 @@ const filteredEntities = computed(() => {
 })
 
 const countLabel = computed(() => filteredEntities.value.length)
+
+watch(
+  filteredEntities,
+  () => {
+    hydrateClassImages(filteredEntities.value)
+  },
+  { immediate: true }
+)
 </script>
 
 <template>

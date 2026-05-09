@@ -51,6 +51,8 @@ function initialsFor(name: string) {
 function imageUrlForEntity(entity: any) {
   if (entity?.imageUrl) return String(entity.imageUrl)
   if (entity?.image_url) return String(entity.image_url)
+  if (selectedEntity.value?.imageUrl && String(entity?.id || '') === String(selectedEntity.value?.id || '')) return String(selectedEntity.value.imageUrl)
+  if (selectedEntity.value?.image_url && String(entity?.id || '') === String(selectedEntity.value?.id || '')) return String(selectedEntity.value.image_url)
 
   const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
   for (const block of blocks) {

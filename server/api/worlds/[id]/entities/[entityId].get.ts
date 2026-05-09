@@ -101,6 +101,28 @@ function raceFluffMarkdown(entity: any) {
   return entriesToMarkdown(record?.entries || '').trim()
 }
 
+const SPELL_FLUFF_DIR = '/opt/eldra/datasets/5etools-src/data/spells'
+
+function spellFluffImageUrl(entity: any) {
+  if (String(entity?.entity_type || '').toLowerCase() !== 'spell') return null
+
+  const source = sourceFromSlug(entity?.slug)
+  if (!source) return null
+
+  const fluff = readJsonSafe(`${SPELL_FLUFF_DIR}/fluff-spells-${source.toLowerCase()}.json`)
+  const list = Array.isArray(fluff?.spellFluff) ? fluff.spellFluff : []
+  const title = String(entity?.title || '').trim().toLowerCase()
+
+  const found = list.find((item: any) =>
+    String(item?.name || '').trim().toLowerCase() === title &&
+    Array.isArray(item?.images) &&
+    item.images.length
+  )
+
+  const imagePath = found?.images?.[0]?.href?.path
+  return imagePath ? `/api/5etools-img/${imagePath}` : null
+}
+
 function extractImageUrl(entity: any, blocks: any[] = []) {
   if (entity?.image) {
     if (typeof entity.image === 'string') return `/api/assets/${entity.image}`
@@ -213,7 +235,7 @@ export default defineEventHandler(async (event) => {
     statblock,
     actions,
     monsterProfile,
-    imageUrl: extractImageUrl(entity, blocks) || raceFluffImageUrl(entity),
+    imageUrl: extractImageUrl(entity, blocks) || raceFluffImageUrl(entity) || spellFluffImageUrl(entity),
     raceFluffMarkdown: raceFluffMarkdown(entity)
   }
 })

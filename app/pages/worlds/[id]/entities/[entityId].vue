@@ -189,6 +189,30 @@ function buildSpeciesArticleMarkdown(): string {
 }
 
 
+function buildSpellArticleMarkdown(): string {
+  const core = spellCore.value
+  const raw = importSourceRawJson()
+
+  const parts: string[] = []
+
+  const description = String(core?.description || '').trim()
+  const rawEntries = entriesToMarkdown(raw?.entries)
+  const higherLevel = entriesToMarkdown(raw?.entriesHigherLevel)
+
+  if (description) {
+    parts.push(description)
+  } else if (rawEntries) {
+    parts.push(rawEntries)
+  }
+
+  if (higherLevel) {
+    parts.push(`## At Higher Levels\n\n${higherLevel.replace(/^## At Higher Levels\s*/i, '').trim()}`)
+  }
+
+  return parts.filter(Boolean).join('\n\n')
+}
+
+
 const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return entity.value.imageUrl
   if (entity.value?.image_url) return entity.value.image_url
@@ -217,7 +241,7 @@ const articleMarkdown = computed(() => {
     entity.value?.fluff_markdown ||
     entity.value?.summary_markdown ||
     itemCore.value?.description ||
-    spellCore.value?.description ||
+    buildSpellArticleMarkdown() ||
     buildSpeciesArticleMarkdown() ||
     classCore.value?.description ||
     classCore.value?.features ||

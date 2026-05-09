@@ -174,13 +174,15 @@ function buildClassArticleMarkdown(): string {
 
 function buildSpeciesArticleMarkdown(): string {
   const core = speciesCore.value
-  const raw = importSourceRawJson()
+
+  const lore = String(entity.value?.raceFluffMarkdown || '').trim()
+  const description = String(core?.description || '').trim()
+  const traits = String(core?.traits || '').trim()
 
   const parts = [
-    String(entity.value?.raceFluffMarkdown || '').trim(),
-    String(core?.description || '').trim(),
-    String(core?.traits || '').trim(),
-    entriesToMarkdown(raw?.entries)
+    lore,
+    description && description !== lore ? description : '',
+    traits
   ].filter(Boolean)
 
   return parts.join('\n\n')

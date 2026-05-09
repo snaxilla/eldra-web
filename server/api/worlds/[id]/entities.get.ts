@@ -51,6 +51,36 @@ function classFluffImageUrl(row: any) {
   return imagePath ? `/api/5etools-img/${imagePath}` : null
 }
 
+const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
+
+function raceFluffImageUrl(row: any) {
+  const type = String(row?.entity_type || '').toLowerCase()
+  if (type !== 'species' && type !== 'race') return null
+
+  const source = sourceFromSlug(row?.slug)
+  const title = String(row?.title || '').trim().toLowerCase()
+  const fluff = readJsonSafe(RACE_FLUFF_FILE)
+  const list = Array.isArray(fluff?.raceFluff) ? fluff.raceFluff : []
+
+  const preferred =
+    list.find((item: any) =>
+      String(item?.name || '').trim().toLowerCase() === title &&
+      String(item?.source || '').toUpperCase() === source &&
+      Array.isArray(item?.images) &&
+      item.images.length
+    ) ||
+    list.find((item: any) =>
+      String(item?.name || '').trim().toLowerCase() === title &&
+      Array.isArray(item?.images) &&
+      item.images.length
+    )
+
+  const image = Array.isArray(preferred?.images) ? preferred.images[0] : null
+  const imagePath = image?.href?.path
+
+  return imagePath ? `/api/5etools-img/${imagePath}` : null
+}
+
 function extractImageUrl(blocks: any[] = []) {
   for (const block of blocks) {
     const image = block?.data?.image
@@ -156,7 +186,7 @@ export default defineEventHandler(async (event) => {
 
   return rows.map((row: any) => {
     const entityBlocks = blocksByEntityId.get(Number(row.id)) || []
-    const derivedImageUrl = row?.image ? `/api/assets/${row.image}` : extractImageUrl(entityBlocks) || classFluffImageUrl(row)
+    const derivedImageUrl = row?.image ? `/api/assets/${row.image}` : extractImageUrl(entityBlocks) || classFluffImageUrl(row) || raceFluffImageUrl(row)
     const overviewText = extractOverviewText(entityBlocks)
     const coreText = extractCoreText(entityBlocks)
 

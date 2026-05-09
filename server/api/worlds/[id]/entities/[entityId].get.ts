@@ -1,4 +1,49 @@
+import fs from 'node:fs'
 import { directusServiceRequest } from '../../../../utils/directus'
+
+const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
+
+function readJsonSafe(filePath: string) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function sourceFromSlug(slug: string) {
+  const parts = String(slug || '').split('-')
+  const last = parts[parts.length - 1]
+  return last ? last.toUpperCase() : ''
+}
+
+function raceFluffImageUrl(entity: any) {
+  const type = String(entity?.entity_type || '').toLowerCase()
+  if (type !== 'species' && type !== 'race') return null
+
+  const source = sourceFromSlug(entity?.slug)
+  const title = String(entity?.title || '').trim().toLowerCase()
+  const fluff = readJsonSafe(RACE_FLUFF_FILE)
+  const list = Array.isArray(fluff?.raceFluff) ? fluff.raceFluff : []
+
+  const preferred =
+    list.find((item: any) =>
+      String(item?.name || '').trim().toLowerCase() === title &&
+      String(item?.source || '').toUpperCase() === source &&
+      Array.isArray(item?.images) &&
+      item.images.length
+    ) ||
+    list.find((item: any) =>
+      String(item?.name || '').trim().toLowerCase() === title &&
+      Array.isArray(item?.images) &&
+      item.images.length
+    )
+
+  const image = Array.isArray(preferred?.images) ? preferred.images[0] : null
+  const imagePath = image?.href?.path
+
+  return imagePath ? `/api/5etools-img/${imagePath}` : null
+}
 
 function extractImageUrl(entity: any, blocks: any[] = []) {
   if (entity?.image) {
@@ -112,6 +157,6 @@ export default defineEventHandler(async (event) => {
     statblock,
     actions,
     monsterProfile,
-    imageUrl: extractImageUrl(entity, blocks)
+    imageUrl: extractImageUrl(entity, blocks) || raceFluffImageUrl(entity)
   }
 })

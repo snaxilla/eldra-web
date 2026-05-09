@@ -45,6 +45,62 @@ function raceFluffImageUrl(entity: any) {
   return imagePath ? `/api/5etools-img/${imagePath}` : null
 }
 
+function clean5eText(value: any) {
+  return String(value ?? '')
+    .replace(/\{@([^} ]+) ([^}|]+)(?:\|[^}]*)?\}/g, '$2')
+    .replace(/\{@([^}]+)\}/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function entriesToMarkdown(value: any): string {
+  if (!value) return ''
+
+  if (typeof value === 'string') return clean5eText(value)
+
+  if (Array.isArray(value)) {
+    return value.map(entriesToMarkdown).filter(Boolean).join('\n\n')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name) parts.push(`## ${clean5eText(value.name)}`)
+    if (value.entries) parts.push(entriesToMarkdown(value.entries))
+    if (value.items) parts.push(entriesToMarkdown(value.items))
+
+    return parts.filter(Boolean).join('\n\n')
+  }
+
+  return clean5eText(value)
+}
+
+function raceFluffRecord(entity: any) {
+  const type = String(entity?.entity_type || '').toLowerCase()
+  if (type !== 'species' && type !== 'race') return null
+
+  const source = sourceFromSlug(entity?.slug)
+  const title = String(entity?.title || '').trim().toLowerCase()
+  const fluff = readJsonSafe(RACE_FLUFF_FILE)
+  const list = Array.isArray(fluff?.raceFluff) ? fluff.raceFluff : []
+
+  return (
+    list.find((item: any) =>
+      String(item?.name || '').trim().toLowerCase() === title &&
+      String(item?.source || '').toUpperCase() === source
+    ) ||
+    list.find((item: any) =>
+      String(item?.name || '').trim().toLowerCase() === title
+    ) ||
+    null
+  )
+}
+
+function raceFluffMarkdown(entity: any) {
+  const record = raceFluffRecord(entity)
+  return entriesToMarkdown(record?.entries || '').trim()
+}
+
 function extractImageUrl(entity: any, blocks: any[] = []) {
   if (entity?.image) {
     if (typeof entity.image === 'string') return `/api/assets/${entity.image}`
@@ -157,6 +213,7 @@ export default defineEventHandler(async (event) => {
     statblock,
     actions,
     monsterProfile,
-    imageUrl: extractImageUrl(entity, blocks) || raceFluffImageUrl(entity)
+    imageUrl: extractImageUrl(entity, blocks) || raceFluffImageUrl(entity),
+    raceFluffMarkdown: raceFluffMarkdown(entity)
   }
 })

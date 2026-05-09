@@ -176,12 +176,14 @@ function buildSpeciesArticleMarkdown(): string {
   const core = speciesCore.value
   const raw = importSourceRawJson()
 
-  return (
-    String(core?.description || '').trim() ||
-    String(core?.traits || '').trim() ||
-    entriesToMarkdown(raw?.entries) ||
-    ''
-  )
+  const parts = [
+    String(entity.value?.raceFluffMarkdown || '').trim(),
+    String(core?.description || '').trim(),
+    String(core?.traits || '').trim(),
+    entriesToMarkdown(raw?.entries)
+  ].filter(Boolean)
+
+  return parts.join('\n\n')
 }
 
 

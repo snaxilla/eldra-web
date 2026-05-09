@@ -1,4 +1,55 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { directusServiceRequest } from '../../../utils/directus'
+
+const CLASS_DATA_DIR = '/opt/eldra/datasets/5etools-src/data/class'
+
+function readJsonSafe(filePath: string) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function sourceFromSlug(slug: string) {
+  const parts = String(slug || '').split('-')
+  const last = parts[parts.length - 1]
+  return last ? last.toUpperCase() : ''
+}
+
+function classNameFromSlug(slug: string, title: string) {
+  const source = sourceFromSlug(slug).toLowerCase()
+  let raw = String(slug || '').toLowerCase()
+  if (source && raw.endsWith(`-${source}`)) raw = raw.slice(0, -(source.length + 1))
+  return raw || String(title || '').toLowerCase()
+}
+
+function classFluffImageUrl(row: any) {
+  if (String(row?.entity_type || '').toLowerCase() !== 'class') return null
+
+  const slugName = classNameFromSlug(row?.slug, row?.title)
+  const source = sourceFromSlug(row?.slug)
+  const filePath = path.join(CLASS_DATA_DIR, `fluff-class-${slugName}.json`)
+  const fluff = readJsonSafe(filePath)
+  const list = Array.isArray(fluff?.classFluff) ? fluff.classFluff : []
+
+  const preferred =
+    list.find((item: any) =>
+      String(item?.name || '').toLowerCase() === String(row?.title || '').toLowerCase() &&
+      String(item?.source || '').toUpperCase() === source
+    ) ||
+    list.find((item: any) =>
+      String(item?.name || '').toLowerCase() === String(row?.title || '').toLowerCase() &&
+      Array.isArray(item?.images) &&
+      item.images.length
+    )
+
+  const image = Array.isArray(preferred?.images) ? preferred.images[0] : null
+  const imagePath = image?.href?.path
+
+  return imagePath ? `/api/5etools-img/${imagePath}` : null
+}
 
 function extractImageUrl(blocks: any[] = []) {
   for (const block of blocks) {
@@ -105,7 +156,7 @@ export default defineEventHandler(async (event) => {
 
   return rows.map((row: any) => {
     const entityBlocks = blocksByEntityId.get(Number(row.id)) || []
-    const derivedImageUrl = row?.image ? `/api/assets/${row.image}` : extractImageUrl(entityBlocks)
+    const derivedImageUrl = row?.image ? `/api/assets/${row.image}` : extractImageUrl(entityBlocks) || classFluffImageUrl(row)
     const overviewText = extractOverviewText(entityBlocks)
     const coreText = extractCoreText(entityBlocks)
 

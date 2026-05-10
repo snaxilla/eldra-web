@@ -15,6 +15,11 @@ const uploadingImage = ref(false)
 const imageError = ref('')
 const imageSuccess = ref('')
 
+const articleDraft = ref('')
+const articleSaving = ref(false)
+const articleSaveError = ref('')
+const articleSaveSuccess = ref('')
+
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
 const { data: entity, refresh: refreshEntity } = await useAsyncData(
@@ -233,7 +238,12 @@ function closeImageLightbox() {
 }
 
 
-const articleMarkdown = computed(() => {
+const articleOverrideBlock = computed(() => blockByKey('article_override'))
+const articleOverrideMarkdown = computed(() =>
+  String(articleOverrideBlock.value?.data?.markdown || '').trim()
+)
+
+const generatedArticleMarkdown = computed(() => {
   if (!entity.value) return ''
 
   return (
@@ -253,6 +263,50 @@ const articleMarkdown = computed(() => {
     ''
   )
 })
+
+const articleMarkdown = computed(() => articleOverrideMarkdown.value || generatedArticleMarkdown.value || '')
+
+watch(
+  () => [entityId.value, articleOverrideMarkdown.value, generatedArticleMarkdown.value],
+  () => {
+    articleDraft.value = articleMarkdown.value || ''
+    articleSaveError.value = ''
+    articleSaveSuccess.value = ''
+  },
+  { immediate: true }
+)
+
+async function saveArticleOverride() {
+  if (!entity.value || articleSaving.value) return
+
+  articleSaving.value = true
+  articleSaveError.value = ''
+  articleSaveSuccess.value = ''
+
+  try {
+    await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/blocks/article_override`, {
+      method: 'PUT',
+      body: {
+        data: {
+          markdown: articleDraft.value
+        }
+      }
+    })
+
+    await refreshEntity()
+    articleSaveSuccess.value = 'Article saved.'
+  } catch (error: any) {
+    articleSaveError.value = error?.data?.statusMessage || error?.message || 'Could not save article.'
+  } finally {
+    articleSaving.value = false
+  }
+}
+
+function resetArticleDraft() {
+  articleDraft.value = generatedArticleMarkdown.value || ''
+  articleSaveError.value = ''
+  articleSaveSuccess.value = 'Draft reset. Save to keep it.'
+}
 
 const articleHtml = computed(() => renderMarkdown(articleMarkdown.value || ''))
 
@@ -500,7 +554,6 @@ const detailSections = computed(() => {
   return sections.filter((section) => section.lines.length)
 })
 
-const buildDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const contextDrawerTitle = ref('')
 const contextDrawerMarkdown = ref('')
@@ -668,16 +721,6 @@ async function onImageSelected(event: Event) {
         </article>
       </section>
 
-            <div v-if="mode === 'build'" class="mt-4 flex justify-end">
-        <button
-          type="button"
-          class="border border-yellow-700/35 bg-[#151515]/70 px-4 py-2 text-sm font-medium text-yellow-100 transition hover:bg-yellow-900/20"
-          @click="buildDrawerOpen = true"
-        >
-          Page Build
-        </button>
-      </div>
-
 <section class="mt-6 rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.66),rgba(8,8,8,0.52))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
         <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
           Article
@@ -743,6 +786,57 @@ async function onImageSelected(event: Event) {
           </article>
         </div>
 
+        <div v-else-if="mode === 'build'" class="mt-6 grid gap-5 xl:grid-cols-2">
+          <div>
+            <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">Markdown Editor</div>
+                <div class="mt-1 text-sm text-zinc-400">Overrides this article only. Imported source data stays untouched.</div>
+              </div>
+
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="rounded-none border border-stone-500/20 bg-[#151515]/80 px-4 py-2 text-sm text-zinc-200 hover:bg-white/[0.08]"
+                  @click="resetArticleDraft"
+                >
+                  Reset
+                </button>
+
+                <button
+                  type="button"
+                  class="rounded-none border border-yellow-700/40 bg-yellow-900/25 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-yellow-900/40 disabled:opacity-50"
+                  :disabled="articleSaving"
+                  @click="saveArticleOverride"
+                >
+                  {{ articleSaving ? 'Saving...' : 'Save Article' }}
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              v-model="articleDraft"
+              class="min-h-[560px] w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 p-5 font-mono text-sm leading-7 text-zinc-100 outline-none focus:border-yellow-700/50"
+              placeholder="Write article markdown here..."
+            ></textarea>
+
+            <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
+            <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
+          </div>
+
+          <div>
+            <div class="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Live Preview</div>
+            <div
+              v-if="articleDraft.trim()"
+              class="markdown-content min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-[16px] leading-8 text-zinc-200"
+              v-html="renderMarkdown(articleDraft)"
+            ></div>
+            <div v-else class="min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-zinc-500">
+              No article content yet.
+            </div>
+          </div>
+        </div>
+
         <div
           v-else-if="articleMarkdown"
           class="markdown-content mt-6 text-[16px] leading-8 text-zinc-200"
@@ -758,44 +852,6 @@ async function onImageSelected(event: Event) {
       </section>
     </div>
 
-
-    <Transition
-      enter-from-class="translate-x-full opacity-0"
-      enter-active-class="transition duration-200"
-      leave-to-class="translate-x-full opacity-0"
-      leave-active-class="transition duration-200"
-    >
-      <aside
-        v-if="buildDrawerOpen"
-        class="fixed right-0 top-0 z-40 h-full w-[420px] border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,14,14,0.94),rgba(5,5,5,0.90))] backdrop-blur-xl"
-      >
-        <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
-            <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">Build</div>
-              <h2 class="mt-3 text-2xl font-semibold text-white">Page Build</h2>
-            </div>
-
-            <button
-              type="button"
-              class="border border-stone-500/20 bg-[#151515]/70 p-2 text-zinc-300 transition hover:bg-[#222] hover:text-white"
-              @click="buildDrawerOpen = false"
-            >
-              <UIcon name="i-lucide-x" class="h-5 w-5" />
-            </button>
-          </div>
-
-          <div class="flex-1 overflow-y-auto p-5">
-            <WorldPagePresentationPanel
-              :world-id="worldId"
-              page-key="entity-article"
-              title="Entity Article"
-              description="Build-mode page controls live here for this article view."
-            />
-          </div>
-        </div>
-      </aside>
-    </Transition>
 
     <Transition
       enter-from-class="translate-x-full opacity-0"

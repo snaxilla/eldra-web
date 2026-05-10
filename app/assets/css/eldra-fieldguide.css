@@ -1,0 +1,93 @@
+:root {
+  --eldra-ink: #070604;
+  --eldra-charcoal: #11100d;
+  --eldra-panel: rgba(19, 17, 13, 0.86);
+  --eldra-panel-strong: rgba(10, 9, 7, 0.94);
+  --eldra-gold: #c9a45a;
+  --eldra-gold-soft: rgba(201, 164, 90, 0.36);
+  --eldra-gold-faint: rgba(201, 164, 90, 0.14);
+  --eldra-parchment: #e8d9b5;
+  --eldra-muted: #a79b85;
+}
+
+.eldra-fieldguide-bg {
+  background:
+    radial-gradient(900px 520px at 18% -10%, rgba(201, 164, 90, 0.16), transparent 55%),
+    radial-gradient(760px 520px at 92% 8%, rgba(120, 80, 38, 0.12), transparent 58%),
+    linear-gradient(180deg, #090806 0%, #11100d 45%, #070604 100%);
+}
+
+.eldra-codex-panel {
+  position: relative;
+  border: 1px solid var(--eldra-gold-soft);
+  background:
+    linear-gradient(180deg, rgba(27, 24, 18, 0.90), rgba(9, 8, 6, 0.86)),
+    radial-gradient(900px 280px at 50% 0%, rgba(201, 164, 90, 0.10), transparent 70%);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 238, 190, 0.05);
+}
+
+.eldra-codex-panel::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  border: 1px solid rgba(201, 164, 90, 0.16);
+}
+
+.eldra-codex-panel > * {
+  position: relative;
+}
+
+.eldra-codex-soft {
+  border: 1px solid rgba(201, 164, 90, 0.22);
+  background: linear-gradient(180deg, rgba(22, 19, 14, 0.76), rgba(8, 8, 6, 0.66));
+}
+
+.eldra-codex-frame {
+  border: 1px solid rgba(201, 164, 90, 0.30);
+  background: rgba(5, 5, 4, 0.54);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 238, 190, 0.035);
+}
+
+.eldra-kicker {
+  color: var(--eldra-muted);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+
+.eldra-title {
+  color: #fff7df;
+  text-shadow: 0 2px 18px rgba(201, 164, 90, 0.10);
+}
+
+.eldra-gold-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201, 164, 90, 0.58), transparent);
+}
+
+.eldra-button {
+  border: 1px solid rgba(201, 164, 90, 0.34);
+  background: rgba(17, 15, 11, 0.86);
+  color: #f5e7bd;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.eldra-button:hover {
+  border-color: rgba(201, 164, 90, 0.58);
+  background: rgba(64, 45, 18, 0.42);
+}
+
+.eldra-input {
+  border: 1px solid rgba(201, 164, 90, 0.24);
+  background: rgba(5, 5, 4, 0.72);
+  color: #f5f0df;
+  outline: none;
+}
+
+.eldra-input:focus {
+  border-color: rgba(201, 164, 90, 0.58);
+}

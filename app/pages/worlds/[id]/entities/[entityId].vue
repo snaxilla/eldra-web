@@ -845,7 +845,7 @@ async function onImageSelected(event: Event) {
         </div>
 
         <div
-          v-if="entity?.entity_type === 'class' && classFeatureCards.length"
+          v-if="mode !== 'build' && !articleOverrideMarkdown && entity?.entity_type === 'class' && classFeatureCards.length"
           class="mt-6 space-y-5"
         >
           <div class="rounded-none border border-stone-500/20 bg-[#101010]/92 p-4 backdrop-blur-xl">

@@ -308,6 +308,41 @@ function resetArticleDraft() {
   articleSaveSuccess.value = 'Draft reset. Save to keep it.'
 }
 
+function wrapSelection(before: string, after = before, placeholder = 'text') {
+  const textarea = document.querySelector('textarea[data-article-editor="true"]') as HTMLTextAreaElement | null
+  if (!textarea) return
+
+  const start = textarea.selectionStart ?? 0
+  const end = textarea.selectionEnd ?? 0
+  const selected = articleDraft.value.slice(start, end) || placeholder
+  const next = articleDraft.value.slice(0, start) + before + selected + after + articleDraft.value.slice(end)
+
+  articleDraft.value = next
+
+  nextTick(() => {
+    textarea.focus()
+    textarea.setSelectionRange(start + before.length, start + before.length + selected.length)
+  })
+}
+
+function insertMarkdown(markdown: string) {
+  const textarea = document.querySelector('textarea[data-article-editor="true"]') as HTMLTextAreaElement | null
+  if (!textarea) {
+    articleDraft.value += markdown
+    return
+  }
+
+  const start = textarea.selectionStart ?? articleDraft.value.length
+  const next = articleDraft.value.slice(0, start) + markdown + articleDraft.value.slice(start)
+
+  articleDraft.value = next
+
+  nextTick(() => {
+    textarea.focus()
+    textarea.setSelectionRange(start + markdown.length, start + markdown.length)
+  })
+}
+
 const articleHtml = computed(() => renderMarkdown(articleMarkdown.value || ''))
 
 const classFeatureCards = computed(() => {
@@ -790,8 +825,8 @@ async function onImageSelected(event: Event) {
           <div>
             <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">Markdown Editor</div>
-                <div class="mt-1 text-sm text-zinc-400">Overrides this article only. Imported source data stays untouched.</div>
+                <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">Article Editor</div>
+                <div class="mt-1 text-sm text-zinc-400">Use the buttons like a simple word processor. Saves as Markdown behind the scenes.</div>
               </div>
 
               <div class="flex gap-2">
@@ -814,8 +849,18 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
+            <div class="mb-3 flex flex-wrap gap-2 border border-stone-500/20 bg-[#111]/80 p-2">
+              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="wrapSelection('**', '**', 'bold text')">Bold</button>
+              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="wrapSelection('*', '*', 'italic text')">Italic</button>
+              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n\n## Heading\n\n')">Heading</button>
+              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n- List item\n')">List</button>
+              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n> Quote text\n')">Quote</button>
+              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n---\n')">Divider</button>
+            </div>
+
             <textarea
               v-model="articleDraft"
+              data-article-editor="true"
               class="min-h-[560px] w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 p-5 font-mono text-sm leading-7 text-zinc-100 outline-none focus:border-yellow-700/50"
               placeholder="Write article markdown here..."
             ></textarea>

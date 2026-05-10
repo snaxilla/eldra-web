@@ -71,6 +71,7 @@ export default defineEventHandler(async (event) => {
       body: JSON.stringify({
         entity_id: entityId,
         block_key: blockKey,
+        label: blockKey.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
         sort: 999,
         data
       })

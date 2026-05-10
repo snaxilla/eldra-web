@@ -20,6 +20,13 @@ const articleSaving = ref(false)
 const articleSaveError = ref('')
 const articleSaveSuccess = ref('')
 
+const metaTitle = ref('')
+const metaSlug = ref('')
+const metaSummary = ref('')
+const metaSaving = ref(false)
+const metaSaveError = ref('')
+const metaSaveSuccess = ref('')
+
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
 const { data: entity, refresh: refreshEntity } = await useAsyncData(
@@ -235,6 +242,44 @@ function openImageLightbox() {
 
 function closeImageLightbox() {
   imageLightboxOpen.value = false
+}
+
+watch(
+  () => entity.value,
+  () => {
+    metaTitle.value = String(entity.value?.title || '')
+    metaSlug.value = String(entity.value?.slug || '')
+    metaSummary.value = String(entity.value?.summary || '')
+    metaSaveError.value = ''
+    metaSaveSuccess.value = ''
+  },
+  { immediate: true }
+)
+
+async function saveEntityMetadata() {
+  if (!entity.value || metaSaving.value) return
+
+  metaSaving.value = true
+  metaSaveError.value = ''
+  metaSaveSuccess.value = ''
+
+  try {
+    await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}`, {
+      method: 'PATCH',
+      body: {
+        title: metaTitle.value,
+        slug: metaSlug.value,
+        summary: metaSummary.value
+      }
+    })
+
+    await refreshEntity()
+    metaSaveSuccess.value = 'Header saved.'
+  } catch (error: any) {
+    metaSaveError.value = error?.data?.statusMessage || error?.message || 'Could not save header.'
+  } finally {
+    metaSaving.value = false
+  }
 }
 
 
@@ -685,6 +730,44 @@ async function onImageSelected(event: Event) {
           <div class="p-7">
             <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
               {{ world?.name || 'World' }}
+            </div>
+
+            <div
+              v-if="mode === 'build'"
+              class="mt-5 border border-stone-500/20 bg-[#111]/80 p-4"
+            >
+              <div class="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Header Editor</div>
+
+              <div class="grid gap-3 md:grid-cols-2">
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Title</span>
+                  <input v-model="metaTitle" class="w-full rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-yellow-700/50">
+                </label>
+
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Slug</span>
+                  <input v-model="metaSlug" class="w-full rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-yellow-700/50">
+                </label>
+              </div>
+
+              <label class="mt-3 block">
+                <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Summary Blurb</span>
+                <textarea v-model="metaSummary" rows="4" class="w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none focus:border-yellow-700/50"></textarea>
+              </label>
+
+              <div class="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  class="rounded-none border border-yellow-700/40 bg-yellow-900/25 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-yellow-900/40 disabled:opacity-50"
+                  :disabled="metaSaving"
+                  @click="saveEntityMetadata"
+                >
+                  {{ metaSaving ? 'Saving...' : 'Save Header' }}
+                </button>
+
+                <span v-if="metaSaveError" class="text-sm text-red-300">{{ metaSaveError }}</span>
+                <span v-if="metaSaveSuccess" class="text-sm text-emerald-300">{{ metaSaveSuccess }}</span>
+              </div>
             </div>
 
             <h1 class="mt-4 text-6xl font-semibold tracking-tight text-white">

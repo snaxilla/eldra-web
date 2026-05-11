@@ -182,7 +182,7 @@ async function clearBackground() {
 </script>
 
 <template>
-  <div class="rounded-[28px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.46),rgba(12,16,22,0.36))] p-5 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
+  <div class="eldra-ornate-panel eldra-frame-corners p-5 shadow-xl">
     <input
       ref="hiddenBgInput"
       type="file"
@@ -191,16 +191,16 @@ async function clearBackground() {
       @change="onBackgroundPicked"
     >
 
-    <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Page Build</div>
+    <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Page Build</div>
     <h2 class="mt-3 text-2xl font-semibold text-white">{{ title }}</h2>
 
     <div class="mt-4 flex flex-wrap gap-2">
       <button
         type="button"
-        class="rounded-xl border px-4 py-2 text-sm transition"
+        class="rounded-none border px-4 py-2 text-sm transition"
         :class="currentMode === 'immersive'
-          ? 'border-sky-400/30 bg-sky-400/15 text-sky-100'
-          : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+          ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+          : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
         :disabled="presentationBusy"
         @click="setPresentationMode('immersive')"
       >
@@ -209,10 +209,10 @@ async function clearBackground() {
 
       <button
         type="button"
-        class="rounded-xl border px-4 py-2 text-sm transition"
+        class="rounded-none border px-4 py-2 text-sm transition"
         :class="currentMode === 'muted'
-          ? 'border-sky-400/30 bg-sky-400/15 text-sky-100'
-          : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+          ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+          : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
         :disabled="presentationBusy"
         @click="setPresentationMode('muted')"
       >
@@ -221,10 +221,10 @@ async function clearBackground() {
 
       <button
         type="button"
-        class="rounded-xl border px-4 py-2 text-sm transition"
+        class="rounded-none border px-4 py-2 text-sm transition"
         :class="currentMode === 'neutral'
-          ? 'border-sky-400/30 bg-sky-400/15 text-sky-100'
-          : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+          ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+          : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
         :disabled="presentationBusy"
         @click="setPresentationMode('neutral')"
       >
@@ -235,7 +235,7 @@ async function clearBackground() {
     <div class="mt-4 flex flex-wrap gap-2">
       <button
         type="button"
-        class="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm text-emerald-100 transition hover:bg-emerald-400/20 disabled:opacity-50"
+        class="eldra-button rounded-none px-4 py-2 text-sm disabled:opacity-50"
         :disabled="presentationBusy"
         @click="triggerBackgroundPicker"
       >
@@ -244,7 +244,7 @@ async function clearBackground() {
 
       <button
         type="button"
-        class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
+        class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df] disabled:opacity-50"
         :disabled="presentationBusy"
         @click="clearBackground"
       >
@@ -254,18 +254,18 @@ async function clearBackground() {
 
     <div
       v-if="previewImageUrl"
-      class="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+      class="eldra-image-frame mt-4 overflow-hidden rounded-none border bg-black/20"
     >
       <img :src="previewImageUrl" alt="Background preview" class="h-28 w-full object-cover">
     </div>
 
-    <p class="mt-4 text-sm leading-7 text-slate-400">
+    <p class="mt-4 text-sm leading-7 text-[#b5a88d]">
       {{ description }}
     </p>
 
     <div
       v-if="presentationMessage"
-      class="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-200"
+      class="mt-4 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-[#d8ceb8]"
     >
       {{ presentationMessage }}
     </div>

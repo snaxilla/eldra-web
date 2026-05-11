@@ -684,7 +684,7 @@ async function deleteSelectedEntity() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="mode === 'build' && !selectedEntity"
-        class="fixed right-0 top-0 z-20 h-full w-[360px] border-l border-[rgba(201,164,90,0.22)] bg-[rgba(8,16,27,0.94)] backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div class="p-5">
           <WorldPagePresentationPanel

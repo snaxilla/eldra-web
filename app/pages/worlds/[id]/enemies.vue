@@ -255,19 +255,19 @@ async function deleteEnemy() {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
       <div :class="selectedEnemy || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
-        <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none p-6 backdrop-blur-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Enemies</div>
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Enemies</div>
               <h1 class="mt-2 text-3xl font-semibold text-white">{{ world?.name || 'World' }}</h1>
-              <p class="mt-2 max-w-3xl text-sm text-slate-300">
+              <p class="mt-2 max-w-3xl text-sm text-[#d8ceb8]">
                 Browse imported enemies, statblocks, and actions for quick tabletop reference.
               </p>
             </div>
 
             <button
               type="button"
-              class="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+              class="eldra-button rounded-none px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
               @click="refresh()"
             >
               Refresh
@@ -279,14 +279,14 @@ async function deleteEnemy() {
               v-model="search"
               type="text"
               placeholder="Search enemies..."
-              class="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
+              class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
             >
           </div>
         </section>
 
         <section
           v-if="pending"
-          class="mt-6 eldra-panel rounded-[24px] p-6 text-slate-300 shadow-xl"
+          class="mt-6 eldra-panel rounded-[24px] p-6 text-[#d8ceb8] shadow-xl"
         >
           Loading enemies...
         </section>
@@ -296,7 +296,7 @@ async function deleteEnemy() {
           class="mt-6 eldra-empty rounded-[24px] p-10 text-center shadow-xl"
         >
           <div class="text-lg font-medium text-white">No enemies found</div>
-          <p class="mt-2 text-sm text-slate-300">
+          <p class="mt-2 text-sm text-[#d8ceb8]">
             Import monsters from the Importer page, then come back here to browse them.
           </p>
         </section>
@@ -308,14 +308,14 @@ async function deleteEnemy() {
           <div
             v-for="enemy in filteredEnemies"
             :key="enemy.id"
-            class="group cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.44),rgba(12,16,22,0.30))] backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
+            class="group cursor-pointer overflow-hidden eldra-ornate-card eldra-frame-corners rounded-none border backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition duration-150 hover:border-[rgba(201,164,90,0.58)]"
             :class="selectedEnemyId === String(enemy.id)
               ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(38,42,48,0.70),rgba(16,20,26,0.52))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.22),0_22px_48px_rgba(0,0,0,0.34)]'
               : 'opacity-95'"
             @click="selectEnemy(enemy)"
           >
             <div class="grid min-h-[240px] grid-cols-[112px_minmax(0,1fr)]">
-              <div class="border-r border-white/10 bg-black/20">
+              <div class="border-r border-[rgba(201,164,90,0.22)] bg-black/20">
                 <img
                   v-if="imageUrlForEnemy(enemy)"
                   :src="imageUrlForEnemy(enemy)"
@@ -338,19 +338,19 @@ async function deleteEnemy() {
                     </div>
                   </div>
 
-                  <span class="shrink-0 rounded-full border border-red-400/20 bg-red-400/10 px-2.5 py-1 text-[11px] font-medium text-red-200">
+                  <span class="shrink-0 rounded-none border border-red-400/25 bg-red-400/10 px-2.5 py-1 text-[11px] font-medium text-red-200">
                     CR {{ enemy.statblock?.challenge_rating || '—' }}
                   </span>
                 </div>
 
                 <div class="mt-4 space-y-1.5 text-sm text-slate-200">
-                  <div><span class="text-slate-400">Type:</span> {{ formatCreatureType(enemy.statblock?.creature_type) }}</div>
-                  <div><span class="text-slate-400">Size:</span> {{ formatSize(enemy.statblock?.size_json) }}</div>
-                  <div><span class="text-slate-400">AC:</span> {{ enemy.statblock?.armor_class ?? '—' }}</div>
-                  <div><span class="text-slate-400">HP:</span> {{ enemy.statblock?.hit_points_average ?? '—' }}</div>
+                  <div><span class="text-[#b5a88d]">Type:</span> {{ formatCreatureType(enemy.statblock?.creature_type) }}</div>
+                  <div><span class="text-[#b5a88d]">Size:</span> {{ formatSize(enemy.statblock?.size_json) }}</div>
+                  <div><span class="text-[#b5a88d]">AC:</span> {{ enemy.statblock?.armor_class ?? '—' }}</div>
+                  <div><span class="text-[#b5a88d]">HP:</span> {{ enemy.statblock?.hit_points_average ?? '—' }}</div>
                 </div>
 
-                <div class="mt-auto pt-5 text-sm font-medium text-sky-200 transition group-hover:text-sky-100">
+                <div class="mt-auto pt-5 text-sm font-medium text-[#f5e7bd] transition group-hover:text-[#fff7df]">
                   Select Enemy →
                 </div>
               </div>
@@ -363,7 +363,7 @@ async function deleteEnemy() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="mode === 'build' && !selectedEnemy"
-        class="fixed right-0 top-0 z-20 h-full w-[360px] border-l border-white/10 bg-[rgba(8,16,27,0.94)] backdrop-blur"
+        class="fixed right-0 top-0 z-20 h-full w-[360px] border-l border-[rgba(201,164,90,0.22)] bg-transparent backdrop-blur"
       >
         <div class="p-5">
           <WorldPagePresentationPanel
@@ -379,10 +379,10 @@ async function deleteEnemy() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="selectedEnemy"
-        class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-white/10 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.72),rgba(10,13,18,0.62))] backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
+          <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
             <div class="min-w-0">
               <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
               <h2 class="mt-3 truncate text-2xl font-semibold text-white">{{ selectedEnemy.title }}</h2>
@@ -390,7 +390,7 @@ async function deleteEnemy() {
 
             <button
               type="button"
-              class="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
+              class="eldra-button rounded-none p-2 text-[#b5a88d] transition hover:bg-white/[0.08] hover:text-white"
               @click="clearSelectedEnemy"
             >
               <UIcon name="i-lucide-x" class="h-4 w-4" />
@@ -400,7 +400,7 @@ async function deleteEnemy() {
           <div class="flex-1 overflow-y-auto px-5 py-5 space-y-5">
             <div
               v-if="selectedEnemy.imageUrl"
-              class="overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+              class="eldra-image-frame overflow-hidden rounded-none border bg-black/20"
             >
               <img
                 :src="selectedEnemy.imageUrl"
@@ -409,65 +409,65 @@ async function deleteEnemy() {
               >
             </div>
 
-            <div v-else class="flex h-64 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-4xl font-semibold text-slate-300">
+            <div v-else class="flex h-64 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-4xl font-semibold text-[#d8ceb8]">
               {{ initialsFor(selectedEnemy.title) }}
             </div>
 
-            <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="grid grid-cols-2 gap-3 text-sm">
-                <div><span class="text-slate-400">CR:</span> <span class="text-white">{{ selectedEnemy.statblock?.challenge_rating || '—' }}</span></div>
-                <div><span class="text-slate-400">AC:</span> <span class="text-white">{{ selectedEnemy.statblock?.armor_class ?? '—' }}</span></div>
-                <div><span class="text-slate-400">HP:</span> <span class="text-white">{{ selectedEnemy.statblock?.hit_points_average ?? '—' }}</span></div>
-                <div><span class="text-slate-400">Type:</span> <span class="text-white">{{ formatCreatureType(selectedEnemy.statblock?.creature_type) }}</span></div>
-                <div><span class="text-slate-400">Size:</span> <span class="text-white">{{ formatSize(selectedEnemy.statblock?.size_json) }}</span></div>
-                <div><span class="text-slate-400">Align:</span> <span class="text-white">{{ formatAlignment(selectedEnemy.statblock?.alignment_json) }}</span></div>
+                <div><span class="text-[#b5a88d]">CR:</span> <span class="text-white">{{ selectedEnemy.statblock?.challenge_rating || '—' }}</span></div>
+                <div><span class="text-[#b5a88d]">AC:</span> <span class="text-white">{{ selectedEnemy.statblock?.armor_class ?? '—' }}</span></div>
+                <div><span class="text-[#b5a88d]">HP:</span> <span class="text-white">{{ selectedEnemy.statblock?.hit_points_average ?? '—' }}</span></div>
+                <div><span class="text-[#b5a88d]">Type:</span> <span class="text-white">{{ formatCreatureType(selectedEnemy.statblock?.creature_type) }}</span></div>
+                <div><span class="text-[#b5a88d]">Size:</span> <span class="text-white">{{ formatSize(selectedEnemy.statblock?.size_json) }}</span></div>
+                <div><span class="text-[#b5a88d]">Align:</span> <span class="text-white">{{ formatAlignment(selectedEnemy.statblock?.alignment_json) }}</span></div>
               </div>
             </div>
 
-            <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="mb-3 text-xs uppercase tracking-[0.25em] text-slate-500">Abilities</div>
               <div class="grid grid-cols-3 gap-3 text-center">
-                <div class="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">STR</div>
                   <div class="mt-1 text-lg font-semibold text-white">{{ selectedEnemy.statblock?.str_score ?? '—' }}</div>
-                  <div class="text-xs text-slate-400">{{ scoreMod(selectedEnemy.statblock?.str_score) }}</div>
+                  <div class="text-xs text-[#b5a88d]">{{ scoreMod(selectedEnemy.statblock?.str_score) }}</div>
                 </div>
-                <div class="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">DEX</div>
                   <div class="mt-1 text-lg font-semibold text-white">{{ selectedEnemy.statblock?.dex_score ?? '—' }}</div>
-                  <div class="text-xs text-slate-400">{{ scoreMod(selectedEnemy.statblock?.dex_score) }}</div>
+                  <div class="text-xs text-[#b5a88d]">{{ scoreMod(selectedEnemy.statblock?.dex_score) }}</div>
                 </div>
-                <div class="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">CON</div>
                   <div class="mt-1 text-lg font-semibold text-white">{{ selectedEnemy.statblock?.con_score ?? '—' }}</div>
-                  <div class="text-xs text-slate-400">{{ scoreMod(selectedEnemy.statblock?.con_score) }}</div>
+                  <div class="text-xs text-[#b5a88d]">{{ scoreMod(selectedEnemy.statblock?.con_score) }}</div>
                 </div>
-                <div class="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">INT</div>
                   <div class="mt-1 text-lg font-semibold text-white">{{ selectedEnemy.statblock?.int_score ?? '—' }}</div>
-                  <div class="text-xs text-slate-400">{{ scoreMod(selectedEnemy.statblock?.int_score) }}</div>
+                  <div class="text-xs text-[#b5a88d]">{{ scoreMod(selectedEnemy.statblock?.int_score) }}</div>
                 </div>
-                <div class="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">WIS</div>
                   <div class="mt-1 text-lg font-semibold text-white">{{ selectedEnemy.statblock?.wis_score ?? '—' }}</div>
-                  <div class="text-xs text-slate-400">{{ scoreMod(selectedEnemy.statblock?.wis_score) }}</div>
+                  <div class="text-xs text-[#b5a88d]">{{ scoreMod(selectedEnemy.statblock?.wis_score) }}</div>
                 </div>
-                <div class="rounded-xl border border-white/10 bg-black/10 p-3">
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">CHA</div>
                   <div class="mt-1 text-lg font-semibold text-white">{{ selectedEnemy.statblock?.cha_score ?? '—' }}</div>
-                  <div class="text-xs text-slate-400">{{ scoreMod(selectedEnemy.statblock?.cha_score) }}</div>
+                  <div class="text-xs text-[#b5a88d]">{{ scoreMod(selectedEnemy.statblock?.cha_score) }}</div>
                 </div>
               </div>
             </div>
 
-            <div class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200">
+            <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200">
               <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Languages</div>
               {{ formatLanguages(selectedEnemy.statblock?.languages_json) }}
             </div>
 
             <div
               v-if="selectedEnemySummary"
-              class="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-slate-200"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
             >
               <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
               <div
@@ -478,7 +478,7 @@ async function deleteEnemy() {
 
             <div
               v-if="selectedEnemy.actions?.length"
-              class="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4"
             >
               <div class="mb-3 text-xs uppercase tracking-[0.25em] text-slate-500">Actions</div>
 
@@ -486,7 +486,7 @@ async function deleteEnemy() {
                 <div
                   v-for="action in selectedEnemy.actions"
                   :key="`${action.action_type}-${action.id}`"
-                  class="rounded-xl border border-white/10 bg-black/10 p-3"
+                  class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3"
                 >
                   <div class="flex items-center justify-between gap-3">
                     <div class="font-medium text-white">{{ action.name }}</div>
@@ -502,7 +502,7 @@ async function deleteEnemy() {
             {{ deleteError }}
           </div>
 
-          <div class="border-t border-white/10 p-5">
+          <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
             <div v-if="mode === 'build'" class="flex gap-3 mb-3">
               <button
                 v-if="!confirmDelete"
@@ -526,7 +526,7 @@ async function deleteEnemy() {
 
             <NuxtLink
               :to="`/worlds/${worldId}/entities/${selectedEnemy.id}`"
-              class="block rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+              class="eldra-button block rounded-none px-4 py-3 text-center text-sm font-medium"
             >
               Open Article
             </NuxtLink>

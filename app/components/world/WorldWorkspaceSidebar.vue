@@ -36,7 +36,7 @@ const navItems = computed(() => [
 </script>
 
 <template>
-  <aside class="flex h-full min-h-0 flex-col border-r border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,#090806,#11100d_48%,#070604)] text-[#efe2bd]">
+  <aside class="eldra-sidebar-ornate flex h-full min-h-0 flex-col border-r border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,#090806,#11100d_48%,#070604)] text-[#efe2bd]">
     <!-- COLLAPSED -->
     <template v-if="collapsed">
       <div class="flex items-center justify-center p-3">
@@ -84,7 +84,7 @@ const navItems = computed(() => [
             v-for="item in navItems"
             :key="item.label"
             :to="item.to"
-            class="flex h-10 items-center justify-center rounded-none border border-transparent text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.24)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]"
+            class="eldra-sidebar-nav-item flex h-10 items-center justify-center rounded-none border border-transparent text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.24)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]"
             active-class="border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]"
             :title="item.label"
           >
@@ -108,7 +108,7 @@ const navItems = computed(() => [
 
         <NuxtLink
           to="/"
-          class="flex h-10 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+          class="eldra-sidebar-switch flex h-10 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
           title="Switch World"
         >
           <UIcon name="i-lucide-arrow-left-right" class="h-4 w-4" />
@@ -118,10 +118,10 @@ const navItems = computed(() => [
 
     <!-- EXPANDED -->
     <template v-else>
-      <div class="p-4">
+      <div class="eldra-sidebar-brand p-4">
         <div class="flex items-center justify-between">
           <div>
-            <div class="text-xl font-semibold text-[#fff7df]">Eldra</div>
+            <div class="eldra-sidebar-brandmark text-2xl font-semibold text-[#fff7df]">Eldra</div>
             <div class="text-xs uppercase tracking-[0.28em] text-[#9f9278]">World Platform</div>
           </div>
 
@@ -141,7 +141,7 @@ const navItems = computed(() => [
       <div class="px-4 pb-4">
         <div class="flex gap-2">
           <button
-            class="flex-1 rounded-none border px-3 py-2 text-sm transition"
+            class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"
             :class="mode === 'play'
               ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'
               : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
@@ -151,7 +151,7 @@ const navItems = computed(() => [
           </button>
 
           <button
-            class="flex-1 rounded-none border px-3 py-2 text-sm transition"
+            class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"
             :class="mode === 'build'
               ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'
               : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
@@ -168,7 +168,7 @@ const navItems = computed(() => [
             v-for="item in navItems"
             :key="item.label"
             :to="item.to"
-            class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-[#d8ceb8] transition hover:bg-white/5 hover:text-white"
+            class="eldra-sidebar-nav-item flex items-center gap-3 rounded-none border border-transparent px-3 py-2 pl-6 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.24)] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
             active-class="border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]"
           >
             <UIcon :name="item.icon" class="h-4 w-4" />
@@ -205,7 +205,7 @@ const navItems = computed(() => [
 
         <NuxtLink
           to="/"
-          class="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#d8ceb8] transition hover:bg-white/10"
+          class="eldra-sidebar-switch flex items-center justify-center gap-2 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
         >
           <UIcon name="i-lucide-arrow-left-right" class="h-4 w-4" />
           <span>Switch World</span>

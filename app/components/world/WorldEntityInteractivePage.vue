@@ -555,7 +555,7 @@ async function deleteSelectedEntity() {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
       <div :class="selectedEntity || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
-        <section class="rounded-[24px] border border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
+        <section class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">{{ eyebrow || title }}</div>
@@ -567,7 +567,7 @@ async function deleteSelectedEntity() {
 
             <button
               type="button"
-              class="rounded-xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-2.5 text-sm text-slate-200 transition hover:bg-white/[0.08]"
               @click="refresh()"
             >
               Refresh
@@ -579,21 +579,21 @@ async function deleteSelectedEntity() {
               v-model="search"
               type="text"
               :placeholder="searchPlaceholder || `Search ${title.toLowerCase()}...`"
-              class="w-full rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
+              class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
             >
           </div>
         </section>
 
         <section
           v-if="pending"
-          class="mt-6 eldra-panel rounded-[24px] p-6 text-[#d8ceb8] shadow-xl"
+          class="mt-6 eldra-panel rounded-none p-6 text-[#d8ceb8] shadow-xl"
         >
           Loading {{ title.toLowerCase() }}...
         </section>
 
         <section
           v-else-if="!filteredEntities.length"
-          class="mt-6 eldra-empty rounded-[24px] p-10 text-center shadow-xl"
+          class="mt-6 eldra-empty rounded-none p-10 text-center shadow-xl"
         >
           <div class="text-lg font-medium text-white">No {{ title.toLowerCase() }} found</div>
           <p class="mt-2 text-sm text-[#d8ceb8]">
@@ -608,7 +608,7 @@ async function deleteSelectedEntity() {
           <div
             v-for="entity in filteredEntities"
             :key="entity.id"
-            class="group cursor-pointer overflow-hidden rounded-[24px] border border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(24,28,34,0.44),rgba(12,16,22,0.30))] backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition duration-150 hover:-translate-y-0.5 hover:border-white/20"
+            class="group cursor-pointer overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(24,28,34,0.44),rgba(12,16,22,0.30))] backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition hover:border-white/20"
             :class="selectedEntityId === String(entity.id)
               ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(38,42,48,0.70),rgba(16,20,26,0.52))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.22),0_22px_48px_rgba(0,0,0,0.34)]'
               : 'opacity-95'"
@@ -638,7 +638,7 @@ async function deleteSelectedEntity() {
                     </div>
                   </div>
 
-                  <span class="shrink-0 rounded-full border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-[#d8ceb8]">
+                  <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-[#d8ceb8]">
                     {{ entityType }}
                   </span>
                 </div>
@@ -711,7 +711,7 @@ async function deleteSelectedEntity() {
 
             <button
               type="button"
-              class="rounded-xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-white/[0.08] hover:text-white"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-white/[0.08] hover:text-white"
               @click="clearSelectedEntity"
             >
               <UIcon name="i-lucide-x" class="h-4 w-4" />
@@ -719,14 +719,14 @@ async function deleteSelectedEntity() {
           </div>
 
           <div class="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-            <div v-if="selectedPending" class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm text-[#d8ceb8]">
+            <div v-if="selectedPending" class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm text-[#d8ceb8]">
               Loading summary...
             </div>
 
             <template v-else>
               <div
                 v-if="imageUrlForEntity(selectedEntityDetail || selectedEntity)"
-                class="overflow-hidden rounded-2xl border border-[rgba(201,164,90,0.22)] bg-black/20"
+                class="overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-black/20"
               >
                 <img
                   :src="imageUrlForEntity(selectedEntityDetail || selectedEntity)"
@@ -737,12 +737,12 @@ async function deleteSelectedEntity() {
 
               <div
                 v-else
-                class="flex h-64 items-center justify-center rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-4xl font-semibold text-[#d8ceb8]"
+                class="flex h-64 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-4xl font-semibold text-[#d8ceb8]"
               >
                 {{ initialsFor(selectedEntity.title) }}
               </div>
 
-              <div class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
+              <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
                 <div class="grid grid-cols-1 gap-3 text-sm">
                   <div><span class="text-[#b5a88d]">Title:</span> <span class="text-white">{{ selectedEntity.title }}</span></div>
                   <div><span class="text-[#b5a88d]">Type:</span> <span class="text-white">{{ entityType }}</span></div>
@@ -752,7 +752,7 @@ async function deleteSelectedEntity() {
 
               <div
                 v-if="entityType === 'item' && itemCore(selectedEntityDetail || selectedEntity)"
-                class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Item Details</div>
                 <div v-for="line in itemMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
@@ -760,7 +760,7 @@ async function deleteSelectedEntity() {
 
               <div
                 v-if="entityType === 'spell' && spellCore(selectedEntityDetail || selectedEntity)"
-                class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Spell Details</div>
                 <div v-for="line in spellMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
@@ -768,7 +768,7 @@ async function deleteSelectedEntity() {
 
               <div
                 v-if="entityType === 'species' && speciesCore(selectedEntityDetail || selectedEntity)"
-                class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Species Details</div>
                 <div v-for="line in speciesMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
@@ -776,7 +776,7 @@ async function deleteSelectedEntity() {
 
               <div
                 v-if="entityType === 'class' && classCore(selectedEntityDetail || selectedEntity)"
-                class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Class Details</div>
                 <div v-for="line in classMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
@@ -784,7 +784,7 @@ async function deleteSelectedEntity() {
 
               <div
                 v-if="entityType === 'background' && backgroundCore(selectedEntityDetail || selectedEntity)"
-                class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Background Details</div>
                 <div v-for="line in backgroundMetaLines(selectedEntityDetail || selectedEntity)" :key="line">{{ line }}</div>
@@ -792,7 +792,7 @@ async function deleteSelectedEntity() {
 
               <div
                 v-if="selectedSummary"
-                class="rounded-2xl border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Summary</div>
                 <div
@@ -807,7 +807,7 @@ async function deleteSelectedEntity() {
             <button
               v-if="mode === 'build'"
               type="button"
-              class="block w-full rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-sm font-medium text-red-100 transition hover:bg-red-400/20 disabled:opacity-50"
+              class="block w-full rounded-none border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-sm font-medium text-red-100 transition hover:bg-red-400/20 disabled:opacity-50"
               :disabled="deletingEntity"
               @click="deleteSelectedEntity"
             >
@@ -820,7 +820,7 @@ async function deleteSelectedEntity() {
 
             <NuxtLink
               :to="`/worlds/${worldId}/entities/${selectedEntity.id}`"
-              class="block rounded-xl border border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] px-4 py-3 text-center text-sm font-medium text-[#fff7df] transition hover:bg-sky-400/20"
+              class="block rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] px-4 py-3 text-center text-sm font-medium text-[#fff7df] transition hover:bg-sky-400/20"
             >
               Open Article
             </NuxtLink>

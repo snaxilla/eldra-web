@@ -285,3 +285,7 @@
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(201,164,90,0.72), transparent);
 }
+
+.eldra-ornate-panel.fixed {
+  position: fixed;
+}

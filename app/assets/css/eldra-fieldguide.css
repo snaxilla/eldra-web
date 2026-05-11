@@ -157,3 +157,131 @@
 .eldra-arcane-link:hover {
   color: #fff7df !important;
 }
+
+.eldra-ornate-panel {
+  position: relative;
+  border-color: rgba(201,164,90,0.34) !important;
+  background:
+    radial-gradient(900px 220px at 50% 0%, rgba(201,164,90,0.11), transparent 68%),
+    linear-gradient(180deg, rgba(20,18,13,0.88), rgba(8,7,5,0.78)) !important;
+  box-shadow:
+    0 22px 70px rgba(0,0,0,0.42),
+    inset 0 0 0 1px rgba(255,238,190,0.035),
+    inset 0 0 48px rgba(201,164,90,0.04);
+}
+
+.eldra-ornate-panel::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  border: 1px solid rgba(201,164,90,0.16);
+}
+
+.eldra-ornate-panel::after {
+  content: "";
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  top: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,229,158,0.65), transparent);
+}
+
+.eldra-corner-runes {
+  position: relative;
+}
+
+.eldra-corner-runes::before,
+.eldra-corner-runes::after {
+  content: "✦";
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  color: rgba(245,231,189,0.72);
+  font-size: 15px;
+  line-height: 1;
+  text-shadow: 0 0 12px rgba(201,164,90,0.42);
+}
+
+.eldra-corner-runes::before {
+  left: 10px;
+  top: 9px;
+}
+
+.eldra-corner-runes::after {
+  right: 10px;
+  bottom: 9px;
+}
+
+.eldra-card-glyph {
+  position: relative;
+}
+
+.eldra-card-glyph::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 54px;
+  height: 54px;
+  pointer-events: none;
+  opacity: 0.18;
+  background:
+    radial-gradient(circle, transparent 42%, rgba(201,164,90,0.75) 43%, transparent 46%),
+    linear-gradient(45deg, transparent 47%, rgba(201,164,90,0.7) 48%, rgba(201,164,90,0.7) 52%, transparent 53%),
+    linear-gradient(-45deg, transparent 47%, rgba(201,164,90,0.7) 48%, rgba(201,164,90,0.7) 52%, transparent 53%);
+}
+
+.eldra-image-frame {
+  position: relative;
+  border-color: rgba(201,164,90,0.34) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,238,190,0.05),
+    0 0 0 1px rgba(0,0,0,0.45);
+}
+
+.eldra-image-frame::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  border: 1px solid rgba(201,164,90,0.18);
+  z-index: 2;
+}
+
+.eldra-selected-glow {
+  border-color: rgba(255,211,112,0.88) !important;
+  box-shadow:
+    0 0 0 1px rgba(255,211,112,0.55),
+    0 0 26px rgba(201,164,90,0.34),
+    0 22px 54px rgba(0,0,0,0.45),
+    inset 0 0 38px rgba(201,164,90,0.10) !important;
+}
+
+.eldra-rune-label {
+  position: relative;
+  padding-inline: 1.05rem !important;
+}
+
+.eldra-rune-label::before,
+.eldra-rune-label::after {
+  content: "◆";
+  color: rgba(201,164,90,0.65);
+  font-size: 0.55rem;
+  vertical-align: middle;
+}
+
+.eldra-rune-label::before {
+  margin-right: 0.45rem;
+}
+
+.eldra-rune-label::after {
+  margin-left: 0.45rem;
+}
+
+.eldra-gold-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201,164,90,0.72), transparent);
+}

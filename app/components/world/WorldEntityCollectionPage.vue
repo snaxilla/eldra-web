@@ -187,7 +187,7 @@ watch(
             v-for="entity in filteredEntities"
             :key="entity.id"
             :to="`/worlds/${worldId}/entities/${entity.id}`"
-            class="overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_right,rgba(31,58,138,0.22),rgba(17,24,39,0.38))] transition hover:border-sky-400/20 hover:bg-[linear-gradient(to_right,rgba(31,58,138,0.30),rgba(17,24,39,0.52))]"
+            class="overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_right,rgba(31,58,138,0.22),rgba(17,24,39,0.38))] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[linear-gradient(to_right,rgba(31,58,138,0.30),rgba(17,24,39,0.52))]"
           >
             <div class="grid min-h-[220px] grid-cols-[120px_minmax(0,1fr)]">
               <div class="overflow-hidden border-r border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(30,58,138,0.26),rgba(15,23,42,0.32))]">
@@ -222,7 +222,7 @@ watch(
                   {{ summaryForEntity(entity) || 'Open article →' }}
                 </p>
 
-                <div class="mt-6 text-sm font-medium text-sky-200">
+                <div class="mt-6 text-sm font-medium text-[#f5e7bd]">
                   Open {{ title.replace(/s$/i, '') }} →
                 </div>
               </div>

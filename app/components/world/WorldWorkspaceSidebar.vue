@@ -178,7 +178,10 @@ const navItems = computed(() => [
       </nav>
 
       <div class="border-t border-[rgba(201,164,90,0.22)] p-4 space-y-4">
-        <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-3">
+        <div
+            v-if="isMapPage"
+            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-3"
+          >
           <div class="mb-2 text-[11px] uppercase tracking-[0.3em] text-[#9f9278]">
             Map Pins
           </div>

@@ -483,7 +483,7 @@ function openLinkedMap() {
     <div class="absolute left-4 top-4 z-20 flex items-center gap-2">
       <button
         type="button"
-        class="eldra-button eldra-frame-corners inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
+        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
         @click="goToWorldRootMap"
       >
         <UIcon name="i-lucide-orbit" class="h-4 w-4 text-[#f5e7bd]" />
@@ -503,7 +503,7 @@ function openLinkedMap() {
 
       <div
         v-if="activeMap && String(activeMap.id) !== String(worldRootMap?.id || '')"
-        class="eldra-button eldra-frame-corners inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold text-[#fff7df] backdrop-blur"
+        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold text-[#fff7df] backdrop-blur"
       >
         <UIcon name="i-lucide-map" class="h-4 w-4 text-[#f5e7bd]" />
         <span>{{ activeMap.title }}</span>
@@ -538,20 +538,20 @@ function openLinkedMap() {
 
     <div v-else class="flex h-full items-center justify-center">
       <div class="text-center">
-        <div class="text-xs uppercase tracking-[0.3em] text-slate-500">No Map Selected</div>
-        <div class="mt-3 text-lg text-slate-300">Upload a map and set one as the default world map.</div>
+        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">No Map Selected</div>
+        <div class="mt-3 text-lg text-[#d8ceb8]">Upload a map and set one as the default world map.</div>
       </div>
     </div>
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="selectedPin && mode === 'play'"
-        class="absolute right-0 top-0 z-30 h-full w-[380px] border-l border-white/10 bg-[rgba(8,16,27,0.96)] shadow-2xl backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners absolute right-0 top-0 z-30 h-full w-[380px] border-l backdrop-blur"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
                 {{ selectedPin.pinType || 'Location' }}
               </div>
               <div class="mt-1 text-xl font-semibold text-white">
@@ -570,7 +570,7 @@ function openLinkedMap() {
           <div class="flex-1 overflow-y-auto p-5">
             <div
               v-if="selectedPin.resolvedImageUrl"
-              class="mb-5 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+              class="eldra-image-frame mb-5 overflow-hidden rounded-none border bg-black/20"
             >
               <img
                 :src="selectedPin.resolvedImageUrl"
@@ -581,40 +581,40 @@ function openLinkedMap() {
 
             <p
               v-if="selectedPin.resolvedSummary"
-              class="whitespace-pre-wrap text-sm leading-7 text-slate-300"
+              class="whitespace-pre-wrap text-sm leading-7 text-[#d8ceb8]"
             >
               {{ selectedPin.resolvedSummary }}
             </p>
 
             <p
               v-else
-              class="text-sm leading-7 text-slate-500"
+              class="text-sm leading-7 text-[#9f9278]"
             >
               No summary yet.
             </p>
 
             <div class="mt-6 flex flex-wrap gap-2">
-              <div class="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-slate-200">
+              <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
                 {{ iconLabel(selectedPin.icon) }}
               </div>
 
               <div
                 v-if="selectedPin.hasLinkedEntity"
-                class="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-xs text-sky-200"
+                class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
               >
                 Linked Article
               </div>
 
               <div
                 v-if="selectedPin.hasLinkedMap"
-                class="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs text-violet-200"
+                class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
               >
                 Linked Map
               </div>
 
               <div
                 v-if="!selectedPin.hasLinkedEntity && !selectedPin.hasLinkedMap"
-                class="rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-200"
+                class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
               >
                 Pin Note
               </div>
@@ -622,19 +622,19 @@ function openLinkedMap() {
 
             <div
               v-if="selectedPin.linkedMap"
-              class="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              class="eldra-codex-soft mt-5 rounded-none p-4"
             >
-              <div class="text-xs uppercase tracking-[0.3em] text-slate-500">Destination Map</div>
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Destination Map</div>
               <div class="mt-2 text-sm font-medium text-white">{{ selectedPin.linkedMap.title }}</div>
             </div>
           </div>
 
-          <div class="border-t border-white/10 p-5">
+          <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
             <div class="flex gap-3">
               <NuxtLink
                 v-if="selectedPinReadMoreUrl"
                 :to="selectedPinReadMoreUrl"
-                class="flex-1 rounded-xl border border-sky-400/20 bg-sky-400/10 px-4 py-3 text-center text-sm font-medium text-sky-100 transition hover:bg-sky-400/20"
+                class="eldra-button flex-1 rounded-none px-4 py-3 text-center text-sm font-medium"
               >
                 Read More
               </NuxtLink>
@@ -642,7 +642,7 @@ function openLinkedMap() {
               <button
                 v-if="selectedPinMapUrl"
                 type="button"
-                class="flex-1 rounded-xl border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-center text-sm font-medium text-violet-100 transition hover:bg-violet-400/20"
+                class="eldra-button flex-1 rounded-none px-4 py-3 text-center text-sm font-medium"
                 @click="openLinkedMap"
               >
                 Open Map
@@ -656,9 +656,9 @@ function openLinkedMap() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="selectedPin && mode === 'build' && !showPinEditor"
-        class="absolute bottom-6 right-6 z-30 w-80 rounded-[20px] border border-amber-300/20 bg-[rgba(8,16,27,0.95)] p-5 shadow-2xl backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners absolute bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
       >
-        <div class="mb-1 text-xs uppercase tracking-[0.3em] text-amber-400/70">
+        <div class="mb-1 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
           {{ selectedPin.pinType || 'Location' }}
         </div>
 
@@ -672,14 +672,14 @@ function openLinkedMap() {
 
         <div class="mt-4 flex gap-2">
           <button
-            class="flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-slate-200 transition hover:bg-white/[0.1]"
+            class="eldra-button flex-1 rounded-none px-3 py-2 text-sm"
             @click="editPin(selectedPin)"
           >
             Edit
           </button>
 
           <button
-            class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300 transition hover:bg-red-500/20"
+            class="rounded-none border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300 transition hover:bg-red-500/20"
             @click="deletePin(selectedPin.id)"
           >
             Delete
@@ -691,12 +691,12 @@ function openLinkedMap() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="showPinEditor && editingPin"
-        class="absolute right-0 top-0 z-40 h-full w-[420px] border-l border-white/10 bg-[rgba(8,16,27,0.98)] shadow-2xl backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners absolute right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Build Mode</div>
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build Mode</div>
               <h3 class="mt-1 text-lg font-semibold text-white">
                 {{ editingPin.id ? 'Edit Pin' : 'Place Pin' }}
               </h3>
@@ -712,39 +712,39 @@ function openLinkedMap() {
 
           <div class="flex-1 overflow-y-auto px-5 py-5">
             <div class="space-y-5">
-              <div v-if="saveError" class="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              <div v-if="saveError" class="rounded-none border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 {{ saveError }}
               </div>
 
-              <div v-if="createEntityError" class="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              <div v-if="createEntityError" class="rounded-none border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                 {{ createEntityError }}
               </div>
 
-              <div v-if="createEntitySuccess" class="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+              <div v-if="createEntitySuccess" class="rounded-none border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
                 {{ createEntitySuccess }}
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Title</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Title</label>
                 <input
                   v-model="editingPin.title"
                   type="text"
                   placeholder="e.g. Stonehold"
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                  class="eldra-input w-full rounded-none px-4 py-2.5 text-sm placeholder-[#756a57]"
                 >
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Type</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Type</label>
                 <div class="flex flex-wrap gap-2">
                   <button
                     v-for="opt in PIN_TYPE_OPTIONS"
                     :key="opt.value"
                     type="button"
-                    class="rounded-full border px-3 py-1 text-xs font-medium transition"
+                    class="rounded-none border px-3 py-1 text-xs font-medium transition"
                     :class="editingPin.pinType === opt.value
-                      ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                      : 'border-white/10 bg-white/[0.04] text-[#9f9278] hover:text-white'"
+                      ? 'border-[rgba(201,164,90,0.48)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
+                      : 'border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-[#9f9278] hover:text-[#fff7df]'"
                     @click="editingPin.pinType = opt.value"
                   >
                     {{ opt.label }}
@@ -753,7 +753,7 @@ function openLinkedMap() {
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Color</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Color</label>
                 <div class="flex flex-wrap gap-2">
                   <button
                     v-for="c in PIN_COLORS"
@@ -767,16 +767,16 @@ function openLinkedMap() {
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Marker Style</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Marker Style</label>
                 <div class="grid grid-cols-2 gap-2">
                   <button
                     v-for="opt in ICON_OPTIONS"
                     :key="opt.value"
                     type="button"
-                    class="rounded-xl border px-3 py-2 text-left transition"
+                    class="rounded-none border px-3 py-2 text-left transition"
                     :class="editingPin.icon === opt.value
-                      ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                      : 'border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]'"
+                      ? 'border-[rgba(201,164,90,0.48)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
+                      : 'border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)]'"
                     @click="editingPin.icon = opt.value"
                   >
                     <div class="text-lg leading-none">{{ opt.symbol }}</div>
@@ -786,18 +786,18 @@ function openLinkedMap() {
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Summary / Blurb</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Summary / Blurb</label>
                 <textarea
                   v-model="editingPin.summary"
                   rows="4"
                   placeholder="Short map preview summary..."
-                  class="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-sky-400/40 focus:bg-white/[0.08]"
+                  class="eldra-input w-full rounded-none px-4 py-3 text-sm placeholder-[#756a57]"
                 />
               </div>
 
               <div>
                 <div class="mb-1.5 flex items-center justify-between gap-3">
-                  <label class="block text-xs uppercase tracking-[0.25em] text-slate-500">Link Existing Article</label>
+                  <label class="block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Link Existing Article</label>
                   <button
                     type="button"
                     class="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50"
@@ -810,7 +810,7 @@ function openLinkedMap() {
 
                 <select
                   v-model="editingPin.entityId"
-                  class="w-full rounded-xl border border-white/10 bg-[rgba(15,23,42,0.92)] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-400/40 focus:bg-[rgba(15,23,42,1)]"
+                  class="eldra-input w-full rounded-none px-4 py-3 text-sm"
                 >
                   <option :value="null" class="bg-slate-900 text-slate-100">No linked article (pin-only note)</option>
                   <option
@@ -823,16 +823,16 @@ function openLinkedMap() {
                   </option>
                 </select>
 
-                <p class="mt-2 text-xs text-slate-500">
+                <p class="mt-2 text-xs text-[#9f9278]">
                   Only map-relevant entity types are shown here.
                 </p>
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Link Destination Map</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Link Destination Map</label>
                 <select
                   v-model="editingPin.linkedMapId"
-                  class="w-full rounded-xl border border-white/10 bg-[rgba(15,23,42,0.92)] px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-violet-400/40 focus:bg-[rgba(15,23,42,1)]"
+                  class="eldra-input w-full rounded-none px-4 py-3 text-sm"
                 >
                   <option :value="null" class="bg-slate-900 text-slate-100">No linked map</option>
                   <option
@@ -845,17 +845,17 @@ function openLinkedMap() {
                   </option>
                 </select>
 
-                <p class="mt-2 text-xs text-slate-500">
+                <p class="mt-2 text-xs text-[#9f9278]">
                   Choose a destination map for drill-down navigation.
                 </p>
               </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-slate-500">Preview Image</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Preview Image</label>
 
                 <div
                   v-if="editingPin.imageUrl"
-                  class="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+                  class="eldra-image-frame mb-3 overflow-hidden rounded-none border bg-black/20"
                 >
                   <img
                     :src="editingPin.imageUrl"
@@ -867,33 +867,33 @@ function openLinkedMap() {
                 <input
                   type="file"
                   accept="image/*"
-                  class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
+                  class="block w-full text-sm text-[#d8ceb8] file:mr-4 file:rounded-none file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
                   @change="uploadPinImage"
                 >
               </div>
 
               <div>
-                <label class="flex items-start gap-3 text-sm text-slate-300">
+                <label class="flex items-start gap-3 text-sm text-[#d8ceb8]">
                   <input
                     v-model="editingPin.inheritFromEntity"
                     type="checkbox"
-                    class="mt-0.5 h-4 w-4 rounded border-white/10 bg-white/[0.05]"
+                    class="mt-0.5 h-4 w-4 rounded border-white/10 bg-[rgba(20,17,12,0.72)]"
                   >
                   <span>Use linked article summary/image when pin fields are empty</span>
                 </label>
               </div>
 
-              <div class="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-2 text-xs text-slate-500">
+              <div class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]">
                 x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
               </div>
             </div>
           </div>
 
-          <div class="border-t border-white/10 p-5">
+          <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
             <div class="flex gap-3">
               <button
                 type="button"
-                class="flex-1 rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-sm text-slate-300 transition hover:bg-white/[0.08]"
+                class="eldra-button flex-1 rounded-none py-2.5 text-sm"
                 @click="closePinEditor"
               >
                 Cancel
@@ -901,7 +901,7 @@ function openLinkedMap() {
 
               <button
                 type="button"
-                class="flex-1 rounded-xl border border-sky-400/25 bg-sky-400/15 py-2.5 text-sm font-medium text-sky-100 transition hover:bg-sky-400/25 disabled:opacity-50"
+                class="eldra-button flex-1 rounded-none py-2.5 text-sm font-medium disabled:opacity-50"
                 :disabled="!String(editingPin.title || '').trim() || savingPin"
                 @click="savePin"
               >

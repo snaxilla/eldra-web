@@ -186,27 +186,27 @@ onBeforeUnmount(() => {
     <div class="absolute bottom-4 left-4 z-20 flex items-center gap-3">
       <button
         type="button"
-        class="rounded-full border border-white/12 bg-[rgba(8,16,27,0.88)] px-4 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-[rgba(8,16,27,0.96)]"
+        class="eldra-button rounded-none px-4 py-2 text-sm font-medium backdrop-blur"
         @click="resetView"
       >
         Reset View
       </button>
 
-      <div class="rounded-full border border-white/12 bg-[rgba(8,16,27,0.88)] px-4 py-2 text-xs font-medium uppercase tracking-[0.2em] text-slate-300 backdrop-blur">
+      <div class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.82)] px-4 py-2 text-xs font-medium uppercase tracking-[0.2em] text-[#d8ceb8] backdrop-blur">
         Zoom {{ zoomLabel }}
       </div>
 
-      <div class="flex overflow-hidden rounded-full border border-white/12 bg-[rgba(8,16,27,0.88)] backdrop-blur">
+      <div class="flex overflow-hidden rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.82)] backdrop-blur">
         <button
           type="button"
-          class="px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.06]"
+          class="px-4 py-2 text-sm font-semibold text-[#fff7df] transition hover:bg-[rgba(201,164,90,0.12)]"
           @click="zoomIn"
         >
           +
         </button>
         <button
           type="button"
-          class="border-l border-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.06]"
+          class="border-l border-[rgba(201,164,90,0.24)] px-4 py-2 text-sm font-semibold text-[#fff7df] transition hover:bg-[rgba(201,164,90,0.12)]"
           @click="zoomOut"
         >
           −

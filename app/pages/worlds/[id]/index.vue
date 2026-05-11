@@ -480,13 +480,13 @@ function openLinkedMap() {
 <template>
   <div class="relative h-full w-full overflow-hidden bg-[#09111a]">
 
-    <div class="absolute left-4 top-4 z-20 flex items-center gap-3">
+    <div class="absolute left-4 top-4 z-20 flex items-center gap-2">
       <button
         type="button"
-        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.9)] px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
+        class="eldra-button eldra-frame-corners inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
         @click="goToWorldRootMap"
       >
-        <UIcon name="i-lucide-orbit" class="h-4 w-4 text-sky-300" />
+        <UIcon name="i-lucide-orbit" class="h-4 w-4 text-[#f5e7bd]" />
         <span>World Map</span>
       </button>
 
@@ -494,25 +494,25 @@ function openLinkedMap() {
         v-for="ancestor in ancestorMaps"
         :key="ancestor.id"
         type="button"
-        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.88)] px-4 py-2 text-sm text-slate-200 backdrop-blur transition hover:bg-[rgba(8,16,27,1)]"
+        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm text-[#e8d9b5] backdrop-blur"
         @click="goToMapBySlug(ancestor.slug)"
       >
-        <UIcon name="i-lucide-chevron-right" class="h-4 w-4 text-slate-400" />
+        <UIcon name="i-lucide-chevron-right" class="h-4 w-4 text-[#9f9278]" />
         <span>{{ ancestor.title }}</span>
       </button>
 
       <div
         v-if="activeMap && String(activeMap.id) !== String(worldRootMap?.id || '')"
-        class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-[rgba(8,16,27,0.96)] px-4 py-2 text-sm text-slate-100 backdrop-blur"
+        class="eldra-button eldra-frame-corners inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold text-[#fff7df] backdrop-blur"
       >
-        <UIcon name="i-lucide-map" class="h-4 w-4 text-sky-300" />
+        <UIcon name="i-lucide-map" class="h-4 w-4 text-[#f5e7bd]" />
         <span>{{ activeMap.title }}</span>
       </div>
     </div>
 
     <div
       v-if="mode === 'build'"
-      class="pointer-events-none absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-400/10 px-4 py-2 text-sm font-medium text-amber-200 backdrop-blur"
+      class="pointer-events-none absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.38)] bg-[rgba(20,17,12,0.82)] px-4 py-2 text-sm font-medium text-[#f5e7bd] backdrop-blur shadow-[0_0_24px_rgba(201,164,90,0.12)]"
     >
       <UIcon name="i-lucide-pencil-ruler" class="h-4 w-4" />
       Build Mode — click map to place pin
@@ -560,7 +560,7 @@ function openLinkedMap() {
             </div>
 
             <button
-              class="text-slate-400 transition hover:text-white"
+              class="text-[#9f9278] transition hover:text-white"
               @click="selectedPinId = null"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -666,7 +666,7 @@ function openLinkedMap() {
           {{ selectedPin.resolvedTitle }}
         </div>
 
-        <div class="mt-2 text-sm text-slate-400">
+        <div class="mt-2 text-sm text-[#9f9278]">
           Icon: {{ iconLabel(selectedPin.icon) }}
         </div>
 
@@ -703,7 +703,7 @@ function openLinkedMap() {
             </div>
 
             <button
-              class="text-slate-400 transition hover:text-white"
+              class="text-[#9f9278] transition hover:text-white"
               @click="closePinEditor"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -744,7 +744,7 @@ function openLinkedMap() {
                     class="rounded-full border px-3 py-1 text-xs font-medium transition"
                     :class="editingPin.pinType === opt.value
                       ? 'border-sky-300/30 bg-sky-400/15 text-sky-100'
-                      : 'border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'"
+                      : 'border-white/10 bg-white/[0.04] text-[#9f9278] hover:text-white'"
                     @click="editingPin.pinType = opt.value"
                   >
                     {{ opt.label }}

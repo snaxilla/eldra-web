@@ -5,9 +5,8 @@ definePageMeta({
 </script>
 
 <template>
-  <WorldEntityCollectionPage
+  <WorldEntityInteractivePage
     entity-type="location"
-    page-key="locations"
     title="Locations"
     eyebrow="Locations"
     description="Browse cities, regions, landmarks, dungeons, and other location articles in this world."

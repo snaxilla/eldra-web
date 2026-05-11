@@ -682,24 +682,24 @@ async function onImageSelected(event: Event) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
+  <div class="eldra-fieldguide-bg h-full overflow-y-auto">
     <button
       v-if="mode === 'build'"
       type="button"
-      class="fixed right-6 top-24 z-30 rounded-none border border-yellow-700/40 bg-[#111]/90 px-4 py-2 text-sm font-semibold text-amber-100 shadow-[0_12px_34px_rgba(0,0,0,0.45)] backdrop-blur hover:bg-yellow-900/30"
+      class="eldra-button fixed right-6 top-24 z-30 rounded-none px-4 py-2 text-sm font-semibold shadow-[0_12px_34px_rgba(0,0,0,0.45)] backdrop-blur"
       @click="buildDrawerOpen = true"
     >
       Page Builder
     </button>
 
     <div class="mx-auto max-w-[1500px] p-6">
-      <section class="overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.72),rgba(8,8,8,0.58))] backdrop-blur-xl shadow-[0_16px_40px_rgba(0,0,0,0.42)]">
+      <section class="eldra-codex-panel overflow-hidden rounded-none">
         <div class="grid gap-0 lg:grid-cols-[460px_minmax(0,1fr)]">
-          <div class="border-b border-stone-500/20 bg-[#050505]/20 p-5 lg:border-b-0 lg:border-r">
+          <div class="border-b border-[rgba(201,164,90,0.22)] bg-[#050505]/20 p-5 lg:border-b-0 lg:border-r">
             <button
               v-if="entityImageUrl"
               type="button"
-              class="group block w-full overflow-hidden rounded-none border border-stone-500/20 bg-[#050505]/35 text-left shadow-[0_14px_34px_rgba(0,0,0,0.45)]"
+              class="eldra-codex-frame group block w-full overflow-hidden rounded-none text-left"
               @click="openImageLightbox"
             >
               <img
@@ -707,62 +707,62 @@ async function onImageSelected(event: Event) {
                 :alt="entity?.title || 'Entity image'"
                 class="aspect-[3/4] w-full object-cover object-[center_15%] transition duration-200 group-hover:scale-[1.02]"
               >
-              <div class="border-t border-stone-500/20 px-4 py-3 text-xs uppercase tracking-[0.25em] text-zinc-400">
+              <div class="border-t border-[rgba(201,164,90,0.22)] px-4 py-3 text-xs uppercase tracking-[0.25em] text-[#b5a88d]">
                 Click to view image
               </div>
             </button>
 
             <div
               v-else
-              class="flex aspect-[3/4] items-center justify-center rounded-none border border-stone-500/20 bg-[#121212]/70 text-6xl font-semibold text-zinc-400"
+              class="flex aspect-[3/4] items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[#14110c]/72 text-6xl font-semibold text-[#b5a88d]"
             >
               {{ (entity?.title || 'E').slice(0, 2).toUpperCase() }}
             </div>
 
-            <div v-if="mode === 'build'" class="mt-4 rounded-none border border-stone-500/20 bg-[#151515]/70 p-4">
-              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-zinc-500">
+            <div v-if="mode === 'build'" class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[#14110c]/78 p-4">
+              <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">
                 Article Image
               </label>
 
               <input
                 type="file"
                 accept="image/*"
-                class="block w-full text-sm text-zinc-300 file:mr-4 file:rounded-none file:border file:border-stone-500/20 file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:text-slate-100"
+                class="block w-full text-sm text-[#d8ceb8] file:mr-4 file:rounded-none file:border file:border-[rgba(201,164,90,0.22)] file:bg-white/[0.06] file:px-4 file:py-2 file:text-sm file:text-[#f2e9d0]"
                 @change="onImageSelected"
               >
 
-              <div v-if="uploadingImage" class="mt-2 text-sm text-zinc-300">Uploading image...</div>
+              <div v-if="uploadingImage" class="mt-2 text-sm text-[#d8ceb8]">Uploading image...</div>
               <div v-if="imageSuccess" class="mt-2 text-sm text-emerald-300">{{ imageSuccess }}</div>
               <div v-if="imageError" class="mt-2 text-sm text-red-300">{{ imageError }}</div>
             </div>
           </div>
 
           <div class="p-7">
-            <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            <div class="eldra-kicker text-xs">
               {{ world?.name || 'World' }}
             </div>
 
             <div
               v-if="mode === 'build'"
-              class="mt-5 border border-stone-500/20 bg-[#111]/80 p-4"
+              class="mt-5 border border-[rgba(201,164,90,0.22)] bg-[#111]/80 p-4"
             >
-              <div class="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Header Editor</div>
+              <div class="mb-3 text-xs uppercase tracking-[0.3em] text-[#9f9278]">Header Editor</div>
 
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Title</span>
-                  <input v-model="metaTitle" class="w-full rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-yellow-700/50">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Title</span>
+                  <input v-model="metaTitle" class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[#070604]/82 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[rgba(201,164,90,0.58)]">
                 </label>
 
                 <label class="block">
-                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Slug</span>
-                  <input v-model="metaSlug" class="w-full rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-yellow-700/50">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Slug</span>
+                  <input v-model="metaSlug" class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[#070604]/82 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[rgba(201,164,90,0.58)]">
                 </label>
               </div>
 
               <label class="mt-3 block">
-                <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Summary Blurb</span>
-                <textarea v-model="metaSummary" rows="4" class="w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none focus:border-yellow-700/50"></textarea>
+                <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Summary Blurb</span>
+                <textarea v-model="metaSummary" rows="4" class="w-full resize-y rounded-none border border-[rgba(201,164,90,0.22)] bg-[#070604]/82 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none focus:border-[rgba(201,164,90,0.58)]"></textarea>
               </label>
 
               <div class="mt-3 flex items-center gap-3">
@@ -780,16 +780,16 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
-            <h1 class="mt-4 text-6xl font-semibold tracking-tight text-white">
+            <h1 class="eldra-title mt-4 text-6xl font-semibold tracking-tight">
               {{ entity?.title || 'Entity' }}
             </h1>
 
             <div class="mt-4 flex flex-wrap gap-2">
-              <div class="rounded-none border border-stone-500/20 bg-[#171717]/70 px-3 py-1.5 text-sm text-zinc-300">
+              <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#17120d]/70 px-3 py-1.5 text-sm text-[#d8ceb8]">
                 {{ entity?.entity_type || 'entity' }}
               </div>
 
-              <div class="rounded-none border border-stone-500/20 bg-[#171717]/70 px-3 py-1.5 text-sm text-zinc-300">
+              <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#17120d]/70 px-3 py-1.5 text-sm text-[#d8ceb8]">
                 {{ entity?.slug || 'no-slug' }}
               </div>
 
@@ -808,7 +808,7 @@ async function onImageSelected(event: Event) {
               <div
                 v-for="line in heroMetaLines"
                 :key="line"
-                class="rounded-none border border-stone-500/20 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-zinc-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-white/[0.045] px-4 py-3 text-sm leading-6 text-[#e7dcc2]"
               >
                 {{ line }}
               </div>
@@ -816,7 +816,7 @@ async function onImageSelected(event: Event) {
 
             <div
               v-if="derivedSummary"
-              class="mt-6 rounded-none border border-yellow-700/30 bg-[linear-gradient(to_bottom,rgba(92,72,34,0.18),rgba(20,20,20,0.34))] p-5 text-[15px] leading-8 text-amber-50/90"
+              class="eldra-codex-soft mt-6 rounded-none p-5 text-[15px] leading-8 text-[#efe2bd]"
             >
               {{ derivedSummary }}
             </div>
@@ -831,17 +831,17 @@ async function onImageSelected(event: Event) {
         <article
           v-for="section in detailSections"
           :key="section.title"
-          class="rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.38),rgba(12,16,22,0.26))] p-6 backdrop-blur-xl shadow-[0_18px_55px_rgba(0,0,0,0.16)]"
+          class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(24,28,34,0.38),rgba(12,16,22,0.26))] p-6 backdrop-blur-xl shadow-[0_18px_55px_rgba(0,0,0,0.16)]"
         >
-          <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
             {{ section.title }}
           </div>
 
-          <div class="mt-5 grid gap-3 text-sm leading-7 text-zinc-200">
+          <div class="mt-5 grid gap-3 text-sm leading-7 text-[#e7dcc2]">
             <div
               v-for="line in section.lines"
               :key="line"
-              class="rounded-none border border-stone-500/20 bg-white/[0.035] px-4 py-3"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-white/[0.035] px-4 py-3"
             >
               {{ line }}
             </div>
@@ -849,8 +849,8 @@ async function onImageSelected(event: Event) {
         </article>
       </section>
 
-<section class="mt-6 rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.66),rgba(8,8,8,0.52))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
-        <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
+<section class="eldra-codex-panel mt-6 rounded-none p-7">
+        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
           Article
         </div>
 
@@ -858,8 +858,8 @@ async function onImageSelected(event: Event) {
           v-if="mode !== 'build' && !articleOverrideMarkdown && entity?.entity_type === 'class' && classFeatureCards.length"
           class="mt-6 space-y-5"
         >
-          <div class="rounded-none border border-stone-500/20 bg-[#101010]/92 p-4 backdrop-blur-xl">
-            <div class="mb-3 text-xs uppercase tracking-[0.25em] text-zinc-500">
+          <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#101010]/92 p-4 backdrop-blur-xl">
+            <div class="mb-3 text-xs uppercase tracking-[0.25em] text-[#9f9278]">
               Class Outline
             </div>
 
@@ -879,9 +879,9 @@ async function onImageSelected(event: Event) {
             v-for="feature in classFeatureCards"
             :key="feature.id"
             :id="feature.level ? `class-level-${feature.level}` : feature.id"
-            class="scroll-mt-28 overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(25,23,19,0.78),rgba(10,14,22,0.54))] shadow-[0_12px_32px_rgba(0,0,0,0.42)]"
+            class="scroll-mt-28 overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(25,23,19,0.78),rgba(10,14,22,0.54))] shadow-[0_12px_32px_rgba(0,0,0,0.42)]"
           >
-            <header class="border-b border-stone-500/20 bg-[#121212]/70 px-5 py-4">
+            <header class="border-b border-[rgba(201,164,90,0.22)] bg-[#14110c]/72 px-5 py-4">
               <div class="flex flex-wrap items-center gap-2">
                 <span
                   v-if="feature.level"
@@ -890,25 +890,25 @@ async function onImageSelected(event: Event) {
                   Level {{ feature.level }}
                 </span>
 
-                <span class="rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-300">
+                <span class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#14110c]/78 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#d8ceb8]">
                   Feature
                 </span>
 
                 <span
                   v-if="feature.source"
-                  class="rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400"
+                  class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#14110c]/78 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#b5a88d]"
                 >
                   {{ feature.source }}
                 </span>
               </div>
 
-              <h2 class="mt-3 text-2xl font-semibold tracking-tight text-white">
+              <h2 class="mt-3 text-2xl font-semibold tracking-tight text-[#fff7df]">
                 {{ feature.name }}
               </h2>
             </header>
 
             <div
-              class="markdown-content px-5 py-5 text-[15px] leading-7 text-zinc-200"
+              class="markdown-content px-5 py-5 text-[15px] leading-7 text-[#e7dcc2]"
               v-html="renderMarkdown(feature.markdown)"
             ></div>
           </article>
@@ -918,14 +918,14 @@ async function onImageSelected(event: Event) {
           <div>
             <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">Article Editor</div>
-                <div class="mt-1 text-sm text-zinc-400">Use the buttons like a simple word processor. Saves as Markdown behind the scenes.</div>
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Article Editor</div>
+                <div class="mt-1 text-sm text-[#b5a88d]">Use the buttons like a simple word processor. Saves as Markdown behind the scenes.</div>
               </div>
 
               <div class="flex gap-2">
                 <button
                   type="button"
-                  class="rounded-none border border-stone-500/20 bg-[#151515]/80 px-4 py-2 text-sm text-zinc-200 hover:bg-white/[0.08]"
+                  class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#151515]/80 px-4 py-2 text-sm text-[#e7dcc2] hover:bg-white/[0.08]"
                   @click="resetArticleDraft"
                 >
                   Reset
@@ -942,19 +942,19 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
-            <div class="mb-3 flex flex-wrap gap-2 border border-stone-500/20 bg-[#111]/80 p-2">
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="wrapSelection('**', '**', 'bold text')">Bold</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="wrapSelection('*', '*', 'italic text')">Italic</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n\n## Heading\n\n')">Heading</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n- List item\n')">List</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n> Quote text\n')">Quote</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n---\n')">Divider</button>
+            <div class="mb-3 flex flex-wrap gap-2 border border-[rgba(201,164,90,0.22)] bg-[#111]/80 p-2">
+              <button type="button" class="border border-[rgba(201,164,90,0.22)] px-3 py-1.5 text-sm text-[#e7dcc2] hover:bg-white/[0.08]" @click="wrapSelection('**', '**', 'bold text')">Bold</button>
+              <button type="button" class="border border-[rgba(201,164,90,0.22)] px-3 py-1.5 text-sm text-[#e7dcc2] hover:bg-white/[0.08]" @click="wrapSelection('*', '*', 'italic text')">Italic</button>
+              <button type="button" class="border border-[rgba(201,164,90,0.22)] px-3 py-1.5 text-sm text-[#e7dcc2] hover:bg-white/[0.08]" @click="insertMarkdown('\n\n## Heading\n\n')">Heading</button>
+              <button type="button" class="border border-[rgba(201,164,90,0.22)] px-3 py-1.5 text-sm text-[#e7dcc2] hover:bg-white/[0.08]" @click="insertMarkdown('\n- List item\n')">List</button>
+              <button type="button" class="border border-[rgba(201,164,90,0.22)] px-3 py-1.5 text-sm text-[#e7dcc2] hover:bg-white/[0.08]" @click="insertMarkdown('\n> Quote text\n')">Quote</button>
+              <button type="button" class="border border-[rgba(201,164,90,0.22)] px-3 py-1.5 text-sm text-[#e7dcc2] hover:bg-white/[0.08]" @click="insertMarkdown('\n---\n')">Divider</button>
             </div>
 
             <textarea
               v-model="articleDraft"
               data-article-editor="true"
-              class="min-h-[560px] w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 p-5 font-mono text-sm leading-7 text-zinc-100 outline-none focus:border-yellow-700/50"
+              class="min-h-[560px] w-full resize-y rounded-none border border-[rgba(201,164,90,0.22)] bg-[#070604]/82 p-5 font-mono text-sm leading-7 text-zinc-100 outline-none focus:border-[rgba(201,164,90,0.58)]"
               placeholder="Write article markdown here..."
             ></textarea>
 
@@ -963,13 +963,13 @@ async function onImageSelected(event: Event) {
           </div>
 
           <div>
-            <div class="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Live Preview</div>
+            <div class="mb-3 text-xs uppercase tracking-[0.3em] text-[#9f9278]">Live Preview</div>
             <div
               v-if="articleDraft.trim()"
-              class="markdown-content min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-[16px] leading-8 text-zinc-200"
+              class="markdown-content min-h-[560px] border border-[rgba(201,164,90,0.22)] bg-[#14110c]/72 p-5 text-[16px] leading-8 text-[#e7dcc2]"
               v-html="renderMarkdown(articleDraft)"
             ></div>
-            <div v-else class="min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-zinc-500">
+            <div v-else class="min-h-[560px] border border-[rgba(201,164,90,0.22)] bg-[#14110c]/72 p-5 text-[#9f9278]">
               No article content yet.
             </div>
           </div>
@@ -977,13 +977,13 @@ async function onImageSelected(event: Event) {
 
         <div
           v-else-if="articleMarkdown"
-          class="markdown-content mt-6 text-[16px] leading-8 text-zinc-200"
+          class="markdown-content mt-6 text-[16px] leading-8 text-[#e7dcc2]"
           v-html="articleHtml"
         ></div>
 
         <p
           v-else
-          class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
+          class="mt-4 whitespace-pre-wrap text-lg leading-8 text-[#f2e9d0]"
         >
           No article content yet.
         </p>
@@ -999,18 +999,18 @@ async function onImageSelected(event: Event) {
     >
       <aside
         v-if="buildDrawerOpen"
-        class="fixed right-0 top-0 z-40 h-full w-[420px] border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,14,14,0.94),rgba(5,5,5,0.90))] backdrop-blur-xl"
+        class="fixed right-0 top-0 z-40 h-full w-[420px] border-l border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(14,14,14,0.94),rgba(5,5,5,0.90))] backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
+          <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">Build</div>
-              <h2 class="mt-3 text-2xl font-semibold text-white">Page Builder</h2>
+              <div class="eldra-kicker text-xs">Build</div>
+              <h2 class="mt-3 text-2xl font-semibold text-[#fff7df]">Page Builder</h2>
             </div>
 
             <button
               type="button"
-              class="rounded-none border border-stone-500/20 bg-[#151515]/70 p-2 text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#14110c]/78 p-2 text-[#d8ceb8] transition hover:bg-white/[0.08] hover:text-[#fff7df]"
               @click="buildDrawerOpen = false"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -1037,22 +1037,22 @@ async function onImageSelected(event: Event) {
     >
       <aside
         v-if="contextDrawerOpen"
-        class="fixed right-0 top-0 z-40 h-full w-[380px] border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,18,24,0.88),rgba(10,13,18,0.78))] backdrop-blur-xl"
+        class="fixed right-0 top-0 z-40 h-full w-[380px] border-l border-[rgba(201,164,90,0.22)] bg-[linear-gradient(to_bottom,rgba(14,18,24,0.88),rgba(10,13,18,0.78))] backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
+          <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              <div class="eldra-kicker text-xs">
                 Context
               </div>
-              <h2 class="mt-3 text-2xl font-semibold text-white">
+              <h2 class="mt-3 text-2xl font-semibold text-[#fff7df]">
                 {{ contextDrawerTitle || 'Linked Context' }}
               </h2>
             </div>
 
             <button
               type="button"
-              class="rounded-none border border-stone-500/20 bg-[#151515]/70 p-2 text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#14110c]/78 p-2 text-[#d8ceb8] transition hover:bg-white/[0.08] hover:text-[#fff7df]"
               @click="closeContextDrawer"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -1062,13 +1062,13 @@ async function onImageSelected(event: Event) {
           <div class="flex-1 overflow-y-auto p-5">
             <div
               v-if="contextDrawerMarkdown"
-              class="markdown-content text-sm leading-7 text-zinc-200"
+              class="markdown-content text-sm leading-7 text-[#e7dcc2]"
               v-html="contextDrawerHtml"
             ></div>
 
             <div
               v-else
-              class="rounded-none border border-stone-500/20 bg-[#151515]/70 p-5 text-sm leading-7 text-zinc-300"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[#14110c]/78 p-5 text-sm leading-7 text-[#d8ceb8]"
             >
               Linked 5eTools-style article context will appear here once we wire inline links.
             </div>
@@ -1092,7 +1092,7 @@ async function onImageSelected(event: Event) {
           <div class="relative max-h-[92vh] max-w-[92vw]">
             <button
               type="button"
-              class="absolute right-3 top-3 z-10 rounded-none border border-stone-500/20 bg-[#050505]/75 p-2 text-zinc-200 backdrop-blur transition hover:bg-[#050505]/90 hover:text-white"
+              class="absolute right-3 top-3 z-10 rounded-none border border-[rgba(201,164,90,0.22)] bg-[#050505]/75 p-2 text-[#e7dcc2] backdrop-blur transition hover:bg-[#050505]/90 hover:text-[#fff7df]"
               @click="closeImageLightbox"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -1101,10 +1101,10 @@ async function onImageSelected(event: Event) {
             <img
               :src="entityImageUrl"
               :alt="entity?.title || 'Image preview'"
-              class="max-h-[92vh] max-w-[92vw] rounded-none border border-stone-500/20 object-contain shadow-[0_30px_100px_rgba(0,0,0,0.65)]"
+              class="max-h-[92vh] max-w-[92vw] rounded-none border border-[rgba(201,164,90,0.22)] object-contain shadow-[0_30px_100px_rgba(0,0,0,0.65)]"
             >
 
-            <div class="pointer-events-none absolute bottom-3 left-3 right-3 rounded-none border border-stone-500/20 bg-[#050505]/70 px-4 py-3 text-sm text-slate-100 backdrop-blur">
+            <div class="pointer-events-none absolute bottom-3 left-3 right-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[#050505]/70 px-4 py-3 text-sm text-[#f2e9d0] backdrop-blur">
               {{ entity?.title || 'Image preview' }}
             </div>
           </div>

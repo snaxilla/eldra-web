@@ -310,7 +310,7 @@ async function deleteEnemy() {
             :key="enemy.id"
             class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
             :class="selectedEnemyId === String(enemy.id)
-              ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(38,42,48,0.70),rgba(16,20,26,0.52))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.22),0_22px_48px_rgba(0,0,0,0.34)]'
+              ? 'eldra-selected-glow scale-[1.025]'
               : 'opacity-95'"
             @click="selectEnemy(enemy)"
           >

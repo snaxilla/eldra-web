@@ -555,7 +555,7 @@ async function deleteSelectedEntity() {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
       <div :class="selectedEntity || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
-        <section class="eldra-ornate-panel eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
+        <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">{{ eyebrow || title }}</div>
@@ -608,7 +608,7 @@ async function deleteSelectedEntity() {
           <div
             v-for="entity in filteredEntities"
             :key="entity.id"
-            class="eldra-ornate-card eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
+            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
             :class="selectedEntityId === String(entity.id)
               ? 'eldra-selected-glow scale-[1.025]'
               : 'opacity-95'"
@@ -700,7 +700,7 @@ async function deleteSelectedEntity() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="selectedEntity"
-        class="eldra-ornate-panel fixed right-0 top-0 z-30 h-full w-[360px] border-l backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">

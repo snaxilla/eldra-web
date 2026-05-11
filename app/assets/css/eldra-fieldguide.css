@@ -372,3 +372,99 @@
 
 .eldra-sidebar-switch::before { left: 0.8rem; }
 .eldra-sidebar-switch::after { right: 0.8rem; }
+
+/* Ornamentation v2: localized flourishes only */
+.eldra-ornate-card::after {
+  content: "❦";
+  position: absolute;
+  right: 13px;
+  bottom: 10px;
+  z-index: 2;
+  pointer-events: none;
+  color: rgba(255, 221, 132, 0.72);
+  font-size: 1.35rem;
+  line-height: 1;
+  text-shadow:
+    0 0 10px rgba(201, 164, 90, 0.52),
+    0 1px 0 rgba(0, 0, 0, 0.75);
+}
+
+.eldra-ornate-card:hover::after {
+  color: rgba(255, 235, 171, 0.92);
+}
+
+.eldra-ornate-card {
+  background:
+    radial-gradient(320px 130px at 12% 0%, rgba(255, 214, 118, 0.15), transparent 66%),
+    radial-gradient(260px 120px at 100% 100%, rgba(201, 164, 90, 0.09), transparent 70%),
+    linear-gradient(180deg, rgba(16, 15, 12, 0.92), rgba(7, 7, 6, 0.84)) !important;
+}
+
+.eldra-ornate-card:hover {
+  box-shadow:
+    0 0 0 1px rgba(255, 217, 130, 0.38),
+    0 0 30px rgba(201, 164, 90, 0.18),
+    0 20px 54px rgba(0, 0, 0, 0.42),
+    inset 0 0 34px rgba(201, 164, 90, 0.07) !important;
+}
+
+.eldra-gold-chip::before {
+  content: "✦";
+  margin-right: 0.45rem;
+  color: rgba(255, 226, 142, 0.78);
+}
+
+.eldra-gold-chip::after {
+  content: "✦";
+  margin-left: 0.45rem;
+  color: rgba(255, 226, 142, 0.78);
+}
+
+.eldra-sidebar-ornate::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 118px;
+  pointer-events: none;
+  background:
+    radial-gradient(180px 62px at 50% 0%, rgba(255, 219, 128, 0.14), transparent 72%),
+    linear-gradient(90deg, transparent, rgba(201,164,90,0.20), transparent);
+}
+
+.eldra-sidebar-brandmark::before,
+.eldra-sidebar-brandmark::after {
+  content: "❦";
+  display: inline-block;
+  margin: 0 0.45rem;
+  color: rgba(255, 221, 132, 0.72);
+  font-size: 1rem;
+  transform: translateY(-0.08rem);
+}
+
+.eldra-sidebar-nav-item.router-link-active {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 226, 142, 0.08),
+    inset 0 0 18px rgba(201, 164, 90, 0.10),
+    0 0 18px rgba(201, 164, 90, 0.10);
+}
+
+.eldra-sidebar-nav-item.router-link-active::after {
+  content: "◆";
+  margin-left: auto;
+  color: rgba(255, 226, 142, 0.72);
+  font-size: 0.62rem;
+  text-shadow: 0 0 10px rgba(201, 164, 90, 0.55);
+}
+
+.eldra-image-frame {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 238, 190, 0.07),
+    0 0 0 1px rgba(201,164,90,0.24),
+    0 14px 36px rgba(0,0,0,0.48) !important;
+}
+
+.eldra-corner-runes::before,
+.eldra-corner-runes::after {
+  content: "❦";
+  color: rgba(255, 221, 132, 0.72);
+}

@@ -255,7 +255,7 @@ async function deleteEnemy() {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
       <div :class="selectedEnemy || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none p-6 backdrop-blur-xl">
+        <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Enemies</div>
@@ -286,14 +286,14 @@ async function deleteEnemy() {
 
         <section
           v-if="pending"
-          class="mt-6 eldra-panel rounded-[24px] p-6 text-[#d8ceb8] shadow-xl"
+          class="mt-6 eldra-panel rounded-none p-6 text-[#d8ceb8] shadow-xl"
         >
           Loading enemies...
         </section>
 
         <section
           v-else-if="!filteredEnemies.length"
-          class="mt-6 eldra-empty rounded-[24px] p-10 text-center shadow-xl"
+          class="mt-6 eldra-empty rounded-none p-10 text-center shadow-xl"
         >
           <div class="text-lg font-medium text-white">No enemies found</div>
           <p class="mt-2 text-sm text-[#d8ceb8]">
@@ -308,14 +308,14 @@ async function deleteEnemy() {
           <div
             v-for="enemy in filteredEnemies"
             :key="enemy.id"
-            class="group cursor-pointer overflow-hidden eldra-ornate-card eldra-frame-corners rounded-none border backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.18)] transition duration-150 hover:border-[rgba(201,164,90,0.58)]"
+            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
             :class="selectedEnemyId === String(enemy.id)
               ? 'scale-[1.04] border-amber-300 bg-[linear-gradient(to_bottom,rgba(38,42,48,0.70),rgba(16,20,26,0.52))] shadow-[0_0_0_5px_rgba(251,191,36,0.75),0_0_40px_rgba(251,191,36,0.22),0_22px_48px_rgba(0,0,0,0.34)]'
               : 'opacity-95'"
             @click="selectEnemy(enemy)"
           >
             <div class="grid min-h-[240px] grid-cols-[112px_minmax(0,1fr)]">
-              <div class="border-r border-[rgba(201,164,90,0.22)] bg-black/20">
+              <div class="eldra-image-frame border-r border-[rgba(201,164,90,0.22)] bg-black/20">
                 <img
                   v-if="imageUrlForEnemy(enemy)"
                   :src="imageUrlForEnemy(enemy)"
@@ -338,7 +338,7 @@ async function deleteEnemy() {
                     </div>
                   </div>
 
-                  <span class="shrink-0 rounded-none border border-red-400/25 bg-red-400/10 px-2.5 py-1 text-[11px] font-medium text-red-200">
+                  <span class="eldra-gold-chip eldra-rune-label shrink-0 rounded-none border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em]">
                     CR {{ enemy.statblock?.challenge_rating || '—' }}
                   </span>
                 </div>
@@ -363,7 +363,7 @@ async function deleteEnemy() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="mode === 'build' && !selectedEnemy"
-        class="fixed right-0 top-0 z-20 h-full w-[360px] border-l border-[rgba(201,164,90,0.22)] bg-transparent backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div class="p-5">
           <WorldPagePresentationPanel
@@ -384,7 +384,7 @@ async function deleteEnemy() {
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
             <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Summary</div>
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Summary</div>
               <h2 class="mt-3 truncate text-2xl font-semibold text-white">{{ selectedEnemy.title }}</h2>
             </div>
 
@@ -413,7 +413,7 @@ async function deleteEnemy() {
               {{ initialsFor(selectedEnemy.title) }}
             </div>
 
-            <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
+            <div class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div><span class="text-[#b5a88d]">CR:</span> <span class="text-white">{{ selectedEnemy.statblock?.challenge_rating || '—' }}</span></div>
                 <div><span class="text-[#b5a88d]">AC:</span> <span class="text-white">{{ selectedEnemy.statblock?.armor_class ?? '—' }}</span></div>
@@ -424,8 +424,8 @@ async function deleteEnemy() {
               </div>
             </div>
 
-            <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
-              <div class="mb-3 text-xs uppercase tracking-[0.25em] text-slate-500">Abilities</div>
+            <div class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
+              <div class="mb-3 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Abilities</div>
               <div class="grid grid-cols-3 gap-3 text-center">
                 <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/10 p-3">
                   <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">STR</div>
@@ -460,16 +460,16 @@ async function deleteEnemy() {
               </div>
             </div>
 
-            <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200">
-              <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Languages</div>
+            <div class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200">
+              <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Languages</div>
               {{ formatLanguages(selectedEnemy.statblock?.languages_json) }}
             </div>
 
             <div
               v-if="selectedEnemySummary"
-              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
+              class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-sm leading-7 text-slate-200"
             >
-              <div class="mb-2 text-xs uppercase tracking-[0.25em] text-slate-500">Summary</div>
+              <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Summary</div>
               <div
                 class="markdown-content text-[15px] leading-7 text-slate-200"
                 v-html="renderMarkdown(selectedEnemySummary)"
@@ -478,9 +478,9 @@ async function deleteEnemy() {
 
             <div
               v-if="selectedEnemy.actions?.length"
-              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4"
+              class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4"
             >
-              <div class="mb-3 text-xs uppercase tracking-[0.25em] text-slate-500">Actions</div>
+              <div class="mb-3 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Actions</div>
 
               <div class="space-y-4">
                 <div
@@ -507,7 +507,7 @@ async function deleteEnemy() {
               <button
                 v-if="!confirmDelete"
                 type="button"
-                class="flex-1 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100 hover:bg-red-500/20"
+                class="flex-1 rounded-none border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100 hover:bg-red-500/20"
                 @click="confirmDelete = true"
               >
                 Delete
@@ -516,7 +516,7 @@ async function deleteEnemy() {
               <button
                 v-else
                 type="button"
-                class="flex-1 rounded-xl border border-red-500/30 bg-red-500/20 px-4 py-3 text-sm text-red-50 disabled:opacity-50"
+                class="flex-1 rounded-none border border-red-500/30 bg-red-500/20 px-4 py-3 text-sm text-red-50 disabled:opacity-50"
                 :disabled="deleting"
                 @click="deleteEnemy"
               >

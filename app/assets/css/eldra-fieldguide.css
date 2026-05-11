@@ -91,3 +91,69 @@
 .eldra-input:focus {
   border-color: rgba(201, 164, 90, 0.58);
 }
+
+.eldra-filigree {
+  position: relative;
+}
+
+.eldra-filigree::before,
+.eldra-filigree::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  width: 42px;
+  height: 42px;
+  opacity: 0.72;
+  background:
+    linear-gradient(var(--eldra-gold-soft), var(--eldra-gold-soft)) left top / 30px 1px no-repeat,
+    linear-gradient(var(--eldra-gold-soft), var(--eldra-gold-soft)) left top / 1px 30px no-repeat,
+    radial-gradient(circle at left top, transparent 17px, rgba(201,164,90,0.45) 18px, transparent 20px);
+}
+
+.eldra-filigree::before {
+  left: 10px;
+  top: 10px;
+}
+
+.eldra-filigree::after {
+  right: 10px;
+  bottom: 10px;
+  transform: rotate(180deg);
+}
+
+.eldra-ornate-card {
+  position: relative;
+  border-color: rgba(201,164,90,0.34) !important;
+  background:
+    radial-gradient(420px 160px at 18% 0%, rgba(201,164,90,0.13), transparent 62%),
+    linear-gradient(180deg, rgba(16,15,12,0.90), rgba(7,7,6,0.82)) !important;
+  box-shadow:
+    0 18px 48px rgba(0,0,0,0.35),
+    inset 0 0 0 1px rgba(255,235,180,0.035),
+    inset 0 0 32px rgba(201,164,90,0.035);
+}
+
+.eldra-ornate-card::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  pointer-events: none;
+  border: 1px solid rgba(201,164,90,0.16);
+}
+
+.eldra-gold-chip {
+  border-color: rgba(201,164,90,0.42) !important;
+  background:
+    linear-gradient(180deg, rgba(201,164,90,0.16), rgba(45,31,12,0.18)) !important;
+  color: #f5e7bd !important;
+  box-shadow: inset 0 0 10px rgba(201,164,90,0.08);
+}
+
+.eldra-arcane-link {
+  color: #f5e7bd !important;
+  text-shadow: 0 0 14px rgba(201,164,90,0.18);
+}
+
+.eldra-arcane-link:hover {
+  color: #fff7df !important;
+}

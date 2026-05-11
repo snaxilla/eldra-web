@@ -131,7 +131,7 @@ watch(
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1700px] p-6">
-      <section class="rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
+      <section class="eldra-filigree rounded-none border border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgba(18,16,12,0.62),rgba(7,7,6,0.48))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
         <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
@@ -212,7 +212,7 @@ watch(
                   </h2>
 
                   <div
-                    class="shrink-0 rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-zinc-400"
+                    class="eldra-gold-chip shrink-0 rounded-none border px-3 py-1.5 text-[11px] uppercase tracking-[0.2em]"
                   >
                     {{ entityType }}
                   </div>

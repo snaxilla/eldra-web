@@ -430,3 +430,16 @@
 .eldra-card-glyph::after {
   opacity: .08;
 }
+
+/* Remove rounded arc ornaments from tight/collapsed sidebar surfaces */
+.eldra-sidebar-ornate.eldra-frame-corners::after,
+.eldra-sidebar-switch.eldra-frame-corners::after {
+  display: none !important;
+}
+
+.eldra-sidebar-switch::before,
+.eldra-sidebar-switch::after {
+  content: "✦";
+  top: 50%;
+  transform: translateY(-50%);
+}

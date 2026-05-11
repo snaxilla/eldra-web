@@ -36,7 +36,7 @@ const navItems = computed(() => [
 </script>
 
 <template>
-  <aside class="eldra-sidebar-ornate flex h-full min-h-0 flex-col border-r border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,#090806,#11100d_48%,#070604)] text-[#efe2bd]">
+  <aside class="eldra-sidebar-ornate eldra-victorian-frame flex h-full min-h-0 flex-col border-r border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,#090806,#11100d_48%,#070604)] text-[#efe2bd]">
     <!-- COLLAPSED -->
     <template v-if="collapsed">
       <div class="flex items-center justify-center p-3">

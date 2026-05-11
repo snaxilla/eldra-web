@@ -137,7 +137,7 @@ watch(
             <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
               {{ eyebrow || title }}
             </div>
-            <h1 class="mt-2 text-3xl font-semibold text-white">{{ title }}</h1>
+            <h1 class="mt-2 eldra-gilded-title text-3xl font-semibold">{{ title }}</h1>
             <p class="mt-2 max-w-3xl text-sm text-zinc-300">
               {{ description || `Browse imported ${title.toLowerCase()} in this world.` }}
             </p>
@@ -171,7 +171,7 @@ watch(
         class="mt-6 rounded-none border border-dashed border-stone-500/20 bg-[#121212]/70 p-10 text-center"
       >
         <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">{{ title }}</div>
-        <div class="mt-3 text-2xl font-semibold text-white">Nothing here yet</div>
+        <div class="mt-3 eldra-gilded-title text-2xl font-semibold">Nothing here yet</div>
         <p class="mt-3 text-sm text-zinc-300">
           {{ emptyMessage || `No ${title.toLowerCase()} have been imported into this world yet.` }}
         </p>
@@ -207,7 +207,7 @@ watch(
 
               <div class="p-5">
                 <div class="flex items-start justify-between gap-3">
-                  <h2 class="line-clamp-2 text-2xl font-semibold text-white">
+                  <h2 class="line-clamp-2 eldra-gilded-title text-2xl font-semibold">
                     {{ entity.title }}
                   </h2>
 

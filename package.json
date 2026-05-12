@@ -14,15 +14,18 @@
     "@iconify-json/lucide": "^1.2.98",
     "@iconify-json/simple-icons": "^1.2.74",
     "@nuxt/ui": "^4.5.1",
+    "@tiptap/pm": "^3.23.1",
+    "@tiptap/starter-kit": "^3.23.1",
+    "@tiptap/vue-3": "^3.23.1",
     "axios": "^1.15.0",
+    "dompurify": "^3.0.0",
     "form-data": "^4.0.5",
     "leaflet": "^1.9.4",
-    "nuxt": "^4.4.2",
-    "tailwindcss": "^4.2.1",
-    "thpace": "^2.0.3",
     "markdown-it": "^14.0.0",
-    "dompurify": "^3.0.0",
-    "sharp": "^0.34.3"
+    "nuxt": "^4.4.2",
+    "sharp": "^0.34.3",
+    "tailwindcss": "^4.2.1",
+    "thpace": "^2.0.3"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.15.2",

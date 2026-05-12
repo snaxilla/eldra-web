@@ -603,18 +603,18 @@ async function deleteSelectedEntity() {
 
         <section
           v-else
-          class="mt-6 grid auto-rows-fr gap-4 sm:grid-cols-2 2xl:grid-cols-3"
+          class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
         >
           <div
             v-for="entity in filteredEntities"
             :key="entity.id"
-            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group h-full cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
+            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
             :class="selectedEntityId === String(entity.id)
               ? 'eldra-selected-glow scale-[1.025]'
               : 'opacity-95'"
             @click="selectEntity(entity)"
           >
-            <div class="grid min-h-[240px] grid-cols-[112px_minmax(0,1fr)]">
+            <div class="grid min-h-[300px] grid-cols-[112px_minmax(0,1fr)]">
               <div class="eldra-image-frame border-r border-[rgba(201,164,90,0.22)] bg-black/20">
                 <img
                   v-if="imageUrlForEntity(entity)"

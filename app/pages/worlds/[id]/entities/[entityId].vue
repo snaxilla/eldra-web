@@ -941,22 +941,7 @@ async function onImageSelected(event: Event) {
                 </button>
               </div>
             </div>
-
-            <div class="mb-3 flex flex-wrap gap-2 border border-stone-500/20 bg-[#111]/80 p-2">
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="wrapSelection('**', '**', 'bold text')">Bold</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="wrapSelection('*', '*', 'italic text')">Italic</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n\n## Heading\n\n')">Heading</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n- List item\n')">List</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n> Quote text\n')">Quote</button>
-              <button type="button" class="border border-stone-500/20 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.08]" @click="insertMarkdown('\n---\n')">Divider</button>
-            </div>
-
-            <textarea
-              v-model="articleDraft"
-              data-article-editor="true"
-              class="min-h-[560px] w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 p-5 font-mono text-sm leading-7 text-zinc-100 outline-none focus:border-yellow-700/50"
-              placeholder="Write article markdown here..."
-            ></textarea>
+              <EldraRichTextEditor v-model="articleDraft" />
 
             <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
@@ -967,7 +952,7 @@ async function onImageSelected(event: Event) {
             <div
               v-if="articleDraft.trim()"
               class="markdown-content min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-[16px] leading-8 text-zinc-200"
-              v-html="renderMarkdown(articleDraft)"
+              v-html="articleDraft"
             ></div>
             <div v-else class="min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-zinc-500">
               No article content yet.

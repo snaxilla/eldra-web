@@ -967,7 +967,7 @@ async function onImageSelected(event: Event) {
             class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-6"
           >
             <div
-              class="markdown-content eldra-rich-article text-[16px] leading-8 text-[#f5e7bd]"
+              class="eldra-rich-content"
               v-html="articleMarkdown"
             ></div>
           </div>

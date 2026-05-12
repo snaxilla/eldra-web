@@ -505,10 +505,10 @@
 .eldra-rich-content blockquote {
   margin: 1rem 0;
   padding: 0.9rem 1rem;
-  border-left: 3px solid rgba(201,164,90,0.62);
-  background: rgba(201,164,90,0.08);
-  border-radius: 0;
-  color: #e8d9b5;
+  border-left: 3px solid rgba(201,164,90,0.62) !important;
+  background: rgba(201,164,90,0.08) !important;
+  border-radius: 0 !important;
+  color: #e8d9b5 !important;
   font-style: italic;
 }
 

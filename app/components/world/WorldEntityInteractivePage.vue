@@ -796,7 +796,7 @@ async function deleteSelectedEntity() {
               >
                 <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Summary</div>
                 <div
-                  class="markdown-content text-[15px] leading-7 text-slate-200"
+                  class="markdown-content eldra-rich-content text-[15px] leading-7 text-slate-200"
                   v-html="renderMarkdown(selectedSummary)"
                 ></div>
               </div>

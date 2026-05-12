@@ -923,7 +923,7 @@ async function onImageSelected(event: Event) {
             </header>
 
             <div
-              class="markdown-content px-5 py-5 text-[15px] leading-7 text-zinc-200"
+              class="markdown-content eldra-rich-content px-5 py-5 text-[15px] leading-7 text-zinc-200"
               v-html="renderMarkdown(feature.markdown)"
             ></div>
           </article>
@@ -1053,7 +1053,7 @@ async function onImageSelected(event: Event) {
           <div class="flex-1 overflow-y-auto p-5">
             <div
               v-if="contextDrawerMarkdown"
-              class="markdown-content text-sm leading-7 text-zinc-200"
+              class="markdown-content eldra-rich-content text-sm leading-7 text-zinc-200"
               v-html="contextDrawerHtml"
             ></div>
 

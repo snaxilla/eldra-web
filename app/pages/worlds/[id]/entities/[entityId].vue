@@ -914,18 +914,17 @@ async function onImageSelected(event: Event) {
           </article>
         </div>
 
-        <div v-else-if="mode === 'build'" class="mt-6 grid gap-5 xl:grid-cols-2">
-          <div>
+          <div v-else-if="mode === 'build'" class="mt-6">
             <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">Article Editor</div>
-                <div class="mt-1 text-sm text-zinc-400">Use the buttons like a simple word processor. Saves as Markdown behind the scenes.</div>
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Article Editor</div>
+                <div class="mt-1 text-sm text-[#d8ceb8]">Use the editor below to write and format this article.</div>
               </div>
 
               <div class="flex gap-2">
                 <button
                   type="button"
-                  class="rounded-none border border-stone-500/20 bg-[#151515]/80 px-4 py-2 text-sm text-zinc-200 hover:bg-white/[0.08]"
+                  class="eldra-button rounded-none px-4 py-2 text-sm"
                   @click="resetArticleDraft"
                 >
                   Reset
@@ -933,7 +932,7 @@ async function onImageSelected(event: Event) {
 
                 <button
                   type="button"
-                  class="rounded-none border border-yellow-700/40 bg-yellow-900/25 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-yellow-900/40 disabled:opacity-50"
+                  class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
                   :disabled="articleSaving"
                   @click="saveArticleOverride"
                 >
@@ -941,24 +940,12 @@ async function onImageSelected(event: Event) {
                 </button>
               </div>
             </div>
-              <EldraRichTextEditor v-model="articleDraft" />
+
+            <EldraRichTextEditor v-model="articleDraft" />
 
             <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
           </div>
-
-          <div>
-            <div class="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Live Preview</div>
-            <div
-              v-if="articleDraft.trim()"
-              class="markdown-content min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-[16px] leading-8 text-zinc-200"
-              v-html="articleDraft"
-            ></div>
-            <div v-else class="min-h-[560px] border border-stone-500/20 bg-[#121212]/70 p-5 text-zinc-500">
-              No article content yet.
-            </div>
-          </div>
-        </div>
 
         <div
           v-else-if="articleMarkdown"

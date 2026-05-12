@@ -962,18 +962,22 @@ async function onImageSelected(event: Event) {
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
           </div>
 
-        <div
-          v-else-if="articleMarkdown"
-          class="markdown-content mt-6 text-[16px] leading-8 text-zinc-200"
-          v-html="articleMarkdown"
-        ></div>
+          <div
+            v-else-if="articleMarkdown"
+            class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6"
+          >
+            <div
+              class="markdown-content eldra-rich-article text-[16px] leading-8 text-[#f5e7bd]"
+              v-html="articleMarkdown"
+            ></div>
+          </div>
 
-        <p
-          v-else
-          class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
-        >
-          No article content yet.
-        </p>
+          <div
+            v-else
+            class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6 text-[#d8ceb8]"
+          >
+            No article content yet.
+          </div>
       </section>
     </div>
 

@@ -603,12 +603,12 @@ async function deleteSelectedEntity() {
 
         <section
           v-else
-          class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
+          class="mt-6 grid auto-rows-fr gap-4 sm:grid-cols-2 2xl:grid-cols-3"
         >
           <div
             v-for="entity in filteredEntities"
             :key="entity.id"
-            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
+            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group h-full cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
             :class="selectedEntityId === String(entity.id)
               ? 'eldra-selected-glow scale-[1.025]'
               : 'opacity-95'"
@@ -665,7 +665,7 @@ async function deleteSelectedEntity() {
                   </template>
 
                   <template v-else>
-                    <div class="leading-7 line-clamp-5">
+                    <div class="line-clamp-5 leading-7">
                       {{ summaryForEntity(entity) || 'Select to preview →' }}
                     </div>
                   </template>

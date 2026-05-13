@@ -969,8 +969,8 @@ async function onImageSelected(event: Event) {
 
         <div
           v-else-if="articleMarkdown"
-          class="markdown-content mt-6 text-[16px] leading-8 text-zinc-200"
-          v-html="articleMarkdown"
+          class="eldra-rich-content mt-6 text-[16px] leading-8"
+          v-html="renderedArticleContent"
         ></div>
 
         <p

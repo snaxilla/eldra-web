@@ -382,6 +382,7 @@ async function createArticleFromPin() {
         summary: editingPin.value.summary?.trim() || null,
         pinType: editingPin.value.pinType || 'location',
         image: editingPin.value.image || null,
+        linkedMapId: editingPin.value.linkedMapId || null,
       }
     })
 

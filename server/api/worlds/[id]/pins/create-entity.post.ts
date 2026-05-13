@@ -104,14 +104,34 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (entityType === 'location') {
+    await dxFetch('/items/block_instances', {
+      method: 'POST',
+      body: JSON.stringify({
+        entity_id: entity.id,
+        block_key: 'location_core',
+        label: 'Location Core',
+        sort: 10,
+        data: {
+          locationType: String(pinType || 'location').toLowerCase(),
+          population: null,
+          linkedMapId: body?.linkedMapId ? String(body.linkedMapId) : null,
+          parentLocationId: body?.parentLocationId ? String(body.parentLocationId) : null
+        }
+      })
+    }).catch(() => null)
+  }
+
   if (summary || image) {
     await dxFetch('/items/block_instances', {
       method: 'POST',
       body: JSON.stringify({
         entity_id: entity.id,
-        block_type: 'overview',
-        sort: 1,
+        block_key: 'overview',
+        label: 'Overview',
+        sort: 20,
         data: {
+          text: summary || null,
           summary: summary || null,
           image: image || null
         }

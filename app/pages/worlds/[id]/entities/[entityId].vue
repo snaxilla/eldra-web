@@ -405,6 +405,11 @@ function insertMarkdown(markdown: string) {
 
 const articleHtml = computed(() => renderMarkdown(articleMarkdown.value || ''))
 
+const renderedArticleContent = computed(() => {
+  const raw = String(articleMarkdown.value || '')
+  return /<\/?[a-z][\s\S]*>/i.test(raw) ? raw : renderMarkdown(raw)
+})
+
 const classFeatureCards = computed(() => {
   const features = hydratedClassFeatures.value?.features
   if (!Array.isArray(features)) return []
@@ -923,7 +928,7 @@ async function onImageSelected(event: Event) {
             </header>
 
             <div
-              class="markdown-content px-5 py-5 text-[15px] leading-7 text-zinc-200"
+              class="eldra-rich-content px-5 py-5 text-[15px] leading-7"
               v-html="renderMarkdown(feature.markdown)"
             ></div>
           </article>

@@ -853,7 +853,7 @@ async function onImageSelected(event: Event) {
           :key="section.title"
           class="rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(24,28,34,0.38),rgba(12,16,22,0.26))] p-6 backdrop-blur-xl shadow-[0_18px_55px_rgba(0,0,0,0.16)]"
         >
-          <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
             {{ section.title }}
           </div>
 
@@ -869,7 +869,7 @@ async function onImageSelected(event: Event) {
         </article>
       </section>
 
-<section class="mt-6 rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.66),rgba(8,8,8,0.52))] p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
+<section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
         <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
           Article
         </div>
@@ -973,12 +973,12 @@ async function onImageSelected(event: Event) {
           v-html="renderedArticleContent"
         ></div>
 
-        <p
+        <div
           v-else
-          class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
+          class="mt-6 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-5 text-[#d8ceb8]"
         >
           No article content yet.
-        </p>
+        </div>
       </section>
     </div>
 

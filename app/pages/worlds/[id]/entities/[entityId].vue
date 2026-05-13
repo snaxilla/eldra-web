@@ -870,7 +870,7 @@ async function onImageSelected(event: Event) {
       </section>
 
 <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
-        <div class="text-xs uppercase tracking-[0.3em] text-zinc-500">
+        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
           Article
         </div>
 
@@ -878,8 +878,8 @@ async function onImageSelected(event: Event) {
           v-if="mode !== 'build' && !articleOverrideMarkdown && entity?.entity_type === 'class' && classFeatureCards.length"
           class="mt-6 space-y-5"
         >
-          <div class="rounded-none border border-stone-500/20 bg-[#101010]/92 p-4 backdrop-blur-xl">
-            <div class="mb-3 text-xs uppercase tracking-[0.25em] text-zinc-500">
+          <div class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-4 backdrop-blur-xl">
+            <div class="mb-3 text-xs uppercase tracking-[0.25em] text-[#9f9278]">
               Class Outline
             </div>
 
@@ -888,7 +888,7 @@ async function onImageSelected(event: Event) {
                 v-for="level in classFeatureLevels"
                 :key="level"
                 :href="`#class-level-${level}`"
-                class="rounded-none border border-zinc-500/30 bg-zinc-900/50 px-3 py-1.5 text-xs font-medium text-zinc-100 transition hover:bg-zinc-800/80"
+                class="eldra-gold-chip rounded-none border px-3 py-1.5 text-xs font-medium transition hover:opacity-90"
               >
                 Level {{ level }}
               </a>
@@ -899,9 +899,9 @@ async function onImageSelected(event: Event) {
             v-for="feature in classFeatureCards"
             :key="feature.id"
             :id="feature.level ? `class-level-${feature.level}` : feature.id"
-            class="scroll-mt-28 overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(25,23,19,0.78),rgba(10,14,22,0.54))] shadow-[0_12px_32px_rgba(0,0,0,0.42)]"
+            class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes scroll-mt-28 overflow-hidden rounded-none border shadow-[0_12px_32px_rgba(0,0,0,0.42)]"
           >
-            <header class="border-b border-stone-500/20 bg-[#121212]/70 px-5 py-4">
+            <header class="border-b border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-5 py-4">
               <div class="flex flex-wrap items-center gap-2">
                 <span
                   v-if="feature.level"
@@ -910,13 +910,13 @@ async function onImageSelected(event: Event) {
                   Level {{ feature.level }}
                 </span>
 
-                <span class="rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-300">
+                <span class="eldra-gold-chip rounded-none border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]">
                   Feature
                 </span>
 
                 <span
                   v-if="feature.source"
-                  class="rounded-none border border-stone-500/20 bg-[#151515]/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400"
+                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] opacity-80"
                 >
                   {{ feature.source }}
                 </span>

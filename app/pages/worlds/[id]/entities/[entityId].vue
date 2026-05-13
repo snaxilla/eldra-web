@@ -74,6 +74,7 @@ const spellCore = computed(() => blockByKey('spell_core')?.data || null)
 const speciesCore = computed(() => blockByKey('species_core')?.data || null)
 const classCore = computed(() => blockByKey('class_core')?.data || null)
 const backgroundCore = computed(() => blockByKey('background_core')?.data || null)
+const locationCore = computed(() => blockByKey('location_core')?.data || null)
 
 function blockDataByKey(key: string) {
   return blockByKey(key)?.data || null
@@ -629,6 +630,39 @@ function backgroundMetaLines() {
   ].filter(Boolean)
 }
 
+function formatLocationType(value: any): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function formatPopulation(value: any): string {
+  if (value === null || value === undefined || value === '') return ''
+
+  const numeric = Number(String(value).replace(/,/g, ''))
+  if (!Number.isFinite(numeric)) return String(value)
+
+  return numeric.toLocaleString()
+}
+
+function locationMetaLines() {
+  const core = locationCore.value
+  if (!core) return []
+
+  const type = formatLocationType(core.locationType ?? core.location_type ?? core.type)
+  const population = formatPopulation(core.population)
+
+  return [
+    type ? `Type: ${type}` : '',
+    population ? `Population: ${population}` : '',
+    core.linkedMapId || core.linked_map_id ? `Linked Map: ${core.linkedMapTitle || core.linked_map_title || core.linkedMapId || core.linked_map_id}` : '',
+    core.parentLocationId || core.parent_location_id ? `Parent Location: ${core.parentLocationTitle || core.parent_location_title || core.parentLocationId || core.parent_location_id}` : ''
+  ].filter(Boolean)
+}
+
 
 
 const heroMetaLines = computed(() => {
@@ -637,6 +671,7 @@ const heroMetaLines = computed(() => {
   if (spellCore.value) return spellMetaLines().slice(0, 4)
   if (itemCore.value) return itemMetaLines().slice(0, 4)
   if (backgroundCore.value) return backgroundMetaLines()
+  if (locationCore.value) return locationMetaLines()
   return []
 })
 

@@ -42,6 +42,35 @@ const metaSaving = ref(false)
 const metaSaveError = ref('')
 const metaSaveSuccess = ref('')
 
+const LOCATION_TYPE_OPTIONS = [
+  { label: 'Location', value: 'location' },
+  { label: 'Village', value: 'village' },
+  { label: 'Town', value: 'town' },
+  { label: 'City', value: 'city' },
+  { label: 'Capital', value: 'capital' },
+  { label: 'Fortress', value: 'fortress' },
+  { label: 'Outpost', value: 'outpost' },
+  { label: 'Region', value: 'region' },
+  { label: 'Wilderness', value: 'wilderness' },
+  { label: 'Dungeon', value: 'dungeon' },
+  { label: 'Ruin', value: 'ruin' },
+  { label: 'Cave', value: 'cave' },
+  { label: 'Temple', value: 'temple' },
+  { label: 'Landmark', value: 'landmark' },
+  { label: 'District', value: 'district' },
+  { label: 'Building', value: 'building' },
+  { label: 'Shop', value: 'shop' },
+  { label: 'Tavern', value: 'tavern' },
+  { label: 'Guildhall', value: 'guildhall' },
+  { label: 'Residence', value: 'residence' },
+  { label: 'Point of Interest', value: 'point_of_interest' }
+]
+
+const locationTypeDraft = ref('location')
+const locationPopulationDraft = ref('')
+const locationLinkedMapIdDraft = ref('')
+const locationParentLocationIdDraft = ref('')
+
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
 const { data: entity, refresh: refreshEntity } = await useAsyncData(
@@ -61,6 +90,54 @@ const { data: hydratedClassFeatures } = await useFetch(classFeaturesUrl, {
   default: () => null,
   watch: [classFeaturesUrl]
 })
+
+const { data: worldMaps } = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
+  default: () => [],
+  watch: [worldId]
+})
+
+const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+  default: () => [],
+  watch: [worldId]
+})
+
+const isLocationEntity = computed(() => String(entity.value?.entity_type || '').toLowerCase() === 'location')
+
+const mapOptions = computed(() => {
+  return (Array.isArray(worldMaps.value) ? worldMaps.value : [])
+    .map((map: any) => ({
+      id: String(map?.id || ''),
+      title: String(map?.title || 'Untitled Map')
+    }))
+    .filter((map: any) => map.id)
+    .sort((a: any, b: any) => a.title.localeCompare(b.title))
+})
+
+const locationOptions = computed(() => {
+  return (Array.isArray(worldEntities.value) ? worldEntities.value : [])
+    .filter((option: any) => String(option?.entity_type || '').toLowerCase() === 'location')
+    .filter((option: any) => String(option?.id || '') !== String(entityId.value || ''))
+    .map((option: any) => ({
+      id: String(option?.id || ''),
+      title: String(option?.title || 'Untitled Location')
+    }))
+    .filter((option: any) => option.id)
+    .sort((a: any, b: any) => a.title.localeCompare(b.title))
+})
+
+function optionTitleById(options: any[], id: any) {
+  const needle = String(id || '')
+  if (!needle) return ''
+  return options.find((option: any) => String(option.id) === needle)?.title || needle
+}
+
+function mapTitleById(id: any) {
+  return optionTitleById(mapOptions.value, id)
+}
+
+function locationTitleById(id: any) {
+  return optionTitleById(locationOptions.value, id)
+}
 
 function blockByKey(key: string) {
   return entity.value?.blocks?.find?.((block: any) => {
@@ -266,6 +343,12 @@ watch(
     metaTitle.value = String(entity.value?.title || '')
     metaSlug.value = String(entity.value?.slug || '')
     metaSummary.value = String(entity.value?.summary || '')
+
+      const core = locationCore.value || {}
+      locationTypeDraft.value = String(core.locationType ?? core.location_type ?? core.type ?? 'location')
+      locationPopulationDraft.value = core.population !== undefined && core.population !== null ? String(core.population) : ''
+      locationLinkedMapIdDraft.value = String(core.linkedMapId ?? core.linked_map_id ?? '')
+      locationParentLocationIdDraft.value = String(core.parentLocationId ?? core.parent_location_id ?? '')
     metaSaveError.value = ''
     metaSaveSuccess.value = ''
   },
@@ -289,6 +372,31 @@ async function saveEntityMetadata() {
       }
     })
 
+
+      if (isLocationEntity.value) {
+        const populationRaw = String(locationPopulationDraft.value || '').replace(/,/g, '').trim()
+        let populationValue: number | null = null
+
+        if (populationRaw) {
+          const parsed = Number(populationRaw)
+          if (!Number.isFinite(parsed)) {
+            throw new Error('Population must be a number.')
+          }
+          populationValue = Math.max(0, Math.floor(parsed))
+        }
+
+        await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/blocks/location_core`, {
+          method: 'PUT',
+          body: {
+            data: {
+              locationType: locationTypeDraft.value || null,
+              population: populationValue,
+              linkedMapId: locationLinkedMapIdDraft.value || null,
+              parentLocationId: locationParentLocationIdDraft.value || null
+            }
+          }
+        })
+      }
     await refreshEntity()
     metaSaveSuccess.value = 'Header saved.'
   } catch (error: any) {
@@ -654,12 +762,14 @@ function locationMetaLines() {
 
   const type = formatLocationType(core.locationType ?? core.location_type ?? core.type)
   const population = formatPopulation(core.population)
+  const linkedMapId = String(core.linkedMapId ?? core.linked_map_id ?? '').trim()
+  const parentLocationId = String(core.parentLocationId ?? core.parent_location_id ?? '').trim()
 
   return [
     type ? `Type: ${type}` : '',
     population ? `Population: ${population}` : '',
-    core.linkedMapId || core.linked_map_id ? `Linked Map: ${core.linkedMapTitle || core.linked_map_title || core.linkedMapId || core.linked_map_id}` : '',
-    core.parentLocationId || core.parent_location_id ? `Parent Location: ${core.parentLocationTitle || core.parent_location_title || core.parentLocationId || core.parent_location_id}` : ''
+    linkedMapId ? `Linked Map: ${mapTitleById(linkedMapId)}` : '',
+    parentLocationId ? `Parent Location: ${locationTitleById(parentLocationId)}` : ''
   ].filter(Boolean)
 }
 
@@ -819,6 +929,64 @@ async function onImageSelected(event: Event) {
                 <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Summary Blurb</span>
                 <textarea v-model="metaSummary" rows="4" class="w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none focus:border-yellow-700/50"></textarea>
               </label>
+
+              <div
+                v-if="isLocationEntity"
+                class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-4"
+              >
+                <div class="mb-3 text-xs uppercase tracking-[0.28em] text-[#9f9278]">Location Details</div>
+
+                <div class="grid gap-3 md:grid-cols-2">
+                  <label class="block">
+                    <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Type</span>
+                    <select v-model="locationTypeDraft" class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[#090909]/80 px-3 py-2 text-sm text-[#f5e7bd] outline-none focus:border-yellow-700/50">
+                      <option
+                        v-for="option in LOCATION_TYPE_OPTIONS"
+                        :key="option.value"
+                        :value="option.value"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ option.label }}
+                      </option>
+                    </select>
+                  </label>
+
+                  <label class="block">
+                    <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Population</span>
+                    <input v-model="locationPopulationDraft" inputmode="numeric" placeholder="e.g. 1,234" class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[#090909]/80 px-3 py-2 text-sm text-[#f5e7bd] outline-none focus:border-yellow-700/50">
+                  </label>
+
+                  <label class="block">
+                    <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Linked Map</span>
+                    <select v-model="locationLinkedMapIdDraft" class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[#090909]/80 px-3 py-2 text-sm text-[#f5e7bd] outline-none focus:border-yellow-700/50">
+                      <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked map</option>
+                      <option
+                        v-for="map in mapOptions"
+                        :key="map.id"
+                        :value="map.id"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ map.title }}
+                      </option>
+                    </select>
+                  </label>
+
+                  <label class="block">
+                    <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Parent Location</span>
+                    <select v-model="locationParentLocationIdDraft" class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[#090909]/80 px-3 py-2 text-sm text-[#f5e7bd] outline-none focus:border-yellow-700/50">
+                      <option value="" class="bg-[#090909] text-[#f5e7bd]">No parent location</option>
+                      <option
+                        v-for="location in locationOptions"
+                        :key="location.id"
+                        :value="location.id"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ location.title }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+              </div>
 
               <div class="mt-3 flex items-center gap-3">
                 <button

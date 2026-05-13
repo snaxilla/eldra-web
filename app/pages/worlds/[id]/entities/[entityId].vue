@@ -713,13 +713,13 @@ async function onImageSelected(event: Event) {
     </button>
 
     <div class="mx-auto max-w-[1500px] p-6">
-      <section class="overflow-hidden rounded-none border border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(18,18,18,0.72),rgba(8,8,8,0.58))] backdrop-blur-xl shadow-[0_16px_40px_rgba(0,0,0,0.42)]">
+      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes overflow-hidden rounded-none border backdrop-blur-xl">
         <div class="grid gap-0 lg:grid-cols-[460px_minmax(0,1fr)]">
-          <div class="border-b border-stone-500/20 bg-[#050505]/20 p-5 lg:border-b-0 lg:border-r">
+          <div class="border-b border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.42)] p-5 lg:border-b-0 lg:border-r">
             <button
               v-if="entityImageUrl"
               type="button"
-              class="group block w-full overflow-hidden rounded-none border border-stone-500/20 bg-[#050505]/35 text-left shadow-[0_14px_34px_rgba(0,0,0,0.45)]"
+              class="eldra-image-frame group block w-full overflow-hidden rounded-none border bg-black/20 text-left shadow-[0_14px_34px_rgba(0,0,0,0.45)]"
               @click="openImageLightbox"
             >
               <img
@@ -727,14 +727,14 @@ async function onImageSelected(event: Event) {
                 :alt="entity?.title || 'Entity image'"
                 class="aspect-[3/4] w-full object-cover object-[center_15%] transition duration-200 group-hover:scale-[1.02]"
               >
-              <div class="border-t border-stone-500/20 px-4 py-3 text-xs uppercase tracking-[0.25em] text-zinc-400">
+              <div class="border-t border-[rgba(201,164,90,0.22)] px-4 py-3 text-xs uppercase tracking-[0.25em] text-[#9f9278]">
                 Click to view image
               </div>
             </button>
 
             <div
               v-else
-              class="flex aspect-[3/4] items-center justify-center rounded-none border border-stone-500/20 bg-[#121212]/70 text-6xl font-semibold text-zinc-400"
+              class="flex aspect-[3/4] items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-6xl font-semibold text-[#d8ceb8]"
             >
               {{ (entity?.title || 'E').slice(0, 2).toUpperCase() }}
             </div>
@@ -758,7 +758,7 @@ async function onImageSelected(event: Event) {
           </div>
 
           <div class="p-7">
-            <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
               {{ world?.name || 'World' }}
             </div>
 
@@ -805,7 +805,7 @@ async function onImageSelected(event: Event) {
             </h1>
 
             <div class="mt-4 flex flex-wrap gap-2">
-              <div class="rounded-none border border-stone-500/20 bg-[#171717]/70 px-3 py-1.5 text-sm text-zinc-300">
+              <div class="eldra-gold-chip rounded-none border px-3 py-1.5 text-sm">
                 {{ entity?.entity_type || 'entity' }}
               </div>
 
@@ -828,7 +828,7 @@ async function onImageSelected(event: Event) {
               <div
                 v-for="line in heroMetaLines"
                 :key="line"
-                class="rounded-none border border-stone-500/20 bg-white/[0.045] px-4 py-3 text-sm leading-6 text-zinc-200"
+                class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm leading-6 text-[#d8ceb8]"
               >
                 {{ line }}
               </div>
@@ -836,7 +836,7 @@ async function onImageSelected(event: Event) {
 
             <div
               v-if="derivedSummary"
-              class="mt-6 rounded-none border border-yellow-700/30 bg-[linear-gradient(to_bottom,rgba(92,72,34,0.18),rgba(20,20,20,0.34))] p-5 text-[15px] leading-8 text-amber-50/90"
+              class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-5 text-[15px] leading-8 text-[#f5e7bd]"
             >
               {{ derivedSummary }}
             </div>

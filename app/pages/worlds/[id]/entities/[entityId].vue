@@ -974,7 +974,7 @@ async function onImageSelected(event: Event) {
 
           <div
             v-else
-            class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-6 text-[#d8ceb8]"
+            class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6 text-[#d8ceb8]"
           >
             No article content yet.
           </div>
@@ -995,7 +995,7 @@ async function onImageSelected(event: Event) {
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build</div>
+              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">Build</div>
               <h2 class="mt-3 text-2xl font-semibold text-white">Page Builder</h2>
             </div>
 
@@ -1033,7 +1033,7 @@ async function onImageSelected(event: Event) {
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">
                 Context
               </div>
               <h2 class="mt-3 text-2xl font-semibold text-white">

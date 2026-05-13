@@ -923,7 +923,7 @@ async function onImageSelected(event: Event) {
             </header>
 
             <div
-              class="markdown-content eldra-rich-content px-5 py-5 text-[15px] leading-7 text-zinc-200"
+              class="markdown-content px-5 py-5 text-[15px] leading-7 text-zinc-200"
               v-html="renderMarkdown(feature.markdown)"
             ></div>
           </article>
@@ -962,22 +962,18 @@ async function onImageSelected(event: Event) {
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
           </div>
 
-          <div
-            v-else-if="articleMarkdown"
-            class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6"
-          >
-            <div
-              class="eldra-rich-content"
-              v-html="articleMarkdown"
-            ></div>
-          </div>
+        <div
+          v-else-if="articleMarkdown"
+          class="markdown-content mt-6 text-[16px] leading-8 text-zinc-200"
+          v-html="articleMarkdown"
+        ></div>
 
-          <div
-            v-else
-            class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6 text-[#d8ceb8]"
-          >
-            No article content yet.
-          </div>
+        <p
+          v-else
+          class="mt-4 whitespace-pre-wrap text-lg leading-8 text-slate-100"
+        >
+          No article content yet.
+        </p>
       </section>
     </div>
 
@@ -1053,7 +1049,7 @@ async function onImageSelected(event: Event) {
           <div class="flex-1 overflow-y-auto p-5">
             <div
               v-if="contextDrawerMarkdown"
-              class="markdown-content eldra-rich-content text-sm leading-7 text-zinc-200"
+              class="markdown-content text-sm leading-7 text-zinc-200"
               v-html="contextDrawerHtml"
             ></div>
 

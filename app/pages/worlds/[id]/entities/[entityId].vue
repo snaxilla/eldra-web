@@ -964,7 +964,7 @@ async function onImageSelected(event: Event) {
 
           <div
             v-else-if="articleMarkdown"
-            class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-6"
+            class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-6"
           >
             <div
               class="eldra-rich-content"

@@ -75,7 +75,20 @@ async function dxFetch(path: string, options: RequestInit = {}) {
   return json
 }
 
-function extractEntityImageUrl(blocks: any[] = []) {
+function extractEntityImageUrl(entity: any, blocks: any[] = []) {
+  const entityImage = entity?.image
+
+  if (entityImage) {
+    if (typeof entityImage === 'string') {
+      return `/api/assets/${entityImage}`
+    }
+
+    if (typeof entityImage === 'object') {
+      if (entityImage.image_url) return entityImage.image_url
+      if (entityImage.file_id) return `/api/assets/${entityImage.file_id}`
+      if (entityImage.id) return `/api/assets/${entityImage.id}`
+    }
+  }
   for (const block of blocks) {
     const image = block?.data?.image
 
@@ -144,7 +157,7 @@ async function loadEntityPreview(entityId: number | null) {
     slug: entity.slug ? String(entity.slug) : null,
     entity_type: entity.entity_type ? String(entity.entity_type) : null,
     summary: extractEntitySummary(entity, blocks),
-    image_url: extractEntityImageUrl(blocks),
+    image_url: extractEntityImageUrl(entity, blocks),
     location_core: extractLocationCore(blocks),
   }
 }

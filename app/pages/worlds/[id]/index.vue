@@ -402,6 +402,9 @@ async function createArticleFromPin() {
     })
 
     editingPin.value.entityId = created.id
+    editingPin.value.inheritFromEntity = true
+    editingPin.value.image = null
+    editingPin.value.imageUrl = created.imageUrl || null
     createEntitySuccess.value = `Created article: ${created.title}`
 
     await refreshWorldEntities()

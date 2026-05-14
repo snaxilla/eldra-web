@@ -92,7 +92,8 @@ export default defineEventHandler(async (event) => {
       system_key: systemKey,
       entity_type: entityType,
       status: 'draft',
-      summary: summary || null
+      summary: summary || null,
+      image: image || null
     })
   })
 
@@ -144,6 +145,8 @@ export default defineEventHandler(async (event) => {
     title: String(entity.title || title),
     slug: entity.slug ? String(entity.slug) : slugBase,
     system_key: entity.system_key ? String(entity.system_key) : systemKey,
-    entity_type: entity.entity_type ? String(entity.entity_type) : entityType
+    entity_type: entity.entity_type ? String(entity.entity_type) : entityType,
+    image: entity.image ? String(entity.image) : image,
+    imageUrl: image ? `/api/assets/${image}` : null
   }
 })

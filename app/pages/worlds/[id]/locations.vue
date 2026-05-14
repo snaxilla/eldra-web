@@ -12,6 +12,6 @@ definePageMeta({
     eyebrow="Locations"
     description="Browse cities, regions, landmarks, dungeons, and other location articles in this world."
     search-placeholder="Search locations..."
-    empty-message="No locations have been created yet. Create one from a map pin, or add manual location creation next."
+    empty-message="No locations have been created yet. Switch to Build mode and use New Location, or create one from a map pin."
   />
 </template>

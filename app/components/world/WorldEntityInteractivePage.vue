@@ -12,6 +12,7 @@ const props = defineProps<{
 }>()
 
 const route = useRoute()
+const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
@@ -19,6 +20,43 @@ const search = ref('')
 const selectedEntityId = ref<string | null>(null)
 const deletingEntity = ref(false)
 const deleteError = ref('')
+
+const LOCATION_TYPE_OPTIONS = [
+  { label: 'Location', value: 'location' },
+  { label: 'Village', value: 'village' },
+  { label: 'Town', value: 'town' },
+  { label: 'City', value: 'city' },
+  { label: 'Capital', value: 'capital' },
+  { label: 'Fortress', value: 'fortress' },
+  { label: 'Outpost', value: 'outpost' },
+  { label: 'Region', value: 'region' },
+  { label: 'Wilderness', value: 'wilderness' },
+  { label: 'Dungeon', value: 'dungeon' },
+  { label: 'Ruin', value: 'ruin' },
+  { label: 'Cave', value: 'cave' },
+  { label: 'Temple', value: 'temple' },
+  { label: 'Landmark', value: 'landmark' },
+  { label: 'District', value: 'district' },
+  { label: 'Building', value: 'building' },
+  { label: 'Shop', value: 'shop' },
+  { label: 'Tavern', value: 'tavern' },
+  { label: 'Guildhall', value: 'guildhall' },
+  { label: 'Residence', value: 'residence' },
+  { label: 'Point of Interest', value: 'point_of_interest' }
+]
+
+const isLocationPage = computed(() => normalizeEntityType(props.entityType) === 'location')
+const showNewLocationForm = ref(false)
+const creatingLocation = ref(false)
+const newLocationError = ref('')
+const newLocationForm = reactive({
+  title: '',
+  locationType: 'location',
+  population: '',
+  linkedMapId: '',
+  parentLocationId: '',
+  summary: ''
+})
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
@@ -32,6 +70,32 @@ const { data: selectedEntityDetail, pending: selectedPending } = await useFetch(
     watch: [selectedEntityId]
   }
 )
+
+const { data: worldMaps } = await useFetch(() => `/api/worlds/${worldId.value}/maps`, {
+  default: () => [],
+  watch: [worldId]
+})
+
+const mapOptions = computed(() => {
+  return (Array.isArray(worldMaps.value) ? worldMaps.value : [])
+    .map((map: any) => ({
+      id: String(map?.id || ''),
+      title: String(map?.title || 'Untitled Map')
+    }))
+    .filter((map: any) => map.id)
+    .sort((a: any, b: any) => a.title.localeCompare(b.title))
+})
+
+const parentLocationOptions = computed(() => {
+  return (Array.isArray(entities.value) ? entities.value : [])
+    .filter((entity: any) => normalizeEntityType(entity?.entity_type) === 'location')
+    .map((entity: any) => ({
+      id: String(entity?.id || ''),
+      title: String(entity?.title || 'Untitled Location')
+    }))
+    .filter((entity: any) => entity.id)
+    .sort((a: any, b: any) => a.title.localeCompare(b.title))
+})
 
 function normalizeEntityType(value: any) {
   return String(value || '').trim().toLowerCase()
@@ -549,6 +613,59 @@ async function deleteSelectedEntity() {
     deletingEntity.value = false
   }
 }
+
+function resetNewLocationForm() {
+  newLocationForm.title = ''
+  newLocationForm.locationType = 'location'
+  newLocationForm.population = ''
+  newLocationForm.linkedMapId = ''
+  newLocationForm.parentLocationId = ''
+  newLocationForm.summary = ''
+  newLocationError.value = ''
+}
+
+async function createLocationArticle() {
+  if (!isLocationPage.value || creatingLocation.value) return
+
+  const title = String(newLocationForm.title || '').trim()
+  if (!title) {
+    newLocationError.value = 'Location title is required.'
+    return
+  }
+
+  creatingLocation.value = true
+  newLocationError.value = ''
+
+  try {
+    const created: any = await $fetch(`/api/worlds/${worldId.value}/locations`, {
+      method: 'POST',
+      body: {
+        title,
+        locationType: newLocationForm.locationType || 'location',
+        population: newLocationForm.population || null,
+        linkedMapId: newLocationForm.linkedMapId || null,
+        parentLocationId: newLocationForm.parentLocationId || null,
+        summary: String(newLocationForm.summary || '').trim() || null
+      }
+    })
+
+    await refresh()
+    resetNewLocationForm()
+    showNewLocationForm.value = false
+
+    if (created?.id) {
+      await router.push(`/worlds/${worldId.value}/entities/${created.id}`)
+    }
+  } catch (error: any) {
+    newLocationError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to create location.'
+  } finally {
+    creatingLocation.value = false
+  }
+}
 </script>
 
 <template>
@@ -686,7 +803,126 @@ async function deleteSelectedEntity() {
         v-if="mode === 'build' && !selectedEntity"
         class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[360px] border-l backdrop-blur-xl"
       >
-        <div class="p-5">
+        <div class="space-y-5 p-5">
+            <div
+              v-if="isLocationPage"
+              class="eldra-codex-soft rounded-none p-4"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Location Tools</div>
+                  <div class="mt-1 text-sm text-[#d8ceb8]">Create a location article manually.</div>
+                </div>
+
+                <button
+                  type="button"
+                  class="eldra-button rounded-none px-3 py-2 text-sm"
+                  @click="showNewLocationForm = !showNewLocationForm"
+                >
+                  {{ showNewLocationForm ? 'Close' : 'New Location' }}
+                </button>
+              </div>
+
+              <form
+                v-if="showNewLocationForm"
+                class="mt-4 space-y-3"
+                @submit.prevent="createLocationArticle"
+              >
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Title</span>
+                  <input
+                    v-model="newLocationForm.title"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm"
+                    placeholder="e.g. Old Market District"
+                  >
+                </label>
+
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Type</span>
+                  <select
+                    v-model="newLocationForm.locationType"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+                  >
+                    <option
+                      v-for="option in LOCATION_TYPE_OPTIONS"
+                      :key="option.value"
+                      :value="option.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Population</span>
+                  <input
+                    v-model="newLocationForm.population"
+                    inputmode="numeric"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm"
+                    placeholder="e.g. 1,234"
+                  >
+                </label>
+
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Linked Map</span>
+                  <select
+                    v-model="newLocationForm.linkedMapId"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+                  >
+                    <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked map</option>
+                    <option
+                      v-for="map in mapOptions"
+                      :key="map.id"
+                      :value="map.id"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ map.title }}
+                    </option>
+                  </select>
+                </label>
+
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Parent Location</span>
+                  <select
+                    v-model="newLocationForm.parentLocationId"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+                  >
+                    <option value="" class="bg-[#090909] text-[#f5e7bd]">No parent location</option>
+                    <option
+                      v-for="location in parentLocationOptions"
+                      :key="location.id"
+                      :value="location.id"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ location.title }}
+                    </option>
+                  </select>
+                </label>
+
+                <label class="block">
+                  <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Summary Blurb</span>
+                  <textarea
+                    v-model="newLocationForm.summary"
+                    rows="4"
+                    class="eldra-input w-full resize-y rounded-none px-3 py-2 text-sm leading-6"
+                    placeholder="Short public-facing summary..."
+                  ></textarea>
+                </label>
+
+                <div v-if="newLocationError" class="text-sm text-red-300">
+                  {{ newLocationError }}
+                </div>
+
+                <button
+                  type="submit"
+                  class="eldra-button w-full rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                  :disabled="creatingLocation"
+                >
+                  {{ creatingLocation ? 'Creating...' : 'Create Location' }}
+                </button>
+              </form>
+            </div>
           <WorldPagePresentationPanel
             :world-id="worldId"
             :page-key="pageKey"

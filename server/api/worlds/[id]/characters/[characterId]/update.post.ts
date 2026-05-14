@@ -75,6 +75,46 @@ export default defineEventHandler(async (event) => {
 
   const entity = updated?.data || null
 
+  const params = new URLSearchParams()
+  params.set('filter[entity_id][_eq]', String(characterId))
+  params.set('filter[block_key][_eq]', 'character_core')
+  params.append('fields[]', 'id')
+  params.append('fields[]', 'data')
+  params.set('limit', '1')
+
+  const existingCoreRes = await dxFetch(`/items/block_instances?${params.toString()}`)
+  const existingCore = Array.isArray(existingCoreRes?.data) ? existingCoreRes.data[0] : null
+  const existingData = existingCore?.data && typeof existingCore.data === 'object' ? existingCore.data : {}
+
+  const characterCoreData = {
+    ...existingData,
+    characterType,
+    linkedSheetId: existingData.linkedSheetId ?? existingData.linked_sheet_id ?? null,
+    playerName: existingData.playerName ?? existingData.player_name ?? null,
+    pronouns: existingData.pronouns ?? null,
+    publicRole: existingData.publicRole ?? existingData.public_role ?? null
+  }
+
+  if (existingCore?.id) {
+    await dxFetch(`/items/block_instances/${existingCore.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        data: characterCoreData
+      })
+    }).catch(() => null)
+    } else {
+      await dxFetch('/items/block_instances', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_id: characterId,
+          block_key: 'character_core',
+          label: 'Character Core',
+          sort: 10,
+          data: characterCoreData
+        })
+      }).catch(() => null)
+    }
+
   return {
     success: true,
     id: entity?.id,

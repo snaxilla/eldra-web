@@ -152,6 +152,7 @@ const speciesCore = computed(() => blockByKey('species_core')?.data || null)
 const classCore = computed(() => blockByKey('class_core')?.data || null)
 const backgroundCore = computed(() => blockByKey('background_core')?.data || null)
 const locationCore = computed(() => blockByKey('location_core')?.data || null)
+const characterCore = computed(() => blockByKey('character_core')?.data || null)
 
 function blockDataByKey(key: string) {
   return blockByKey(key)?.data || null
@@ -738,6 +739,37 @@ function backgroundMetaLines() {
   ].filter(Boolean)
 }
 
+function formatCharacterType(value: any): string {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'pc' || raw === 'player_character') return 'PC'
+  if (raw === 'npc_sheet') return 'NPC+'
+  if (raw === 'npc' || raw === 'character') return 'NPC'
+  return raw
+    ? raw.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+    : ''
+}
+
+function isCharacterEntityForHeader() {
+  const type = String(entity.value?.entity_type || '').toLowerCase()
+  return ['character', 'npc', 'npc_sheet', 'pc', 'player_character'].includes(type)
+}
+
+function characterMetaLines() {
+  const core = characterCore.value || {}
+  if (!characterCore.value && !isCharacterEntityForHeader()) return []
+
+  const characterType = formatCharacterType(core.characterType ?? core.character_type ?? entity.value?.entity_type)
+  const linkedSheetId = String(core.linkedSheetId ?? core.linked_sheet_id ?? '').trim()
+
+  return [
+    characterType ? `Type: ${characterType}` : '',
+    core.playerName || core.player_name ? `Player: ${core.playerName || core.player_name}` : '',
+    core.pronouns ? `Pronouns: ${core.pronouns}` : '',
+    core.publicRole || core.public_role ? `Role: ${core.publicRole || core.public_role}` : '',
+    linkedSheetId ? `Linked Sheet: ${linkedSheetId}` : ''
+  ].filter(Boolean)
+}
+
 function formatLocationType(value: any): string {
   const raw = String(value || '').trim()
   if (!raw) return ''
@@ -776,6 +808,7 @@ function locationMetaLines() {
 
 
 const heroMetaLines = computed(() => {
+  if (characterCore.value || isCharacterEntityForHeader()) return characterMetaLines()
   if (classCore.value) return classMetaLines()
   if (speciesCore.value) return speciesMetaLines()
   if (spellCore.value) return spellMetaLines().slice(0, 4)

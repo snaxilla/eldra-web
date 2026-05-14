@@ -1,4 +1,4 @@
-import { createEntityRecord, uploadImageToDirectus } from '../../../../utils/entity-factory'
+import { createEntityRecord, uploadImageToDirectus, dxFetch } from '../../../../utils/entity-factory'
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
@@ -41,11 +41,32 @@ export default defineEventHandler(async (event) => {
   const imagePart = parts.find((p) => p.name === 'image' && p.type && String(p.type).startsWith('image/'))
   const imageId = imagePart ? await uploadImageToDirectus(imagePart) : null
 
-  return await createEntityRecord({
+  const created = await createEntityRecord({
     worldId,
     title,
     summary: summary || null,
     imageId,
     entityType: characterType
   })
+
+  if (created?.id) {
+    await dxFetch('/items/block_instances', {
+      method: 'POST',
+      body: JSON.stringify({
+        entity_id: created.id,
+        block_key: 'character_core',
+        label: 'Character Core',
+        sort: 10,
+        data: {
+          characterType,
+          linkedSheetId: null,
+          playerName: null,
+          pronouns: null,
+          publicRole: null
+        }
+      })
+    }).catch(() => null)
+  }
+
+  return created
 })

@@ -200,3 +200,100 @@ export async function ensureCharacterSheetForEntity(worldId: string, entityId: s
     inventory
   }
 }
+
+
+function plainObject(value: any) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function nullableString(value: any) {
+  const text = String(value ?? '').trim()
+  return text || null
+}
+
+function integerOrNull(value: any) {
+  if (value === null || value === undefined || value === '') return null
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+
+  return Math.floor(parsed)
+}
+
+function positiveInteger(value: any, fallback = 1) {
+  const parsed = integerOrNull(value)
+  if (parsed === null) return fallback
+  return Math.max(1, parsed)
+}
+
+function normalizeAbilityScores(value: any, fallback: any = {}) {
+  const source = plainObject(value)
+  const previous = plainObject(fallback)
+  const defaults = defaultAbilityScores()
+  const result: Record<string, number> = {}
+
+  for (const key of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
+    const parsed = integerOrNull(source[key] ?? previous[key] ?? defaults[key as keyof typeof defaults])
+    result[key] = parsed === null ? defaults[key as keyof typeof defaults] : parsed
+  }
+
+  return result
+}
+
+function normalizeCombatStats(value: any, fallback: any = {}) {
+  const source = plainObject(value)
+  const previous = plainObject(fallback)
+
+  return {
+    ...previous,
+    armorClass: integerOrNull(source.armorClass ?? source.armor_class ?? previous.armorClass ?? previous.armor_class),
+    maxHp: integerOrNull(source.maxHp ?? source.max_hp ?? previous.maxHp ?? previous.max_hp),
+    currentHp: integerOrNull(source.currentHp ?? source.current_hp ?? previous.currentHp ?? previous.current_hp),
+    tempHp: integerOrNull(source.tempHp ?? source.temp_hp ?? previous.tempHp ?? previous.temp_hp) ?? 0,
+    initiative: integerOrNull(source.initiative ?? previous.initiative),
+    speed: nullableString(source.speed ?? previous.speed),
+    hitDice: nullableString(source.hitDice ?? source.hit_dice ?? previous.hitDice ?? previous.hit_dice),
+    deathSaves: plainObject(source.deathSaves ?? source.death_saves ?? previous.deathSaves ?? previous.death_saves)
+  }
+}
+
+export async function updateCharacterSheetForEntity(worldId: string, entityId: string, body: any = {}) {
+  const entity = await loadCharacterEntity(worldId, entityId)
+  let sheet = await findActiveSheet(worldId, entityId)
+
+  if (!sheet) {
+    sheet = await createSheetForEntity(worldId, entity)
+  }
+
+  const payload = {
+    name: nullableString(body?.name) || String(entity.title || 'Unnamed Character'),
+    level: positiveInteger(body?.level, Number(sheet?.level || 1)),
+    class_name: nullableString(body?.className ?? body?.class_name),
+    subclass_name: nullableString(body?.subclassName ?? body?.subclass_name),
+    species_name: nullableString(body?.speciesName ?? body?.species_name),
+    background_name: nullableString(body?.backgroundName ?? body?.background_name),
+    ability_scores: normalizeAbilityScores(body?.abilityScores ?? body?.ability_scores, sheet?.ability_scores),
+    combat_stats: normalizeCombatStats(body?.combatStats ?? body?.combat_stats, sheet?.combat_stats)
+  }
+
+  const updated = await dxFetch(`/items/character_sheets/${sheet.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  })
+
+  const savedSheet = updated?.data || {
+    ...sheet,
+    ...payload
+  }
+
+  await upsertCharacterCoreSheetLink(String(entity.id), entity.entity_type, savedSheet.id || sheet.id)
+
+  const inventory = await loadInventory(savedSheet.id || sheet.id)
+
+  return {
+    exists: true,
+    entity,
+    sheet: savedSheet,
+    inventory
+  }
+}

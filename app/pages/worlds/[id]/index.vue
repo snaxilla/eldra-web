@@ -182,11 +182,26 @@ const editingPin = ref<any | null>(null)
 
 const PIN_TYPE_OPTIONS = [
   { label: 'Location', value: 'location' },
+  { label: 'Village', value: 'village' },
+  { label: 'Town', value: 'town' },
   { label: 'City', value: 'city' },
-  { label: 'Dungeon', value: 'dungeon' },
-  { label: 'Landmark', value: 'landmark' },
+  { label: 'Capital', value: 'capital' },
+  { label: 'Fortress', value: 'fortress' },
+  { label: 'Outpost', value: 'outpost' },
   { label: 'Region', value: 'region' },
-  { label: 'Quest', value: 'quest' },
+  { label: 'Wilderness', value: 'wilderness' },
+  { label: 'Dungeon', value: 'dungeon' },
+  { label: 'Ruin', value: 'ruin' },
+  { label: 'Cave', value: 'cave' },
+  { label: 'Temple', value: 'temple' },
+  { label: 'Landmark', value: 'landmark' },
+  { label: 'District', value: 'district' },
+  { label: 'Building', value: 'building' },
+  { label: 'Shop', value: 'shop' },
+  { label: 'Tavern', value: 'tavern' },
+  { label: 'Guildhall', value: 'guildhall' },
+  { label: 'Residence', value: 'residence' },
+  { label: 'Point of Interest', value: 'point_of_interest' }
 ]
 
 const PIN_COLORS = [
@@ -594,13 +609,13 @@ function openLinkedMap() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="selectedPin && mode === 'play'"
-        class="eldra-ornate-panel eldra-frame-corners absolute right-0 top-0 z-30 h-full w-[380px] border-l backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] border-l backdrop-blur"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
             <div>
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
-                {{ selectedPin.pinType || 'Location' }}
+                {{ formatLocationType(selectedPin.pinType) || 'Location' }}
               </div>
               <div class="mt-1 text-xl font-semibold text-white">
                 {{ selectedPin.resolvedTitle }}
@@ -627,47 +642,6 @@ function openLinkedMap() {
               >
             </div>
 
-            <p
-              v-if="selectedPin.resolvedSummary"
-              class="whitespace-pre-wrap text-sm leading-7 text-[#d8ceb8]"
-            >
-              {{ selectedPin.resolvedSummary }}
-            </p>
-
-            <p
-              v-else
-              class="text-sm leading-7 text-[#9f9278]"
-            >
-              No summary yet.
-            </p>
-
-            <div class="mt-6 flex flex-wrap gap-2">
-              <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                {{ iconLabel(selectedPin.icon) }}
-              </div>
-
-              <div
-                v-if="selectedPin.hasLinkedEntity"
-                class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
-              >
-                Linked Article
-              </div>
-
-              <div
-                v-if="selectedPin.hasLinkedMap"
-                class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
-              >
-                Linked Map
-              </div>
-
-              <div
-                v-if="!selectedPin.hasLinkedEntity && !selectedPin.hasLinkedMap"
-                class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
-              >
-                Pin Note
-              </div>
-            </div>
-
               <div
                 v-if="pinLocationMetaLines(selectedPin).length"
                 class="eldra-codex-soft mt-5 rounded-none p-4"
@@ -681,6 +655,49 @@ function openLinkedMap() {
                   >
                     {{ line }}
                   </div>
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft mt-5 rounded-none p-4">
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Summary</div>
+                <p
+                  v-if="selectedPin.resolvedSummary"
+                  class="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#d8ceb8]"
+                >
+                  {{ selectedPin.resolvedSummary }}
+                </p>
+                <p
+                  v-else
+                  class="mt-3 text-sm leading-7 text-[#9f9278]"
+                >
+                  No summary yet.
+                </p>
+              </div>
+
+              <div class="mt-6 flex flex-wrap gap-2">
+                <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                  {{ iconLabel(selectedPin.icon) }}
+                </div>
+
+                <div
+                  v-if="selectedPin.hasLinkedEntity"
+                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
+                >
+                  Linked Article
+                </div>
+
+                <div
+                  v-if="selectedPin.hasLinkedMap"
+                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
+                >
+                  Linked Map
+                </div>
+
+                <div
+                  v-if="!selectedPin.hasLinkedEntity && !selectedPin.hasLinkedMap"
+                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
+                >
+                  Pin Note
                 </div>
               </div>
             <div
@@ -719,10 +736,10 @@ function openLinkedMap() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="selectedPin && mode === 'build' && !showPinEditor"
-        class="eldra-ornate-panel eldra-frame-corners absolute bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
       >
         <div class="mb-1 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-          {{ selectedPin.pinType || 'Location' }}
+          {{ formatLocationType(selectedPin.pinType) || 'Location' }}
         </div>
 
         <div class="text-xl font-semibold text-white">
@@ -754,7 +771,7 @@ function openLinkedMap() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="showPinEditor && editingPin"
-        class="eldra-ornate-panel eldra-frame-corners absolute right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
@@ -797,24 +814,22 @@ function openLinkedMap() {
                 >
               </div>
 
-              <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Type</label>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="opt in PIN_TYPE_OPTIONS"
-                    :key="opt.value"
-                    type="button"
-                    class="rounded-none border px-3 py-1 text-xs font-medium transition"
-                    :class="editingPin.pinType === opt.value
-                      ? 'border-[rgba(201,164,90,0.48)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
-                      : 'border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-[#9f9278] hover:text-[#fff7df]'"
-                    @click="editingPin.pinType = opt.value"
+                <div>
+                  <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Type</label>
+                  <select
+                    v-model="editingPin.pinType"
+                    class="eldra-input w-full rounded-none px-4 py-2.5 text-sm text-[#f5e7bd]"
                   >
-                    {{ opt.label }}
-                  </button>
+                    <option
+                      v-for="opt in PIN_TYPE_OPTIONS"
+                      :key="opt.value"
+                      :value="opt.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ opt.label }}
+                    </option>
+                  </select>
                 </div>
-              </div>
-
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Color</label>
                 <div class="flex flex-wrap gap-2">

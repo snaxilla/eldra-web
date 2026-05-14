@@ -472,6 +472,53 @@ function iconLabel(icon: string | null | undefined) {
   return match?.label || 'Marker'
 }
 
+function formatLocationType(value: any) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function formatPopulation(value: any) {
+  if (value === null || value === undefined || value === '') return ''
+
+  const numeric = Number(String(value).replace(/,/g, ''))
+  if (!Number.isFinite(numeric)) return String(value)
+
+  return numeric.toLocaleString()
+}
+
+function mapTitleById(id: any) {
+  const needle = String(id || '')
+  if (!needle) return ''
+  return (maps.value || []).find((map: any) => String(map.id) === needle)?.title || needle
+}
+
+function locationTitleById(id: any) {
+  const needle = String(id || '')
+  if (!needle) return ''
+  return (worldEntities.value || []).find((entity: any) => String(entity.id) === needle)?.title || needle
+}
+
+function pinLocationMetaLines(pin: any) {
+  const core = pin?.entity?.location_core
+  if (!core) return []
+
+  const type = formatLocationType(core.locationType ?? core.location_type ?? core.type)
+  const population = formatPopulation(core.population)
+  const linkedMapId = String(core.linkedMapId ?? core.linked_map_id ?? '').trim()
+  const parentLocationId = String(core.parentLocationId ?? core.parent_location_id ?? '').trim()
+
+  return [
+    type ? `Type: ${type}` : '',
+    population ? `Population: ${population}` : '',
+    linkedMapId ? `Linked Map: ${mapTitleById(linkedMapId)}` : '',
+    parentLocationId ? `Parent Location: ${locationTitleById(parentLocationId)}` : ''
+  ].filter(Boolean)
+}
+
 function openLinkedMap() {
   if (!selectedPin.value?.linkedMap?.slug) return
   router.push(`/worlds/${worldId.value}?map=${selectedPin.value.linkedMap.slug}`)
@@ -621,6 +668,21 @@ function openLinkedMap() {
               </div>
             </div>
 
+              <div
+                v-if="pinLocationMetaLines(selectedPin).length"
+                class="eldra-codex-soft mt-5 rounded-none p-4"
+              >
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Location Details</div>
+                <div class="mt-3 grid gap-2 text-sm leading-6 text-[#d8ceb8]">
+                  <div
+                    v-for="line in pinLocationMetaLines(selectedPin)"
+                    :key="line"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] px-3 py-2"
+                  >
+                    {{ line }}
+                  </div>
+                </div>
+              </div>
             <div
               v-if="selectedPin.linkedMap"
               class="eldra-codex-soft mt-5 rounded-none p-4"

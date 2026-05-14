@@ -107,6 +107,23 @@ function extractEntitySummary(entity: any, blocks: any[] = []) {
   return null
 }
 
+function extractLocationCore(blocks: any[] = []) {
+  const block = blocks.find((item: any) => {
+    const key = String(item?.block_key || item?.blockKey || '')
+    return key === 'location_core'
+  })
+
+  const data = block?.data && typeof block.data === 'object' ? block.data : null
+  if (!data) return null
+
+  return {
+    locationType: data.locationType ?? data.location_type ?? data.type ?? null,
+    population: data.population ?? null,
+    linkedMapId: data.linkedMapId ?? data.linked_map_id ?? null,
+    parentLocationId: data.parentLocationId ?? data.parent_location_id ?? null
+  }
+}
+
 async function loadEntityPreview(entityId: number | null) {
   if (!entityId) return null
 
@@ -128,6 +145,7 @@ async function loadEntityPreview(entityId: number | null) {
     entity_type: entity.entity_type ? String(entity.entity_type) : null,
     summary: extractEntitySummary(entity, blocks),
     image_url: extractEntityImageUrl(blocks),
+    location_core: extractLocationCore(blocks),
   }
 }
 

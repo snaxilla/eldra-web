@@ -19,6 +19,9 @@ const sheetForm = reactive({
   subclassName: '',
   speciesName: '',
   backgroundName: '',
+  classEntityId: '',
+  speciesEntityId: '',
+  backgroundEntityId: '',
   abilityScores: {
     str: '10',
     dex: '10',
@@ -53,9 +56,48 @@ const {
   }
 )
 
+const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+  default: () => [],
+  watch: [worldId]
+})
+
 const entity = computed(() => data.value?.entity || null)
 const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
+
+const entityImageUrl = computed(() => {
+  if (entity.value?.imageUrl) return String(entity.value.imageUrl)
+  if (entity.value?.image_url) return String(entity.value.image_url)
+  if (entity.value?.image) return `/api/assets/${entity.value.image}`
+  return ''
+})
+
+function normalizeEntityType(value: any) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function entityOptionsForTypes(types: string[]) {
+  const wanted = new Set(types.map(normalizeEntityType))
+
+  return (Array.isArray(worldEntities.value) ? worldEntities.value : [])
+    .filter((option: any) => wanted.has(normalizeEntityType(option?.entity_type)))
+    .map((option: any) => ({
+      id: String(option?.id || ''),
+      title: String(option?.title || 'Untitled')
+    }))
+    .filter((option: any) => option.id)
+    .sort((a: any, b: any) => a.title.localeCompare(b.title))
+}
+
+const classOptions = computed(() => entityOptionsForTypes(['class']))
+const speciesOptions = computed(() => entityOptionsForTypes(['species', 'race']))
+const backgroundOptions = computed(() => entityOptionsForTypes(['background']))
+
+function optionTitle(options: any[], id: any) {
+  const needle = String(id || '')
+  if (!needle) return ''
+  return options.find((option: any) => String(option.id) === needle)?.title || ''
+}
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -79,6 +121,9 @@ function syncFormFromSheet() {
   sheetForm.subclassName = stringValue(currentSheet.subclass_name)
   sheetForm.speciesName = stringValue(currentSheet.species_name)
   sheetForm.backgroundName = stringValue(currentSheet.background_name)
+  sheetForm.classEntityId = stringValue(currentSheet.class_entity_id)
+  sheetForm.speciesEntityId = stringValue(currentSheet.species_entity_id)
+  sheetForm.backgroundEntityId = stringValue(currentSheet.background_entity_id)
 
   sheetForm.abilityScores.str = stringValue(abilityScores.str, '10')
   sheetForm.abilityScores.dex = stringValue(abilityScores.dex, '10')
@@ -160,10 +205,13 @@ async function saveSheet() {
       body: {
         name: sheetForm.name,
         level: sheetForm.level,
-        className: sheetForm.className,
+        className: optionTitle(classOptions.value, sheetForm.classEntityId) || sheetForm.className,
         subclassName: sheetForm.subclassName,
-        speciesName: sheetForm.speciesName,
-        backgroundName: sheetForm.backgroundName,
+        speciesName: optionTitle(speciesOptions.value, sheetForm.speciesEntityId) || sheetForm.speciesName,
+        backgroundName: optionTitle(backgroundOptions.value, sheetForm.backgroundEntityId) || sheetForm.backgroundName,
+        classEntityId: sheetForm.classEntityId || null,
+        speciesEntityId: sheetForm.speciesEntityId || null,
+        backgroundEntityId: sheetForm.backgroundEntityId || null,
         abilityScores: { ...sheetForm.abilityScores },
         combatStats: { ...sheetForm.combatStats }
       }
@@ -251,6 +299,17 @@ async function saveSheet() {
             </div>
           </div>
 
+          <div
+            v-if="entityImageUrl"
+            class="eldra-image-frame mt-6 overflow-hidden rounded-none border bg-black/20"
+          >
+            <img
+              :src="entityImageUrl"
+              :alt="sheet?.name || entity?.title || 'Character Portrait'"
+              class="max-h-[420px] w-full object-cover object-[center_15%]"
+            >
+          </div>
+
           <div v-if="sheetSaveError" class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
             {{ sheetSaveError }}
           </div>
@@ -273,34 +332,61 @@ async function saveSheet() {
 
             <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Class</div>
-              <input
+              <select
                 v-if="mode === 'build'"
-                v-model="sheetForm.className"
+                v-model="sheetForm.classEntityId"
                 class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-lg text-white"
-                placeholder="e.g. Fighter"
               >
+                <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked class</option>
+                <option
+                  v-for="option in classOptions"
+                  :key="option.id"
+                  :value="option.id"
+                  class="bg-[#090909] text-[#f5e7bd]"
+                >
+                  {{ option.title }}
+                </option>
+              </select>
               <div v-else class="mt-2 text-lg font-semibold text-white">{{ sheet?.class_name || '—' }}</div>
             </label>
 
             <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Species</div>
-              <input
+              <select
                 v-if="mode === 'build'"
-                v-model="sheetForm.speciesName"
+                v-model="sheetForm.speciesEntityId"
                 class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-lg text-white"
-                placeholder="e.g. Human"
               >
+                <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked species</option>
+                <option
+                  v-for="option in speciesOptions"
+                  :key="option.id"
+                  :value="option.id"
+                  class="bg-[#090909] text-[#f5e7bd]"
+                >
+                  {{ option.title }}
+                </option>
+              </select>
               <div v-else class="mt-2 text-lg font-semibold text-white">{{ sheet?.species_name || '—' }}</div>
             </label>
 
             <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Background</div>
-              <input
+              <select
                 v-if="mode === 'build'"
-                v-model="sheetForm.backgroundName"
+                v-model="sheetForm.backgroundEntityId"
                 class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-lg text-white"
-                placeholder="e.g. Soldier"
               >
+                <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked background</option>
+                <option
+                  v-for="option in backgroundOptions"
+                  :key="option.id"
+                  :value="option.id"
+                  class="bg-[#090909] text-[#f5e7bd]"
+                >
+                  {{ option.title }}
+                </option>
+              </select>
               <div v-else class="mt-2 text-lg font-semibold text-white">{{ sheet?.background_name || '—' }}</div>
             </label>
           </div>

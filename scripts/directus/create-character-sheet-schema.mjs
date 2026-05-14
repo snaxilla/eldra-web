@@ -272,6 +272,15 @@ async function createCharacterSheetsSchema() {
   await ensureField('character_sheets', stringField('subclass_name'))
   await ensureField('character_sheets', stringField('species_name'))
   await ensureField('character_sheets', stringField('background_name'))
+  await ensureField('character_sheets', integerField('class_entity_id', {
+    note: 'Optional linked class entity id'
+  }))
+  await ensureField('character_sheets', integerField('species_entity_id', {
+    note: 'Optional linked species/race entity id'
+  }))
+  await ensureField('character_sheets', integerField('background_entity_id', {
+    note: 'Optional linked background entity id'
+  }))
   await ensureField('character_sheets', booleanField('is_active', {
     defaultValue: true,
     note: 'Active sheet for the linked character article'

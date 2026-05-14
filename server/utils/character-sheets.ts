@@ -142,6 +142,9 @@ async function createSheetForEntity(worldId: string, entity: any) {
       subclass_name: null,
       species_name: null,
       background_name: null,
+      class_entity_id: null,
+      species_entity_id: null,
+      background_entity_id: null,
       is_active: true,
       visibility: 'world',
       ability_scores: defaultAbilityScores(),
@@ -265,6 +268,10 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     sheet = await createSheetForEntity(worldId, entity)
   }
 
+  const classEntityIdProvided = body?.classEntityId !== undefined || body?.class_entity_id !== undefined
+  const speciesEntityIdProvided = body?.speciesEntityId !== undefined || body?.species_entity_id !== undefined
+  const backgroundEntityIdProvided = body?.backgroundEntityId !== undefined || body?.background_entity_id !== undefined
+
   const payload = {
     name: nullableString(body?.name) || String(entity.title || 'Unnamed Character'),
     level: positiveInteger(body?.level, Number(sheet?.level || 1)),
@@ -272,6 +279,9 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     subclass_name: nullableString(body?.subclassName ?? body?.subclass_name),
     species_name: nullableString(body?.speciesName ?? body?.species_name),
     background_name: nullableString(body?.backgroundName ?? body?.background_name),
+    class_entity_id: classEntityIdProvided ? integerOrNull(body?.classEntityId ?? body?.class_entity_id) : integerOrNull(sheet?.class_entity_id),
+    species_entity_id: speciesEntityIdProvided ? integerOrNull(body?.speciesEntityId ?? body?.species_entity_id) : integerOrNull(sheet?.species_entity_id),
+    background_entity_id: backgroundEntityIdProvided ? integerOrNull(body?.backgroundEntityId ?? body?.background_entity_id) : integerOrNull(sheet?.background_entity_id),
     ability_scores: normalizeAbilityScores(body?.abilityScores ?? body?.ability_scores, sheet?.ability_scores),
     combat_stats: normalizeCombatStats(body?.combatStats ?? body?.combat_stats, sheet?.combat_stats)
   }

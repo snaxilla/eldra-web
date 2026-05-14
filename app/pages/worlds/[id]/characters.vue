@@ -717,12 +717,12 @@ onBeforeUnmount(() => {
                   Read More
                 </NuxtLink>
 
-                <button
-                  type="button"
+                <NuxtLink
+                  :to="`/worlds/${worldId}/entities/${selectedCharacter.id}/sheet`"
                   class="flex-1 eldra-button rounded-none px-4 py-3 text-center text-sm font-medium"
                 >
                   Open Sheet
-                </button>
+                </NuxtLink>
               </div>
 
               <div v-if="mode === 'build'" class="flex gap-3">

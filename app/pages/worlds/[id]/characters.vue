@@ -560,7 +560,7 @@ onBeforeUnmount(() => {
   <div class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1900px] p-6">
       <div :class="selectedCharacter || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
-        <section class="eldra-codex-panel eldra-filigree rounded-none p-6 shadow-xl">
+        <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl shadow-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div class="eldra-kicker text-xs">Characters</div>
@@ -606,31 +606,31 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section v-if="pending" class="mt-6 eldra-codex-panel rounded-none p-6 text-[#d8ceb8] shadow-xl">
+        <section v-if="pending" class="mt-6 eldra-ornate-panel eldra-frame-corners rounded-none border p-6 text-[#d8ceb8] shadow-xl">
           Loading characters...
         </section>
 
-        <section v-else-if="!filteredCharacters.length" class="mt-6 eldra-codex-soft rounded-none p-10 text-center shadow-xl">
+        <section v-else-if="!filteredCharacters.length" class="mt-6 eldra-ornate-panel eldra-frame-corners rounded-none border p-10 text-center shadow-xl">
           <div class="text-lg font-medium text-white">No characters found</div>
           <p class="mt-2 text-sm text-[#d8ceb8]">
             Add characters manually or import supporting content, then come back here to manage the roster.
           </p>
         </section>
 
-        <section v-else class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+        <section v-else class="mt-6 grid auto-rows-fr gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           <div
             v-for="character in filteredCharacters"
             :key="character.id"
-            class="eldra-ornate-card group cursor-pointer overflow-hidden rounded-none border shadow-xl transition duration-150 hover:border-[rgba(201,164,90,0.58)]"
+            class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group h-full cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
             :class="isSelected(character)
-              ? 'scale-[1.035] border-[rgba(201,164,90,0.95)] shadow-[0_0_0_1px_rgba(201,164,90,0.85),0_0_34px_rgba(201,164,90,0.26),0_22px_48px_rgba(0,0,0,0.42)]'
+              ? 'eldra-selected-glow scale-[1.025]'
               : 'opacity-95'"
             @click="selectCharacter(character)"
           >
             <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">
-              <div class="border-r border-[rgba(201,164,90,0.24)] bg-black/20">
+              <div class="eldra-image-frame border-r border-[rgba(201,164,90,0.24)] bg-black/20">
                 <img v-if="character.imageUrl" :src="character.imageUrl" :alt="character.displayTitle" class="h-full w-full object-cover object-[center_15%]">
-                <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900/90 to-slate-800/80 text-2xl font-semibold text-slate-200">
+                <div v-else class="flex h-full w-full items-center justify-center bg-[rgba(20,17,12,0.72)] text-2xl font-semibold text-[#d8ceb8]">
                   {{ initialsFor(character.displayTitle) }}
                 </div>
               </div>
@@ -665,7 +665,7 @@ onBeforeUnmount(() => {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="selectedCharacter || mode === 'build'"
-        class="fixed right-0 top-0 z-30 h-full w-[360px] border-l border-[rgba(201,164,90,0.28)] bg-[linear-gradient(to_bottom,rgba(14,12,8,0.96),rgba(6,5,4,0.94))] backdrop-blur"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div v-if="selectedCharacter" class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
@@ -674,7 +674,7 @@ onBeforeUnmount(() => {
 
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <h2 class="truncate text-2xl font-semibold text-white">{{ selectedCharacter.displayTitle }}</h2>
-                <span class="rounded-full border px-2.5 py-1 text-[11px] font-medium" :class="typeBadgeClass(selectedCharacter.normalizedType)">
+                <span class="rounded-none border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em]" :class="typeBadgeClass(selectedCharacter.normalizedType)">
                   {{ typeLabel(selectedCharacter.normalizedType) }}
                 </span>
               </div>
@@ -690,7 +690,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="flex-1 overflow-y-auto px-5 py-5">
-            <div v-if="selectedCharacter.imageUrl" class="overflow-hidden rounded-none border border-[rgba(201,164,90,0.24)] bg-black/20">
+            <div v-if="selectedCharacter.imageUrl" class="eldra-image-frame overflow-hidden rounded-none border bg-black/20">
               <img :src="selectedCharacter.imageUrl" :alt="selectedCharacter.displayTitle" class="h-72 w-full object-cover object-[center_15%]">
             </div>
 
@@ -698,7 +698,7 @@ onBeforeUnmount(() => {
               {{ initialsFor(selectedCharacter.displayTitle) }}
             </div>
 
-            <p class="mt-5 whitespace-pre-wrap text-sm leading-8 text-slate-200">
+            <p class="mt-5 whitespace-pre-wrap text-sm leading-8 text-[#d8ceb8]">
               {{ selectedCharacter.displaySummary || 'No summary yet.' }}
             </p>
           </div>

@@ -291,6 +291,19 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     combat_stats: normalizeCombatStats(body?.combatStats ?? body?.combat_stats, sheet?.combat_stats)
   }
 
+  const resolvedForDefaults = await resolveCharacterSheetSources({
+    ...sheet,
+    ...payload
+  })
+
+  if (!payload.combat_stats.speed && resolvedForDefaults?.species?.speed) {
+    payload.combat_stats.speed = String(resolvedForDefaults.species.speed)
+  }
+
+  if (!payload.combat_stats.hitDice && resolvedForDefaults?.class?.hitDie) {
+    payload.combat_stats.hitDice = String(resolvedForDefaults.class.hitDie)
+  }
+
   const updated = await dxFetch(`/items/character_sheets/${sheet.id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload)

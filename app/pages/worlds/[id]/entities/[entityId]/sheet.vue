@@ -13,10 +13,6 @@ const sheetSaving = ref(false)
 const sheetSaveError = ref('')
 const sheetSaveSuccess = ref('')
 
-const startingPackageApplying = ref(false)
-const startingPackageError = ref('')
-const startingPackageSuccess = ref('')
-
 const SHEET_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'inventory', label: 'Inventory' },
@@ -283,33 +279,6 @@ async function saveSheet() {
     sheetSaving.value = false
   }
 }
-
-async function applyStartingPackage() {
-  if (startingPackageApplying.value) return
-
-  startingPackageApplying.value = true
-  startingPackageError.value = ''
-  startingPackageSuccess.value = ''
-
-  try {
-    const result = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/apply-starting-package`, {
-      method: 'POST'
-    })
-
-    data.value = result as any
-    syncFormFromSheet()
-    startingPackageSuccess.value = (result as any)?.applied?.message || 'Starting package applied.'
-  } catch (err: any) {
-    startingPackageError.value =
-      err?.data?.statusMessage ||
-      err?.data?.message ||
-      err?.message ||
-      'Failed to apply starting package.'
-  } finally {
-    startingPackageApplying.value = false
-  }
-}
-
 </script>
 
 <template>
@@ -625,29 +594,9 @@ async function applyStartingPackage() {
                   <div class="mt-1 text-sm text-[#d8ceb8]">Equipment, carried items, containers, and later DM/Admin item assignments.</div>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2">
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ inventoryCount }} Item{{ inventoryCount === 1 ? '' : 's' }}
-                  </div>
-
-                  <button
-                    v-if="mode === 'build'"
-                    type="button"
-                    class="eldra-button rounded-none px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                    :disabled="startingPackageApplying"
-                    @click="applyStartingPackage"
-                  >
-                    {{ startingPackageApplying ? 'Applying...' : 'Apply Starting Package' }}
-                  </button>
+                <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                  {{ inventoryCount }} Item{{ inventoryCount === 1 ? '' : 's' }}
                 </div>
-              </div>
-
-              <div v-if="startingPackageError" class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-                {{ startingPackageError }}
-              </div>
-
-              <div v-if="startingPackageSuccess" class="mt-4 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                {{ startingPackageSuccess }}
               </div>
 
               <div v-if="inventory.length" class="mt-4 space-y-2">

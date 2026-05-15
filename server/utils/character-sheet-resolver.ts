@@ -77,6 +77,56 @@ function formatHitDie(value: any) {
   return formatSimpleValue(value)
 }
 
+
+function resolveSkillChoices(value: any) {
+  if (!Array.isArray(value)) return []
+
+  const choices: any[] = []
+
+  for (const entry of value) {
+    const choose = entry?.choose
+    if (choose) {
+      choices.push({
+        count: Number(choose.count || 1),
+        options: Array.isArray(choose.from)
+          ? choose.from.map((item: any) => String(item || '').trim()).filter(Boolean)
+          : []
+      })
+      continue
+    }
+
+    if (entry?.any) {
+      choices.push({
+        count: Number(entry.any || 1),
+        options: []
+      })
+    }
+  }
+
+  return choices
+}
+
+function resolveFeatChoices(value: any) {
+  if (!Array.isArray(value)) return []
+
+  const choices: any[] = []
+
+  for (const entry of value) {
+    const anyFromCategory = entry?.anyFromCategory
+    if (anyFromCategory) {
+      choices.push({
+        count: Number(anyFromCategory.count || 1),
+        category: Array.isArray(anyFromCategory.category)
+          ? anyFromCategory.category.join(', ')
+          : anyFromCategory.category || null,
+        options: []
+      })
+    }
+  }
+
+  return choices
+}
+
 function featureCount(value: any) {
   return Array.isArray(value) ? value.length : 0
 }
@@ -111,6 +161,7 @@ function resolveClass(entity: any, blocks: any[]) {
     armorProficiencies: core.armor_proficiencies || formatSimpleValue(raw.startingProficiencies?.armor),
     weaponProficiencies: core.weapon_proficiencies || formatSimpleValue(raw.startingProficiencies?.weapons),
     toolProficiencies: core.tool_proficiencies || formatSimpleValue(raw.startingProficiencies?.tools),
+    skillChoices: resolveSkillChoices(raw.startingProficiencies?.skills),
     featureCount: featureCount(raw.classFeatures),
     source: raw.source || null,
     page: raw.page || null
@@ -128,6 +179,8 @@ function resolveSpecies(entity: any, blocks: any[]) {
     size: core.size || formatSimpleValue(raw.size),
     speed: core.speed || formatSimpleValue(raw.speed),
     traits: clean5eText(core.traits || ''),
+    skillChoices: resolveSkillChoices(raw.skillProficiencies),
+    featChoices: resolveFeatChoices(raw.feats),
     rawTraitCount: Array.isArray(raw.entries) ? raw.entries.length : 0,
     source: raw.source || null,
     page: raw.page || null

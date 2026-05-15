@@ -15,6 +15,7 @@ const sheetSaveSuccess = ref('')
 
 const SHEET_TABS = [
   { key: 'overview', label: 'Overview' },
+  { key: 'stats', label: 'Stats' },
   { key: 'inventory', label: 'Inventory' },
   { key: 'features', label: 'Features' },
   { key: 'notes', label: 'Notes' }
@@ -100,6 +101,11 @@ const featureCount = computed(() => {
   return count
 })
 const resolved = computed(() => data.value?.resolved || null)
+const math = computed(() => data.value?.math || null)
+const mathSaves = computed(() => Array.isArray(math.value?.saves) ? math.value.saves : [])
+const mathSkills = computed(() => Array.isArray(math.value?.skills) ? math.value.skills : [])
+const mathArmorClassCandidates = computed(() => Array.isArray(math.value?.combat?.armorClass?.candidates) ? math.value.combat.armorClass.candidates : [])
+const mathPendingChoices = computed(() => Array.isArray(math.value?.pendingChoices) ? math.value.pendingChoices : [])
 const resolvedClass = computed(() => resolved.value?.class || null)
 const resolvedSpecies = computed(() => resolved.value?.species || null)
 const resolvedBackground = computed(() => resolved.value?.background || null)
@@ -326,6 +332,7 @@ async function saveSheet() {
               @click="setSheetTab(tab.key)"
             >
               <span>{{ tab.label }}</span>
+              <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="ml-1 text-[#9f9278]">({{ mathPendingChoices.length }})</span>
               <span v-if="tab.key === 'inventory'" class="ml-1 text-[#9f9278]">({{ inventoryCount }})</span>
               <span v-if="tab.key === 'features' && featureCount" class="ml-1 text-[#9f9278]">({{ featureCount }})</span>
             </button>
@@ -583,6 +590,119 @@ async function saveSheet() {
             </div>
 
           </section>
+            <section
+              v-else-if="activeSheetTab === 'stats'"
+              class="mt-6 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]"
+            >
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Stats Math</div>
+
+                <div class="mt-4 grid grid-cols-2 gap-3">
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
+                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Level</div>
+                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.level || sheet?.level || 1 }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
+                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Proficiency</div>
+                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.proficiencyBonusText || '+2' }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
+                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Initiative</div>
+                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.combat?.initiativeText || shownCombatStat('initiative') || '—' }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
+                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Speed</div>
+                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.combat?.speed || shownCombatStat('speed') || '—' }}</div>
+                  </div>
+                </div>
+
+                <div v-if="mathPendingChoices.length" class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-3">
+                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Pending Choices</div>
+                  <div class="mt-3 space-y-2 text-sm text-[#d8ceb8]">
+                    <div
+                      v-for="choice in mathPendingChoices"
+                      :key="`${choice.sourceType}-${choice.type}-${choice.label}`"
+                    >
+                      <div class="font-medium text-white">{{ choice.label }}</div>
+                      <div v-if="choice.options?.length" class="mt-1 text-xs text-[#9f9278]">
+                        Options: {{ choice.options.join(', ') }}
+                      </div>
+                      <div v-else-if="choice.category" class="mt-1 text-xs text-[#9f9278]">
+                        Category: {{ choice.category }}
+                      </div>
+                      <div v-else class="mt-1 text-xs text-[#9f9278]">
+                        Options will be selected in the future character builder.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid gap-4">
+                <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Saving Throws</div>
+
+                  <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <div
+                      v-for="save in mathSaves"
+                      :key="save.key"
+                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">{{ save.shortLabel }}</div>
+                        <div v-if="save.proficient" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Prof</div>
+                      </div>
+                      <div class="mt-2 text-2xl font-semibold text-white">{{ save.totalText }}</div>
+                      <div class="mt-1 text-xs text-[#9f9278]">{{ save.label }}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Skills</div>
+
+                  <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    <div
+                      v-for="skill in mathSkills"
+                      :key="skill.key"
+                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="text-sm font-medium text-white">{{ skill.label }}</div>
+                        <div class="text-xs text-[#9f9278]">{{ skill.abilityLabel }}</div>
+                      </div>
+                      <div class="mt-2 flex items-center justify-between gap-3">
+                        <div class="text-xl font-semibold text-white">{{ skill.totalText }}</div>
+                        <div v-if="skill.proficient" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Prof</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Armor Class Candidates</div>
+
+                  <div class="mt-4 grid gap-2 md:grid-cols-3">
+                    <div
+                      v-for="candidate in mathArmorClassCandidates"
+                      :key="candidate.label"
+                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="text-sm font-medium text-white">{{ candidate.label }}</div>
+                        <div v-if="candidate.active" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Active</div>
+                      </div>
+                      <div class="mt-2 text-2xl font-semibold text-white">{{ candidate.value }}</div>
+                      <div class="mt-1 text-xs leading-5 text-[#9f9278]">{{ candidate.note }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
           <section
             v-else-if="activeSheetTab === 'inventory'"
             class="mt-6"

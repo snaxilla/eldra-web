@@ -327,3 +327,246 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     resolved
   }
 }
+
+
+function normalizeFeatureRows(value: any) {
+  return Array.isArray(value) ? value.filter(Boolean) : []
+}
+
+function featureSourceExists(features: any[], sourceKey: string) {
+  return features.some((feature: any) => String(feature?.sourceKey || '') === sourceKey)
+}
+
+function addFeatureIfMissing(features: any[], feature: any) {
+  if (!feature?.sourceKey) return
+  if (featureSourceExists(features, feature.sourceKey)) return
+  features.push(feature)
+}
+
+function parseInventoryData(value: any) {
+  if (!value) return {}
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+
+  return {}
+}
+
+function inventorySourceExists(inventory: any[], sourceKey: string) {
+  return inventory.some((item: any) => {
+    const data = parseInventoryData(item?.data)
+    return String(data?.sourceKey || '') === sourceKey
+  })
+}
+
+async function createInventoryPackageIfMissing(args: {
+  sheetId: any
+  inventory: any[]
+  sourceKey: string
+  sourceType: string
+  sourceEntityId: any
+  sourceName: string
+  name: string
+  notes: string
+  sort: number
+}) {
+  const notes = String(args.notes || '').trim()
+  if (!notes) return null
+  if (inventorySourceExists(args.inventory, args.sourceKey)) return null
+
+  const created = await dxFetch('/items/character_sheet_inventory', {
+    method: 'POST',
+    body: JSON.stringify({
+      sheet_id: Number(args.sheetId),
+      item_entity_id: null,
+      name: args.name,
+      quantity: 1,
+      equipped: false,
+      attuned: false,
+      container: 'Starting Package',
+      notes,
+      sort: args.sort,
+      data: {
+        sourceKey: args.sourceKey,
+        sourceType: args.sourceType,
+        sourceEntityId: args.sourceEntityId ? Number(args.sourceEntityId) : null,
+        sourceName: args.sourceName,
+        appliedBy: 'starting-package'
+      }
+    })
+  }).catch(() => null)
+
+  return created?.data || null
+}
+
+export async function applyStartingPackageForEntity(worldId: string, entityId: string) {
+  const entity = await loadCharacterEntity(worldId, entityId)
+  let sheet = await findActiveSheet(worldId, entityId)
+
+  if (!sheet) {
+    sheet = await createSheetForEntity(worldId, entity)
+  }
+
+  const resolved = await resolveCharacterSheetSources(sheet)
+  const existingProficiencies = plainObject(sheet?.proficiencies)
+  const features = normalizeFeatureRows(sheet?.features)
+  const applied: string[] = []
+
+  const nextProficiencies = {
+    ...existingProficiencies
+  }
+
+  if (resolved?.class) {
+    nextProficiencies.class = {
+      sourceEntityId: resolved.class.id,
+      sourceName: resolved.class.title,
+      savingThrows: resolved.class.savingThrows || null,
+      armor: resolved.class.armorProficiencies || null,
+      weapons: resolved.class.weaponProficiencies || null,
+      tools: resolved.class.toolProficiencies || null
+    }
+
+    addFeatureIfMissing(features, {
+      sourceKey: `class-features:${resolved.class.id}`,
+      sourceType: 'class',
+      sourceEntityId: resolved.class.id,
+      sourceName: resolved.class.title,
+      title: `Class Features: ${resolved.class.title}`,
+      summary: resolved.class.featureCount
+        ? `${resolved.class.featureCount} imported class feature references are available.`
+        : ''
+    })
+
+    applied.push('class proficiencies/features')
+  }
+
+  if (resolved?.species) {
+    addFeatureIfMissing(features, {
+      sourceKey: `species-traits:${resolved.species.id}`,
+      sourceType: 'species',
+      sourceEntityId: resolved.species.id,
+      sourceName: resolved.species.title,
+      title: `Species Traits: ${resolved.species.title}`,
+      summary: resolved.species.traits || `${resolved.species.rawTraitCount || 0} species traits are available.`
+    })
+
+    applied.push('species traits')
+  }
+
+  if (resolved?.background) {
+    nextProficiencies.background = {
+      sourceEntityId: resolved.background.id,
+      sourceName: resolved.background.title,
+      skills: resolved.background.skillProficiencies || null,
+      tools: resolved.background.toolProficiencies || null,
+      languages: resolved.background.languages || null
+    }
+
+    addFeatureIfMissing(features, {
+      sourceKey: `background-feature:${resolved.background.id}`,
+      sourceType: 'background',
+      sourceEntityId: resolved.background.id,
+      sourceName: resolved.background.title,
+      title: resolved.background.featureName || `Background Feature: ${resolved.background.title}`,
+      summary: resolved.background.featureDescription || ''
+    })
+
+    applied.push('background proficiencies/feature')
+  }
+
+  const combatStats = plainObject(sheet?.combat_stats)
+
+  if (!combatStats.speed && resolved?.species?.speed) {
+    combatStats.speed = String(resolved.species.speed)
+    applied.push('species speed')
+  }
+
+  if (!combatStats.hitDice && resolved?.class?.hitDie) {
+    combatStats.hitDice = String(resolved.class.hitDie)
+    applied.push('class hit dice')
+  }
+
+  const saved = await dxFetch(`/items/character_sheets/${sheet.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      proficiencies: nextProficiencies,
+      features,
+      combat_stats: combatStats
+    })
+  })
+
+  const savedSheet = saved?.data || {
+    ...sheet,
+    proficiencies: nextProficiencies,
+    features,
+    combat_stats: combatStats
+  }
+
+  const existingInventory = await loadInventory(sheet.id)
+  const createdInventory: any[] = []
+
+  if (resolved?.class?.startingEquipment) {
+    const created = await createInventoryPackageIfMissing({
+      sheetId: sheet.id,
+      inventory: existingInventory,
+      sourceKey: `class-starting-equipment:${resolved.class.id}`,
+      sourceType: 'class',
+      sourceEntityId: resolved.class.id,
+      sourceName: resolved.class.title,
+      name: `Class Starting Equipment: ${resolved.class.title}`,
+      notes: resolved.class.startingEquipment,
+      sort: 100
+    })
+
+    if (created) {
+      createdInventory.push(created)
+      existingInventory.push(created)
+      applied.push('class starting equipment')
+    }
+  }
+
+  if (resolved?.background?.equipment) {
+    const created = await createInventoryPackageIfMissing({
+      sheetId: sheet.id,
+      inventory: existingInventory,
+      sourceKey: `background-starting-equipment:${resolved.background.id}`,
+      sourceType: 'background',
+      sourceEntityId: resolved.background.id,
+      sourceName: resolved.background.title,
+      name: `Background Starting Equipment: ${resolved.background.title}`,
+      notes: resolved.background.equipment,
+      sort: 110
+    })
+
+    if (created) {
+      createdInventory.push(created)
+      existingInventory.push(created)
+      applied.push('background starting equipment')
+    }
+  }
+
+  const inventory = await loadInventory(sheet.id)
+  const nextResolved = await resolveCharacterSheetSources(savedSheet)
+
+  return {
+    exists: true,
+    entity,
+    sheet: savedSheet,
+    inventory,
+    resolved: nextResolved,
+    applied: {
+      changed: applied,
+      createdInventoryCount: createdInventory.length,
+      message: applied.length
+        ? `Applied: ${applied.join(', ')}.`
+        : 'Starting package already applied.'
+    }
+  }
+}

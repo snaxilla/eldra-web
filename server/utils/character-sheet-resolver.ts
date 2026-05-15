@@ -111,6 +111,7 @@ function resolveClass(entity: any, blocks: any[]) {
     armorProficiencies: core.armor_proficiencies || formatSimpleValue(raw.startingProficiencies?.armor),
     weaponProficiencies: core.weapon_proficiencies || formatSimpleValue(raw.startingProficiencies?.weapons),
     toolProficiencies: core.tool_proficiencies || formatSimpleValue(raw.startingProficiencies?.tools),
+    startingEquipment: formatSimpleValue(raw.startingEquipment?.default || raw.startingEquipment),
     featureCount: featureCount(raw.classFeatures),
     source: raw.source || null,
     page: raw.page || null

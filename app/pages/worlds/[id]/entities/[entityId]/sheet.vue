@@ -211,21 +211,34 @@ function shownAbilityScore(key: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha') {
   return score === null || score === undefined || score === '' ? 10 : score
 }
 
+function isBlankCombatValue(value: any) {
+  return value === null || value === undefined || value === '' || value === 0 || value === '0'
+}
+
 function shownCombatStat(key: string) {
   if (mode.value === 'build') {
     return (sheetForm.combatStats as any)[key]
   }
 
   const value = combatStats.value[key]
+  if (!isBlankCombatValue(value)) return value
 
-  if (key === 'speed' && (value === null || value === undefined || value === '' || value === 0 || value === '0') && resolvedSpecies.value?.speed) {
-    return resolvedSpecies.value.speed
+  if (key === 'armorClass') {
+    return math.value?.combat?.armorClass?.current ||
+      math.value?.combat?.armorClass?.best?.value ||
+      ''
   }
 
-  if (value !== null && value !== undefined && value !== '') return value
+  if (key === 'initiative') {
+    return math.value?.combat?.initiativeText || ''
+  }
 
-  if (key === 'hitDice' && resolvedClass.value?.hitDie) {
-    return resolvedClass.value.hitDie
+  if (key === 'speed') {
+    return math.value?.combat?.speed || resolvedSpecies.value?.speed || ''
+  }
+
+  if (key === 'hitDice') {
+    return math.value?.combat?.hitDice || resolvedClass.value?.hitDie || ''
   }
 
   return ''

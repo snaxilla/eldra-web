@@ -298,7 +298,8 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
   const combatStats = plainObject(sheet?.combat_stats)
 
   const dexMod = abilityModifier(scores.dex)
-  const initiative = integerOrNull(combatStats.initiative) ?? dexMod
+  const savedInitiative = integerOrNull(combatStats.initiative)
+  const initiative = savedInitiative === null || savedInitiative === 0 ? dexMod : savedInitiative
   const speed = nonZeroTextOrNull(combatStats.speed) || resolved?.species?.speed || null
   const hitDice = nonZeroTextOrNull(combatStats.hitDice || combatStats.hit_dice) || resolved?.class?.hitDie || null
 

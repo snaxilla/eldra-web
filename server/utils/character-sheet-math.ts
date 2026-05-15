@@ -16,6 +16,18 @@ function integerOrNull(value: any) {
   return parsed === null ? null : Math.floor(parsed)
 }
 
+function positiveIntegerOrNull(value: any) {
+  const parsed = integerOrNull(value)
+  if (parsed === null || parsed <= 0) return null
+  return parsed
+}
+
+function nonZeroTextOrNull(value: any) {
+  const text = String(value ?? '').trim()
+  if (!text || text === '0') return null
+  return text
+}
+
 function abilityModifier(score: any) {
   const parsed = numberOrNull(score)
   if (parsed === null) return 0
@@ -202,7 +214,7 @@ function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, r
   const conMod = abilityModifier(scores.con)
   const candidates: Array<{ label: string; value: number; note: string; active?: boolean }> = []
 
-  const manualAc = integerOrNull(combatStats.armorClass ?? combatStats.armor_class)
+  const manualAc = positiveIntegerOrNull(combatStats.armorClass ?? combatStats.armor_class)
   if (manualAc !== null) {
     candidates.push({
       label: 'Sheet Armor Class',
@@ -287,8 +299,8 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
 
   const dexMod = abilityModifier(scores.dex)
   const initiative = integerOrNull(combatStats.initiative) ?? dexMod
-  const speed = combatStats.speed || resolved?.species?.speed || null
-  const hitDice = combatStats.hitDice || combatStats.hit_dice || resolved?.class?.hitDie || null
+  const speed = nonZeroTextOrNull(combatStats.speed) || resolved?.species?.speed || null
+  const hitDice = nonZeroTextOrNull(combatStats.hitDice || combatStats.hit_dice) || resolved?.class?.hitDie || null
 
   return {
     level,

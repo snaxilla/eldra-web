@@ -233,6 +233,18 @@ function integerOrNull(value: any) {
   return Math.floor(parsed)
 }
 
+function positiveIntegerOrNull(value: any) {
+  const parsed = integerOrNull(value)
+  if (parsed === null || parsed <= 0) return null
+  return parsed
+}
+
+function nonZeroNullableString(value: any) {
+  const text = nullableString(value)
+  if (!text || text === '0') return null
+  return text
+}
+
 function positiveInteger(value: any, fallback = 1) {
   const parsed = integerOrNull(value)
   if (parsed === null) return fallback
@@ -259,13 +271,13 @@ function normalizeCombatStats(value: any, fallback: any = {}) {
 
   return {
     ...previous,
-    armorClass: integerOrNull(source.armorClass ?? source.armor_class ?? previous.armorClass ?? previous.armor_class),
-    maxHp: integerOrNull(source.maxHp ?? source.max_hp ?? previous.maxHp ?? previous.max_hp),
+    armorClass: positiveIntegerOrNull(source.armorClass ?? source.armor_class ?? previous.armorClass ?? previous.armor_class),
+    maxHp: positiveIntegerOrNull(source.maxHp ?? source.max_hp ?? previous.maxHp ?? previous.max_hp),
     currentHp: integerOrNull(source.currentHp ?? source.current_hp ?? previous.currentHp ?? previous.current_hp),
     tempHp: integerOrNull(source.tempHp ?? source.temp_hp ?? previous.tempHp ?? previous.temp_hp) ?? 0,
     initiative: integerOrNull(source.initiative ?? previous.initiative),
-    speed: nullableString(source.speed ?? previous.speed),
-    hitDice: nullableString(source.hitDice ?? source.hit_dice ?? previous.hitDice ?? previous.hit_dice),
+    speed: nonZeroNullableString(source.speed ?? previous.speed),
+    hitDice: nonZeroNullableString(source.hitDice ?? source.hit_dice ?? previous.hitDice ?? previous.hit_dice),
     deathSaves: plainObject(source.deathSaves ?? source.death_saves ?? previous.deathSaves ?? previous.death_saves)
   }
 }

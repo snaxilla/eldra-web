@@ -217,11 +217,12 @@ function shownCombatStat(key: string) {
   }
 
   const value = combatStats.value[key]
-  if (value !== null && value !== undefined && value !== '') return value
 
-  if (key === 'speed' && resolvedSpecies.value?.speed) {
+  if (key === 'speed' && (value === null || value === undefined || value === '' || value === 0 || value === '0') && resolvedSpecies.value?.speed) {
     return resolvedSpecies.value.speed
   }
+
+  if (value !== null && value !== undefined && value !== '') return value
 
   if (key === 'hitDice' && resolvedClass.value?.hitDie) {
     return resolvedClass.value.hitDie

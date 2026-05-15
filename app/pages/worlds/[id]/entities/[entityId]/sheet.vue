@@ -64,6 +64,10 @@ const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.valu
 const entity = computed(() => data.value?.entity || null)
 const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
+const resolved = computed(() => data.value?.resolved || null)
+const resolvedClass = computed(() => resolved.value?.class || null)
+const resolvedSpecies = computed(() => resolved.value?.species || null)
+const resolvedBackground = computed(() => resolved.value?.background || null)
 
 const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return String(entity.value.imageUrl)
@@ -390,6 +394,61 @@ async function saveSheet() {
               <div v-else class="mt-2 text-lg font-semibold text-white">{{ sheet?.background_name || '—' }}</div>
             </label>
           </div>
+
+          <section
+            v-if="resolvedClass || resolvedSpecies || resolvedBackground"
+            class="mt-6 grid gap-4 lg:grid-cols-3"
+          >
+            <div
+              v-if="resolvedClass"
+              class="eldra-codex-soft rounded-none p-4"
+            >
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Resolved Class</div>
+              <h2 class="mt-2 text-xl font-semibold text-white">{{ resolvedClass.title }}</h2>
+
+              <div class="mt-4 space-y-2 text-sm leading-6 text-[#d8ceb8]">
+                <div v-if="resolvedClass.hitDie"><span class="text-[#9f9278]">Hit Die:</span> {{ resolvedClass.hitDie }}</div>
+                <div v-if="resolvedClass.savingThrows"><span class="text-[#9f9278]">Saves:</span> {{ resolvedClass.savingThrows }}</div>
+                <div v-if="resolvedClass.armorProficiencies"><span class="text-[#9f9278]">Armor:</span> {{ resolvedClass.armorProficiencies }}</div>
+                <div v-if="resolvedClass.weaponProficiencies"><span class="text-[#9f9278]">Weapons:</span> {{ resolvedClass.weaponProficiencies }}</div>
+                <div v-if="resolvedClass.featureCount"><span class="text-[#9f9278]">Class Features:</span> {{ resolvedClass.featureCount }}</div>
+              </div>
+            </div>
+
+            <div
+              v-if="resolvedSpecies"
+              class="eldra-codex-soft rounded-none p-4"
+            >
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Resolved Species</div>
+              <h2 class="mt-2 text-xl font-semibold text-white">{{ resolvedSpecies.title }}</h2>
+
+              <div class="mt-4 space-y-2 text-sm leading-6 text-[#d8ceb8]">
+                <div v-if="resolvedSpecies.size"><span class="text-[#9f9278]">Size:</span> {{ resolvedSpecies.size }}</div>
+                <div v-if="resolvedSpecies.speed"><span class="text-[#9f9278]">Speed:</span> {{ resolvedSpecies.speed }}</div>
+                <div v-if="resolvedSpecies.rawTraitCount"><span class="text-[#9f9278]">Traits:</span> {{ resolvedSpecies.rawTraitCount }}</div>
+                <p v-if="resolvedSpecies.traits" class="mt-3 max-h-28 overflow-y-auto text-xs leading-5 text-[#d8ceb8]">
+                  {{ resolvedSpecies.traits }}
+                </p>
+              </div>
+            </div>
+
+            <div
+              v-if="resolvedBackground"
+              class="eldra-codex-soft rounded-none p-4"
+            >
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Resolved Background</div>
+              <h2 class="mt-2 text-xl font-semibold text-white">{{ resolvedBackground.title }}</h2>
+
+              <div class="mt-4 space-y-2 text-sm leading-6 text-[#d8ceb8]">
+                <div v-if="resolvedBackground.skillProficiencies"><span class="text-[#9f9278]">Skills:</span> {{ resolvedBackground.skillProficiencies }}</div>
+                <div v-if="resolvedBackground.toolProficiencies"><span class="text-[#9f9278]">Tools:</span> {{ resolvedBackground.toolProficiencies }}</div>
+                <div v-if="resolvedBackground.featureName"><span class="text-[#9f9278]">Feature:</span> {{ resolvedBackground.featureName }}</div>
+                <p v-if="resolvedBackground.featureDescription" class="mt-3 max-h-28 overflow-y-auto text-xs leading-5 text-[#d8ceb8]">
+                  {{ resolvedBackground.featureDescription }}
+                </p>
+              </div>
+            </div>
+          </section>
 
           <div v-if="mode === 'build'" class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
             <label class="block">

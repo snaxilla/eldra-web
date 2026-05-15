@@ -1,4 +1,5 @@
 import { dxFetch } from './entity-factory'
+import { resolveCharacterSheetSources } from './character-sheet-resolver'
 
 function normalizeCharacterType(value: any) {
   const type = String(value || '').trim().toLowerCase()
@@ -175,12 +176,14 @@ export async function getCharacterSheetForEntity(worldId: string, entityId: stri
   const entity = await loadCharacterEntity(worldId, entityId)
   const sheet = await findActiveSheet(worldId, entityId)
   const inventory = sheet?.id ? await loadInventory(sheet.id) : []
+  const resolved = sheet ? await resolveCharacterSheetSources(sheet) : null
 
   return {
     exists: Boolean(sheet),
     entity,
     sheet,
-    inventory
+    inventory,
+    resolved
   }
 }
 
@@ -195,12 +198,14 @@ export async function ensureCharacterSheetForEntity(worldId: string, entityId: s
   }
 
   const inventory = await loadInventory(sheet.id)
+  const resolved = await resolveCharacterSheetSources(sheet)
 
   return {
     exists: true,
     entity,
     sheet,
-    inventory
+    inventory,
+    resolved
   }
 }
 
@@ -299,11 +304,13 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
   await upsertCharacterCoreSheetLink(String(entity.id), entity.entity_type, savedSheet.id || sheet.id)
 
   const inventory = await loadInventory(savedSheet.id || sheet.id)
+  const resolved = await resolveCharacterSheetSources(savedSheet)
 
   return {
     exists: true,
     entity,
     sheet: savedSheet,
-    inventory
+    inventory,
+    resolved
   }
 }

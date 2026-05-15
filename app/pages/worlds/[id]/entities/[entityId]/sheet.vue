@@ -4,6 +4,7 @@ definePageMeta({
 })
 
 const route = useRoute()
+const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const entityId = computed(() => String(route.params.entityId || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
@@ -11,6 +12,32 @@ const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 const sheetSaving = ref(false)
 const sheetSaveError = ref('')
 const sheetSaveSuccess = ref('')
+
+const SHEET_TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'inventory', label: 'Inventory' },
+  { key: 'features', label: 'Features' },
+  { key: 'notes', label: 'Notes' }
+] as const
+
+type SheetTab = typeof SHEET_TABS[number]['key']
+
+function normalizeSheetTab(value: any): SheetTab {
+  const tab = String(Array.isArray(value) ? value[0] : value || 'overview')
+  return SHEET_TABS.some((option) => option.key === tab) ? tab as SheetTab : 'overview'
+}
+
+const activeSheetTab = computed<SheetTab>(() => normalizeSheetTab(route.query.tab))
+
+function setSheetTab(tab: SheetTab) {
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      tab: tab === 'overview' ? undefined : tab
+    }
+  })
+}
 
 const sheetForm = reactive({
   name: '',
@@ -64,6 +91,14 @@ const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.valu
 const entity = computed(() => data.value?.entity || null)
 const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
+const inventoryCount = computed(() => inventory.value.length)
+const featureCount = computed(() => {
+  let count = 0
+  if (resolvedClass.value?.featureCount) count += Number(resolvedClass.value.featureCount || 0)
+  if (resolvedSpecies.value?.rawTraitCount) count += Number(resolvedSpecies.value.rawTraitCount || 0)
+  if (resolvedBackground.value?.featureName) count += 1
+  return count
+})
 const resolved = computed(() => data.value?.resolved || null)
 const resolvedClass = computed(() => resolved.value?.class || null)
 const resolvedSpecies = computed(() => resolved.value?.species || null)
@@ -278,6 +313,25 @@ async function saveSheet() {
         </div>
       </div>
 
+        <div class="mb-4 overflow-x-auto">
+          <div class="flex min-w-max gap-2">
+            <button
+              v-for="tab in SHEET_TABS"
+              :key="tab.key"
+              type="button"
+              class="rounded-none border px-4 py-2 text-sm font-semibold transition"
+              :class="activeSheetTab === tab.key
+                ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
+                : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+              @click="setSheetTab(tab.key)"
+            >
+              <span>{{ tab.label }}</span>
+              <span v-if="tab.key === 'inventory'" class="ml-1 text-[#9f9278]">({{ inventoryCount }})</span>
+              <span v-if="tab.key === 'features' && featureCount" class="ml-1 text-[#9f9278]">({{ featureCount }})</span>
+            </button>
+          </div>
+        </div>
+
       <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-5 shadow-xl">
         <div v-if="pending" class="text-[#d8ceb8]">
           Loading character sheet...
@@ -314,7 +368,7 @@ async function saveSheet() {
           </div>
 
           <div
-            v-if="entityImageUrl"
+            v-if="activeSheetTab === 'overview' && entityImageUrl"
             class="eldra-image-frame mt-6 overflow-hidden rounded-none border bg-black/20"
           >
             <img
@@ -332,7 +386,7 @@ async function saveSheet() {
             {{ sheetSaveSuccess }}
           </div>
 
-          <div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div v-if="activeSheetTab === 'overview'" class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Level</div>
               <input
@@ -425,7 +479,7 @@ async function saveSheet() {
           </div>
 
 
-          <div v-if="mode === 'build'" class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
+          <div v-if="activeSheetTab === 'overview' && mode === 'build'" class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
             <label class="block">
               <span class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Subclass</span>
               <input
@@ -436,7 +490,7 @@ async function saveSheet() {
             </label>
           </div>
 
-          <section class="mt-6 grid gap-3 sm:grid-cols-3">
+          <section v-if="activeSheetTab === 'overview'" class="mt-6 grid gap-3 sm:grid-cols-3">
             <label
               v-for="ability in abilityList"
               :key="ability.key"
@@ -456,7 +510,7 @@ async function saveSheet() {
             </label>
           </section>
 
-          <section class="mt-6 grid gap-4 lg:grid-cols-2">
+          <section v-if="activeSheetTab === 'overview'" class="mt-6 grid gap-4">
             <div class="eldra-codex-soft rounded-none p-4">
               <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Combat</div>
 
@@ -528,8 +582,22 @@ async function saveSheet() {
               </div>
             </div>
 
+          </section>
+          <section
+            v-else-if="activeSheetTab === 'inventory'"
+            class="mt-6"
+          >
             <div class="eldra-codex-soft rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Inventory</div>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Inventory</div>
+                  <div class="mt-1 text-sm text-[#d8ceb8]">Equipment, carried items, containers, and later DM/Admin item assignments.</div>
+                </div>
+
+                <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                  {{ inventoryCount }} Item{{ inventoryCount === 1 ? '' : 's' }}
+                </div>
+              </div>
 
               <div v-if="inventory.length" class="mt-4 space-y-2">
                 <div
@@ -541,13 +609,61 @@ async function saveSheet() {
                     <span class="font-medium text-white">{{ item.name }}</span>
                     <span>x{{ item.quantity || 1 }}</span>
                   </div>
-                  <div v-if="item.notes" class="mt-1 text-xs text-[#9f9278]">{{ item.notes }}</div>
+
+                  <div class="mt-2 flex flex-wrap gap-2 text-xs text-[#9f9278]">
+                    <span v-if="item.equipped" class="eldra-gold-chip rounded-none border px-2 py-0.5">Equipped</span>
+                    <span v-if="item.attuned" class="eldra-gold-chip rounded-none border px-2 py-0.5">Attuned</span>
+                    <span v-if="item.container">Container: {{ item.container }}</span>
+                  </div>
+
+                  <div v-if="item.notes" class="mt-2 text-xs leading-5 text-[#9f9278]">{{ item.notes }}</div>
                 </div>
               </div>
 
               <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                Inventory is empty. DM/Admin item assignment hooks will land later.
+                Inventory is empty. Starting package and DM/Admin item assignment hooks will land here.
               </div>
+            </div>
+          </section>
+
+          <section
+            v-else-if="activeSheetTab === 'features'"
+            class="mt-6 grid gap-4 lg:grid-cols-3"
+          >
+            <div class="eldra-codex-soft rounded-none p-4">
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Class Features</div>
+              <div class="mt-2 text-xl font-semibold text-white">{{ resolvedClass?.title || 'No linked class' }}</div>
+              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
+                {{ resolvedClass?.featureCount ? `${resolvedClass.featureCount} imported class feature references are available.` : 'Select a class to resolve class features.' }}
+              </p>
+            </div>
+
+            <div class="eldra-codex-soft rounded-none p-4">
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Species Traits</div>
+              <div class="mt-2 text-xl font-semibold text-white">{{ resolvedSpecies?.title || 'No linked species' }}</div>
+              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
+                {{ resolvedSpecies?.traits || 'Select a species to resolve species traits.' }}
+              </p>
+            </div>
+
+            <div class="eldra-codex-soft rounded-none p-4">
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Background Feature</div>
+              <div class="mt-2 text-xl font-semibold text-white">{{ resolvedBackground?.featureName || resolvedBackground?.title || 'No linked background' }}</div>
+              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
+                {{ resolvedBackground?.featureDescription || 'Select a background to resolve its feature.' }}
+              </p>
+            </div>
+          </section>
+
+          <section
+            v-else
+            class="mt-6"
+          >
+            <div class="eldra-codex-soft rounded-none p-4">
+              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Notes</div>
+              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
+                Notes and custom sheet annotations will live here after the next data pass.
+              </p>
             </div>
           </section>
         </template>

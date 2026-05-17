@@ -281,6 +281,68 @@ function prettyChoiceValue(value: any) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+function normalizeChoiceValue(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function selectedChoiceSkillSet() {
+  const selected = new Set<string>()
+
+  for (const choice of mathPendingChoices.value) {
+    if (choice?.type !== 'skill') continue
+
+    for (const value of Array.isArray(choice?.selected) ? choice.selected : []) {
+      const normalized = normalizeChoiceValue(value)
+      if (normalized) selected.add(normalized)
+    }
+  }
+
+  return selected
+}
+
+function isChoiceOptionDisabled(choice: any, slot: number, option: any) {
+  if (choice?.type !== 'skill') return false
+
+  const optionKey = normalizeChoiceValue(option)
+  if (!optionKey) return false
+
+  const sourceKey = String(choice?.sourceKey || '')
+  const currentValue = normalizeChoiceValue(choiceDrafts.value[sourceKey]?.[slot])
+
+  if (currentValue === optionKey) return false
+
+  for (const otherChoice of mathPendingChoices.value) {
+    if (otherChoice?.type !== 'skill') continue
+
+    const otherSourceKey = String(otherChoice?.sourceKey || '')
+    const drafts = choiceDrafts.value[otherSourceKey] || []
+
+    for (let index = 0; index < drafts.length; index++) {
+      if (otherSourceKey === sourceKey && index === slot) continue
+      if (normalizeChoiceValue(drafts[index]) === optionKey) return true
+    }
+  }
+
+  const selectedBySavedChoice = selectedChoiceSkillSet().has(optionKey)
+  const alreadyProficient = mathSkills.value.some((skill: any) =>
+    normalizeChoiceValue(skill?.key) === optionKey &&
+    skill?.proficient === true
+  )
+
+  return alreadyProficient && !selectedBySavedChoice
+}
+
+function choiceOptionLabel(choice: any, slot: number, option: any) {
+  const label = prettyChoiceValue(option)
+  return isChoiceOptionDisabled(choice, slot, option)
+    ? `${label} (already known)`
+    : label
+}
+
 function syncChoiceDrafts() {
   const next: Record<string, string[]> = {}
 
@@ -315,13 +377,25 @@ async function saveChoices() {
       ...asObject(sheet.value?.choices)
     }
 
+    const usedSkillChoices = new Set<string>()
+
     for (const choice of mathPendingChoices.value) {
       const key = String(choice?.sourceKey || '')
       if (!key) continue
 
-      const selected = (choiceDrafts.value[key] || [])
-        .map((item) => String(item || '').trim().toLowerCase())
+      const rawSelected = (choiceDrafts.value[key] || [])
+        .map((item) => normalizeChoiceValue(item))
         .filter(Boolean)
+
+      const selected: string[] = []
+      for (const item of rawSelected) {
+        if (choice?.type === 'skill') {
+          if (usedSkillChoices.has(item)) continue
+          usedSkillChoices.add(item)
+        }
+
+        selected.push(item)
+      }
 
       nextChoices[key] = {
         sourceKey: key,
@@ -806,9 +880,10 @@ async function saveSheet() {
                               v-for="option in choiceOptions(choice)"
                               :key="option"
                               :value="option"
-                              class="bg-[#090909] text-[#f5e7bd]"
+                              :disabled="isChoiceOptionDisabled(choice, slot, option)"
+                              class="bg-[#090909] text-[#f5e7bd] disabled:text-[#756a57]"
                             >
-                              {{ prettyChoiceValue(option) }}
+                              {{ choiceOptionLabel(choice, slot, option) }}
                             </option>
                           </select>
 

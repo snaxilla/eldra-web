@@ -220,6 +220,46 @@ function plainObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
+function normalizeChoiceToken(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function normalizeSheetChoices(value: any) {
+  const source = plainObject(value)
+  const normalized: Record<string, any> = {}
+  const usedSkills = new Set<string>()
+
+  for (const [sourceKey, rawChoice] of Object.entries(source)) {
+    const choice = plainObject(rawChoice)
+    const type = String(choice.type || '').trim().toLowerCase()
+    const selectedValues = Array.isArray(choice.selected) ? choice.selected : []
+    const selected: string[] = []
+
+    for (const rawSelected of selectedValues) {
+      const token = normalizeChoiceToken(rawSelected)
+      if (!token) continue
+
+      if (type === 'skill') {
+        if (usedSkills.has(token)) continue
+        usedSkills.add(token)
+      }
+
+      selected.push(token)
+    }
+
+    normalized[sourceKey] = {
+      ...choice,
+      selected
+    }
+  }
+
+  return normalized
+}
+
 function nullableString(value: any) {
   const text = String(value ?? '').trim()
   return text || null
@@ -307,7 +347,7 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     background_entity_id: backgroundEntityIdProvided ? integerOrNull(body?.backgroundEntityId ?? body?.background_entity_id) : integerOrNull(sheet?.background_entity_id),
     ability_scores: normalizeAbilityScores(body?.abilityScores ?? body?.ability_scores, sheet?.ability_scores),
     combat_stats: normalizeCombatStats(body?.combatStats ?? body?.combat_stats, sheet?.combat_stats),
-    choices: body?.choices !== undefined ? plainObject(body.choices) : plainObject(sheet?.choices)
+    choices: body?.choices !== undefined ? normalizeSheetChoices(body.choices) : normalizeSheetChoices(sheet?.choices)
   }
 
   const resolvedForDefaults = await resolveCharacterSheetSources({

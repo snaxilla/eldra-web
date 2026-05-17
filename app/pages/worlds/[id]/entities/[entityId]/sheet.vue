@@ -13,6 +13,11 @@ const sheetSaving = ref(false)
 const sheetSaveError = ref('')
 const sheetSaveSuccess = ref('')
 
+const choiceSaving = ref(false)
+const choiceSaveError = ref('')
+const choiceSaveSuccess = ref('')
+const choiceDrafts = ref<Record<string, string[]>>({})
+
 const SHEET_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'stats', label: 'Stats' },
@@ -260,6 +265,109 @@ const abilityList = computed(() => [
   { key: 'wis', label: 'WIS', value: shownAbilityScore('wis') },
   { key: 'cha', label: 'CHA', value: shownAbilityScore('cha') }
 ])
+
+function choiceSlots(choice: any) {
+  const count = Math.max(1, Number(choice?.count || 1))
+  return Array.from({ length: count }, (_, index) => index)
+}
+
+function choiceOptions(choice: any) {
+  return Array.isArray(choice?.options) ? choice.options : []
+}
+
+function prettyChoiceValue(value: any) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function syncChoiceDrafts() {
+  const next: Record<string, string[]> = {}
+
+  for (const choice of mathPendingChoices.value) {
+    const key = String(choice?.sourceKey || '')
+    if (!key) continue
+
+    const selected = Array.isArray(choice?.selected) ? choice.selected : []
+    next[key] = choiceSlots(choice).map((index) => String(selected[index] || ''))
+  }
+
+  choiceDrafts.value = next
+}
+
+watch(
+  mathPendingChoices,
+  () => {
+    syncChoiceDrafts()
+  },
+  { immediate: true, deep: true }
+)
+
+async function saveChoices() {
+  if (choiceSaving.value) return
+
+  choiceSaving.value = true
+  choiceSaveError.value = ''
+  choiceSaveSuccess.value = ''
+
+  try {
+    const nextChoices: Record<string, any> = {
+      ...asObject(sheet.value?.choices)
+    }
+
+    for (const choice of mathPendingChoices.value) {
+      const key = String(choice?.sourceKey || '')
+      if (!key) continue
+
+      const selected = (choiceDrafts.value[key] || [])
+        .map((item) => String(item || '').trim().toLowerCase())
+        .filter(Boolean)
+
+      nextChoices[key] = {
+        sourceKey: key,
+        sourceType: choice.sourceType || null,
+        sourceName: choice.sourceName || null,
+        type: choice.type || null,
+        label: choice.label || null,
+        count: Number(choice.count || 1),
+        options: Array.isArray(choice.options) ? choice.options : [],
+        category: choice.category || null,
+        selected
+      }
+    }
+
+    const saved = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
+      method: 'PATCH',
+      body: {
+        name: sheetForm.name,
+        level: sheetForm.level,
+        className: optionTitle(classOptions.value, sheetForm.classEntityId) || sheetForm.className,
+        subclassName: sheetForm.subclassName,
+        speciesName: optionTitle(speciesOptions.value, sheetForm.speciesEntityId) || sheetForm.speciesName,
+        backgroundName: optionTitle(backgroundOptions.value, sheetForm.backgroundEntityId) || sheetForm.backgroundName,
+        classEntityId: sheetForm.classEntityId || null,
+        speciesEntityId: sheetForm.speciesEntityId || null,
+        backgroundEntityId: sheetForm.backgroundEntityId || null,
+        abilityScores: { ...sheetForm.abilityScores },
+        combatStats: { ...sheetForm.combatStats },
+        choices: nextChoices
+      }
+    })
+
+    data.value = saved as any
+    syncFormFromSheet()
+    syncChoiceDrafts()
+    choiceSaveSuccess.value = 'Choices saved.'
+  } catch (err: any) {
+    choiceSaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to save choices.'
+  } finally {
+    choiceSaving.value = false
+  }
+}
 
 async function saveSheet() {
   if (sheetSaving.value) return
@@ -634,21 +742,91 @@ async function saveSheet() {
                 </div>
 
                 <div v-if="mathPendingChoices.length" class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-3">
-                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Pending Choices</div>
-                  <div class="mt-3 space-y-2 text-sm text-[#d8ceb8]">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Pending Choices</div>
+
+                    <button
+                      v-if="mode === 'build'"
+                      type="button"
+                      class="eldra-button rounded-none px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                      :disabled="choiceSaving"
+                      @click="saveChoices"
+                    >
+                      {{ choiceSaving ? 'Saving...' : 'Save Choices' }}
+                    </button>
+                  </div>
+
+                  <div v-if="choiceSaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                    {{ choiceSaveError }}
+                  </div>
+
+                  <div v-if="choiceSaveSuccess" class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                    {{ choiceSaveSuccess }}
+                  </div>
+
+                  <div class="mt-3 space-y-3 text-sm text-[#d8ceb8]">
                     <div
                       v-for="choice in mathPendingChoices"
-                      :key="`${choice.sourceType}-${choice.type}-${choice.label}`"
+                      :key="choice.sourceKey"
+                      class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.42)] p-3"
                     >
-                      <div class="font-medium text-white">{{ choice.label }}</div>
-                      <div v-if="choice.options?.length" class="mt-1 text-xs text-[#9f9278]">
-                        Options: {{ choice.options.join(', ') }}
+                      <div class="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div class="font-medium text-white">{{ choice.label }}</div>
+                          <div v-if="choice.remaining" class="mt-1 text-xs text-[#9f9278]">
+                            {{ choice.remaining }} selection{{ choice.remaining === 1 ? '' : 's' }} remaining.
+                          </div>
+                          <div v-else class="mt-1 text-xs text-emerald-200">
+                            Complete.
+                          </div>
+                        </div>
+
+                        <div v-if="choice.complete" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">
+                          Chosen
+                        </div>
                       </div>
-                      <div v-else-if="choice.category" class="mt-1 text-xs text-[#9f9278]">
-                        Category: {{ choice.category }}
+
+                      <div v-if="mode === 'build'" class="mt-3 grid gap-2">
+                        <label
+                          v-for="slot in choiceSlots(choice)"
+                          :key="`${choice.sourceKey}-${slot}`"
+                          class="block"
+                        >
+                          <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">
+                            Pick {{ slot + 1 }}
+                          </span>
+
+                          <select
+                            v-if="choiceOptions(choice).length"
+                            v-model="choiceDrafts[choice.sourceKey][slot]"
+                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                          >
+                            <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
+                            <option
+                              v-for="option in choiceOptions(choice)"
+                              :key="option"
+                              :value="option"
+                              class="bg-[#090909] text-[#f5e7bd]"
+                            >
+                              {{ prettyChoiceValue(option) }}
+                            </option>
+                          </select>
+
+                          <input
+                            v-else
+                            v-model="choiceDrafts[choice.sourceKey][slot]"
+                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                            :placeholder="choice.category ? `Choose from category ${choice.category}` : 'Type choice...'"
+                          >
+                        </label>
                       </div>
-                      <div v-else class="mt-1 text-xs text-[#9f9278]">
-                        Options will be selected in the future character builder.
+
+                      <div v-else class="mt-3 text-xs text-[#9f9278]">
+                        Selected:
+                        <span v-if="choice.selected?.length" class="text-[#d8ceb8]">
+                          {{ choice.selected.map(prettyChoiceValue).join(', ') }}
+                        </span>
+                        <span v-else>None yet.</span>
                       </div>
                     </div>
                   </div>

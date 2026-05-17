@@ -295,6 +295,9 @@ async function createCharacterSheetsSchema() {
   await ensureField('character_sheets', jsonField('spellcasting'))
   await ensureField('character_sheets', jsonField('features'))
   await ensureField('character_sheets', jsonField('notes'))
+  await ensureField('character_sheets', jsonField('choices', {
+    note: 'Saved character builder choices such as selected skills, feats, and future option picks'
+  }))
   await ensureField('character_sheets', timestampField('created_at'))
   await ensureField('character_sheets', timestampField('updated_at'))
 

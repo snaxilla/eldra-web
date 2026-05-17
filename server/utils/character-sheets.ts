@@ -155,7 +155,8 @@ async function createSheetForEntity(worldId: string, entity: any) {
       resources: {},
       spellcasting: {},
       features: [],
-      notes: {}
+      notes: {},
+      choices: {}
     })
   })
 
@@ -305,7 +306,8 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     species_entity_id: speciesEntityIdProvided ? integerOrNull(body?.speciesEntityId ?? body?.species_entity_id) : integerOrNull(sheet?.species_entity_id),
     background_entity_id: backgroundEntityIdProvided ? integerOrNull(body?.backgroundEntityId ?? body?.background_entity_id) : integerOrNull(sheet?.background_entity_id),
     ability_scores: normalizeAbilityScores(body?.abilityScores ?? body?.ability_scores, sheet?.ability_scores),
-    combat_stats: normalizeCombatStats(body?.combatStats ?? body?.combat_stats, sheet?.combat_stats)
+    combat_stats: normalizeCombatStats(body?.combatStats ?? body?.combat_stats, sheet?.combat_stats),
+    choices: body?.choices !== undefined ? plainObject(body.choices) : plainObject(sheet?.choices)
   }
 
   const resolvedForDefaults = await resolveCharacterSheetSources({

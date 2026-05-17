@@ -142,6 +142,7 @@ function collectProficiencies(sheet: any, resolved: any) {
   const saveProfs = new Set<string>()
   const skillProfs = new Set<string>()
   const proficiencies = plainObject(sheet?.proficiencies)
+  const choices = plainObject(sheet?.choices)
 
   addTokens(saveProfs, resolved?.class?.savingThrows, SAVE_ALIASES)
   addTokens(saveProfs, proficiencies.savingThrows || proficiencies.saves, SAVE_ALIASES)
@@ -150,6 +151,13 @@ function collectProficiencies(sheet: any, resolved: any) {
   addTokens(skillProfs, resolved?.background?.skillProficiencies)
   addTokens(skillProfs, proficiencies.skills)
   addTokens(skillProfs, proficiencies.background?.skills)
+
+  for (const choiceValue of Object.values(choices)) {
+    const choice = plainObject(choiceValue)
+    if (choice.type === 'skill') {
+      addTokens(skillProfs, choice.selected)
+    }
+  }
 
   return {
     saveProfs,
@@ -250,44 +258,101 @@ function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, r
   }
 }
 
-function buildPendingChoices(resolved: any) {
-  const choices: any[] = []
+function defaultSkillOptions() {
+  return SKILLS.map((skill) => skill.key)
+}
+
+function savedChoiceFor(choices: any, sourceKey: string) {
+  const saved = plainObject(choices?.[sourceKey])
+  const selected = Array.isArray(saved.selected)
+    ? saved.selected.map(normalizeToken).filter(Boolean)
+    : []
+
+  return {
+    ...saved,
+    selected
+  }
+}
+
+function choiceRow(args: {
+  choices: any
+  sourceKey: string
+  sourceType: string
+  sourceName: string
+  type: string
+  label: string
+  count: number
+  options?: string[]
+  category?: string | null
+}) {
+  const saved = savedChoiceFor(args.choices, args.sourceKey)
+  const selected = saved.selected || []
+  const count = Number(args.count || 1)
+  const remaining = Math.max(0, count - selected.length)
+
+  return {
+    sourceKey: args.sourceKey,
+    sourceType: args.sourceType,
+    sourceName: args.sourceName,
+    type: args.type,
+    label: args.label,
+    count,
+    selected,
+    remaining,
+    complete: remaining === 0,
+    options: Array.isArray(args.options) ? args.options : [],
+    category: args.category || null
+  }
+}
+
+function buildPendingChoices(sheet: any, resolved: any) {
+  const choices = plainObject(sheet?.choices)
+  const rows: any[] = []
 
   for (const choice of Array.isArray(resolved?.class?.skillChoices) ? resolved.class.skillChoices : []) {
-    choices.push({
+    const count = Number(choice.count || 1)
+    rows.push(choiceRow({
+      choices,
+      sourceKey: `class-skill:${resolved.class.id}`,
       sourceType: 'class',
       sourceName: resolved.class.title,
       type: 'skill',
-      label: `${resolved.class.title}: choose ${choice.count || 1} skill${Number(choice.count || 1) === 1 ? '' : 's'}`,
-      count: choice.count || 1,
-      options: Array.isArray(choice.options) ? choice.options : []
-    })
+      label: `${resolved.class.title}: choose ${count} skill${count === 1 ? '' : 's'}`,
+      count,
+      options: Array.isArray(choice.options) && choice.options.length ? choice.options.map(normalizeToken) : defaultSkillOptions()
+    }))
   }
 
   for (const choice of Array.isArray(resolved?.species?.skillChoices) ? resolved.species.skillChoices : []) {
-    choices.push({
+    const count = Number(choice.count || 1)
+    rows.push(choiceRow({
+      choices,
+      sourceKey: `species-skill:${resolved.species.id}`,
       sourceType: 'species',
       sourceName: resolved.species.title,
       type: 'skill',
-      label: `${resolved.species.title}: choose ${choice.count || 1} skill${Number(choice.count || 1) === 1 ? '' : 's'}`,
-      count: choice.count || 1,
-      options: Array.isArray(choice.options) ? choice.options : []
-    })
+      label: `${resolved.species.title}: choose ${count} skill${count === 1 ? '' : 's'}`,
+      count,
+      options: Array.isArray(choice.options) && choice.options.length ? choice.options.map(normalizeToken) : defaultSkillOptions()
+    }))
   }
 
   for (const choice of Array.isArray(resolved?.species?.featChoices) ? resolved.species.featChoices : []) {
-    choices.push({
+    const count = Number(choice.count || 1)
+    rows.push(choiceRow({
+      choices,
+      sourceKey: `species-feat:${resolved.species.id}`,
       sourceType: 'species',
       sourceName: resolved.species.title,
       type: 'feat',
-      label: `${resolved.species.title}: choose ${choice.count || 1} feat${Number(choice.count || 1) === 1 ? '' : 's'}`,
-      count: choice.count || 1,
+      label: `${resolved.species.title}: choose ${count} feat${count === 1 ? '' : 's'}`,
+      count,
       options: Array.isArray(choice.options) ? choice.options : [],
       category: choice.category || null
-    })
+    }))
   }
 
-  return choices
+  return rows
 }
 
 export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
@@ -317,6 +382,6 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
       hitDice,
       armorClass: buildArmorClassCandidates(sheet, scores, resolved)
     },
-    pendingChoices: buildPendingChoices(resolved)
+    pendingChoices: buildPendingChoices(sheet, resolved)
   }
 }

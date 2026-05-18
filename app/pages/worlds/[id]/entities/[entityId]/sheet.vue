@@ -484,9 +484,66 @@ async function saveSheet() {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
-    <div class="mx-auto max-w-[1100px] p-4 sm:p-6">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <div class="fixed inset-0 z-[80] h-[100dvh] overflow-y-auto bg-[#09111a] md:relative md:z-auto md:h-full md:bg-transparent">
+    <div class="mx-auto max-w-[1100px] p-3 pb-28 md:p-6">
+        <!-- Mobile Sheet Header -->
+        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,rgba(9,17,26,0.98),rgba(9,17,26,0.90))] px-3 py-3 backdrop-blur md:hidden">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Character Sheet</div>
+              <div class="mt-1 truncate text-xl font-semibold text-white">
+                {{ sheet?.name || entity?.title || 'Character' }}
+              </div>
+              <div class="mt-1 truncate text-xs text-[#d8ceb8]">
+                {{ sheet?.class_name || 'Class' }} · {{ sheet?.species_name || 'Species' }} · Level {{ sheet?.level || 1 }}
+              </div>
+            </div>
+
+            <div class="flex shrink-0 gap-2">
+              <NuxtLink
+                :to="`/worlds/${worldId}/entities/${entityId}`"
+                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+              >
+                Back
+              </NuxtLink>
+
+              <button
+                v-if="mode === 'build'"
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
+                :disabled="sheetSaving"
+                @click="saveSheet"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-3 grid grid-cols-5 gap-1 text-center text-[11px]">
+            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
+              <div class="text-[#9f9278]">AC</div>
+              <div class="font-semibold text-white">{{ shownCombatStat('armorClass') || '—' }}</div>
+            </div>
+            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
+              <div class="text-[#9f9278]">HP</div>
+              <div class="font-semibold text-white">{{ shownCombatStat('currentHp') || '—' }}/{{ shownCombatStat('maxHp') || '—' }}</div>
+            </div>
+            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
+              <div class="text-[#9f9278]">Init</div>
+              <div class="font-semibold text-white">{{ shownCombatStat('initiative') || '—' }}</div>
+            </div>
+            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
+              <div class="text-[#9f9278]">Spd</div>
+              <div class="font-semibold text-white">{{ shownCombatStat('speed') || '—' }}</div>
+            </div>
+            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
+              <div class="text-[#9f9278]">PB</div>
+              <div class="font-semibold text-white">{{ math?.proficiencyBonusText || '+2' }}</div>
+            </div>
+          </div>
+        </div>
+
+      <div class="mb-4 hidden flex-wrap items-center justify-between gap-3 md:flex">
         <NuxtLink
           :to="`/worlds/${worldId}/entities/${entityId}`"
           class="eldra-button rounded-none px-4 py-2 text-sm"
@@ -515,7 +572,7 @@ async function saveSheet() {
         </div>
       </div>
 
-        <div class="mb-4 overflow-x-auto">
+        <div class="mb-4 hidden overflow-x-auto md:block">
           <div class="flex min-w-max gap-2">
             <button
               v-for="tab in SHEET_TABS"
@@ -552,11 +609,11 @@ async function saveSheet() {
               <input
                 v-if="mode === 'build'"
                 v-model="sheetForm.name"
-                class="eldra-input mt-2 w-full rounded-none px-4 py-2 text-3xl font-semibold text-white sm:text-4xl"
+                class="eldra-input mt-2 w-full rounded-none px-4 py-2 text-2xl font-semibold text-white sm:text-4xl"
                 placeholder="Character name"
               >
 
-              <h1 v-else class="mt-2 text-4xl font-semibold text-white">
+              <h1 v-else class="mt-2 text-3xl font-semibold text-white sm:text-4xl">
                 {{ sheet?.name || entity?.title || 'Character' }}
               </h1>
 
@@ -577,7 +634,7 @@ async function saveSheet() {
             <img
               :src="entityImageUrl"
               :alt="sheet?.name || entity?.title || 'Character Portrait'"
-              class="max-h-[420px] w-full object-cover object-[center_15%]"
+              class="max-h-[260px] w-full object-cover object-[center_15%] md:max-h-[420px]"
             >
           </div>
 
@@ -693,7 +750,7 @@ async function saveSheet() {
             </label>
           </div>
 
-          <section v-if="activeSheetTab === 'overview'" class="mt-6 grid gap-3 sm:grid-cols-3">
+          <section v-if="activeSheetTab === 'overview'" class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <label
               v-for="ability in abilityList"
               :key="ability.key"
@@ -1051,6 +1108,26 @@ async function saveSheet() {
               <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
                 Notes and custom sheet annotations will live here after the next data pass.
               </p>
+      <!-- Mobile Bottom Sheet Tabs -->
+      <nav class="fixed inset-x-0 bottom-0 z-[90] border-t border-[rgba(201,164,90,0.28)] bg-[linear-gradient(to_top,rgba(9,17,26,0.98),rgba(9,17,26,0.92))] px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur md:hidden">
+        <div class="grid grid-cols-5 gap-1">
+          <button
+            v-for="tab in SHEET_TABS"
+            :key="`mobile-${tab.key}`"
+            type="button"
+            class="min-w-0 rounded-none border px-1.5 py-2 text-[11px] font-semibold transition"
+            :class="activeSheetTab === tab.key
+              ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
+              : 'border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8]'"
+            @click="setSheetTab(tab.key)"
+          >
+            <span class="block truncate">{{ tab.label }}</span>
+            <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="text-[10px] text-[#9f9278]">({{ mathPendingChoices.length }})</span>
+            <span v-else-if="tab.key === 'inventory'" class="text-[10px] text-[#9f9278]">({{ inventoryCount }})</span>
+            <span v-else-if="tab.key === 'features' && featureCount" class="text-[10px] text-[#9f9278]">({{ featureCount }})</span>
+          </button>
+        </div>
+      </nav>
             </div>
           </section>
         </template>

@@ -110,6 +110,7 @@ const featureCount = computed(() => {
   if (resolvedClass.value?.featureCount) count += Number(resolvedClass.value.featureCount || 0)
   if (resolvedSpecies.value?.rawTraitCount) count += Number(resolvedSpecies.value.rawTraitCount || 0)
   if (resolvedBackground.value?.featureName) count += 1
+  if (resolvedFeats.value?.length) count += Number(resolvedFeats.value.length || 0)
   return count
 })
 const resolved = computed(() => data.value?.resolved || null)
@@ -121,6 +122,7 @@ const mathPendingChoices = computed(() => Array.isArray(math.value?.pendingChoic
 const resolvedClass = computed(() => resolved.value?.class || null)
 const resolvedSpecies = computed(() => resolved.value?.species || null)
 const resolvedBackground = computed(() => resolved.value?.background || null)
+const resolvedFeats = computed(() => Array.isArray(resolved.value?.feats) ? resolved.value.feats : [])
 
 const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return String(entity.value.imageUrl)
@@ -223,6 +225,11 @@ function syncSpellDraftsFromSheet() {
 function stringValue(value: any, fallback = '') {
   if (value === null || value === undefined) return fallback
   return String(value)
+}
+function shortText(value: any, limit = 320) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
 }
 
 function syncFormFromSheet() {
@@ -351,10 +358,14 @@ const selectedFeatIds = computed(() => {
   return Array.from(ids)
 })
 
-const selectedFeats = computed(() =>
+const selectedFeatOptions = computed(() =>
   selectedFeatIds.value
     .map((id) => featOptions.value.find((option: any) => String(option.id) === String(id)))
     .filter(Boolean)
+)
+
+const selectedFeats = computed(() =>
+  resolvedFeats.value.length ? resolvedFeats.value : selectedFeatOptions.value
 )
 
 function choiceSlots(choice: any) {
@@ -1401,32 +1412,60 @@ async function saveSheet() {
             class="mt-6 grid gap-4 lg:grid-cols-3"
           >
               <div class="eldra-codex-soft rounded-none p-4 lg:col-span-3">
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
-                  <div class="mt-1 text-sm text-[#d8ceb8]">Feat choices saved from imported world feat entries.</div>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Resolved from imported feat articles saved on this sheet.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
+                  </div>
                 </div>
 
-                <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                  {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
+                <div v-if="selectedFeats.length" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <article
+                    v-for="feat in selectedFeats"
+                    :key="feat.id"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-4 text-sm text-[#d8ceb8]"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="text-base font-semibold text-white">{{ feat.title }}</div>
+                        <div class="mt-1 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.16em] text-[#9f9278]">
+                          <span v-if="feat.source">{{ feat.source }}</span>
+                          <span v-if="feat.page">p. {{ feat.page }}</span>
+                          <span v-if="feat.category">Category: {{ feat.category }}</span>
+                        </div>
+                      </div>
+
+                      <NuxtLink
+                        :to="`/worlds/${worldId}/entities/${feat.id}`"
+                        class="eldra-button shrink-0 rounded-none px-3 py-1.5 text-xs"
+                      >
+                        Article
+                      </NuxtLink>
+                    </div>
+
+                    <div v-if="feat.prerequisites" class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]">
+                      <span class="text-[#d8ceb8]">Prerequisites:</span> {{ feat.prerequisites }}
+                    </div>
+
+                    <p v-if="feat.benefits" class="mt-3 text-sm leading-6 text-[#d8ceb8]">
+                      {{ shortText(feat.benefits, 360) }}
+                    </p>
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <span v-if="feat.repeatable" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Repeatable</span>
+                      <span v-if="feat.abilityScoreIncrease" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Ability</span>
+                      <span v-if="feat.additionalSpells" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Spell Choice</span>
+                    </div>
+                  </article>
                 </div>
-              </div>
 
-              <div v-if="selectedFeats.length" class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                <NuxtLink
-                  v-for="feat in selectedFeats"
-                  :key="feat.id"
-                  :to="`/worlds/${worldId}/entities/${feat.id}`"
-                  class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
-                >
-                  <div class="font-medium text-white">{{ feat.title }}</div>
-                  <div class="mt-1 text-xs text-[#9f9278]">Open feat article →</div>
-                </NuxtLink>
-              </div>
-
-              <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                No feat choices selected yet.
-              </div>
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  No feat choices selected yet.
+                </div>
               </div>
             <div class="eldra-codex-soft rounded-none p-4">
               <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Class Features</div>

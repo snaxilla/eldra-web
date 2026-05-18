@@ -206,24 +206,81 @@ function resolveBackground(entity: any, blocks: any[]) {
   }
 }
 
+
+function selectedFeatIdsFromChoices(sheet: any) {
+  const ids = new Set<string>()
+  const choices = sheet?.choices && typeof sheet.choices === 'object' && !Array.isArray(sheet.choices)
+    ? sheet.choices
+    : {}
+
+  for (const choice of Object.values(choices) as any[]) {
+    if (choice?.type !== 'feat') continue
+
+    for (const selected of Array.isArray(choice?.selected) ? choice.selected : []) {
+      const id = String(selected || '').trim()
+      if (id) ids.add(id)
+    }
+  }
+
+  return Array.from(ids)
+}
+
+function resolveFeat(entity: any, blocks: any[]) {
+  const core = blockByKey(blocks, 'feat_core')?.data || {}
+  const raw = blockByKey(blocks, 'import_source')?.data?.raw_json || {}
+
+  const benefits = String(core.benefits || '').trim() || formatSimpleValue(raw.entries)
+  const prerequisites = String(core.prerequisites || '').trim() || formatSimpleValue(raw.prerequisite)
+  const abilityScoreIncrease = String(core.ability_score_increase || core.abilityScoreIncrease || '').trim() || formatSimpleValue(raw.ability)
+  const additionalSpells = String(core.additional_spells || core.additionalSpells || '').trim() || formatSimpleValue(raw.additionalSpells)
+
+  return {
+    id: Number(entity.id),
+    title: String(entity.title || core.name || raw.name || 'Feat'),
+    slug: entity.slug ? String(entity.slug) : null,
+    category: core.category || raw.category || null,
+    prerequisites,
+    benefits,
+    repeatable: core.repeatable === true || core.repeatable === 'true' || raw.repeatable === true,
+    abilityScoreIncrease,
+    additionalSpells,
+    source: core.source || raw.source || null,
+    page: core.page || raw.page || null
+  }
+}
+
 export async function resolveCharacterSheetSources(sheet: any) {
   if (!sheet) {
     return {
       class: null,
       species: null,
-      background: null
+      background: null,
+      feats: []
     }
   }
 
-  const [classLinked, speciesLinked, backgroundLinked] = await Promise.all([
+  const selectedFeatIds = selectedFeatIdsFromChoices(sheet)
+
+  const [
+    classLinked,
+    speciesLinked,
+    backgroundLinked,
+    featLinkedList
+  ] = await Promise.all([
     loadLinkedEntity(sheet.class_entity_id),
     loadLinkedEntity(sheet.species_entity_id),
-    loadLinkedEntity(sheet.background_entity_id)
+    loadLinkedEntity(sheet.background_entity_id),
+    Promise.all(selectedFeatIds.map((id) => loadLinkedEntity(id)))
   ])
+
+  const feats = (Array.isArray(featLinkedList) ? featLinkedList : [])
+    .filter(Boolean)
+    .map((linked: any) => resolveFeat(linked.entity, linked.blocks))
 
   return {
     class: classLinked ? resolveClass(classLinked.entity, classLinked.blocks) : null,
     species: speciesLinked ? resolveSpecies(speciesLinked.entity, speciesLinked.blocks) : null,
-    background: backgroundLinked ? resolveBackground(backgroundLinked.entity, backgroundLinked.blocks) : null
+    background: backgroundLinked ? resolveBackground(backgroundLinked.entity, backgroundLinked.blocks) : null,
+    feats
   }
 }

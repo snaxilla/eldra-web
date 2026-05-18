@@ -220,6 +220,27 @@ function plainObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
+function normalizeIdList(value: any) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item: any) => String(item || '').trim())
+    .filter(Boolean)
+}
+
+function normalizeSheetSpellcasting(value: any, fallback: any = {}) {
+  const source = plainObject(value)
+  const previous = plainObject(fallback)
+
+  return {
+    ...previous,
+    ...source,
+    knownSpellIds: normalizeIdList(source.knownSpellIds ?? source.known_spell_ids ?? previous.knownSpellIds ?? previous.known_spell_ids),
+    preparedSpellIds: normalizeIdList(source.preparedSpellIds ?? source.prepared_spell_ids ?? previous.preparedSpellIds ?? previous.prepared_spell_ids),
+    alwaysPreparedSpellIds: normalizeIdList(source.alwaysPreparedSpellIds ?? source.always_prepared_spell_ids ?? previous.alwaysPreparedSpellIds ?? previous.always_prepared_spell_ids)
+  }
+}
+
 function normalizeChoiceToken(value: any) {
   return String(value || '')
     .trim()
@@ -347,6 +368,7 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     background_entity_id: backgroundEntityIdProvided ? integerOrNull(body?.backgroundEntityId ?? body?.background_entity_id) : integerOrNull(sheet?.background_entity_id),
     ability_scores: normalizeAbilityScores(body?.abilityScores ?? body?.ability_scores, sheet?.ability_scores),
     combat_stats: normalizeCombatStats(body?.combatStats ?? body?.combat_stats, sheet?.combat_stats),
+    spellcasting: body?.spellcasting !== undefined ? normalizeSheetSpellcasting(body.spellcasting, sheet?.spellcasting) : normalizeSheetSpellcasting(sheet?.spellcasting),
     choices: body?.choices !== undefined ? normalizeSheetChoices(body.choices) : normalizeSheetChoices(sheet?.choices)
   }
 

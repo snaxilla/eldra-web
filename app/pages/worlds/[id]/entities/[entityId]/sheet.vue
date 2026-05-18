@@ -16,12 +16,19 @@ const sheetSaveSuccess = ref('')
 const choiceSaving = ref(false)
 const choiceSaveError = ref('')
 const choiceSaveSuccess = ref('')
+
+const spellSaving = ref(false)
+const spellSaveError = ref('')
+const spellSaveSuccess = ref('')
+const spellKnownDraft = ref<string[]>([])
+const spellPreparedDraft = ref<string[]>([])
 const choiceDrafts = ref<Record<string, string[]>>({})
 
 const SHEET_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'stats', label: 'Stats' },
   { key: 'inventory', label: 'Inventory' },
+  { key: 'spells', label: 'Spells' },
   { key: 'features', label: 'Features' },
   { key: 'notes', label: 'Notes' }
 ] as const
@@ -143,6 +150,7 @@ const classOptions = computed(() => entityOptionsForTypes(['class']))
 const speciesOptions = computed(() => entityOptionsForTypes(['species', 'race']))
 const backgroundOptions = computed(() => entityOptionsForTypes(['background']))
 const featOptions = computed(() => entityOptionsForTypes(['feat']))
+const spellOptions = computed(() => entityOptionsForTypes(['spell']))
 
 function optionTitle(options: any[], id: any) {
   const needle = String(id || '')
@@ -152,9 +160,64 @@ function optionTitle(options: any[], id: any) {
 function featTitleById(id: any) {
   return optionTitle(featOptions.value, id)
 }
+function spellTitleById(id: any) {
+  return optionTitle(spellOptions.value, id)
+}
+
+function spellOptionById(id: any) {
+  const needle = String(id || '')
+  if (!needle) return null
+  return spellOptions.value.find((option: any) => String(option.id) === needle) || null
+}
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+function idList(value: any): string[] {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item: any) => String(item || '').trim())
+    .filter(Boolean)
+}
+
+const sheetSpellcasting = computed(() => asObject(sheet.value?.spellcasting))
+
+const knownSpellIds = computed(() =>
+  idList(sheetSpellcasting.value.knownSpellIds ?? sheetSpellcasting.value.known_spell_ids)
+)
+
+const preparedSpellIds = computed(() =>
+  idList(sheetSpellcasting.value.preparedSpellIds ?? sheetSpellcasting.value.prepared_spell_ids)
+)
+
+const alwaysPreparedSpellIds = computed(() =>
+  idList(sheetSpellcasting.value.alwaysPreparedSpellIds ?? sheetSpellcasting.value.always_prepared_spell_ids)
+)
+
+function spellOptionsByIds(ids: string[]) {
+  return ids
+    .map((id) => spellOptionById(id))
+    .filter(Boolean)
+}
+
+const knownSpells = computed(() => spellOptionsByIds(knownSpellIds.value))
+const preparedSpells = computed(() => spellOptionsByIds(preparedSpellIds.value))
+const alwaysPreparedSpells = computed(() => spellOptionsByIds(alwaysPreparedSpellIds.value))
+
+const selectedSpellCount = computed(() => {
+  const ids = new Set([
+    ...knownSpellIds.value,
+    ...preparedSpellIds.value,
+    ...alwaysPreparedSpellIds.value
+  ])
+
+  return ids.size
+})
+
+function syncSpellDraftsFromSheet() {
+  spellKnownDraft.value = [...knownSpellIds.value]
+  spellPreparedDraft.value = [...preparedSpellIds.value]
 }
 
 function stringValue(value: any, fallback = '') {
@@ -199,6 +262,7 @@ watch(
   () => sheet.value?.id,
   () => {
     syncFormFromSheet()
+      syncSpellDraftsFromSheet()
   },
   { immediate: true }
 )
@@ -513,6 +577,52 @@ async function saveChoices() {
   }
 }
 
+async function saveSpells() {
+  if (spellSaving.value) return
+
+  spellSaving.value = true
+  spellSaveError.value = ''
+  spellSaveSuccess.value = ''
+
+  try {
+    const saved = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
+      method: 'PATCH',
+      body: {
+        name: sheetForm.name,
+        level: sheetForm.level,
+        className: optionTitle(classOptions.value, sheetForm.classEntityId) || sheetForm.className,
+        subclassName: sheetForm.subclassName,
+        speciesName: optionTitle(speciesOptions.value, sheetForm.speciesEntityId) || sheetForm.speciesName,
+        backgroundName: optionTitle(backgroundOptions.value, sheetForm.backgroundEntityId) || sheetForm.backgroundName,
+        classEntityId: sheetForm.classEntityId || null,
+        speciesEntityId: sheetForm.speciesEntityId || null,
+        backgroundEntityId: sheetForm.backgroundEntityId || null,
+        abilityScores: { ...sheetForm.abilityScores },
+        combatStats: { ...sheetForm.combatStats },
+        spellcasting: {
+          knownSpellIds: [...spellKnownDraft.value],
+          preparedSpellIds: [...spellPreparedDraft.value],
+          alwaysPreparedSpellIds: [...alwaysPreparedSpellIds.value]
+        }
+      }
+    })
+
+    data.value = saved as any
+    syncFormFromSheet()
+    syncChoiceDrafts()
+    syncSpellDraftsFromSheet()
+    spellSaveSuccess.value = 'Spells saved.'
+  } catch (err: any) {
+    spellSaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to save spells.'
+  } finally {
+    spellSaving.value = false
+  }
+}
+
 async function saveSheet() {
   if (sheetSaving.value) return
 
@@ -613,7 +723,7 @@ async function saveSheet() {
           </div>
             <!-- Mobile Sheet Tabs -->
             <nav class="mt-3 overflow-x-auto border-t border-[rgba(201,164,90,0.20)] pt-2 md:hidden">
-            <div class="grid min-w-max grid-cols-5 gap-1">
+            <div class="grid min-w-max grid-cols-6 gap-1">
               <button
                 v-for="tab in SHEET_TABS"
                 :key="`mobile-${tab.key}`"
@@ -627,6 +737,7 @@ async function saveSheet() {
                 <span class="block truncate">{{ tab.label }}</span>
                 <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="text-[10px] text-[#9f9278]">({{ mathPendingChoices.length }})</span>
                 <span v-else-if="tab.key === 'inventory'" class="text-[10px] text-[#9f9278]">({{ inventoryCount }})</span>
+                <span v-else-if="tab.key === 'spells'" class="text-[10px] text-[#9f9278]">({{ selectedSpellCount }})</span>
                 <span v-else-if="tab.key === 'features' && featureCount" class="text-[10px] text-[#9f9278]">({{ featureCount }})</span>
               </button>
             </div>
@@ -677,6 +788,7 @@ async function saveSheet() {
               <span>{{ tab.label }}</span>
               <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="ml-1 text-[#9f9278]">({{ mathPendingChoices.length }})</span>
               <span v-if="tab.key === 'inventory'" class="ml-1 text-[#9f9278]">({{ inventoryCount }})</span>
+              <span v-if="tab.key === 'spells'" class="ml-1 text-[#9f9278]">({{ selectedSpellCount }})</span>
               <span v-if="tab.key === 'features' && featureCount" class="ml-1 text-[#9f9278]">({{ featureCount }})</span>
             </button>
           </div>
@@ -1160,37 +1272,161 @@ async function saveSheet() {
             </div>
           </section>
 
+            <section
+              v-else-if="activeSheetTab === 'spells'"
+              class="mt-6 grid gap-4 lg:grid-cols-2"
+            >
+              <div
+                v-if="mode === 'build'"
+                class="eldra-codex-soft rounded-none p-4 lg:col-span-2"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spellbook Builder</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Select imported spell articles for this sheet. Spell-slot math comes next.</div>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                    :disabled="spellSaving"
+                    @click="saveSpells"
+                  >
+                    {{ spellSaving ? 'Saving...' : 'Save Spells' }}
+                  </button>
+                </div>
+
+                <div v-if="spellSaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                  {{ spellSaveError }}
+                </div>
+
+                <div v-if="spellSaveSuccess" class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  {{ spellSaveSuccess }}
+                </div>
+
+                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                  <label class="block">
+                    <span class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Known / Spellbook Spells</span>
+                    <select
+                      v-model="spellKnownDraft"
+                      multiple
+                      size="10"
+                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                    >
+                      <option
+                        v-for="option in spellOptions"
+                        :key="option.id"
+                        :value="option.id"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ option.title }}
+                      </option>
+                    </select>
+                  </label>
+
+                  <label class="block">
+                    <span class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Prepared Spells</span>
+                    <select
+                      v-model="spellPreparedDraft"
+                      multiple
+                      size="10"
+                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                    >
+                      <option
+                        v-for="option in spellOptions"
+                        :key="option.id"
+                        :value="option.id"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ option.title }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Known Spells</div>
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ knownSpells.length }} Spell{{ knownSpells.length === 1 ? '' : 's' }}
+                  </div>
+                </div>
+
+                <div v-if="knownSpells.length" class="mt-4 space-y-2">
+                  <NuxtLink
+                    v-for="spell in knownSpells"
+                    :key="spell.id"
+                    :to="`/worlds/${worldId}/entities/${spell.id}`"
+                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                  >
+                    <div class="font-medium text-white">{{ spell.title }}</div>
+                    <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
+                  </NuxtLink>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  No known spells selected yet.
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Prepared Spells</div>
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ preparedSpells.length }} Prepared
+                  </div>
+                </div>
+
+                <div v-if="preparedSpells.length" class="mt-4 space-y-2">
+                  <NuxtLink
+                    v-for="spell in preparedSpells"
+                    :key="spell.id"
+                    :to="`/worlds/${worldId}/entities/${spell.id}`"
+                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                  >
+                    <div class="font-medium text-white">{{ spell.title }}</div>
+                    <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
+                  </NuxtLink>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  No prepared spells selected yet.
+                </div>
+              </div>
+            </section>
+
           <section
             v-else-if="activeSheetTab === 'features'"
             class="mt-6 grid gap-4 lg:grid-cols-3"
           >
               <div class="eldra-codex-soft rounded-none p-4 lg:col-span-3">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Feat choices saved from imported world feat entries.</div>
-                  </div>
-
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
-                  </div>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
+                  <div class="mt-1 text-sm text-[#d8ceb8]">Feat choices saved from imported world feat entries.</div>
                 </div>
 
-                <div v-if="selectedFeats.length" class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  <NuxtLink
-                    v-for="feat in selectedFeats"
-                    :key="feat.id"
-                    :to="`/worlds/${worldId}/entities/${feat.id}`"
-                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
-                  >
-                    <div class="font-medium text-white">{{ feat.title }}</div>
-                    <div class="mt-1 text-xs text-[#9f9278]">Open feat article →</div>
-                  </NuxtLink>
+                <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                  {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
                 </div>
+              </div>
 
-                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  No feat choices selected yet.
-                </div>
+              <div v-if="selectedFeats.length" class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                <NuxtLink
+                  v-for="feat in selectedFeats"
+                  :key="feat.id"
+                  :to="`/worlds/${worldId}/entities/${feat.id}`"
+                  class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                >
+                  <div class="font-medium text-white">{{ feat.title }}</div>
+                  <div class="mt-1 text-xs text-[#9f9278]">Open feat article →</div>
+                </NuxtLink>
+              </div>
+
+              <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                No feat choices selected yet.
+              </div>
               </div>
             <div class="eldra-codex-soft rounded-none p-4">
               <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Class Features</div>

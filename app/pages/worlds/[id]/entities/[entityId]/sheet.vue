@@ -142,11 +142,15 @@ function entityOptionsForTypes(types: string[]) {
 const classOptions = computed(() => entityOptionsForTypes(['class']))
 const speciesOptions = computed(() => entityOptionsForTypes(['species', 'race']))
 const backgroundOptions = computed(() => entityOptionsForTypes(['background']))
+const featOptions = computed(() => entityOptionsForTypes(['feat']))
 
 function optionTitle(options: any[], id: any) {
   const needle = String(id || '')
   if (!needle) return ''
   return options.find((option: any) => String(option.id) === needle)?.title || ''
+}
+function featTitleById(id: any) {
+  return optionTitle(featOptions.value, id)
 }
 
 function asObject(value: any) {
@@ -266,17 +270,49 @@ const abilityList = computed(() => [
   { key: 'cha', label: 'CHA', value: shownAbilityScore('cha') }
 ])
 
+
+const selectedFeatIds = computed(() => {
+  const ids = new Set<string>()
+  const choices = asObject(sheet.value?.choices)
+
+  for (const choice of Object.values(choices) as any[]) {
+    if (choice?.type !== 'feat') continue
+
+    for (const selected of Array.isArray(choice?.selected) ? choice.selected : []) {
+      const id = String(selected || '').trim()
+      if (id) ids.add(id)
+    }
+  }
+
+  return Array.from(ids)
+})
+
+const selectedFeats = computed(() =>
+  selectedFeatIds.value
+    .map((id) => featOptions.value.find((option: any) => String(option.id) === String(id)))
+    .filter(Boolean)
+)
+
 function choiceSlots(choice: any) {
   const count = Math.max(1, Number(choice?.count || 1))
   return Array.from({ length: count }, (_, index) => index)
 }
 
 function choiceOptions(choice: any) {
+  if (choice?.type === 'feat') {
+    return featOptions.value.map((option: any) => String(option.id))
+  }
+
   return Array.isArray(choice?.options) ? choice.options : []
 }
 
 function prettyChoiceValue(value: any) {
-  return String(value || '')
+  const raw = String(value || '').trim()
+  const featTitle = featTitleById(raw)
+
+  if (featTitle) return featTitle
+
+  return raw
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
@@ -305,12 +341,35 @@ function selectedChoiceSkillSet() {
 }
 
 function isChoiceOptionDisabled(choice: any, slot: number, option: any) {
+  const sourceKey = String(choice?.sourceKey || '')
+
+  if (choice?.type === 'feat') {
+    const optionKey = String(option || '').trim()
+    if (!optionKey) return false
+
+    const currentValue = String(choiceDrafts.value[sourceKey]?.[slot] || '').trim()
+    if (currentValue === optionKey) return false
+
+    for (const otherChoice of mathPendingChoices.value) {
+      if (otherChoice?.type !== 'feat') continue
+
+      const otherSourceKey = String(otherChoice?.sourceKey || '')
+      const drafts = choiceDrafts.value[otherSourceKey] || []
+
+      for (let index = 0; index < drafts.length; index++) {
+        if (otherSourceKey === sourceKey && index === slot) continue
+        if (String(drafts[index] || '').trim() === optionKey) return true
+      }
+    }
+
+    return selectedFeatIds.value.includes(optionKey)
+  }
+
   if (choice?.type !== 'skill') return false
 
   const optionKey = normalizeChoiceValue(option)
   if (!optionKey) return false
 
-  const sourceKey = String(choice?.sourceKey || '')
   const currentValue = normalizeChoiceValue(choiceDrafts.value[sourceKey]?.[slot])
 
   if (currentValue === optionKey) return false
@@ -337,10 +396,15 @@ function isChoiceOptionDisabled(choice: any, slot: number, option: any) {
 }
 
 function choiceOptionLabel(choice: any, slot: number, option: any) {
-  const label = prettyChoiceValue(option)
-  return isChoiceOptionDisabled(choice, slot, option)
-    ? `${label} (already known)`
-    : label
+  const label = choice?.type === 'feat'
+    ? (featTitleById(option) || `Feat ${option}`)
+    : prettyChoiceValue(option)
+
+  if (!isChoiceOptionDisabled(choice, slot, option)) return label
+
+  return choice?.type === 'feat'
+    ? `${label} (already selected)`
+    : `${label} (already known)`
 }
 
 function syncChoiceDrafts() {
@@ -378,13 +442,14 @@ async function saveChoices() {
     }
 
     const usedSkillChoices = new Set<string>()
+    const usedFeatChoices = new Set<string>()
 
     for (const choice of mathPendingChoices.value) {
       const key = String(choice?.sourceKey || '')
       if (!key) continue
 
       const rawSelected = (choiceDrafts.value[key] || [])
-        .map((item) => normalizeChoiceValue(item))
+        .map((item) => choice?.type === 'feat' ? String(item || '').trim() : normalizeChoiceValue(item))
         .filter(Boolean)
 
       const selected: string[] = []
@@ -392,6 +457,11 @@ async function saveChoices() {
         if (choice?.type === 'skill') {
           if (usedSkillChoices.has(item)) continue
           usedSkillChoices.add(item)
+        }
+
+        if (choice?.type === 'feat') {
+          if (usedFeatChoices.has(item)) continue
+          usedFeatChoices.add(item)
         }
 
         selected.push(item)
@@ -1094,6 +1164,34 @@ async function saveSheet() {
             v-else-if="activeSheetTab === 'features'"
             class="mt-6 grid gap-4 lg:grid-cols-3"
           >
+              <div class="eldra-codex-soft rounded-none p-4 lg:col-span-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Feat choices saved from imported world feat entries.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
+                  </div>
+                </div>
+
+                <div v-if="selectedFeats.length" class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <NuxtLink
+                    v-for="feat in selectedFeats"
+                    :key="feat.id"
+                    :to="`/worlds/${worldId}/entities/${feat.id}`"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                  >
+                    <div class="font-medium text-white">{{ feat.title }}</div>
+                    <div class="mt-1 text-xs text-[#9f9278]">Open feat article →</div>
+                  </NuxtLink>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  No feat choices selected yet.
+                </div>
+              </div>
             <div class="eldra-codex-soft rounded-none p-4">
               <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Class Features</div>
               <div class="mt-2 text-xl font-semibold text-white">{{ resolvedClass?.title || 'No linked class' }}</div>

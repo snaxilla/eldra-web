@@ -147,6 +147,7 @@ function blockByKey(key: string) {
 }
 
 const itemCore = computed(() => blockByKey('item_core')?.data || null)
+const featCore = computed(() => blockByKey('feat_core')?.data || null)
 const spellCore = computed(() => blockByKey('spell_core')?.data || null)
 const speciesCore = computed(() => blockByKey('species_core')?.data || null)
 const classCore = computed(() => blockByKey('class_core')?.data || null)
@@ -318,6 +319,16 @@ function buildSpellArticleMarkdown(): string {
   return parts.filter(Boolean).join('\n\n')
 }
 
+function buildFeatArticleMarkdown(): string {
+  const core = featCore.value
+  const raw = importSourceRawJson()
+
+  const benefits = String(core?.benefits || '').trim()
+  const rawEntries = entriesToMarkdown(raw?.entries)
+
+  return benefits || rawEntries || ''
+}
+
 
 const entityImageUrl = computed(() => {
   if (entity.value?.imageUrl) return entity.value.imageUrl
@@ -421,6 +432,8 @@ const generatedArticleMarkdown = computed(() => {
     entity.value?.fluff_markdown ||
     entity.value?.summary_markdown ||
     itemCore.value?.description ||
+    featCore.value?.benefits ||
+    buildFeatArticleMarkdown() ||
     buildSpellArticleMarkdown() ||
     buildSpeciesArticleMarkdown() ||
     classCore.value?.description ||
@@ -672,6 +685,18 @@ function formatPrimaryAbility(value: any): string {
   return String(value)
 }
 
+function featMetaLines() {
+  const core = featCore.value
+  if (!core) return []
+
+  return [
+    core.category ? `Category: ${core.category}` : '',
+    core.prerequisites ? `Prerequisites: ${core.prerequisites}` : '',
+    core.repeatable ? 'Repeatable' : '',
+    core.ability_score_increase ? `Ability: ${core.ability_score_increase}` : ''
+  ].filter(Boolean)
+}
+
 function itemMetaLines() {
   const core = itemCore.value
   if (!core) return []
@@ -813,6 +838,7 @@ const heroMetaLines = computed(() => {
   if (speciesCore.value) return speciesMetaLines()
   if (spellCore.value) return spellMetaLines().slice(0, 4)
   if (itemCore.value) return itemMetaLines().slice(0, 4)
+  if (featCore.value) return featMetaLines().slice(0, 4)
   if (backgroundCore.value) return backgroundMetaLines()
   if (locationCore.value) return locationMetaLines()
   return []

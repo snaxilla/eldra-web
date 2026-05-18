@@ -101,6 +101,12 @@ const navItems = computed<NavItem[]>(() => [
     icon: 'i-lucide-shield',
     to: `/worlds/${worldId.value}/entities?type=class`
   },
+    {
+      key: 'feats',
+      label: 'Feats',
+      icon: 'i-lucide-badge-plus',
+      to: `/worlds/${worldId.value}/feats`
+    },
   {
     key: 'maps',
     label: 'Maps',

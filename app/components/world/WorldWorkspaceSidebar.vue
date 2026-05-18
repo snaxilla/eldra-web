@@ -29,6 +29,7 @@ const navItems = computed(() => [
   { label: 'Items', icon: 'i-lucide-package', to: `/worlds/${worldId.value}/items` },
   { label: 'Enemies', icon: 'i-lucide-skull', to: `/worlds/${worldId.value}/enemies` },
   { label: 'Classes', icon: 'i-lucide-shield', to: `/worlds/${worldId.value}/classes` },
+    { label: 'Feats', icon: 'i-lucide-badge-plus', to: `/worlds/${worldId.value}/feats` },
   { label: 'Maps', icon: 'i-lucide-map', to: `/worlds/${worldId.value}/maps` },
   { label: 'Other', icon: 'i-lucide-folder', to: `/worlds/${worldId.value}/other` },
   { label: 'Importer', icon: 'i-lucide-download', to: `/worlds/${worldId.value}/importer` },

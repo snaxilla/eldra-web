@@ -6,7 +6,7 @@ definePageMeta({
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
 
-type ImportType = 'monsters' | 'items' | 'spells' | 'species' | 'classes' | 'backgrounds'
+type ImportType = 'monsters' | 'items' | 'spells' | 'species' | 'classes' | 'backgrounds' | 'feats'
 
 const importType = ref<ImportType>('monsters')
 const mode = ref<'create' | 'update' | 'upsert'>('upsert')
@@ -52,7 +52,11 @@ const endpointMap: Record<string, { preview: string; save: string }> = {
   backgrounds: {
     preview: '/api/import/preview/5etools/backgrounds',
     save: '/api/import/save/5etools/backgrounds'
-  }
+  },
+    feats: {
+      preview: '/api/import/preview/5etools/feats',
+      save: '/api/import/save/5etools/feats'
+    }
 }
 
 const sourceRouteMap: Record<ImportType, { sources: string; search: string }> = {
@@ -79,7 +83,11 @@ const sourceRouteMap: Record<ImportType, { sources: string; search: string }> = 
   backgrounds: {
     sources: '/api/import/source/background-sources',
     search: '/api/import/source/backgrounds'
-  }
+  },
+    feats: {
+      sources: '/api/import/source/feat-sources',
+      search: '/api/import/source/feats'
+    }
 }
 
 const previewMonsterItem = computed(() => {
@@ -449,6 +457,7 @@ onMounted(async () => {
                   <option value="species">Species</option>
                   <option value="classes">Classes</option>
                   <option value="backgrounds">Backgrounds</option>
+                    <option value="feats">Feats</option>
                 </select>
               </div>
 

@@ -193,6 +193,10 @@ function spellCore(entity: any) {
   return blockByKey(entity, 'spell_core')?.data || null
 }
 
+function featCore(entity: any) {
+  return blockByKey(entity, 'feat_core')?.data || null
+}
+
 function speciesCore(entity: any) {
   return blockByKey(entity, 'species_core')?.data || null
 }
@@ -446,6 +450,9 @@ function summaryForEntity(entity: any) {
   const spellDescription = String(spellCore(entity)?.description || '').trim()
   if (spellDescription) return spellDescription
 
+  const featDescription = String(featCore(entity)?.benefits || featCore(entity)?.description || '').trim()
+  if (featDescription) return featDescription
+
   const speciesDescription = String(speciesCore(entity)?.description || speciesCore(entity)?.traits || buildSpeciesArticleMarkdown(entity) || '').trim()
   if (speciesDescription) return speciesDescription
 
@@ -456,6 +463,17 @@ function summaryForEntity(entity: any) {
   if (backgroundDescription) return backgroundDescription
 
   return ''
+}
+
+function featMetaLines(entity: any) {
+  const core = featCore(entity)
+  if (!core) return []
+
+  return [
+    core.category ? `Category: ${core.category}` : '',
+    core.prerequisites ? `Prerequisites: ${core.prerequisites}` : '',
+    core.repeatable ? 'Repeatable' : ''
+  ].filter(Boolean)
 }
 
 function itemMetaLines(entity: any) {

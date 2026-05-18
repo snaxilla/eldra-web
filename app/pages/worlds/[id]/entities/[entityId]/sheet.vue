@@ -541,6 +541,26 @@ async function saveSheet() {
               <div class="font-semibold text-white">{{ math?.proficiencyBonusText || '+2' }}</div>
             </div>
           </div>
+            <!-- Mobile Sheet Tabs -->
+            <nav class="mt-3 overflow-x-auto border-t border-[rgba(201,164,90,0.20)] pt-2 md:hidden">
+            <div class="grid min-w-max grid-cols-5 gap-1">
+              <button
+                v-for="tab in SHEET_TABS"
+                :key="`mobile-${tab.key}`"
+                type="button"
+                class="min-w-0 rounded-none border px-1.5 py-2 text-[11px] font-semibold transition"
+                :class="activeSheetTab === tab.key
+                  ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
+                  : 'border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8]'"
+                @click="setSheetTab(tab.key)"
+              >
+                <span class="block truncate">{{ tab.label }}</span>
+                <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="text-[10px] text-[#9f9278]">({{ mathPendingChoices.length }})</span>
+                <span v-else-if="tab.key === 'inventory'" class="text-[10px] text-[#9f9278]">({{ inventoryCount }})</span>
+                <span v-else-if="tab.key === 'features' && featureCount" class="text-[10px] text-[#9f9278]">({{ featureCount }})</span>
+              </button>
+            </div>
+            </nav>
         </div>
 
       <div class="mb-4 hidden flex-wrap items-center justify-between gap-3 md:flex">
@@ -1108,26 +1128,6 @@ async function saveSheet() {
               <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
                 Notes and custom sheet annotations will live here after the next data pass.
               </p>
-      <!-- Mobile Bottom Sheet Tabs -->
-      <nav class="fixed inset-x-0 bottom-0 z-[90] border-t border-[rgba(201,164,90,0.28)] bg-[linear-gradient(to_top,rgba(9,17,26,0.98),rgba(9,17,26,0.92))] px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur md:hidden">
-        <div class="grid grid-cols-5 gap-1">
-          <button
-            v-for="tab in SHEET_TABS"
-            :key="`mobile-${tab.key}`"
-            type="button"
-            class="min-w-0 rounded-none border px-1.5 py-2 text-[11px] font-semibold transition"
-            :class="activeSheetTab === tab.key
-              ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
-              : 'border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8]'"
-            @click="setSheetTab(tab.key)"
-          >
-            <span class="block truncate">{{ tab.label }}</span>
-            <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="text-[10px] text-[#9f9278]">({{ mathPendingChoices.length }})</span>
-            <span v-else-if="tab.key === 'inventory'" class="text-[10px] text-[#9f9278]">({{ inventoryCount }})</span>
-            <span v-else-if="tab.key === 'features' && featureCount" class="text-[10px] text-[#9f9278]">({{ featureCount }})</span>
-          </button>
-        </div>
-      </nav>
             </div>
           </section>
         </template>

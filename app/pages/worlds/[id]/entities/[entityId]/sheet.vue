@@ -74,6 +74,12 @@ const coreActionCards = [
 
 type SheetTab = typeof SHEET_TABS[number]['key']
 
+const mobileSheetTabs = computed(() =>
+  mode.value === 'build'
+    ? SHEET_TABS
+    : SHEET_TABS.filter((tab) => tab.key !== 'stats')
+)
+
 function normalizeSheetTab(value: any): SheetTab {
   const tab = String(Array.isArray(value) ? value[0] : value || 'overview')
   return SHEET_TABS.some((option) => option.key === tab) ? tab as SheetTab : 'overview'
@@ -1314,7 +1320,7 @@ async function saveSheet() {
           <nav class="mt-3 -mx-1 overflow-x-auto pb-1">
             <div class="flex min-w-max gap-2 px-1">
               <button
-                v-for="tab in SHEET_TABS"
+                v-for="tab in mobileSheetTabs"
                 :key="`mobile-${tab.key}`"
                 type="button"
                 class="inline-flex min-w-[86px] items-center justify-center gap-1 rounded-none border px-3 py-2 text-xs font-semibold transition"
@@ -1428,12 +1434,12 @@ async function saveSheet() {
               <div class="flex gap-3">
                 <div
                   v-if="entityImageUrl"
-                  class="eldra-image-frame h-28 w-24 shrink-0 overflow-hidden rounded-none border bg-black/20"
+                  class="eldra-frame-corners eldra-corner-runes relative h-32 w-24 shrink-0 overflow-hidden rounded-none border border-[rgba(201,164,90,0.36)] bg-[radial-gradient(circle_at_center,rgba(201,164,90,0.12),rgba(9,8,6,0.96))] p-1 shadow-[0_0_0_1px_rgba(0,0,0,0.65),0_16px_30px_rgba(0,0,0,0.35)]"
                 >
                   <img
                     :src="entityImageUrl"
                     :alt="sheet?.name || entity?.title || 'Character Portrait'"
-                    class="h-full w-full object-cover object-[center_15%]"
+                    class="h-full w-full object-contain object-bottom"
                   >
                 </div>
 
@@ -1475,6 +1481,51 @@ async function saveSheet() {
                     <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">{{ ability.label }}</div>
                     <div class="mt-1 text-xl font-semibold leading-none text-white">{{ ability.value ?? 10 }}</div>
                     <div class="mt-1 text-xs text-[#d8ceb8]">{{ abilityMod(ability.value) }}</div>
+                  </div>
+                </div>
+              </div>
+
+
+              <!-- Mobile Saving Throws -->
+              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Saving Throws</div>
+                  <div class="text-[10px] uppercase tracking-[0.18em] text-[#756a57]">Total</div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                  <div
+                    v-for="save in mathSaves"
+                    :key="save.key"
+                    class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-2"
+                  >
+                    <div class="flex items-center justify-between gap-1">
+                      <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">{{ save.shortLabel }}</div>
+                      <div v-if="save.proficient" class="eldra-gold-chip rounded-none border px-1 py-0 text-[9px]">P</div>
+                    </div>
+                    <div class="mt-1 text-lg font-semibold leading-none text-white">{{ save.totalText }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Mobile Skills -->
+              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Skills</div>
+                  <div class="text-[10px] uppercase tracking-[0.18em] text-[#756a57]">Check</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-1.5">
+                  <div
+                    v-for="skill in mathSkills"
+                    :key="skill.key"
+                    class="flex items-center justify-between gap-2 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.36)] px-2 py-1.5"
+                  >
+                    <div class="flex min-w-0 items-center gap-1.5">
+                      <span class="truncate text-[11px] leading-none text-[#d8ceb8]">{{ skill.label }}</span>
+                      <span v-if="skill.proficient" class="eldra-gold-chip rounded-none border px-1 py-0 text-[9px]">P</span>
+                    </div>
+                    <span class="shrink-0 text-xs font-semibold text-white">{{ skill.totalText }}</span>
                   </div>
                 </div>
               </div>

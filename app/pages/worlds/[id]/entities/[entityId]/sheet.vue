@@ -102,6 +102,10 @@ const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.valu
   watch: [worldId]
 })
 
+const { data: spellOptionPayload } = await useFetch(() => `/api/worlds/${worldId.value}/spell-options`, {
+  default: () => ({ items: [] }),
+  watch: [worldId]
+})
 const entity = computed(() => data.value?.entity || null)
 const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
@@ -167,7 +171,31 @@ const classOptions = computed(() => entityOptionsForTypes(['class']))
 const speciesOptions = computed(() => entityOptionsForTypes(['species', 'race']))
 const backgroundOptions = computed(() => entityOptionsForTypes(['background']))
 const featOptions = computed(() => entityOptionsForTypes(['feat']))
-const spellOptions = computed(() => entityOptionsForTypes(['spell']))
+const spellOptions = computed(() => {
+  const items = Array.isArray(spellOptionPayload.value?.items) ? spellOptionPayload.value.items : []
+
+  if (items.length) {
+    return items
+      .map((option: any) => ({
+        id: String(option?.id || ''),
+        title: String(option?.title || 'Untitled Spell'),
+        level: option?.level ?? null,
+        source: option?.source || null,
+        classes: Array.isArray(option?.classes) ? option.classes : [],
+        classKeys: Array.isArray(option?.classKeys) ? option.classKeys : [],
+        hasLookup: option?.hasLookup === true
+      }))
+      .filter((option: any) => option.id)
+      .sort((a: any, b: any) => {
+        const levelA = a.level ?? 999
+        const levelB = b.level ?? 999
+        if (levelA !== levelB) return levelA - levelB
+        return a.title.localeCompare(b.title)
+      })
+  }
+
+  return entityOptionsForTypes(['spell'])
+})
 
 function optionTitle(options: any[], id: any) {
   const needle = String(id || '')
@@ -446,6 +474,11 @@ function parseSpellChoiceFilter(value: any) {
 }
 
 function spellLevelForOption(option: any) {
+  if (option?.level !== null && option?.level !== undefined && option?.level !== '') {
+    const optionLevel = Number(option.level)
+    if (Number.isFinite(optionLevel)) return optionLevel
+  }
+
   const core = optionCore(option, 'spell_core')
   const raw = optionRawJson(option)
   const level = Number(core?.level ?? raw?.level)
@@ -454,6 +487,14 @@ function spellLevelForOption(option: any) {
 }
 
 function spellClassesForOption(option: any) {
+  if (Array.isArray(option?.classKeys) && option.classKeys.length) {
+    return option.classKeys.map(normalizeFilterToken).filter(Boolean)
+  }
+
+  if (Array.isArray(option?.classes) && option.classes.length) {
+    return option.classes.map(normalizeFilterToken).filter(Boolean)
+  }
+
   const raw = optionRawJson(option)
   const classes = raw?.classes || {}
   const values: string[] = []

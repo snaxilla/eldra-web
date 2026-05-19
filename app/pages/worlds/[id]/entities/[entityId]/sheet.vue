@@ -22,6 +22,7 @@ const spellSaveError = ref('')
 const spellSaveSuccess = ref('')
 const spellKnownDraft = ref<string[]>([])
 const spellPreparedDraft = ref<string[]>([])
+const spellSearch = ref('')
 const choiceDrafts = ref<Record<string, string[]>>({})
 
 const SHEET_TABS = [
@@ -568,6 +569,81 @@ function removePreparedSpell(id: any) {
 
   spellPreparedDraft.value = spellPreparedDraft.value.filter((spellId) => String(spellId) !== needle)
 }
+const spellSearchQuery = computed(() => spellSearch.value.trim().toLowerCase())
+
+function spellOptionLevelLabel(option: any) {
+  const level = spellLevelForOption(option)
+
+  if (level === null) return ''
+  return level === 0 ? 'Cantrip' : `Level ${level}`
+}
+
+function spellSearchMatches(option: any) {
+  const q = spellSearchQuery.value
+  if (!q) return true
+
+  return [
+    option?.title,
+    spellOptionLevelLabel(option),
+    spellClassesForOption(option).join(' ')
+  ]
+    .filter(Boolean)
+    .some((value: any) => String(value).toLowerCase().includes(q))
+}
+
+function isKnownSpell(id: any) {
+  const needle = String(id || '')
+  if (!needle) return false
+
+  return spellKnownDraft.value.some((spellId) => String(spellId) === needle)
+}
+
+function isPreparedSpell(id: any) {
+  const needle = String(id || '')
+  if (!needle) return false
+
+  return spellPreparedDraft.value.some((spellId) => String(spellId) === needle)
+}
+
+function addKnownSpell(id: any) {
+  const needle = String(id || '')
+  if (!needle || isKnownSpell(needle)) return
+
+  spellKnownDraft.value = [...spellKnownDraft.value, needle]
+}
+
+function prepareSpell(id: any) {
+  const needle = String(id || '')
+  if (!needle) return
+
+  if (!isKnownSpell(needle)) {
+    spellKnownDraft.value = [...spellKnownDraft.value, needle]
+  }
+
+  if (!isPreparedSpell(needle)) {
+    spellPreparedDraft.value = [...spellPreparedDraft.value, needle]
+  }
+}
+
+const availableSpellCards = computed(() => {
+  const known = new Set(spellKnownDraft.value.map((id) => String(id)))
+
+  return availableKnownSpellOptions.value
+    .filter((option: any) => !known.has(String(option.id)))
+    .filter((option: any) => spellSearchMatches(option))
+})
+
+const knownSpellCards = computed(() =>
+  shownKnownSpells.value.filter((option: any) => spellSearchMatches(option))
+)
+
+const preparedSpellCards = computed(() =>
+  shownPreparedSpells.value.filter((option: any) => spellSearchMatches(option))
+)
+
+const featChoiceSpellCards = computed(() =>
+  featChoiceSpells.value.filter((option: any) => spellSearchMatches(option))
+)
 
 function spellRestrictionLabel(choice: any) {
   if (choice?.type !== 'spell') return ''
@@ -1547,6 +1623,7 @@ async function saveSheet() {
             </div>
           </section>
 
+
             <section
               v-else-if="activeSheetTab === 'spells'"
               class="mt-6 grid gap-4 lg:grid-cols-2"
@@ -1558,7 +1635,7 @@ async function saveSheet() {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spellbook Builder</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Select imported spell articles for this sheet. Spell-slot math comes next.</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Search accessible spells, add them to the spellbook, then prepare what this character has ready.</div>
                   </div>
 
                   <button
@@ -1571,6 +1648,16 @@ async function saveSheet() {
                   </button>
                 </div>
 
+                <div class="mt-4">
+                  <label class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Search Spells</label>
+                  <input
+                    v-model="spellSearch"
+                    type="text"
+                    placeholder="Search accessible spells..."
+                    class="eldra-input w-full rounded-none px-4 py-3 text-sm text-white placeholder-[#756a57]"
+                  >
+                </div>
+
                 <div v-if="spellSaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
                   {{ spellSaveError }}
                 </div>
@@ -1578,59 +1665,83 @@ async function saveSheet() {
                 <div v-if="spellSaveSuccess" class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
                   {{ spellSaveSuccess }}
                 </div>
+              </div>
 
-                <div class="mt-4 grid gap-4 md:grid-cols-2">
-                  <label class="block">
-                    <span class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Known / Spellbook Spells</span>
-                    <select
-                      v-model="spellKnownDraft"
-                      multiple
-                      size="10"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    >
-                      <option
-                        v-for="option in availableKnownSpellOptions"
-                        :key="option.id"
-                        :value="option.id"
-                        class="bg-[#090909] text-[#f5e7bd]"
-                      >
-                        {{ option.title }}
-                      </option>
-                    </select>
-                  </label>
+              <div
+                v-if="mode === 'build'"
+                class="eldra-codex-soft rounded-none p-4 lg:col-span-2"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Available Class Spells</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Filtered by the linked class spell list. Feat-granted spells are handled separately below.</div>
+                  </div>
 
-                  <label class="block">
-                    <span class="mb-2 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Prepared Spells</span>
-                    <select
-                      v-model="spellPreparedDraft"
-                      multiple
-                      size="10"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    >
-                      <option
-                        v-for="option in availablePreparedSpellOptions"
-                        :key="option.id"
-                        :value="option.id"
-                        class="bg-[#090909] text-[#f5e7bd]"
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ availableSpellCards.length }} Available
+                  </div>
+                </div>
+
+                <div v-if="availableSpellCards.length" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <article
+                    v-for="spell in availableSpellCards"
+                    :key="spell.id"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-4 text-sm text-[#d8ceb8]"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="font-medium text-white">{{ spell.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
+                      </div>
+
+                      <NuxtLink
+                        :to="`/worlds/${worldId}/entities/${spell.id}`"
+                        class="eldra-button shrink-0 rounded-none px-3 py-1.5 text-xs"
                       >
-                        {{ option.title }}
-                      </option>
-                    </select>
-                  </label>
+                        Article
+                      </NuxtLink>
+                    </div>
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        class="eldra-button rounded-none px-3 py-2 text-xs"
+                        @click="addKnownSpell(spell.id)"
+                      >
+                        Add Known
+                      </button>
+
+                      <button
+                        type="button"
+                        class="eldra-button rounded-none px-3 py-2 text-xs"
+                        @click="prepareSpell(spell.id)"
+                      >
+                        Prepare
+                      </button>
+                    </div>
+                  </article>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  No available class spells match this sheet. Link a spellcasting class, import that class's spells, or clear the search.
                 </div>
               </div>
 
               <div class="eldra-codex-soft rounded-none p-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Known Spells</div>
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Known / Spellbook</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Spells this character knows or has in their spellbook.</div>
+                  </div>
+
                   <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
                     {{ shownKnownSpells.length }} Spell{{ shownKnownSpells.length === 1 ? '' : 's' }}
                   </div>
                 </div>
 
-                <div v-if="shownKnownSpells.length" class="mt-4 space-y-2">
+                <div v-if="knownSpellCards.length" class="mt-4 space-y-2">
                   <div
-                    v-for="spell in shownKnownSpells"
+                    v-for="spell in knownSpellCards"
                     :key="spell.id"
                     class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
                   >
@@ -1640,37 +1751,60 @@ async function saveSheet() {
                         class="min-w-0 flex-1 transition hover:text-[#fff7df]"
                       >
                         <div class="font-medium text-white">{{ spell.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell article' }}</div>
                       </NuxtLink>
 
-                      <button
-                        v-if="mode === 'build'"
-                        type="button"
-                        class="shrink-0 rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
-                        @click="removeKnownSpell(spell.id)"
-                      >
-                        Remove
-                      </button>
+                      <div v-if="mode === 'build'" class="flex shrink-0 flex-col gap-2">
+                        <button
+                          v-if="!isPreparedSpell(spell.id)"
+                          type="button"
+                          class="eldra-button rounded-none px-2 py-1 text-xs"
+                          @click="prepareSpell(spell.id)"
+                        >
+                          Prepare
+                        </button>
+
+                        <button
+                          v-else
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.10)] px-2 py-1 text-xs text-[#f5e7bd]"
+                          disabled
+                        >
+                          Prepared
+                        </button>
+
+                        <button
+                          type="button"
+                          class="rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
+                          @click="removeKnownSpell(spell.id)"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  No known spells selected yet.
+                  {{ shownKnownSpells.length ? 'No known spells match the current search.' : 'No known spells selected yet.' }}
                 </div>
               </div>
 
               <div class="eldra-codex-soft rounded-none p-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Prepared Spells</div>
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Prepared Spells</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Spells currently prepared and ready to cast.</div>
+                  </div>
+
                   <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
                     {{ shownPreparedSpells.length }} Prepared
                   </div>
                 </div>
 
-                <div v-if="shownPreparedSpells.length" class="mt-4 space-y-2">
+                <div v-if="preparedSpellCards.length" class="mt-4 space-y-2">
                   <div
-                    v-for="spell in shownPreparedSpells"
+                    v-for="spell in preparedSpellCards"
                     :key="spell.id"
                     class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
                   >
@@ -1680,7 +1814,7 @@ async function saveSheet() {
                         class="min-w-0 flex-1 transition hover:text-[#fff7df]"
                       >
                         <div class="font-medium text-white">{{ spell.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell article' }}</div>
                       </NuxtLink>
 
                       <button
@@ -1689,18 +1823,46 @@ async function saveSheet() {
                         class="shrink-0 rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
                         @click="removePreparedSpell(spell.id)"
                       >
-                        Remove
+                        Unprepare
                       </button>
                     </div>
                   </div>
                 </div>
 
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  No prepared spells selected yet.
+                  {{ shownPreparedSpells.length ? 'No prepared spells match the current search.' : 'No prepared spells selected yet.' }}
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4 lg:col-span-2">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Feat Choice Spells</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Spells selected from feat-driven choices like Magic Initiate.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ featChoiceSpells.length }} Spell{{ featChoiceSpells.length === 1 ? '' : 's' }}
+                  </div>
+                </div>
+
+                <div v-if="featChoiceSpellCards.length" class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <NuxtLink
+                    v-for="spell in featChoiceSpellCards"
+                    :key="spell.id"
+                    :to="`/worlds/${worldId}/entities/${spell.id}`"
+                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                  >
+                    <div class="font-medium text-white">{{ spell.title }}</div>
+                    <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell article' }}</div>
+                  </NuxtLink>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  {{ featChoiceSpells.length ? 'No feat choice spells match the current search.' : 'No feat-granted spell choices selected yet.' }}
                 </div>
               </div>
             </section>
-
           <section
             v-else-if="activeSheetTab === 'features'"
             class="mt-6 grid gap-4 lg:grid-cols-3"

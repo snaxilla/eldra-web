@@ -506,12 +506,67 @@ function spellOptionMatchesChoice(option: any, choice: any) {
   if (classRules.length) {
     const classes = spellClassesForOption(option)
 
-    if (classes.length && !classRules.some((klass) => classes.includes(klass))) {
+    if (!classes.length) return false
+
+    if (!classRules.some((klass) => classes.includes(klass))) {
       return false
     }
   }
 
   return true
+}
+function sheetClassListNames() {
+  return [
+    resolvedClass.value?.title,
+    sheet.value?.class_name,
+    sheetForm.className
+  ]
+    .map(normalizeFilterToken)
+    .filter(Boolean)
+}
+
+function spellAccessibleBySheetClass(option: any) {
+  const classNames = sheetClassListNames()
+  if (!classNames.length) return false
+
+  const spellClasses = spellClassesForOption(option)
+  if (!spellClasses.length) return false
+
+  return classNames.some((klass) => spellClasses.includes(klass))
+}
+
+const availableKnownSpellOptions = computed(() =>
+  spellOptions.value.filter((option: any) => spellAccessibleBySheetClass(option))
+)
+
+const availablePreparedSpellOptions = computed(() => {
+  const knownIds = mode.value === 'build' ? spellKnownDraft.value : knownSpellIds.value
+  const known = spellOptionsByIds(knownIds)
+
+  return known.length ? known : availableKnownSpellOptions.value
+})
+
+const shownKnownSpells = computed(() =>
+  mode.value === 'build' ? spellOptionsByIds(spellKnownDraft.value) : knownSpells.value
+)
+
+const shownPreparedSpells = computed(() =>
+  mode.value === 'build' ? spellOptionsByIds(spellPreparedDraft.value) : preparedSpells.value
+)
+
+function removeKnownSpell(id: any) {
+  const needle = String(id || '')
+  if (!needle) return
+
+  spellKnownDraft.value = spellKnownDraft.value.filter((spellId) => String(spellId) !== needle)
+  spellPreparedDraft.value = spellPreparedDraft.value.filter((spellId) => String(spellId) !== needle)
+}
+
+function removePreparedSpell(id: any) {
+  const needle = String(id || '')
+  if (!needle) return
+
+  spellPreparedDraft.value = spellPreparedDraft.value.filter((spellId) => String(spellId) !== needle)
 }
 
 function spellRestrictionLabel(choice: any) {
@@ -1534,7 +1589,7 @@ async function saveSheet() {
                       class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
                     >
                       <option
-                        v-for="option in spellOptions"
+                        v-for="option in availableKnownSpellOptions"
                         :key="option.id"
                         :value="option.id"
                         class="bg-[#090909] text-[#f5e7bd]"
@@ -1553,7 +1608,7 @@ async function saveSheet() {
                       class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
                     >
                       <option
-                        v-for="option in spellOptions"
+                        v-for="option in availablePreparedSpellOptions"
                         :key="option.id"
                         :value="option.id"
                         class="bg-[#090909] text-[#f5e7bd]"
@@ -1569,20 +1624,35 @@ async function saveSheet() {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Known Spells</div>
                   <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ knownSpells.length }} Spell{{ knownSpells.length === 1 ? '' : 's' }}
+                    {{ shownKnownSpells.length }} Spell{{ shownKnownSpells.length === 1 ? '' : 's' }}
                   </div>
                 </div>
 
-                <div v-if="knownSpells.length" class="mt-4 space-y-2">
-                  <NuxtLink
-                    v-for="spell in knownSpells"
+                <div v-if="shownKnownSpells.length" class="mt-4 space-y-2">
+                  <div
+                    v-for="spell in shownKnownSpells"
                     :key="spell.id"
-                    :to="`/worlds/${worldId}/entities/${spell.id}`"
-                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
                   >
-                    <div class="font-medium text-white">{{ spell.title }}</div>
-                    <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
-                  </NuxtLink>
+                    <div class="flex items-start justify-between gap-3">
+                      <NuxtLink
+                        :to="`/worlds/${worldId}/entities/${spell.id}`"
+                        class="min-w-0 flex-1 transition hover:text-[#fff7df]"
+                      >
+                        <div class="font-medium text-white">{{ spell.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
+                      </NuxtLink>
+
+                      <button
+                        v-if="mode === 'build'"
+                        type="button"
+                        class="shrink-0 rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
+                        @click="removeKnownSpell(spell.id)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
@@ -1594,20 +1664,35 @@ async function saveSheet() {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Prepared Spells</div>
                   <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ preparedSpells.length }} Prepared
+                    {{ shownPreparedSpells.length }} Prepared
                   </div>
                 </div>
 
-                <div v-if="preparedSpells.length" class="mt-4 space-y-2">
-                  <NuxtLink
-                    v-for="spell in preparedSpells"
+                <div v-if="shownPreparedSpells.length" class="mt-4 space-y-2">
+                  <div
+                    v-for="spell in shownPreparedSpells"
                     :key="spell.id"
-                    :to="`/worlds/${worldId}/entities/${spell.id}`"
-                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
                   >
-                    <div class="font-medium text-white">{{ spell.title }}</div>
-                    <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
-                  </NuxtLink>
+                    <div class="flex items-start justify-between gap-3">
+                      <NuxtLink
+                        :to="`/worlds/${worldId}/entities/${spell.id}`"
+                        class="min-w-0 flex-1 transition hover:text-[#fff7df]"
+                      >
+                        <div class="font-medium text-white">{{ spell.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">Open spell article →</div>
+                      </NuxtLink>
+
+                      <button
+                        v-if="mode === 'build'"
+                        type="button"
+                        class="shrink-0 rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
+                        @click="removePreparedSpell(spell.id)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">

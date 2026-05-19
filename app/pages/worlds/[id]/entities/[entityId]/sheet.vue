@@ -297,13 +297,13 @@ const selectedSpellTitle = computed(() =>
 )
 
 const selectedSpellDescription = computed(() =>
-  String(selectedSpellCore.value?.description || '').trim() ||
+  cleanSpellText(String(selectedSpellCore.value?.description || '').trim()) ||
   spellEntriesToMarkdown(selectedSpellRaw.value?.entries) ||
-  String(selectedSpellDetail.value?.summary || '').trim()
+  cleanSpellText(String(selectedSpellDetail.value?.summary || '').trim())
 )
 
 const selectedSpellHigherLevel = computed(() =>
-  String(selectedSpellCore.value?.higher_level || selectedSpellCore.value?.higherLevel || '').trim() ||
+  cleanSpellText(String(selectedSpellCore.value?.higher_level || selectedSpellCore.value?.higherLevel || '').trim()) ||
   spellEntriesToMarkdown(selectedSpellRaw.value?.entriesHigherLevel)
 )
 
@@ -311,6 +311,23 @@ const selectedSpellArticleUrl = computed(() =>
   selectedSpellEntityId.value ? `/worlds/${worldId.value}/entities/${selectedSpellEntityId.value}` : ''
 )
 
+function formatSpellSchool(value: any) {
+  const raw = cleanSpellText(value)
+  const key = raw.toUpperCase()
+
+  const labels: Record<string, string> = {
+    A: 'Abjuration',
+    C: 'Conjuration',
+    D: 'Divination',
+    E: 'Enchantment',
+    V: 'Evocation',
+    I: 'Illusion',
+    N: 'Necromancy',
+    T: 'Transmutation'
+  }
+
+  return labels[key] || raw
+}
 const selectedSpellMetaLines = computed(() => {
   const core = selectedSpellCore.value || {}
   const raw = selectedSpellRaw.value || {}
@@ -323,7 +340,7 @@ const selectedSpellMetaLines = computed(() => {
 
   return [
     level !== undefined && level !== null && level !== '' ? `Level: ${Number(level) === 0 ? 'Cantrip' : level}` : '',
-    school ? `School: ${cleanSpellText(school)}` : '',
+    school ? `School: ${formatSpellSchool(school)}` : '',
     castingTime ? `Casting: ${cleanSpellText(castingTime)}` : '',
     range ? `Range: ${cleanSpellText(range)}` : '',
     duration ? `Duration: ${cleanSpellText(duration)}` : '',
@@ -1152,7 +1169,10 @@ async function saveSheet() {
 
 <template>
   <div class="fixed inset-0 z-[80] h-[100dvh] overflow-y-auto bg-[#09111a] md:relative md:z-auto md:h-full md:bg-transparent">
-    <div class="mx-auto max-w-[1100px] p-3 pb-28 md:p-6">
+    <div
+        :class="selectedSpellEntityId ? 'md:pr-[460px]' : ''"
+        class="mx-auto max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
+      >
         <!-- Mobile Sheet Header -->
         <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,rgba(9,17,26,0.98),rgba(9,17,26,0.90))] px-3 py-3 backdrop-blur md:hidden">
           <div class="flex items-start justify-between gap-3">
@@ -2145,10 +2165,10 @@ async function saveSheet() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
         v-if="selectedSpellEntityId"
-        class="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm"
+        class="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
         @click.self="closeSpellDrawer"
       >
-        <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:w-[440px]">
+        <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[440px]">
           <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
             <div class="min-w-0">
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Spell Details</div>

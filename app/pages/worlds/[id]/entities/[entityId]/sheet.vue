@@ -1420,8 +1420,6 @@ async function saveSheet() {
             </div>
           </div>
 
-          <div
-
             <!-- Mobile Compact Overview -->
             <section
               v-if="activeSheetTab === 'overview'"
@@ -1507,6 +1505,7 @@ async function saveSheet() {
               </div>
             </section>
 
+            <div
             v-if="activeSheetTab === 'overview' && entityImageUrl"
             class="eldra-image-frame mt-6 hidden overflow-hidden rounded-none border bg-black/20 md:block"
           >

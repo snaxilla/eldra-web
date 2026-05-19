@@ -135,6 +135,19 @@ function normalizeEntityType(value: any) {
   return String(value || '').trim().toLowerCase()
 }
 
+function optionBlockByKey(option: any, key: string) {
+  const blocks = Array.isArray(option?.entity?.blocks) ? option.entity.blocks : []
+
+  return blocks.find((block: any) => String(block?.block_key || block?.blockKey || '') === key) || null
+}
+
+function optionCore(option: any, key: string) {
+  return optionBlockByKey(option, key)?.data || null
+}
+
+function optionRawJson(option: any) {
+  return optionCore(option, 'import_source')?.raw_json || null
+}
 function entityOptionsForTypes(types: string[]) {
   const wanted = new Set(types.map(normalizeEntityType))
 
@@ -142,7 +155,8 @@ function entityOptionsForTypes(types: string[]) {
     .filter((option: any) => wanted.has(normalizeEntityType(option?.entity_type)))
     .map((option: any) => ({
       id: String(option?.id || ''),
-      title: String(option?.title || 'Untitled')
+      title: String(option?.title || 'Untitled'),
+      entity: option
     }))
     .filter((option: any) => option.id)
     .sort((a: any, b: any) => a.title.localeCompare(b.title))
@@ -395,13 +409,136 @@ function choiceSlots(choice: any) {
   return Array.from({ length: count }, (_, index) => index)
 }
 
+function normalizeFilterToken(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function parseSpellChoiceFilter(value: any) {
+  const filter = String(value || '').trim()
+  const result: Record<string, string[]> = {}
+
+  if (!filter) return result
+
+  for (const part of filter.split('|')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+
+    const eqIndex = trimmed.indexOf('=')
+    if (eqIndex === -1) continue
+
+    const key = normalizeFilterToken(trimmed.slice(0, eqIndex))
+    const rawValue = trimmed.slice(eqIndex + 1).trim()
+
+    if (!key || !rawValue) continue
+
+    result[key] = rawValue
+      .split(/[,;]/g)
+      .map(normalizeFilterToken)
+      .filter(Boolean)
+  }
+
+  return result
+}
+
+function spellLevelForOption(option: any) {
+  const core = optionCore(option, 'spell_core')
+  const raw = optionRawJson(option)
+  const level = Number(core?.level ?? raw?.level)
+
+  return Number.isFinite(level) ? level : null
+}
+
+function spellClassesForOption(option: any) {
+  const raw = optionRawJson(option)
+  const classes = raw?.classes || {}
+  const values: string[] = []
+
+  function addEntries(entries: any) {
+    if (!Array.isArray(entries)) return
+
+    for (const entry of entries) {
+      if (typeof entry === 'string') {
+        values.push(entry)
+      } else if (entry?.name) {
+        values.push(entry.name)
+      } else if (entry?.class?.name) {
+        values.push(entry.class.name)
+      }
+    }
+  }
+
+  addEntries(classes.fromClassList)
+  addEntries(classes.fromClassListVariant)
+  addEntries(classes.fromClassListLegacy)
+
+  if (Array.isArray(classes.fromSubclass)) {
+    for (const entry of classes.fromSubclass) {
+      if (entry?.class?.name) values.push(entry.class.name)
+      if (entry?.subclass?.name) values.push(entry.subclass.name)
+    }
+  }
+
+  return Array.from(new Set(values.map(normalizeFilterToken).filter(Boolean)))
+}
+
+function spellOptionMatchesChoice(option: any, choice: any) {
+  if (choice?.type !== 'spell') return true
+
+  const rules = parseSpellChoiceFilter(choice.category || choice.filter || '')
+  const levelRules = rules.level || []
+  const classRules = rules.class || []
+
+  if (levelRules.length) {
+    const spellLevel = spellLevelForOption(option)
+    const allowedLevels = levelRules
+      .map((level) => Number(level))
+      .filter((level) => Number.isFinite(level))
+
+    if (allowedLevels.length && !allowedLevels.includes(Number(spellLevel))) {
+      return false
+    }
+  }
+
+  if (classRules.length) {
+    const classes = spellClassesForOption(option)
+
+    if (classes.length && !classRules.some((klass) => classes.includes(klass))) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function spellRestrictionLabel(choice: any) {
+  if (choice?.type !== 'spell') return ''
+
+  const rules = parseSpellChoiceFilter(choice.category || choice.filter || '')
+  const parts: string[] = []
+
+  if (rules.level?.length) {
+    parts.push(`Level ${rules.level.join(', ')}`)
+  }
+
+  if (rules.class?.length) {
+    parts.push(`${rules.class.map((item) => item.replace(/\b\w/g, (char) => char.toUpperCase())).join(', ')} list`)
+  }
+
+  return parts.join(' · ')
+}
 function choiceOptions(choice: any) {
   if (choice?.type === 'feat') {
     return featOptions.value.map((option: any) => String(option.id))
   }
 
   if (choice?.type === 'spell') {
-    return spellOptions.value.map((option: any) => String(option.id))
+    return spellOptions.value
+      .filter((option: any) => spellOptionMatchesChoice(option, choice))
+      .map((option: any) => String(option.id))
   }
 
   return Array.isArray(choice?.options) ? choice.options : []
@@ -1156,6 +1293,9 @@ async function saveSheet() {
                       <div class="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <div class="font-medium text-white">{{ choice.label }}</div>
+                              <div v-if="spellRestrictionLabel(choice)" class="mt-1 text-xs text-[#9f9278]">
+                                {{ spellRestrictionLabel(choice) }}
+                              </div>
                           <div v-if="choice.remaining" class="mt-1 text-xs text-[#9f9278]">
                             {{ choice.remaining }} selection{{ choice.remaining === 1 ? '' : 's' }} remaining.
                           </div>

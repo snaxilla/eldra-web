@@ -356,8 +356,59 @@ function buildPendingChoices(sheet: any, resolved: any) {
   }
 
 
+
     for (const feat of Array.isArray(resolved?.feats) ? resolved.feats : []) {
+      const spellListOptions = Array.isArray(feat?.spellListOptions)
+        ? feat.spellListOptions.map(normalizeToken).filter(Boolean)
+        : []
+      const abilityOptions = Array.isArray(feat?.spellAbilityOptions)
+        ? feat.spellAbilityOptions.map(normalizeToken).filter(Boolean)
+        : []
+
+      const spellListSourceKey = `feat-spell-list:${feat.id}`
+      const selectedSpellList = spellListOptions.length === 1
+        ? spellListOptions[0]
+        : savedChoiceFor(choices, spellListSourceKey).selected?.[0] || ''
+
+      if (spellListOptions.length > 1) {
+        rows.push(choiceRow({
+          choices,
+          sourceKey: spellListSourceKey,
+          sourceType: 'feat',
+          sourceName: feat.title,
+          type: 'spell-list',
+          label: `${feat.title}: choose spell list`,
+          count: 1,
+          options: spellListOptions
+        }))
+      }
+
+      if (abilityOptions.length > 1) {
+        rows.push(choiceRow({
+          choices,
+          sourceKey: `feat-spell-ability:${feat.id}`,
+          sourceType: 'feat',
+          sourceName: feat.title,
+          type: 'ability',
+          label: `${feat.title}: choose spellcasting ability`,
+          count: 1,
+          options: abilityOptions
+        }))
+      }
+
       for (const [index, choice] of (Array.isArray(feat?.spellChoices) ? feat.spellChoices : []).entries()) {
+        const requiredLists = Array.isArray(choice.requiresList)
+          ? choice.requiresList.map(normalizeToken).filter(Boolean)
+          : []
+
+        if (spellListOptions.length > 1 && requiredLists.length && !selectedSpellList) {
+          continue
+        }
+
+        if (selectedSpellList && requiredLists.length && !requiredLists.includes(selectedSpellList)) {
+          continue
+        }
+
         const count = Number(choice.count || 1)
         const filterNote = choice.filter ? ` (${choice.filter})` : ''
 

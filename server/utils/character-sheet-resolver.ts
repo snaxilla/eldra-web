@@ -225,6 +225,73 @@ function selectedFeatIdsFromChoices(sheet: any) {
   return Array.from(ids)
 }
 
+function normalizeSpellListOption(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function isSpellChooseFilter(value: any) {
+  const filter = String(value || '')
+  return /(^|\|)(level|class|school|spell|spellLevel)=/i.test(filter)
+}
+
+function spellListOptionsFromFilter(value: any) {
+  const filter = String(value || '')
+  const match = filter.match(/(?:^|\|)class=([^|]+)/i)
+
+  if (!match?.[1]) return []
+
+  return match[1]
+    .split(/[,;]/g)
+    .map(normalizeSpellListOption)
+    .filter(Boolean)
+}
+
+function collectAbilityOptions(value: any, out: Set<string>) {
+  if (value == null) return
+
+  if (typeof value === 'string') {
+    const normalized = normalizeSpellListOption(value)
+    if (['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(normalized)) {
+      out.add(normalized)
+    }
+    return
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectAbilityOptions(item, out))
+    return
+  }
+
+  if (typeof value === 'object') {
+    if (value.choose) collectAbilityOptions(value.choose, out)
+
+    for (const key of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
+      if (value[key]) out.add(key)
+    }
+
+    for (const child of Object.values(value)) {
+      collectAbilityOptions(child, out)
+    }
+  }
+}
+
+function resolveFeatAbilityOptions(value: any) {
+  const out = new Set<string>()
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      if (entry?.ability) collectAbilityOptions(entry.ability, out)
+    })
+  } else if (value?.ability) {
+    collectAbilityOptions(value.ability, out)
+  }
+
+  return Array.from(out)
+}
 function spellChoiceMode(path: string[]) {
   const lowered = path.map((item) => String(item || '').toLowerCase())
 
@@ -248,17 +315,19 @@ function extractSpellChoices(value: any, path: string[] = [], out: any[] = []) {
 
   if (Object.prototype.hasOwnProperty.call(value, 'choose')) {
     const choose = value.choose
-    const count = Number(value.count || choose?.count || 1)
-    const filter = typeof choose === 'string'
-      ? choose
-      : formatSimpleValue(choose)
 
-    out.push({
-      count: Number.isFinite(count) && count > 0 ? count : 1,
-      mode: spellChoiceMode(path),
-      filter,
-      raw: value
-    })
+    if (typeof choose === 'string' && isSpellChooseFilter(choose)) {
+      const count = Number(value.count || 1)
+      const requiresList = spellListOptionsFromFilter(choose)
+
+      out.push({
+        count: Number.isFinite(count) && count > 0 ? count : 1,
+        mode: spellChoiceMode(path),
+        filter: choose,
+        requiresList,
+        raw: value
+      })
+    }
   }
 
   for (const [key, child] of Object.entries(value)) {
@@ -273,12 +342,27 @@ function resolveFeatSpellChoices(value: any) {
   const choices = extractSpellChoices(value)
   const seen = new Set<string>()
 
-  return choices.filter((choice) => {
-    const key = `${choice.mode}|${choice.count}|${choice.filter}`
+  const spellChoices = choices.filter((choice) => {
+    const listKey = Array.isArray(choice.requiresList) ? choice.requiresList.join(',') : ''
+    const key = `${choice.mode}|${choice.count}|${choice.filter}|${listKey}`
+
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
+
+  const spellListOptions = Array.from(new Set(
+    spellChoices
+      .flatMap((choice) => Array.isArray(choice.requiresList) ? choice.requiresList : [])
+      .map(normalizeSpellListOption)
+      .filter(Boolean)
+  ))
+
+  return {
+    spellChoices,
+    spellListOptions,
+    abilityOptions: resolveFeatAbilityOptions(value)
+  }
 }
 function resolveFeat(entity: any, blocks: any[]) {
   const core = blockByKey(blocks, 'feat_core')?.data || {}
@@ -288,6 +372,7 @@ function resolveFeat(entity: any, blocks: any[]) {
   const prerequisites = String(core.prerequisites || '').trim() || formatSimpleValue(raw.prerequisite)
   const abilityScoreIncrease = String(core.ability_score_increase || core.abilityScoreIncrease || '').trim() || formatSimpleValue(raw.ability)
   const additionalSpells = String(core.additional_spells || core.additionalSpells || '').trim() || formatSimpleValue(raw.additionalSpells)
+  const spellChoiceData = resolveFeatSpellChoices(raw.additionalSpells)
 
   return {
     id: Number(entity.id),
@@ -299,7 +384,9 @@ function resolveFeat(entity: any, blocks: any[]) {
     repeatable: core.repeatable === true || core.repeatable === 'true' || raw.repeatable === true,
     abilityScoreIncrease,
     additionalSpells,
-    spellChoices: resolveFeatSpellChoices(raw.additionalSpells),
+    spellChoices: spellChoiceData.spellChoices,
+    spellListOptions: spellChoiceData.spellListOptions,
+    spellAbilityOptions: spellChoiceData.abilityOptions,
     source: core.source || raw.source || null,
     page: core.page || raw.page || null
   }

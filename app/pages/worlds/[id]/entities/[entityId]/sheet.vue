@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { renderMarkdown } from '~/utils/renderMarkdown'
 definePageMeta({
   layout: 'world-workspace'
 })
@@ -23,6 +24,7 @@ const spellSaveSuccess = ref('')
 const spellKnownDraft = ref<string[]>([])
 const spellPreparedDraft = ref<string[]>([])
 const spellSearch = ref('')
+const selectedSpellEntityId = ref<string | null>(null)
 const choiceDrafts = ref<Record<string, string[]>>({})
 
 const SHEET_TABS = [
@@ -106,6 +108,13 @@ const { data: spellOptionPayload } = await useFetch(() => `/api/worlds/${worldId
   default: () => ({ items: [] }),
   watch: [worldId]
 })
+const { data: selectedSpellDetail, pending: selectedSpellPending } = await useFetch(
+  () => selectedSpellEntityId.value ? `/api/worlds/${worldId.value}/entities/${selectedSpellEntityId.value}` : null,
+  {
+    default: () => null,
+    watch: [selectedSpellEntityId, worldId]
+  }
+)
 const entity = computed(() => data.value?.entity || null)
 const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
@@ -213,6 +222,125 @@ function spellOptionById(id: any) {
   const needle = String(id || '')
   if (!needle) return null
   return spellOptions.value.find((option: any) => String(option.id) === needle) || null
+}
+function entityBlockByKey(entity: any, key: string) {
+  const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
+  return blocks.find((block: any) => String(block?.block_key || block?.blockKey || '') === key) || null
+}
+
+const selectedSpellCore = computed(() => entityBlockByKey(selectedSpellDetail.value, 'spell_core')?.data || null)
+const selectedSpellRaw = computed(() => entityBlockByKey(selectedSpellDetail.value, 'import_source')?.data?.raw_json || null)
+
+function cleanSpellText(value: any): string {
+  return String(value || '')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function spellEntriesToMarkdown(value: any): string {
+  if (!value) return ''
+
+  if (typeof value === 'string') return cleanSpellText(value)
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => spellEntriesToMarkdown(entry)).filter(Boolean).join('\n\n')
+  }
+
+  if (typeof value === 'object') {
+    if (value.type === 'table' && Array.isArray(value.rows)) {
+      const labels = Array.isArray(value.colLabels) ? value.colLabels.map(cleanSpellText) : []
+      const rows = value.rows.map((row: any) =>
+        Array.isArray(row)
+          ? row.map((cell: any) => cleanSpellText(spellEntriesToMarkdown(cell))).join(' | ')
+          : cleanSpellText(spellEntriesToMarkdown(row))
+      )
+
+      if (labels.length) {
+        return [
+          value.caption ? `**${cleanSpellText(value.caption)}**` : '',
+          `| ${labels.join(' | ')} |`,
+          `| ${labels.map(() => '---').join(' | ')} |`,
+          ...rows.map((row: string) => `| ${row} |`)
+        ].filter(Boolean).join('\n')
+      }
+
+      return rows.join('\n')
+    }
+
+    const parts: string[] = []
+
+    if (value.name) parts.push(`## ${cleanSpellText(value.name)}`)
+    if (value.entry) parts.push(cleanSpellText(value.entry))
+    if (value.entries) parts.push(spellEntriesToMarkdown(value.entries))
+    if (value.items) {
+      const items = Array.isArray(value.items) ? value.items : [value.items]
+      parts.push(items.map((item: any) => `- ${cleanSpellText(spellEntriesToMarkdown(item))}`).filter(Boolean).join('\n'))
+    }
+
+    return parts.filter(Boolean).join('\n\n')
+  }
+
+  return ''
+}
+
+const selectedSpellTitle = computed(() =>
+  String(
+    selectedSpellDetail.value?.title ||
+    selectedSpellCore.value?.name ||
+    selectedSpellRaw.value?.name ||
+    'Spell'
+  )
+)
+
+const selectedSpellDescription = computed(() =>
+  String(selectedSpellCore.value?.description || '').trim() ||
+  spellEntriesToMarkdown(selectedSpellRaw.value?.entries) ||
+  String(selectedSpellDetail.value?.summary || '').trim()
+)
+
+const selectedSpellHigherLevel = computed(() =>
+  String(selectedSpellCore.value?.higher_level || selectedSpellCore.value?.higherLevel || '').trim() ||
+  spellEntriesToMarkdown(selectedSpellRaw.value?.entriesHigherLevel)
+)
+
+const selectedSpellArticleUrl = computed(() =>
+  selectedSpellEntityId.value ? `/worlds/${worldId.value}/entities/${selectedSpellEntityId.value}` : ''
+)
+
+const selectedSpellMetaLines = computed(() => {
+  const core = selectedSpellCore.value || {}
+  const raw = selectedSpellRaw.value || {}
+  const level = core.level ?? raw.level
+  const school = core.school ?? raw.school
+  const castingTime = core.casting_time ?? core.castingTime
+  const range = core.range ?? raw.range
+  const duration = core.duration ?? raw.duration
+  const components = core.components ?? raw.components
+
+  return [
+    level !== undefined && level !== null && level !== '' ? `Level: ${Number(level) === 0 ? 'Cantrip' : level}` : '',
+    school ? `School: ${cleanSpellText(school)}` : '',
+    castingTime ? `Casting: ${cleanSpellText(castingTime)}` : '',
+    range ? `Range: ${cleanSpellText(range)}` : '',
+    duration ? `Duration: ${cleanSpellText(duration)}` : '',
+    components ? `Components: ${cleanSpellText(components)}` : '',
+    core.ritual || raw?.meta?.ritual ? 'Ritual' : '',
+    core.concentration || raw?.meta?.concentration ? 'Concentration' : ''
+  ].filter(Boolean)
+})
+
+function openSpellDrawer(spell: any) {
+  const id = String(spell?.id || '').trim()
+  if (!id) return
+  selectedSpellEntityId.value = id
+}
+
+function closeSpellDrawer() {
+  selectedSpellEntityId.value = null
 }
 
 function asObject(value: any) {
@@ -1665,6 +1793,7 @@ async function saveSheet() {
           </section>
 
 
+
             <section
               v-else-if="activeSheetTab === 'spells'"
               class="mt-6 grid gap-4 lg:grid-cols-2"
@@ -1730,17 +1859,22 @@ async function saveSheet() {
                     class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-4 text-sm text-[#d8ceb8]"
                   >
                     <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
+                        @click="openSpellDrawer(spell)"
+                      >
                         <div class="font-medium text-white">{{ spell.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
-                      </div>
+                      </button>
 
-                      <NuxtLink
-                        :to="`/worlds/${worldId}/entities/${spell.id}`"
+                      <button
+                        type="button"
                         class="eldra-button shrink-0 rounded-none px-3 py-1.5 text-xs"
+                        @click="openSpellDrawer(spell)"
                       >
-                        Article
-                      </NuxtLink>
+                        Details
+                      </button>
                     </div>
 
                     <div class="mt-3 flex flex-wrap gap-2">
@@ -1787,13 +1921,14 @@ async function saveSheet() {
                     class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
                   >
                     <div class="flex items-start justify-between gap-3">
-                      <NuxtLink
-                        :to="`/worlds/${worldId}/entities/${spell.id}`"
-                        class="min-w-0 flex-1 transition hover:text-[#fff7df]"
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
+                        @click="openSpellDrawer(spell)"
                       >
                         <div class="font-medium text-white">{{ spell.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell article' }}</div>
-                      </NuxtLink>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>
+                      </button>
 
                       <div v-if="mode === 'build'" class="flex shrink-0 flex-col gap-2">
                         <button
@@ -1850,13 +1985,14 @@ async function saveSheet() {
                     class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
                   >
                     <div class="flex items-start justify-between gap-3">
-                      <NuxtLink
-                        :to="`/worlds/${worldId}/entities/${spell.id}`"
-                        class="min-w-0 flex-1 transition hover:text-[#fff7df]"
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
+                        @click="openSpellDrawer(spell)"
                       >
                         <div class="font-medium text-white">{{ spell.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell article' }}</div>
-                      </NuxtLink>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>
+                      </button>
 
                       <button
                         v-if="mode === 'build'"
@@ -1888,15 +2024,16 @@ async function saveSheet() {
                 </div>
 
                 <div v-if="featChoiceSpellCards.length" class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  <NuxtLink
+                  <button
                     v-for="spell in featChoiceSpellCards"
                     :key="spell.id"
-                    :to="`/worlds/${worldId}/entities/${spell.id}`"
-                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    type="button"
+                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-left text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    @click="openSpellDrawer(spell)"
                   >
                     <div class="font-medium text-white">{{ spell.title }}</div>
-                    <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell article' }}</div>
-                  </NuxtLink>
+                    <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>
+                  </button>
                 </div>
 
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
@@ -2003,5 +2140,97 @@ async function saveSheet() {
         </template>
       </section>
     </div>
+
+    <!-- Spell Detail Drawer -->
+    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+      <div
+        v-if="selectedSpellEntityId"
+        class="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm"
+        @click.self="closeSpellDrawer"
+      >
+        <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:w-[440px]">
+          <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+            <div class="min-w-0">
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Spell Details</div>
+              <h2 class="mt-2 truncate text-2xl font-semibold text-white">{{ selectedSpellTitle }}</h2>
+            </div>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+              @click="closeSpellDrawer"
+            >
+              <UIcon name="i-lucide-x" class="h-4 w-4" />
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-5 py-5">
+            <div v-if="selectedSpellPending" class="text-sm text-[#d8ceb8]">
+              Loading spell...
+            </div>
+
+            <template v-else>
+              <div
+                v-if="selectedSpellMetaLines.length"
+                class="grid gap-2"
+              >
+                <div
+                  v-for="line in selectedSpellMetaLines"
+                  :key="line"
+                  class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] px-3 py-2 text-sm text-[#d8ceb8]"
+                >
+                  {{ line }}
+                </div>
+              </div>
+
+              <section class="eldra-codex-soft mt-5 rounded-none p-4">
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Description</div>
+
+                <div
+                  v-if="selectedSpellDescription"
+                  class="eldra-rich-content mt-4 text-sm leading-7"
+                  v-html="renderMarkdown(selectedSpellDescription)"
+                ></div>
+
+                <p v-else class="mt-4 text-sm leading-7 text-[#9f9278]">
+                  No spell description available.
+                </p>
+              </section>
+
+              <section
+                v-if="selectedSpellHigherLevel"
+                class="eldra-codex-soft mt-5 rounded-none p-4"
+              >
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">At Higher Levels</div>
+                <div
+                  class="eldra-rich-content mt-4 text-sm leading-7"
+                  v-html="renderMarkdown(selectedSpellHigherLevel)"
+                ></div>
+              </section>
+            </template>
+          </div>
+
+          <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
+            <div class="flex gap-3">
+              <NuxtLink
+                v-if="selectedSpellArticleUrl"
+                :to="selectedSpellArticleUrl"
+                class="flex-1 eldra-button rounded-none px-4 py-3 text-center text-sm font-medium"
+              >
+                Open Full Article
+              </NuxtLink>
+
+              <button
+                type="button"
+                class="flex-1 eldra-button rounded-none px-4 py-3 text-sm font-medium"
+                @click="closeSpellDrawer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </Transition>
   </div>
 </template>

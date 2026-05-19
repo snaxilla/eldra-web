@@ -30,11 +30,47 @@ const choiceDrafts = ref<Record<string, string[]>>({})
 const SHEET_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'stats', label: 'Stats' },
+  { key: 'actions', label: 'Actions' },
   { key: 'inventory', label: 'Inventory' },
   { key: 'spells', label: 'Spells' },
   { key: 'features', label: 'Features' },
   { key: 'notes', label: 'Notes' }
 ] as const
+
+const coreActionCards = [
+  {
+    name: 'Attack',
+    detail: 'Weapon attacks will generate here once equipment is wired.'
+  },
+  {
+    name: 'Dash',
+    detail: 'Gain extra movement for the current turn.'
+  },
+  {
+    name: 'Disengage',
+    detail: 'Your movement does not provoke opportunity attacks this turn.'
+  },
+  {
+    name: 'Dodge',
+    detail: 'Attackers you can see have disadvantage until your next turn.'
+  },
+  {
+    name: 'Help',
+    detail: 'Aid another creature with a check or attack.'
+  },
+  {
+    name: 'Hide',
+    detail: 'Make a Dexterity (Stealth) check when conditions allow.'
+  },
+  {
+    name: 'Ready',
+    detail: 'Prepare an action to trigger before your next turn.'
+  },
+  {
+    name: 'Use Object',
+    detail: 'Interact with an object, tool, or item.'
+  }
+]
 
 type SheetTab = typeof SHEET_TABS[number]['key']
 
@@ -508,6 +544,63 @@ function shownCombatStat(key: string) {
 
   if (key === 'hitDice') {
     return math.value?.combat?.hitDice || resolvedClass.value?.hitDie || ''
+  }
+
+  return ''
+}
+const mobileSheetSubtitle = computed(() => {
+  const className = sheet.value?.class_name || resolvedClass.value?.title || sheetForm.className || 'Class'
+  const speciesName = sheet.value?.species_name || resolvedSpecies.value?.title || sheetForm.speciesName || 'Species'
+  const level = sheet.value?.level || sheetForm.level || 1
+
+  return `${className} • ${speciesName} • Level ${level}`
+})
+
+const mobileQuickStats = computed(() => [
+  {
+    label: 'AC',
+    value: shownCombatStat('armorClass') || '—'
+  },
+  {
+    label: 'HP',
+    value: `${shownCombatStat('currentHp') || '—'}/${shownCombatStat('maxHp') || '—'}`
+  },
+  {
+    label: 'Init',
+    value: shownCombatStat('initiative') || '—'
+  },
+  {
+    label: 'Spd',
+    value: shownCombatStat('speed') || '—'
+  },
+  {
+    label: 'PB',
+    value: math.value?.proficiencyBonusText || '+2'
+  }
+])
+
+function tabCountLabel(tabKey: any) {
+  const key = String(tabKey || '')
+
+  if (key === 'stats' && mathPendingChoices.value.length) {
+    return String(mathPendingChoices.value.length)
+  }
+
+  if (key === 'actions') {
+    const count = shownPreparedSpells.value.length + featChoiceSpells.value.length
+    return count ? String(count) : ''
+  }
+
+  if (key === 'inventory') {
+    return String(inventoryCount.value || 0)
+  }
+
+  if (key === 'spells') {
+    return String(selectedSpellCount.value || 0)
+  }
+
+  if (key === 'features' && featureCount.value) {
+    return String(featureCount.value)
   }
 
   return ''
@@ -1173,16 +1266,17 @@ async function saveSheet() {
         :class="selectedSpellEntityId ? 'md:pr-[460px]' : ''"
         class="mx-auto max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
+
         <!-- Mobile Sheet Header -->
-        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,rgba(9,17,26,0.98),rgba(9,17,26,0.90))] px-3 py-3 backdrop-blur md:hidden">
+        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,rgba(9,17,26,0.98),rgba(9,17,26,0.92))] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Character Sheet</div>
-              <div class="mt-1 truncate text-xl font-semibold text-white">
+              <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">Character Sheet</div>
+              <div class="mt-1 truncate text-2xl font-semibold leading-tight text-white">
                 {{ sheet?.name || entity?.title || 'Character' }}
               </div>
               <div class="mt-1 truncate text-xs text-[#d8ceb8]">
-                {{ sheet?.class_name || 'Class' }} · {{ sheet?.species_name || 'Species' }} · Level {{ sheet?.level || 1 }}
+                {{ mobileSheetSubtitle }}
               </div>
             </div>
 
@@ -1207,48 +1301,38 @@ async function saveSheet() {
           </div>
 
           <div class="mt-3 grid grid-cols-5 gap-1 text-center text-[11px]">
-            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
-              <div class="text-[#9f9278]">AC</div>
-              <div class="font-semibold text-white">{{ shownCombatStat('armorClass') || '—' }}</div>
-            </div>
-            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
-              <div class="text-[#9f9278]">HP</div>
-              <div class="font-semibold text-white">{{ shownCombatStat('currentHp') || '—' }}/{{ shownCombatStat('maxHp') || '—' }}</div>
-            </div>
-            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
-              <div class="text-[#9f9278]">Init</div>
-              <div class="font-semibold text-white">{{ shownCombatStat('initiative') || '—' }}</div>
-            </div>
-            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
-              <div class="text-[#9f9278]">Spd</div>
-              <div class="font-semibold text-white">{{ shownCombatStat('speed') || '—' }}</div>
-            </div>
-            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1">
-              <div class="text-[#9f9278]">PB</div>
-              <div class="font-semibold text-white">{{ math?.proficiencyBonusText || '+2' }}</div>
+            <div
+              v-for="stat in mobileQuickStats"
+              :key="stat.label"
+              class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1.5"
+            >
+              <div class="text-[#9f9278]">{{ stat.label }}</div>
+              <div class="mt-0.5 truncate font-semibold text-white">{{ stat.value }}</div>
             </div>
           </div>
-            <!-- Mobile Sheet Tabs -->
-            <nav class="mt-3 overflow-x-auto border-t border-[rgba(201,164,90,0.20)] pt-2 md:hidden">
-            <div class="grid min-w-max grid-cols-6 gap-1">
+
+          <nav class="mt-3 -mx-1 overflow-x-auto pb-1">
+            <div class="flex min-w-max gap-2 px-1">
               <button
                 v-for="tab in SHEET_TABS"
                 :key="`mobile-${tab.key}`"
                 type="button"
-                class="min-w-0 rounded-none border px-1.5 py-2 text-[11px] font-semibold transition"
+                class="inline-flex min-w-[86px] items-center justify-center gap-1 rounded-none border px-3 py-2 text-xs font-semibold transition"
                 :class="activeSheetTab === tab.key
                   ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
                   : 'border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8]'"
                 @click="setSheetTab(tab.key)"
               >
-                <span class="block truncate">{{ tab.label }}</span>
-                <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="text-[10px] text-[#9f9278]">({{ mathPendingChoices.length }})</span>
-                <span v-else-if="tab.key === 'inventory'" class="text-[10px] text-[#9f9278]">({{ inventoryCount }})</span>
-                <span v-else-if="tab.key === 'spells'" class="text-[10px] text-[#9f9278]">({{ selectedSpellCount }})</span>
-                <span v-else-if="tab.key === 'features' && featureCount" class="text-[10px] text-[#9f9278]">({{ featureCount }})</span>
+                <span>{{ tab.label }}</span>
+                <span
+                  v-if="tabCountLabel(tab.key)"
+                  class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]"
+                >
+                  {{ tabCountLabel(tab.key) }}
+                </span>
               </button>
             </div>
-            </nav>
+          </nav>
         </div>
 
       <div class="mb-4 hidden flex-wrap items-center justify-between gap-3 md:flex">
@@ -1311,7 +1395,7 @@ async function saveSheet() {
         </div>
 
         <template v-else>
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div class="hidden flex-col gap-4 md:flex md:flex-row md:items-end md:justify-between">
             <div class="min-w-0 flex-1">
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Character Sheet</div>
 
@@ -1736,6 +1820,93 @@ async function saveSheet() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </section>
+
+
+            <section
+              v-else-if="activeSheetTab === 'actions'"
+              class="mt-6 grid gap-4 lg:grid-cols-2"
+            >
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Core Actions</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Fast reference actions for table play. Weapon and item actions will generate from equipment next.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    Quick
+                  </div>
+                </div>
+
+                <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                  <article
+                    v-for="action in coreActionCards"
+                    :key="action.name"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                  >
+                    <div class="font-semibold text-white">{{ action.name }}</div>
+                    <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                  </article>
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Actions</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Prepared and feat-granted spells that can be opened without leaving the sheet.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ shownPreparedSpells.length + featChoiceSpells.length }} Spell{{ shownPreparedSpells.length + featChoiceSpells.length === 1 ? '' : 's' }}
+                  </div>
+                </div>
+
+                <div
+                  v-if="shownPreparedSpells.length || featChoiceSpells.length"
+                  class="mt-4 space-y-2"
+                >
+                  <button
+                    v-for="spell in shownPreparedSpells"
+                    :key="`prepared-action-${spell.id}`"
+                    type="button"
+                    class="block w-full rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-left text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    @click="openSpellDrawer(spell)"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="font-medium text-white">{{ spell.title }}</div>
+                      <div class="text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
+                    </div>
+                    <div class="mt-1 text-xs text-[#9f9278]">Prepared Spell</div>
+                  </button>
+
+                  <button
+                    v-for="spell in featChoiceSpells"
+                    :key="`feat-action-${spell.id}`"
+                    type="button"
+                    class="block w-full rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-left text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    @click="openSpellDrawer(spell)"
+                  >
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="font-medium text-white">{{ spell.title }}</div>
+                      <div class="text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
+                    </div>
+                    <div class="mt-1 text-xs text-[#9f9278]">Feat Spell</div>
+                  </button>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  No prepared or feat-granted spell actions yet.
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4 lg:col-span-2">
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Equipment Actions Coming Next</div>
+                <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
+                  Inventory and equipped weapons will feed this tab with attack cards, damage formulas, item uses, charges, and attunement-based actions.
+                </p>
               </div>
             </section>
 

@@ -1385,7 +1385,7 @@ async function saveSheet() {
           </div>
         </div>
 
-      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-5 shadow-xl">
+      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-3 shadow-xl md:p-5">
         <div v-if="pending" class="text-[#d8ceb8]">
           Loading character sheet...
         </div>
@@ -1421,8 +1421,94 @@ async function saveSheet() {
           </div>
 
           <div
+
+            <!-- Mobile Compact Overview -->
+            <section
+              v-if="activeSheetTab === 'overview'"
+              class="mt-3 space-y-3 md:hidden"
+            >
+              <div class="flex gap-3">
+                <div
+                  v-if="entityImageUrl"
+                  class="eldra-image-frame h-28 w-24 shrink-0 overflow-hidden rounded-none border bg-black/20"
+                >
+                  <img
+                    :src="entityImageUrl"
+                    :alt="sheet?.name || entity?.title || 'Character Portrait'"
+                    class="h-full w-full object-cover object-[center_15%]"
+                  >
+                </div>
+
+                <div class="grid min-w-0 flex-1 grid-cols-2 gap-2">
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Level</div>
+                    <div class="mt-1 truncate text-lg font-semibold text-white">{{ sheet?.level || 1 }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Class</div>
+                    <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.class_name || '-' }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Species</div>
+                    <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.species_name || '-' }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Background</div>
+                    <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.background_name || '-' }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Abilities</div>
+                  <div class="text-[10px] uppercase tracking-[0.18em] text-[#756a57]">Score / Mod</div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                  <div
+                    v-for="ability in abilityList"
+                    :key="ability.key"
+                    class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-2 text-center"
+                  >
+                    <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">{{ ability.label }}</div>
+                    <div class="mt-1 text-xl font-semibold leading-none text-white">{{ ability.value ?? 10 }}</div>
+                    <div class="mt-1 text-xs text-[#d8ceb8]">{{ abilityMod(ability.value) }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+                <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">At The Table</div>
+                <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-[#d8ceb8]">
+                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                    <span class="text-[#9f9278]">Hit Dice:</span>
+                    <span class="ml-1 text-white">{{ shownCombatStat('hitDice') || resolvedClass?.hitDie || '-' }}</span>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                    <span class="text-[#9f9278]">Features:</span>
+                    <span class="ml-1 text-white">{{ featureCount }}</span>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                    <span class="text-[#9f9278]">Spells:</span>
+                    <span class="ml-1 text-white">{{ selectedSpellCount }}</span>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                    <span class="text-[#9f9278]">Items:</span>
+                    <span class="ml-1 text-white">{{ inventoryCount }}</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             v-if="activeSheetTab === 'overview' && entityImageUrl"
-            class="eldra-image-frame mt-6 overflow-hidden rounded-none border bg-black/20"
+            class="eldra-image-frame mt-6 hidden overflow-hidden rounded-none border bg-black/20 md:block"
           >
             <img
               :src="entityImageUrl"
@@ -1439,7 +1525,7 @@ async function saveSheet() {
             {{ sheetSaveSuccess }}
           </div>
 
-          <div v-if="activeSheetTab === 'overview'" class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div v-if="activeSheetTab === 'overview'" class="mt-6 hidden gap-3 md:grid md:grid-cols-2 lg:grid-cols-4">
             <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Level</div>
               <input
@@ -1532,7 +1618,7 @@ async function saveSheet() {
           </div>
 
 
-          <div v-if="activeSheetTab === 'overview' && mode === 'build'" class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
+          <div v-if="activeSheetTab === 'overview' && mode === 'build'" class="mt-3 hidden rounded-none md:block border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
             <label class="block">
               <span class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Subclass</span>
               <input
@@ -1543,7 +1629,7 @@ async function saveSheet() {
             </label>
           </div>
 
-          <section v-if="activeSheetTab === 'overview'" class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <section v-if="activeSheetTab === 'overview'" class="mt-6 hidden grid-cols-2 gap-3 md:grid sm:grid-cols-3">
             <label
               v-for="ability in abilityList"
               :key="ability.key"
@@ -1563,7 +1649,7 @@ async function saveSheet() {
             </label>
           </section>
 
-          <section v-if="activeSheetTab === 'overview'" class="mt-6 grid gap-4">
+            <section v-if="activeSheetTab === 'overview'" class="mt-6 hidden gap-4 md:grid">
             <div class="eldra-codex-soft rounded-none p-4">
               <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Combat</div>
 

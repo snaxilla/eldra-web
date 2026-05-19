@@ -264,8 +264,11 @@ function defaultSkillOptions() {
 
 function savedChoiceFor(choices: any, sourceKey: string) {
   const saved = plainObject(choices?.[sourceKey])
+  const type = normalizeToken(saved.type)
   const selected = Array.isArray(saved.selected)
-    ? saved.selected.map(normalizeToken).filter(Boolean)
+    ? saved.selected
+        .map((value: any) => type === 'feat' || type === 'spell' ? String(value || '').trim() : normalizeToken(value))
+        .filter(Boolean)
     : []
 
   return {
@@ -351,6 +354,26 @@ function buildPendingChoices(sheet: any, resolved: any) {
       category: choice.category || null
     }))
   }
+
+
+    for (const feat of Array.isArray(resolved?.feats) ? resolved.feats : []) {
+      for (const [index, choice] of (Array.isArray(feat?.spellChoices) ? feat.spellChoices : []).entries()) {
+        const count = Number(choice.count || 1)
+        const filterNote = choice.filter ? ` (${choice.filter})` : ''
+
+        rows.push(choiceRow({
+          choices,
+          sourceKey: `feat-spell:${feat.id}:${index}`,
+          sourceType: 'feat',
+          sourceName: feat.title,
+          type: 'spell',
+          label: `${feat.title}: choose ${count} spell${count === 1 ? '' : 's'}${filterNote}`,
+          count,
+          options: [],
+          category: choice.filter || null
+        }))
+      }
+    }
 
   return rows
 }

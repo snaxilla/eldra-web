@@ -225,6 +225,61 @@ function selectedFeatIdsFromChoices(sheet: any) {
   return Array.from(ids)
 }
 
+function spellChoiceMode(path: string[]) {
+  const lowered = path.map((item) => String(item || '').toLowerCase())
+
+  if (lowered.includes('known')) return 'known'
+  if (lowered.includes('prepared')) return 'prepared'
+  if (lowered.includes('innate')) return 'innate'
+  if (lowered.includes('expanded')) return 'expanded'
+
+  return 'spell'
+}
+
+function extractSpellChoices(value: any, path: string[] = [], out: any[] = []) {
+  if (value == null) return out
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => extractSpellChoices(item, [...path, String(index)], out))
+    return out
+  }
+
+  if (typeof value !== 'object') return out
+
+  if (Object.prototype.hasOwnProperty.call(value, 'choose')) {
+    const choose = value.choose
+    const count = Number(value.count || choose?.count || 1)
+    const filter = typeof choose === 'string'
+      ? choose
+      : formatSimpleValue(choose)
+
+    out.push({
+      count: Number.isFinite(count) && count > 0 ? count : 1,
+      mode: spellChoiceMode(path),
+      filter,
+      raw: value
+    })
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'choose') continue
+    extractSpellChoices(child, [...path, key], out)
+  }
+
+  return out
+}
+
+function resolveFeatSpellChoices(value: any) {
+  const choices = extractSpellChoices(value)
+  const seen = new Set<string>()
+
+  return choices.filter((choice) => {
+    const key = `${choice.mode}|${choice.count}|${choice.filter}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
 function resolveFeat(entity: any, blocks: any[]) {
   const core = blockByKey(blocks, 'feat_core')?.data || {}
   const raw = blockByKey(blocks, 'import_source')?.data?.raw_json || {}
@@ -244,6 +299,7 @@ function resolveFeat(entity: any, blocks: any[]) {
     repeatable: core.repeatable === true || core.repeatable === 'true' || raw.repeatable === true,
     abilityScoreIncrease,
     additionalSpells,
+    spellChoices: resolveFeatSpellChoices(raw.additionalSpells),
     source: core.source || raw.source || null,
     page: core.page || raw.page || null
   }

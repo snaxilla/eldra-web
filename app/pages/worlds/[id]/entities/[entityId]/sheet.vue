@@ -211,7 +211,8 @@ const selectedSpellCount = computed(() => {
   const ids = new Set([
     ...knownSpellIds.value,
     ...preparedSpellIds.value,
-    ...alwaysPreparedSpellIds.value
+    ...alwaysPreparedSpellIds.value,
+    ...selectedChoiceSpellIds.value
   ])
 
   return ids.size
@@ -342,6 +343,27 @@ const abilityList = computed(() => [
 ])
 
 
+const selectedChoiceSpellIds = computed(() => {
+  const ids = new Set<string>()
+  const choices = asObject(sheet.value?.choices)
+
+  for (const choice of Object.values(choices) as any[]) {
+    if (choice?.type !== 'spell') continue
+
+    for (const selected of Array.isArray(choice?.selected) ? choice.selected : []) {
+      const id = String(selected || '').trim()
+      if (id) ids.add(id)
+    }
+  }
+
+  return Array.from(ids)
+})
+
+const featChoiceSpells = computed(() =>
+  selectedChoiceSpellIds.value
+    .map((id) => spellOptionById(id))
+    .filter(Boolean)
+)
 const selectedFeatIds = computed(() => {
   const ids = new Set<string>()
   const choices = asObject(sheet.value?.choices)
@@ -378,14 +400,20 @@ function choiceOptions(choice: any) {
     return featOptions.value.map((option: any) => String(option.id))
   }
 
+  if (choice?.type === 'spell') {
+    return spellOptions.value.map((option: any) => String(option.id))
+  }
+
   return Array.isArray(choice?.options) ? choice.options : []
 }
 
 function prettyChoiceValue(value: any) {
   const raw = String(value || '').trim()
   const featTitle = featTitleById(raw)
+  const spellTitle = spellTitleById(raw)
 
   if (featTitle) return featTitle
+  if (spellTitle) return spellTitle
 
   return raw
     .replace(/[_-]+/g, ' ')
@@ -418,7 +446,7 @@ function selectedChoiceSkillSet() {
 function isChoiceOptionDisabled(choice: any, slot: number, option: any) {
   const sourceKey = String(choice?.sourceKey || '')
 
-  if (choice?.type === 'feat') {
+  if (choice?.type === 'feat' || choice?.type === 'spell') {
     const optionKey = String(option || '').trim()
     if (!optionKey) return false
 
@@ -426,7 +454,7 @@ function isChoiceOptionDisabled(choice: any, slot: number, option: any) {
     if (currentValue === optionKey) return false
 
     for (const otherChoice of mathPendingChoices.value) {
-      if (otherChoice?.type !== 'feat') continue
+      if (otherChoice?.type !== choice?.type) continue
 
       const otherSourceKey = String(otherChoice?.sourceKey || '')
       const drafts = choiceDrafts.value[otherSourceKey] || []
@@ -437,7 +465,9 @@ function isChoiceOptionDisabled(choice: any, slot: number, option: any) {
       }
     }
 
-    return selectedFeatIds.value.includes(optionKey)
+    return choice?.type === 'feat'
+      ? selectedFeatIds.value.includes(optionKey)
+      : selectedChoiceSpellIds.value.includes(optionKey)
   }
 
   if (choice?.type !== 'skill') return false
@@ -473,13 +503,16 @@ function isChoiceOptionDisabled(choice: any, slot: number, option: any) {
 function choiceOptionLabel(choice: any, slot: number, option: any) {
   const label = choice?.type === 'feat'
     ? (featTitleById(option) || `Feat ${option}`)
-    : prettyChoiceValue(option)
+    : choice?.type === 'spell'
+      ? (spellTitleById(option) || `Spell ${option}`)
+      : prettyChoiceValue(option)
 
   if (!isChoiceOptionDisabled(choice, slot, option)) return label
 
-  return choice?.type === 'feat'
-    ? `${label} (already selected)`
-    : `${label} (already known)`
+  if (choice?.type === 'feat') return `${label} (already selected)`
+  if (choice?.type === 'spell') return `${label} (already selected)`
+
+  return `${label} (already known)`
 }
 
 function syncChoiceDrafts() {
@@ -518,13 +551,14 @@ async function saveChoices() {
 
     const usedSkillChoices = new Set<string>()
     const usedFeatChoices = new Set<string>()
+    const usedSpellChoices = new Set<string>()
 
     for (const choice of mathPendingChoices.value) {
       const key = String(choice?.sourceKey || '')
       if (!key) continue
 
       const rawSelected = (choiceDrafts.value[key] || [])
-        .map((item) => choice?.type === 'feat' ? String(item || '').trim() : normalizeChoiceValue(item))
+        .map((item) => (choice?.type === 'feat' || choice?.type === 'spell') ? String(item || '').trim() : normalizeChoiceValue(item))
         .filter(Boolean)
 
       const selected: string[] = []
@@ -537,6 +571,11 @@ async function saveChoices() {
         if (choice?.type === 'feat') {
           if (usedFeatChoices.has(item)) continue
           usedFeatChoices.add(item)
+        }
+
+        if (choice?.type === 'spell') {
+          if (usedSpellChoices.has(item)) continue
+          usedSpellChoices.add(item)
         }
 
         selected.push(item)
@@ -1244,6 +1283,36 @@ async function saveSheet() {
             v-else-if="activeSheetTab === 'inventory'"
             class="mt-6"
           >
+
+              <div class="eldra-codex-soft rounded-none p-4 lg:col-span-2">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Feat Choice Spells</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Spells selected from feat-driven choices like Magic Initiate.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ featChoiceSpells.length }} Spell{{ featChoiceSpells.length === 1 ? '' : 's' }}
+                  </div>
+                </div>
+
+                <div v-if="featChoiceSpells.length" class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <NuxtLink
+                    v-for="spell in featChoiceSpells"
+                    :key="spell.id"
+                    :to="`/worlds/${worldId}/entities/${spell.id}`"
+                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                  >
+                    <div class="font-medium text-white">{{ spell.title }}</div>
+                    <div class="mt-1 text-xs text-[#9f9278]">Open spell article</div>
+                  </NuxtLink>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  No feat-granted spell choices selected yet.
+                </div>
+              </div>
+
             <div class="eldra-codex-soft rounded-none p-4">
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>

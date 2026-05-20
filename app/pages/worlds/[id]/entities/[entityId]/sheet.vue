@@ -157,6 +157,25 @@ const { data: selectedSpellDetail, pending: selectedSpellPending } = await useFe
     watch: [selectedSpellEntityId, worldId]
   }
 )
+const { data: charactersPresentationState } = await useFetch(() => `/api/worlds/${worldId.value}/presentation/characters`, {
+  default: () => null,
+  watch: [worldId]
+})
+
+const mobileSheetBackgroundImageUrl = computed(() => {
+  const state: any = charactersPresentationState.value || null
+
+  if (state?.backgroundImageUrl) return String(state.backgroundImageUrl)
+  if (state?.backgroundFileId) return `/api/assets/${state.backgroundFileId}`
+
+  return ''
+})
+
+const mobileSheetBackgroundStyle = computed(() => {
+  const url = mobileSheetBackgroundImageUrl.value
+  return url ? { backgroundImage: `url(${url})` } : {}
+})
+
 const entity = computed(() => data.value?.entity || null)
 const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
@@ -1263,10 +1282,27 @@ async function saveSheet() {
 </script>
 
 <template>
-  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[linear-gradient(to_bottom,rgba(5,10,16,0.92),rgba(5,10,16,0.84))] md:relative md:z-auto md:h-full md:bg-transparent">
+  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[#05080d] md:relative md:inset-auto md:z-auto md:h-full md:bg-transparent">
+
+    <!-- Mobile Sheet Owned Background -->
+    <div class="pointer-events-none fixed inset-0 z-0 md:hidden">
+      <div
+        v-if="mobileSheetBackgroundImageUrl"
+        class="absolute inset-0 bg-cover bg-center opacity-95"
+        :style="mobileSheetBackgroundStyle"
+      ></div>
+
+      <div
+        v-else
+        class="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(48,68,92,0.48),rgba(5,10,16,1)_62%)]"
+      ></div>
+
+      <div class="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(3,6,10,0.18),rgba(3,6,10,0.36))]"></div>
+      <div class="absolute inset-x-0 bottom-0 h-1/3 bg-[linear-gradient(to_top,rgba(3,6,10,0.48),transparent)]"></div>
+    </div>
     <div
         :class="selectedSpellEntityId ? 'md:pr-[460px]' : ''"
-        class="mx-auto w-full max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
+        class="relative z-10 mx-auto w-full max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
 
 
@@ -2590,6 +2626,27 @@ async function saveSheet() {
 }
 
 @media (max-width: 767px) {
+  :global(.eldra-sidebar-ornate) {
+    display: none !important;
+  }
+}
+/* Mobile character sheet owns its background.
+   Do not let the desktop workspace/sidebar bleed through under it. */
+@media (max-width: 767px) {
+  .eldra-mobile-sheet-root {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin: 0 !important;
+    isolation: isolate;
+    background: #05080d !important;
+  }
+
+  .eldra-mobile-sheet-root::before {
+    display: none !important;
+  }
+
   :global(.eldra-sidebar-ornate) {
     display: none !important;
   }

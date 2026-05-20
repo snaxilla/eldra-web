@@ -2356,18 +2356,8 @@ async function saveSheet() {
               class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]"
             >
               <div class="eldra-codex-soft rounded-none p-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">On Your Turn</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Common table actions. Weapon attacks will generate here once equipment is wired.</div>
-                  </div>
 
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    Action
-                  </div>
-                </div>
-
-                <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                <div class="mt-0 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   <article
                     v-for="action in standardActionCards"
                     :key="action.name"

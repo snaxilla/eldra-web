@@ -98,6 +98,10 @@ function setSheetTab(tab: SheetTab) {
   })
 }
 
+function toggleMobileBuildMode() {
+  mode.value = mode.value === 'build' ? 'play' : 'build'
+}
+
 const sheetForm = reactive({
   name: '',
   level: '1',
@@ -548,7 +552,20 @@ function isBlankCombatValue(value: any) {
 
 function shownCombatStat(key: string) {
   if (mode.value === 'build') {
-    return (sheetForm.combatStats as any)[key]
+    const draftValue = (sheetForm.combatStats as any)[key]
+    if (!isBlankCombatValue(draftValue)) return draftValue
+  }
+
+  if (key === 'maxHp') {
+    return math.value?.combat?.hitPoints?.max ?? ''
+  }
+
+  if (key === 'currentHp') {
+    return math.value?.combat?.hitPoints?.current ?? ''
+  }
+
+  if (key === 'tempHp') {
+    return math.value?.combat?.hitPoints?.temp ?? ''
   }
 
   const value = combatStats.value[key]
@@ -1334,6 +1351,15 @@ async function saveSheet() {
               >
                 Back
               </NuxtLink>
+
+              <button
+                type="button"
+                title="Toggle mobile build mode"
+                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+                @click="toggleMobileBuildMode"
+              >
+                {{ mode === 'build' ? 'Play' : 'Build' }}
+              </button>
 
               <button
                 v-if="mode === 'build'"

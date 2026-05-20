@@ -258,6 +258,73 @@ function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, r
   }
 }
 
+function parseHitDieFaces(value: any) {
+  if (!value) return null
+
+  if (typeof value === 'object') {
+    const faces = integerOrNull(value.faces)
+    return faces && faces > 0 ? faces : null
+  }
+
+  const text = String(value || '').trim().toLowerCase()
+  const match = text.match(/d(\d+)/)
+
+  if (!match) return null
+
+  const faces = Number(match[1])
+  return Number.isFinite(faces) && faces > 0 ? faces : null
+}
+
+function fixedAverageHitDieValue(faces: number) {
+  const averages: Record<number, number> = {
+    4: 3,
+    6: 4,
+    8: 5,
+    10: 6,
+    12: 7
+  }
+
+  return averages[faces] || Math.floor(faces / 2) + 1
+}
+
+function calculatedMaxHpForSheet(level: any, hitDie: any, conModifier: number) {
+  const parsedLevel = Math.max(1, integerOrNull(level) || 1)
+  const faces = parseHitDieFaces(hitDie)
+
+  if (!faces) return null
+
+  const firstLevelHp = Math.max(1, faces + conModifier)
+  const laterLevelHp = Math.max(1, fixedAverageHitDieValue(faces) + conModifier)
+
+  return firstLevelHp + Math.max(0, parsedLevel - 1) * laterLevelHp
+}
+
+function buildHitPoints(sheet: any, level: number, scores: Record<string, number>, resolved: any) {
+  const combatStats = plainObject(sheet?.combat_stats)
+  const conModifier = abilityModifier(scores.con)
+  const calculatedMax = calculatedMaxHpForSheet(level, resolved?.class?.hitDie, conModifier)
+  const manualMax = positiveIntegerOrNull(combatStats.maxHp ?? combatStats.max_hp)
+  const max = calculatedMax ?? manualMax
+  const rawCurrent = integerOrNull(combatStats.currentHp ?? combatStats.current_hp)
+  const temp = Math.max(0, integerOrNull(combatStats.tempHp ?? combatStats.temp_hp) ?? 0)
+
+  let current = rawCurrent ?? max ?? null
+
+  if (current !== null && max !== null) {
+    current = Math.max(0, Math.min(current, max))
+  }
+
+  return {
+    current,
+    max,
+    temp,
+    calculatedMax,
+    manualMax,
+    conModifier,
+    hitDie: resolved?.class?.hitDie || null
+  }
+}
+
 function defaultSkillOptions() {
   return SKILLS.map((skill) => skill.key)
 }
@@ -441,6 +508,7 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
   const initiative = savedInitiative === null || savedInitiative === 0 ? dexMod : savedInitiative
   const speed = nonZeroTextOrNull(combatStats.speed) || resolved?.species?.speed || null
   const hitDice = nonZeroTextOrNull(combatStats.hitDice || combatStats.hit_dice) || resolved?.class?.hitDie || null
+  const hitPoints = buildHitPoints(sheet, level, scores, resolved)
 
   return {
     level,
@@ -454,6 +522,7 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
       initiativeText: signed(initiative),
       speed,
       hitDice,
+      hitPoints,
       armorClass: buildArmorClassCandidates(sheet, scores, resolved)
     },
     pendingChoices: buildPendingChoices(sheet, resolved)

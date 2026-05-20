@@ -28,13 +28,13 @@ const selectedSpellEntityId = ref<string | null>(null)
 const choiceDrafts = ref<Record<string, string[]>>({})
 
 const SHEET_TABS = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'stats', label: 'Stats' },
-  { key: 'actions', label: 'Actions' },
-  { key: 'inventory', label: 'Inventory' },
-  { key: 'spells', label: 'Spells' },
-  { key: 'features', label: 'Features' },
-  { key: 'notes', label: 'Notes' }
+  { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
+  { key: 'stats', label: 'Stats', icon: 'i-lucide-activity' },
+  { key: 'actions', label: 'Actions', icon: 'i-lucide-swords' },
+  { key: 'inventory', label: 'Inventory', icon: 'i-lucide-backpack' },
+  { key: 'spells', label: 'Spells', icon: 'i-lucide-sparkles' },
+  { key: 'features', label: 'Features', icon: 'i-lucide-badge-plus' },
+  { key: 'notes', label: 'Notes', icon: 'i-lucide-scroll-text' }
 ] as const
 
 const coreActionCards = [
@@ -566,10 +566,6 @@ const mobileQuickStats = computed(() => [
   {
     label: 'AC',
     value: shownCombatStat('armorClass') || '—'
-  },
-  {
-    label: 'HP',
-    value: `${shownCombatStat('currentHp') || '—'}/${shownCombatStat('maxHp') || '—'}`
   },
   {
     label: 'Init',
@@ -1267,14 +1263,14 @@ async function saveSheet() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[80] h-[100dvh] overflow-y-auto bg-[#09111a] md:relative md:z-auto md:h-full md:bg-transparent">
+  <div class="fixed inset-0 z-[80] h-[100dvh] overflow-y-auto bg-[linear-gradient(to_bottom,rgba(7,13,20,0.76),rgba(7,13,20,0.58))] md:relative md:z-auto md:h-full md:bg-transparent">
     <div
         :class="selectedSpellEntityId ? 'md:pr-[460px]' : ''"
         class="mx-auto max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
 
         <!-- Mobile Sheet Header -->
-        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,rgba(9,17,26,0.98),rgba(9,17,26,0.92))] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
+        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.20)] bg-[linear-gradient(to_bottom,rgba(8,14,21,0.92),rgba(8,14,21,0.82))] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">Character Sheet</div>
@@ -1286,7 +1282,15 @@ async function saveSheet() {
               </div>
             </div>
 
-            <div class="flex shrink-0 gap-2">
+            <div class="flex shrink-0 flex-col items-end gap-2">
+              <div class="rounded-[12px] border border-[rgba(201,164,90,0.42)] bg-[rgba(26,35,48,0.92)] px-3 py-1.5 text-center shadow-[0_0_18px_rgba(201,164,90,0.10)]">
+                <div class="text-base font-semibold leading-none text-white">
+                  {{ shownCombatStat('currentHp') || '—' }}/{{ shownCombatStat('maxHp') || '—' }}
+                </div>
+                <div class="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#c9a45a]">HP</div>
+              </div>
+
+              <div class="flex gap-2">
               <NuxtLink
                 :to="`/worlds/${worldId}/entities/${entityId}`"
                 class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
@@ -1303,14 +1307,15 @@ async function saveSheet() {
               >
                 Save
               </button>
+              </div>
             </div>
           </div>
 
-          <div class="mt-3 grid grid-cols-5 gap-1 text-center text-[11px]">
+          <div class="mt-3 grid grid-cols-4 gap-1.5 text-center text-[11px]">
             <div
               v-for="stat in mobileQuickStats"
               :key="stat.label"
-              class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.58)] px-2 py-1.5"
+              class="rounded-[12px] border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.86)] px-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
             >
               <div class="text-[#9f9278]">{{ stat.label }}</div>
               <div class="mt-0.5 truncate font-semibold text-white">{{ stat.value }}</div>
@@ -1323,12 +1328,13 @@ async function saveSheet() {
                 v-for="tab in mobileSheetTabs"
                 :key="`mobile-${tab.key}`"
                 type="button"
-                class="inline-flex min-w-[86px] items-center justify-center gap-1 rounded-none border px-3 py-2 text-xs font-semibold transition"
+                class="inline-flex min-w-[82px] flex-col items-center justify-center gap-1 rounded-[12px] border px-3 py-2 text-[11px] font-semibold transition"
                 :class="activeSheetTab === tab.key
-                  ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
-                  : 'border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8]'"
+                  ? 'border-[rgba(201,164,90,0.72)] bg-[rgba(201,164,90,0.18)] text-[#fff7df] shadow-[0_0_18px_rgba(201,164,90,0.10)]'
+                  : 'border-[rgba(65,82,103,0.72)] bg-[rgba(12,23,33,0.86)] text-[#cbd5e1]'"
                 @click="setSheetTab(tab.key)"
               >
+                <UIcon :name="tab.icon" class="h-4 w-4" />
                 <span>{{ tab.label }}</span>
                 <span
                   v-if="tabCountLabel(tab.key)"
@@ -1434,39 +1440,39 @@ async function saveSheet() {
               <div class="flex gap-3">
                 <div
                   v-if="entityImageUrl"
-                  class="eldra-frame-corners eldra-corner-runes relative h-32 w-24 shrink-0 overflow-hidden rounded-none border border-[rgba(201,164,90,0.36)] bg-[radial-gradient(circle_at_center,rgba(201,164,90,0.12),rgba(9,8,6,0.96))] p-1 shadow-[0_0_0_1px_rgba(0,0,0,0.65),0_16px_30px_rgba(0,0,0,0.35)]"
+                  class="relative h-28 w-28 shrink-0 overflow-hidden rounded-[16px] border border-[rgba(201,164,90,0.55)] bg-[rgba(7,16,26,0.92)] p-1 shadow-[0_0_0_1px_rgba(0,0,0,0.70),0_14px_26px_rgba(0,0,0,0.35)]"
                 >
                   <img
                     :src="entityImageUrl"
                     :alt="sheet?.name || entity?.title || 'Character Portrait'"
-                    class="h-full w-full object-contain object-bottom"
+                    class="h-full w-full rounded-[12px] object-contain object-bottom"
                   >
                 </div>
 
                 <div class="grid min-w-0 flex-1 grid-cols-2 gap-2">
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                  <div class="rounded-[12px] border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                     <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Level</div>
                     <div class="mt-1 truncate text-lg font-semibold text-white">{{ sheet?.level || 1 }}</div>
                   </div>
 
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                  <div class="rounded-[12px] border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                     <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Class</div>
                     <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.class_name || '-' }}</div>
                   </div>
 
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                  <div class="rounded-[12px] border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                     <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Species</div>
                     <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.species_name || '-' }}</div>
                   </div>
 
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.60)] p-2">
+                  <div class="rounded-[12px] border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                     <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Background</div>
                     <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.background_name || '-' }}</div>
                   </div>
                 </div>
               </div>
 
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+              <div class="rounded-[14px] border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div class="mb-2 flex items-center justify-between gap-3">
                   <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Abilities</div>
                   <div class="text-[10px] uppercase tracking-[0.18em] text-[#756a57]">Score / Mod</div>
@@ -1476,7 +1482,7 @@ async function saveSheet() {
                   <div
                     v-for="ability in abilityList"
                     :key="ability.key"
-                    class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-2 text-center"
+                    class="rounded-[12px] border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2 text-center"
                   >
                     <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">{{ ability.label }}</div>
                     <div class="mt-1 text-xl font-semibold leading-none text-white">{{ ability.value ?? 10 }}</div>
@@ -1487,7 +1493,7 @@ async function saveSheet() {
 
 
               <!-- Mobile Saving Throws -->
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+              <div class="rounded-[14px] border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div class="mb-2 flex items-center justify-between gap-3">
                   <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Saving Throws</div>
                   <div class="text-[10px] uppercase tracking-[0.18em] text-[#756a57]">Total</div>
@@ -1497,7 +1503,7 @@ async function saveSheet() {
                   <div
                     v-for="save in mathSaves"
                     :key="save.key"
-                    class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-2"
+                    class="rounded-[12px] border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2"
                   >
                     <div class="flex items-center justify-between gap-1">
                       <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">{{ save.shortLabel }}</div>
@@ -1509,7 +1515,7 @@ async function saveSheet() {
               </div>
 
               <!-- Mobile Skills -->
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+              <div class="rounded-[14px] border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div class="mb-2 flex items-center justify-between gap-3">
                   <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Skills</div>
                   <div class="text-[10px] uppercase tracking-[0.18em] text-[#756a57]">Check</div>
@@ -1519,7 +1525,7 @@ async function saveSheet() {
                   <div
                     v-for="skill in mathSkills"
                     :key="skill.key"
-                    class="flex items-center justify-between gap-2 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.36)] px-2 py-1.5"
+                    class="flex items-center justify-between gap-2 rounded-[10px] border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] px-2 py-1.5"
                   >
                     <div class="flex min-w-0 items-center gap-1.5">
                       <span class="truncate text-[11px] leading-none text-[#d8ceb8]">{{ skill.label }}</span>
@@ -1530,25 +1536,25 @@ async function saveSheet() {
                 </div>
               </div>
 
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.54)] p-3">
+              <div class="rounded-[14px] border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">At The Table</div>
                 <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-[#d8ceb8]">
-                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                  <div class="rounded-[10px] border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] p-2">
                     <span class="text-[#9f9278]">Hit Dice:</span>
                     <span class="ml-1 text-white">{{ shownCombatStat('hitDice') || resolvedClass?.hitDie || '-' }}</span>
                   </div>
 
-                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                  <div class="rounded-[10px] border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] p-2">
                     <span class="text-[#9f9278]">Features:</span>
                     <span class="ml-1 text-white">{{ featureCount }}</span>
                   </div>
 
-                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                  <div class="rounded-[10px] border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] p-2">
                     <span class="text-[#9f9278]">Spells:</span>
                     <span class="ml-1 text-white">{{ selectedSpellCount }}</span>
                   </div>
 
-                  <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-black/20 p-2">
+                  <div class="rounded-[10px] border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] p-2">
                     <span class="text-[#9f9278]">Items:</span>
                     <span class="ml-1 text-white">{{ inventoryCount }}</span>
                   </div>

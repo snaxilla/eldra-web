@@ -1209,14 +1209,16 @@ function canCastSpell(spell: any) {
 async function castSpell(spell: any) {
   const spellLevel = Number(spellLevelForOption(spell) || 0)
 
-  if (spellLevel > 0) {
-    const row = lowestAvailableSlotRowForSpell(spell)
-    if (!row) return
-
-    await saveSpellSlotUsage(row.level, Number(row.used || 0) + 1)
+  if (spellLevel <= 0) {
+    spellSaveError.value = ''
+    spellSaveSuccess.value = 'Spell cast.'
+    return
   }
 
-  openSpellDrawer(spell)
+  const row = lowestAvailableSlotRowForSpell(spell)
+  if (!row) return
+
+  await saveSpellSlotUsage(row.level, Number(row.used || 0) + 1)
 }
 
 const shownKnownSpells = computed(() =>
@@ -2671,7 +2673,7 @@ async function saveSheet() {
                       <button
                         type="button"
                         class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
-                        @click="openSpellDrawer(spell)"
+                        @click.stop="openSpellDrawer(spell)"
                       >
                         Details
                       </button>
@@ -2680,9 +2682,9 @@ async function saveSheet() {
                         type="button"
                         class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-45"
                         :disabled="spellSaving || !canCastSpell(spell)"
-                        @click="castSpell(spell)"
+                        @click.stop="castSpell(spell)"
                       >
-                        {{ Number(spellLevelForOption(spell)) === 0 ? 'Cast' : 'Cast Slot' }}
+                        Cast
                       </button>
                     </div>
                   </article>
@@ -2837,7 +2839,7 @@ async function saveSheet() {
                       <button
                         type="button"
                         class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
-                        @click="openSpellDrawer(spell)"
+                        @click.stop="openSpellDrawer(spell)"
                       >
                         <div class="font-medium text-white">{{ spell.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
@@ -2846,7 +2848,7 @@ async function saveSheet() {
                       <button
                         type="button"
                         class="eldra-button shrink-0 rounded-none px-3 py-1.5 text-xs"
-                        @click="openSpellDrawer(spell)"
+                        @click.stop="openSpellDrawer(spell)"
                       >
                         Details
                       </button>
@@ -2899,7 +2901,7 @@ async function saveSheet() {
                       <button
                         type="button"
                         class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
-                        @click="openSpellDrawer(spell)"
+                        @click.stop="openSpellDrawer(spell)"
                       >
                         <div class="font-medium text-white">{{ spell.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>
@@ -2963,7 +2965,7 @@ async function saveSheet() {
                       <button
                         type="button"
                         class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
-                        @click="openSpellDrawer(spell)"
+                        @click.stop="openSpellDrawer(spell)"
                       >
                         <div class="font-medium text-white">{{ spell.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>
@@ -3004,7 +3006,7 @@ async function saveSheet() {
                     :key="spell.id"
                     type="button"
                     class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-left text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
-                    @click="openSpellDrawer(spell)"
+                    @click.stop="openSpellDrawer(spell)"
                   >
                     <div class="font-medium text-white">{{ spell.title }}</div>
                     <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>

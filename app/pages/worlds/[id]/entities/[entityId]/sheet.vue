@@ -1263,10 +1263,10 @@ async function saveSheet() {
 </script>
 
 <template>
-  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[rgba(4,8,13,0.24)] md:relative md:z-auto md:h-full md:bg-transparent">
+  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[linear-gradient(to_bottom,rgba(5,10,16,0.92),rgba(5,10,16,0.84))] md:relative md:z-auto md:h-full md:bg-transparent">
     <div
         :class="selectedSpellEntityId ? 'md:pr-[460px]' : ''"
-        class="mx-auto max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
+        class="mx-auto w-full max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
 
 
@@ -2569,10 +2569,23 @@ async function saveSheet() {
 <style scoped>
 @media (max-width: 767px) {
   .eldra-mobile-sheet-root {
-    left: 0;
-    right: 0;
-    width: 100vw;
-    max-width: 100vw;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin: 0 !important;
+    isolation: isolate;
+  }
+
+  .eldra-mobile-sheet-root::before {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(36, 54, 72, 0.24), transparent 46%),
+      radial-gradient(circle at 20% 95%, rgba(201, 164, 90, 0.08), transparent 38%);
   }
 }
 

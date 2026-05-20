@@ -1263,7 +1263,7 @@ async function saveSheet() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[linear-gradient(to_bottom,rgba(7,13,20,0.38),rgba(7,13,20,0.18))] md:relative md:z-auto md:h-full md:bg-transparent">
+  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-transparent md:relative md:z-auto md:h-full md:bg-transparent">
     <div
         :class="selectedSpellEntityId ? 'md:pr-[460px]' : ''"
         class="mx-auto max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
@@ -1311,6 +1311,21 @@ async function saveSheet() {
             </div>
           </div>
 
+          <!-- Mobile Header Portrait -->
+          <div
+            v-if="entityImageUrl"
+            class="mt-3 flex justify-center"
+          >
+            <div class="h-24 w-24 overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.64)] shadow-[0_0_0_1px_rgba(0,0,0,0.72),0_14px_26px_rgba(0,0,0,0.38)]">
+              <img
+                :src="entityImageUrl"
+                :alt="sheet?.name || entity?.title || 'Character Portrait'"
+                class="h-full w-full object-cover object-[center_18%]"
+              >
+            </div>
+          </div>
+
+
           <div class="mt-3 grid grid-cols-4 gap-1.5 text-center text-[11px]">
             <div
               v-for="stat in mobileQuickStats"
@@ -1336,12 +1351,6 @@ async function saveSheet() {
               >
                 <UIcon :name="tab.icon" class="h-4 w-4" />
                 <span>{{ tab.label }}</span>
-                <span
-                  v-if="tabCountLabel(tab.key)"
-                  class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]"
-                >
-                  {{ tabCountLabel(tab.key) }}
-                </span>
               </button>
             </div>
           </nav>
@@ -1437,19 +1446,9 @@ async function saveSheet() {
               v-if="activeSheetTab === 'overview'"
               class="mt-3 space-y-3 md:hidden"
             >
-              <div class="flex gap-3">
-                <div
-                  v-if="entityImageUrl"
-                  class="relative h-28 w-28 shrink-0 overflow-hidden rounded-none border border-[rgba(201,164,90,0.55)] bg-[rgba(7,16,26,0.72)] shadow-[0_0_0_1px_rgba(0,0,0,0.70),0_14px_26px_rgba(0,0,0,0.35)]"
-                >
-                  <img
-                    :src="entityImageUrl"
-                    :alt="sheet?.name || entity?.title || 'Character Portrait'"
-                    class="h-full w-full object-cover object-center"
-                  >
-                </div>
+              <div class="grid gap-3">
 
-                <div class="grid min-w-0 flex-1 grid-cols-2 gap-2">
+                <div class="grid grid-cols-2 gap-2">
                   <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                     <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Level</div>
                     <div class="mt-1 truncate text-lg font-semibold text-white">{{ sheet?.level || 1 }}</div>
@@ -2569,6 +2568,15 @@ async function saveSheet() {
 </template>
 
 <style scoped>
+@media (max-width: 767px) {
+  .eldra-mobile-sheet-root {
+    left: 0;
+    right: 0;
+    width: 100vw;
+    max-width: 100vw;
+  }
+}
+
 @media (max-width: 767px) {
   :global(.eldra-sidebar-ornate) {
     display: none !important;

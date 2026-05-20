@@ -1263,14 +1263,15 @@ async function saveSheet() {
 </script>
 
 <template>
-  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-transparent md:relative md:z-auto md:h-full md:bg-transparent">
+  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[rgba(4,8,13,0.24)] md:relative md:z-auto md:h-full md:bg-transparent">
     <div
         :class="selectedSpellEntityId ? 'md:pr-[460px]' : ''"
         class="mx-auto max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
 
+
         <!-- Mobile Sheet Header -->
-        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.20)] bg-[linear-gradient(to_bottom,rgba(8,14,21,0.92),rgba(8,14,21,0.82))] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
+        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.20)] bg-[rgba(7,13,20,0.90)] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">Character Sheet</div>
@@ -1290,7 +1291,6 @@ async function saveSheet() {
                 <div class="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#c9a45a]">HP</div>
               </div>
 
-              <div class="flex gap-2">
               <NuxtLink
                 :to="`/worlds/${worldId}/entities/${entityId}`"
                 class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
@@ -1307,53 +1307,52 @@ async function saveSheet() {
               >
                 Save
               </button>
-              </div>
             </div>
           </div>
 
-          <!-- Mobile Header Portrait -->
-          <div
-            v-if="entityImageUrl"
-            class="mt-3 flex justify-center"
-          >
-            <div class="h-24 w-24 overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.64)] shadow-[0_0_0_1px_rgba(0,0,0,0.72),0_14px_26px_rgba(0,0,0,0.38)]">
+          <div class="mt-3 grid grid-cols-[84px_minmax(0,1fr)] gap-3">
+            <div
+              v-if="entityImageUrl"
+              class="h-[112px] w-[84px] overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.64)] shadow-[0_0_0_1px_rgba(0,0,0,0.72),0_14px_26px_rgba(0,0,0,0.38)]"
+            >
               <img
                 :src="entityImageUrl"
                 :alt="sheet?.name || entity?.title || 'Character Portrait'"
                 class="h-full w-full object-cover object-[center_18%]"
               >
             </div>
-          </div>
 
+            <div class="min-w-0">
+              <div class="grid grid-cols-4 gap-1.5 text-center text-[11px]">
+                <div
+                  v-for="stat in mobileQuickStats"
+                  :key="stat.label"
+                  class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.86)] px-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                >
+                  <div class="text-[#9f9278]">{{ stat.label }}</div>
+                  <div class="mt-0.5 truncate font-semibold text-white">{{ stat.value }}</div>
+                </div>
+              </div>
 
-          <div class="mt-3 grid grid-cols-4 gap-1.5 text-center text-[11px]">
-            <div
-              v-for="stat in mobileQuickStats"
-              :key="stat.label"
-              class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.86)] px-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-            >
-              <div class="text-[#9f9278]">{{ stat.label }}</div>
-              <div class="mt-0.5 truncate font-semibold text-white">{{ stat.value }}</div>
+              <nav class="mt-2 overflow-x-auto pb-1">
+                <div class="flex min-w-max gap-1.5">
+                  <button
+                    v-for="tab in mobileSheetTabs"
+                    :key="`mobile-${tab.key}`"
+                    type="button"
+                    class="inline-flex min-w-[68px] flex-col items-center justify-center gap-1 rounded-none border px-2 py-2 text-[11px] font-semibold transition"
+                    :class="activeSheetTab === tab.key
+                      ? 'border-[rgba(201,164,90,0.72)] bg-[rgba(201,164,90,0.18)] text-[#fff7df] shadow-[0_0_18px_rgba(201,164,90,0.10)]'
+                      : 'border-[rgba(65,82,103,0.72)] bg-[rgba(12,23,33,0.86)] text-[#cbd5e1]'"
+                    @click="setSheetTab(tab.key)"
+                  >
+                    <UIcon :name="tab.icon" class="h-4 w-4" />
+                    <span>{{ tab.label }}</span>
+                  </button>
+                </div>
+              </nav>
             </div>
           </div>
-
-          <nav class="mt-3 -mx-1 overflow-x-auto pb-1">
-            <div class="flex min-w-max gap-2 px-1">
-              <button
-                v-for="tab in mobileSheetTabs"
-                :key="`mobile-${tab.key}`"
-                type="button"
-                class="inline-flex min-w-[82px] flex-col items-center justify-center gap-1 rounded-none border px-3 py-2 text-[11px] font-semibold transition"
-                :class="activeSheetTab === tab.key
-                  ? 'border-[rgba(201,164,90,0.72)] bg-[rgba(201,164,90,0.18)] text-[#fff7df] shadow-[0_0_18px_rgba(201,164,90,0.10)]'
-                  : 'border-[rgba(65,82,103,0.72)] bg-[rgba(12,23,33,0.86)] text-[#cbd5e1]'"
-                @click="setSheetTab(tab.key)"
-              >
-                <UIcon :name="tab.icon" class="h-4 w-4" />
-                <span>{{ tab.label }}</span>
-              </button>
-            </div>
-          </nav>
         </div>
 
       <div class="mb-4 hidden flex-wrap items-center justify-between gap-3 md:flex">

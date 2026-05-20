@@ -9,6 +9,35 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const entityId = computed(() => String(route.params.entityId || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+const sheetViewportWidth = ref(0)
+const sheetPointerCoarse = ref(false)
+
+function updateSheetViewportMode() {
+  if (!import.meta.client) return
+
+  sheetViewportWidth.value = window.innerWidth || 0
+  sheetPointerCoarse.value = window.matchMedia?.('(pointer: coarse)').matches || false
+}
+
+const useCompactSheetLayout = computed(() => {
+  const width = Number(sheetViewportWidth.value || 0)
+  if (!width) return false
+
+  return width < 768 || (sheetPointerCoarse.value && width <= 1366)
+})
+
+onMounted(() => {
+  updateSheetViewportMode()
+  window.addEventListener('resize', updateSheetViewportMode)
+  window.addEventListener('orientationchange', updateSheetViewportMode)
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+
+  window.removeEventListener('resize', updateSheetViewportMode)
+  window.removeEventListener('orientationchange', updateSheetViewportMode)
+})
 
 const sheetSaving = ref(false)
 const sheetSaveError = ref('')
@@ -1688,10 +1717,13 @@ async function saveSheet() {
 </script>
 
 <template>
-  <div class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[#05080d] md:relative md:inset-auto md:z-auto md:h-full md:bg-transparent">
+  <div
+    :class="{ 'eldra-sheet-compact': useCompactSheetLayout }"
+    class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[#05080d] md:relative md:inset-auto md:z-auto md:h-full md:bg-transparent"
+  >
 
     <!-- Mobile Sheet Owned Background -->
-    <div class="pointer-events-none fixed inset-0 z-0 md:hidden">
+    <div class="sheet-owned-bg pointer-events-none fixed inset-0 z-0 md:hidden">
       <div
         v-if="mobileSheetBackgroundImageUrl"
         class="absolute inset-0 bg-cover bg-center opacity-95"
@@ -1713,7 +1745,7 @@ async function saveSheet() {
 
 
         <!-- Mobile Sheet Header -->
-        <div class="sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.20)] bg-[rgba(7,13,20,0.90)] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
+        <div class="sheet-mobile-only sticky top-0 z-40 -mx-3 mb-3 border-b border-[rgba(201,164,90,0.20)] bg-[rgba(7,13,20,0.90)] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur md:hidden">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">Character Sheet</div>
@@ -1955,7 +1987,7 @@ async function saveSheet() {
           </div>
         </div>
 
-      <div class="mb-4 hidden flex-wrap items-center justify-between gap-3 md:flex">
+      <div class="sheet-desktop-only mb-4 hidden flex-wrap items-center justify-between gap-3 md:flex">
         <NuxtLink
           :to="`/worlds/${worldId}/entities/${entityId}`"
           class="eldra-button rounded-none px-4 py-2 text-sm"
@@ -1984,7 +2016,7 @@ async function saveSheet() {
         </div>
       </div>
 
-        <div class="mb-4 hidden overflow-x-auto md:block">
+        <div class="sheet-desktop-only mb-4 hidden overflow-x-auto md:block">
           <div class="flex min-w-max gap-2">
             <button
               v-for="tab in SHEET_TABS"
@@ -2015,7 +2047,7 @@ async function saveSheet() {
         </div>
 
         <template v-else>
-          <div class="hidden flex-col gap-4 md:flex md:flex-row md:items-end md:justify-between">
+          <div class="sheet-desktop-only hidden flex-col gap-4 md:flex md:flex-row md:items-end md:justify-between">
             <div class="min-w-0 flex-1">
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Character Sheet</div>
 
@@ -2043,7 +2075,7 @@ async function saveSheet() {
             <!-- Mobile Compact Overview -->
             <section
               v-if="activeSheetTab === 'overview'"
-              class="mt-0 space-y-3 md:hidden"
+              class="sheet-mobile-only mt-0 space-y-3 md:hidden"
             >
 
               <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -2138,7 +2170,7 @@ async function saveSheet() {
 
             <div
             v-if="activeSheetTab === 'overview' && entityImageUrl"
-            class="eldra-image-frame mt-6 hidden overflow-hidden rounded-none border bg-black/20 md:block"
+            class="sheet-desktop-only eldra-image-frame mt-6 hidden overflow-hidden rounded-none border bg-black/20 md:block"
           >
             <img
               :src="entityImageUrl"
@@ -3285,6 +3317,40 @@ async function saveSheet() {
 
   :global(.eldra-sidebar-ornate) {
     display: none !important;
+  }
+}
+/* Character sheet compact mode:
+   iPads/tablets should use the mobile sheet, without changing global Tailwind breakpoints. */
+@media (min-width: 768px) {
+  .eldra-sheet-compact {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    height: 100dvh !important;
+    overflow-y: auto !important;
+    background: #05080d !important;
+  }
+
+  .eldra-sheet-compact .sheet-owned-bg {
+    display: block !important;
+  }
+
+  .eldra-sheet-compact .sheet-mobile-only {
+    display: block !important;
+  }
+
+  .eldra-sheet-compact .sheet-desktop-only {
+    display: none !important;
+  }
+
+  .eldra-sheet-compact > .relative {
+    width: 100% !important;
+    max-width: 1100px !important;
+    padding: 0.75rem 0.75rem 7rem !important;
+  }
+
+  .eldra-sheet-compact .eldra-ornate-panel.eldra-frame-corners.eldra-corner-runes {
+    padding: 0.75rem 0.75rem 1rem !important;
   }
 }
 </style>

@@ -1337,7 +1337,7 @@ async function saveSheet() {
               </div>
             </div>
 
-            <div class="flex shrink-0 flex-col items-end gap-2">
+            <div class="flex shrink-0 flex-col items-end gap-1.5">
               <div class="rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(26,35,48,0.86)] px-3 py-1.5 text-center shadow-[0_0_18px_rgba(201,164,90,0.10)]">
                 <div class="text-base font-semibold leading-none text-white">
                   {{ shownCombatStat('currentHp') || '—' }}/{{ shownCombatStat('maxHp') || '—' }}
@@ -1345,9 +1345,12 @@ async function saveSheet() {
                 <div class="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#c9a45a]">HP</div>
               </div>
 
+              <!-- Mobile Header Action Buttons -->
+              <div class="flex flex-wrap justify-end gap-1.5">
+
               <NuxtLink
                 :to="`/worlds/${worldId}/entities/${entityId}`"
-                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
               >
                 Back
               </NuxtLink>
@@ -1355,7 +1358,7 @@ async function saveSheet() {
               <button
                 type="button"
                 title="Toggle mobile build mode"
-                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
                 @click="toggleMobileBuildMode"
               >
                 {{ mode === 'build' ? 'Play' : 'Build' }}
@@ -1364,12 +1367,13 @@ async function saveSheet() {
               <button
                 v-if="mode === 'build'"
                 type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
+                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(201,164,90,0.14)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df] disabled:opacity-50"
                 :disabled="sheetSaving"
                 @click="saveSheet"
               >
                 Save
               </button>
+              </div>
             </div>
           </div>
 

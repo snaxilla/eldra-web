@@ -1485,30 +1485,6 @@ async function saveSheet() {
               v-if="activeSheetTab === 'overview'"
               class="mt-3 space-y-3 md:hidden"
             >
-              <div class="grid gap-3">
-
-                <div class="grid grid-cols-2 gap-2">
-                  <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Level</div>
-                    <div class="mt-1 truncate text-lg font-semibold text-white">{{ sheet?.level || 1 }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Class</div>
-                    <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.class_name || '-' }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Species</div>
-                    <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.species_name || '-' }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.82)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                    <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Background</div>
-                    <div class="mt-1 truncate text-sm font-semibold text-white">{{ sheet?.background_name || '-' }}</div>
-                  </div>
-                </div>
-              </div>
 
               <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div class="mb-2 flex items-center justify-between gap-3">

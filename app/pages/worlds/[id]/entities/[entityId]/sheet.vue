@@ -669,7 +669,7 @@ function closeHpDrawer() {
   hpDrawerOpen.value = false
 }
 
-function applyHpDamage() {
+async function applyHpDamage() {
   const amount = Math.max(0, hpNumberOrNull(hpAmountDraft.value) ?? 0)
   if (!amount) return
 
@@ -684,9 +684,11 @@ function applyHpDamage() {
   hpCurrentDraft.value = String(current)
   hpAmountDraft.value = ''
   hpSaveSuccess.value = ''
+
+  await saveHp()
 }
 
-function applyHpHealing() {
+async function applyHpHealing() {
   const amount = Math.max(0, hpNumberOrNull(hpAmountDraft.value) ?? 0)
   if (!amount) return
 
@@ -699,6 +701,8 @@ function applyHpHealing() {
   hpCurrentDraft.value = String(healed)
   hpAmountDraft.value = ''
   hpSaveSuccess.value = ''
+
+  await saveHp()
 }
 
 async function saveHp() {
@@ -1491,44 +1495,146 @@ async function saveSheet() {
             </div>
 
             <div class="flex shrink-0 flex-col items-end gap-1.5">
-              <div class="rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(26,35,48,0.86)] px-3 py-1.5 text-center shadow-[0_0_18px_rgba(201,164,90,0.10)]">
+              <div class="relative">
                 <button
-              type="button"
-              title="Manage hit points"
-              @click="openHpDrawer" class="text-base font-semibold leading-none text-white">
-                  {{ shownCombatStat('currentHp') || '—' }}/{{ shownCombatStat('maxHp') || '—' }}
+                  type="button"
+                  title="Manage hit points"
+                  class="rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(26,35,48,0.86)] px-3 py-1.5 text-center shadow-[0_0_18px_rgba(201,164,90,0.10)] transition hover:border-[rgba(245,231,189,0.75)]"
+                  @click.stop="hpDrawerOpen ? closeHpDrawer() : openHpDrawer()"
+                >
+                  <div class="text-base font-semibold leading-none text-white">
+                    {{ shownCombatStat('currentHp') || '—' }}/{{ shownCombatStat('maxHp') || '—' }}
+                  </div>
+                  <div class="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#c9a45a]">HP</div>
                 </button>
-                <div class="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#c9a45a]">HP</div>
+
+                <!-- Compact HP Popover -->
+                <div
+                  v-if="hpDrawerOpen"
+                  class="absolute right-0 top-full z-[80] mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(7,13,20,0.96)] p-3 text-left shadow-[0_18px_48px_rgba(0,0,0,0.50)] backdrop-blur"
+                  @click.stop
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-[10px] uppercase tracking-[0.3em] text-[#9f9278]">Hit Points</div>
+                      <div class="mt-1 text-xs text-[#d8ceb8]">
+                        Max {{ hpMaxDisplay }}<span v-if="hitPointMath.hitDie"> · {{ hitPointMath.hitDie }}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                      @click="closeHpDrawer"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2">
+                      <div class="text-[9px] uppercase tracking-[0.18em] text-[#9f9278]">Current</div>
+                      <div class="mt-1 text-lg font-semibold text-white">{{ hpCurrentDisplay }}</div>
+                    </div>
+
+                    <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2">
+                      <div class="text-[9px] uppercase tracking-[0.18em] text-[#9f9278]">Max</div>
+                      <div class="mt-1 text-lg font-semibold text-white">{{ hpMaxDisplay }}</div>
+                    </div>
+
+                    <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2">
+                      <div class="text-[9px] uppercase tracking-[0.18em] text-[#9f9278]">Temp</div>
+                      <div class="mt-1 text-lg font-semibold text-white">{{ hpTempDisplay }}</div>
+                    </div>
+                  </div>
+
+                  <label class="mt-3 block">
+                    <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Amount</span>
+                    <input
+                      v-model="hpAmountDraft"
+                      inputmode="numeric"
+                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                      placeholder="0"
+                    >
+                  </label>
+
+                  <div class="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      class="rounded-none border border-red-500/24 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100 transition hover:bg-red-500/18 disabled:opacity-50"
+                      :disabled="hpSaving"
+                      @click="applyHpDamage"
+                    >
+                      Damage
+                    </button>
+
+                    <button
+                      type="button"
+                      class="rounded-none border border-emerald-500/24 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:opacity-50"
+                      :disabled="hpSaving"
+                      @click="applyHpHealing"
+                    >
+                      Heal
+                    </button>
+                  </div>
+
+                  <div class="mt-3 grid grid-cols-2 gap-2">
+                    <label class="block">
+                      <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Current</span>
+                      <input
+                        v-model="hpCurrentDraft"
+                        inputmode="numeric"
+                        class="eldra-input w-full rounded-none px-2 py-2 text-sm text-white"
+                        @change="saveHp"
+                      >
+                    </label>
+
+                    <label class="block">
+                      <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Temp</span>
+                      <input
+                        v-model="hpTempDraft"
+                        inputmode="numeric"
+                        class="eldra-input w-full rounded-none px-2 py-2 text-sm text-white"
+                        @change="saveHp"
+                      >
+                    </label>
+                  </div>
+
+                  <div class="mt-2 min-h-[1.25rem] text-xs">
+                    <span v-if="hpSaving" class="text-[#9f9278]">Saving...</span>
+                    <span v-else-if="hpSaveError" class="text-red-200">{{ hpSaveError }}</span>
+                    <span v-else-if="hpSaveSuccess" class="text-emerald-200">{{ hpSaveSuccess }}</span>
+                  </div>
+                </div>
               </div>
 
               <!-- Mobile Header Action Buttons -->
               <div class="flex flex-wrap justify-end gap-1.5">
+                <NuxtLink
+                  :to="`/worlds/${worldId}/entities/${entityId}`"
+                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
+                >
+                  Back
+                </NuxtLink>
 
-              <NuxtLink
-                :to="`/worlds/${worldId}/entities/${entityId}`"
-                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
-              >
-                Back
-              </NuxtLink>
+                <button
+                  type="button"
+                  title="Toggle mobile build mode"
+                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
+                  @click="toggleMobileBuildMode"
+                >
+                  {{ mode === 'build' ? 'Play' : 'Build' }}
+                </button>
 
-              <button
-                type="button"
-                title="Toggle mobile build mode"
-                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
-                @click="toggleMobileBuildMode"
-              >
-                {{ mode === 'build' ? 'Play' : 'Build' }}
-              </button>
-
-              <button
-                v-if="mode === 'build'"
-                type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(201,164,90,0.14)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df] disabled:opacity-50"
-                :disabled="sheetSaving"
-                @click="saveSheet"
-              >
-                Save
-              </button>
+                <button
+                  v-if="mode === 'build'"
+                  type="button"
+                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(201,164,90,0.14)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df] disabled:opacity-50"
+                  :disabled="sheetSaving"
+                  @click="saveSheet"
+                >
+                  Save
+                </button>
               </div>
             </div>
           </div>
@@ -2674,150 +2780,6 @@ async function saveSheet() {
       </section>
     </div>
 
-
-    <!-- Hit Point Drawer -->
-    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-      <div
-        v-if="hpDrawerOpen"
-        class="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
-        @click.self="closeHpDrawer"
-      >
-        <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[420px]">
-          <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Hit Points</div>
-              <h2 class="mt-2 truncate text-2xl font-semibold text-white">
-                {{ sheet?.name || entity?.title || 'Character' }}
-              </h2>
-            </div>
-
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
-              @click="closeHpDrawer"
-            >
-              <UIcon name="i-lucide-x" class="h-4 w-4" />
-            </button>
-          </div>
-
-          <div class="flex-1 overflow-y-auto px-5 py-5">
-            <div class="grid grid-cols-3 gap-2 text-center">
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.62)] p-3">
-                <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Current</div>
-                <div class="mt-1 text-2xl font-semibold text-white">{{ hpCurrentDisplay }}</div>
-              </div>
-
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.62)] p-3">
-                <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Max</div>
-                <div class="mt-1 text-2xl font-semibold text-white">{{ hpMaxDisplay }}</div>
-              </div>
-
-              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.62)] p-3">
-                <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Temp</div>
-                <div class="mt-1 text-2xl font-semibold text-white">{{ hpTempDisplay }}</div>
-              </div>
-            </div>
-
-            <div class="mt-4 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]">
-              <div v-if="hitPointMath.calculatedMax">
-                Calculated max HP:
-                <span class="text-[#fff7df]">{{ hitPointMath.calculatedMax }}</span>
-                <span v-if="hitPointMath.hitDie"> • Hit Die {{ hitPointMath.hitDie }}</span>
-                <span> • CON {{ hitPointMath.conModifier >= 0 ? '+' : '' }}{{ hitPointMath.conModifier }}</span>
-              </div>
-              <div v-else>
-                No class hit die found yet. Manual max HP will be used until a class is linked.
-              </div>
-            </div>
-
-            <div v-if="hpSaveError" class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-              {{ hpSaveError }}
-            </div>
-
-            <div v-if="hpSaveSuccess" class="mt-4 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-              {{ hpSaveSuccess }}
-            </div>
-
-            <section class="eldra-codex-soft mt-5 rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Damage / Healing</div>
-
-              <label class="mt-4 block">
-                <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Amount</span>
-                <input
-                  v-model="hpAmountDraft"
-                  inputmode="numeric"
-                  class="eldra-input w-full rounded-none px-3 py-3 text-lg text-white"
-                  placeholder="0"
-                >
-              </label>
-
-              <div class="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  class="rounded-none border border-red-500/24 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 transition hover:bg-red-500/18"
-                  @click="applyHpDamage"
-                >
-                  Damage
-                </button>
-
-                <button
-                  type="button"
-                  class="rounded-none border border-emerald-500/24 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/18"
-                  @click="applyHpHealing"
-                >
-                  Heal
-                </button>
-              </div>
-            </section>
-
-            <section class="eldra-codex-soft mt-5 rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Manual Values</div>
-
-              <div class="mt-4 grid grid-cols-2 gap-3">
-                <label class="block">
-                  <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Current HP</span>
-                  <input
-                    v-model="hpCurrentDraft"
-                    inputmode="numeric"
-                    class="eldra-input w-full rounded-none px-3 py-3 text-lg text-white"
-                  >
-                </label>
-
-                <label class="block">
-                  <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Temp HP</span>
-                  <input
-                    v-model="hpTempDraft"
-                    inputmode="numeric"
-                    class="eldra-input w-full rounded-none px-3 py-3 text-lg text-white"
-                  >
-                </label>
-              </div>
-            </section>
-          </div>
-
-          <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
-            <div class="flex gap-3">
-              <button
-                type="button"
-                class="flex-1 eldra-button rounded-none px-4 py-3 text-sm font-medium disabled:opacity-50"
-                :disabled="hpSaving"
-                @click="saveHp"
-              >
-                {{ hpSaving ? 'Saving...' : 'Save HP' }}
-              </button>
-
-              <button
-                type="button"
-                class="flex-1 eldra-button rounded-none px-4 py-3 text-sm font-medium"
-                @click="closeHpDrawer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </aside>
-      </div>
-    </Transition>
 
     <!-- Portrait Lightbox -->
     <Transition enter-from-class="opacity-0" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-150">

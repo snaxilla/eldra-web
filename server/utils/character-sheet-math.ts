@@ -496,6 +496,109 @@ function buildPendingChoices(sheet: any, resolved: any) {
   return rows
 }
 
+const FULL_CASTER_SPELL_SLOTS: Record<number, number[]> = {
+  1: [2],
+  2: [3],
+  3: [4, 2],
+  4: [4, 3],
+  5: [4, 3, 2],
+  6: [4, 3, 3],
+  7: [4, 3, 3, 1],
+  8: [4, 3, 3, 2],
+  9: [4, 3, 3, 3, 1],
+  10: [4, 3, 3, 3, 2],
+  11: [4, 3, 3, 3, 2, 1],
+  12: [4, 3, 3, 3, 2, 1],
+  13: [4, 3, 3, 3, 2, 1, 1],
+  14: [4, 3, 3, 3, 2, 1, 1],
+  15: [4, 3, 3, 3, 2, 1, 1, 1],
+  16: [4, 3, 3, 3, 2, 1, 1, 1],
+  17: [4, 3, 3, 3, 2, 1, 1, 1, 1],
+  18: [4, 3, 3, 3, 3, 1, 1, 1, 1],
+  19: [4, 3, 3, 3, 3, 2, 1, 1, 1],
+  20: [4, 3, 3, 3, 3, 2, 2, 1, 1]
+}
+
+const FULL_CASTER_CLASS_KEYS = new Set([
+  'bard',
+  'cleric',
+  'druid',
+  'sorcerer',
+  'wizard'
+])
+
+const HALF_CASTER_CLASS_KEYS = new Set([
+  'artificer',
+  'paladin',
+  'ranger'
+])
+
+function classCasterProgression(value: any) {
+  const key = normalizeToken(value)
+
+  if (FULL_CASTER_CLASS_KEYS.has(key)) return 'full'
+  if (HALF_CASTER_CLASS_KEYS.has(key)) return 'half'
+
+  return 'none'
+}
+
+function effectiveCasterLevel(level: number, className: any) {
+  const progression = classCasterProgression(className)
+  const classKey = normalizeToken(className)
+
+  if (progression === 'full') return level
+
+  if (progression === 'half') {
+    if ((classKey === 'paladin' || classKey === 'ranger') && level < 2) return 0
+    return Math.max(1, Math.ceil(level / 2))
+  }
+
+  return 0
+}
+
+function usedSpellSlotsForSheet(sheet: any) {
+  const spellcasting = plainObject(sheet?.spellcasting)
+  const usedSlots = plainObject(spellcasting.usedSlots ?? spellcasting.used_slots)
+
+  const normalized: Record<string, number> = {}
+
+  for (const [level, used] of Object.entries(usedSlots)) {
+    const parsedLevel = integerOrNull(level)
+    const parsedUsed = integerOrNull(used)
+
+    if (!parsedLevel || parsedLevel < 1 || parsedLevel > 9) continue
+    normalized[String(parsedLevel)] = Math.max(0, parsedUsed ?? 0)
+  }
+
+  return normalized
+}
+
+function buildSpellSlotRows(sheet: any, level: number, resolved: any) {
+  const className = resolved?.class?.title || sheet?.class_name || ''
+  const casterLevel = effectiveCasterLevel(level, className)
+
+  if (!casterLevel) return []
+
+  const slotTable = FULL_CASTER_SPELL_SLOTS[Math.max(1, Math.min(20, casterLevel))]
+  if (!slotTable) return []
+
+  const usedSlots = usedSpellSlotsForSheet(sheet)
+
+  return slotTable
+    .map((max, index) => {
+      const slotLevel = index + 1
+      const used = Math.max(0, Math.min(Number(max || 0), Number(usedSlots[String(slotLevel)] || 0)))
+
+      return {
+        level: slotLevel,
+        max: Number(max || 0),
+        used,
+        available: Math.max(0, Number(max || 0) - used)
+      }
+    })
+    .filter((row) => row.max > 0)
+}
+
 export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
   const level = integerOrNull(sheet?.level) ?? 1
   const proficiencyBonus = proficiencyBonusForLevel(level)
@@ -509,6 +612,7 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
   const speed = nonZeroTextOrNull(combatStats.speed) || resolved?.species?.speed || null
   const hitDice = nonZeroTextOrNull(combatStats.hitDice || combatStats.hit_dice) || resolved?.class?.hitDie || null
   const hitPoints = buildHitPoints(sheet, level, scores, resolved)
+  const spellSlots = buildSpellSlotRows(sheet, level, resolved)
 
   return {
     level,
@@ -525,6 +629,9 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
       hitPoints,
       armorClass: buildArmorClassCandidates(sheet, scores, resolved)
     },
+      spellcasting: {
+        slots: spellSlots
+      },
     pendingChoices: buildPendingChoices(sheet, resolved)
   }
 }

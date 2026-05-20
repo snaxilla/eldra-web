@@ -1068,6 +1068,152 @@ const availablePreparedSpellOptions = computed(() => {
   return known.length ? known : availableKnownSpellOptions.value
 })
 
+const spellSlotRows = computed(() =>
+  Array.isArray(math.value?.spellcasting?.slots) ? math.value.spellcasting.slots : []
+)
+
+const hasLimitedResources = computed(() => spellSlotRows.value.length > 0)
+
+function slotLevelLabel(level: any) {
+  const parsed = Number(level)
+  if (!Number.isFinite(parsed)) return ''
+
+  if (parsed === 1) return '1st'
+  if (parsed === 2) return '2nd'
+  if (parsed === 3) return '3rd'
+
+  return `${parsed}th`
+}
+
+function usedSlotsObject() {
+  const spellcasting = asObject(sheet.value?.spellcasting)
+  return {
+    ...asObject(spellcasting.usedSlots ?? spellcasting.used_slots)
+  }
+}
+
+function spellcastingWithUsedSlots(usedSlots: Record<string, number>) {
+  return {
+    ...asObject(sheet.value?.spellcasting),
+    knownSpellIds: knownSpellIds.value,
+    preparedSpellIds: preparedSpellIds.value,
+    alwaysPreparedSpellIds: alwaysPreparedSpellIds.value,
+    usedSlots
+  }
+}
+
+async function saveSpellSlotUsage(level: any, nextUsed: number) {
+  if (spellSaving.value) return
+
+  const slotLevel = String(level || '')
+  if (!slotLevel) return
+
+  const usedSlots = usedSlotsObject()
+  usedSlots[slotLevel] = Math.max(0, Math.floor(Number(nextUsed || 0)))
+
+  spellSaving.value = true
+  spellSaveError.value = ''
+  spellSaveSuccess.value = ''
+
+  try {
+    const saved = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
+      method: 'PATCH',
+      body: {
+        name: sheetForm.name,
+        level: sheetForm.level,
+        className: optionTitle(classOptions.value, sheetForm.classEntityId) || sheetForm.className,
+        subclassName: sheetForm.subclassName,
+        speciesName: optionTitle(speciesOptions.value, sheetForm.speciesEntityId) || sheetForm.speciesName,
+        backgroundName: optionTitle(backgroundOptions.value, sheetForm.backgroundEntityId) || sheetForm.backgroundName,
+        classEntityId: sheetForm.classEntityId || null,
+        speciesEntityId: sheetForm.speciesEntityId || null,
+        backgroundEntityId: sheetForm.backgroundEntityId || null,
+        abilityScores: { ...sheetForm.abilityScores },
+        combatStats: { ...sheetForm.combatStats },
+        spellcasting: spellcastingWithUsedSlots(usedSlots)
+      }
+    })
+
+    data.value = saved as any
+    syncFormFromSheet()
+    syncSpellDraftsFromSheet()
+    spellSaveSuccess.value = 'Resources updated.'
+  } catch (err: any) {
+    spellSaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to update resources.'
+  } finally {
+    spellSaving.value = false
+  }
+}
+
+function slotGemAvailable(row: any, index: number) {
+  return index >= Number(row?.used || 0)
+}
+
+function slotGemClass(row: any, index: number) {
+  if (!slotGemAvailable(row, index)) {
+    return 'border-[rgba(148,163,184,0.35)] bg-transparent opacity-50'
+  }
+
+  const level = Number(row?.level || 0)
+  const colors: Record<number, string> = {
+    1: 'border-sky-200/80 bg-sky-300/80 shadow-[0_0_10px_rgba(125,211,252,0.28)]',
+    2: 'border-cyan-200/80 bg-cyan-300/80 shadow-[0_0_10px_rgba(103,232,249,0.26)]',
+    3: 'border-emerald-200/80 bg-emerald-300/80 shadow-[0_0_10px_rgba(110,231,183,0.24)]',
+    4: 'border-violet-200/80 bg-violet-300/80 shadow-[0_0_10px_rgba(196,181,253,0.24)]',
+    5: 'border-fuchsia-200/80 bg-fuchsia-300/80 shadow-[0_0_10px_rgba(240,171,252,0.24)]',
+    6: 'border-rose-200/80 bg-rose-300/80 shadow-[0_0_10px_rgba(253,164,175,0.24)]',
+    7: 'border-amber-200/80 bg-amber-300/80 shadow-[0_0_10px_rgba(252,211,77,0.24)]',
+    8: 'border-orange-200/80 bg-orange-300/80 shadow-[0_0_10px_rgba(253,186,116,0.24)]',
+    9: 'border-white/80 bg-white/80 shadow-[0_0_10px_rgba(255,255,255,0.22)]'
+  }
+
+  return colors[level] || 'border-[#f5e7bd]/80 bg-[#c9a45a]/80'
+}
+
+async function toggleSpellSlot(row: any, index: number) {
+  const max = Number(row?.max || 0)
+  const used = Number(row?.used || 0)
+  if (!max) return
+
+  const nextUsed = slotGemAvailable(row, index)
+    ? Math.min(max, used + 1)
+    : Math.max(0, used - 1)
+
+  await saveSpellSlotUsage(row.level, nextUsed)
+}
+
+function lowestAvailableSlotRowForSpell(spell: any) {
+  const spellLevel = Number(spellLevelForOption(spell) || 0)
+  if (!spellLevel) return null
+
+  return spellSlotRows.value.find((row: any) =>
+    Number(row.level) >= spellLevel &&
+    Number(row.available || 0) > 0
+  ) || null
+}
+
+function canCastSpell(spell: any) {
+  const spellLevel = Number(spellLevelForOption(spell) || 0)
+  return spellLevel === 0 || Boolean(lowestAvailableSlotRowForSpell(spell))
+}
+
+async function castSpell(spell: any) {
+  const spellLevel = Number(spellLevelForOption(spell) || 0)
+
+  if (spellLevel > 0) {
+    const row = lowestAvailableSlotRowForSpell(spell)
+    if (!row) return
+
+    await saveSpellSlotUsage(row.level, Number(row.used || 0) + 1)
+  }
+
+  openSpellDrawer(spell)
+}
+
 const shownKnownSpells = computed(() =>
   mode.value === 'build' ? spellOptionsByIds(spellKnownDraft.value) : knownSpells.value
 )
@@ -1761,6 +1907,44 @@ async function saveSheet() {
                   </button>
                 </div>
               </nav>
+
+              <!-- Mobile Limited Resource Strip -->
+              <div
+                v-if="hasLimitedResources"
+                class="mt-2 border-t border-[rgba(201,164,90,0.18)] pt-2"
+              >
+                <div class="mb-1 flex items-center justify-between gap-3">
+                  <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Resources</div>
+                  <div v-if="spellSaving" class="text-[10px] uppercase tracking-[0.16em] text-[#9f9278]">Saving</div>
+                </div>
+
+                <div class="overflow-x-auto pb-1">
+                  <div class="flex min-w-max gap-2">
+                    <div
+                      v-for="row in spellSlotRows"
+                      :key="`slot-row-${row.level}`"
+                      class="flex items-center gap-1 rounded-none border border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.72)] px-2 py-1.5"
+                    >
+                      <div class="mr-1 min-w-5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d8ceb8]">
+                        {{ row.level }}
+                      </div>
+
+                      <button
+                        v-for="index in row.max"
+                        :key="`slot-${row.level}-${index}`"
+                        type="button"
+                        class="h-3.5 w-3.5 rotate-45 border transition"
+                        :class="slotGemClass(row, index - 1)"
+                        :title="`${slotLevelLabel(row.level)} slot ${index}`"
+                        :disabled="spellSaving"
+                        @click="toggleSpellSlot(row, index - 1)"
+                      >
+                        <span class="sr-only">{{ slotLevelLabel(row.level) }} slot {{ index }}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2462,12 +2646,11 @@ async function saveSheet() {
                   v-if="actionSpellCards.length"
                   class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
                 >
-                  <button
+
+                  <article
                     v-for="spell in actionSpellCards"
                     :key="`action-spell-${spell.id}`"
-                    type="button"
-                    class="block rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3 text-left transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
-                    @click="openSpellDrawer(spell)"
+                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                   >
                     <div class="flex items-start justify-between gap-3">
                       <div class="min-w-0">
@@ -2479,7 +2662,26 @@ async function saveSheet() {
                         {{ spell.actionKind }}
                       </span>
                     </div>
-                  </button>
+
+                    <div class="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+                        @click="openSpellDrawer(spell)"
+                      >
+                        Details
+                      </button>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-45"
+                        :disabled="spellSaving || !canCastSpell(spell)"
+                        @click="castSpell(spell)"
+                      >
+                        {{ Number(spellLevelForOption(spell)) === 0 ? 'Cast' : 'Cast Slot' }}
+                      </button>
+                    </div>
+                  </article>
                 </div>
 
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">

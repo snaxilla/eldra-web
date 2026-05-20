@@ -232,12 +232,57 @@ function normalizeSheetSpellcasting(value: any, fallback: any = {}) {
   const source = plainObject(value)
   const previous = plainObject(fallback)
 
+  function idList(raw: any, previousRaw: any = []) {
+    const valueToUse = Array.isArray(raw) ? raw : previousRaw
+    if (!Array.isArray(valueToUse)) return []
+
+    return valueToUse
+      .map((item: any) => String(item || '').trim())
+      .filter(Boolean)
+  }
+
+  function usedSlots(raw: any, previousRaw: any = {}) {
+    const slotSource = plainObject(raw)
+    const slotPrevious = plainObject(previousRaw)
+    const merged = {
+      ...slotPrevious,
+      ...slotSource
+    }
+
+    const normalized: Record<string, number> = {}
+
+    for (const [level, value] of Object.entries(merged)) {
+      const parsedLevel = Number(level)
+      if (!Number.isFinite(parsedLevel) || parsedLevel < 1 || parsedLevel > 9) continue
+
+      const parsedValue = Number(value)
+      normalized[String(Math.floor(parsedLevel))] = Number.isFinite(parsedValue)
+        ? Math.max(0, Math.floor(parsedValue))
+        : 0
+    }
+
+    return normalized
+  }
+
   return {
     ...previous,
     ...source,
-    knownSpellIds: normalizeIdList(source.knownSpellIds ?? source.known_spell_ids ?? previous.knownSpellIds ?? previous.known_spell_ids),
-    preparedSpellIds: normalizeIdList(source.preparedSpellIds ?? source.prepared_spell_ids ?? previous.preparedSpellIds ?? previous.prepared_spell_ids),
-    alwaysPreparedSpellIds: normalizeIdList(source.alwaysPreparedSpellIds ?? source.always_prepared_spell_ids ?? previous.alwaysPreparedSpellIds ?? previous.always_prepared_spell_ids)
+    knownSpellIds: idList(
+      source.knownSpellIds ?? source.known_spell_ids,
+      previous.knownSpellIds ?? previous.known_spell_ids
+    ),
+    preparedSpellIds: idList(
+      source.preparedSpellIds ?? source.prepared_spell_ids,
+      previous.preparedSpellIds ?? previous.prepared_spell_ids
+    ),
+    alwaysPreparedSpellIds: idList(
+      source.alwaysPreparedSpellIds ?? source.always_prepared_spell_ids,
+      previous.alwaysPreparedSpellIds ?? previous.always_prepared_spell_ids
+    ),
+    usedSlots: usedSlots(
+      source.usedSlots ?? source.used_slots,
+      previous.usedSlots ?? previous.used_slots
+    )
   }
 }
 

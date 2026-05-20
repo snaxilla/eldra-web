@@ -1072,6 +1072,11 @@ const spellSlotRows = computed(() =>
   Array.isArray(math.value?.spellcasting?.slots) ? math.value.spellcasting.slots : []
 )
 
+const limitedResourceLabel = computed(() => {
+  if (spellSlotRows.value.length) return 'Spell Slots'
+  return 'Resources'
+})
+
 const hasLimitedResources = computed(() => spellSlotRows.value.length > 0)
 
 function slotLevelLabel(level: any) {
@@ -1718,7 +1723,35 @@ async function saveSheet() {
               </div>
             </div>
 
-            <div class="flex shrink-0 flex-col items-end gap-1.5">
+            <div class="flex shrink-0 items-start gap-1.5">
+              <!-- Mobile Header Action Buttons -->
+              <div class="flex shrink-0 items-start justify-end gap-1.5">
+                <NuxtLink
+                  :to="`/worlds/${worldId}/entities/${entityId}`"
+                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
+                >
+                  Back
+                </NuxtLink>
+
+                <button
+                  type="button"
+                  title="Toggle mobile build mode"
+                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
+                  @click="toggleMobileBuildMode"
+                >
+                  {{ mode === 'build' ? 'Play' : 'Build' }}
+                </button>
+
+                <button
+                  v-if="mode === 'build'"
+                  type="button"
+                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(201,164,90,0.14)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df] disabled:opacity-50"
+                  :disabled="sheetSaving"
+                  @click="saveSheet"
+                >
+                  Save
+                </button>
+              </div>
               <div class="relative">
                 <button
                   type="button"
@@ -1831,35 +1864,6 @@ async function saveSheet() {
                   </div>
                 </div>
               </div>
-
-              <!-- Mobile Header Action Buttons -->
-              <div class="flex flex-wrap justify-end gap-1.5">
-                <NuxtLink
-                  :to="`/worlds/${worldId}/entities/${entityId}`"
-                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
-                >
-                  Back
-                </NuxtLink>
-
-                <button
-                  type="button"
-                  title="Toggle mobile build mode"
-                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
-                  @click="toggleMobileBuildMode"
-                >
-                  {{ mode === 'build' ? 'Play' : 'Build' }}
-                </button>
-
-                <button
-                  v-if="mode === 'build'"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(201,164,90,0.14)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df] disabled:opacity-50"
-                  :disabled="sheetSaving"
-                  @click="saveSheet"
-                >
-                  Save
-                </button>
-              </div>
             </div>
           </div>
 
@@ -1914,7 +1918,7 @@ async function saveSheet() {
                 class="mt-2 border-t border-[rgba(201,164,90,0.18)] pt-2"
               >
                 <div class="mb-1 flex items-center justify-between gap-3">
-                  <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Resources</div>
+                  <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">{{ limitedResourceLabel }}</div>
                   <div v-if="spellSaving" class="text-[10px] uppercase tracking-[0.16em] text-[#9f9278]">Saving</div>
                 </div>
 

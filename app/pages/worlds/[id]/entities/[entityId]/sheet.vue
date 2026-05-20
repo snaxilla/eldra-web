@@ -1756,13 +1756,13 @@ async function saveSheet() {
                 <button
                   type="button"
                   title="Manage hit points"
-                  class="rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(26,35,48,0.86)] px-3 py-1.5 text-center shadow-[0_0_18px_rgba(201,164,90,0.10)] transition hover:border-[rgba(245,231,189,0.75)]"
+                  class="min-w-[84px] rounded-none border border-[rgba(201,164,90,0.52)] bg-[rgba(26,35,48,0.90)] px-4 py-2.5 text-center shadow-[0_0_18px_rgba(201,164,90,0.14)] transition hover:border-[rgba(245,231,189,0.75)]"
                   @click.stop="hpDrawerOpen ? closeHpDrawer() : openHpDrawer()"
                 >
-                  <div class="text-base font-semibold leading-none text-white">
+                  <div class="text-xl font-semibold leading-none text-white">
                     {{ shownCombatStat('currentHp') || '—' }}/{{ shownCombatStat('maxHp') || '—' }}
                   </div>
-                  <div class="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[#c9a45a]">HP</div>
+                  <div class="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#c9a45a]">HP</div>
                 </button>
 
                 <!-- Compact HP Popover -->
@@ -2003,7 +2003,7 @@ async function saveSheet() {
           </div>
         </div>
 
-      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-3 shadow-xl md:p-5">
+      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-1 shadow-xl md:p-5">
         <div v-if="pending" class="text-[#d8ceb8]">
           Loading character sheet...
         </div>
@@ -2041,7 +2041,7 @@ async function saveSheet() {
             <!-- Mobile Compact Overview -->
             <section
               v-if="activeSheetTab === 'overview'"
-              class="mt-3 space-y-3 md:hidden"
+              class="mt-0 space-y-3 md:hidden"
             >
 
               <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -2541,7 +2541,7 @@ async function saveSheet() {
 
             <section
               v-else-if="activeSheetTab === 'actions'"
-              class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]"
+              class="mt-0 md:mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]"
             >
               <div class="eldra-codex-soft rounded-none p-4">
 

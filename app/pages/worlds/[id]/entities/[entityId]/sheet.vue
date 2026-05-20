@@ -45,38 +45,84 @@ const SHEET_TABS = [
   { key: 'notes', label: 'Notes', icon: 'i-lucide-scroll-text' }
 ] as const
 
-const coreActionCards = [
+const standardActionCards = [
   {
     name: 'Attack',
-    detail: 'Weapon attacks will generate here once equipment is wired.'
+    timing: 'Action',
+    icon: 'i-lucide-swords',
+    detail: 'Make one weapon or unarmed attack. Equipment-generated attacks will land after inventory is wired.'
+  },
+  {
+    name: 'Cast a Spell',
+    timing: 'Action',
+    icon: 'i-lucide-sparkles',
+    detail: 'Use a prepared spell, known cantrip, or feat spell from the Spell Actions section below.'
   },
   {
     name: 'Dash',
-    detail: 'Gain extra movement for the current turn.'
+    timing: 'Action',
+    icon: 'i-lucide-footprints',
+    detail: 'Gain extra movement for the current turn equal to your speed.'
   },
   {
     name: 'Disengage',
-    detail: 'Your movement does not provoke opportunity attacks this turn.'
+    timing: 'Action',
+    icon: 'i-lucide-route-off',
+    detail: 'Your movement does not provoke opportunity attacks for the rest of this turn.'
   },
   {
     name: 'Dodge',
-    detail: 'Attackers you can see have disadvantage until your next turn.'
+    timing: 'Action',
+    icon: 'i-lucide-shield',
+    detail: 'Attackers you can see have disadvantage until your next turn, and you have advantage on Dexterity saves.'
   },
   {
     name: 'Help',
-    detail: 'Aid another creature with a check or attack.'
+    timing: 'Action',
+    icon: 'i-lucide-handshake',
+    detail: 'Aid another creature with an ability check or distract a foe to help an ally attack.'
   },
   {
     name: 'Hide',
-    detail: 'Make a Dexterity (Stealth) check when conditions allow.'
+    timing: 'Action',
+    icon: 'i-lucide-eye-off',
+    detail: 'Make a Dexterity (Stealth) check when you have cover, concealment, or another valid hiding condition.'
   },
   {
     name: 'Ready',
-    detail: 'Prepare an action to trigger before your next turn.'
+    timing: 'Action',
+    icon: 'i-lucide-clock',
+    detail: 'Choose a trigger and prepare an action to use before your next turn.'
   },
   {
     name: 'Use Object',
-    detail: 'Interact with an object, tool, or item.'
+    timing: 'Action',
+    icon: 'i-lucide-box',
+    detail: 'Interact with an object, tool, item, or environmental feature.'
+  }
+]
+
+const bonusActionCards = [
+  {
+    name: 'Bonus Action',
+    timing: 'Bonus',
+    icon: 'i-lucide-plus',
+    detail: 'Class features, spells, and equipment will add bonus actions here as those systems come online.'
+  }
+]
+
+const reactionActionCards = [
+  {
+    name: 'Opportunity Attack',
+    timing: 'Reaction',
+    icon: 'i-lucide-rotate-ccw',
+    detail: 'When a hostile creature you can see leaves your reach, use your reaction to make one melee attack.'
+  },
+  {
+    name: 'Reaction',
+    timing: 'Reaction',
+    icon: 'i-lucide-zap',
+    detail: 'Spells, feats, class features, and item reactions will appear here later.'
   }
 ]
 
@@ -1029,6 +1075,38 @@ const shownKnownSpells = computed(() =>
 const shownPreparedSpells = computed(() =>
   mode.value === 'build' ? spellOptionsByIds(spellPreparedDraft.value) : preparedSpells.value
 )
+
+const actionSpellCards = computed(() => {
+  const seen = new Set<string>()
+  const cards: any[] = []
+
+  function addSpell(spell: any, actionKind: string) {
+    const id = String(spell?.id || '')
+    if (!id || seen.has(id)) return
+
+    seen.add(id)
+    cards.push({
+      ...spell,
+      actionKind
+    })
+  }
+
+  for (const spell of shownPreparedSpells.value) {
+    addSpell(spell, 'Prepared')
+  }
+
+  for (const spell of shownKnownSpells.value) {
+    if (Number(spellLevelForOption(spell)) === 0) {
+      addSpell(spell, 'Cantrip')
+    }
+  }
+
+  for (const spell of featChoiceSpells.value) {
+    addSpell(spell, 'Feat')
+  }
+
+  return cards
+})
 
 function removeKnownSpell(id: any) {
   const needle = String(id || '')
@@ -2272,89 +2350,151 @@ async function saveSheet() {
             </section>
 
 
+
             <section
               v-else-if="activeSheetTab === 'actions'"
-              class="mt-6 grid gap-4 lg:grid-cols-2"
+              class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]"
             >
               <div class="eldra-codex-soft rounded-none p-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Core Actions</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Fast reference actions for table play. Weapon and item actions will generate from equipment next.</div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">On Your Turn</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Common table actions. Weapon attacks will generate here once equipment is wired.</div>
                   </div>
 
                   <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    Quick
+                    Action
                   </div>
                 </div>
 
-                <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   <article
-                    v-for="action in coreActionCards"
+                    v-for="action in standardActionCards"
                     :key="action.name"
-                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                   >
-                    <div class="font-semibold text-white">{{ action.name }}</div>
-                    <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                    <div class="flex items-start gap-3">
+                      <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                        <UIcon :name="action.icon" class="h-4 w-4" />
+                      </div>
+
+                      <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <div class="font-semibold text-white">{{ action.name }}</div>
+                          <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ action.timing }}</span>
+                        </div>
+                        <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                      </div>
+                    </div>
                   </article>
                 </div>
               </div>
 
-              <div class="eldra-codex-soft rounded-none p-4">
+              <div class="grid gap-4">
+                <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Bonus Actions</div>
+                      <div class="mt-1 text-sm text-[#d8ceb8]">Feature, spell, and item bonus actions.</div>
+                    </div>
+
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      Bonus
+                    </div>
+                  </div>
+
+                  <div class="mt-4 space-y-2">
+                    <article
+                      v-for="action in bonusActionCards"
+                      :key="action.name"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    >
+                      <div class="flex items-start gap-3">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                          <UIcon :name="action.icon" class="h-4 w-4" />
+                        </div>
+
+                        <div>
+                          <div class="font-semibold text-white">{{ action.name }}</div>
+                          <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Reactions</div>
+                      <div class="mt-1 text-sm text-[#d8ceb8]">Things you can do outside your turn.</div>
+                    </div>
+
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      Reaction
+                    </div>
+                  </div>
+
+                  <div class="mt-4 space-y-2">
+                    <article
+                      v-for="action in reactionActionCards"
+                      :key="action.name"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    >
+                      <div class="flex items-start gap-3">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                          <UIcon :name="action.icon" class="h-4 w-4" />
+                        </div>
+
+                        <div>
+                          <div class="font-semibold text-white">{{ action.name }}</div>
+                          <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4 xl:col-span-2">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Actions</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Prepared and feat-granted spells that can be opened without leaving the sheet.</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Prepared spells, known cantrips, and feat-granted spells. Tap a spell to read it without leaving the sheet.</div>
                   </div>
 
                   <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ shownPreparedSpells.length + featChoiceSpells.length }} Spell{{ shownPreparedSpells.length + featChoiceSpells.length === 1 ? '' : 's' }}
+                    {{ actionSpellCards.length }} Spell{{ actionSpellCards.length === 1 ? '' : 's' }}
                   </div>
                 </div>
 
                 <div
-                  v-if="shownPreparedSpells.length || featChoiceSpells.length"
-                  class="mt-4 space-y-2"
+                  v-if="actionSpellCards.length"
+                  class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
                 >
                   <button
-                    v-for="spell in shownPreparedSpells"
-                    :key="`prepared-action-${spell.id}`"
+                    v-for="spell in actionSpellCards"
+                    :key="`action-spell-${spell.id}`"
                     type="button"
-                    class="block w-full rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-left text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    class="block rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3 text-left transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
                     @click="openSpellDrawer(spell)"
                   >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-white">{{ spell.title }}</div>
-                      <div class="text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
-                    </div>
-                    <div class="mt-1 text-xs text-[#9f9278]">Prepared Spell</div>
-                  </button>
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="truncate font-semibold text-white">{{ spell.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
+                      </div>
 
-                  <button
-                    v-for="spell in featChoiceSpells"
-                    :key="`feat-action-${spell.id}`"
-                    type="button"
-                    class="block w-full rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-left text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
-                    @click="openSpellDrawer(spell)"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-white">{{ spell.title }}</div>
-                      <div class="text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
+                      <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                        {{ spell.actionKind }}
+                      </span>
                     </div>
-                    <div class="mt-1 text-xs text-[#9f9278]">Feat Spell</div>
                   </button>
                 </div>
 
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  No prepared or feat-granted spell actions yet.
+                  No spell actions yet. Prepare spells, learn cantrips, or choose feat-granted spells to populate this area.
                 </div>
-              </div>
-
-              <div class="eldra-codex-soft rounded-none p-4 lg:col-span-2">
-                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Equipment Actions Coming Next</div>
-                <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
-                  Inventory and equipped weapons will feed this tab with attack cards, damage formulas, item uses, charges, and attunement-based actions.
-                </p>
               </div>
             </section>
 

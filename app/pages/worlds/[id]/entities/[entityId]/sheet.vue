@@ -24,6 +24,7 @@ const spellSaveSuccess = ref('')
 const spellKnownDraft = ref<string[]>([])
 const spellPreparedDraft = ref<string[]>([])
 const spellSearch = ref('')
+const portraitLightboxOpen = ref(false)
 const selectedSpellEntityId = ref<string | null>(null)
 const choiceDrafts = ref<Record<string, string[]>>({})
 
@@ -1347,16 +1348,19 @@ async function saveSheet() {
           </div>
 
           <div class="mt-3 grid grid-cols-[84px_minmax(0,1fr)] gap-3">
-            <div
+            <button
               v-if="entityImageUrl"
-              class="h-[112px] w-[84px] overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.64)] shadow-[0_0_0_1px_rgba(0,0,0,0.72),0_14px_26px_rgba(0,0,0,0.38)]"
+              type="button"
+              class="h-[112px] w-[84px] overflow-hidden rounded-none border-2 border-[rgba(201,164,90,0.78)] bg-[rgba(7,16,26,0.64)] shadow-[0_0_0_1px_rgba(0,0,0,0.72),0_14px_26px_rgba(0,0,0,0.38)] transition hover:border-[rgba(245,231,189,0.85)]"
+              title="View portrait"
+              @click="portraitLightboxOpen = true"
             >
               <img
                 :src="entityImageUrl"
                 :alt="sheet?.name || entity?.title || 'Character Portrait'"
                 class="h-full w-full object-cover object-[center_18%]"
               >
-            </div>
+            </button>
 
             <div class="min-w-0">
               <div class="grid grid-cols-4 gap-1.5 text-center text-[11px]">
@@ -2507,6 +2511,31 @@ async function saveSheet() {
         </template>
       </section>
     </div>
+
+    <!-- Portrait Lightbox -->
+    <Transition enter-from-class="opacity-0" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-150">
+      <div
+        v-if="portraitLightboxOpen && entityImageUrl"
+        class="fixed inset-0 z-[150] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
+        @click.self="portraitLightboxOpen = false"
+      >
+        <button
+          type="button"
+          class="absolute right-4 top-4 rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.86)] p-3 text-[#f5e7bd]"
+          @click="portraitLightboxOpen = false"
+        >
+          <UIcon name="i-lucide-x" class="h-5 w-5" />
+        </button>
+
+        <div class="max-h-[86dvh] max-w-[92vw] overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.86)] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+          <img
+            :src="entityImageUrl"
+            :alt="sheet?.name || entity?.title || 'Character Portrait'"
+            class="max-h-[82dvh] max-w-full object-contain"
+          >
+        </div>
+      </div>
+    </Transition>
 
     <!-- Spell Detail Drawer -->
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">

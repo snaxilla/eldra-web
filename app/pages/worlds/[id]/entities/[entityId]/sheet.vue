@@ -2003,7 +2003,7 @@ async function saveSheet() {
           </div>
         </div>
 
-      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-1 shadow-xl md:p-5">
+      <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-3 shadow-xl md:p-5">
         <div v-if="pending" class="text-[#d8ceb8]">
           Loading character sheet...
         </div>

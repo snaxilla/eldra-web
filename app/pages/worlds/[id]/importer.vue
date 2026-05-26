@@ -190,6 +190,7 @@ async function searchSource() {
 
     const res = await $fetch<any>(`${routes.search}?${params.toString()}`)
     sourceResults.value = Array.isArray(res?.items) ? res.items : []
+      sourceTotalCount.value = Number(res?.filteredCount || sourceResults.value.length || 0)
 
     if (sourceResults.value.length) {
       const existing = sourceResults.value.some((item: any) => sourceItemKey(item) === selectedSourceKey.value)
@@ -296,6 +297,7 @@ async function importSelectedSourceBulk() {
     const routes = sourceRouteMap[importType.value]
     const params = new URLSearchParams()
     params.set('source', sourceSelection.value)
+      params.set('limit', '-1')
 
     const res = await $fetch<any>(`${routes.search}?${params.toString()}`)
     const items = Array.isArray(res?.items) ? res.items : []

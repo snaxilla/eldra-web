@@ -54,6 +54,12 @@ const spellKnownDraft = ref<string[]>([])
 const spellPreparedDraft = ref<string[]>([])
 const spellSearch = ref('')
 const actionSpellLevelFilter = ref('all')
+const actionPanelsOpen = reactive<Record<string, boolean>>({
+  spells: true,
+  common: true,
+  bonus: false,
+  reactions: false
+})
 const portraitLightboxOpen = ref(false)
 const hpDrawerOpen = ref(false)
 const hpSaving = ref(false)
@@ -179,6 +185,18 @@ function setSheetTab(tab: SheetTab) {
       tab: tab === 'overview' ? undefined : tab
     }
   })
+}
+
+function actionPanelOpen(key: string) {
+  return actionPanelsOpen[key] !== false
+}
+
+function toggleActionPanel(key: string) {
+  actionPanelsOpen[key] = !actionPanelOpen(key)
+}
+
+function actionPanelChevron(key: string) {
+  return actionPanelOpen(key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
 }
 
 function toggleMobileBuildMode() {
@@ -1231,9 +1249,12 @@ function lowestAvailableSlotRowForSpell(spell: any) {
   ) || null
 }
 
+function spellConsumesSlot(spell: any) {
+  return Number(spellLevelForOption(spell) || 0) > 0
+}
+
 function canCastSpell(spell: any) {
-  const spellLevel = Number(spellLevelForOption(spell) || 0)
-  return spellLevel === 0 || Boolean(lowestAvailableSlotRowForSpell(spell))
+  return !spellConsumesSlot(spell) || Boolean(lowestAvailableSlotRowForSpell(spell))
 }
 
 async function castSpell(spell: any) {
@@ -2649,6 +2670,7 @@ async function saveSheet() {
 
 
 
+
               <section
                 v-else-if="activeSheetTab === 'actions'"
                 class="mt-0 grid gap-3 md:mt-6"
@@ -2657,86 +2679,109 @@ async function saveSheet() {
                   v-if="actionSpellCards.length"
                   class="eldra-codex-soft rounded-none p-4"
                 >
-                  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    class="mb-3 flex w-full items-center justify-between gap-3 text-left"
+                    @click="toggleActionPanel('spells')"
+                  >
                     <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Actions</div>
 
-                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      {{ filteredActionSpellCards.length }} / {{ actionSpellCards.length }} Spell{{ actionSpellCards.length === 1 ? '' : 's' }}
+                    <div class="flex items-center gap-2">
+                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                        {{ filteredActionSpellCards.length }} / {{ actionSpellCards.length }} Spell{{ actionSpellCards.length === 1 ? '' : 's' }}
+                      </div>
+                      <UIcon :name="actionPanelChevron('spells')" class="h-4 w-4 text-[#9f9278]" />
                     </div>
-                  </div>
+                  </button>
 
-                  <div class="-mx-1 mb-3 overflow-x-auto pb-1">
-                    <div class="flex min-w-max gap-2 px-1">
-                      <button
-                        v-for="filter in actionSpellLevelFilters"
-                        :key="filter.key"
-                        type="button"
-                        class="inline-flex items-center gap-2 rounded-none border px-3 py-2 text-xs font-semibold transition"
-                        :class="actionSpellLevelFilter === filter.key
-                          ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-                          : 'border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
-                        @click="actionSpellLevelFilter = filter.key"
-                      >
-                        <span>{{ filter.label }}</span>
-                        <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]">
-                          {{ filter.count }}
-                        </span>
-                      </button>
+                  <div v-show="actionPanelOpen('spells')">
+                    <div class="-mx-1 mb-3 overflow-x-auto pb-1">
+                      <div class="flex min-w-max gap-2 px-1">
+                        <button
+                          v-for="filter in actionSpellLevelFilters"
+                          :key="filter.key"
+                          type="button"
+                          class="inline-flex items-center gap-2 rounded-none border px-3 py-2 text-xs font-semibold transition"
+                          :class="actionSpellLevelFilter === filter.key
+                            ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                            : 'border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
+                          @click.stop="actionSpellLevelFilter = filter.key"
+                        >
+                          <span>{{ filter.label }}</span>
+                          <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]">
+                            {{ filter.count }}
+                          </span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div
-                    v-if="filteredActionSpellCards.length"
-                    class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
-                  >
-                    <article
-                      v-for="spell in filteredActionSpellCards"
-                      :key="`action-spell-${spell.id}`"
-                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    <div
+                      v-if="filteredActionSpellCards.length"
+                      class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
                     >
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                          <div class="truncate font-semibold text-white">{{ spell.title }}</div>
-                          <div class="mt-1 text-xs text-[#9f9278]">
-                            {{ spellOptionLevelLabel(spell) || 'Spell' }}
+                      <article
+                        v-for="spell in filteredActionSpellCards"
+                        :key="`action-spell-${spell.id}`"
+                        class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                      >
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0">
+                            <div class="truncate font-semibold text-white">{{ spell.title }}</div>
+                            <div class="mt-1 text-xs text-[#9f9278]">
+                              {{ spellOptionLevelLabel(spell) || 'Spell' }}
+                            </div>
                           </div>
+
+                          <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                            {{ spell.actionKind }}
+                          </span>
                         </div>
 
-                        <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
-                          {{ spell.actionKind }}
-                        </span>
-                      </div>
-
-                      <div class="mt-3 grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
-                          @click.stop="openSpellDrawer(spell)"
+                        <div
+                          class="mt-3 grid gap-2"
+                          :class="spellConsumesSlot(spell) ? 'grid-cols-2' : 'grid-cols-1'"
                         >
-                          Details
-                        </button>
+                          <button
+                            type="button"
+                            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+                            @click.stop="openSpellDrawer(spell)"
+                          >
+                            Details
+                          </button>
 
-                        <button
-                          type="button"
-                          class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-45"
-                          :disabled="spellSaving || !canCastSpell(spell)"
-                          @click.stop="castSpell(spell)"
-                        >
-                          Cast
-                        </button>
-                      </div>
-                    </article>
-                  </div>
+                          <button
+                            v-if="spellConsumesSlot(spell)"
+                            type="button"
+                            class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-45"
+                            :disabled="spellSaving || !canCastSpell(spell)"
+                            @click.stop="castSpell(spell)"
+                          >
+                            Cast
+                          </button>
+                        </div>
+                      </article>
+                    </div>
 
-                  <div v-else class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                    No spell actions match this filter.
+                    <div v-else class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                      No spell actions match this filter.
+                    </div>
                   </div>
                 </div>
 
                 <div class="eldra-codex-soft rounded-none p-4">
-                  <div class="mb-3 text-xs uppercase tracking-[0.3em] text-[#9f9278]">Common Actions</div>
+                  <button
+                    type="button"
+                    class="mb-3 flex w-full items-center justify-between gap-3 text-left"
+                    @click="toggleActionPanel('common')"
+                  >
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Common Actions</div>
+                    <UIcon :name="actionPanelChevron('common')" class="h-4 w-4 text-[#9f9278]" />
+                  </button>
 
-                  <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <div
+                    v-show="actionPanelOpen('common')"
+                    class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  >
                     <article
                       v-for="action in commonActionCards"
                       :key="action.name"
@@ -2761,15 +2806,25 @@ async function saveSheet() {
 
                 <div class="grid gap-3 lg:grid-cols-2">
                   <div class="eldra-codex-soft rounded-none p-4">
-                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      class="mb-3 flex w-full items-center justify-between gap-3 text-left"
+                      @click="toggleActionPanel('bonus')"
+                    >
                       <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Bonus Actions</div>
 
-                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                        Bonus
+                      <div class="flex items-center gap-2">
+                        <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                          Bonus
+                        </div>
+                        <UIcon :name="actionPanelChevron('bonus')" class="h-4 w-4 text-[#9f9278]" />
                       </div>
-                    </div>
+                    </button>
 
-                    <div class="space-y-2">
+                    <div
+                      v-show="actionPanelOpen('bonus')"
+                      class="space-y-2"
+                    >
                       <article
                         v-for="action in bonusActionCards"
                         :key="action.name"
@@ -2790,15 +2845,25 @@ async function saveSheet() {
                   </div>
 
                   <div class="eldra-codex-soft rounded-none p-4">
-                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      class="mb-3 flex w-full items-center justify-between gap-3 text-left"
+                      @click="toggleActionPanel('reactions')"
+                    >
                       <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Reactions</div>
 
-                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                        Reaction
+                      <div class="flex items-center gap-2">
+                        <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                          Reaction
+                        </div>
+                        <UIcon :name="actionPanelChevron('reactions')" class="h-4 w-4 text-[#9f9278]" />
                       </div>
-                    </div>
+                    </button>
 
-                    <div class="space-y-2">
+                    <div
+                      v-show="actionPanelOpen('reactions')"
+                      class="space-y-2"
+                    >
                       <article
                         v-for="action in reactionActionCards"
                         :key="action.name"

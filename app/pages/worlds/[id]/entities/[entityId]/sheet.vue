@@ -1290,6 +1290,12 @@ const actionSpellCards = computed(() => {
   return cards
 })
 
+const commonActionCards = computed(() => {
+  if (!actionSpellCards.value.length) return standardActionCards
+
+  return standardActionCards.filter((action) => action.name !== 'Cast a Spell')
+})
+
 function removeKnownSpell(id: any) {
   const needle = String(id || '')
   if (!needle) return
@@ -2573,160 +2579,150 @@ async function saveSheet() {
 
 
 
-            <section
-              v-else-if="activeSheetTab === 'actions'"
-              class="mt-0 md:mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]"
-            >
-              <div class="eldra-codex-soft rounded-none p-4">
 
-                <div class="mt-0 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  <article
-                    v-for="action in standardActionCards"
-                    :key="action.name"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
-                  >
-                    <div class="flex items-start gap-3">
-                      <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
-                        <UIcon :name="action.icon" class="h-4 w-4" />
-                      </div>
-
-                      <div class="min-w-0">
-                        <div class="flex flex-wrap items-center gap-2">
-                          <div class="font-semibold text-white">{{ action.name }}</div>
-                          <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ action.timing }}</span>
-                        </div>
-                        <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
-                      </div>
-                    </div>
-                  </article>
-                </div>
-              </div>
-
-              <div class="grid gap-4">
-                <div class="eldra-codex-soft rounded-none p-4">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Bonus Actions</div>
-                      <div class="mt-1 text-sm text-[#d8ceb8]">Feature, spell, and item bonus actions.</div>
-                    </div>
-
-                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      Bonus
-                    </div>
-                  </div>
-
-                  <div class="mt-4 space-y-2">
-                    <article
-                      v-for="action in bonusActionCards"
-                      :key="action.name"
-                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
-                    >
-                      <div class="flex items-start gap-3">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
-                          <UIcon :name="action.icon" class="h-4 w-4" />
-                        </div>
-
-                        <div>
-                          <div class="font-semibold text-white">{{ action.name }}</div>
-                          <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
-                        </div>
-                      </div>
-                    </article>
-                  </div>
-                </div>
-
-                <div class="eldra-codex-soft rounded-none p-4">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Reactions</div>
-                      <div class="mt-1 text-sm text-[#d8ceb8]">Things you can do outside your turn.</div>
-                    </div>
-
-                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      Reaction
-                    </div>
-                  </div>
-
-                  <div class="mt-4 space-y-2">
-                    <article
-                      v-for="action in reactionActionCards"
-                      :key="action.name"
-                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
-                    >
-                      <div class="flex items-start gap-3">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
-                          <UIcon :name="action.icon" class="h-4 w-4" />
-                        </div>
-
-                        <div>
-                          <div class="font-semibold text-white">{{ action.name }}</div>
-                          <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
-                        </div>
-                      </div>
-                    </article>
-                  </div>
-                </div>
-              </div>
-
-              <div class="eldra-codex-soft rounded-none p-4 xl:col-span-2">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Actions</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Prepared spells, known cantrips, and feat-granted spells. Tap a spell to read it without leaving the sheet.</div>
-                  </div>
-
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ actionSpellCards.length }} Spell{{ actionSpellCards.length === 1 ? '' : 's' }}
-                  </div>
-                </div>
-
+              <section
+                v-else-if="activeSheetTab === 'actions'"
+                class="mt-0 grid gap-3 md:mt-6"
+              >
                 <div
                   v-if="actionSpellCards.length"
-                  class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  class="eldra-codex-soft rounded-none p-4"
                 >
+                  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Actions</div>
 
-                  <article
-                    v-for="spell in actionSpellCards"
-                    :key="`action-spell-${spell.id}`"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <div class="truncate font-semibold text-white">{{ spell.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Spell' }}</div>
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ actionSpellCards.length }} Spell{{ actionSpellCards.length === 1 ? '' : 's' }}
+                    </div>
+                  </div>
+
+                  <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    <article
+                      v-for="spell in actionSpellCards"
+                      :key="`action-spell-${spell.id}`"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div class="truncate font-semibold text-white">{{ spell.title }}</div>
+                          <div class="mt-1 text-xs text-[#9f9278]">
+                            {{ spellOptionLevelLabel(spell) || 'Spell' }}
+                          </div>
+                        </div>
+
+                        <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                          {{ spell.actionKind }}
+                        </span>
                       </div>
 
-                      <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
-                        {{ spell.actionKind }}
-                      </span>
-                    </div>
+                      <div class="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+                          @click.stop="openSpellDrawer(spell)"
+                        >
+                          Details
+                        </button>
 
-                    <div class="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
-                        @click.stop="openSpellDrawer(spell)"
-                      >
-                        Details
-                      </button>
-
-                      <button
-                        type="button"
-                        class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-45"
-                        :disabled="spellSaving || !canCastSpell(spell)"
-                        @click.stop="castSpell(spell)"
-                      >
-                        Cast
-                      </button>
-                    </div>
-                  </article>
+                        <button
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-45"
+                          :disabled="spellSaving || !canCastSpell(spell)"
+                          @click.stop="castSpell(spell)"
+                        >
+                          Cast
+                        </button>
+                      </div>
+                    </article>
+                  </div>
                 </div>
 
-                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  No spell actions yet. Prepare spells, learn cantrips, or choose feat-granted spells to populate this area.
+                <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="mb-3 text-xs uppercase tracking-[0.3em] text-[#9f9278]">Common Actions</div>
+
+                  <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    <article
+                      v-for="action in commonActionCards"
+                      :key="action.name"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    >
+                      <div class="flex items-start gap-3">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                          <UIcon :name="action.icon" class="h-4 w-4" />
+                        </div>
+
+                        <div class="min-w-0">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <div class="font-semibold text-white">{{ action.name }}</div>
+                            <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ action.timing }}</span>
+                          </div>
+                          <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
                 </div>
-              </div>
-            </section>
+
+                <div class="grid gap-3 lg:grid-cols-2">
+                  <div class="eldra-codex-soft rounded-none p-4">
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Bonus Actions</div>
+
+                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                        Bonus
+                      </div>
+                    </div>
+
+                    <div class="space-y-2">
+                      <article
+                        v-for="action in bonusActionCards"
+                        :key="action.name"
+                        class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                      >
+                        <div class="flex items-start gap-3">
+                          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                            <UIcon :name="action.icon" class="h-4 w-4" />
+                          </div>
+
+                          <div>
+                            <div class="font-semibold text-white">{{ action.name }}</div>
+                            <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                          </div>
+                        </div>
+                      </article>
+                    </div>
+                  </div>
+
+                  <div class="eldra-codex-soft rounded-none p-4">
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Reactions</div>
+
+                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                        Reaction
+                      </div>
+                    </div>
+
+                    <div class="space-y-2">
+                      <article
+                        v-for="action in reactionActionCards"
+                        :key="action.name"
+                        class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                      >
+                        <div class="flex items-start gap-3">
+                          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                            <UIcon :name="action.icon" class="h-4 w-4" />
+                          </div>
+
+                          <div>
+                            <div class="font-semibold text-white">{{ action.name }}</div>
+                            <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ action.detail }}</p>
+                          </div>
+                        </div>
+                      </article>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
           <section
             v-else-if="activeSheetTab === 'inventory'"

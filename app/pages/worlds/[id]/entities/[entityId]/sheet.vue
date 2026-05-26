@@ -53,6 +53,7 @@ const spellSaveSuccess = ref('')
 const spellKnownDraft = ref<string[]>([])
 const spellPreparedDraft = ref<string[]>([])
 const spellSearch = ref('')
+const actionSpellLevelFilter = ref('all')
 const portraitLightboxOpen = ref(false)
 const hpDrawerOpen = ref(false)
 const hpSaving = ref(false)
@@ -1295,6 +1296,73 @@ const commonActionCards = computed(() => {
 
   return standardActionCards.filter((action) => action.name !== 'Cast a Spell')
 })
+
+function actionSpellLevelKey(level: any) {
+  const parsed = Number(level)
+  return Number.isFinite(parsed) ? `level-${parsed}` : 'unknown'
+}
+
+function actionSpellLevelLabel(level: any) {
+  const parsed = Number(level)
+
+  if (!Number.isFinite(parsed)) return 'Unknown'
+  if (parsed === 0) return 'Cantrips'
+  if (parsed === 1) return '1st Level'
+  if (parsed === 2) return '2nd Level'
+  if (parsed === 3) return '3rd Level'
+
+  return `${parsed}th Level`
+}
+
+const actionSpellLevelFilters = computed(() => {
+  const counts = new Map<string, { key: string; label: string; level: number; count: number }>()
+
+  for (const spell of actionSpellCards.value) {
+    const level = Number(spellLevelForOption(spell) ?? -1)
+    const key = actionSpellLevelKey(level)
+
+    if (!counts.has(key)) {
+      counts.set(key, {
+        key,
+        label: actionSpellLevelLabel(level),
+        level,
+        count: 0
+      })
+    }
+
+    counts.get(key)!.count += 1
+  }
+
+  const levelFilters = Array.from(counts.values())
+    .sort((a, b) => a.level - b.level)
+
+  return [
+    {
+      key: 'all',
+      label: 'All',
+      count: actionSpellCards.value.length
+    },
+    ...levelFilters
+  ]
+})
+
+const filteredActionSpellCards = computed(() => {
+  if (actionSpellLevelFilter.value === 'all') return actionSpellCards.value
+
+  return actionSpellCards.value.filter((spell: any) =>
+    actionSpellLevelKey(spellLevelForOption(spell)) === actionSpellLevelFilter.value
+  )
+})
+
+watch(
+  actionSpellLevelFilters,
+  (filters) => {
+    if (!filters.some((filter) => filter.key === actionSpellLevelFilter.value)) {
+      actionSpellLevelFilter.value = 'all'
+    }
+  },
+  { immediate: true }
+)
 
 function removeKnownSpell(id: any) {
   const needle = String(id || '')
@@ -2580,6 +2648,7 @@ async function saveSheet() {
 
 
 
+
               <section
                 v-else-if="activeSheetTab === 'actions'"
                 class="mt-0 grid gap-3 md:mt-6"
@@ -2592,13 +2661,36 @@ async function saveSheet() {
                     <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Actions</div>
 
                     <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      {{ actionSpellCards.length }} Spell{{ actionSpellCards.length === 1 ? '' : 's' }}
+                      {{ filteredActionSpellCards.length }} / {{ actionSpellCards.length }} Spell{{ actionSpellCards.length === 1 ? '' : 's' }}
                     </div>
                   </div>
 
-                  <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <div class="-mx-1 mb-3 overflow-x-auto pb-1">
+                    <div class="flex min-w-max gap-2 px-1">
+                      <button
+                        v-for="filter in actionSpellLevelFilters"
+                        :key="filter.key"
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded-none border px-3 py-2 text-xs font-semibold transition"
+                        :class="actionSpellLevelFilter === filter.key
+                          ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                          : 'border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
+                        @click="actionSpellLevelFilter = filter.key"
+                      >
+                        <span>{{ filter.label }}</span>
+                        <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]">
+                          {{ filter.count }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="filteredActionSpellCards.length"
+                    class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  >
                     <article
-                      v-for="spell in actionSpellCards"
+                      v-for="spell in filteredActionSpellCards"
                       :key="`action-spell-${spell.id}`"
                       class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                     >
@@ -2634,6 +2726,10 @@ async function saveSheet() {
                         </button>
                       </div>
                     </article>
+                  </div>
+
+                  <div v-else class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                    No spell actions match this filter.
                   </div>
                 </div>
 

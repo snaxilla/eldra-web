@@ -26,6 +26,7 @@ const sourceSourcesBusy = ref(false)
 const sourceResultsBusy = ref(false)
 const sourceOptions = ref<Array<{ source: string }>>([])
 const sourceResults = ref<any[]>([])
+const sourceTotalCount = ref(0)
 const selectedSourceKey = ref<string>('')
 
 const endpointMap: Record<string, { preview: string; save: string }> = {
@@ -173,6 +174,7 @@ async function loadSources() {
 async function searchSource() {
   if (!sourceSelection.value) {
     sourceResults.value = []
+    sourceTotalCount.value = 0
     selectedSourceKey.value = ''
     return
   }
@@ -315,7 +317,7 @@ async function importSelectedSourceBulk() {
       }
     })
 
-    resultMessage.value = `Imported source ${sourceSelection.value}.`
+    resultMessage.value = `Imported source ${sourceSelection.value} (${items.length} entries).`
   } catch (error: any) {
     resultMessage.value =
       error?.data?.statusMessage ||
@@ -499,7 +501,7 @@ onMounted(async () => {
                 >
 
                 <div class="mt-4 text-xs uppercase tracking-[0.2em] text-slate-500">
-                  Results <span class="text-slate-400">({{ sourceResults.length }})</span>
+                  Results <span class="text-slate-400">({{ sourceResults.length }}<span v-if="sourceTotalCount > sourceResults.length"> / {{ sourceTotalCount }}</span>)</span>
                 </div>
 
                 <div class="mt-3 max-h-[520px] space-y-2 overflow-auto pr-1">

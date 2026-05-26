@@ -6,8 +6,8 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const source = safeSource(String(query.source || 'all')) || 'all'
   const q = String(query.q || '').trim()
-  const limitRaw = Number(query.limit || 50)
-  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50
+  const limitRaw = Number(query.limit ?? 50)
+  const limit = Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50
 
   const json = await readJsonFile(FILE)
   const allSpecies = [
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
       return String(a?.raw?.source || '').localeCompare(String(b?.raw?.source || ''))
     })
 
-  const items = filtered.slice(0, limit).map(({ kind, raw }) => ({
+  const items = filtered.slice(0, limit < 0 ? undefined : Math.max(0, limit)).map(({ kind, raw }) => ({
     kind,
     name: raw?.name || null,
     source: raw?.source || null,

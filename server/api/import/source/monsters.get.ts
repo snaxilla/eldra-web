@@ -82,8 +82,8 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const source = safeSource(String(query.source || 'all')) || 'all'
   const q = String(query.q || '').trim()
-  const limitRaw = Number(query.limit || 50)
-  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50
+  const limitRaw = Number(query.limit ?? 50)
+  const limit = Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50
 
   try {
     let sourcesToLoad: string[] = []
@@ -133,7 +133,7 @@ export default defineEventHandler(async (event) => {
       return String(a?.source || '').localeCompare(String(b?.source || ''))
     })
 
-    const sliced = items.slice(0, limit)
+    const sliced = limit < 0 ? items : items.slice(0, Math.max(0, limit))
 
     return {
       ok: true,

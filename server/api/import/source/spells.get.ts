@@ -25,8 +25,8 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const source = safeSource(String(query.source || 'all')) || 'all'
   const q = String(query.q || '').trim()
-  const limitRaw = Number(query.limit || 50)
-  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50
+  const limitRaw = Number(query.limit ?? 50)
+  const limit = Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 50
 
   const allSpells: any[] = []
 
@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
       return String(a?.source || '').localeCompare(String(b?.source || ''))
     })
 
-  const items = filtered.slice(0, limit).map((item) => ({
+  const items = filtered.slice(0, limit < 0 ? undefined : Math.max(0, limit)).map((item) => ({
     kind: 'spell',
     name: item?.name || null,
     source: item?.source || null,

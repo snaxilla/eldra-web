@@ -114,7 +114,7 @@ function buildManualPayload() {
 }
 
 function sourceItemKey(item: any) {
-  return `${String(item?.name || '').toLowerCase()}::${String(item?.source || '').toLowerCase()}`
+  return `${String(item?.kind || '').toLowerCase()}::${String(item?.name || '').toLowerCase()}::${String(item?.source || '').toLowerCase()}`
 }
 
 function selectedSourceItem() {

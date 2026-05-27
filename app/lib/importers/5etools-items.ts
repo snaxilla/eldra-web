@@ -54,32 +54,65 @@ function textify(value: any): string {
   }
 }
 
+function taggedItemRaw(kind: string, raw: any) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+
+  return {
+    ...raw,
+    __importKind: kind
+  }
+}
+
 function extractItemsFromPayload(payload: any): any[] {
+  if (!payload) return []
+
+  const items: any[] = []
+
+  function pushKind(kind: string, value: any) {
+    const values = Array.isArray(value) ? value : value ? [value] : []
+
+    for (const entry of values) {
+      if (!entry) continue
+
+      if (entry?.raw && entry?.kind) {
+        items.push(taggedItemRaw(String(entry.kind), entry.raw))
+      } else {
+        items.push(taggedItemRaw(kind, entry))
+      }
+    }
+  }
+
   if (Array.isArray(payload)) {
-    return payload
+    for (const entry of payload) {
+      if (!entry) continue
+
+      if (entry?.raw && entry?.kind) {
+        items.push(taggedItemRaw(String(entry.kind), entry.raw))
+      } else {
+        items.push(taggedItemRaw(String(entry?.__importKind || 'item'), entry))
+      }
+    }
+
+    return items
   }
 
-  if (Array.isArray(payload?.item)) {
-    return payload.item
+  pushKind('item', payload.item)
+  pushKind('baseitem', payload.baseitem)
+  pushKind('magicvariant', payload.magicvariant)
+
+  pushKind('item', payload?.data?.item)
+  pushKind('baseitem', payload?.data?.baseitem)
+  pushKind('magicvariant', payload?.data?.magicvariant)
+
+  if (!items.length && payload?.raw && payload?.kind) {
+    pushKind(String(payload.kind), payload.raw)
   }
 
-  if (Array.isArray(payload?.baseitem)) {
-    return payload.baseitem
+  if (!items.length && payload?.name) {
+    pushKind(String(payload.__importKind || 'item'), payload)
   }
 
-  if (Array.isArray(payload?.magicvariant)) {
-    return payload.magicvariant
-  }
-
-  if (Array.isArray(payload?.data?.item)) {
-    return payload.data.item
-  }
-
-  if (payload && typeof payload === 'object' && payload.name && (payload.type || payload.rarity || payload.entries)) {
-    return [payload]
-  }
-
-  return []
+  return items
 }
 
 function normalizeItemType(raw: any): string {
@@ -197,8 +230,12 @@ function buildItemPreview(raw: any): EldraImportPreviewEntity {
   const name = raw?.name || 'Untitled Item'
   const source = raw?.source || ''
   const page = raw?.page != null ? String(raw.page) : ''
-  const externalId = `${name}__${source || 'unknown'}`
-  const slug = slugify(`${name}-${source || 'item'}`)
+  const importKind = String(raw?.__importKind || 'item')
+  const externalId = `${importKind}__${name}__${source || 'unknown'}`
+  const slugSuffix = importKind === 'item'
+    ? (source || 'item')
+    : `${source || 'item'}-${importKind}`
+  const slug = slugify(`${name}-${slugSuffix}`)
 
   const blocks = buildDefaultEntityData('dnd5e', 'item')
   const damageBits = normalizeDamage(raw)
@@ -214,6 +251,7 @@ function buildItemPreview(raw: any): EldraImportPreviewEntity {
   setBlockValue(blocks, 'import_source', 'raw_json', raw)
 
   setBlockValue(blocks, 'item_core', 'name', name)
+  setBlockValue(blocks, 'item_core', 'import_kind', importKind)
   setBlockValue(blocks, 'item_core', 'item_type', normalizeItemType(raw))
   setBlockValue(blocks, 'item_core', 'rarity', normalizeRarity(raw))
   setBlockValue(blocks, 'item_core', 'weight', normalizeWeight(raw))

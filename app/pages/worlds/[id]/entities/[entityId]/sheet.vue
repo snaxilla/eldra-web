@@ -400,17 +400,34 @@ function inventoryItemCore(item: any) {
   return option ? optionCore(option, 'item_core') || {} : {}
 }
 
-function inventoryItemTypeLabel(item: any) {
+function inventoryItemTypeCode(item: any) {
   const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
   const rawType = String(
     item?.item_type ??
     item?.itemType ??
     core?.item_type ??
     core?.itemType ??
+    raw?.type ??
     ''
   ).trim()
 
-  const normalized = rawType.toUpperCase()
+  return rawType.split('|')[0].trim().toUpperCase()
+}
+
+function inventoryItemTypeLabel(item: any) {
+  const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
+  const rawType = String(
+    item?.item_type ??
+    item?.itemType ??
+    core?.item_type ??
+    core?.itemType ??
+    raw?.type ??
+    ''
+  ).trim()
+
+  const normalized = inventoryItemTypeCode(item)
   const labels: Record<string, string> = {
     M: 'Melee Weapon',
     R: 'Ranged Weapon',
@@ -433,6 +450,208 @@ function inventoryItemDamage(item: any) {
   }
 }
 
+function signedNumberText(value: any) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return '—'
+  return `${parsed >= 0 ? '+' : ''}${parsed}`
+}
+
+function abilityScoreNumberForKey(key: string) {
+  const row = Array.isArray(math.value?.abilities)
+    ? math.value.abilities.find((ability: any) => String(ability?.key) === key)
+    : null
+
+  const parsed = Number(row?.score ?? (abilityScores.value as any)?.[key] ?? 10)
+  return Number.isFinite(parsed) ? parsed : 10
+}
+
+function abilityModifierNumberForKey(key: string) {
+  return Math.floor((abilityScoreNumberForKey(key) - 10) / 2)
+}
+
+function proficiencyBonusNumber() {
+  const parsed = Number(math.value?.proficiencyBonus)
+  return Number.isFinite(parsed) ? parsed : 2
+}
+
+function inventoryItemRaw(item: any) {
+  const option = inventoryLinkedItemOption(item)
+  return option ? optionRawJson(option) || {} : {}
+}
+
+function weaponToken(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function inventoryWeaponProperties(item: any) {
+  const raw = inventoryItemRaw(item)
+  const core = inventoryItemCore(item)
+  const values = [
+    ...(Array.isArray(raw?.property) ? raw.property : []),
+    ...(Array.isArray(raw?.properties) ? raw.properties : []),
+    ...(Array.isArray(core?.properties) ? core.properties : [])
+  ]
+
+  return values
+    .map((value: any) => String(value || '').split('|')[0].trim().toUpperCase())
+    .filter(Boolean)
+}
+
+function weaponHasProperty(item: any, property: string) {
+  const wanted = String(property || '').trim().toUpperCase()
+  return inventoryWeaponProperties(item).includes(wanted)
+}
+
+function weaponCategoryForItem(item: any) {
+  const raw = inventoryItemRaw(item)
+  const core = inventoryItemCore(item)
+
+  return String(
+    item?.weapon_category ??
+    item?.weaponCategory ??
+    core?.weapon_category ??
+    core?.weaponCategory ??
+    raw?.weaponCategory ??
+    raw?.weapon_category ??
+    ''
+  )
+    .split('|')[0]
+    .trim()
+    .toLowerCase()
+}
+
+function characterWeaponProficiencyText() {
+  const proficiencies = asObject(sheet.value?.proficiencies)
+  const classProficiencies = asObject(proficiencies.class)
+
+  return [
+    resolvedClass.value?.weaponProficiencies,
+    proficiencies.weapons,
+    proficiencies.weaponProficiencies,
+    proficiencies.weapon_proficiencies,
+    classProficiencies.weapons,
+    classProficiencies.weaponProficiencies,
+    classProficiencies.weapon_proficiencies
+  ]
+    .map((value) => weaponToken(value))
+    .filter(Boolean)
+    .join(' ')
+}
+
+function weaponIsProficient(item: any) {
+  if (String(item?.id) === 'unarmed-strike') return true
+
+  const text = characterWeaponProficiencyText()
+  if (!text) return false
+
+  if (text.includes('all weapons')) return true
+
+  const category = weaponCategoryForItem(item)
+  const typeCode = inventoryItemTypeCode(item).toLowerCase()
+
+  if (category === 'simple' && text.includes('simple weapons')) return true
+  if (category === 'martial' && text.includes('martial weapons')) return true
+  if (typeCode === 'r' && text.includes('ranged weapons')) return true
+  if (typeCode === 'm' && text.includes('melee weapons')) return true
+
+  const name = weaponToken(item?.name)
+  if (!name) return false
+
+  const plural = name.endsWith('s') ? name : `${name}s`
+
+  return text.includes(name) || text.includes(plural)
+}
+
+function weaponAttackAbilityKey(item: any) {
+  if (String(item?.id) === 'unarmed-strike') return 'str'
+
+  if (weaponHasProperty(item, 'F')) {
+    return abilityModifierNumberForKey('dex') > abilityModifierNumberForKey('str')
+      ? 'dex'
+      : 'str'
+  }
+
+  const typeCode = inventoryItemTypeCode(item)
+
+  if (typeCode === 'R') return 'dex'
+
+  return 'str'
+}
+
+function weaponMagicAttackBonus(item: any) {
+  const raw = inventoryItemRaw(item)
+  const values = [
+    raw?.bonusWeapon,
+    raw?.bonusWeaponAttack,
+    raw?.bonus,
+    item?.bonusWeapon,
+    item?.bonus
+  ]
+
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue
+
+    const match = String(value).match(/[+-]?\d+/)
+    if (!match) continue
+
+    const parsed = Number(match[0])
+    if (Number.isFinite(parsed)) return parsed
+  }
+
+  const nameMatch = String(item?.name || '').trim().match(/^([+-]\d+)/)
+  if (nameMatch) {
+    const parsed = Number(nameMatch[1])
+    if (Number.isFinite(parsed)) return parsed
+  }
+
+  return 0
+}
+
+function attackBonusForWeapon(item: any) {
+  const abilityKey = weaponAttackAbilityKey(item)
+  const abilityMod = abilityModifierNumberForKey(abilityKey)
+  const proficient = weaponIsProficient(item)
+  const proficiency = proficient ? proficiencyBonusNumber() : 0
+  const magicBonus = weaponMagicAttackBonus(item)
+
+  return {
+    abilityKey,
+    abilityLabel: abilityKey.toUpperCase(),
+    abilityMod,
+    proficient,
+    proficiency,
+    magicBonus,
+    total: abilityMod + proficiency + magicBonus
+  }
+}
+
+function damageTypeLabel(value: any) {
+  const code = String(value || '').split('|')[0].trim().toUpperCase()
+  const labels: Record<string, string> = {
+    A: 'acid',
+    B: 'bludgeoning',
+    C: 'cold',
+    F: 'fire',
+    N: 'necrotic',
+    P: 'piercing',
+    I: 'poison',
+    R: 'radiant',
+    S: 'slashing',
+    T: 'thunder',
+    Y: 'psychic',
+    O: 'force',
+    L: 'lightning'
+  }
+
+  return labels[code] || String(value || '').trim()
+}
+
 function isWeaponInventoryItem(item: any) {
   const damage = inventoryItemDamage(item)
   if (damage.damage) return true
@@ -442,6 +661,7 @@ function isWeaponInventoryItem(item: any) {
 }
 
 const equippedWeaponActions = computed(() => {
+  const unarmedStats = attackBonusForWeapon({ id: 'unarmed-strike', name: 'Unarmed Strike' })
   const unarmedStrike = {
     id: 'unarmed-strike',
     name: 'Unarmed Strike',
@@ -454,7 +674,13 @@ const equippedWeaponActions = computed(() => {
     weight: '',
     value: '',
     description: 'You can make an unarmed strike with a free hand, fist, kick, headbutt, or similar forceful blow.',
-    notes: ''
+    notes: '',
+    attackBonus: unarmedStats.total,
+    attackBonusText: signedNumberText(unarmedStats.total),
+    attackFormula: `${unarmedStats.abilityLabel}${unarmedStats.proficient ? ' + PB' : ''}`,
+    attackAbility: unarmedStats.abilityLabel,
+    proficient: unarmedStats.proficient,
+    magicBonus: unarmedStats.magicBonus
   }
 
   const equippedWeapons = inventory.value
@@ -463,6 +689,12 @@ const equippedWeaponActions = computed(() => {
       const core = inventoryItemCore(item)
       const damage = inventoryItemDamage(item)
       const linkedItemId = inventoryLinkedItemId(item)
+      const attackStats = attackBonusForWeapon(item)
+      const attackFormulaParts = [
+        attackStats.abilityLabel,
+        attackStats.proficient ? 'PB' : '',
+        attackStats.magicBonus ? signedNumberText(attackStats.magicBonus) : ''
+      ].filter(Boolean)
 
       return {
         id: item.id,
@@ -470,13 +702,19 @@ const equippedWeaponActions = computed(() => {
         quantity: inventoryQuantity(item),
         itemType: inventoryItemTypeLabel(item) || 'Weapon',
         damage: damage.damage,
-        damageType: damage.damageType,
+        damageType: damageTypeLabel(damage.damageType),
         linkedItemId,
         rarity: String(core?.rarity || item?.rarity || '').trim(),
         weight: core?.weight ?? item?.weight ?? '',
         value: core?.value ?? item?.value ?? '',
         description: String(core?.description || item?.description || '').trim(),
-        notes: item.notes || ''
+        notes: item.notes || '',
+        attackBonus: attackStats.total,
+        attackBonusText: signedNumberText(attackStats.total),
+        attackFormula: attackFormulaParts.join(' + ') || attackStats.abilityLabel,
+        attackAbility: attackStats.abilityLabel,
+        proficient: attackStats.proficient,
+        magicBonus: attackStats.magicBonus
       }
     })
 
@@ -2999,7 +3237,18 @@ async function saveSheet() {
                         </span>
                       </div>
 
-                      <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+
+                      <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2">
+                          <div class="uppercase tracking-[0.18em] text-[#9f9278]">To Hit</div>
+                          <div class="mt-1 font-semibold text-white">
+                            {{ weapon.attackBonusText }}
+                          </div>
+                          <div class="mt-0.5 text-[10px] text-[#9f9278]">
+                            {{ weapon.attackFormula }}
+                          </div>
+                        </div>
+
                         <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2">
                           <div class="uppercase tracking-[0.18em] text-[#9f9278]">Damage</div>
                           <div class="mt-1 font-semibold text-white">

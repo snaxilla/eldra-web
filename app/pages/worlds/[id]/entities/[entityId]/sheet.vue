@@ -55,6 +55,7 @@ const spellPreparedDraft = ref<string[]>([])
 const spellSearch = ref('')
 const actionSpellLevelFilter = ref('all')
 const actionPanelsOpen = reactive<Record<string, boolean>>({
+  weapons: true,
   spells: true,
   common: true,
   bonus: false,
@@ -385,6 +386,79 @@ function inventoryQuantity(item: any) {
   const parsed = Number(item?.quantity || 1)
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1
 }
+
+function inventoryLinkedItemOption(item: any) {
+  const linkedId = inventoryLinkedItemId(item)
+  if (!linkedId) return null
+
+  return itemOptions.value.find((option: any) => String(option.id) === String(linkedId)) || null
+}
+
+function inventoryItemCore(item: any) {
+  const option = inventoryLinkedItemOption(item)
+  return option ? optionCore(option, 'item_core') || {} : {}
+}
+
+function inventoryItemTypeLabel(item: any) {
+  const core = inventoryItemCore(item)
+  const rawType = String(
+    item?.item_type ??
+    item?.itemType ??
+    core?.item_type ??
+    core?.itemType ??
+    ''
+  ).trim()
+
+  const normalized = rawType.toUpperCase()
+  const labels: Record<string, string> = {
+    M: 'Melee Weapon',
+    R: 'Ranged Weapon',
+    A: 'Ammunition',
+    LA: 'Light Armor',
+    MA: 'Medium Armor',
+    HA: 'Heavy Armor',
+    S: 'Shield'
+  }
+
+  return labels[normalized] || rawType
+}
+
+function inventoryItemDamage(item: any) {
+  const core = inventoryItemCore(item)
+
+  return {
+    damage: String(item?.damage ?? core?.damage ?? '').trim(),
+    damageType: String(item?.damage_type ?? item?.damageType ?? core?.damage_type ?? core?.damageType ?? '').trim()
+  }
+}
+
+function isWeaponInventoryItem(item: any) {
+  const damage = inventoryItemDamage(item)
+  if (damage.damage) return true
+
+  const type = String(inventoryItemTypeLabel(item) || '').toLowerCase()
+  return type.includes('weapon') || type === 'm' || type === 'r'
+}
+
+const equippedWeaponActions = computed(() =>
+  inventory.value
+    .filter((item: any) => item?.equipped && isWeaponInventoryItem(item))
+    .map((item: any) => {
+      const damage = inventoryItemDamage(item)
+      const linkedItemId = inventoryLinkedItemId(item)
+
+      return {
+        id: item.id,
+        name: String(item.name || 'Weapon'),
+        quantity: inventoryQuantity(item),
+        itemType: inventoryItemTypeLabel(item) || 'Weapon',
+        damage: damage.damage,
+        damageType: damage.damageType,
+        linkedItemId,
+        notes: item.notes || ''
+      }
+    })
+)
 
 function selectedInventoryItemTitle() {
   const id = String(inventoryAddForm.itemEntityId || '')
@@ -1484,9 +1558,17 @@ const actionSpellCards = computed(() => {
 })
 
 const commonActionCards = computed(() => {
-  if (!actionSpellCards.value.length) return standardActionCards
+  let actions = [...standardActionCards]
 
-  return standardActionCards.filter((action) => action.name !== 'Cast a Spell')
+  if (actionSpellCards.value.length) {
+    actions = actions.filter((action) => action.name !== 'Cast a Spell')
+  }
+
+  if (equippedWeaponActions.value.length) {
+    actions = actions.filter((action) => action.name !== 'Attack')
+  }
+
+  return actions
 })
 
 function actionSpellLevelKey(level: any) {
@@ -2846,6 +2928,83 @@ async function saveSheet() {
                 v-else-if="activeSheetTab === 'actions'"
                 class="mt-0 grid gap-3 md:mt-6"
               >
+
+                <div
+                  v-if="equippedWeaponActions.length"
+                  class="eldra-codex-soft rounded-none p-4"
+                >
+                  <button
+                    type="button"
+                    class="mb-3 flex w-full items-center justify-between gap-3 text-left"
+                    @click="toggleActionPanel('weapons')"
+                  >
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Weapon Actions</div>
+
+                    <div class="flex items-center gap-2">
+                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                        {{ equippedWeaponActions.length }} Equipped
+                      </div>
+                      <UIcon :name="actionPanelChevron('weapons')" class="h-4 w-4 text-[#9f9278]" />
+                    </div>
+                  </button>
+
+                  <div
+                    v-show="actionPanelOpen('weapons')"
+                    class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  >
+                    <article
+                      v-for="weapon in equippedWeaponActions"
+                      :key="`weapon-action-${weapon.id}`"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div class="truncate font-semibold text-white">{{ weapon.name }}</div>
+                          <div class="mt-1 text-xs text-[#9f9278]">{{ weapon.itemType || 'Weapon' }}</div>
+                        </div>
+
+                        <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                          Attack
+                        </span>
+                      </div>
+
+                      <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2">
+                          <div class="uppercase tracking-[0.18em] text-[#9f9278]">Damage</div>
+                          <div class="mt-1 font-semibold text-white">
+                            {{ weapon.damage || '—' }}
+                          </div>
+                        </div>
+
+                        <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2">
+                          <div class="uppercase tracking-[0.18em] text-[#9f9278]">Type</div>
+                          <div class="mt-1 font-semibold text-white">
+                            {{ weapon.damageType || '—' }}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div v-if="weapon.notes" class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]">
+                        {{ weapon.notes }}
+                      </div>
+
+                      <div class="mt-3 grid gap-2" :class="weapon.linkedItemId ? 'grid-cols-2' : 'grid-cols-1'">
+                        <div class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]">
+                          Roll Coming Soon
+                        </div>
+
+                        <NuxtLink
+                          v-if="weapon.linkedItemId"
+                          :to="`/worlds/${worldId}/entities/${weapon.linkedItemId}`"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                        >
+                          Article
+                        </NuxtLink>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
                 <div
                   v-if="actionSpellCards.length"
                   class="eldra-codex-soft rounded-none p-4"

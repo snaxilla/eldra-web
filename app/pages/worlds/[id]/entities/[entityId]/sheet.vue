@@ -631,6 +631,41 @@ function attackBonusForWeapon(item: any) {
   }
 }
 
+function damageRollText(baseDamage: any, bonus: any) {
+  const base = String(baseDamage || '').trim()
+  const parsedBonus = Number(bonus)
+
+  if (!base) {
+    return Number.isFinite(parsedBonus) && parsedBonus !== 0 ? signedNumberText(parsedBonus) : ''
+  }
+
+  if (!Number.isFinite(parsedBonus) || parsedBonus === 0) return base
+
+  return `${base} ${parsedBonus >= 0 ? '+' : '-'} ${Math.abs(parsedBonus)}`
+}
+
+function damageRollForWeapon(item: any, baseDamage: any) {
+  const abilityKey = weaponAttackAbilityKey(item)
+  const abilityLabel = abilityKey.toUpperCase()
+  const abilityMod = abilityModifierNumberForKey(abilityKey)
+  const magicBonus = weaponMagicAttackBonus(item)
+  const totalBonus = abilityMod + magicBonus
+
+  const formulaParts = [abilityLabel]
+  if (magicBonus) formulaParts.push(signedNumberText(magicBonus))
+
+  return {
+    abilityKey,
+    abilityLabel,
+    abilityMod,
+    magicBonus,
+    totalBonus,
+    totalBonusText: signedNumberText(totalBonus),
+    formula: formulaParts.join(' '),
+    rollText: damageRollText(baseDamage, totalBonus)
+  }
+}
+
 function damageTypeLabel(value: any) {
   const code = String(value || '').split('|')[0].trim().toUpperCase()
   const labels: Record<string, string> = {
@@ -661,13 +696,19 @@ function isWeaponInventoryItem(item: any) {
 }
 
 const equippedWeaponActions = computed(() => {
-  const unarmedStats = attackBonusForWeapon({ id: 'unarmed-strike', name: 'Unarmed Strike' })
+  const unarmedSource = { id: 'unarmed-strike', name: 'Unarmed Strike' }
+  const unarmedStats = attackBonusForWeapon(unarmedSource)
+  const unarmedDamage = damageRollForWeapon(unarmedSource, '1')
+
   const unarmedStrike = {
     id: 'unarmed-strike',
     name: 'Unarmed Strike',
     quantity: 1,
     itemType: 'Natural Attack',
-    damage: '1 + STR',
+    damage: unarmedDamage.rollText || '1',
+    baseDamage: '1',
+    damageFormula: unarmedDamage.formula,
+    damageBonusText: unarmedDamage.totalBonusText,
     damageType: 'bludgeoning',
     linkedItemId: '',
     rarity: '',
@@ -690,6 +731,7 @@ const equippedWeaponActions = computed(() => {
       const damage = inventoryItemDamage(item)
       const linkedItemId = inventoryLinkedItemId(item)
       const attackStats = attackBonusForWeapon(item)
+      const damageStats = damageRollForWeapon(item, damage.damage)
       const attackFormulaParts = [
         attackStats.abilityLabel,
         attackStats.proficient ? 'PB' : '',
@@ -701,7 +743,10 @@ const equippedWeaponActions = computed(() => {
         name: String(item.name || 'Weapon'),
         quantity: inventoryQuantity(item),
         itemType: inventoryItemTypeLabel(item) || 'Weapon',
-        damage: damage.damage,
+        damage: damageStats.rollText || damage.damage,
+        baseDamage: damage.damage,
+        damageFormula: damageStats.formula,
+        damageBonusText: damageStats.totalBonusText,
         damageType: damageTypeLabel(damage.damageType),
         linkedItemId,
         rarity: String(core?.rarity || item?.rarity || '').trim(),
@@ -3253,6 +3298,9 @@ async function saveSheet() {
                           <div class="uppercase tracking-[0.18em] text-[#9f9278]">Damage</div>
                           <div class="mt-1 font-semibold text-white">
                             {{ weapon.damage || '—' }}
+                          </div>
+                          <div v-if="weapon.damageFormula" class="mt-0.5 text-[10px] text-[#9f9278]">
+                            {{ weapon.damageFormula }}
                           </div>
                         </div>
 

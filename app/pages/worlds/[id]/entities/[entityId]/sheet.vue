@@ -766,6 +766,128 @@ const equippedWeaponActions = computed(() => {
   return [unarmedStrike, ...equippedWeapons]
 })
 
+function inventoryArmorClassValue(item: any) {
+  const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
+
+  const value = item?.armor_class ??
+    item?.armorClass ??
+    core?.armor_class ??
+    core?.armorClass ??
+    raw?.ac ??
+    raw?.armorClass
+
+  if (Array.isArray(value) && value.length) {
+    const first = value[0]
+
+    if (typeof first === 'number') return first
+    if (first && typeof first === 'object' && typeof first.ac === 'number') return first.ac
+  }
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function equippedInventoryRows() {
+  return inventory.value.filter((item: any) =>
+    item?.equipped === true ||
+    item?.equipped === 'true' ||
+    item?.equipped === 1 ||
+    item?.equipped === '1'
+  )
+}
+
+function isShieldInventoryItem(item: any) {
+  return inventoryItemTypeCode(item) === 'S'
+}
+
+function isArmorInventoryItem(item: any) {
+  return ['LA', 'MA', 'HA'].includes(inventoryItemTypeCode(item))
+}
+
+function armorCandidateValue(baseAc: number, dexMod: number, shieldBonus: number, armorType: string) {
+  if (armorType === 'LA') return baseAc + dexMod + shieldBonus
+  if (armorType === 'MA') return baseAc + Math.min(dexMod, 2) + shieldBonus
+  if (armorType === 'HA') return baseAc + shieldBonus
+  return baseAc + shieldBonus
+}
+
+function armorCandidateNote(baseAc: number, dexMod: number, shieldBonus: number, armorType: string, shieldNames: string[]) {
+  const shieldText = shieldBonus
+    ? ` + ${shieldBonus} shield bonus${shieldNames.length ? ` (${shieldNames.join(', ')})` : ''}`
+    : ''
+
+  if (armorType === 'LA') return `${baseAc} + DEX modifier (${signedNumberText(dexMod)})${shieldText}.`
+  if (armorType === 'MA') return `${baseAc} + DEX modifier max 2 (${signedNumberText(Math.min(dexMod, 2))})${shieldText}.`
+  if (armorType === 'HA') return `${baseAc}${shieldText}.`
+
+  return `${baseAc}${shieldText}.`
+}
+
+const equippedArmorClassCandidates = computed(() => {
+  const dexMod = abilityModifierNumberForKey('dex')
+  const equipped = equippedInventoryRows()
+  const shields = equipped.filter(isShieldInventoryItem)
+  const shieldBonus = shields.reduce((total: number, shield: any) =>
+    total + (inventoryArmorClassValue(shield) || 2),
+    0
+  )
+  const shieldNames = shields.map((shield: any) => String(shield?.name || 'Shield')).filter(Boolean)
+  const candidates: any[] = []
+
+  if (shieldBonus) {
+    candidates.push({
+      label: 'Unarmored + Shield',
+      value: 10 + dexMod + shieldBonus,
+      note: `10 + DEX modifier (${signedNumberText(dexMod)}) + ${shieldBonus} shield bonus${shieldNames.length ? ` (${shieldNames.join(', ')})` : ''}.`
+    })
+  }
+
+  for (const armor of equipped.filter(isArmorInventoryItem)) {
+    const baseAc = inventoryArmorClassValue(armor)
+    if (!baseAc) continue
+
+    const armorType = inventoryItemTypeCode(armor)
+    const value = armorCandidateValue(baseAc, dexMod, shieldBonus, armorType)
+
+    candidates.push({
+      label: String(armor?.name || 'Armor'),
+      value,
+      note: armorCandidateNote(baseAc, dexMod, shieldBonus, armorType, shieldNames)
+    })
+  }
+
+  return candidates
+})
+
+const displayedArmorClassCandidates = computed(() => {
+  const rows = [
+    ...(Array.isArray(math.value?.combat?.armorClass?.candidates) ? math.value.combat.armorClass.candidates : []),
+    ...equippedArmorClassCandidates.value
+  ]
+
+  const best = rows.reduce((currentBest: any, candidate: any) => {
+    const value = Number(candidate?.value)
+    if (!Number.isFinite(value)) return currentBest
+    if (!currentBest || value > Number(currentBest.value)) return candidate
+    return currentBest
+  }, null)
+
+  return rows.map((candidate: any) => ({
+    ...candidate,
+    active: best && candidate.label === best.label && Number(candidate.value) === Number(best.value)
+  }))
+})
+
+function bestArmorClassCandidate() {
+  return displayedArmorClassCandidates.value.reduce((currentBest: any, candidate: any) => {
+    const value = Number(candidate?.value)
+    if (!Number.isFinite(value)) return currentBest
+    if (!currentBest || value > Number(currentBest.value)) return candidate
+    return currentBest
+  }, null)
+}
+
 function selectedInventoryItemTitle() {
   const id = String(inventoryAddForm.itemEntityId || '')
   if (!id) return ''
@@ -1228,6 +1350,15 @@ function shownCombatStat(key: string) {
 
   if (key === 'tempHp') {
     return math.value?.combat?.hitPoints?.temp ?? ''
+  }
+
+
+  if (key === 'armorClass') {
+    return bestArmorClassCandidate()?.value ||
+      math.value?.combat?.armorClass?.best?.value ||
+      math.value?.combat?.armorClass?.current ||
+      combatStats.value[key] ||
+      ''
   }
 
   const value = combatStats.value[key]
@@ -3219,7 +3350,7 @@ async function saveSheet() {
 
                   <div class="mt-4 grid gap-2 md:grid-cols-3">
                     <div
-                      v-for="candidate in mathArmorClassCandidates"
+                      v-for="candidate in displayedArmorClassCandidates"
                       :key="candidate.label"
                       class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
                     >

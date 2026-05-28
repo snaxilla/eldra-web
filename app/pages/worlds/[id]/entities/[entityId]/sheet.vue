@@ -325,6 +325,7 @@ const CURRENCY_DENOMINATIONS = [
 const currencySaving = ref(false)
 const currencySaveError = ref('')
 const currencySaveSuccess = ref('')
+const currencyLedgerOpen = ref(false)
 const currencyDrafts = reactive<Record<string, string>>({
   pp: '0',
   gp: '0',
@@ -4246,17 +4247,39 @@ async function saveSheet() {
               class="mt-0 grid gap-3 md:mt-6"
             >
 
-              <div class="eldra-codex-soft rounded-none p-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+
+              <div class="eldra-codex-soft rounded-none p-3">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="currencyLedgerOpen = !currencyLedgerOpen"
+                >
+                  <div class="min-w-0">
                     <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Currency Ledger</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Coin carried by this character.</div>
+                    <div class="mt-1 text-xs text-[#d8ceb8]">
+                      {{ currencyTotalCoins }} Coin{{ currencyTotalCoins === 1 ? '' : 's' }} carried.
+                    </div>
                   </div>
 
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ currencyTotalCoins }} Coin{{ currencyTotalCoins === 1 ? '' : 's' }}
+                  <div class="flex shrink-0 items-center gap-2">
+                    <div class="flex max-w-[260px] flex-wrap justify-end gap-1.5">
+                      <span
+                        v-for="coin in CURRENCY_DENOMINATIONS"
+                        :key="`currency-summary-${coin.key}`"
+                        class="inline-flex items-center gap-1 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.58)] px-2 py-1 text-[11px] text-[#d8ceb8]"
+                      >
+                        <UIcon :name="coin.icon" class="h-3 w-3 text-[#c9a45a]" />
+                        <span class="font-semibold text-white">{{ currencyAmount(coin.key) }}</span>
+                        <span class="text-[#9f9278]">{{ coin.short }}</span>
+                      </span>
+                    </div>
+
+                    <UIcon
+                      :name="currencyLedgerOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                      class="h-4 w-4 text-[#9f9278]"
+                    />
                   </div>
-                </div>
+                </button>
 
                 <div v-if="currencySaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
                   {{ currencySaveError }}
@@ -4266,22 +4289,23 @@ async function saveSheet() {
                   {{ currencySaveSuccess }}
                 </div>
 
-                <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div
+                  v-show="currencyLedgerOpen"
+                  class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4"
+                >
                   <div
                     v-for="coin in CURRENCY_DENOMINATIONS"
                     :key="coin.key"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2"
                   >
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="flex items-center gap-2">
-                        <div class="flex h-8 w-8 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
-                          <UIcon :name="coin.icon" class="h-4 w-4" />
-                        </div>
+                    <div class="flex items-center gap-2">
+                      <div class="flex h-7 w-7 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                        <UIcon :name="coin.icon" class="h-3.5 w-3.5" />
+                      </div>
 
-                        <div>
-                          <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ coin.short }}</div>
-                          <div class="text-xs text-[#d8ceb8]">{{ coin.label }}</div>
-                        </div>
+                      <div class="min-w-0">
+                        <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ coin.short }}</div>
+                        <div class="truncate text-xs text-[#d8ceb8]">{{ coin.label }}</div>
                       </div>
                     </div>
 
@@ -4289,12 +4313,12 @@ async function saveSheet() {
                       v-if="mode === 'build'"
                       v-model="currencyDrafts[coin.key]"
                       inputmode="numeric"
-                      class="eldra-input mt-3 w-full rounded-none px-3 py-2 text-lg font-semibold text-white"
+                      class="eldra-input mt-2 w-full rounded-none px-2 py-1.5 text-base font-semibold text-white"
                       :disabled="currencySaving"
                       @change="saveCurrencyAmount(coin)"
                     >
 
-                    <div v-else class="mt-3 text-2xl font-semibold text-white">
+                    <div v-else class="mt-2 text-xl font-semibold text-white">
                       {{ currencyAmount(coin.key) }}
                     </div>
                   </div>

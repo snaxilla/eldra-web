@@ -781,11 +781,13 @@ function resetInventoryAddForm() {
   inventoryItemSearch.value = ''
 }
 
-function applyInventoryResult(result: any) {
+async function applyInventoryResult(result: any) {
   data.value = {
     ...(data.value as any || {}),
     inventory: Array.isArray(result?.inventory) ? result.inventory : inventory.value
   } as any
+
+  await refresh()
 }
 
 async function addInventoryItem() {
@@ -814,7 +816,7 @@ async function addInventoryItem() {
       }
     })
 
-    applyInventoryResult(result)
+    await applyInventoryResult(result)
     resetInventoryAddForm()
     inventorySaveSuccess.value = 'Item added.'
   } catch (err: any) {
@@ -841,7 +843,7 @@ async function updateInventoryItem(item: any, patch: Record<string, any>) {
       body: patch
     })
 
-    applyInventoryResult(result)
+    await applyInventoryResult(result)
     inventorySaveSuccess.value = 'Inventory updated.'
   } catch (err: any) {
     inventorySaveError.value =
@@ -885,7 +887,7 @@ async function removeInventoryItem(item: any) {
       method: 'DELETE'
     })
 
-    applyInventoryResult(result)
+    await applyInventoryResult(result)
     inventorySaveSuccess.value = 'Item removed.'
   } catch (err: any) {
     inventorySaveError.value =

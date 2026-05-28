@@ -63,6 +63,70 @@ async function loadInventory(sheetId: any) {
   return Array.isArray(res?.data) ? res.data : []
 }
 
+
+function inventoryLinkedItemId(row: any) {
+  const candidates = [
+    row?.item_entity_id,
+    row?.itemEntityId,
+    row?.entity_item_id,
+    row?.item_id,
+    row?.linked_item_entity_id
+  ]
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object' && candidate.id) return candidate.id
+    if (candidate !== null && candidate !== undefined && candidate !== '') return candidate
+  }
+
+  return null
+}
+
+function inventoryBlockByKey(blocks: any[], key: string) {
+  return blocks.find((block: any) => String(block?.block_key || block?.blockKey || '') === key) || null
+}
+
+async function enrichInventoryItem(worldId: string | number, row: any) {
+  const itemId = inventoryLinkedItemId(row)
+  if (!itemId) return row
+
+  try {
+    const entityRes = await dxFetch(`/items/entities/${itemId}?fields=id,title,slug,entity_type,world_id,summary`)
+    const entity = entityRes?.data || null
+
+    if (
+      !entity ||
+      String(entity.world_id) !== String(worldId) ||
+      String(entity.entity_type || '').toLowerCase() !== 'item'
+    ) {
+      return row
+    }
+
+    const blocksRes = await dxFetch(`/items/block_instances?filter[entity_id][_eq]=${itemId}&sort=sort&fields=*&limit=-1`)
+    const blocks = Array.isArray(blocksRes?.data) ? blocksRes.data : []
+    const itemCore = inventoryBlockByKey(blocks, 'item_core')?.data || {}
+    const importSource = inventoryBlockByKey(blocks, 'import_source')?.data || {}
+
+    return {
+      ...row,
+      linked_item: entity,
+      linkedItem: entity,
+      item_core: itemCore,
+      itemCore,
+      import_source: importSource,
+      importSource,
+      item_raw_json: importSource?.raw_json || null,
+      itemRawJson: importSource?.raw_json || null
+    }
+  } catch {
+    return row
+  }
+}
+
+async function enrichInventoryItems(worldId: string | number, rows: any[]) {
+  const inventory = Array.isArray(rows) ? rows : []
+  return await Promise.all(inventory.map((row) => enrichInventoryItem(worldId, row)))
+}
+
 async function upsertCharacterCoreSheetLink(entityId: string, entityType: string, sheetId: any) {
   const params = new URLSearchParams()
   params.set('filter[entity_id][_eq]', String(entityId))
@@ -177,9 +241,10 @@ async function createSheetForEntity(worldId: string, entity: any) {
 export async function getCharacterSheetForEntity(worldId: string, entityId: string) {
   const entity = await loadCharacterEntity(worldId, entityId)
   const sheet = await findActiveSheet(worldId, entityId)
-  const inventory = sheet?.id ? await loadInventory(sheet.id) : []
+  const rawInventory = sheet?.id ? await loadInventory(sheet.id) : []
+  const inventory = await enrichInventoryItems(worldId, rawInventory)
   const resolved = sheet ? await resolveCharacterSheetSources(sheet) : null
-  const math = sheet ? computeCharacterSheetMath(sheet, resolved) : null
+  const math = sheet ? computeCharacterSheetMath(sheet, resolved, inventory) : null
 
   return {
     exists: Boolean(sheet),

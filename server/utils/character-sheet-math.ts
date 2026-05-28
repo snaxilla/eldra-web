@@ -216,11 +216,111 @@ function buildSkillRows(scores: Record<string, number>, skillProfs: Set<string>,
   })
 }
 
-function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, resolved: any) {
+function inventoryItemCore(row: any) {
+  return plainObject(row?.item_core ?? row?.itemCore)
+}
+
+function inventoryItemRaw(row: any) {
+  return plainObject(row?.item_raw_json ?? row?.itemRawJson)
+}
+
+function inventoryItemTypeCode(row: any) {
+  const core = inventoryItemCore(row)
+  const raw = inventoryItemRaw(row)
+  const type = String(
+    row?.item_type ??
+    row?.itemType ??
+    core?.item_type ??
+    core?.itemType ??
+    raw?.type ??
+    ''
+  ).trim()
+
+  return type.split('|')[0].trim().toUpperCase()
+}
+
+function inventoryItemName(row: any) {
+  return String(
+    row?.name ||
+    row?.linked_item?.title ||
+    row?.linkedItem?.title ||
+    inventoryItemCore(row)?.name ||
+    'Item'
+  )
+}
+
+function inventoryItemArmorClass(row: any) {
+  const core = inventoryItemCore(row)
+  const raw = inventoryItemRaw(row)
+
+  const value = row?.armor_class ??
+    row?.armorClass ??
+    core?.armor_class ??
+    core?.armorClass ??
+    raw?.ac ??
+    raw?.armorClass
+
+  if (Array.isArray(value) && value.length) {
+    const first = value[0]
+    if (typeof first === 'number') return first
+    if (first && typeof first === 'object' && typeof first.ac === 'number') return first.ac
+  }
+
+  const parsed = positiveIntegerOrNull(value)
+  return parsed
+}
+
+function equippedInventoryItems(inventory: any[]) {
+  return (Array.isArray(inventory) ? inventory : []).filter((row: any) =>
+    row?.equipped === true ||
+    row?.equipped === 'true' ||
+    row?.equipped === 1 ||
+    row?.equipped === '1'
+  )
+}
+
+function isShieldInventoryItem(row: any) {
+  return inventoryItemTypeCode(row) === 'S'
+}
+
+function isArmorInventoryItem(row: any) {
+  return ['LA', 'MA', 'HA'].includes(inventoryItemTypeCode(row))
+}
+
+function armorCandidateValue(baseAc: number, dexMod: number, shieldBonus: number, armorType: string) {
+  if (armorType === 'LA') return baseAc + dexMod + shieldBonus
+  if (armorType === 'MA') return baseAc + Math.min(dexMod, 2) + shieldBonus
+  if (armorType === 'HA') return baseAc + shieldBonus
+  return baseAc + shieldBonus
+}
+
+function armorCandidateNote(baseAc: number, dexMod: number, shieldBonus: number, armorType: string, shieldNames: string[]) {
+  const shieldText = shieldBonus
+    ? ` + ${shieldBonus} shield bonus${shieldNames.length ? ` (${shieldNames.join(', ')})` : ''}`
+    : ''
+
+  if (armorType === 'LA') return `${baseAc} + DEX modifier (${signed(dexMod)})${shieldText}.`
+  if (armorType === 'MA') return `${baseAc} + DEX modifier max 2 (${signed(Math.min(dexMod, 2))})${shieldText}.`
+  if (armorType === 'HA') return `${baseAc}${shieldText}.`
+
+  return `${baseAc}${shieldText}.`
+}
+
+function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, resolved: any, inventory: any[] = []) {
   const combatStats = plainObject(sheet?.combat_stats)
   const dexMod = abilityModifier(scores.dex)
   const conMod = abilityModifier(scores.con)
+  const wisMod = abilityModifier(scores.wis)
   const candidates: Array<{ label: string; value: number; note: string; active?: boolean }> = []
+
+  const equippedItems = equippedInventoryItems(inventory)
+  const shields = equippedItems.filter(isShieldInventoryItem)
+  const shieldBonus = shields.reduce((total: number, shield: any) => total + (inventoryItemArmorClass(shield) || 2), 0)
+  const shieldNames = shields.map(inventoryItemName).filter(Boolean)
+
+  const shieldNote = shieldBonus
+    ? ` + ${shieldBonus} shield bonus${shieldNames.length ? ` (${shieldNames.join(', ')})` : ''}`
+    : ''
 
   const manualAc = positiveIntegerOrNull(combatStats.armorClass ?? combatStats.armor_class)
   if (manualAc !== null) {
@@ -233,16 +333,39 @@ function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, r
   }
 
   candidates.push({
-    label: 'Unarmored Base',
-    value: 10 + dexMod,
-    note: '10 + DEX modifier.'
+    label: shieldBonus ? 'Unarmored + Shield' : 'Unarmored Base',
+    value: 10 + dexMod + shieldBonus,
+    note: `10 + DEX modifier (${signed(dexMod)})${shieldNote}.`
   })
 
   if (normalizeToken(resolved?.class?.title) === 'barbarian') {
     candidates.push({
-      label: 'Barbarian Unarmored Defense',
-      value: 10 + dexMod + conMod,
-      note: '10 + DEX modifier + CON modifier.'
+      label: shieldBonus ? 'Barbarian Unarmored Defense + Shield' : 'Barbarian Unarmored Defense',
+      value: 10 + dexMod + conMod + shieldBonus,
+      note: `10 + DEX modifier (${signed(dexMod)}) + CON modifier (${signed(conMod)})${shieldNote}.`
+    })
+  }
+
+  if (normalizeToken(resolved?.class?.title) === 'monk') {
+    candidates.push({
+      label: shieldBonus ? 'Monk Unarmored Defense + Shield' : 'Monk Unarmored Defense',
+      value: 10 + dexMod + wisMod + shieldBonus,
+      note: `10 + DEX modifier (${signed(dexMod)}) + WIS modifier (${signed(wisMod)})${shieldNote}.`
+    })
+  }
+
+  for (const armor of equippedItems.filter(isArmorInventoryItem)) {
+    const baseAc = inventoryItemArmorClass(armor)
+    if (!baseAc) continue
+
+    const armorType = inventoryItemTypeCode(armor)
+    const name = inventoryItemName(armor)
+    const value = armorCandidateValue(baseAc, dexMod, shieldBonus, armorType)
+
+    candidates.push({
+      label: name,
+      value,
+      note: armorCandidateNote(baseAc, dexMod, shieldBonus, armorType, shieldNames)
     })
   }
 
@@ -250,6 +373,10 @@ function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, r
     if (!currentBest || candidate.value > currentBest.value) return candidate
     return currentBest
   }, null as null | { label: string; value: number; note: string; active?: boolean })
+
+  if (manualAc === null && best) {
+    best.active = true
+  }
 
   return {
     current: manualAc,
@@ -599,7 +726,7 @@ function buildSpellSlotRows(sheet: any, level: number, resolved: any) {
     .filter((row) => row.max > 0)
 }
 
-export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
+export function computeCharacterSheetMath(sheet: any, resolved: any = {}, inventory: any[] = []) {
   const level = integerOrNull(sheet?.level) ?? 1
   const proficiencyBonus = proficiencyBonusForLevel(level)
   const scores = abilityScoresForSheet(sheet)
@@ -627,7 +754,7 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}) {
       speed,
       hitDice,
       hitPoints,
-      armorClass: buildArmorClassCandidates(sheet, scores, resolved)
+      armorClass: buildArmorClassCandidates(sheet, scores, resolved, inventory)
     },
       spellcasting: {
         slots: spellSlots

@@ -50,6 +50,9 @@ const choiceSaveSuccess = ref('')
 const spellSaving = ref(false)
 const spellSaveError = ref('')
 const spellSaveSuccess = ref('')
+const restSaving = ref(false)
+const restSaveError = ref('')
+const restSaveSuccess = ref('')
 const spellKnownDraft = ref<string[]>([])
 const spellPreparedDraft = ref<string[]>([])
 const spellSearch = ref('')
@@ -1924,6 +1927,120 @@ const spellcastingStatCards = computed(() => {
   ]
 })
 
+function worldEntityById(id: any) {
+  const needle = String(id || '')
+  if (!needle) return null
+
+  return (Array.isArray(worldEntities.value) ? worldEntities.value : [])
+    .find((item: any) => String(item?.id || '') === needle) || null
+}
+
+function spellActionCore(spell: any) {
+  const entity = spell?.entity || worldEntityById(spell?.id)
+  return entity ? optionCore({ entity }, 'spell_core') || {} : {}
+}
+
+function spellActionRaw(spell: any) {
+  const entity = spell?.entity || worldEntityById(spell?.id)
+  return entity ? optionRawJson({ entity }) || {} : {}
+}
+
+function spellActionText(spell: any) {
+  const core = spellActionCore(spell)
+  const raw = spellActionRaw(spell)
+
+  return cleanSpellText([
+    core?.description,
+    core?.higher_level,
+    core?.higherLevel,
+    spellEntriesToMarkdown(raw?.entries),
+    spellEntriesToMarkdown(raw?.entriesHigherLevel)
+  ].filter(Boolean).join('\n\n')).toLowerCase()
+}
+
+function saveAbilityLabel(value: any) {
+  const key = String(value || '').trim().toLowerCase()
+
+  const labels: Record<string, string> = {
+    str: 'STR',
+    strength: 'STR',
+    dex: 'DEX',
+    dexterity: 'DEX',
+    con: 'CON',
+    constitution: 'CON',
+    int: 'INT',
+    intelligence: 'INT',
+    wis: 'WIS',
+    wisdom: 'WIS',
+    cha: 'CHA',
+    charisma: 'CHA'
+  }
+
+  return labels[key] || ''
+}
+
+function spellSaveAbilityLabel(spell: any) {
+  const core = spellActionCore(spell)
+  const raw = spellActionRaw(spell)
+
+  const directValues = [
+    core?.saving_throw,
+    core?.savingThrow,
+    raw?.savingThrow,
+    raw?.save,
+    raw?.saving_throw
+  ]
+
+  for (const value of directValues) {
+    const values = Array.isArray(value) ? value : [value]
+
+    for (const item of values) {
+      const label = saveAbilityLabel(item)
+      if (label) return label
+    }
+  }
+
+  const text = spellActionText(spell)
+  const match = text.match(/\b(strength|dexterity|constitution|intelligence|wisdom|charisma)\s+saving throw\b/i)
+
+  return match ? saveAbilityLabel(match[1]) : ''
+}
+
+function spellUsesAttackRoll(spell: any) {
+  const core = spellActionCore(spell)
+  const raw = spellActionRaw(spell)
+  const text = spellActionText(spell)
+
+  if (core?.spell_attack || core?.spellAttack || raw?.spellAttack || raw?.attack) return true
+
+  return /\bspell attack\b/i.test(text)
+}
+
+function spellActionMechanic(spell: any) {
+  if (spellUsesAttackRoll(spell)) {
+    return {
+      label: 'Spell Attack',
+      value: signedNumberText(spellAttackBonus.value),
+      note: 'd20 + spell attack'
+    }
+  }
+
+  const save = spellSaveAbilityLabel(spell)
+  if (save) {
+    return {
+      label: 'Save DC',
+      value: String(spellSaveDc.value ?? '—'),
+      note: `${save} save`
+    }
+  }
+
+  return {
+    label: 'Roll',
+    value: '—',
+    note: 'No attack/save detected'
+  }
+}
+
 const limitedResourceLabel = computed(() => {
   if (spellSlotRows.value.length) return 'Spell Slots'
   return 'Resources'
@@ -2003,6 +2120,70 @@ async function saveSpellSlotUsage(level: any, nextUsed: number) {
       'Failed to update resources.'
   } finally {
     spellSaving.value = false
+  }
+}
+
+function baseSheetPatchBody(overrides: Record<string, any> = {}) {
+  return {
+    name: sheetForm.name,
+    level: sheetForm.level,
+    className: optionTitle(classOptions.value, sheetForm.classEntityId) || sheetForm.className,
+    subclassName: sheetForm.subclassName,
+    speciesName: optionTitle(speciesOptions.value, sheetForm.speciesEntityId) || sheetForm.speciesName,
+    backgroundName: optionTitle(backgroundOptions.value, sheetForm.backgroundEntityId) || sheetForm.backgroundName,
+    classEntityId: sheetForm.classEntityId || null,
+    speciesEntityId: sheetForm.speciesEntityId || null,
+    backgroundEntityId: sheetForm.backgroundEntityId || null,
+    abilityScores: { ...sheetForm.abilityScores },
+    combatStats: { ...sheetForm.combatStats },
+    ...overrides
+  }
+}
+
+async function takeShortRest() {
+  restSaveError.value = ''
+  restSaveSuccess.value = 'Short rest noted. Hit Dice spending and short-rest resources come next.'
+}
+
+async function takeLongRest() {
+  if (restSaving.value) return
+
+  restSaving.value = true
+  restSaveError.value = ''
+  restSaveSuccess.value = ''
+
+  const maxHp = Number(shownCombatStat('maxHp') || sheetForm.combatStats.maxHp || 0)
+  const nextCombatStats = {
+    ...sheetForm.combatStats,
+    tempHp: '0'
+  }
+
+  if (Number.isFinite(maxHp) && maxHp > 0) {
+    nextCombatStats.maxHp = String(maxHp)
+    nextCombatStats.currentHp = String(maxHp)
+  }
+
+  try {
+    const saved = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
+      method: 'PATCH',
+      body: baseSheetPatchBody({
+        combatStats: nextCombatStats,
+        spellcasting: spellcastingWithUsedSlots({})
+      })
+    })
+
+    data.value = saved as any
+    syncFormFromSheet()
+    syncSpellDraftsFromSheet()
+    restSaveSuccess.value = 'Long rest complete.'
+  } catch (err: any) {
+    restSaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to complete long rest.'
+  } finally {
+    restSaving.value = false
   }
 }
 
@@ -2889,6 +3070,35 @@ async function saveSheet() {
                     </div>
                   </div>
                 </div>
+
+                <!-- Mobile Rest Controls -->
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    class="rounded-none border border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] px-3 py-2 text-xs font-semibold text-[#d8ceb8] disabled:opacity-50"
+                    :disabled="restSaving"
+                    @click="takeShortRest"
+                  >
+                    Short Rest
+                  </button>
+
+                  <button
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
+                    :disabled="restSaving"
+                    @click="takeLongRest"
+                  >
+                    {{ restSaving ? 'Resting...' : 'Long Rest' }}
+                  </button>
+                </div>
+
+                <div
+                  v-if="restSaveError || restSaveSuccess"
+                  class="mt-2 text-xs"
+                >
+                  <span v-if="restSaveError" class="text-red-200">{{ restSaveError }}</span>
+                  <span v-else class="text-emerald-200">{{ restSaveSuccess }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -3650,6 +3860,16 @@ async function saveSheet() {
                             <div class="truncate font-semibold text-white">{{ spell.title }}</div>
                             <div class="mt-1 text-xs text-[#9f9278]">
                               {{ spellOptionLevelLabel(spell) || 'Spell' }}
+                            </div>
+
+                            <div class="action-spell-mechanic mt-2 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2 text-xs">
+                              <div class="flex items-center justify-between gap-2">
+                                <span class="uppercase tracking-[0.18em] text-[#9f9278]">{{ spellActionMechanic(spell).label }}</span>
+                                <span class="font-semibold text-white">{{ spellActionMechanic(spell).value }}</span>
+                              </div>
+                              <div class="mt-0.5 text-[10px] text-[#9f9278]">
+                                {{ spellActionMechanic(spell).note }}
+                              </div>
                             </div>
                           </div>
 

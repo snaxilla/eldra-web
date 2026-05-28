@@ -293,13 +293,6 @@ const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
 const CURRENCY_DENOMINATIONS = [
   {
-    key: 'pp',
-    label: 'Platinum',
-    short: 'PP',
-    rowName: 'Currency: Platinum',
-    icon: 'i-lucide-gem'
-  },
-  {
     key: 'gp',
     label: 'Gold',
     short: 'GP',
@@ -357,10 +350,24 @@ function currencyRowFor(key: any) {
   ) || null
 }
 
-function currencyAmount(key: any) {
-  const row = currencyRowFor(key)
+function rowQuantityAmount(row: any) {
   const parsed = Number(row?.quantity || 0)
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0
+}
+
+function legacyPlatinumCurrencyRow() {
+  return currencyInventoryRows.value.find((row: any) =>
+    String(row?.name || '').trim().toLowerCase() === 'currency: platinum'
+  ) || null
+}
+
+function legacyPlatinumAsGold() {
+  return rowQuantityAmount(legacyPlatinumCurrencyRow()) * 10
+}
+
+function currencyAmount(key: any) {
+  const amount = rowQuantityAmount(currencyRowFor(key))
+  return key === 'gp' ? amount + legacyPlatinumAsGold() : amount
 }
 
 const currencyTotalCoins = computed(() =>
@@ -429,6 +436,16 @@ async function saveCurrencyAmount(denom: any) {
           notes: 'Currency'
         }
       })
+    }
+
+
+    if (key === 'gp') {
+      const platinumRow = legacyPlatinumCurrencyRow()
+      if (platinumRow?.id) {
+        result = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory/${platinumRow.id}`, {
+          method: 'DELETE'
+        })
+      }
     }
 
     if (result) {
@@ -605,6 +622,26 @@ function inventoryItemDamage(item: any) {
   return {
     damage: String(item?.damage ?? core?.damage ?? '').trim(),
     damageType: String(item?.damage_type ?? item?.damageType ?? core?.damage_type ?? core?.damageType ?? '').trim()
+  }
+}
+
+function inventoryItemDetail(item: any) {
+  const core = inventoryItemCore(item)
+  const damage = inventoryItemDamage(item)
+  const linkedItemId = inventoryLinkedItemId(item)
+
+  return {
+    id: item?.id,
+    name: String(item?.name || core?.name || 'Item'),
+    itemType: inventoryItemTypeLabel(item) || 'Item',
+    damage: damage.damage,
+    damageType: damageTypeLabel(damage.damageType),
+    linkedItemId,
+    rarity: String(core?.rarity || item?.rarity || '').trim(),
+    weight: core?.weight ?? item?.weight ?? '',
+    value: core?.value ?? item?.value ?? '',
+    description: String(core?.description || item?.description || '').trim(),
+    notes: item?.notes || ''
   }
 }
 
@@ -4435,13 +4472,13 @@ async function saveSheet() {
                         </div>
                       </div>
 
-                      <NuxtLink
-                        v-if="inventoryLinkedItemId(item)"
-                        :to="`/worlds/${worldId}/entities/${inventoryLinkedItemId(item)}`"
+                      <button
+                        type="button"
                         class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        @click.stop="openItemDrawer(inventoryItemDetail(item))"
                       >
-                        Article
-                      </NuxtLink>
+                        Details
+                      </button>
                     </div>
 
                     <div class="mt-3 flex flex-wrap gap-2">

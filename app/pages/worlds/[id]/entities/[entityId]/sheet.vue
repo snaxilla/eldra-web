@@ -318,6 +318,54 @@ const upcomingClassFeatureCards = computed(() =>
   classFeatureCards.value.filter((feature: any) => feature.level > Number(math.value?.level || sheet.value?.level || 1))
 )
 
+function speciesTraitTitleAndDescription(chunk: string, index: number) {
+  const rawChunk = String(chunk || '').trim()
+  const cleanedChunk = cleanSpellText(rawChunk).trim()
+
+  const headingMatch = rawChunk.match(/^#+\s*([^\n]+)\n?([\s\S]*)$/)
+  const colonMatch = rawChunk.match(/^([^:\n]{3,80}):\s*([\s\S]*)$/)
+
+  let title = headingMatch?.[1]?.trim() ||
+    colonMatch?.[1]?.trim() ||
+    `${resolvedSpecies.value?.title || 'Species'} Trait ${index + 1}`
+
+  let description = headingMatch?.[2]?.trim() ||
+    colonMatch?.[2]?.trim() ||
+    rawChunk
+
+  const knownTraitTitles = [
+    'Draconic Ancestry',
+    'Breath Weapon',
+    'Damage Resistance',
+    'Darkvision',
+    'Draconic Flight',
+    'Creature Type',
+    'Size',
+    'Speed',
+    'Languages'
+  ]
+
+  const titleText = cleanSpellText(title).trim()
+  const knownTitle = knownTraitTitles.find((candidate) =>
+    titleText.toLowerCase().startsWith(candidate.toLowerCase())
+  )
+
+  if (knownTitle && titleText.length > knownTitle.length + 8) {
+    title = knownTitle
+    description = titleText.slice(knownTitle.length).trim() || description || cleanedChunk
+  } else if (titleText.length > 80) {
+    title = shortText(titleText, 64)
+    description = cleanedChunk
+  } else {
+    title = titleText
+  }
+
+  return {
+    title,
+    description: cleanSpellText(description).trim() || cleanedChunk
+  }
+}
+
 const speciesTraitCards = computed(() => {
   const cards: any[] = []
   const traitsText = String(resolvedSpecies.value?.traits || '').trim()
@@ -329,25 +377,16 @@ const speciesTraitCards = computed(() => {
       .filter(Boolean)
 
     for (const [index, chunk] of chunks.entries()) {
-      const headingMatch = chunk.match(/^#+\s*([^\n]+)\n?([\s\S]*)$/)
-      const colonMatch = chunk.match(/^([^:\n]{3,80}):\s*([\s\S]*)$/)
-
-      const title = headingMatch?.[1]?.trim() ||
-        colonMatch?.[1]?.trim() ||
-        `${resolvedSpecies.value?.title || 'Species'} Trait ${index + 1}`
-
-      const description = headingMatch?.[2]?.trim() ||
-        colonMatch?.[2]?.trim() ||
-        chunk
+      const parsed = speciesTraitTitleAndDescription(chunk, index)
 
       cards.push({
         id: `species-trait-${index}`,
-        title,
+        title: parsed.title,
         type: 'Species Trait',
         level: 0,
         source: resolvedSpecies.value?.source || '',
         page: resolvedSpecies.value?.page || '',
-        description: cleanSpellText(description)
+        description: parsed.description
       })
     }
   }
@@ -5069,16 +5108,16 @@ async function saveSheet() {
 
                 <div
                   v-show="featurePanelOpen('class')"
-                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                  class="mt-4 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3"
                 >
                   <article
                     v-for="feature in currentClassFeatureCards"
                     :key="`class-feature-${feature.id}`"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    class="min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                   >
-                    <div class="flex items-start justify-between gap-3">
+                    <div class="flex min-w-0 items-start justify-between gap-3">
                       <div class="min-w-0">
-                        <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                        <div class="max-w-full truncate font-semibold text-white">{{ feature.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">
                           Level {{ feature.level || 1 }}<span v-if="feature.source"> · {{ feature.source }}</span>
                         </div>
@@ -5086,14 +5125,14 @@ async function saveSheet() {
 
                       <button
                         type="button"
-                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
                         @click.stop="openFeatureDrawer(feature)"
                       >
                         Details
                       </button>
                     </div>
 
-                    <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+                    <p class="mt-3 break-words text-xs leading-5 text-[#9f9278]">
                       {{ shortText(feature.description, 180) || 'No imported description found yet.' }}
                     </p>
                   </article>
@@ -5131,16 +5170,16 @@ async function saveSheet() {
 
                 <div
                   v-show="featurePanelOpen('upcoming')"
-                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                  class="mt-4 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3"
                 >
                   <article
                     v-for="feature in upcomingClassFeatureCards"
                     :key="`upcoming-feature-${feature.id}`"
-                    class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.48)] p-3 opacity-80"
+                    class="min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.48)] p-3 opacity-80"
                   >
-                    <div class="flex items-start justify-between gap-3">
+                    <div class="flex min-w-0 items-start justify-between gap-3">
                       <div class="min-w-0">
-                        <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                        <div class="max-w-full truncate font-semibold text-white">{{ feature.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">
                           Level {{ feature.level }}<span v-if="feature.source"> · {{ feature.source }}</span>
                         </div>
@@ -5148,7 +5187,7 @@ async function saveSheet() {
 
                       <button
                         type="button"
-                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
                         @click.stop="openFeatureDrawer(feature)"
                       >
                         Details
@@ -5179,29 +5218,29 @@ async function saveSheet() {
 
                 <div
                   v-show="featurePanelOpen('species')"
-                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                  class="mt-4 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3"
                 >
                   <article
                     v-for="trait in speciesTraitCards"
                     :key="trait.id"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    class="min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                   >
-                    <div class="flex items-start justify-between gap-3">
+                    <div class="flex min-w-0 items-start justify-between gap-3">
                       <div class="min-w-0">
-                        <div class="truncate font-semibold text-white">{{ trait.title }}</div>
+                        <div class="max-w-full truncate font-semibold text-white">{{ trait.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">{{ trait.type }}</div>
                       </div>
 
                       <button
                         type="button"
-                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
                         @click.stop="openFeatureDrawer(trait)"
                       >
                         Details
                       </button>
                     </div>
 
-                    <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+                    <p class="mt-3 break-words text-xs leading-5 text-[#9f9278]">
                       {{ shortText(trait.description, 180) }}
                     </p>
                   </article>
@@ -5227,9 +5266,9 @@ async function saveSheet() {
 
                 <article
                   v-show="featurePanelOpen('background')"
-                  class="mt-4 rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                  class="mt-4 min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                 >
-                  <div class="flex items-start justify-between gap-3">
+                  <div class="flex min-w-0 items-start justify-between gap-3">
                     <div>
                       <div class="font-semibold text-white">{{ backgroundFeatureCard.title }}</div>
                       <div class="mt-1 text-xs text-[#9f9278]">Background Feature</div>
@@ -5237,14 +5276,14 @@ async function saveSheet() {
 
                     <button
                       type="button"
-                      class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                      class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
                       @click.stop="openFeatureDrawer(backgroundFeatureCard)"
                     >
                       Details
                     </button>
                   </div>
 
-                  <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+                  <p class="mt-3 break-words text-xs leading-5 text-[#9f9278]">
                     {{ shortText(backgroundFeatureCard.description, 220) }}
                   </p>
                 </article>
@@ -5271,16 +5310,16 @@ async function saveSheet() {
 
                 <div
                   v-show="featurePanelOpen('feats')"
-                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                  class="mt-4 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3"
                 >
                   <article
                     v-for="feat in selectedFeats"
                     :key="feat.id"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    class="min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                   >
-                    <div class="flex items-start justify-between gap-3">
+                    <div class="flex min-w-0 items-start justify-between gap-3">
                       <div class="min-w-0">
-                        <div class="truncate font-semibold text-white">{{ feat.title }}</div>
+                        <div class="max-w-full truncate font-semibold text-white">{{ feat.title }}</div>
                         <div class="mt-1 text-xs text-[#9f9278]">
                           <span v-if="feat.source">{{ feat.source }}</span>
                           <span v-if="feat.page"> · p. {{ feat.page }}</span>
@@ -5289,14 +5328,14 @@ async function saveSheet() {
 
                       <button
                         type="button"
-                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
                         @click.stop="openFeatureDrawer(featFeatureCard(feat))"
                       >
                         Details
                       </button>
                     </div>
 
-                    <p v-if="feat.benefits" class="mt-3 text-xs leading-5 text-[#9f9278]">
+                    <p v-if="feat.benefits" class="mt-3 break-words text-xs leading-5 text-[#9f9278]">
                       {{ shortText(feat.benefits, 180) }}
                     </p>
                   </article>

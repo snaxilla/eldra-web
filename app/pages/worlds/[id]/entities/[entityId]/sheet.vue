@@ -66,6 +66,14 @@ const actionPanelsOpen = reactive<Record<string, boolean>>({
   reactions: false
 })
 
+const featurePanelsOpen = reactive<Record<string, boolean>>({
+  class: true,
+  upcoming: false,
+  species: true,
+  background: true,
+  feats: true
+})
+
 const spellPanelsOpen = reactive<Record<string, boolean>>({
   prepared: true,
   known: true
@@ -80,6 +88,7 @@ const hpCurrentDraft = ref('')
 const hpTempDraft = ref('0')
 const selectedSpellEntityId = ref<string | null>(null)
 const selectedItemDetail = ref<any | null>(null)
+const selectedFeatureDetail = ref<any | null>(null)
 const choiceDrafts = ref<Record<string, string[]>>({})
 
 const SHEET_TABS = [
@@ -222,6 +231,165 @@ function spellPanelChevron(key: string) {
   return spellPanelOpen(key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
 }
 
+function featurePanelOpen(key: string) {
+  return featurePanelsOpen[key] !== false
+}
+
+function toggleFeaturePanel(key: string) {
+  featurePanelsOpen[key] = !featurePanelOpen(key)
+}
+
+function featurePanelChevron(key: string) {
+  return featurePanelOpen(key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
+}
+
+function openFeatureDrawer(feature: any) {
+  selectedFeatureDetail.value = feature || null
+}
+
+function closeFeatureDrawer() {
+  selectedFeatureDetail.value = null
+}
+
+function featureEntriesText(value: any) {
+  return cleanSpellText(spellEntriesToMarkdown(value))
+}
+
+function featureDescription(value: any) {
+  return cleanSpellText(
+    String(
+      value?.description ??
+      value?.text ??
+      value?.benefits ??
+      value?.featureDescription ??
+      ''
+    ).trim()
+  ) ||
+    featureEntriesText(value?.entries) ||
+    featureEntriesText(value?.raw?.entries) ||
+    cleanSpellText(String(value?.summary || '').trim())
+}
+
+function normalizeFeatureCard(value: any, fallbackType = 'Feature') {
+  const raw = value?.raw || value || {}
+  const level = Number(value?.level ?? raw?.level ?? 0)
+  const title = String(
+    value?.title ??
+    value?.name ??
+    raw?.name ??
+    fallbackType
+  )
+
+  return {
+    id: value?.id ?? `${fallbackType}-${title}-${level}`,
+    title,
+    type: String(value?.type || fallbackType),
+    level: Number.isFinite(level) ? level : 0,
+    source: value?.source ?? raw?.source ?? '',
+    page: value?.page ?? raw?.page ?? '',
+    description: featureDescription(value),
+    articleUrl: value?.articleUrl || value?.url || '',
+    raw
+  }
+}
+
+const classFeatureCards = computed(() => {
+  const payload = asObject(classFeaturePayload.value)
+  const features = Array.isArray(payload.features)
+    ? payload.features
+    : Array.isArray(payload.items)
+      ? payload.items
+      : []
+
+  return features
+    .map((feature: any) => normalizeFeatureCard(feature, 'Class Feature'))
+    .filter((feature: any) => feature.title)
+    .sort((a: any, b: any) => {
+      if (a.level !== b.level) return a.level - b.level
+      return a.title.localeCompare(b.title)
+    })
+})
+
+const currentClassFeatureCards = computed(() =>
+  classFeatureCards.value.filter((feature: any) => !feature.level || feature.level <= Number(math.value?.level || sheet.value?.level || 1))
+)
+
+const upcomingClassFeatureCards = computed(() =>
+  classFeatureCards.value.filter((feature: any) => feature.level > Number(math.value?.level || sheet.value?.level || 1))
+)
+
+const speciesTraitCards = computed(() => {
+  const cards: any[] = []
+  const traitsText = String(resolvedSpecies.value?.traits || '').trim()
+
+  if (traitsText) {
+    const chunks = traitsText
+      .split(/\n(?=#+\s+)|\n{2,}(?=[A-Z][A-Za-z'’ -]{2,}:?\s)/)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+
+    for (const [index, chunk] of chunks.entries()) {
+      const headingMatch = chunk.match(/^#+\s*([^\n]+)\n?([\s\S]*)$/)
+      const colonMatch = chunk.match(/^([^:\n]{3,80}):\s*([\s\S]*)$/)
+
+      const title = headingMatch?.[1]?.trim() ||
+        colonMatch?.[1]?.trim() ||
+        `${resolvedSpecies.value?.title || 'Species'} Trait ${index + 1}`
+
+      const description = headingMatch?.[2]?.trim() ||
+        colonMatch?.[2]?.trim() ||
+        chunk
+
+      cards.push({
+        id: `species-trait-${index}`,
+        title,
+        type: 'Species Trait',
+        level: 0,
+        source: resolvedSpecies.value?.source || '',
+        page: resolvedSpecies.value?.page || '',
+        description: cleanSpellText(description)
+      })
+    }
+  }
+
+  if (!cards.length && resolvedSpecies.value?.title) {
+    cards.push({
+      id: 'species-traits',
+      title: resolvedSpecies.value.title,
+      type: 'Species Traits',
+      description: 'No imported trait text found yet.'
+    })
+  }
+
+  return cards
+})
+
+const backgroundFeatureCard = computed(() => {
+  if (!resolvedBackground.value) return null
+
+  return {
+    id: 'background-feature',
+    title: resolvedBackground.value.featureName || resolvedBackground.value.title || 'Background Feature',
+    type: 'Background Feature',
+    source: resolvedBackground.value.source || '',
+    page: resolvedBackground.value.page || '',
+    description: resolvedBackground.value.featureDescription || 'No imported background feature text found yet.'
+  }
+})
+
+function featFeatureCard(feat: any) {
+  return {
+    id: feat.id,
+    title: feat.title,
+    type: 'Feat',
+    source: feat.source || '',
+    page: feat.page || '',
+    description: feat.benefits || 'No feat description available yet.',
+    articleUrl: feat.id ? `/worlds/${worldId.value}/entities/${feat.id}` : '',
+    raw: feat
+  }
+}
+
 function toggleMobileBuildMode() {
   mode.value = mode.value === 'build' ? 'play' : 'build'
 }
@@ -278,6 +446,11 @@ const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.valu
 const { data: spellOptionPayload } = await useFetch(() => `/api/worlds/${worldId.value}/spell-options`, {
   default: () => ({ items: [] }),
   watch: [worldId]
+})
+
+const { data: classFeaturePayload } = await useFetch(() => `/api/worlds/${worldId.value}/entities/${entityId.value}/class-features`, {
+  default: () => ({ features: [] }),
+  watch: [worldId, entityId]
 })
 const { data: selectedSpellDetail, pending: selectedSpellPending } = await useFetch(
   () => selectedSpellEntityId.value ? `/api/worlds/${worldId.value}/entities/${selectedSpellEntityId.value}` : null,
@@ -4870,90 +5043,273 @@ async function saveSheet() {
                 </div>
               </div>
             </section>
-          <section
-            v-else-if="activeSheetTab === 'features'"
-            class="mt-6 grid gap-4 lg:grid-cols-3"
-          >
-              <div class="eldra-codex-soft rounded-none p-4 lg:col-span-3">
-                <div class="flex flex-wrap items-center justify-between gap-3">
+
+            <section
+              v-else-if="activeSheetTab === 'features'"
+              class="mt-0 grid gap-3 md:mt-6"
+            >
+              <div class="eldra-codex-soft rounded-none p-4">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="toggleFeaturePanel('class')"
+                >
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Class Features</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">{{ resolvedClass?.title || 'No linked class' }}</div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ currentClassFeatureCards.length }} Active
+                    </div>
+                    <UIcon :name="featurePanelChevron('class')" class="h-4 w-4 text-[#9f9278]" />
+                  </div>
+                </button>
+
+                <div
+                  v-show="featurePanelOpen('class')"
+                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                >
+                  <article
+                    v-for="feature in currentClassFeatureCards"
+                    :key="`class-feature-${feature.id}`"
+                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">
+                          Level {{ feature.level || 1 }}<span v-if="feature.source"> · {{ feature.source }}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        @click.stop="openFeatureDrawer(feature)"
+                      >
+                        Details
+                      </button>
+                    </div>
+
+                    <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+                      {{ shortText(feature.description, 180) || 'No imported description found yet.' }}
+                    </p>
+                  </article>
+
+                  <div
+                    v-if="!currentClassFeatureCards.length"
+                    class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278] md:col-span-2 xl:col-span-3"
+                  >
+                    No active class features resolved yet.
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-if="upcomingClassFeatureCards.length"
+                class="eldra-codex-soft rounded-none p-4"
+              >
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="toggleFeaturePanel('upcoming')"
+                >
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Upcoming Class Features</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Features unlocked at later levels.</div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ upcomingClassFeatureCards.length }} Future
+                    </div>
+                    <UIcon :name="featurePanelChevron('upcoming')" class="h-4 w-4 text-[#9f9278]" />
+                  </div>
+                </button>
+
+                <div
+                  v-show="featurePanelOpen('upcoming')"
+                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                >
+                  <article
+                    v-for="feature in upcomingClassFeatureCards"
+                    :key="`upcoming-feature-${feature.id}`"
+                    class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.48)] p-3 opacity-80"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">
+                          Level {{ feature.level }}<span v-if="feature.source"> · {{ feature.source }}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        @click.stop="openFeatureDrawer(feature)"
+                      >
+                        Details
+                      </button>
+                    </div>
+                  </article>
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="toggleFeaturePanel('species')"
+                >
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Species Traits</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">{{ resolvedSpecies?.title || 'No linked species' }}</div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ speciesTraitCards.length }} Trait{{ speciesTraitCards.length === 1 ? '' : 's' }}
+                    </div>
+                    <UIcon :name="featurePanelChevron('species')" class="h-4 w-4 text-[#9f9278]" />
+                  </div>
+                </button>
+
+                <div
+                  v-show="featurePanelOpen('species')"
+                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                >
+                  <article
+                    v-for="trait in speciesTraitCards"
+                    :key="trait.id"
+                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="truncate font-semibold text-white">{{ trait.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ trait.type }}</div>
+                      </div>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        @click.stop="openFeatureDrawer(trait)"
+                      >
+                        Details
+                      </button>
+                    </div>
+
+                    <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+                      {{ shortText(trait.description, 180) }}
+                    </p>
+                  </article>
+                </div>
+              </div>
+
+              <div
+                v-if="backgroundFeatureCard"
+                class="eldra-codex-soft rounded-none p-4"
+              >
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="toggleFeaturePanel('background')"
+                >
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Background Feature</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">{{ resolvedBackground?.title || 'No linked background' }}</div>
+                  </div>
+
+                  <UIcon :name="featurePanelChevron('background')" class="h-4 w-4 text-[#9f9278]" />
+                </button>
+
+                <article
+                  v-show="featurePanelOpen('background')"
+                  class="mt-4 rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="font-semibold text-white">{{ backgroundFeatureCard.title }}</div>
+                      <div class="mt-1 text-xs text-[#9f9278]">Background Feature</div>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                      @click.stop="openFeatureDrawer(backgroundFeatureCard)"
+                    >
+                      Details
+                    </button>
+                  </div>
+
+                  <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+                    {{ shortText(backgroundFeatureCard.description, 220) }}
+                  </p>
+                </article>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="toggleFeaturePanel('feats')"
+                >
                   <div>
                     <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
                     <div class="mt-1 text-sm text-[#d8ceb8]">Resolved from imported feat articles saved on this sheet.</div>
                   </div>
 
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
+                  <div class="flex items-center gap-2">
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
+                    </div>
+                    <UIcon :name="featurePanelChevron('feats')" class="h-4 w-4 text-[#9f9278]" />
                   </div>
-                </div>
+                </button>
 
-                <div v-if="selectedFeats.length" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div
+                  v-show="featurePanelOpen('feats')"
+                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                >
                   <article
                     v-for="feat in selectedFeats"
                     :key="feat.id"
-                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-4 text-sm text-[#d8ceb8]"
+                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                   >
                     <div class="flex items-start justify-between gap-3">
                       <div class="min-w-0">
-                        <div class="text-base font-semibold text-white">{{ feat.title }}</div>
-                        <div class="mt-1 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.16em] text-[#9f9278]">
+                        <div class="truncate font-semibold text-white">{{ feat.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">
                           <span v-if="feat.source">{{ feat.source }}</span>
-                          <span v-if="feat.page">p. {{ feat.page }}</span>
-                          <span v-if="feat.category">Category: {{ feat.category }}</span>
+                          <span v-if="feat.page"> · p. {{ feat.page }}</span>
                         </div>
                       </div>
 
-                      <NuxtLink
-                        :to="`/worlds/${worldId}/entities/${feat.id}`"
-                        class="eldra-button shrink-0 rounded-none px-3 py-1.5 text-xs"
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        @click.stop="openFeatureDrawer(featFeatureCard(feat))"
                       >
-                        Article
-                      </NuxtLink>
+                        Details
+                      </button>
                     </div>
 
-                    <div v-if="feat.prerequisites" class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]">
-                      <span class="text-[#d8ceb8]">Prerequisites:</span> {{ feat.prerequisites }}
-                    </div>
-
-                    <p v-if="feat.benefits" class="mt-3 text-sm leading-6 text-[#d8ceb8]">
-                      {{ shortText(feat.benefits, 360) }}
+                    <p v-if="feat.benefits" class="mt-3 text-xs leading-5 text-[#9f9278]">
+                      {{ shortText(feat.benefits, 180) }}
                     </p>
-
-                    <div class="mt-3 flex flex-wrap gap-2">
-                      <span v-if="feat.repeatable" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Repeatable</span>
-                      <span v-if="feat.abilityScoreIncrease" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Ability</span>
-                      <span v-if="feat.additionalSpells" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Spell Choice</span>
-                    </div>
                   </article>
-                </div>
 
-                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  No feat choices selected yet.
+                  <div
+                    v-if="!selectedFeats.length"
+                    class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278] md:col-span-2 xl:col-span-3"
+                  >
+                    No feat choices selected yet.
+                  </div>
                 </div>
               </div>
-            <div class="eldra-codex-soft rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Class Features</div>
-              <div class="mt-2 text-xl font-semibold text-white">{{ resolvedClass?.title || 'No linked class' }}</div>
-              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
-                {{ resolvedClass?.featureCount ? `${resolvedClass.featureCount} imported class feature references are available.` : 'Select a class to resolve class features.' }}
-              </p>
-            </div>
-
-            <div class="eldra-codex-soft rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Species Traits</div>
-              <div class="mt-2 text-xl font-semibold text-white">{{ resolvedSpecies?.title || 'No linked species' }}</div>
-              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
-                {{ resolvedSpecies?.traits || 'Select a species to resolve species traits.' }}
-              </p>
-            </div>
-
-            <div class="eldra-codex-soft rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Background Feature</div>
-              <div class="mt-2 text-xl font-semibold text-white">{{ resolvedBackground?.featureName || resolvedBackground?.title || 'No linked background' }}</div>
-              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
-                {{ resolvedBackground?.featureDescription || 'Select a background to resolve its feature.' }}
-              </p>
-            </div>
-          </section>
+            </section>
 
           <section
             v-else
@@ -4996,6 +5352,88 @@ async function saveSheet() {
       </div>
     </Transition>
 
+
+
+      <!-- Feature Detail Drawer -->
+      <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+        <div
+          v-if="selectedFeatureDetail"
+          class="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
+          @click.self="closeFeatureDrawer"
+        >
+          <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[440px]">
+            <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+              <div class="min-w-0">
+                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Feature Details</div>
+                <h2 class="mt-2 truncate text-2xl font-semibold text-white">
+                  {{ selectedFeatureDetail.title || 'Feature' }}
+                </h2>
+                <div class="mt-1 text-xs text-[#9f9278]">
+                  {{ selectedFeatureDetail.type || 'Feature' }}
+                  <span v-if="selectedFeatureDetail.level"> · Level {{ selectedFeatureDetail.level }}</span>
+                  <span v-if="selectedFeatureDetail.source"> · {{ selectedFeatureDetail.source }}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+                @click="closeFeatureDrawer"
+              >
+                <UIcon name="i-lucide-x" class="h-4 w-4" />
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-5 py-5">
+              <div class="grid gap-2 text-sm">
+                <div
+                  v-if="selectedFeatureDetail.level"
+                  class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.48)] p-3"
+                >
+                  <span class="text-[#9f9278]">Level:</span>
+                  <span class="text-[#fff7df]">{{ selectedFeatureDetail.level }}</span>
+                </div>
+
+                <div
+                  v-if="selectedFeatureDetail.page"
+                  class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.48)] p-3"
+                >
+                  <span class="text-[#9f9278]">Page:</span>
+                  <span class="text-[#fff7df]">{{ selectedFeatureDetail.page }}</span>
+                </div>
+              </div>
+
+              <div class="mt-5 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.48)] p-4">
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Description</div>
+                <p class="mt-3 whitespace-pre-line text-sm leading-6 text-[#d8ceb8]">
+                  {{ selectedFeatureDetail.description || 'No feature description has been imported for this feature yet.' }}
+                </p>
+              </div>
+            </div>
+
+            <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
+              <div class="flex gap-3">
+                <NuxtLink
+                  v-if="selectedFeatureDetail.articleUrl"
+                  :to="selectedFeatureDetail.articleUrl"
+                  class="flex-1 eldra-button rounded-none px-4 py-3 text-center text-sm font-medium"
+                  @click="closeFeatureDrawer"
+                >
+                  Open Full Article
+                </NuxtLink>
+
+                <button
+                  type="button"
+                  class="flex-1 eldra-button rounded-none px-4 py-3 text-sm font-medium"
+                  @click="closeFeatureDrawer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </Transition>
 
     <!-- Item Detail Drawer -->
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">

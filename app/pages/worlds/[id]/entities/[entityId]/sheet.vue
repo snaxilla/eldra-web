@@ -1812,6 +1812,118 @@ const spellSlotRows = computed(() =>
   Array.isArray(math.value?.spellcasting?.slots) ? math.value.spellcasting.slots : []
 )
 
+const SPELLCASTING_ABILITY_BY_CLASS: Record<string, 'int' | 'wis' | 'cha'> = {
+  artificer: 'int',
+  bard: 'cha',
+  cleric: 'wis',
+  druid: 'wis',
+  paladin: 'cha',
+  ranger: 'wis',
+  sorcerer: 'cha',
+  warlock: 'cha',
+  wizard: 'int'
+}
+
+const SPELLCASTING_ABILITY_LABELS: Record<string, string> = {
+  int: 'INT',
+  wis: 'WIS',
+  cha: 'CHA'
+}
+
+function normalizeSpellcastingAbilityKey(value: any) {
+  const text = String(value || '').trim().toLowerCase()
+
+  if (['int', 'intelligence'].includes(text)) return 'int'
+  if (['wis', 'wisdom'].includes(text)) return 'wis'
+  if (['cha', 'charisma'].includes(text)) return 'cha'
+
+  return ''
+}
+
+function spellcastingAbilityFromText(value: any) {
+  const text = String(value || '').trim().toLowerCase()
+
+  if (text.includes('intelligence') || text.includes('int')) return 'int'
+  if (text.includes('wisdom') || text.includes('wis')) return 'wis'
+  if (text.includes('charisma') || text.includes('cha')) return 'cha'
+
+  return ''
+}
+
+function classSpellcastingAbilityKey(value: any) {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return SPELLCASTING_ABILITY_BY_CLASS[key] || ''
+}
+
+const spellcastingAbilityKey = computed(() => {
+  const spellcasting = sheetSpellcasting.value
+
+  return normalizeSpellcastingAbilityKey(
+    spellcasting.ability ??
+    spellcasting.spellcastingAbility ??
+    spellcasting.spellcasting_ability
+  ) ||
+    classSpellcastingAbilityKey(resolvedClass.value?.title) ||
+    classSpellcastingAbilityKey(sheet.value?.class_name) ||
+    classSpellcastingAbilityKey(sheetForm.className) ||
+    spellcastingAbilityFromText(resolvedClass.value?.primaryAbility)
+})
+
+const spellcastingAbilityLabel = computed(() =>
+  SPELLCASTING_ABILITY_LABELS[spellcastingAbilityKey.value] || ''
+)
+
+const spellcastingAbilityScore = computed(() =>
+  spellcastingAbilityKey.value ? abilityScoreNumberForKey(spellcastingAbilityKey.value) : 10
+)
+
+const spellcastingAbilityModifier = computed(() =>
+  spellcastingAbilityKey.value ? abilityModifierNumberForKey(spellcastingAbilityKey.value) : 0
+)
+
+const spellSaveDc = computed(() =>
+  spellcastingAbilityKey.value ? 8 + proficiencyBonusNumber() + spellcastingAbilityModifier.value : null
+)
+
+const spellAttackBonus = computed(() =>
+  spellcastingAbilityKey.value ? proficiencyBonusNumber() + spellcastingAbilityModifier.value : null
+)
+
+const hasSpellcastingMath = computed(() =>
+  Boolean(spellcastingAbilityKey.value && (spellSlotRows.value.length || actionSpellCards.value.length || selectedSpellCount.value))
+)
+
+const spellcastingStatCards = computed(() => {
+  if (!hasSpellcastingMath.value) return []
+
+  return [
+    {
+      key: 'ability',
+      label: 'Ability',
+      value: spellcastingAbilityLabel.value,
+      note: `${spellcastingAbilityScore.value} (${signedNumberText(spellcastingAbilityModifier.value)})`
+    },
+    {
+      key: 'save-dc',
+      label: 'Save DC',
+      value: spellSaveDc.value,
+      note: '8 + PB + ability'
+    },
+    {
+      key: 'spell-attack',
+      label: 'Spell Attack',
+      value: signedNumberText(spellAttackBonus.value),
+      note: 'PB + ability'
+    }
+  ]
+})
+
 const limitedResourceLabel = computed(() => {
   if (spellSlotRows.value.length) return 'Spell Slots'
   return 'Resources'
@@ -3488,6 +3600,22 @@ async function saveSheet() {
                   </button>
 
                   <div v-show="actionPanelOpen('spells')">
+
+                    <div
+                      v-if="hasSpellcastingMath"
+                      class="mb-3 grid grid-cols-3 gap-2 text-xs"
+                    >
+                      <div
+                        v-for="stat in spellcastingStatCards"
+                        :key="`action-spellcasting-stat-${stat.key}`"
+                        class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2"
+                      >
+                        <div class="uppercase tracking-[0.18em] text-[#9f9278]">{{ stat.label }}</div>
+                        <div class="mt-1 text-lg font-semibold text-white">{{ stat.value }}</div>
+                        <div class="mt-0.5 text-[10px] text-[#9f9278]">{{ stat.note }}</div>
+                      </div>
+                    </div>
+
                     <div class="-mx-1 mb-3 overflow-x-auto pb-1">
                       <div class="flex min-w-max gap-2 px-1">
                         <button
@@ -3886,6 +4014,31 @@ async function saveSheet() {
               v-else-if="activeSheetTab === 'spells'"
               class="mt-6 grid gap-4 lg:grid-cols-2"
             >
+
+                <div
+                  v-if="hasSpellcastingMath"
+                  class="eldra-codex-soft rounded-none p-4 lg:col-span-2"
+                >
+                  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spellcasting Math</div>
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ spellcastingAbilityLabel }}
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-3 gap-2 text-xs">
+                    <div
+                      v-for="stat in spellcastingStatCards"
+                      :key="`tab-spellcasting-stat-${stat.key}`"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2"
+                    >
+                      <div class="uppercase tracking-[0.18em] text-[#9f9278]">{{ stat.label }}</div>
+                      <div class="mt-1 text-lg font-semibold text-white">{{ stat.value }}</div>
+                      <div class="mt-0.5 text-[10px] text-[#9f9278]">{{ stat.note }}</div>
+                    </div>
+                  </div>
+                </div>
+
               <div
                 v-if="mode === 'build'"
                 class="eldra-codex-soft rounded-none p-4 lg:col-span-2"

@@ -291,7 +291,160 @@ const mobileSheetBackgroundStyle = computed(() => {
 const entity = computed(() => data.value?.entity || null)
 const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
-const inventoryCount = computed(() => inventory.value.length)
+const CURRENCY_DENOMINATIONS = [
+  {
+    key: 'pp',
+    label: 'Platinum',
+    short: 'PP',
+    rowName: 'Currency: Platinum',
+    icon: 'i-lucide-gem'
+  },
+  {
+    key: 'gp',
+    label: 'Gold',
+    short: 'GP',
+    rowName: 'Currency: Gold',
+    icon: 'i-lucide-coins'
+  },
+  {
+    key: 'sp',
+    label: 'Silver',
+    short: 'SP',
+    rowName: 'Currency: Silver',
+    icon: 'i-lucide-circle-dollar-sign'
+  },
+  {
+    key: 'cp',
+    label: 'Copper',
+    short: 'CP',
+    rowName: 'Currency: Copper',
+    icon: 'i-lucide-circle-dot'
+  }
+] as const
+
+const currencySaving = ref(false)
+const currencySaveError = ref('')
+const currencySaveSuccess = ref('')
+const currencyDrafts = reactive<Record<string, string>>({
+  pp: '0',
+  gp: '0',
+  sp: '0',
+  cp: '0'
+})
+
+function isCurrencyInventoryItem(item: any) {
+  const name = String(item?.name || '').trim().toLowerCase()
+  return name.startsWith('currency:')
+}
+
+const currencyInventoryRows = computed(() =>
+  inventory.value.filter((item: any) => isCurrencyInventoryItem(item))
+)
+
+const carriedInventory = computed(() =>
+  inventory.value.filter((item: any) => !isCurrencyInventoryItem(item))
+)
+
+const inventoryCount = computed(() => carriedInventory.value.length)
+
+function currencyRowFor(key: any) {
+  const denom = CURRENCY_DENOMINATIONS.find((item) => item.key === key)
+  if (!denom) return null
+
+  return currencyInventoryRows.value.find((row: any) =>
+    String(row?.name || '').trim().toLowerCase() === denom.rowName.toLowerCase()
+  ) || null
+}
+
+function currencyAmount(key: any) {
+  const row = currencyRowFor(key)
+  const parsed = Number(row?.quantity || 0)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0
+}
+
+const currencyTotalCoins = computed(() =>
+  CURRENCY_DENOMINATIONS.reduce((total, denom) => total + currencyAmount(denom.key), 0)
+)
+
+const currencySnapshot = computed(() =>
+  CURRENCY_DENOMINATIONS
+    .map((denom) => `${denom.key}:${currencyRowFor(denom.key)?.id || ''}:${currencyAmount(denom.key)}`)
+    .join('|')
+)
+
+function syncCurrencyDrafts() {
+  for (const denom of CURRENCY_DENOMINATIONS) {
+    currencyDrafts[denom.key] = String(currencyAmount(denom.key))
+  }
+}
+
+watch(
+  currencySnapshot,
+  () => {
+    if (!currencySaving.value) syncCurrencyDrafts()
+  },
+  { immediate: true }
+)
+
+async function saveCurrencyAmount(denom: any) {
+  if (currencySaving.value) return
+
+  const key = String(denom?.key || '')
+  if (!key) return
+
+  let amount = Number(currencyDrafts[key] || 0)
+  amount = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0
+  currencyDrafts[key] = String(amount)
+
+  const row = currencyRowFor(key)
+
+  currencySaving.value = true
+  currencySaveError.value = ''
+  currencySaveSuccess.value = ''
+
+  try {
+    let result: any = null
+
+    if (amount <= 0) {
+      if (row?.id) {
+        result = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory/${row.id}`, {
+          method: 'DELETE'
+        })
+      }
+    } else if (row?.id) {
+      result = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory/${row.id}`, {
+        method: 'PATCH',
+        body: {
+          quantity: amount
+        }
+      })
+    } else {
+      result = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory`, {
+        method: 'POST',
+        body: {
+          name: denom.rowName,
+          quantity: amount,
+          container: 'currency',
+          notes: 'Currency'
+        }
+      })
+    }
+
+    if (result) {
+      await applyInventoryResult(result)
+    }
+
+    currencySaveSuccess.value = 'Currency updated.'
+  } catch (err: any) {
+    currencySaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to update currency.'
+  } finally {
+    currencySaving.value = false
+  }
+}
 const inventorySaving = ref(false)
 const inventorySaveError = ref('')
 const inventorySaveSuccess = ref('')
@@ -4092,6 +4245,62 @@ async function saveSheet() {
               v-else-if="activeSheetTab === 'inventory'"
               class="mt-0 grid gap-3 md:mt-6"
             >
+
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Currency Ledger</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Coin carried by this character.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ currencyTotalCoins }} Coin{{ currencyTotalCoins === 1 ? '' : 's' }}
+                  </div>
+                </div>
+
+                <div v-if="currencySaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                  {{ currencySaveError }}
+                </div>
+
+                <div v-if="currencySaveSuccess" class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  {{ currencySaveSuccess }}
+                </div>
+
+                <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div
+                    v-for="coin in CURRENCY_DENOMINATIONS"
+                    :key="coin.key"
+                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex items-center gap-2">
+                        <div class="flex h-8 w-8 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                          <UIcon :name="coin.icon" class="h-4 w-4" />
+                        </div>
+
+                        <div>
+                          <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ coin.short }}</div>
+                          <div class="text-xs text-[#d8ceb8]">{{ coin.label }}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <input
+                      v-if="mode === 'build'"
+                      v-model="currencyDrafts[coin.key]"
+                      inputmode="numeric"
+                      class="eldra-input mt-3 w-full rounded-none px-3 py-2 text-lg font-semibold text-white"
+                      :disabled="currencySaving"
+                      @change="saveCurrencyAmount(coin)"
+                    >
+
+                    <div v-else class="mt-3 text-2xl font-semibold text-white">
+                      {{ currencyAmount(coin.key) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div
                 v-if="mode === 'build'"
                 class="eldra-codex-soft rounded-none p-4"
@@ -4187,9 +4396,9 @@ async function saveSheet() {
                   </div>
                 </div>
 
-                <div v-if="inventory.length" class="mt-4 grid gap-2 md:grid-cols-2">
+                <div v-if="carriedInventory.length" class="mt-4 grid gap-2 md:grid-cols-2">
                   <article
-                    v-for="item in inventory"
+                    v-for="item in carriedInventory"
                     :key="item.id"
                     class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3 text-sm text-[#d8ceb8]"
                   >

@@ -89,6 +89,18 @@ const hpTempDraft = ref('0')
 const selectedSpellEntityId = ref<string | null>(null)
 const selectedItemDetail = ref<any | null>(null)
 const selectedFeatureDetail = ref<any | null>(null)
+const noteSearch = ref('')
+const noteSaving = ref(false)
+const noteSaveError = ref('')
+const noteSaveSuccess = ref('')
+const noteDrawerOpen = ref(false)
+const noteDrawerMode = ref<'view' | 'edit'>('view')
+const selectedNoteDetail = ref<any | null>(null)
+const noteDraft = reactive({
+  id: '',
+  title: '',
+  body: ''
+})
 const choiceDrafts = ref<Record<string, string[]>>({})
 
 const SHEET_TABS = [
@@ -1693,6 +1705,194 @@ function shortText(value: any, limit = 320) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (!text) return ''
   return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
+}
+
+function normalizeNoteCards(value: any) {
+  let raw = value
+
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      raw = []
+    }
+  }
+
+  if (!Array.isArray(raw)) return []
+
+  return raw
+    .map((note: any) => ({
+      id: String(note?.id || ''),
+      title: String(note?.title || 'Untitled Note'),
+      body: String(note?.body || note?.text || note?.content || ''),
+      createdAt: String(note?.createdAt || note?.created_at || ''),
+      updatedAt: String(note?.updatedAt || note?.updated_at || note?.createdAt || note?.created_at || '')
+    }))
+    .filter((note: any) => note.id)
+}
+
+const sheetNoteCards = computed(() => {
+  const choices = asObject(sheet.value?.choices)
+
+  return normalizeNoteCards(
+    sheet.value?.notes ??
+    sheet.value?.note_cards ??
+    sheet.value?.sheet_notes ??
+    choices.__notes
+  )
+})
+
+const filteredNoteCards = computed(() => {
+  const q = noteSearch.value.trim().toLowerCase()
+  const notes = [...sheetNoteCards.value]
+    .sort((a: any, b: any) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+
+  if (!q) return notes
+
+  return notes.filter((note: any) =>
+    [note.title, note.body]
+      .filter(Boolean)
+      .some((value: any) => String(value).toLowerCase().includes(q))
+  )
+})
+
+function formatNoteDate(value: any) {
+  const date = new Date(String(value || ''))
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+}
+
+function resetNoteDraft() {
+  noteDraft.id = ''
+  noteDraft.title = ''
+  noteDraft.body = ''
+}
+
+function fillNoteDraft(note: any) {
+  noteDraft.id = String(note?.id || '')
+  noteDraft.title = String(note?.title || '')
+  noteDraft.body = String(note?.body || '')
+}
+
+function openAddNoteDrawer() {
+  selectedNoteDetail.value = null
+  resetNoteDraft()
+  noteDrawerMode.value = 'edit'
+  noteDrawerOpen.value = true
+  noteSaveError.value = ''
+  noteSaveSuccess.value = ''
+}
+
+function openNoteDetail(note: any) {
+  selectedNoteDetail.value = note
+  fillNoteDraft(note)
+  noteDrawerMode.value = 'view'
+  noteDrawerOpen.value = true
+  noteSaveError.value = ''
+  noteSaveSuccess.value = ''
+}
+
+function editCurrentNote() {
+  if (selectedNoteDetail.value) fillNoteDraft(selectedNoteDetail.value)
+  noteDrawerMode.value = 'edit'
+}
+
+function closeNoteDrawer() {
+  noteDrawerOpen.value = false
+  selectedNoteDetail.value = null
+  resetNoteDraft()
+}
+
+function applyNoteResult(result: any) {
+  if (!result) return
+
+  data.value = {
+    ...(data.value as any || {}),
+    sheet: result.sheet || {
+      ...(sheet.value || {}),
+      notes: Array.isArray(result.notes) ? result.notes : sheetNoteCards.value
+    }
+  } as any
+}
+
+async function saveNoteCard() {
+  if (noteSaving.value) return
+
+  const title = noteDraft.title.trim()
+  const body = noteDraft.body.trim()
+
+  if (!title && !body) {
+    noteSaveError.value = 'Note title or body is required.'
+    return
+  }
+
+  noteSaving.value = true
+  noteSaveError.value = ''
+  noteSaveSuccess.value = ''
+
+  try {
+    const isUpdate = Boolean(noteDraft.id)
+    const endpoint = isUpdate
+      ? `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/notes/${noteDraft.id}`
+      : `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/notes`
+
+    const result = await $fetch(endpoint, {
+      method: isUpdate ? 'PATCH' : 'POST',
+      body: {
+        title: title || 'Untitled Note',
+        body
+      }
+    })
+
+    applyNoteResult(result)
+    noteSaveSuccess.value = isUpdate ? 'Note updated.' : 'Note added.'
+    closeNoteDrawer()
+  } catch (err: any) {
+    noteSaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to save note.'
+  } finally {
+    noteSaving.value = false
+  }
+}
+
+async function removeNoteCard(note: any = selectedNoteDetail.value) {
+  if (!note?.id || noteSaving.value) return
+
+  const ok = import.meta.client
+    ? window.confirm(`Delete note "${note.title || 'Untitled Note'}"?`)
+    : true
+
+  if (!ok) return
+
+  noteSaving.value = true
+  noteSaveError.value = ''
+  noteSaveSuccess.value = ''
+
+  try {
+    const result = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/notes/${note.id}`, {
+      method: 'DELETE'
+    })
+
+    applyNoteResult(result)
+    noteSaveSuccess.value = 'Note deleted.'
+    closeNoteDrawer()
+  } catch (err: any) {
+    noteSaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to delete note.'
+  } finally {
+    noteSaving.value = false
+  }
 }
 
 function syncFormFromSheet() {
@@ -5350,17 +5550,88 @@ async function saveSheet() {
               </div>
             </section>
 
-          <section
-            v-else
-            class="mt-6"
-          >
-            <div class="eldra-codex-soft rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Notes</div>
-              <p class="mt-3 text-sm leading-6 text-[#d8ceb8]">
-                Notes and custom sheet annotations will live here after the next data pass.
-              </p>
-            </div>
-          </section>
+
+            <section
+              v-else
+              class="mt-0 grid gap-3 md:mt-6"
+            >
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Notes</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Searchable note cards for NPCs, cities, clues, quests, and table reminders.</div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ sheetNoteCards.length }} Note{{ sheetNoteCards.length === 1 ? '' : 's' }}
+                    </div>
+
+                    <button
+                      type="button"
+                      class="eldra-button rounded-none px-3 py-2 text-xs font-semibold"
+                      @click="openAddNoteDrawer"
+                    >
+                      Add Note +
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mt-4">
+                  <label class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Search Notes</label>
+                  <input
+                    v-model="noteSearch"
+                    type="text"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                    placeholder="Search NPC, city, quest, clue..."
+                  >
+                </div>
+
+                <div v-if="noteSaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                  {{ noteSaveError }}
+                </div>
+
+                <div v-if="noteSaveSuccess" class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  {{ noteSaveSuccess }}
+                </div>
+
+                <div
+                  v-if="filteredNoteCards.length"
+                  class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+                >
+                  <article
+                    v-for="note in filteredNoteCards"
+                    :key="note.id"
+                    class="min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                  >
+                    <div class="flex min-w-0 items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="max-w-full truncate font-semibold text-white">{{ note.title || 'Untitled Note' }}</div>
+                        <div v-if="formatNoteDate(note.updatedAt)" class="mt-1 text-xs text-[#9f9278]">
+                          Updated {{ formatNoteDate(note.updatedAt) }}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        @click.stop="openNoteDetail(note)"
+                      >
+                        Details
+                      </button>
+                    </div>
+
+                    <p class="mt-3 break-words text-xs leading-5 text-[#9f9278]">
+                      {{ shortText(note.body, 220) || 'No note body yet.' }}
+                    </p>
+                  </article>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  {{ sheetNoteCards.length ? 'No notes match that search.' : 'No notes yet. Add one for an NPC, city, clue, or quest.' }}
+                </div>
+              </div>
+            </section>
         </template>
       </section>
     </div>
@@ -5392,6 +5663,121 @@ async function saveSheet() {
     </Transition>
 
 
+
+
+      <!-- Note Detail Drawer -->
+      <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+        <div
+          v-if="noteDrawerOpen"
+          class="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
+          @click.self="closeNoteDrawer"
+        >
+          <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[440px]">
+            <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+              <div class="min-w-0">
+                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Note</div>
+                <h2 class="mt-2 truncate text-2xl font-semibold text-white">
+                  {{ noteDraft.title || selectedNoteDetail?.title || 'New Note' }}
+                </h2>
+                <div v-if="selectedNoteDetail?.updatedAt && noteDrawerMode === 'view'" class="mt-1 text-xs text-[#9f9278]">
+                  Updated {{ formatNoteDate(selectedNoteDetail.updatedAt) }}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+                @click="closeNoteDrawer"
+              >
+                <UIcon name="i-lucide-x" class="h-4 w-4" />
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-5 py-5">
+              <div v-if="noteDrawerMode === 'edit'" class="grid gap-4">
+                <label class="block">
+                  <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Title</span>
+                  <input
+                    v-model="noteDraft.title"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                    placeholder="NPC, city, clue, quest..."
+                  >
+                </label>
+
+                <label class="block">
+                  <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Body</span>
+                  <textarea
+                    v-model="noteDraft.body"
+                    rows="12"
+                    class="eldra-input w-full rounded-none px-3 py-2 text-sm leading-6 text-white"
+                    placeholder="Write the note..."
+                  />
+                </label>
+
+                <div v-if="noteSaveError" class="rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                  {{ noteSaveError }}
+                </div>
+              </div>
+
+              <div v-else class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.48)] p-4">
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Body</div>
+                <p class="mt-3 whitespace-pre-line break-words text-sm leading-6 text-[#d8ceb8]">
+                  {{ selectedNoteDetail?.body || 'No note body yet.' }}
+                </p>
+              </div>
+            </div>
+
+            <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
+              <div v-if="noteDrawerMode === 'edit'" class="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium disabled:opacity-50"
+                  :disabled="noteSaving"
+                  @click="saveNoteCard"
+                >
+                  {{ noteSaving ? 'Saving...' : 'Save Note' }}
+                </button>
+
+                <button
+                  type="button"
+                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium"
+                  @click="closeNoteDrawer"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  v-if="noteDraft.id"
+                  type="button"
+                  class="col-span-2 rounded-none border border-red-500/24 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 disabled:opacity-50"
+                  :disabled="noteSaving"
+                  @click="removeNoteCard({ id: noteDraft.id, title: noteDraft.title })"
+                >
+                  Delete Note
+                </button>
+              </div>
+
+              <div v-else class="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium"
+                  @click="editCurrentNote"
+                >
+                  Edit
+                </button>
+
+                <button
+                  type="button"
+                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium"
+                  @click="closeNoteDrawer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </Transition>
 
       <!-- Feature Detail Drawer -->
       <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">

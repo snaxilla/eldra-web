@@ -65,6 +65,11 @@ const actionPanelsOpen = reactive<Record<string, boolean>>({
   bonus: false,
   reactions: false
 })
+
+const spellPanelsOpen = reactive<Record<string, boolean>>({
+  prepared: true,
+  known: true
+})
 const portraitLightboxOpen = ref(false)
 const hpDrawerOpen = ref(false)
 const hpSaving = ref(false)
@@ -203,6 +208,18 @@ function toggleActionPanel(key: string) {
 
 function actionPanelChevron(key: string) {
   return actionPanelOpen(key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
+}
+
+function spellPanelOpen(key: string) {
+  return spellPanelsOpen[key] !== false
+}
+
+function toggleSpellPanel(key: string) {
+  spellPanelsOpen[key] = !spellPanelOpen(key)
+}
+
+function spellPanelChevron(key: string) {
+  return spellPanelOpen(key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
 }
 
 function toggleMobileBuildMode() {
@@ -4694,7 +4711,69 @@ async function saveSheet() {
               </div>
 
               <div class="eldra-codex-soft rounded-none p-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
+                <div
+                  role="button"
+                  tabindex="0"
+                  class="flex w-full cursor-pointer flex-wrap items-center justify-between gap-3 text-left"
+                  @click="toggleSpellPanel('prepared')"
+                  @keydown.enter.prevent="toggleSpellPanel('prepared')"
+                  @keydown.space.prevent="toggleSpellPanel('prepared')"
+                >
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Prepared Spells</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Spells currently prepared and ready to cast.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ shownPreparedSpells.length }} Prepared
+                  </div>
+                  <UIcon :name="spellPanelChevron('prepared')" class="h-4 w-4 text-[#9f9278]" />
+                </div>
+                <div v-show="spellPanelOpen('prepared')">
+
+                <div v-if="preparedSpellCards.length" class="mt-4 space-y-2">
+                  <div
+                    v-for="spell in preparedSpellCards"
+                    :key="spell.id"
+                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
+                        @click.stop="openSpellDrawer(spell)"
+                      >
+                        <div class="font-medium text-white">{{ spell.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>
+                      </button>
+
+                      <button
+                        v-if="mode === 'build'"
+                        type="button"
+                        class="shrink-0 rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
+                        @click="removePreparedSpell(spell.id)"
+                      >
+                        Unprepare
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
+                  {{ shownPreparedSpells.length ? 'No prepared spells match the current search.' : 'No prepared spells selected yet.' }}
+                </div>
+                </div>
+              </div>
+
+              <div class="eldra-codex-soft rounded-none p-4">
+                <div
+                  role="button"
+                  tabindex="0"
+                  class="flex w-full cursor-pointer flex-wrap items-center justify-between gap-3 text-left"
+                  @click="toggleSpellPanel('known')"
+                  @keydown.enter.prevent="toggleSpellPanel('known')"
+                  @keydown.space.prevent="toggleSpellPanel('known')"
+                >
                   <div>
                     <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Known / Spellbook</div>
                     <div class="mt-1 text-sm text-[#d8ceb8]">Spells this character knows or has in their spellbook.</div>
@@ -4703,7 +4782,9 @@ async function saveSheet() {
                   <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
                     {{ shownKnownSpells.length }} Spell{{ shownKnownSpells.length === 1 ? '' : 's' }}
                   </div>
+                  <UIcon :name="spellPanelChevron('known')" class="h-4 w-4 text-[#9f9278]" />
                 </div>
+                <div v-show="spellPanelOpen('known')">
 
                 <div v-if="knownSpellCards.length" class="mt-4 space-y-2">
                   <div
@@ -4755,52 +4836,9 @@ async function saveSheet() {
                 <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
                   {{ shownKnownSpells.length ? 'No known spells match the current search.' : 'No known spells selected yet.' }}
                 </div>
-              </div>
-
-              <div class="eldra-codex-soft rounded-none p-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Prepared Spells</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Spells currently prepared and ready to cast.</div>
-                  </div>
-
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ shownPreparedSpells.length }} Prepared
-                  </div>
-                </div>
-
-                <div v-if="preparedSpellCards.length" class="mt-4 space-y-2">
-                  <div
-                    v-for="spell in preparedSpellCards"
-                    :key="spell.id"
-                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-sm text-[#d8ceb8]"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <button
-                        type="button"
-                        class="min-w-0 flex-1 text-left transition hover:text-[#fff7df]"
-                        @click.stop="openSpellDrawer(spell)"
-                      >
-                        <div class="font-medium text-white">{{ spell.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">{{ spellOptionLevelLabel(spell) || 'Open spell details' }}</div>
-                      </button>
-
-                      <button
-                        v-if="mode === 'build'"
-                        type="button"
-                        class="shrink-0 rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
-                        @click="removePreparedSpell(spell.id)"
-                      >
-                        Unprepare
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  {{ shownPreparedSpells.length ? 'No prepared spells match the current search.' : 'No prepared spells selected yet.' }}
                 </div>
               </div>
+
 
               <div class="eldra-codex-soft rounded-none p-4 lg:col-span-2">
                 <div class="flex flex-wrap items-center justify-between gap-3">

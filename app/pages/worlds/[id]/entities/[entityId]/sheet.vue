@@ -53,6 +53,7 @@ const spellSaveSuccess = ref('')
 const restSaving = ref(false)
 const restSaveError = ref('')
 const restSaveSuccess = ref('')
+const restPopoverOpen = ref(false)
 const spellKnownDraft = ref<string[]>([])
 const spellPreparedDraft = ref<string[]>([])
 const spellSearch = ref('')
@@ -2145,6 +2146,24 @@ async function takeShortRest() {
   restSaveSuccess.value = 'Short rest noted. Hit Dice spending and short-rest resources come next.'
 }
 
+function resetUsedSpellSlotsForRest() {
+  const resetSlots: Record<string, number> = {}
+
+  for (let level = 1; level <= 9; level++) {
+    resetSlots[String(level)] = 0
+  }
+
+  for (const row of spellSlotRows.value) {
+    resetSlots[String(row.level)] = 0
+  }
+
+  return resetSlots
+}
+
+function closeRestPopover() {
+  restPopoverOpen.value = false
+}
+
 async function takeLongRest() {
   if (restSaving.value) return
 
@@ -2168,7 +2187,7 @@ async function takeLongRest() {
       method: 'PATCH',
       body: baseSheetPatchBody({
         combatStats: nextCombatStats,
-        spellcasting: spellcastingWithUsedSlots({})
+        spellcasting: spellcastingWithUsedSlots(resetUsedSpellSlotsForRest())
       })
     })
 
@@ -2176,6 +2195,7 @@ async function takeLongRest() {
     syncFormFromSheet()
     syncSpellDraftsFromSheet()
     restSaveSuccess.value = 'Long rest complete.'
+    closeRestPopover()
   } catch (err: any) {
     restSaveError.value =
       err?.data?.statusMessage ||
@@ -2847,7 +2867,8 @@ async function saveSheet() {
 
             <div class="flex shrink-0 items-start gap-1.5">
               <!-- Mobile Header Action Buttons -->
-              <div class="flex shrink-0 items-start justify-end gap-1.5">
+              <div class="flex shrink-0 flex-col items-end gap-1.5">
+                <div class="flex items-start justify-end gap-1.5">
                 <NuxtLink
                   :to="`/worlds/${worldId}/entities/${entityId}`"
                   class="rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2 py-1.5 text-[11px] font-semibold text-[#fff7df]"
@@ -2873,6 +2894,73 @@ async function saveSheet() {
                 >
                   Save
                 </button>
+
+                </div>
+
+                <div class="relative">
+                  <button
+                    type="button"
+                    title="Rest controls"
+                    class="inline-flex h-8 items-center gap-1 rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.82)] px-2.5 text-[11px] font-semibold text-[#fff7df] transition hover:border-[rgba(245,231,189,0.75)]"
+                    @click.stop="restPopoverOpen = !restPopoverOpen"
+                  >
+                    <UIcon name="i-lucide-campfire" class="h-3.5 w-3.5" />
+                    <span>Rest</span>
+                  </button>
+
+                  <!-- Compact Rest Popover -->
+                  <div
+                    v-if="restPopoverOpen"
+                    class="absolute right-0 top-full z-[80] mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(7,13,20,0.96)] p-3 text-left shadow-[0_18px_48px_rgba(0,0,0,0.50)] backdrop-blur"
+                    @click.stop
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <div class="text-[10px] uppercase tracking-[0.3em] text-[#9f9278]">Rest</div>
+                        <div class="mt-1 text-xs text-[#d8ceb8]">Recover hit points and limited resources.</div>
+                      </div>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
+                        @click="closeRestPopover"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div class="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] px-3 py-2 text-xs font-semibold text-[#d8ceb8] disabled:opacity-50"
+                        :disabled="restSaving"
+                        @click="takeShortRest"
+                      >
+                        Short Rest
+                      </button>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
+                        :disabled="restSaving"
+                        @click="takeLongRest"
+                      >
+                        {{ restSaving ? 'Resting...' : 'Long Rest' }}
+                      </button>
+                    </div>
+
+                    <div class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]">
+                      <div>Long Rest restores HP to max, clears temp HP, and resets spell slots.</div>
+                      <div class="mt-1">Short Rest tracking comes next with Hit Dice and short-rest resources.</div>
+                    </div>
+
+                    <div class="mt-2 min-h-[1.25rem] text-xs">
+                      <span v-if="restSaving" class="text-[#9f9278]">Saving...</span>
+                      <span v-else-if="restSaveError" class="text-red-200">{{ restSaveError }}</span>
+                      <span v-else-if="restSaveSuccess" class="text-emerald-200">{{ restSaveSuccess }}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="relative">
                 <button
@@ -3071,34 +3159,6 @@ async function saveSheet() {
                   </div>
                 </div>
 
-                <!-- Mobile Rest Controls -->
-                <div class="mt-2 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    class="rounded-none border border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] px-3 py-2 text-xs font-semibold text-[#d8ceb8] disabled:opacity-50"
-                    :disabled="restSaving"
-                    @click="takeShortRest"
-                  >
-                    Short Rest
-                  </button>
-
-                  <button
-                    type="button"
-                    class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
-                    :disabled="restSaving"
-                    @click="takeLongRest"
-                  >
-                    {{ restSaving ? 'Resting...' : 'Long Rest' }}
-                  </button>
-                </div>
-
-                <div
-                  v-if="restSaveError || restSaveSuccess"
-                  class="mt-2 text-xs"
-                >
-                  <span v-if="restSaveError" class="text-red-200">{{ restSaveError }}</span>
-                  <span v-else class="text-emerald-200">{{ restSaveSuccess }}</span>
-                </div>
               </div>
             </div>
           </div>

@@ -327,8 +327,7 @@ function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, r
     candidates.push({
       label: 'Sheet Armor Class',
       value: manualAc,
-      note: 'Saved on the character sheet.',
-      active: true
+      note: 'Saved on the character sheet.'
     })
   }
 
@@ -378,8 +377,14 @@ function buildArmorClassCandidates(sheet: any, scores: Record<string, number>, r
     best.active = true
   }
 
+  for (const candidate of candidates) {
+    candidate.active = false
+  }
+
+  if (best) best.active = true
+
   return {
-    current: manualAc,
+    current: best?.value ?? manualAc,
     best,
     candidates
   }

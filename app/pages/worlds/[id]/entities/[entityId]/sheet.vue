@@ -1163,6 +1163,136 @@ function rollSpellAttack(spell: any) {
   )
 }
 
+function numberFromSignedText(value: any) {
+  if (value === null || value === undefined || value === '') return null
+
+  const direct = Number(value)
+  if (Number.isFinite(direct)) return direct
+
+  const match = String(value).match(/[+-]?\d+/)
+  if (!match) return null
+
+  const parsed = Number(match[0])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function rowDisplayLabel(row: any, fallback = 'Roll') {
+  return String(
+    row?.label ??
+    row?.name ??
+    row?.title ??
+    row?.key ??
+    row?.ability ??
+    fallback
+  ).trim()
+}
+
+function rowAbilityKey(row: any) {
+  return String(
+    row?.key ??
+    row?.abilityKey ??
+    row?.ability_key ??
+    row?.ability ??
+    ''
+  )
+    .trim()
+    .slice(0, 3)
+    .toLowerCase()
+}
+
+function firstNumberFromRow(row: any, keys: string[]) {
+  for (const key of keys) {
+    const value = row?.[key]
+    const parsed = numberFromSignedText(value)
+
+    if (parsed !== null) return parsed
+  }
+
+  return null
+}
+
+function d20NotationForBonus(bonus: any) {
+  const parsed = Number(bonus || 0)
+  return `1d20${parsed >= 0 ? '+' : ''}${parsed}`
+}
+
+function rollAbilityCheck(row: any) {
+  const label = rowDisplayLabel(row, 'Ability').toUpperCase()
+  const key = rowAbilityKey(row)
+
+  const bonus = firstNumberFromRow(row, [
+    'modifier',
+    'modifierText',
+    'modifier_text',
+    'mod',
+    'modText',
+    'total',
+    'totalText',
+    'total_text'
+  ])
+
+  const resolvedBonus = bonus !== null
+    ? bonus
+    : key
+      ? abilityModifierNumberForKey(key)
+      : 0
+
+  rollDiceBox(
+    d20NotationForBonus(resolvedBonus),
+    `${label} Check`,
+    'Ability Check'
+  )
+}
+
+function rollSavingThrow(row: any) {
+  const label = rowDisplayLabel(row, 'Save').toUpperCase()
+  const key = rowAbilityKey(row)
+
+  const bonus = firstNumberFromRow(row, [
+    'total',
+    'totalText',
+    'total_text',
+    'modifier',
+    'modifierText',
+    'modifier_text',
+    'mod',
+    'modText'
+  ])
+
+  const resolvedBonus = bonus !== null
+    ? bonus
+    : key
+      ? abilityModifierNumberForKey(key)
+      : 0
+
+  rollDiceBox(
+    d20NotationForBonus(resolvedBonus),
+    `${label} Save`,
+    'Saving Throw'
+  )
+}
+
+function rollSkillCheck(row: any) {
+  const label = rowDisplayLabel(row, 'Skill')
+
+  const bonus = firstNumberFromRow(row, [
+    'total',
+    'totalText',
+    'total_text',
+    'modifier',
+    'modifierText',
+    'modifier_text',
+    'mod',
+    'modText'
+  ]) ?? 0
+
+  rollDiceBox(
+    d20NotationForBonus(bonus),
+    `${label} Check`,
+    'Skill Check'
+  )
+}
+
 function damageTypeLabel(value: any) {
   const code = String(value || '').split('|')[0].trim().toUpperCase()
   const labels: Record<string, string> = {
@@ -3945,8 +4075,14 @@ async function saveSheet() {
                 <div class="grid grid-cols-3 gap-2">
                   <div
                     v-for="ability in abilityList"
+                    role="button"
+                    tabindex="0"
+                    title="Roll ability check"
+                    @click.stop="rollAbilityCheck(ability)"
+                    @keydown.enter.prevent="rollAbilityCheck(ability)"
+                    @keydown.space.prevent="rollAbilityCheck(ability)"
                     :key="ability.key"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2 text-center"
+                    class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2 text-center"
                   >
                     <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">{{ ability.label }}</div>
                     <div class="mt-1 text-xl font-semibold leading-none text-white">{{ ability.value ?? 10 }}</div>
@@ -3966,8 +4102,14 @@ async function saveSheet() {
                 <div class="grid grid-cols-3 gap-2">
                   <div
                     v-for="save in mathSaves"
+                    role="button"
+                    tabindex="0"
+                    title="Roll saving throw"
+                    @click.stop="rollSavingThrow(save)"
+                    @keydown.enter.prevent="rollSavingThrow(save)"
+                    @keydown.space.prevent="rollSavingThrow(save)"
                     :key="save.key"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2"
+                    class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.72)] p-2"
                   >
                     <div class="flex items-center justify-between gap-1">
                       <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">{{ save.shortLabel }}</div>
@@ -3988,8 +4130,14 @@ async function saveSheet() {
                 <div class="grid grid-cols-2 gap-1.5">
                   <div
                     v-for="skill in mathSkills"
+                    role="button"
+                    tabindex="0"
+                    title="Roll skill check"
+                    @click.stop="rollSkillCheck(skill)"
+                    @keydown.enter.prevent="rollSkillCheck(skill)"
+                    @keydown.space.prevent="rollSkillCheck(skill)"
                     :key="skill.key"
-                    class="flex items-center justify-between gap-2 rounded-none border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] px-2 py-1.5"
+                    class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] flex items-center justify-between gap-2 rounded-none border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] px-2 py-1.5"
                   >
                     <div class="flex min-w-0 items-center gap-1.5">
                       <span class="truncate text-[11px] leading-none text-[#d8ceb8]">{{ skill.label }}</span>
@@ -4152,8 +4300,14 @@ async function saveSheet() {
             <section v-if="activeSheetTab === 'overview'" class="mt-6 hidden grid-cols-2 gap-3 md:grid sm:grid-cols-3">
             <label
               v-for="ability in abilityList"
+              role="button"
+              tabindex="0"
+              title="Roll ability check"
+              @click.stop="rollAbilityCheck(ability)"
+              @keydown.enter.prevent="rollAbilityCheck(ability)"
+              @keydown.space.prevent="rollAbilityCheck(ability)"
               :key="ability.key"
-              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-center"
+              class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-center"
             >
               <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">{{ ability.label }}</div>
 
@@ -4374,8 +4528,14 @@ async function saveSheet() {
                   <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     <div
                       v-for="save in mathSaves"
+                      role="button"
+                      tabindex="0"
+                      title="Roll saving throw"
+                      @click.stop="rollSavingThrow(save)"
+                      @keydown.enter.prevent="rollSavingThrow(save)"
+                      @keydown.space.prevent="rollSavingThrow(save)"
                       :key="save.key"
-                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                      class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
                     >
                       <div class="flex items-center justify-between gap-2">
                         <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">{{ save.shortLabel }}</div>
@@ -4393,8 +4553,14 @@ async function saveSheet() {
                   <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     <div
                       v-for="skill in mathSkills"
+                      role="button"
+                      tabindex="0"
+                      title="Roll skill check"
+                      @click.stop="rollSkillCheck(skill)"
+                      @keydown.enter.prevent="rollSkillCheck(skill)"
+                      @keydown.space.prevent="rollSkillCheck(skill)"
                       :key="skill.key"
-                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                      class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
                     >
                       <div class="flex items-center justify-between gap-2">
                         <div class="text-sm font-medium text-white">{{ skill.label }}</div>

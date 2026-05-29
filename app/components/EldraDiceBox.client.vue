@@ -181,12 +181,8 @@ function deriveDiceValuesFromRawTotal(context: any, rawTotal: number | null) {
 function criticalOutcomeForRoll(context: any, diceValues: number[]) {
   const specs = Array.isArray(context.specs) ? context.specs : []
   const hasD20 = specs.some((spec: any) => spec.sides === 20)
-  const isAttack =
-    /\battack\b/i.test(context.kind) ||
-    /\battack\b/i.test(context.label) ||
-    /\bto hit\b/i.test(context.label)
 
-  if (!hasD20 || !isAttack || !diceValues.length) return ''
+  if (!hasD20 || !diceValues.length) return ''
 
   if (diceValues.includes(20)) return 'nat20'
   if (diceValues.includes(1)) return 'nat1'
@@ -412,6 +408,7 @@ defineExpose({
 
     <div
       v-if="visible && latestRoll?.criticalOutcome === 'nat20'"
+      :key="`nat20-${latestRoll?.id}`"
       class="pointer-events-none absolute inset-0 z-[2] overflow-hidden"
     >
       <div class="critical-burst">
@@ -421,12 +418,13 @@ defineExpose({
           class="confetti-piece"
           :style="piece.style"
         />
-        <div class="critical-text">Critical Strike!</div>
+        <div class="critical-text">Critical Success!</div>
       </div>
     </div>
 
     <div
       v-if="visible && latestRoll?.criticalOutcome === 'nat1'"
+      :key="`nat1-${latestRoll?.id}`"
       class="pointer-events-none absolute inset-0 z-[2] overflow-hidden"
     >
       <div class="stink-burst">
@@ -436,7 +434,7 @@ defineExpose({
           class="stink-puff"
           :style="puff.style"
         />
-        <div class="stink-text">Critical Miss!</div>
+        <div class="stink-text">Critical Failure!</div>
       </div>
     </div>
 
@@ -481,7 +479,7 @@ defineExpose({
             ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100'
             : 'border-lime-700/50 bg-lime-950/35 text-lime-100'"
         >
-          {{ latestRoll.criticalOutcome === 'nat20' ? 'Critical Strike!' : 'Critical Miss!' }}
+          {{ latestRoll.criticalOutcome === 'nat20' ? 'Critical Success!' : 'Critical Failure!' }}
         </div>
 
         <div v-if="error" class="mt-3 rounded-none border border-red-500/24 bg-red-500/12 p-3 text-sm text-red-100">

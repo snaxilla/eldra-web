@@ -24,6 +24,20 @@ function cleanNotation(value: any) {
     .trim()
 }
 
+function diceSpecsFromNotation(notation: string) {
+  const specs: Array<{ count: number; sides: number }> = []
+  const regex = /(\d*)d(\d+)/gi
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(notation))) {
+    const count = Math.min(100, Math.max(1, Number(match[1] || 1)))
+    const sides = Math.min(1000, Math.max(1, Number(match[2] || 1)))
+    specs.push({ count, sides })
+  }
+
+  return specs
+}
+
 function flatModifierFromNotation(notation: string) {
   const withoutDice = notation.replace(/[+-]?\d*d\d+/gi, '')
   const tokens = withoutDice.match(/[+-]?\d+/g) || []
@@ -35,9 +49,19 @@ function flatModifierFromNotation(notation: string) {
 }
 
 function directTotalFromResult(value: any): number | null {
-  if (!value || typeof value !== 'object') return null
+  if (value === null || value === undefined) return null
 
-  for (const key of ['total', 'totalValue', 'resultTotal']) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return null
+  }
+
+  if (typeof value !== 'object') return null
+
+  for (const key of ['total', 'value', 'totalValue', 'resultTotal', 'result']) {
     const parsed = Number(value?.[key])
     if (Number.isFinite(parsed)) return parsed
   }
@@ -54,7 +78,7 @@ function diceValuesFromResult(value: any): number[] {
 
   if (typeof value !== 'object') return []
 
-  const possibleValue = Number(value.value ?? value.roll ?? value.result)
+  const possibleValue = Number(value.value ?? value.roll)
 
   if (
     Number.isFinite(possibleValue) &&
@@ -63,11 +87,14 @@ function diceValuesFromResult(value: any): number[] {
       value.dieType ||
       value.diceType ||
       value.type === 'die' ||
-      value.type === 'dice' ||
-      value.notation
+      value.type === 'dice'
     )
   ) {
-    return [possibleValue]
+    const sides = Number(value.sides || value.dieType || value.diceType || 0)
+
+    if (!sides || (possibleValue >= 1 && possibleValue <= sides)) {
+      return [possibleValue]
+    }
   }
 
   if (Array.isArray(value.rolls)) {
@@ -85,15 +112,61 @@ function diceValuesFromResult(value: any): number[] {
   return []
 }
 
+function deriveDiceValuesFromTotal(notation: string, total: number | null, modifier: number) {
+  if (!Number.isFinite(Number(total))) return []
+
+  const specs = diceSpecsFromNotation(notation)
+  const diceTotal = Number(total) - modifier
+
+  if (specs.length === 1 && specs[0].count === 1) {
+    const sides = specs[0].sides
+
+    if (diceTotal >= 1 && diceTotal <= sides) {
+      return [diceTotal]
+    }
+  }
+
+  return []
+}
+
+function expectedRollBounds(notation: string, modifier: number) {
+  const specs = diceSpecsFromNotation(notation)
+
+  if (!specs.length) return null
+
+  const diceMin = specs.reduce((sum, spec) => sum + spec.count, 0)
+  const diceMax = specs.reduce((sum, spec) => sum + (spec.count * spec.sides), 0)
+
+  return {
+    min: diceMin + modifier,
+    max: diceMax + modifier
+  }
+}
+
 function summarizeRoll(label: string, notation: string, result: any) {
-  const totalFromResult = directTotalFromResult(result)
-  const diceValues = diceValuesFromResult(result)
   const modifier = flatModifierFromNotation(notation)
-  const total = totalFromResult ?? (
-    diceValues.length
-      ? diceValues.reduce((sum, value) => sum + value, 0) + modifier
-      : null
-  )
+  const totalFromResult = directTotalFromResult(result)
+  const rawDiceValues = diceValuesFromResult(result)
+  const bounds = expectedRollBounds(notation, modifier)
+
+  let total = totalFromResult
+  let diceValues = rawDiceValues
+
+  if (total !== null && bounds && (total < bounds.min || total > bounds.max)) {
+    const derived = deriveDiceValuesFromTotal(notation, total, modifier)
+
+    if (derived.length) {
+      diceValues = derived
+    }
+  }
+
+  if (total === null && diceValues.length) {
+    total = diceValues.reduce((sum, value) => sum + value, 0) + modifier
+  }
+
+  if (total !== null && !diceValues.length) {
+    diceValues = deriveDiceValuesFromTotal(notation, total, modifier)
+  }
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -143,14 +216,13 @@ async function prewarmDiceBox() {
     const instance = new DiceBoxCtor(`#${boxId}`, {
       assetPath: '/assets/dice-box/',
       theme: 'default',
-      scale: 6,
 
-      // These are intentionally conservative. Unsupported config keys are ignored
-      // by Dice Box, but supported ones make the roll feel snappier.
+      // Bigger dice, faster-feeling throw.
+      scale: 13,
       delay: 10,
-      settleTimeout: 2800,
-      throwForce: 5,
-      spinForce: 4,
+      settleTimeout: 2600,
+      throwForce: 6,
+      spinForce: 5,
       startingHeight: 8,
       gravity: 1,
       mass: 1,
@@ -198,7 +270,13 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
   }
 
   try {
+    await nextTick()
+
     const box = await prewarmDiceBox()
+
+    if (typeof box.resize === 'function') {
+      box.resize()
+    }
 
     if (typeof box.clear === 'function') {
       box.clear()
@@ -216,7 +294,7 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
       fallbackTimer = setTimeout(() => {
         loading.value = false
         scheduleAutoHide()
-      }, 4000)
+      }, 3800)
     }
   } catch (err: any) {
     loading.value = false
@@ -262,7 +340,7 @@ defineExpose({
     <!-- Full-screen transparent dice target. Kept mounted so Dice Box can prewarm before the first roll. -->
     <div
       :id="boxId"
-      class="absolute inset-0 transition-opacity duration-150"
+      class="eldra-dice-stage absolute inset-0 transition-opacity duration-150"
       :class="visible ? 'opacity-100' : 'opacity-0'"
     />
 
@@ -363,3 +441,19 @@ defineExpose({
     </Transition>
   </div>
 </template>
+
+<style scoped>
+.eldra-dice-stage {
+  width: 100vw;
+  height: 100dvh;
+}
+
+.eldra-dice-stage :deep(canvas) {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+</style>

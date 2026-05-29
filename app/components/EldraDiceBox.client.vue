@@ -218,7 +218,7 @@ async function prewarmDiceBox() {
       theme: 'default',
 
       // Bigger dice, faster-feeling throw.
-      scale: 13,
+      scale: 8,
       delay: 10,
       settleTimeout: 2600,
       throwForce: 6,

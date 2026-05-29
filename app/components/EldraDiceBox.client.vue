@@ -217,17 +217,19 @@ async function prewarmDiceBox() {
       assetPath: '/assets/dice-box/',
       theme: 'default',
 
-      // Bigger dice, faster-feeling throw.
-      scale: 8,
+      // Tuned for quick, readable table rolls.
+      scale: 7,
       delay: 10,
-      settleTimeout: 2600,
-      throwForce: 6,
-      spinForce: 5,
-      startingHeight: 8,
-      gravity: 1,
+      gravity: 2,
       mass: 1,
-      friction: 0.8,
-      restitution: 0.7
+      friction: 0.6,
+      restitution: 0,
+      linearDamping: 0.4,
+      angularDamping: 0.4,
+      spinForce: 6,
+      throwForce: 4,
+      startingHeight: 8,
+      settleTimeout: 3000
     })
 
     diceBox.value = instance

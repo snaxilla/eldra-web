@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const visible = ref(false)
 const loading = ref(false)
+const ready = ref(false)
 const error = ref('')
 const latestRoll = ref<any | null>(null)
 const rollHistory = ref<any[]>([])
@@ -9,7 +10,9 @@ const diceBox = shallowRef<any | null>(null)
 const boxId = `eldra-dice-box-${Math.random().toString(36).slice(2)}`
 
 let DiceBoxCtor: any = null
+let readyPromise: Promise<any> | null = null
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+let autoHideTimer: ReturnType<typeof setTimeout> | null = null
 
 function cleanNotation(value: any) {
   return String(value || '')
@@ -86,7 +89,11 @@ function summarizeRoll(label: string, notation: string, result: any) {
   const totalFromResult = directTotalFromResult(result)
   const diceValues = diceValuesFromResult(result)
   const modifier = flatModifierFromNotation(notation)
-  const total = totalFromResult ?? (diceValues.length ? diceValues.reduce((sum, value) => sum + value, 0) + modifier : null)
+  const total = totalFromResult ?? (
+    diceValues.length
+      ? diceValues.reduce((sum, value) => sum + value, 0) + modifier
+      : null
+  )
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -100,6 +107,14 @@ function summarizeRoll(label: string, notation: string, result: any) {
   }
 }
 
+function scheduleAutoHide() {
+  if (autoHideTimer) clearTimeout(autoHideTimer)
+
+  autoHideTimer = setTimeout(() => {
+    visible.value = false
+  }, 9000)
+}
+
 function finishRoll(label: string, notation: string, result: any) {
   if (fallbackTimer) {
     clearTimeout(fallbackTimer)
@@ -110,32 +125,47 @@ function finishRoll(label: string, notation: string, result: any) {
   latestRoll.value = summary
   rollHistory.value = [summary, ...rollHistory.value].slice(0, 8)
   loading.value = false
+  scheduleAutoHide()
 }
 
-async function ensureDiceBox() {
+async function prewarmDiceBox() {
   if (diceBox.value) return diceBox.value
+  if (readyPromise) return readyPromise
 
-  await nextTick()
+  readyPromise = (async () => {
+    await nextTick()
 
-  if (!DiceBoxCtor) {
-    const mod: any = await import('@3d-dice/dice-box')
-    DiceBoxCtor = mod.default || mod
-  }
+    if (!DiceBoxCtor) {
+      const mod: any = await import('@3d-dice/dice-box')
+      DiceBoxCtor = mod.default || mod
+    }
 
-  const instance = new DiceBoxCtor(`#${boxId}`, {
-    assetPath: '/assets/dice-box/',
-    theme: 'default',
-    scale: 6,
-    gravity: 1,
-    mass: 1,
-    friction: 0.8,
-    restitution: 0.7
-  })
+    const instance = new DiceBoxCtor(`#${boxId}`, {
+      assetPath: '/assets/dice-box/',
+      theme: 'default',
+      scale: 6,
 
-  diceBox.value = instance
-  await instance.init()
+      // These are intentionally conservative. Unsupported config keys are ignored
+      // by Dice Box, but supported ones make the roll feel snappier.
+      delay: 10,
+      settleTimeout: 2800,
+      throwForce: 5,
+      spinForce: 4,
+      startingHeight: 8,
+      gravity: 1,
+      mass: 1,
+      friction: 0.8,
+      restitution: 0.7
+    })
 
-  return instance
+    diceBox.value = instance
+    await instance.init()
+    ready.value = true
+
+    return instance
+  })()
+
+  return readyPromise
 }
 
 async function rollDice(options: { notation: string; label?: string; kind?: string }) {
@@ -146,6 +176,11 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
     error.value = 'No dice notation provided.'
     visible.value = true
     return
+  }
+
+  if (autoHideTimer) {
+    clearTimeout(autoHideTimer)
+    autoHideTimer = null
   }
 
   visible.value = true
@@ -163,7 +198,7 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
   }
 
   try {
-    const box = await ensureDiceBox()
+    const box = await prewarmDiceBox()
 
     if (typeof box.clear === 'function') {
       box.clear()
@@ -180,11 +215,13 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
     } else {
       fallbackTimer = setTimeout(() => {
         loading.value = false
-      }, 6500)
+        scheduleAutoHide()
+      }, 4000)
     }
   } catch (err: any) {
     loading.value = false
     error.value = err?.message || '3D dice roll failed.'
+    scheduleAutoHide()
   }
 }
 
@@ -192,110 +229,137 @@ function closeRoller() {
   visible.value = false
 }
 
+onMounted(() => {
+  const start = () => {
+    prewarmDiceBox().catch((err: any) => {
+      error.value = err?.message || '3D dice failed to initialize.'
+    })
+  }
+
+  if ('requestIdleCallback' in window) {
+    ;(window as any).requestIdleCallback(start, { timeout: 2000 })
+  } else {
+    setTimeout(start, 300)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (fallbackTimer) clearTimeout(fallbackTimer)
+  if (autoHideTimer) clearTimeout(autoHideTimer)
+
+  try {
+    diceBox.value?.clear?.()
+  } catch {}
+})
+
 defineExpose({
   rollDice
 })
 </script>
 
 <template>
-  <Transition
-    enter-from-class="opacity-0"
-    enter-active-class="transition duration-150"
-    leave-to-class="opacity-0"
-    leave-active-class="transition duration-150"
-  >
+  <div class="pointer-events-none fixed inset-0 z-[175] overflow-hidden">
+    <!-- Full-screen transparent dice target. Kept mounted so Dice Box can prewarm before the first roll. -->
     <div
-      v-if="visible"
-      class="fixed inset-0 z-[175] bg-black/55 backdrop-blur-sm"
-      @click.self="closeRoller"
+      :id="boxId"
+      class="absolute inset-0 transition-opacity duration-150"
+      :class="visible ? 'opacity-100' : 'opacity-0'"
+    />
+
+    <Transition
+      enter-from-class="translate-y-3 opacity-0"
+      enter-active-class="transition duration-150"
+      leave-to-class="translate-y-3 opacity-0"
+      leave-active-class="transition duration-150"
     >
-      <div class="absolute inset-x-3 bottom-3 top-[18dvh] overflow-hidden rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(7,13,20,0.94)] shadow-[0_18px_60px_rgba(0,0,0,0.62)] md:left-auto md:right-4 md:top-auto md:h-[420px] md:w-[560px]">
-        <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-4 py-3">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">3D Dice</div>
-              <div class="mt-1 truncate text-lg font-semibold text-white">
-                {{ latestRoll?.label || 'Roll' }}
-              </div>
-              <div class="mt-0.5 text-xs text-[#9f9278]">
-                {{ latestRoll?.notation || '' }}
-              </div>
+      <div
+        v-if="visible"
+        class="pointer-events-auto absolute inset-x-3 bottom-3 rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(7,13,20,0.92)] p-3 shadow-[0_18px_48px_rgba(0,0,0,0.50)] backdrop-blur md:left-auto md:right-4 md:w-[420px]"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-[10px] uppercase tracking-[0.3em] text-[#9f9278]">3D Dice</div>
+            <div class="mt-1 truncate text-base font-semibold text-white">
+              {{ latestRoll?.label || 'Roll' }}
             </div>
-
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
-              @click="closeRoller"
-            >
-              Close
-            </button>
-          </div>
-
-          <div class="relative min-h-0 flex-1">
-            <div
-              :id="boxId"
-              class="h-full w-full bg-[radial-gradient(circle_at_center,rgba(39,57,76,0.45),rgba(3,6,10,0.95)_70%)]"
-            />
-
-            <div class="pointer-events-none absolute left-3 top-3 rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(7,13,20,0.78)] px-3 py-2 backdrop-blur">
-              <div class="text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Total</div>
-              <div class="mt-1 text-3xl font-semibold text-white">
-                <span v-if="latestRoll?.total !== null && latestRoll?.total !== undefined">{{ latestRoll.total }}</span>
-                <span v-else>—</span>
-              </div>
-            </div>
-
-            <div
-              v-if="loading"
-              class="pointer-events-none absolute right-3 top-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(7,13,20,0.78)] px-3 py-2 text-xs text-[#d8ceb8] backdrop-blur"
-            >
-              Rolling...
-            </div>
-
-            <div
-              v-if="error"
-              class="absolute inset-x-3 bottom-3 rounded-none border border-red-500/24 bg-red-500/12 p-3 text-sm text-red-100"
-            >
-              {{ error }}
+            <div class="mt-0.5 text-xs text-[#9f9278]">
+              {{ latestRoll?.notation || '' }}
             </div>
           </div>
 
-          <div
-            v-if="latestRoll"
-            class="border-t border-[rgba(201,164,90,0.22)] px-4 py-3"
+          <button
+            type="button"
+            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+            @click="closeRoller"
           >
-            <div class="flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div class="min-w-0 text-[#9f9278]">
-                <span class="text-[#d8ceb8]">Formula:</span>
-                {{ latestRoll.notation }}
+            Close
+          </button>
+        </div>
+
+        <div v-if="error" class="mt-3 rounded-none border border-red-500/24 bg-red-500/12 p-3 text-sm text-red-100">
+          {{ error }}
+        </div>
+
+        <div v-else class="mt-3 grid grid-cols-[76px_minmax(0,1fr)] gap-3">
+          <div class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] p-3 text-center">
+            <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">Total</div>
+            <div class="mt-1 text-4xl font-semibold text-white">
+              <span v-if="latestRoll?.total !== null && latestRoll?.total !== undefined">{{ latestRoll.total }}</span>
+              <span v-else>—</span>
+            </div>
+          </div>
+
+          <div class="min-w-0 rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">Formula</div>
+                <div class="mt-1 break-words text-sm font-semibold text-white">
+                  {{ latestRoll?.notation || '—' }}
+                </div>
               </div>
 
               <div
-                v-if="latestRoll.diceValues?.length"
-                class="text-[#9f9278]"
+                v-if="loading"
+                class="shrink-0 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#d8ceb8]"
               >
-                <span class="text-[#d8ceb8]">Dice:</span>
-                {{ latestRoll.diceValues.join(', ') }}
-                <span v-if="latestRoll.modifier"> · Mod {{ latestRoll.modifier >= 0 ? '+' : '' }}{{ latestRoll.modifier }}</span>
+                Rolling...
+              </div>
+
+              <div
+                v-else-if="!ready"
+                class="shrink-0 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#d8ceb8]"
+              >
+                Loading...
               </div>
             </div>
 
             <div
-              v-if="rollHistory.length > 1"
-              class="mt-2 flex gap-2 overflow-x-auto text-xs"
+              v-if="latestRoll?.diceValues?.length"
+              class="mt-3 text-xs text-[#9f9278]"
             >
-              <div
-                v-for="roll in rollHistory.slice(1)"
-                :key="roll.id"
-                class="shrink-0 rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] px-2 py-1 text-[#9f9278]"
-              >
-                {{ roll.label }}:
-                <span class="font-semibold text-white">{{ roll.total ?? '—' }}</span>
-              </div>
+              <span class="text-[#d8ceb8]">Dice:</span>
+              {{ latestRoll.diceValues.join(', ') }}
+              <span v-if="latestRoll.modifier">
+                · Mod {{ latestRoll.modifier >= 0 ? '+' : '' }}{{ latestRoll.modifier }}
+              </span>
             </div>
           </div>
         </div>
+
+        <div
+          v-if="rollHistory.length > 1"
+          class="mt-3 flex gap-2 overflow-x-auto border-t border-[rgba(201,164,90,0.16)] pt-3 text-xs"
+        >
+          <div
+            v-for="roll in rollHistory.slice(1)"
+            :key="roll.id"
+            class="shrink-0 rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] px-2 py-1 text-[#9f9278]"
+          >
+            {{ roll.label }}:
+            <span class="font-semibold text-white">{{ roll.total ?? '—' }}</span>
+          </div>
+        </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
+  </div>
 </template>

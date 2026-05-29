@@ -33,6 +33,7 @@ let DiceBoxCtor: any = null
 let readyPromise: Promise<any> | null = null
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null
 let autoHideTimer: ReturnType<typeof setTimeout> | null = null
+let activeRollToken = ''
 
 function cleanNotation(value: any) {
   return String(value || '')
@@ -44,63 +45,87 @@ function cleanNotation(value: any) {
     .trim()
 }
 
-function diceSpecsFromNotation(notation: string) {
-  const specs: Array<{ count: number; sides: number }> = []
-  const regex = /(\d*)d(\d+)/gi
-  let match: RegExpExecArray | null
+function signedModifier(value: number) {
+  return `${value >= 0 ? '+' : ''}${value}`
+}
 
-  while ((match = regex.exec(notation))) {
-    const count = Math.min(100, Math.max(1, Number(match[1] || 1)))
-    const sides = Math.min(1000, Math.max(1, Number(match[2] || 1)))
-    specs.push({ count, sides })
+function diceSpecsFromNotation(notation: string) {
+  const specs: Array<{ count: number; sides: number; sign: number }> = []
+  const tokens = cleanNotation(notation).match(/[+-]?[^+-]+/g) || []
+
+  for (const token of tokens) {
+    const sign = token.startsWith('-') ? -1 : 1
+    const body = token.replace(/^[+-]/, '')
+    const match = body.match(/^(\d*)d(\d+)$/i)
+
+    if (!match) continue
+
+    specs.push({
+      count: Math.min(100, Math.max(1, Number(match[1] || 1))),
+      sides: Math.min(1000, Math.max(1, Number(match[2] || 1))),
+      sign
+    })
   }
 
   return specs
 }
 
-function flatModifierFromNotation(notation: string) {
-  const withoutDice = notation.replace(/[+-]?\d*d\d+/gi, '')
-  const tokens = withoutDice.match(/[+-]?\d+/g) || []
+function rollContextFromNotation(notationValue: any, labelValue: any, kindValue: any) {
+  const originalNotation = cleanNotation(notationValue)
+  const tokens = originalNotation.match(/[+-]?[^+-]+/g) || []
+  const diceTerms: string[] = []
+  let modifier = 0
 
-  return tokens.reduce((sum, token) => {
-    const parsed = Number(token)
-    return Number.isFinite(parsed) ? sum + parsed : sum
-  }, 0)
-}
+  for (const token of tokens) {
+    const sign = token.startsWith('-') ? -1 : 1
+    const signText = sign < 0 ? '-' : '+'
+    const body = token.replace(/^[+-]/, '')
 
-function looksLikeSingleDieResult(value: any) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+    if (!body) continue
 
-  return Boolean(
-    value.sides ||
-    value.dieType ||
-    value.diceType ||
-    value.type === 'die' ||
-    value.type === 'dice'
-  )
-}
+    if (/^\d*d\d+$/i.test(body)) {
+      diceTerms.push(`${signText}${body}`)
+      continue
+    }
 
-function directTotalFromResult(value: any): number | null {
-  if (value === null || value === undefined) return null
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
+    const flat = Number(body)
+    if (Number.isFinite(flat)) {
+      modifier += sign * flat
+    }
   }
 
+  const diceNotation = diceTerms
+    .join('')
+    .replace(/^\+/, '')
+
+  return {
+    label: String(labelValue || kindValue || 'Roll'),
+    kind: String(kindValue || 'Roll'),
+    originalNotation,
+    diceNotation,
+    modifier,
+    specs: diceSpecsFromNotation(diceNotation)
+  }
+}
+
+function rawTotalFromResult(value: any): number | null {
+  if (value === null || value === undefined) return null
+
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+
   if (Array.isArray(value)) {
-    return null
+    const values = value
+      .map((item) => rawTotalFromResult(item))
+      .filter((item): item is number => Number.isFinite(Number(item)))
+
+    return values.length ? values.reduce((sum, item) => sum + item, 0) : null
   }
 
   if (typeof value !== 'object') return null
 
-  for (const key of ['total', 'totalValue', 'resultTotal', 'result']) {
+  for (const key of ['total', 'totalValue', 'resultTotal', 'result', 'value']) {
     const parsed = Number(value?.[key])
     if (Number.isFinite(parsed)) return parsed
-  }
-
-  if (!looksLikeSingleDieResult(value)) {
-    const parsedValue = Number(value?.value)
-    if (Number.isFinite(parsedValue)) return parsedValue
   }
 
   return null
@@ -115,16 +140,6 @@ function diceValuesFromResult(value: any): number[] {
 
   if (typeof value !== 'object') return []
 
-  const possibleValue = Number(value.value ?? value.roll)
-
-  if (Number.isFinite(possibleValue) && looksLikeSingleDieResult(value)) {
-    const sides = Number(value.sides || value.dieType || value.diceType || 0)
-
-    if (!sides || (possibleValue >= 1 && possibleValue <= sides)) {
-      return [possibleValue]
-    }
-  }
-
   if (Array.isArray(value.rolls)) {
     return value.rolls.flatMap((item: any) => diceValuesFromResult(item))
   }
@@ -137,44 +152,39 @@ function diceValuesFromResult(value: any): number[] {
     return value.results.flatMap((item: any) => diceValuesFromResult(item))
   }
 
+  const parsed = Number(value.value ?? value.roll ?? value.result)
+  const sides = Number(value.sides || value.dieType || value.diceType || 0)
+
+  if (Number.isFinite(parsed) && (!sides || (parsed >= 1 && parsed <= sides))) {
+    return [parsed]
+  }
+
   return []
 }
 
-function deriveDiceValuesFromTotal(notation: string, total: number | null, modifier: number) {
-  if (!Number.isFinite(Number(total))) return []
+function deriveDiceValuesFromRawTotal(context: any, rawTotal: number | null) {
+  if (!Number.isFinite(Number(rawTotal))) return []
 
-  const specs = diceSpecsFromNotation(notation)
-  const diceTotal = Number(total) - modifier
+  const specs = Array.isArray(context.specs) ? context.specs : []
 
-  if (specs.length === 1 && specs[0].count === 1) {
-    const sides = specs[0].sides
+  if (specs.length === 1 && specs[0].count === 1 && specs[0].sign > 0) {
+    const value = Number(rawTotal)
 
-    if (diceTotal >= 1 && diceTotal <= sides) {
-      return [diceTotal]
+    if (value >= 1 && value <= specs[0].sides) {
+      return [value]
     }
   }
 
   return []
 }
 
-function expectedRollBounds(notation: string, modifier: number) {
-  const specs = diceSpecsFromNotation(notation)
-
-  if (!specs.length) return null
-
-  const diceMin = specs.reduce((sum, spec) => sum + spec.count, 0)
-  const diceMax = specs.reduce((sum, spec) => sum + (spec.count * spec.sides), 0)
-
-  return {
-    min: diceMin + modifier,
-    max: diceMax + modifier
-  }
-}
-
-function criticalOutcomeForRoll(kind: string, label: string, notation: string, diceValues: number[]) {
-  const specs = diceSpecsFromNotation(notation)
-  const hasD20 = specs.some((spec) => spec.sides === 20)
-  const isAttack = /\battack\b/i.test(kind) || /\battack\b/i.test(label) || /\bto hit\b/i.test(label)
+function criticalOutcomeForRoll(context: any, diceValues: number[]) {
+  const specs = Array.isArray(context.specs) ? context.specs : []
+  const hasD20 = specs.some((spec: any) => spec.sides === 20)
+  const isAttack =
+    /\battack\b/i.test(context.kind) ||
+    /\battack\b/i.test(context.label) ||
+    /\bto hit\b/i.test(context.label)
 
   if (!hasD20 || !isAttack || !diceValues.length) return ''
 
@@ -184,40 +194,31 @@ function criticalOutcomeForRoll(kind: string, label: string, notation: string, d
   return ''
 }
 
-function summarizeRoll(label: string, notation: string, result: any, kind = 'Roll') {
-  const modifier = flatModifierFromNotation(notation)
-  const totalFromResult = directTotalFromResult(result)
-  const rawDiceValues = diceValuesFromResult(result)
-  const bounds = expectedRollBounds(notation, modifier)
+function summarizeRoll(context: any, result: any) {
+  const rawTotal = rawTotalFromResult(result)
+  let diceValues = diceValuesFromResult(result)
 
-  let total = totalFromResult
-  let diceValues = rawDiceValues
-
-  if (total !== null && bounds && (total < bounds.min || total > bounds.max)) {
-    const derived = deriveDiceValuesFromTotal(notation, total, modifier)
-
-    if (derived.length) {
-      diceValues = derived
-    }
+  if (!diceValues.length) {
+    diceValues = deriveDiceValuesFromRawTotal(context, rawTotal)
   }
 
-  if (total === null && diceValues.length) {
-    total = diceValues.reduce((sum, value) => sum + value, 0) + modifier
-  }
+  const diceTotal = diceValues.length
+    ? diceValues.reduce((sum, value) => sum + value, 0)
+    : Number(rawTotal || 0)
 
-  if (total !== null && !diceValues.length) {
-    diceValues = deriveDiceValuesFromTotal(notation, total, modifier)
-  }
+  const total = diceTotal + Number(context.modifier || 0)
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    label,
-    kind,
-    notation,
+    label: context.label,
+    kind: context.kind,
+    notation: context.originalNotation,
+    diceNotation: context.diceNotation,
     total,
+    diceTotal,
     diceValues,
-    modifier,
-    criticalOutcome: criticalOutcomeForRoll(kind, label, notation, diceValues),
+    modifier: Number(context.modifier || 0),
+    criticalOutcome: criticalOutcomeForRoll(context, diceValues),
     raw: result,
     rolledAt: new Date().toISOString()
   }
@@ -231,13 +232,17 @@ function scheduleAutoHide() {
   }, 9000)
 }
 
-function finishRoll(label: string, notation: string, result: any, kind = 'Roll') {
+function finishRoll(context: any, result: any, token: string) {
+  if (token !== activeRollToken) return
+
+  activeRollToken = ''
+
   if (fallbackTimer) {
     clearTimeout(fallbackTimer)
     fallbackTimer = null
   }
 
-  const summary = summarizeRoll(label, notation, result, kind)
+  const summary = summarizeRoll(context, result)
   latestRoll.value = summary
   rollHistory.value = [summary, ...rollHistory.value].slice(0, 8)
   loading.value = false
@@ -286,11 +291,9 @@ async function prewarmDiceBox() {
 }
 
 async function rollDice(options: { notation: string; label?: string; kind?: string }) {
-  const notation = cleanNotation(options?.notation)
-  const label = String(options?.label || options?.kind || 'Roll')
-  const kind = String(options?.kind || 'Roll')
+  const context = rollContextFromNotation(options?.notation, options?.label, options?.kind)
 
-  if (!notation) {
+  if (!context.originalNotation) {
     error.value = 'No dice notation provided.'
     visible.value = true
     return
@@ -304,17 +307,29 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
   visible.value = true
   loading.value = true
   error.value = ''
+
   latestRoll.value = {
     id: `pending-${Date.now()}`,
-    label,
-    kind,
-    notation,
+    label: context.label,
+    kind: context.kind,
+    notation: context.originalNotation,
+    diceNotation: context.diceNotation,
     total: null,
+    diceTotal: null,
     diceValues: [],
-    modifier: flatModifierFromNotation(notation),
+    modifier: context.modifier,
     criticalOutcome: '',
     raw: null,
     rolledAt: new Date().toISOString()
+  }
+
+  if (!context.diceNotation) {
+    const summary = summarizeRoll(context, { total: 0 })
+    latestRoll.value = summary
+    rollHistory.value = [summary, ...rollHistory.value].slice(0, 8)
+    loading.value = false
+    scheduleAutoHide()
+    return
   }
 
   try {
@@ -330,14 +345,17 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
       box.clear()
     }
 
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    activeRollToken = token
+
     box.onRollComplete = (results: any) => {
-      finishRoll(label, notation, results, kind)
+      finishRoll(context, results, token)
     }
 
-    const returned = await Promise.resolve(box.roll(notation))
+    const returned = await Promise.resolve(box.roll(context.diceNotation))
 
     if (returned) {
-      finishRoll(label, notation, returned, kind)
+      finishRoll(context, returned, token)
     } else {
       fallbackTimer = setTimeout(() => {
         loading.value = false
@@ -345,6 +363,7 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
       }, 3800)
     }
   } catch (err: any) {
+    activeRollToken = ''
     loading.value = false
     error.value = err?.message || '3D dice roll failed.'
     scheduleAutoHide()

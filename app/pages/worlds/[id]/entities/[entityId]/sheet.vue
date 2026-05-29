@@ -89,6 +89,7 @@ const hpTempDraft = ref('0')
 const selectedSpellEntityId = ref<string | null>(null)
 const selectedItemDetail = ref<any | null>(null)
 const selectedFeatureDetail = ref<any | null>(null)
+const diceBoxRef = ref<any | null>(null)
 const noteSearch = ref('')
 const noteSaving = ref(false)
 const noteSaveError = ref('')
@@ -1100,6 +1101,66 @@ function damageRollForWeapon(item: any, baseDamage: any) {
     formula: formulaParts.join(' '),
     rollText: damageRollText(baseDamage, totalBonus)
   }
+}
+
+function normalizeDiceBoxNotation(value: any) {
+  const abilityMap: Record<string, string> = {
+    STR: signedNumberText(abilityModifierNumberForKey('str')),
+    DEX: signedNumberText(abilityModifierNumberForKey('dex')),
+    CON: signedNumberText(abilityModifierNumberForKey('con')),
+    INT: signedNumberText(abilityModifierNumberForKey('int')),
+    WIS: signedNumberText(abilityModifierNumberForKey('wis')),
+    CHA: signedNumberText(abilityModifierNumberForKey('cha')),
+    PB: signedNumberText(proficiencyBonusNumber())
+  }
+
+  return String(value || '')
+    .replace(/[−–—]/g, '-')
+    .replace(/\b(STR|DEX|CON|INT|WIS|CHA|PB)\b/g, (token) => abilityMap[token] || token)
+    .replace(/\s+/g, '')
+    .replace(/\+\-/g, '-')
+    .replace(/\-\+/g, '-')
+    .replace(/\+\+/g, '+')
+}
+
+function diceBoxNotationWithBonus(base: string, bonus: any) {
+  const parsed = Number(bonus || 0)
+
+  if (!Number.isFinite(parsed) || parsed === 0) return normalizeDiceBoxNotation(base)
+
+  return normalizeDiceBoxNotation(`${base}${parsed >= 0 ? '+' : ''}${parsed}`)
+}
+
+function rollDiceBox(notation: any, label = 'Roll', kind = 'Roll') {
+  diceBoxRef.value?.rollDice({
+    notation: normalizeDiceBoxNotation(notation),
+    label,
+    kind
+  })
+}
+
+function rollWeaponAttack(weapon: any) {
+  rollDiceBox(
+    diceBoxNotationWithBonus('1d20', weapon?.attackBonus || 0),
+    `${weapon?.name || 'Weapon'} Attack`,
+    'Attack'
+  )
+}
+
+function rollWeaponDamage(weapon: any) {
+  rollDiceBox(
+    weapon?.damage || weapon?.baseDamage || '1',
+    `${weapon?.name || 'Weapon'} Damage`,
+    'Damage'
+  )
+}
+
+function rollSpellAttack(spell: any) {
+  rollDiceBox(
+    diceBoxNotationWithBonus('1d20', spellAttackBonus.value || 0),
+    `${spell?.title || 'Spell'} Attack`,
+    'Spell Attack'
+  )
 }
 
 function damageTypeLabel(value: any) {
@@ -4452,10 +4513,26 @@ async function saveSheet() {
                       </div>
 
 
-                      <div class="mt-3 grid gap-2" :class="weapon.linkedItemId || weapon.description || weapon.notes ? 'grid-cols-2' : 'grid-cols-1'">
-                        <div class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]">
-                          Roll Coming Soon
-                        </div>
+
+                      <div
+                        class="mt-3 grid gap-2"
+                        :class="weapon.linkedItemId || weapon.description || weapon.notes ? 'grid-cols-3' : 'grid-cols-2'"
+                      >
+                        <button
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                          @click.stop="rollWeaponAttack(weapon)"
+                        >
+                          To Hit
+                        </button>
+
+                        <button
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                          @click.stop="rollWeaponDamage(weapon)"
+                        >
+                          Damage
+                        </button>
 
                         <button
                           v-if="weapon.linkedItemId || weapon.description || weapon.notes"
@@ -4550,6 +4627,15 @@ async function saveSheet() {
                               <div class="mt-0.5 text-[10px] text-[#9f9278]">
                                 {{ spellActionMechanic(spell).note }}
                               </div>
+
+                              <button
+                                v-if="spellUsesAttackRoll(spell)"
+                                type="button"
+                                class="mt-2 w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                                @click.stop="rollSpellAttack(spell)"
+                              >
+                                Roll Spell Attack
+                              </button>
                             </div>
                           </div>
 
@@ -5636,6 +5722,11 @@ async function saveSheet() {
       </section>
     </div>
 
+
+
+      <ClientOnly>
+        <EldraDiceBox ref="diceBoxRef" />
+      </ClientOnly>
 
     <!-- Portrait Lightbox -->
     <Transition enter-from-class="opacity-0" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-150">

@@ -12,6 +12,7 @@
     "directus:create-character-sheets": "node scripts/directus/create-character-sheet-schema.mjs"
   },
   "dependencies": {
+    "@3d-dice/dice-box": "^1.1.4",
     "@iconify-json/lucide": "^1.2.98",
     "@iconify-json/simple-icons": "^1.2.74",
     "@nuxt/ui": "^4.5.1",

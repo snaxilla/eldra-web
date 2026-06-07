@@ -213,6 +213,12 @@ function normalizeSheetTab(value: any): SheetTab {
 }
 
 const activeSheetTab = computed<SheetTab>(() => normalizeSheetTab(route.query.tab))
+const levelUpOpen = ref(false)
+const levelUpSaving = ref(false)
+const levelUpApplied = ref(false)
+const levelUpError = ref('')
+const levelUpSuccess = ref('')
+const levelUpTargetLevel = ref('')
 
 function setSheetTab(tab: SheetTab) {
   router.replace({
@@ -448,6 +454,99 @@ function featFeatureCard(feat: any) {
 
 function toggleMobileBuildMode() {
   mode.value = mode.value === 'build' ? 'play' : 'build'
+}
+
+const levelOptions = computed(() =>
+  Array.from({ length: 20 }, (_, index) => ({
+    value: String(index + 1),
+    label: `Level ${index + 1}`
+  }))
+)
+
+const currentLevelNumber = computed(() => {
+  const parsed = Number(sheet.value?.level || sheetForm.level || 1)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1
+})
+
+const nextLevelNumber = computed(() => Math.min(20, currentLevelNumber.value + 1))
+
+const levelUpTargetNumber = computed(() => {
+  const parsed = Number(levelUpTargetLevel.value || nextLevelNumber.value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(20, Math.max(1, Math.floor(parsed))) : nextLevelNumber.value
+})
+
+const levelUpFeatureCards = computed(() =>
+  classFeatureCards.value.filter((feature: any) =>
+    Number(feature?.level || 0) === levelUpTargetNumber.value
+  )
+)
+
+const levelUpFutureFeatureCards = computed(() =>
+  classFeatureCards.value.filter((feature: any) =>
+    Number(feature?.level || 0) > currentLevelNumber.value &&
+    Number(feature?.level || 0) <= levelUpTargetNumber.value
+  )
+)
+
+const levelUpChoiceCount = computed(() => mathPendingChoices.value.length)
+
+function openLevelUpDrawer() {
+  levelUpTargetLevel.value = String(nextLevelNumber.value)
+  levelUpApplied.value = false
+  levelUpError.value = ''
+  levelUpSuccess.value = ''
+  levelUpOpen.value = true
+}
+
+function closeLevelUpDrawer() {
+  levelUpOpen.value = false
+}
+
+function openSpellBuilderFromLevelUp() {
+  levelUpOpen.value = false
+  openSpellBuilder()
+}
+
+async function applyLevelUp() {
+  if (levelUpSaving.value) return
+
+  const target = levelUpTargetNumber.value
+
+  if (target <= currentLevelNumber.value) {
+    levelUpError.value = 'Choose a level higher than the current level.'
+    return
+  }
+
+  levelUpSaving.value = true
+  levelUpError.value = ''
+  levelUpSuccess.value = ''
+
+  try {
+    const saved = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
+      method: 'PATCH',
+      body: baseSheetPatchBody({
+        level: String(target)
+      })
+    })
+
+    data.value = saved as any
+    syncFormFromSheet()
+    syncSpellDraftsFromSheet()
+
+    await nextTick()
+    syncChoiceDrafts()
+
+    levelUpApplied.value = true
+    levelUpSuccess.value = `Level ${target} applied. Review choices and spells below.`
+  } catch (err: any) {
+    levelUpError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to apply level up.'
+  } finally {
+    levelUpSaving.value = false
+  }
 }
 
 const sheetForm = reactive({
@@ -4218,6 +4317,47 @@ async function saveSheet() {
               class="sheet-mobile-only mt-0 space-y-3 md:hidden"
             >
 
+              <!-- Level Manager Entry -->
+              <div
+                v-if="mode === 'build'"
+                class="eldra-codex-soft rounded-none p-4"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Level Manager</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">
+                      Current level {{ currentLevelNumber }}. Guided level-up choices live here.
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="eldra-button shrink-0 rounded-none px-3 py-2 text-xs font-semibold"
+                    @click="openLevelUpDrawer"
+                  >
+                    Level Up
+                  </button>
+                </div>
+
+                <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+                  <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
+                    <div class="uppercase tracking-[0.18em] text-[#9f9278]">Level</div>
+                    <div class="mt-1 text-lg font-semibold text-white">{{ currentLevelNumber }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
+                    <div class="uppercase tracking-[0.18em] text-[#9f9278]">Choices</div>
+                    <div class="mt-1 text-lg font-semibold text-white">{{ mathPendingChoices.length }}</div>
+                  </div>
+
+                  <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
+                    <div class="uppercase tracking-[0.18em] text-[#9f9278]">Class</div>
+                    <div class="mt-1 truncate text-lg font-semibold text-white">{{ resolvedClass?.title || sheet?.class_name || '—' }}</div>
+                  </div>
+                </div>
+              </div>
+
+
               <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div class="mb-2 flex items-center justify-between gap-3">
                   <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Abilities</div>
@@ -6113,6 +6253,261 @@ async function saveSheet() {
 
 
 
+
+
+      <!-- Level Up Drawer -->
+      <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
+        <div
+          v-if="levelUpOpen"
+          class="fixed inset-0 z-[146] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
+          @click.self="closeLevelUpDrawer"
+        >
+          <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[520px]">
+            <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+              <div class="min-w-0">
+                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build Mode</div>
+                <h2 class="mt-2 truncate text-2xl font-semibold text-white">Level Up</h2>
+                <div class="mt-1 text-xs text-[#9f9278]">
+                  Apply the new level, then walk through choices and spells.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+                @click="closeLevelUpDrawer"
+              >
+                <UIcon name="i-lucide-x" class="h-4 w-4" />
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-5 py-5">
+              <div class="grid gap-3">
+                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
+                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 1</div>
+                  <div class="mt-1 text-lg font-semibold text-white">Choose the new level</div>
+
+                  <div class="mt-3 grid grid-cols-[minmax(0,1fr)_140px] gap-3">
+                    <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3">
+                      <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Current</div>
+                      <div class="mt-1 text-2xl font-semibold text-white">Level {{ currentLevelNumber }}</div>
+                    </div>
+
+                    <label class="block">
+                      <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Target</span>
+                      <select
+                        v-model="levelUpTargetLevel"
+                        class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                      >
+                        <option
+                          v-for="option in levelOptions"
+                          :key="option.value"
+                          :value="option.value"
+                          :disabled="Number(option.value) <= currentLevelNumber"
+                          class="bg-[#090909] text-[#f5e7bd]"
+                        >
+                          {{ option.label }}
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2</div>
+                      <div class="mt-1 text-lg font-semibold text-white">Preview unlocks</div>
+                    </div>
+
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ levelUpFutureFeatureCards.length }} Feature{{ levelUpFutureFeatureCards.length === 1 ? '' : 's' }}
+                    </div>
+                  </div>
+
+                  <div v-if="levelUpFutureFeatureCards.length" class="mt-3 grid gap-2">
+                    <article
+                      v-for="feature in levelUpFutureFeatureCards"
+                      :key="`level-up-feature-${feature.id}`"
+                      class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                          <div class="mt-1 text-xs text-[#9f9278]">
+                            Level {{ feature.level || levelUpTargetNumber }}<span v-if="feature.source"> · {{ feature.source }}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p class="mt-2 break-words text-xs leading-5 text-[#9f9278]">
+                        {{ shortText(feature.description, 180) || 'Feature details will appear here when imported.' }}
+                      </p>
+                    </article>
+                  </div>
+
+                  <div v-else class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-sm text-[#9f9278]">
+                    No imported class features found for the selected level.
+                  </div>
+                </div>
+
+                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
+                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 3</div>
+                  <div class="mt-1 text-lg font-semibold text-white">Apply level</div>
+                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                    This updates the sheet level. After that, pending choices and spell prep can be handled below.
+                  </p>
+
+                  <button
+                    type="button"
+                    class="mt-3 eldra-button w-full rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                    :disabled="levelUpSaving || levelUpTargetNumber <= currentLevelNumber"
+                    @click="applyLevelUp"
+                  >
+                    {{ levelUpSaving ? 'Applying...' : `Apply Level ${levelUpTargetNumber}` }}
+                  </button>
+                </div>
+
+                <div v-if="levelUpError" class="rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                  {{ levelUpError }}
+                </div>
+
+                <div v-if="levelUpSuccess" class="rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  {{ levelUpSuccess }}
+                </div>
+
+                <div
+                  v-if="levelUpApplied"
+                  class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.52)] p-3"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 4</div>
+                      <div class="mt-1 text-lg font-semibold text-white">Choices</div>
+                    </div>
+
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ mathPendingChoices.length }} Pending
+                    </div>
+                  </div>
+
+                  <div v-if="mathPendingChoices.length" class="mt-3 grid gap-3">
+                    <div
+                      v-for="choice in mathPendingChoices"
+                      :key="`level-choice-${choice.sourceKey}`"
+                      class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-3"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div class="font-semibold text-white">{{ choice.label }}</div>
+                          <div v-if="spellRestrictionLabel(choice)" class="mt-1 text-xs text-[#9f9278]">
+                            {{ spellRestrictionLabel(choice) }}
+                          </div>
+                          <div class="mt-1 text-xs" :class="choice.complete ? 'text-emerald-200' : 'text-[#9f9278]'">
+                            {{ choice.complete ? 'Complete.' : `${choice.remaining || 0} selection${choice.remaining === 1 ? '' : 's'} remaining.` }}
+                          </div>
+                        </div>
+
+                        <div v-if="choice.complete" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">
+                          Chosen
+                        </div>
+                      </div>
+
+                      <div class="mt-3 grid gap-2">
+                        <label
+                          v-for="slot in choiceSlots(choice)"
+                          :key="`level-${choice.sourceKey}-${slot}`"
+                          class="block"
+                        >
+                          <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">
+                            Pick {{ slot + 1 }}
+                          </span>
+
+                          <select
+                            v-if="choiceOptions(choice).length"
+                            v-model="choiceDrafts[choice.sourceKey][slot]"
+                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                          >
+                            <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
+                            <option
+                              v-for="option in choiceOptions(choice)"
+                              :key="option"
+                              :value="option"
+                              :disabled="isChoiceOptionDisabled(choice, slot, option)"
+                              class="bg-[#090909] text-[#f5e7bd] disabled:text-[#756a57]"
+                            >
+                              {{ choiceOptionLabel(choice, slot, option) }}
+                            </option>
+                          </select>
+
+                          <input
+                            v-else
+                            v-model="choiceDrafts[choice.sourceKey][slot]"
+                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                            :placeholder="choice.category ? `Choose from category ${choice.category}` : 'Type choice...'"
+                          >
+                        </label>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                      :disabled="choiceSaving"
+                      @click="saveChoices"
+                    >
+                      {{ choiceSaving ? 'Saving...' : 'Save Choices' }}
+                    </button>
+                  </div>
+
+                  <div v-else class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-sm text-[#9f9278]">
+                    No pending choices for this level right now.
+                  </div>
+                </div>
+
+                <div
+                  v-if="levelUpApplied"
+                  class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                >
+                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 5</div>
+                  <div class="mt-1 text-lg font-semibold text-white">Spells and review</div>
+                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                    If this level grants spell choices, new slots, or prepared spells, use the spell manager next.
+                  </p>
+
+                  <div class="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      class="eldra-button rounded-none px-4 py-3 text-sm font-semibold"
+                      @click="openSpellBuilderFromLevelUp"
+                    >
+                      Manage Spells
+                    </button>
+
+                    <button
+                      type="button"
+                      class="eldra-button rounded-none px-4 py-3 text-sm font-semibold"
+                      @click="closeLevelUpDrawer"
+                    >
+                      Finish
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
+              <button
+                type="button"
+                class="eldra-button w-full rounded-none px-4 py-3 text-sm font-medium"
+                @click="closeLevelUpDrawer"
+              >
+                Close
+              </button>
+            </div>
+          </aside>
+        </div>
+      </Transition>
 
       <!-- Spell Builder Drawer -->
       <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">

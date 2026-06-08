@@ -708,8 +708,8 @@ async function applyLevelUp() {
 
   const target = levelUpTargetNumber.value
 
-  if (target <= levelUpStartingLevelNumber.value) {
-    levelUpError.value = 'Choose a level higher than the starting level.'
+  if (target === levelUpStartingLevelNumber.value) {
+    levelUpError.value = 'Choose a different target level.'
     return
   }
 
@@ -818,6 +818,17 @@ const { data: classFeaturePayload } = await useFetch(() => `/api/worlds/${worldI
   default: () => ({ features: [] }),
   watch: [worldId, entityId]
 })
+
+const { data: subclassOptionPayload } = await useFetch(() => `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/subclass-options`, {
+  default: () => ({ className: '', preferredSource: '', count: 0, subclasses: [] }),
+  watch: [worldId, entityId]
+})
+
+const subclassOptions = computed(() =>
+  Array.isArray((subclassOptionPayload.value as any)?.subclasses)
+    ? (subclassOptionPayload.value as any).subclasses
+    : []
+)
 const { data: selectedSpellDetail, pending: selectedSpellPending } = await useFetch(
   () => selectedSpellEntityId.value ? `/api/worlds/${worldId.value}/entities/${selectedSpellEntityId.value}` : null,
   {
@@ -6437,34 +6448,6 @@ async function saveSheet() {
       </ClientOnly>
 
     <!-- Portrait Lightbox -->
-    <Transition enter-from-class="opacity-0" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-150">
-      <div
-        v-if="portraitLightboxOpen && entityImageUrl"
-        class="fixed inset-0 z-[150] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
-        @click.self="portraitLightboxOpen = false"
-      >
-        <button
-          type="button"
-          class="absolute right-4 top-4 rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.86)] p-3 text-[#f5e7bd]"
-          @click="portraitLightboxOpen = false"
-        >
-          <UIcon name="i-lucide-x" class="h-5 w-5" />
-        </button>
-
-        <div class="max-h-[86dvh] max-w-[92vw] overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.86)] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
-          <img
-            :src="entityImageUrl"
-            :alt="sheet?.name || entity?.title || 'Character Portrait'"
-            class="max-h-[82dvh] max-w-full object-contain"
-          >
-        </div>
-      </div>
-    </Transition>
-
-
-
-
-
 
       <!-- Level Up Drawer -->
       <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
@@ -6477,9 +6460,9 @@ async function saveSheet() {
             <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
               <div class="min-w-0">
                 <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build Mode</div>
-                <h2 class="mt-2 truncate text-2xl font-semibold text-white">Level Up</h2>
+                <h2 class="mt-2 truncate text-2xl font-semibold text-white">Level Manager</h2>
                 <div class="mt-1 text-xs text-[#9f9278]">
-                  Apply the new level, then walk through choices and spells.
+                  Set levels up or down, then walk through HP, subclass, choices, and spells.
                 </div>
               </div>
 
@@ -6496,12 +6479,12 @@ async function saveSheet() {
               <div class="grid gap-3">
                 <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
                   <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 1</div>
-                  <div class="mt-1 text-lg font-semibold text-white">Choose the new level</div>
+                  <div class="mt-1 text-lg font-semibold text-white">Choose target level</div>
 
                   <div class="mt-3 grid grid-cols-[minmax(0,1fr)_140px] gap-3">
                     <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3">
-                      <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Current</div>
-                      <div class="mt-1 text-2xl font-semibold text-white">Level {{ currentLevelNumber }}</div>
+                      <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Starting</div>
+                      <div class="mt-1 text-2xl font-semibold text-white">Level {{ levelUpStartingLevelNumber }}</div>
                     </div>
 
                     <label class="block">
@@ -6514,7 +6497,6 @@ async function saveSheet() {
                           v-for="option in levelOptions"
                           :key="option.value"
                           :value="option.value"
-                          :disabled="Number(option.value) <= levelUpStartingLevelNumber"
                           class="bg-[#090909] text-[#f5e7bd]"
                         >
                           {{ option.label }}
@@ -6542,12 +6524,10 @@ async function saveSheet() {
                       :key="`level-up-feature-${feature.id}`"
                       class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3"
                     >
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                          <div class="truncate font-semibold text-white">{{ feature.title }}</div>
-                          <div class="mt-1 text-xs text-[#9f9278]">
-                            Level {{ feature.level || levelUpTargetNumber }}<span v-if="feature.source"> · {{ feature.source }}</span>
-                          </div>
+                      <div class="min-w-0">
+                        <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">
+                          Level {{ feature.level || levelUpTargetNumber }}<span v-if="feature.source"> · {{ feature.source }}</span>
                         </div>
                       </div>
 
@@ -6562,8 +6542,6 @@ async function saveSheet() {
                   </div>
                 </div>
 
-                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
-
                 <div
                   v-if="levelUpSubclassUnlocked"
                   class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
@@ -6571,16 +6549,46 @@ async function saveSheet() {
                   <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2B</div>
                   <div class="mt-1 text-lg font-semibold text-white">Choose {{ levelUpSubclassLabel }}</div>
                   <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                    This level unlocks a subclass/tradition choice. Enter it now, or leave it blank if the player is still deciding.
+                    This level unlocks a subclass/tradition choice.
                   </p>
 
-                  <label class="mt-3 block">
+                  <label
+                    v-if="subclassOptions.length"
+                    class="mt-3 block"
+                  >
+                    <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ levelUpSubclassLabel }}</span>
+                    <select
+                      v-model="levelUpSubclassDraft"
+                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                    >
+                      <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose {{ levelUpSubclassLabel }}...</option>
+                      <option
+                        v-for="option in subclassOptions"
+                        :key="`${option.name}-${option.source}-${option.classSource}`"
+                        :value="option.name"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ option.name }}{{ option.source ? ` (${option.source})` : '' }}
+                      </option>
+                    </select>
+                    <div class="mt-2 text-xs leading-5 text-[#9f9278]">
+                      Showing {{ subclassOptions.length }} {{ subclassOptions.length === 1 ? 'option' : 'options' }} for {{ subclassOptionPayload?.className || resolvedClass?.title || sheet?.class_name || 'this class' }}.
+                    </div>
+                  </label>
+
+                  <label
+                    v-else
+                    class="mt-3 block"
+                  >
                     <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ levelUpSubclassLabel }}</span>
                     <input
                       v-model="levelUpSubclassDraft"
                       class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                      placeholder="Evoker, Illusionist, School of Abjuration..."
+                      placeholder="No subclass options found. Type manually or import subclass data."
                     >
+                    <div class="mt-2 rounded-none border border-amber-300/24 bg-amber-400/10 p-2 text-xs leading-5 text-amber-100">
+                      No subclass options were found for this class. We should import/fix subclass data before relying on manual entry.
+                    </div>
                   </label>
                 </div>
 
@@ -6588,7 +6596,7 @@ async function saveSheet() {
                   <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2C</div>
                   <div class="mt-1 text-lg font-semibold text-white">Hit Points</div>
                   <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                    Fixed average uses {{ levelUpFixedHitDieAverage(levelUpHitDieFaces()) }} + CON per level gained, minimum 1 HP per level.
+                    Fixed average uses {{ levelUpFixedHitDieAverage(levelUpHitDieFaces()) }} + CON per level changed, minimum 1 HP per level.
                   </p>
 
                   <div class="mt-3 grid grid-cols-2 gap-2">
@@ -6620,7 +6628,7 @@ async function saveSheet() {
                       <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Projected Max</div>
                       <div class="mt-1 text-2xl font-semibold text-white">{{ levelUpProjectedMaxHp }}</div>
                       <div class="mt-1 text-xs text-[#9f9278]">
-                        +{{ levelUpHpGainPerLevel }} per level x {{ levelUpLevelDelta }}
+                        {{ levelUpHpDelta >= 0 ? '+' : '' }}{{ levelUpHpDelta }} HP from level change
                       </div>
                     </div>
 
@@ -6636,16 +6644,17 @@ async function saveSheet() {
                   </div>
                 </div>
 
+                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
                   <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 3</div>
                   <div class="mt-1 text-lg font-semibold text-white">Apply level</div>
                   <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                    This updates the sheet level. After that, pending choices and spell prep can be handled below.
+                    This updates level, HP, current HP, and subclass selection if one was chosen.
                   </p>
 
                   <button
                     type="button"
                     class="mt-3 eldra-button w-full rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                    :disabled="levelUpSaving || levelUpTargetNumber <= levelUpStartingLevelNumber || levelUpApplied"
+                    :disabled="levelUpSaving || levelUpTargetNumber === levelUpStartingLevelNumber || levelUpApplied"
                     @click="applyLevelUp"
                   >
                     {{ levelUpSaving ? 'Applying...' : `Apply Level ${levelUpTargetNumber}` }}
@@ -6667,7 +6676,7 @@ async function saveSheet() {
                   <div class="flex items-center justify-between gap-3">
                     <div>
                       <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 4</div>
-                      <div class="mt-1 text-lg font-semibold text-white">Choices</div>
+                      <div class="mt-1 text-lg font-semibold text-white">Incomplete Choices</div>
                     </div>
 
                     <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
@@ -6681,21 +6690,7 @@ async function saveSheet() {
                       :key="`level-choice-${choice.sourceKey}`"
                       class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-3"
                     >
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                          <div class="font-semibold text-white">{{ choice.label }}</div>
-                          <div v-if="spellRestrictionLabel(choice)" class="mt-1 text-xs text-[#9f9278]">
-                            {{ spellRestrictionLabel(choice) }}
-                          </div>
-                          <div class="mt-1 text-xs" :class="choice.complete ? 'text-emerald-200' : 'text-[#9f9278]'">
-                            {{ choice.complete ? 'Complete.' : `${choice.remaining || 0} selection${choice.remaining === 1 ? '' : 's'} remaining.` }}
-                          </div>
-                        </div>
-
-                        <div v-if="choice.complete" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">
-                          Chosen
-                        </div>
-                      </div>
+                      <div class="font-semibold text-white">{{ choice.label }}</div>
 
                       <div class="mt-3 grid gap-2">
                         <label

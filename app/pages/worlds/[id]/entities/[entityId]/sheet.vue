@@ -219,6 +219,11 @@ const levelUpApplied = ref(false)
 const levelUpError = ref('')
 const levelUpSuccess = ref('')
 const levelUpTargetLevel = ref('')
+const levelUpStartingLevel = ref('')
+const levelUpStartingMaxHp = ref('')
+const levelUpSubclassDraft = ref('')
+const levelUpHpMode = ref<'fixed' | 'manual'>('fixed')
+const levelUpManualMaxHp = ref('')
 
 function setSheetTab(tab: SheetTab) {
   router.replace({
@@ -491,7 +496,12 @@ const levelUpFutureFeatureCards = computed(() =>
 const levelUpChoiceCount = computed(() => mathPendingChoices.value.length)
 
 function openLevelUpDrawer() {
+  levelUpStartingLevel.value = String(currentLevelNumber.value)
+  levelUpStartingMaxHp.value = String(currentComputedMaxHpNumber() || sheetForm.combatStats.maxHp || '')
   levelUpTargetLevel.value = String(nextLevelNumber.value)
+  levelUpSubclassDraft.value = String(sheetForm.subclassName || sheet.value?.subclass_name || '')
+  levelUpHpMode.value = 'fixed'
+  levelUpManualMaxHp.value = String(levelUpFixedProjectedMaxHp.value || '')
   levelUpApplied.value = false
   levelUpError.value = ''
   levelUpSuccess.value = ''
@@ -501,6 +511,192 @@ function openLevelUpDrawer() {
 function closeLevelUpDrawer() {
   levelUpOpen.value = false
 }
+
+const levelUpStartingLevelNumber = computed(() => {
+  const parsed = Number(levelUpStartingLevel.value || currentLevelNumber.value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : currentLevelNumber.value
+})
+
+const levelUpLevelDelta = computed(() =>
+  Math.max(0, levelUpTargetNumber.value - levelUpStartingLevelNumber.value)
+)
+
+function levelUpClassKey() {
+  return String(
+    resolvedClass.value?.title ||
+    sheet.value?.class_name ||
+    sheetForm.className ||
+    ''
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+const SUBCLASS_LEVEL_BY_CLASS: Record<string, number> = {
+  artificer: 3,
+  barbarian: 3,
+  bard: 3,
+  cleric: 3,
+  druid: 3,
+  fighter: 3,
+  monk: 3,
+  paladin: 3,
+  ranger: 3,
+  rogue: 3,
+  sorcerer: 3,
+  warlock: 3,
+  wizard: 3
+}
+
+const SUBCLASS_LABEL_BY_CLASS: Record<string, string> = {
+  artificer: 'Artificer Specialist',
+  barbarian: 'Primal Path',
+  bard: 'Bard College',
+  cleric: 'Divine Domain',
+  druid: 'Druid Circle',
+  fighter: 'Martial Archetype',
+  monk: 'Monastic Tradition',
+  paladin: 'Sacred Oath',
+  ranger: 'Ranger Archetype',
+  rogue: 'Roguish Archetype',
+  sorcerer: 'Sorcerous Origin',
+  warlock: 'Otherworldly Patron',
+  wizard: 'Arcane Tradition / Wizard Subclass'
+}
+
+const levelUpSubclassLevel = computed(() =>
+  SUBCLASS_LEVEL_BY_CLASS[levelUpClassKey()] || 3
+)
+
+const levelUpSubclassLabel = computed(() =>
+  SUBCLASS_LABEL_BY_CLASS[levelUpClassKey()] || 'Subclass'
+)
+
+function featureLooksLikeSubclassUnlock(feature: any) {
+  const title = String(feature?.title || '').toLowerCase()
+  const description = String(feature?.description || '').toLowerCase()
+
+  return [
+    'subclass',
+    'arcane tradition',
+    'primal path',
+    'bard college',
+    'divine domain',
+    'druid circle',
+    'martial archetype',
+    'monastic tradition',
+    'sacred oath',
+    'roguish archetype',
+    'sorcerous origin',
+    'otherworldly patron'
+  ].some((needle) => title.includes(needle) || description.includes(needle))
+}
+
+const levelUpSubclassUnlocked = computed(() => {
+  const level = levelUpSubclassLevel.value
+  const crossesSubclassLevel =
+    levelUpStartingLevelNumber.value < level &&
+    levelUpTargetNumber.value >= level
+
+  return crossesSubclassLevel ||
+    levelUpFutureFeatureCards.value.some((feature: any) => featureLooksLikeSubclassUnlock(feature))
+})
+
+const levelUpSyntheticUnlockCards = computed(() => {
+  if (!levelUpSubclassUnlocked.value) return []
+
+  const alreadyHasSubclassCard = levelUpFutureFeatureCards.value.some((feature: any) =>
+    featureLooksLikeSubclassUnlock(feature)
+  )
+
+  if (alreadyHasSubclassCard) return []
+
+  return [{
+    id: 'synthetic-subclass-choice',
+    title: levelUpSubclassLabel.value,
+    level: levelUpSubclassLevel.value,
+    source: 'Build',
+    description: `Choose this character's ${levelUpSubclassLabel.value}. Enter the chosen subclass/tradition below.`
+  }]
+})
+
+const levelUpUnlockCards = computed(() => [
+  ...levelUpFutureFeatureCards.value,
+  ...levelUpSyntheticUnlockCards.value
+])
+
+const levelUpPendingChoiceCards = computed(() =>
+  mathPendingChoices.value.filter((choice: any) => !choice.complete)
+)
+
+const levelUpCompletedChoiceCards = computed(() =>
+  mathPendingChoices.value.filter((choice: any) => choice.complete)
+)
+
+function currentComputedMaxHpNumber() {
+  const candidates = [
+    math.value?.combat?.hitPoints?.max,
+    sheetForm.combatStats.maxHp,
+    sheet.value?.combat_stats?.maxHp,
+    sheet.value?.combat_stats?.max_hp,
+    shownCombatStat('maxHp')
+  ]
+
+  for (const candidate of candidates) {
+    const parsed = Number(candidate)
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed)
+  }
+
+  return 0
+}
+
+function levelUpHitDieFaces() {
+  const text = String(
+    resolvedClass.value?.hitDie ||
+    shownCombatStat('hitDice') ||
+    ''
+  ).toLowerCase()
+
+  const match = text.match(/d(\d+)/)
+  if (!match) return 6
+
+  const faces = Number(match[1])
+  return Number.isFinite(faces) && faces > 0 ? faces : 6
+}
+
+function levelUpFixedHitDieAverage(faces: number) {
+  const fixedAverages: Record<number, number> = {
+    4: 3,
+    6: 4,
+    8: 5,
+    10: 6,
+    12: 7
+  }
+
+  return fixedAverages[faces] || Math.floor(faces / 2) + 1
+}
+
+const levelUpHpGainPerLevel = computed(() =>
+  Math.max(1, levelUpFixedHitDieAverage(levelUpHitDieFaces()) + abilityModifierNumberForKey('con'))
+)
+
+const levelUpFixedProjectedMaxHp = computed(() => {
+  const base = Number(levelUpStartingMaxHp.value || currentComputedMaxHpNumber() || 0)
+  return Math.max(1, Math.floor(base + (levelUpHpGainPerLevel.value * levelUpLevelDelta.value)))
+})
+
+const levelUpProjectedMaxHp = computed(() => {
+  if (levelUpHpMode.value === 'manual') {
+    const parsed = Number(levelUpManualMaxHp.value)
+    return Number.isFinite(parsed) && parsed > 0
+      ? Math.floor(parsed)
+      : levelUpFixedProjectedMaxHp.value
+  }
+
+  return levelUpFixedProjectedMaxHp.value
+})
 
 function openSpellBuilderFromLevelUp() {
   levelUpOpen.value = false
@@ -512,8 +708,8 @@ async function applyLevelUp() {
 
   const target = levelUpTargetNumber.value
 
-  if (target <= currentLevelNumber.value) {
-    levelUpError.value = 'Choose a level higher than the current level.'
+  if (target <= levelUpStartingLevelNumber.value) {
+    levelUpError.value = 'Choose a level higher than the starting level.'
     return
   }
 
@@ -521,11 +717,26 @@ async function applyLevelUp() {
   levelUpError.value = ''
   levelUpSuccess.value = ''
 
+  const projectedMaxHp = levelUpProjectedMaxHp.value
+  const nextCombatStats = {
+    ...sheetForm.combatStats
+  }
+
+  if (Number.isFinite(projectedMaxHp) && projectedMaxHp > 0) {
+    nextCombatStats.maxHp = String(projectedMaxHp)
+    nextCombatStats.currentHp = String(projectedMaxHp)
+    nextCombatStats.tempHp = String(nextCombatStats.tempHp || '0')
+  }
+
+  const subclassName = levelUpSubclassDraft.value.trim() || sheetForm.subclassName
+
   try {
     const saved = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
       method: 'PATCH',
       body: baseSheetPatchBody({
-        level: String(target)
+        level: String(target),
+        subclassName,
+        combatStats: nextCombatStats
       })
     })
 
@@ -537,7 +748,7 @@ async function applyLevelUp() {
     syncChoiceDrafts()
 
     levelUpApplied.value = true
-    levelUpSuccess.value = `Level ${target} applied. Review choices and spells below.`
+    levelUpSuccess.value = `Level ${target} applied. HP set to ${projectedMaxHp}/${projectedMaxHp}. Review choices and spells below.`
   } catch (err: any) {
     levelUpError.value =
       err?.data?.statusMessage ||
@@ -4268,7 +4479,7 @@ async function saveSheet() {
               @click="setSheetTab(tab.key)"
             >
               <span>{{ tab.label }}</span>
-              <span v-if="tab.key === 'stats' && mathPendingChoices.length" class="ml-1 text-[#9f9278]">({{ mathPendingChoices.length }})</span>
+              <span v-if="tab.key === 'stats' && levelUpPendingChoiceCards.length" class="ml-1 text-[#9f9278]">({{ levelUpPendingChoiceCards.length }})</span>
               <span v-if="tab.key === 'inventory'" class="ml-1 text-[#9f9278]">({{ inventoryCount }})</span>
               <span v-if="tab.key === 'spells'" class="ml-1 text-[#9f9278]">({{ selectedSpellCount }})</span>
               <span v-if="tab.key === 'features' && featureCount" class="ml-1 text-[#9f9278]">({{ featureCount }})</span>
@@ -4347,7 +4558,7 @@ async function saveSheet() {
 
                   <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
                     <div class="uppercase tracking-[0.18em] text-[#9f9278]">Choices</div>
-                    <div class="mt-1 text-lg font-semibold text-white">{{ mathPendingChoices.length }}</div>
+                    <div class="mt-1 text-lg font-semibold text-white">{{ levelUpPendingChoiceCards.length }}</div>
                   </div>
 
                   <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
@@ -4717,7 +4928,7 @@ async function saveSheet() {
                   </div>
                 </div>
 
-                <div v-if="mathPendingChoices.length" class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-3">
+                <div v-if="levelUpPendingChoiceCards.length" class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-3">
                   <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Pending Choices</div>
 
@@ -4742,7 +4953,7 @@ async function saveSheet() {
 
                   <div class="mt-3 space-y-3 text-sm text-[#d8ceb8]">
                     <div
-                      v-for="choice in mathPendingChoices"
+                      v-for="choice in levelUpPendingChoiceCards"
                       :key="choice.sourceKey"
                       class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.42)] p-3"
                     >
@@ -6303,7 +6514,7 @@ async function saveSheet() {
                           v-for="option in levelOptions"
                           :key="option.value"
                           :value="option.value"
-                          :disabled="Number(option.value) <= currentLevelNumber"
+                          :disabled="Number(option.value) <= levelUpStartingLevelNumber"
                           class="bg-[#090909] text-[#f5e7bd]"
                         >
                           {{ option.label }}
@@ -6321,13 +6532,13 @@ async function saveSheet() {
                     </div>
 
                     <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      {{ levelUpFutureFeatureCards.length }} Feature{{ levelUpFutureFeatureCards.length === 1 ? '' : 's' }}
+                      {{ levelUpUnlockCards.length }} Feature{{ levelUpUnlockCards.length === 1 ? '' : 's' }}
                     </div>
                   </div>
 
-                  <div v-if="levelUpFutureFeatureCards.length" class="mt-3 grid gap-2">
+                  <div v-if="levelUpUnlockCards.length" class="mt-3 grid gap-2">
                     <article
-                      v-for="feature in levelUpFutureFeatureCards"
+                      v-for="feature in levelUpUnlockCards"
                       :key="`level-up-feature-${feature.id}`"
                       class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3"
                     >
@@ -6352,6 +6563,79 @@ async function saveSheet() {
                 </div>
 
                 <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
+
+                <div
+                  v-if="levelUpSubclassUnlocked"
+                  class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                >
+                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2B</div>
+                  <div class="mt-1 text-lg font-semibold text-white">Choose {{ levelUpSubclassLabel }}</div>
+                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                    This level unlocks a subclass/tradition choice. Enter it now, or leave it blank if the player is still deciding.
+                  </p>
+
+                  <label class="mt-3 block">
+                    <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ levelUpSubclassLabel }}</span>
+                    <input
+                      v-model="levelUpSubclassDraft"
+                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                      placeholder="Evoker, Illusionist, School of Abjuration..."
+                    >
+                  </label>
+                </div>
+
+                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
+                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2C</div>
+                  <div class="mt-1 text-lg font-semibold text-white">Hit Points</div>
+                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                    Fixed average uses {{ levelUpFixedHitDieAverage(levelUpHitDieFaces()) }} + CON per level gained, minimum 1 HP per level.
+                  </p>
+
+                  <div class="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      class="rounded-none border px-3 py-2 text-xs font-semibold"
+                      :class="levelUpHpMode === 'fixed'
+                        ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                        : 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
+                      @click="levelUpHpMode = 'fixed'"
+                    >
+                      Fixed Average
+                    </button>
+
+                    <button
+                      type="button"
+                      class="rounded-none border px-3 py-2 text-xs font-semibold"
+                      :class="levelUpHpMode === 'manual'
+                        ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                        : 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
+                      @click="levelUpHpMode = 'manual'"
+                    >
+                      Manual HP
+                    </button>
+                  </div>
+
+                  <div class="mt-3 grid grid-cols-2 gap-3">
+                    <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3">
+                      <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Projected Max</div>
+                      <div class="mt-1 text-2xl font-semibold text-white">{{ levelUpProjectedMaxHp }}</div>
+                      <div class="mt-1 text-xs text-[#9f9278]">
+                        +{{ levelUpHpGainPerLevel }} per level x {{ levelUpLevelDelta }}
+                      </div>
+                    </div>
+
+                    <label class="block">
+                      <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Manual Max HP</span>
+                      <input
+                        v-model="levelUpManualMaxHp"
+                        inputmode="numeric"
+                        class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                        :disabled="levelUpHpMode !== 'manual'"
+                      >
+                    </label>
+                  </div>
+                </div>
+
                   <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 3</div>
                   <div class="mt-1 text-lg font-semibold text-white">Apply level</div>
                   <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
@@ -6361,7 +6645,7 @@ async function saveSheet() {
                   <button
                     type="button"
                     class="mt-3 eldra-button w-full rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                    :disabled="levelUpSaving || levelUpTargetNumber <= currentLevelNumber"
+                    :disabled="levelUpSaving || levelUpTargetNumber <= levelUpStartingLevelNumber || levelUpApplied"
                     @click="applyLevelUp"
                   >
                     {{ levelUpSaving ? 'Applying...' : `Apply Level ${levelUpTargetNumber}` }}
@@ -6387,13 +6671,13 @@ async function saveSheet() {
                     </div>
 
                     <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      {{ mathPendingChoices.length }} Pending
+                      {{ levelUpPendingChoiceCards.length }} Pending
                     </div>
                   </div>
 
-                  <div v-if="mathPendingChoices.length" class="mt-3 grid gap-3">
+                  <div v-if="levelUpPendingChoiceCards.length" class="mt-3 grid gap-3">
                     <div
-                      v-for="choice in mathPendingChoices"
+                      v-for="choice in levelUpPendingChoiceCards"
                       :key="`level-choice-${choice.sourceKey}`"
                       class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-3"
                     >
@@ -6461,7 +6745,7 @@ async function saveSheet() {
                   </div>
 
                   <div v-else class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-sm text-[#9f9278]">
-                    No pending choices for this level right now.
+                    No incomplete choices for this level right now.
                   </div>
                 </div>
 

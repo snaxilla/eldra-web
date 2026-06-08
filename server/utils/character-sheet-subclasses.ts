@@ -106,6 +106,142 @@ async function classDataFilesForClass(className: string) {
     .map((file) => join(CLASS_DATA_DIR, file))
 }
 
+function clean5eInlineText(value: any) {
+  return cleanText(value)
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature|optionalfeature|status)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@dice\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@damage\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@hit\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@dc\s+([^|}]+)(?:\|[^}]*)?\}/g, 'DC $1')
+    .replace(/\{@[a-zA-Z]+\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function entriesToText(value: any): string {
+  if (value === null || value === undefined) return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return clean5eInlineText(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => entriesToText(item))
+      .filter(Boolean)
+      .join('\n\n')
+      .trim()
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name) {
+      parts.push(`## ${clean5eInlineText(value.name)}`)
+    }
+
+    if (typeof value.entry === 'string') {
+      parts.push(clean5eInlineText(value.entry))
+    }
+
+    if (Array.isArray(value.entries)) {
+      parts.push(entriesToText(value.entries))
+    }
+
+    if (Array.isArray(value.items)) {
+      parts.push(
+        value.items
+          .map((item: any) => `- ${entriesToText(item)}`)
+          .filter(Boolean)
+          .join('\n')
+      )
+    }
+
+    return parts.filter(Boolean).join('\n\n').trim()
+  }
+
+  return ''
+}
+
+function parseSubclassFeatureRef(ref: any) {
+  const rawRef = typeof ref === 'string'
+    ? ref
+    : cleanText(ref?.subclassFeature || ref?.classFeature || ref?.name || '')
+
+  const parts = rawRef.split('|').map((part) => part.trim())
+  const name = parts[0] || ''
+  const className = parts[1] || ''
+  const classSource = parts[2] || ''
+  const levelRaw = parts[3] || ''
+  const source = parts[4] || ''
+
+  const level = Number(levelRaw)
+
+  return {
+    rawRef,
+    name,
+    className,
+    classSource,
+    level: Number.isFinite(level) ? level : null,
+    source
+  }
+}
+
+function featureMatchesRef(feature: any, ref: any, subclass: any) {
+  const featureName = normalizeKey(feature?.name)
+  const refName = normalizeKey(ref?.name)
+  const featureClass = normalizeKey(feature?.className)
+  const refClass = normalizeKey(ref?.className)
+  const subclassShort = normalizeKey(subclass?.shortName || subclass?.name)
+  const featureSubclassShort = normalizeKey(feature?.subclassShortName || feature?.subclassName)
+
+  if (!featureName || !refName || featureName !== refName) return false
+
+  if (ref.level !== null && Number(feature?.level) !== Number(ref.level)) return false
+
+  if (refClass && featureClass && refClass !== featureClass) return false
+
+  if (featureSubclassShort && subclassShort && featureSubclassShort !== subclassShort) return false
+
+  return true
+}
+
+function buildSubclassFeaturePreview(feature: any, fallbackRef: any) {
+  return {
+    title: cleanText(feature?.name || fallbackRef?.name || 'Subclass Feature'),
+    level: Number(feature?.level ?? fallbackRef?.level ?? 0) || null,
+    source: cleanText(feature?.source || fallbackRef?.source || ''),
+    page: feature?.page ?? null,
+    description: entriesToText(feature?.entries)
+  }
+}
+
+function resolveSubclassFeaturePreviews(rawSubclass: any, json: any) {
+  const refs = Array.isArray(rawSubclass?.subclassFeatures)
+    ? rawSubclass.subclassFeatures
+    : []
+
+  const featureRows = Array.isArray(json?.subclassFeature)
+    ? json.subclassFeature
+    : []
+
+  return refs
+    .map((ref: any) => {
+      const parsedRef = parseSubclassFeatureRef(ref)
+      const found = featureRows.find((feature: any) =>
+        featureMatchesRef(feature, parsedRef, rawSubclass)
+      )
+
+      return buildSubclassFeaturePreview(found || {}, parsedRef)
+    })
+    .filter((feature: any) => feature.title)
+    .sort((a: any, b: any) => {
+      const levelSort = Number(a.level || 0) - Number(b.level || 0)
+      if (levelSort !== 0) return levelSort
+      return String(a.title || '').localeCompare(String(b.title || ''))
+    })
+}
+
 export async function loadSubclassOptionsForSheet(worldId: string, entityId: string) {
   const sheet = await loadActiveCharacterSheet(worldId, entityId)
   const linked = await loadLinkedClassData(sheet)
@@ -164,6 +300,8 @@ export async function loadSubclassOptionsForSheet(worldId: string, entityId: str
         classSource.toUpperCase() === preferredSource
       )
 
+      const featurePreviews = resolveSubclassFeaturePreviews(raw, json)
+
       subclasses.push({
         name,
         shortName: cleanText(raw?.shortName || ''),
@@ -171,8 +309,9 @@ export async function loadSubclassOptionsForSheet(worldId: string, entityId: str
         classSource,
         recommended,
         page: raw?.page ?? null,
-        featureCount: Array.isArray(raw?.subclassFeatures) ? raw.subclassFeatures.length : 0,
-        description: subclassDescription(raw)
+        featureCount: featurePreviews.length || (Array.isArray(raw?.subclassFeatures) ? raw.subclassFeatures.length : 0),
+        description: subclassDescription(raw) || featurePreviews.map((feature) => `${feature.title}: ${feature.description}`).filter(Boolean).join('\n\n'),
+        features: featurePreviews
       })
     }
   }

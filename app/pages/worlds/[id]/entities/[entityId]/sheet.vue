@@ -698,6 +698,22 @@ const levelUpProjectedMaxHp = computed(() => {
   return levelUpFixedProjectedMaxHp.value
 })
 
+const selectedLevelUpSubclassOption = computed(() =>
+  subclassOptions.value.find((option: any) =>
+    String(option?.name || '') === String(levelUpSubclassDraft.value || '')
+  ) || null
+)
+
+const selectedLevelUpSubclassFeatures = computed(() =>
+  Array.isArray(selectedLevelUpSubclassOption.value?.features)
+    ? selectedLevelUpSubclassOption.value.features
+    : []
+)
+
+const selectedLevelUpSubclassDescription = computed(() =>
+  String(selectedLevelUpSubclassOption.value?.description || '').trim()
+)
+
 function openSpellBuilderFromLevelUp() {
   levelUpOpen.value = false
   openSpellBuilder()
@@ -6590,6 +6606,75 @@ async function saveSheet() {
                       No subclass options were found for this class. We should import/fix subclass data before relying on manual entry.
                     </div>
                   </label>
+
+                  <!-- Selected Subclass Preview -->
+                  <div
+                    v-if="selectedLevelUpSubclassOption"
+                    class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.48)] p-3"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Selected Preview</div>
+                        <div class="mt-1 truncate text-lg font-semibold text-white">
+                          {{ selectedLevelUpSubclassOption.name }}
+                        </div>
+                        <div class="mt-1 text-xs text-[#9f9278]">
+                          <span v-if="selectedLevelUpSubclassOption.source">{{ selectedLevelUpSubclassOption.source }}</span>
+                          <span v-if="selectedLevelUpSubclassOption.page"> · p. {{ selectedLevelUpSubclassOption.page }}</span>
+                          <span v-if="selectedLevelUpSubclassOption.featureCount"> · {{ selectedLevelUpSubclassOption.featureCount }} feature{{ selectedLevelUpSubclassOption.featureCount === 1 ? '' : 's' }}</span>
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="selectedLevelUpSubclassOption.recommended"
+                        class="eldra-gold-chip shrink-0 rounded-none border px-2 py-0.5 text-[10px]"
+                      >
+                        Recommended
+                      </div>
+                    </div>
+
+                    <p
+                      v-if="selectedLevelUpSubclassDescription"
+                      class="mt-3 whitespace-pre-line break-words text-xs leading-5 text-[#d8ceb8]"
+                    >
+                      {{ shortText(selectedLevelUpSubclassDescription, 520) }}
+                    </p>
+
+                    <div
+                      v-if="selectedLevelUpSubclassFeatures.length"
+                      class="mt-3 grid gap-2"
+                    >
+                      <article
+                        v-for="feature in selectedLevelUpSubclassFeatures"
+                        :key="`selected-subclass-feature-${feature.title}-${feature.level}`"
+                        class="rounded-none border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] p-3"
+                      >
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0">
+                            <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                            <div class="mt-1 text-xs text-[#9f9278]">
+                              Level {{ feature.level || '—' }}<span v-if="feature.source"> · {{ feature.source }}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p
+                          v-if="feature.description"
+                          class="mt-2 whitespace-pre-line break-words text-xs leading-5 text-[#9f9278]"
+                        >
+                          {{ shortText(feature.description, 320) }}
+                        </p>
+                      </article>
+                    </div>
+
+                    <div
+                      v-else
+                      class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-xs text-[#9f9278]"
+                    >
+                      This subclass was found, but no subclass feature preview entries were resolved yet.
+                    </div>
+                  </div>
+
                 </div>
 
                 <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">

@@ -6637,7 +6637,7 @@ async function saveSheet() {
                       v-if="selectedLevelUpSubclassDescription"
                       class="mt-3 whitespace-pre-line break-words text-xs leading-5 text-[#d8ceb8]"
                     >
-                      {{ shortText(selectedLevelUpSubclassDescription, 520) }}
+                      {{ selectedLevelUpSubclassDescription }}
                     </p>
 
                     <div
@@ -6662,7 +6662,7 @@ async function saveSheet() {
                           v-if="feature.description"
                           class="mt-2 whitespace-pre-line break-words text-xs leading-5 text-[#9f9278]"
                         >
-                          {{ shortText(feature.description, 320) }}
+                          {{ feature.description }}
                         </p>
                       </article>
                     </div>

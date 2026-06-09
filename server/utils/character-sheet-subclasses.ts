@@ -310,7 +310,7 @@ export async function loadSubclassOptionsForSheet(worldId: string, entityId: str
         recommended,
         page: raw?.page ?? null,
         featureCount: featurePreviews.length || (Array.isArray(raw?.subclassFeatures) ? raw.subclassFeatures.length : 0),
-        description: subclassDescription(raw) || featurePreviews.map((feature) => `${feature.title}: ${feature.description}`).filter(Boolean).join('\n\n'),
+        description: subclassDescription(raw),
         features: featurePreviews
       })
     }

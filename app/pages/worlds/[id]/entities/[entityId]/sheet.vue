@@ -73,10 +73,13 @@ const actionPanelsOpen = reactive<Record<string, boolean>>({
 const featurePanelsOpen = reactive<Record<string, boolean>>({
   class: true,
   upcoming: false,
+  subclass: true,
   species: true,
   background: true,
   feats: true
 })
+
+const subclassFeatureCardsOpen = reactive<Record<string, boolean>>({})
 
 const spellPanelsOpen = reactive<Record<string, boolean>>({
   prepared: true,
@@ -269,6 +272,48 @@ function toggleFeaturePanel(key: string) {
 
 function featurePanelChevron(key: string) {
   return featurePanelOpen(key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
+}
+
+function subclassFeatureCardKey(scope: string, feature: any, index: any) {
+  return [
+    scope,
+    String(feature?.title || 'feature').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    String(feature?.level || 'x'),
+    String(index)
+  ].join(':')
+}
+
+function subclassFeatureDefaultOpen(scope: string, feature: any) {
+  const level = Number(feature?.level || 0)
+
+  if (scope === 'level') {
+    return level > 0 && level <= levelUpTargetNumber.value
+  }
+
+  if (scope === 'sheet') {
+    return level > 0 && level <= currentLevelNumber.value
+  }
+
+  return false
+}
+
+function subclassFeatureCardOpen(scope: string, feature: any, index: any) {
+  const key = subclassFeatureCardKey(scope, feature, index)
+
+  if (!Object.prototype.hasOwnProperty.call(subclassFeatureCardsOpen, key)) {
+    return subclassFeatureDefaultOpen(scope, feature)
+  }
+
+  return subclassFeatureCardsOpen[key] !== false
+}
+
+function toggleSubclassFeatureCard(scope: string, feature: any, index: any) {
+  const key = subclassFeatureCardKey(scope, feature, index)
+  subclassFeatureCardsOpen[key] = !subclassFeatureCardOpen(scope, feature, index)
+}
+
+function subclassFeatureCardChevron(scope: string, feature: any, index: any) {
+  return subclassFeatureCardOpen(scope, feature, index) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'
 }
 
 function openFeatureDrawer(feature: any) {
@@ -714,6 +759,45 @@ const selectedLevelUpSubclassDescription = computed(() =>
   String(selectedLevelUpSubclassOption.value?.description || '').trim()
 )
 
+function normalizeSubclassLookup(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const resolvedSubclassName = computed(() =>
+  String(
+    sheet.value?.subclass_name ||
+    sheet.value?.subclassName ||
+    sheetForm.subclassName ||
+    ''
+  ).trim()
+)
+
+const resolvedSubclassOption = computed(() => {
+  const selected = normalizeSubclassLookup(resolvedSubclassName.value)
+  if (!selected) return null
+
+  return subclassOptions.value.find((option: any) =>
+    normalizeSubclassLookup(option?.name) === selected ||
+    normalizeSubclassLookup(option?.shortName) === selected
+  ) || null
+})
+
+const resolvedSubclassFeatureCards = computed(() =>
+  Array.isArray(resolvedSubclassOption.value?.features)
+    ? resolvedSubclassOption.value.features
+    : []
+)
+
+const resolvedSubclassDescription = computed(() =>
+  String(resolvedSubclassOption.value?.description || '').trim()
+)
+
 function openSpellBuilderFromLevelUp() {
   levelUpOpen.value = false
   openSpellBuilder()
@@ -1059,6 +1143,7 @@ const inventoryAddForm = reactive({
 const featureCount = computed(() => {
   let count = 0
   if (resolvedClass.value?.featureCount) count += Number(resolvedClass.value.featureCount || 0)
+  if (resolvedSubclassFeatureCards.value.length) count += resolvedSubclassFeatureCards.value.length
   if (resolvedSpecies.value?.rawTraitCount) count += Number(resolvedSpecies.value.rawTraitCount || 0)
   if (resolvedBackground.value?.featureName) count += 1
   if (resolvedFeats.value?.length) count += Number(resolvedFeats.value.length || 0)
@@ -6218,6 +6303,118 @@ async function saveSheet() {
                 </div>
               </div>
 
+
+              <div
+                v-if="resolvedSubclassName"
+                class="eldra-codex-soft rounded-none p-4"
+              >
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 text-left"
+                  @click="toggleFeaturePanel('subclass')"
+                >
+                  <div class="min-w-0">
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Subclass / Path</div>
+                    <div class="mt-1 truncate text-sm text-[#d8ceb8]">{{ resolvedSubclassName }}</div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                      {{ resolvedSubclassFeatureCards.length }} Feature{{ resolvedSubclassFeatureCards.length === 1 ? '' : 's' }}
+                    </div>
+                    <UIcon :name="featurePanelChevron('subclass')" class="h-4 w-4 text-[#9f9278]" />
+                  </div>
+                </button>
+
+                <div
+                  v-show="featurePanelOpen('subclass')"
+                  class="mt-4"
+                >
+                  <div
+                    v-if="resolvedSubclassOption"
+                    class="mb-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)] p-3"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="truncate font-semibold text-white">{{ resolvedSubclassOption.name }}</div>
+                        <div class="mt-1 text-xs text-[#9f9278]">
+                          <span v-if="resolvedSubclassOption.source">{{ resolvedSubclassOption.source }}</span>
+                          <span v-if="resolvedSubclassOption.page"> · p. {{ resolvedSubclassOption.page }}</span>
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="resolvedSubclassOption.recommended"
+                        class="eldra-gold-chip shrink-0 rounded-none border px-2 py-0.5 text-[10px]"
+                      >
+                        Recommended
+                      </div>
+                    </div>
+
+                    <p
+                      v-if="resolvedSubclassDescription"
+                      class="mt-3 whitespace-pre-line break-words text-xs leading-5 text-[#d8ceb8]"
+                    >
+                      {{ resolvedSubclassDescription }}
+                    </p>
+                  </div>
+
+                  <div
+                    v-if="resolvedSubclassFeatureCards.length"
+                    class="grid gap-2"
+                  >
+                    <article
+                      v-for="(feature, index) in resolvedSubclassFeatureCards"
+                      :key="`sheet-subclass-feature-${feature.title}-${feature.level}-${index}`"
+                      class="min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                      :class="Number(feature.level || 0) > currentLevelNumber ? 'opacity-70' : ''"
+                    >
+                      <button
+                        type="button"
+                        class="flex w-full items-start justify-between gap-3 text-left"
+                        @click="toggleSubclassFeatureCard('sheet', feature, index)"
+                      >
+                        <div class="min-w-0">
+                          <div class="truncate font-semibold text-white">{{ feature.title }}</div>
+                          <div class="mt-1 text-xs text-[#9f9278]">
+                            Level {{ feature.level || '—' }}<span v-if="feature.source"> · {{ feature.source }}</span>
+                            <span v-if="Number(feature.level || 0) > currentLevelNumber"> · Future</span>
+                          </div>
+                        </div>
+
+                        <UIcon :name="subclassFeatureCardChevron('sheet', feature, index)" class="h-4 w-4 shrink-0 text-[#9f9278]" />
+                      </button>
+
+                      <div
+                        v-show="subclassFeatureCardOpen('sheet', feature, index)"
+                        class="mt-3 border-t border-[rgba(201,164,90,0.14)] pt-3"
+                      >
+                        <p
+                          v-if="feature.description"
+                          class="whitespace-pre-line break-words text-xs leading-5 text-[#9f9278]"
+                        >
+                          {{ feature.description }}
+                        </p>
+
+                        <div
+                          v-else
+                          class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-xs text-[#9f9278]"
+                        >
+                          No description resolved for this subclass feature yet.
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+
+                  <div
+                    v-else
+                    class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]"
+                  >
+                    This character has a subclass/path saved, but no subclass feature details were resolved yet.
+                  </div>
+                </div>
+              </div>
+
               <div class="eldra-codex-soft rounded-none p-4">
                 <button
                   type="button"
@@ -6640,30 +6837,49 @@ async function saveSheet() {
                       {{ selectedLevelUpSubclassDescription }}
                     </p>
 
+
                     <div
                       v-if="selectedLevelUpSubclassFeatures.length"
                       class="mt-3 grid gap-2"
                     >
                       <article
-                        v-for="feature in selectedLevelUpSubclassFeatures"
-                        :key="`selected-subclass-feature-${feature.title}-${feature.level}`"
+                        v-for="(feature, index) in selectedLevelUpSubclassFeatures"
+                        :key="`selected-subclass-feature-${feature.title}-${feature.level}-${index}`"
                         class="rounded-none border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] p-3"
                       >
-                        <div class="flex items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          class="flex w-full items-start justify-between gap-3 text-left"
+                          @click="toggleSubclassFeatureCard('level', feature, index)"
+                        >
                           <div class="min-w-0">
                             <div class="truncate font-semibold text-white">{{ feature.title }}</div>
                             <div class="mt-1 text-xs text-[#9f9278]">
                               Level {{ feature.level || '—' }}<span v-if="feature.source"> · {{ feature.source }}</span>
                             </div>
                           </div>
-                        </div>
 
-                        <p
-                          v-if="feature.description"
-                          class="mt-2 whitespace-pre-line break-words text-xs leading-5 text-[#9f9278]"
+                          <UIcon :name="subclassFeatureCardChevron('level', feature, index)" class="h-4 w-4 shrink-0 text-[#9f9278]" />
+                        </button>
+
+                        <div
+                          v-show="subclassFeatureCardOpen('level', feature, index)"
+                          class="mt-3 border-t border-[rgba(201,164,90,0.14)] pt-3"
                         >
-                          {{ feature.description }}
-                        </p>
+                          <p
+                            v-if="feature.description"
+                            class="whitespace-pre-line break-words text-xs leading-5 text-[#9f9278]"
+                          >
+                            {{ feature.description }}
+                          </p>
+
+                          <div
+                            v-else
+                            class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-xs text-[#9f9278]"
+                          >
+                            No description resolved for this subclass feature yet.
+                          </div>
+                        </div>
                       </article>
                     </div>
 

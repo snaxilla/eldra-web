@@ -24,7 +24,7 @@ const ABILITIES = [
 ] as const
 
 const steps = [
-  { key: 'identity', label: 'Identity' },
+  { key: 'origin', label: 'Origin' },
   { key: 'abilities', label: 'Abilities' },
   { key: 'review', label: 'Review' }
 ]
@@ -45,11 +45,48 @@ const builderForm = reactive({
   }
 })
 
+const selectedSpeciesId = computed(() => builderForm.speciesEntityId)
+const selectedClassId = computed(() => builderForm.classEntityId)
+const selectedBackgroundId = computed(() => builderForm.backgroundEntityId)
+
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
   default: () => [],
   watch: [worldId]
 })
+
+const { data: selectedSpeciesDetail } = await useAsyncData(
+  () => `character-builder-species-${worldId.value}-${selectedSpeciesId.value || 'none'}`,
+  () => selectedSpeciesId.value
+    ? $fetch(`/api/worlds/${worldId.value}/entities/${selectedSpeciesId.value}`)
+    : Promise.resolve(null),
+  {
+    default: () => null,
+    watch: [worldId, selectedSpeciesId]
+  }
+)
+
+const { data: selectedClassDetail } = await useAsyncData(
+  () => `character-builder-class-${worldId.value}-${selectedClassId.value || 'none'}`,
+  () => selectedClassId.value
+    ? $fetch(`/api/worlds/${worldId.value}/entities/${selectedClassId.value}`)
+    : Promise.resolve(null),
+  {
+    default: () => null,
+    watch: [worldId, selectedClassId]
+  }
+)
+
+const { data: selectedBackgroundDetail } = await useAsyncData(
+  () => `character-builder-background-${worldId.value}-${selectedBackgroundId.value || 'none'}`,
+  () => selectedBackgroundId.value
+    ? $fetch(`/api/worlds/${worldId.value}/entities/${selectedBackgroundId.value}`)
+    : Promise.resolve(null),
+  {
+    default: () => null,
+    watch: [worldId, selectedBackgroundId]
+  }
+)
 
 function normalizeEntityType(value: any) {
   return String(value || '').trim().toLowerCase()
@@ -60,25 +97,255 @@ function optionList(type: string) {
     .filter((entity: any) => normalizeEntityType(entity?.entity_type || entity?.entityType) === type)
     .map((entity: any) => ({
       id: String(entity?.id || ''),
-      title: String(entity?.title || 'Untitled')
+      title: String(entity?.title || 'Untitled'),
+      entity
     }))
     .filter((option: any) => option.id)
     .sort((a: any, b: any) => a.title.localeCompare(b.title))
 }
 
-const classOptions = computed(() => optionList('class'))
 const speciesOptions = computed(() => optionList('species'))
+const classOptions = computed(() => optionList('class'))
 const backgroundOptions = computed(() => optionList('background'))
 
-function optionTitle(options: any[], id: any) {
+function optionById(options: any[], id: any) {
   const needle = String(id || '')
-  if (!needle) return ''
-  return options.find((option: any) => String(option.id) === needle)?.title || ''
+  if (!needle) return null
+  return options.find((option: any) => String(option.id) === needle) || null
 }
 
-const selectedClassName = computed(() => optionTitle(classOptions.value, builderForm.classEntityId))
-const selectedSpeciesName = computed(() => optionTitle(speciesOptions.value, builderForm.speciesEntityId))
-const selectedBackgroundName = computed(() => optionTitle(backgroundOptions.value, builderForm.backgroundEntityId))
+function optionTitle(options: any[], id: any) {
+  return optionById(options, id)?.title || ''
+}
+
+const selectedSpeciesOption = computed(() => optionById(speciesOptions.value, builderForm.speciesEntityId))
+const selectedClassOption = computed(() => optionById(classOptions.value, builderForm.classEntityId))
+const selectedBackgroundOption = computed(() => optionById(backgroundOptions.value, builderForm.backgroundEntityId))
+
+const selectedSpeciesName = computed(() => selectedSpeciesDetail.value?.title || selectedSpeciesOption.value?.title || '')
+const selectedClassName = computed(() => selectedClassDetail.value?.title || selectedClassOption.value?.title || '')
+const selectedBackgroundName = computed(() => selectedBackgroundDetail.value?.title || selectedBackgroundOption.value?.title || '')
+
+const selectedSpeciesEntity = computed(() => selectedSpeciesDetail.value || selectedSpeciesOption.value?.entity || null)
+const selectedClassEntity = computed(() => selectedClassDetail.value || selectedClassOption.value?.entity || null)
+const selectedBackgroundEntity = computed(() => selectedBackgroundDetail.value || selectedBackgroundOption.value?.entity || null)
+
+function imageUrlFor(entity: any) {
+  if (!entity) return ''
+  if (entity?.imageUrl) return String(entity.imageUrl)
+  if (entity?.image_url) return String(entity.image_url)
+  if (entity?.image?.id) return `/api/assets/${entity.image.id}`
+  if (typeof entity?.image === 'string' || typeof entity?.image === 'number') return `/api/assets/${entity.image}`
+  return ''
+}
+
+function plainText(value: any) {
+  return String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function clean5eText(value: any) {
+  return String(value || '')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature|optionalfeature|status)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@dice\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@damage\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@hit\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@dc\s+([^|}]+)(?:\|[^}]*)?\}/g, 'DC $1')
+    .replace(/\{@(?:i|b)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[a-zA-Z]+\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function entriesToText(value: any): string {
+  if (value === null || value === undefined) return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return clean5eText(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => entriesToText(item))
+      .filter(Boolean)
+      .join('\n\n')
+      .trim()
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name) {
+      parts.push(`## ${clean5eText(value.name)}`)
+    }
+
+    if (typeof value.entry === 'string') {
+      parts.push(clean5eText(value.entry))
+    }
+
+    if (Array.isArray(value.entries)) {
+      parts.push(entriesToText(value.entries))
+    }
+
+    if (Array.isArray(value.items)) {
+      parts.push(
+        value.items
+          .map((item: any) => `- ${entriesToText(item)}`)
+          .filter(Boolean)
+          .join('\n')
+      )
+    }
+
+    return parts.filter(Boolean).join('\n\n').trim()
+  }
+
+  return ''
+}
+
+function shortText(value: any, limit = 640) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
+}
+
+function blockByKey(entity: any, key: string) {
+  return Array.isArray(entity?.blocks)
+    ? entity.blocks.find((block: any) => String(block?.block_key || block?.blockKey || '') === key) || null
+    : null
+}
+
+function blockData(entity: any, key: string) {
+  return blockByKey(entity, key)?.data || {}
+}
+
+function rawJson(entity: any) {
+  return blockData(entity, 'import_source')?.raw_json || blockData(entity, 'import_source')?.rawJson || null
+}
+
+function simpleValue(value: any): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return clean5eText(value)
+
+  if (Array.isArray(value)) {
+    return value.map(simpleValue).filter(Boolean).join(', ')
+  }
+
+  if (typeof value === 'object') {
+    if (Array.isArray(value.from)) return value.from.map(simpleValue).filter(Boolean).join(', ')
+    if (value.choose) return simpleValue(value.choose)
+    if (value.walk) return `${value.walk} ft.`
+    if (value.faces) return `d${value.faces}`
+
+    return Object.values(value).map(simpleValue).filter(Boolean).join(', ')
+  }
+
+  return ''
+}
+
+function entitySummary(entity: any) {
+  return plainText(entity?.summary || '')
+}
+
+function sourceText(entity: any) {
+  const raw = rawJson(entity) || {}
+  const source = raw?.source || blockData(entity, 'import_source')?.source_book || ''
+  const page = raw?.page || blockData(entity, 'import_source')?.source_page || ''
+
+  return [source, page ? `p. ${page}` : ''].filter(Boolean).join(' · ')
+}
+
+const selectedSpeciesImageUrl = computed(() => imageUrlFor(selectedSpeciesEntity.value))
+const selectedClassImageUrl = computed(() => imageUrlFor(selectedClassEntity.value))
+const selectedBackgroundImageUrl = computed(() => imageUrlFor(selectedBackgroundEntity.value))
+
+const speciesDescription = computed(() => {
+  const entity = selectedSpeciesEntity.value
+  if (!entity) return ''
+
+  const core = blockData(entity, 'species_core')
+  const raw = rawJson(entity) || {}
+
+  return clean5eText(core.traits || core.description || '') ||
+    entriesToText(raw.entries) ||
+    entitySummary(entity)
+})
+
+const classDescription = computed(() => {
+  const entity = selectedClassEntity.value
+  if (!entity) return ''
+
+  const core = blockData(entity, 'class_core')
+  const raw = rawJson(entity) || {}
+
+  return clean5eText(core.description || core.summary || '') ||
+    entriesToText(raw.entries) ||
+    entitySummary(entity)
+})
+
+const backgroundDescription = computed(() => {
+  const entity = selectedBackgroundEntity.value
+  if (!entity) return ''
+
+  const core = blockData(entity, 'background_core')
+  const raw = rawJson(entity) || {}
+
+  return clean5eText(core.feature_description || core.description || '') ||
+    entriesToText(raw.entries) ||
+    entitySummary(entity)
+})
+
+const speciesInfoLines = computed(() => {
+  const entity = selectedSpeciesEntity.value
+  if (!entity) return []
+
+  const core = blockData(entity, 'species_core')
+  const raw = rawJson(entity) || {}
+
+  return [
+    core.size || simpleValue(raw.size) ? `Size: ${core.size || simpleValue(raw.size)}` : '',
+    core.speed || simpleValue(raw.speed) ? `Speed: ${core.speed || simpleValue(raw.speed)}` : '',
+    sourceText(entity)
+  ].filter(Boolean)
+})
+
+const classInfoLines = computed(() => {
+  const entity = selectedClassEntity.value
+  if (!entity) return []
+
+  const core = blockData(entity, 'class_core')
+  const raw = rawJson(entity) || {}
+
+  return [
+    core.hit_die || simpleValue(raw.hd) ? `Hit Die: ${core.hit_die || simpleValue(raw.hd)}` : '',
+    core.primary_ability || simpleValue(raw.primaryAbility) ? `Primary: ${core.primary_ability || simpleValue(raw.primaryAbility)}` : '',
+    core.saving_throws || simpleValue(raw.proficiency) ? `Saves: ${core.saving_throws || simpleValue(raw.proficiency).toUpperCase()}` : '',
+    sourceText(entity)
+  ].filter(Boolean)
+})
+
+const backgroundInfoLines = computed(() => {
+  const entity = selectedBackgroundEntity.value
+  if (!entity) return []
+
+  const core = blockData(entity, 'background_core')
+  const raw = rawJson(entity) || {}
+
+  return [
+    core.skill_proficiencies || simpleValue(raw.skillProficiencies) ? `Skills: ${core.skill_proficiencies || simpleValue(raw.skillProficiencies)}` : '',
+    core.tool_proficiencies || simpleValue(raw.toolProficiencies) ? `Tools: ${core.tool_proficiencies || simpleValue(raw.toolProficiencies)}` : '',
+    sourceText(entity)
+  ].filter(Boolean)
+})
 
 function classKey() {
   return selectedClassName.value
@@ -141,8 +408,8 @@ const missingRequirements = computed(() => {
   const missing: string[] = []
 
   if (!builderForm.name.trim()) missing.push('Name')
-  if (!builderForm.classEntityId) missing.push('Class')
   if (!builderForm.speciesEntityId) missing.push('Species')
+  if (!builderForm.classEntityId) missing.push('Class')
 
   return missing
 })
@@ -247,8 +514,98 @@ async function createCharacter() {
         <div v-if="stepIndex === 0" class="grid gap-4">
           <div>
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Step 1</div>
-            <h2 class="mt-2 text-xl font-semibold text-white">Who are they?</h2>
-            <p class="mt-1 text-sm leading-6 text-[#d8ceb8]">Pick the big identity pieces. The detailed choices happen after the sheet exists.</p>
+            <h2 class="mt-2 text-xl font-semibold text-white">What are they?</h2>
+            <p class="mt-1 text-sm leading-6 text-[#d8ceb8]">Start with species, then class. The preview cards explain what each choice means before the sheet is created.</p>
+          </div>
+
+          <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div class="grid gap-3">
+              <label class="block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Species</span>
+                <select v-model="builderForm.speciesEntityId" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
+                  <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose a species...</option>
+                  <option v-for="option in speciesOptions" :key="option.id" :value="option.id" class="bg-[#090909] text-[#f5e7bd]">
+                    {{ option.title }}
+                  </option>
+                </select>
+              </label>
+
+              <article class="min-h-[220px] overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)]">
+                <img
+                  v-if="selectedSpeciesImageUrl"
+                  :src="selectedSpeciesImageUrl"
+                  :alt="selectedSpeciesName || 'Species'"
+                  class="h-36 w-full object-cover"
+                >
+
+                <div v-else class="flex h-36 items-center justify-center bg-[rgba(201,164,90,0.08)] text-[#c9a45a]">
+                  <UIcon name="i-lucide-users" class="h-10 w-10" />
+                </div>
+
+                <div class="p-3">
+                  <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Species Preview</div>
+                  <div class="mt-1 text-lg font-semibold text-white">{{ selectedSpeciesName || 'Choose a species' }}</div>
+
+                  <div v-if="speciesInfoLines.length" class="mt-2 flex flex-wrap gap-1.5">
+                    <span
+                      v-for="line in speciesInfoLines"
+                      :key="line"
+                      class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-2 py-1 text-[10px] text-[#d8ceb8]"
+                    >
+                      {{ line }}
+                    </span>
+                  </div>
+
+                  <p class="mt-3 max-h-44 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
+                    {{ speciesDescription || 'Pick a species to see traits, speed, size, and imported details.' }}
+                  </p>
+                </div>
+              </article>
+            </div>
+
+            <div class="grid gap-3">
+              <label class="block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Class</span>
+                <select v-model="builderForm.classEntityId" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
+                  <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose a class...</option>
+                  <option v-for="option in classOptions" :key="option.id" :value="option.id" class="bg-[#090909] text-[#f5e7bd]">
+                    {{ option.title }}
+                  </option>
+                </select>
+              </label>
+
+              <article class="min-h-[220px] overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)]">
+                <img
+                  v-if="selectedClassImageUrl"
+                  :src="selectedClassImageUrl"
+                  :alt="selectedClassName || 'Class'"
+                  class="h-36 w-full object-cover"
+                >
+
+                <div v-else class="flex h-36 items-center justify-center bg-[rgba(201,164,90,0.08)] text-[#c9a45a]">
+                  <UIcon name="i-lucide-swords" class="h-10 w-10" />
+                </div>
+
+                <div class="p-3">
+                  <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Class Preview</div>
+                  <div class="mt-1 text-lg font-semibold text-white">{{ selectedClassName || 'Choose a class' }}</div>
+
+                  <div v-if="classInfoLines.length" class="mt-2 flex flex-wrap gap-1.5">
+                    <span
+                      v-for="line in classInfoLines"
+                      :key="line"
+                      class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-2 py-1 text-[10px] text-[#d8ceb8]"
+                    >
+                      {{ line }}
+                    </span>
+                  </div>
+
+                  <p class="mt-3 max-h-44 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
+                    {{ classDescription || 'Pick a class to see hit die, primary ability, saving throws, and imported details.' }}
+                  </p>
+                </div>
+              </article>
+            </div>
           </div>
 
           <label class="block">
@@ -261,26 +618,6 @@ async function createCharacter() {
           </label>
 
           <div class="grid gap-3 md:grid-cols-2">
-            <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Class</span>
-              <select v-model="builderForm.classEntityId" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
-                <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose a class...</option>
-                <option v-for="option in classOptions" :key="option.id" :value="option.id" class="bg-[#090909] text-[#f5e7bd]">
-                  {{ option.title }}
-                </option>
-              </select>
-            </label>
-
-            <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Species</span>
-              <select v-model="builderForm.speciesEntityId" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
-                <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose a species...</option>
-                <option v-for="option in speciesOptions" :key="option.id" :value="option.id" class="bg-[#090909] text-[#f5e7bd]">
-                  {{ option.title }}
-                </option>
-              </select>
-            </label>
-
             <label class="block">
               <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Background</span>
               <select v-model="builderForm.backgroundEntityId" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
@@ -300,6 +637,43 @@ async function createCharacter() {
               </select>
             </label>
           </div>
+
+          <article
+            v-if="builderForm.backgroundEntityId"
+            class="overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)]"
+          >
+            <div class="grid gap-3 p-3 md:grid-cols-[180px_minmax(0,1fr)]">
+              <img
+                v-if="selectedBackgroundImageUrl"
+                :src="selectedBackgroundImageUrl"
+                :alt="selectedBackgroundName || 'Background'"
+                class="h-36 w-full object-cover"
+              >
+
+              <div v-else class="flex h-36 items-center justify-center bg-[rgba(201,164,90,0.08)] text-[#c9a45a]">
+                <UIcon name="i-lucide-scroll-text" class="h-10 w-10" />
+              </div>
+
+              <div class="min-w-0">
+                <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Background Preview</div>
+                <div class="mt-1 text-lg font-semibold text-white">{{ selectedBackgroundName }}</div>
+
+                <div v-if="backgroundInfoLines.length" class="mt-2 flex flex-wrap gap-1.5">
+                  <span
+                    v-for="line in backgroundInfoLines"
+                    :key="line"
+                    class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-2 py-1 text-[10px] text-[#d8ceb8]"
+                  >
+                    {{ line }}
+                  </span>
+                </div>
+
+                <p class="mt-3 max-h-36 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
+                  {{ backgroundDescription || 'No imported background description found yet.' }}
+                </p>
+              </div>
+            </div>
+          </article>
 
           <div v-if="!classOptions.length || !speciesOptions.length" class="rounded-none border border-amber-300/24 bg-amber-400/10 p-3 text-sm leading-6 text-amber-100">
             This builder needs imported class and species articles. Import PHB/XPHB classes and species first if these lists are empty.
@@ -398,9 +772,9 @@ async function createCharacter() {
             </div>
 
             <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
-              <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Class / Species</div>
+              <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Species / Class</div>
               <div class="mt-1 text-lg font-semibold text-white">
-                {{ selectedClassName || 'Missing class' }} · {{ selectedSpeciesName || 'Missing species' }}
+                {{ selectedSpeciesName || 'Missing species' }} · {{ selectedClassName || 'Missing class' }}
               </div>
               <div class="mt-1 text-xs text-[#9f9278]">
                 {{ selectedBackgroundName || 'Background later' }} · Level {{ builderForm.level }}

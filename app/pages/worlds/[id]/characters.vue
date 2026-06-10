@@ -571,6 +571,13 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="flex flex-col gap-3 sm:flex-row">
+
+              <NuxtLink
+                :to="`/worlds/${worldId}/characters/builder`"
+                class="rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] px-4 py-2.5 text-sm font-semibold text-[#fff7df] transition hover:bg-[rgba(201,164,90,0.22)]"
+              >
+                Guided PC Builder
+              </NuxtLink>
               <button
                 type="button"
                 class="eldra-button rounded-none px-4 py-2.5 text-sm font-medium"

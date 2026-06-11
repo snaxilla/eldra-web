@@ -12,6 +12,8 @@ const stepIndex = ref(0)
 const creating = ref(false)
 const createError = ref('')
 const advancedScores = ref(false)
+const speciesMechanicsOpen = ref(false)
+const classMechanicsOpen = ref(false)
 
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
 const ABILITIES = [
@@ -212,6 +214,80 @@ function entriesToText(value: any): string {
   return ''
 }
 
+const CLASS_LORE_FALLBACKS: Record<string, string> = {
+  artificer: 'Artificers are magical inventors who turn tools, formulas, and strange devices into adventuring power. Pick this if you like clever gadgets, enchanted gear, and solving problems with weird magical engineering.',
+  barbarian: 'Barbarians are fierce warriors powered by rage, instinct, and raw toughness. Pick this if you want to charge into danger, shrug off punishment, and hit like a falling tree.',
+  bard: 'Bards use music, stories, charm, and magic to inspire allies and outwit enemies. Pick this if you want to be flexible, social, magical, and just a little dramatic.',
+  cleric: 'Clerics channel divine power from gods, ideals, or sacred forces. Pick this if you want healing, protection, radiant magic, and the ability to stand strong in the middle of a fight.',
+  druid: 'Druids draw power from nature, beasts, storms, plants, and primal spirits. Pick this if you want shapeshifting, nature magic, and a deep connection to the wild.',
+  fighter: 'Fighters are masters of weapons, armor, and battlefield technique. Pick this if you want a straightforward, reliable warrior who can be built in almost any combat style.',
+  monk: 'Monks turn discipline, speed, and inner power into supernatural martial arts. Pick this if you want to move fast, fight unarmed, and do impossible-looking physical feats.',
+  paladin: 'Paladins are oathbound champions who mix martial strength with divine magic. Pick this if you want heavy armor, smites, healing, and a strong heroic code.',
+  ranger: 'Rangers are wilderness warriors who blend tracking, survival, weapons, and nature magic. Pick this if you want to hunt monsters, scout ahead, and thrive outside civilization.',
+  rogue: 'Rogues rely on skill, stealth, speed, and dirty tricks. Pick this if you want to sneak, pick locks, talk your way through trouble, and land devastating precision hits.',
+  sorcerer: 'Sorcerers are born with magic in their blood, soul, or strange origin. Pick this if you want raw spellcasting power that feels instinctive and dramatic.',
+  warlock: 'Warlocks gain magic through a pact with a powerful patron. Pick this if you want spooky bargains, strange powers, and a character with built-in story hooks.',
+  wizard: 'Wizards study magic through books, formulas, and hard-won knowledge. Pick this if you want the biggest toolbox of spells and love solving problems with preparation.'
+}
+
+const SPECIES_LORE_FALLBACKS: Record<string, string> = {
+  aasimar: 'Aasimar are mortals touched by celestial power. They often carry a faint angelic presence, whether that looks like glowing eyes, radiant skin, ghostly wings, or a quiet sense that something holy is watching.',
+  dragonborn: 'Dragonborn carry the blood and shape of dragons. They are proud, powerful, and unmistakable, with scaled bodies and breath weapons tied to their draconic ancestry.',
+  dwarf: 'Dwarves are sturdy folk known for endurance, craft, clan loyalty, and deep roots in stone halls or mountain homes.',
+  elf: 'Elves are graceful, long-lived people touched by magic and old beauty. They often feel connected to ancient forests, starlight, dreams, or lost kingdoms.',
+  gnome: 'Gnomes are small, clever, curious people with a knack for invention, illusion, jokes, and strange little obsessions.',
+  goliath: 'Goliaths are powerful mountain-born people shaped by endurance, competition, and survival in harsh places.',
+  halfling: 'Halflings are small, brave, warm-hearted people who often survive danger through luck, courage, and a refusal to be underestimated.',
+  human: 'Humans are adaptable, ambitious, and wildly varied. They fit almost anywhere and can become almost anything.',
+  orc: 'Orcs are strong, intense people often shaped by passion, endurance, and a drive to survive or prove themselves.',
+  tiefling: 'Tieflings carry infernal or otherworldly bloodlines, often marked by horns, tails, unusual eyes, and a life spent dealing with other people’s assumptions.',
+  genasi: 'Genasi are touched by elemental power. Fire, water, air, or earth shows in their body, personality, and magic.',
+  kobold: 'Kobolds are small draconic people known for clever traps, pack tactics, big personalities, and bigger survival instincts.'
+}
+
+function loreKey(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function fallbackLore(name: any, table: Record<string, string>) {
+  const key = loreKey(name)
+  if (!key) return ''
+
+  if (table[key]) return table[key]
+
+  const found = Object.entries(table).find(([candidate]) =>
+    key.includes(candidate) || candidate.includes(key)
+  )
+
+  return found?.[1] || ''
+}
+
+function fluffTextFromRaw(raw: any) {
+  if (!raw || typeof raw !== 'object') return ''
+
+  const candidates = [
+    raw.fluffMarkdown,
+    raw.fluff?.entries,
+    raw.fluffEntries,
+    raw.entriesFluff,
+    raw.lore,
+    raw.description
+  ]
+
+  for (const candidate of candidates) {
+    const text = entriesToText(candidate)
+    if (text) return text
+  }
+
+  return ''
+}
+
 function shortText(value: any, limit = 640) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (!text) return ''
@@ -241,6 +317,12 @@ function simpleValue(value: any): string {
   }
 
   if (typeof value === 'object') {
+    const truthyKeys = Object.entries(value)
+      .filter(([, item]) => item === true)
+      .map(([key]) => key.toUpperCase())
+
+    if (truthyKeys.length) return truthyKeys.join(', ')
+
     if (Array.isArray(value.from)) return value.from.map(simpleValue).filter(Boolean).join(', ')
     if (value.choose) return simpleValue(value.choose)
     if (value.walk) return `${value.walk} ft.`
@@ -268,28 +350,55 @@ const selectedSpeciesImageUrl = computed(() => imageUrlFor(selectedSpeciesEntity
 const selectedClassImageUrl = computed(() => imageUrlFor(selectedClassEntity.value))
 const selectedBackgroundImageUrl = computed(() => imageUrlFor(selectedBackgroundEntity.value))
 
-const speciesDescription = computed(() => {
+const speciesMechanicsDescription = computed(() => {
   const entity = selectedSpeciesEntity.value
   if (!entity) return ''
 
   const core = blockData(entity, 'species_core')
   const raw = rawJson(entity) || {}
 
-  return clean5eText(core.traits || core.description || '') ||
-    entriesToText(raw.entries) ||
-    entitySummary(entity)
+  return clean5eText(core.traits || core.mechanics || '') ||
+    entriesToText(raw.entries)
+})
+
+const speciesDescription = computed(() => {
+  const entity = selectedSpeciesEntity.value
+  if (!entity) return ''
+
+  const raw = rawJson(entity) || {}
+
+  return fluffTextFromRaw(raw) ||
+    entitySummary(entity) ||
+    fallbackLore(selectedSpeciesName.value, SPECIES_LORE_FALLBACKS)
+})
+
+const classMechanicsDescription = computed(() => {
+  const entity = selectedClassEntity.value
+  if (!entity) return ''
+
+  const core = blockData(entity, 'class_core')
+  const raw = rawJson(entity) || {}
+  const lines = [
+    core.hit_die || simpleValue(raw.hd) ? `Hit Die: ${core.hit_die || simpleValue(raw.hd)}` : '',
+    core.primary_ability || simpleValue(raw.primaryAbility) ? `Primary Ability: ${core.primary_ability || simpleValue(raw.primaryAbility)}` : '',
+    core.saving_throws || simpleValue(raw.proficiency) ? `Saving Throws: ${core.saving_throws || simpleValue(raw.proficiency).toUpperCase()}` : '',
+    core.armor_proficiencies || simpleValue(raw.startingProficiencies?.armor) ? `Armor: ${core.armor_proficiencies || simpleValue(raw.startingProficiencies?.armor)}` : '',
+    core.weapon_proficiencies || simpleValue(raw.startingProficiencies?.weapons) ? `Weapons: ${core.weapon_proficiencies || simpleValue(raw.startingProficiencies?.weapons)}` : '',
+    core.tool_proficiencies || simpleValue(raw.startingProficiencies?.tools) ? `Tools: ${core.tool_proficiencies || simpleValue(raw.startingProficiencies?.tools)}` : ''
+  ].filter(Boolean)
+
+  return lines.join('\n')
 })
 
 const classDescription = computed(() => {
   const entity = selectedClassEntity.value
   if (!entity) return ''
 
-  const core = blockData(entity, 'class_core')
   const raw = rawJson(entity) || {}
 
-  return clean5eText(core.description || core.summary || '') ||
-    entriesToText(raw.entries) ||
-    entitySummary(entity)
+  return fluffTextFromRaw(raw) ||
+    entitySummary(entity) ||
+    fallbackLore(selectedClassName.value, CLASS_LORE_FALLBACKS)
 })
 
 const backgroundDescription = computed(() => {
@@ -556,9 +665,32 @@ async function createCharacter() {
                     </span>
                   </div>
 
-                  <p class="mt-3 max-h-44 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
-                    {{ speciesDescription || 'Pick a species to see traits, speed, size, and imported details.' }}
+                  <p class="mt-3 max-h-44 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#d8ceb8]">
+                    {{ speciesDescription || 'Pick a species to see who they are, what they look like, and why they are cool.' }}
                   </p>
+
+                  <div
+                    v-if="speciesMechanicsDescription"
+                    class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)]"
+                  >
+                    <button
+                      type="button"
+                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                      @click="speciesMechanicsOpen = !speciesMechanicsOpen"
+                    >
+                      <span class="text-xs font-semibold uppercase tracking-[0.22em] text-[#9f9278]">Traits / Mechanics</span>
+                      <UIcon :name="speciesMechanicsOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="h-4 w-4 text-[#9f9278]" />
+                    </button>
+
+                    <div
+                      v-show="speciesMechanicsOpen"
+                      class="border-t border-[rgba(201,164,90,0.14)] px-3 py-3"
+                    >
+                      <p class="max-h-56 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
+                        {{ speciesMechanicsDescription }}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </article>
             </div>
@@ -600,9 +732,32 @@ async function createCharacter() {
                     </span>
                   </div>
 
-                  <p class="mt-3 max-h-44 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
-                    {{ classDescription || 'Pick a class to see hit die, primary ability, saving throws, and imported details.' }}
+                  <p class="mt-3 max-h-44 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#d8ceb8]">
+                    {{ classDescription || 'Pick a class to see what kind of adventurer this character becomes.' }}
                   </p>
+
+                  <div
+                    v-if="classMechanicsDescription"
+                    class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)]"
+                  >
+                    <button
+                      type="button"
+                      class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                      @click="classMechanicsOpen = !classMechanicsOpen"
+                    >
+                      <span class="text-xs font-semibold uppercase tracking-[0.22em] text-[#9f9278]">Class Mechanics</span>
+                      <UIcon :name="classMechanicsOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="h-4 w-4 text-[#9f9278]" />
+                    </button>
+
+                    <div
+                      v-show="classMechanicsOpen"
+                      class="border-t border-[rgba(201,164,90,0.14)] px-3 py-3"
+                    >
+                      <p class="max-h-56 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
+                        {{ classMechanicsDescription }}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </article>
             </div>

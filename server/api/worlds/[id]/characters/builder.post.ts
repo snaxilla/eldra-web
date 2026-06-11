@@ -114,6 +114,32 @@ function parseSpeciesSpeed(blocks: any[]) {
   return 30
 }
 
+function normalizeClassChoices(value: any) {
+  const raw = asObject(value)
+  const out: Record<string, any> = {}
+
+  for (const [key, choice] of Object.entries(raw)) {
+    const safeKey = cleanText(key)
+    const data = asObject(choice)
+
+    if (!safeKey) continue
+
+    const values = Array.isArray(data.values)
+      ? data.values.map(cleanText).filter(Boolean)
+      : []
+
+    if (!values.length) continue
+
+    out[safeKey] = {
+      label: cleanText(data.label || safeKey),
+      values,
+      note: cleanText(data.note || '')
+    }
+  }
+
+  return out
+}
+
 function normalizeSpeciesChoices(value: any) {
   const raw = asObject(value)
   const out: Record<string, any> = {}
@@ -208,6 +234,7 @@ export default defineEventHandler(async (event) => {
 
   const abilityScores = normalizeAbilityScores(body?.abilityScores)
   const speciesChoices = normalizeSpeciesChoices(body?.speciesChoices)
+  const classChoices = normalizeClassChoices(body?.classChoices)
 
   const [
     className,
@@ -276,7 +303,8 @@ export default defineEventHandler(async (event) => {
       hitDice: `d${hitDieFaces}`
     },
     choices: {
-      builderSpeciesChoices: speciesChoices
+      builderSpeciesChoices: speciesChoices,
+      builderClassChoices: classChoices
     }
   })
 
@@ -284,14 +312,16 @@ export default defineEventHandler(async (event) => {
   const savedSheet = updatedSheetPayload?.sheet || updatedSheetPayload
   const existingChoices = asObject(savedSheet?.choices)
   const hasSpeciesChoices = Object.keys(speciesChoices).length > 0
+  const hasClassChoices = Object.keys(classChoices).length > 0
 
-  if (savedSheet?.id && hasSpeciesChoices) {
+  if (savedSheet?.id && (hasSpeciesChoices || hasClassChoices)) {
     await dxFetch(`/items/character_sheets/${savedSheet.id}`, {
       method: 'PATCH',
       body: JSON.stringify({
         choices: {
           ...existingChoices,
-          builderSpeciesChoices: speciesChoices
+          builderSpeciesChoices: speciesChoices,
+          builderClassChoices: classChoices
         }
       })
     }).catch(() => null)

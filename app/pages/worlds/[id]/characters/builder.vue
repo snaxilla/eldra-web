@@ -15,6 +15,7 @@ const advancedScores = ref(false)
 const speciesMechanicsOpen = ref(false)
 const classMechanicsOpen = ref(false)
 const speciesChoiceSelections = reactive<Record<string, string>>({})
+const classChoiceSelections = reactive<Record<string, string[]>>({})
 
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
 const ABILITIES = [
@@ -831,6 +832,242 @@ function simpleValue(value: any): string {
   return ''
 }
 
+function titleCaseWords(value: any) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function builderDisplayValue(value: any): string {
+  if (value === null || value === undefined || value === '') return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return titleCaseWords(clean5eText(value))
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(builderDisplayValue).filter(Boolean).join(', ')
+  }
+
+  if (typeof value === 'object') {
+    const truthyKeys = Object.entries(value)
+      .filter(([, item]) => item === true)
+      .map(([key]) => key.toUpperCase())
+
+    if (truthyKeys.length) return truthyKeys.join(', ')
+
+    if (Array.isArray(value.from)) return value.from.map(builderDisplayValue).filter(Boolean).join(', ')
+    if (value.choose) return builderDisplayValue(value.choose)
+    if (value.walk) return `${value.walk} ft.`
+    if (value.faces) return `d${value.faces}`
+    if (value.name) return titleCaseWords(value.name)
+
+    return Object.values(value).map(builderDisplayValue).filter(Boolean).join(', ')
+  }
+
+  return ''
+}
+
+function classChoiceOptionList(value: any) {
+  const source = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object'
+      ? Object.entries(value)
+        .filter(([, item]) => item === true || item !== false)
+        .map(([key, item]) => item === true ? key : item)
+      : []
+
+  const seen = new Set<string>()
+
+  return source
+    .map((item: any) => {
+      const raw = typeof item === 'string'
+        ? item
+        : item?.name || item?.value || item?.skill || item?.tool || builderDisplayValue(item)
+
+      const label = titleCaseWords(raw)
+      const value = String(raw || '').trim()
+
+      if (!value || seen.has(value.toLowerCase())) return null
+      seen.add(value.toLowerCase())
+
+      return {
+        value,
+        label
+      }
+    })
+    .filter(Boolean)
+}
+
+function classChoiceGroupFromChoose(key: string, title: string, note: string, choose: any, index = 0) {
+  const from = choose?.from || choose?.options || choose?.items || []
+  const options = classChoiceOptionList(from)
+
+  if (!options.length) return null
+
+  const count = Math.max(1, Number(choose?.count || choose?.choose || choose?.amount || 1))
+
+  return {
+    key: index ? `${key}-${index}` : key,
+    title,
+    note,
+    count,
+    options
+  }
+}
+
+function classChoiceGroupsFromValue(key: string, title: string, note: string, value: any) {
+  const groups: any[] = []
+
+  if (!value) return groups
+
+  if (value?.choose) {
+    const group = classChoiceGroupFromChoose(key, title, note, value.choose)
+    if (group) groups.push(group)
+    return groups
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item: any, index: number) => {
+      if (item?.choose) {
+        const group = classChoiceGroupFromChoose(key, title, note, item.choose, index)
+        if (group) groups.push(group)
+      }
+    })
+  }
+
+  return groups
+}
+
+function classChoiceGroupsFromRaw(raw: any) {
+  const profs = raw?.startingProficiencies || {}
+  const groups: any[] = []
+
+  groups.push(...classChoiceGroupsFromValue(
+    'class-skills',
+    'Class Skills',
+    'Choose the trained skills this class starts with.',
+    profs.skills
+  ))
+
+  groups.push(...classChoiceGroupsFromValue(
+    'class-tools',
+    'Class Tools',
+    'Choose any tool proficiencies granted by this class.',
+    profs.tools
+  ))
+
+  groups.push(...classChoiceGroupsFromValue(
+    'class-weapons',
+    'Class Weapons',
+    'Choose any weapon proficiency option granted by this class.',
+    profs.weapons
+  ))
+
+  return groups
+}
+
+const classChoiceGroups = computed(() => {
+  const raw = rawJson(selectedClassEntity.value) || {}
+  return classChoiceGroupsFromRaw(raw)
+})
+
+function ensureClassChoiceDraft(group: any) {
+  if (!Array.isArray(classChoiceSelections[group.key])) {
+    classChoiceSelections[group.key] = Array.from({ length: group.count }, () => '')
+  }
+
+  while (classChoiceSelections[group.key].length < group.count) {
+    classChoiceSelections[group.key].push('')
+  }
+
+  if (classChoiceSelections[group.key].length > group.count) {
+    classChoiceSelections[group.key].splice(group.count)
+  }
+
+  return classChoiceSelections[group.key]
+}
+
+function classChoiceSlots(group: any) {
+  ensureClassChoiceDraft(group)
+  return Array.from({ length: Number(group.count || 1) }, (_, index) => index)
+}
+
+function classChoiceSelected(group: any, slot: number) {
+  ensureClassChoiceDraft(group)
+  return classChoiceSelections[group.key][slot] || ''
+}
+
+function selectedClassChoiceOption(group: any, slot: number) {
+  const selected = classChoiceSelected(group, slot)
+  if (!selected) return null
+
+  return group.options.find((option: any) =>
+    String(option.value) === String(selected)
+  ) || null
+}
+
+function isClassChoiceOptionDisabled(group: any, slot: number, value: any) {
+  ensureClassChoiceDraft(group)
+
+  return classChoiceSelections[group.key].some((selected, index) =>
+    index !== slot && String(selected || '') === String(value || '')
+  )
+}
+
+const classChoicesComplete = computed(() =>
+  classChoiceGroups.value.every((group: any) =>
+    ensureClassChoiceDraft(group).filter(Boolean).length >= Number(group.count || 1)
+  )
+)
+
+const classChoicePayload = computed(() => {
+  const payload: Record<string, any> = {}
+
+  for (const group of classChoiceGroups.value) {
+    const values = ensureClassChoiceDraft(group).filter(Boolean)
+
+    if (!values.length) continue
+
+    payload[group.key] = {
+      label: group.title,
+      values,
+      note: group.note || ''
+    }
+  }
+
+  return payload
+})
+
+watch(
+  classChoiceGroups,
+  (groups) => {
+    const allowed = new Set(groups.map((group: any) => group.key))
+
+    for (const key of Object.keys(classChoiceSelections)) {
+      if (!allowed.has(key)) delete classChoiceSelections[key]
+    }
+
+    for (const group of groups) {
+      ensureClassChoiceDraft(group)
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+watch(
+  () => builderForm.classEntityId,
+  () => {
+    for (const key of Object.keys(classChoiceSelections)) {
+      delete classChoiceSelections[key]
+    }
+
+    classMechanicsOpen.value = false
+  }
+)
+
 function entitySummary(entity: any) {
   return plainText(entity?.summary || '')
 }
@@ -890,11 +1127,11 @@ const classMechanicsDescription = computed(() => {
   const raw = rawJson(entity) || {}
   const lines = [
     core.hit_die || simpleValue(raw.hd) ? `Hit Die: ${core.hit_die || simpleValue(raw.hd)}` : '',
-    core.primary_ability || simpleValue(raw.primaryAbility) ? `Primary Ability: ${core.primary_ability || simpleValue(raw.primaryAbility)}` : '',
-    core.saving_throws || simpleValue(raw.proficiency) ? `Saving Throws: ${core.saving_throws || simpleValue(raw.proficiency).toUpperCase()}` : '',
-    core.armor_proficiencies || simpleValue(raw.startingProficiencies?.armor) ? `Armor: ${core.armor_proficiencies || simpleValue(raw.startingProficiencies?.armor)}` : '',
-    core.weapon_proficiencies || simpleValue(raw.startingProficiencies?.weapons) ? `Weapons: ${core.weapon_proficiencies || simpleValue(raw.startingProficiencies?.weapons)}` : '',
-    core.tool_proficiencies || simpleValue(raw.startingProficiencies?.tools) ? `Tools: ${core.tool_proficiencies || simpleValue(raw.startingProficiencies?.tools)}` : ''
+    core.primary_ability || builderDisplayValue(raw.primaryAbility) ? `Primary Ability: ${core.primary_ability || builderDisplayValue(raw.primaryAbility)}` : '',
+    core.saving_throws || builderDisplayValue(raw.proficiency) ? `Saving Throws: ${core.saving_throws || builderDisplayValue(raw.proficiency).toUpperCase()}` : '',
+    core.armor_proficiencies || builderDisplayValue(raw.startingProficiencies?.armor) ? `Armor: ${core.armor_proficiencies || builderDisplayValue(raw.startingProficiencies?.armor)}` : '',
+    core.weapon_proficiencies || builderDisplayValue(raw.startingProficiencies?.weapons) ? `Weapons: ${core.weapon_proficiencies || builderDisplayValue(raw.startingProficiencies?.weapons)}` : '',
+    core.tool_proficiencies || builderDisplayValue(raw.startingProficiencies?.tools) ? `Tools: ${core.tool_proficiencies || builderDisplayValue(raw.startingProficiencies?.tools)}` : ''
   ].filter(Boolean)
 
   return mechanicsText(lines.join('\n'))
@@ -947,8 +1184,8 @@ const classInfoLines = computed(() => {
 
   return [
     core.hit_die || simpleValue(raw.hd) ? `Hit Die: ${core.hit_die || simpleValue(raw.hd)}` : '',
-    core.primary_ability || simpleValue(raw.primaryAbility) ? `Primary: ${core.primary_ability || simpleValue(raw.primaryAbility)}` : '',
-    core.saving_throws || simpleValue(raw.proficiency) ? `Saves: ${core.saving_throws || simpleValue(raw.proficiency).toUpperCase()}` : '',
+    core.primary_ability || builderDisplayValue(raw.primaryAbility) ? `Primary: ${core.primary_ability || builderDisplayValue(raw.primaryAbility)}` : '',
+    core.saving_throws || builderDisplayValue(raw.proficiency) ? `Saves: ${core.saving_throws || builderDisplayValue(raw.proficiency).toUpperCase()}` : '',
     sourceText(entity)
   ].filter(Boolean)
 })
@@ -1031,6 +1268,16 @@ const missingRequirements = computed(() => {
   if (!builderForm.speciesEntityId) missing.push('Species')
   if (!builderForm.classEntityId) missing.push('Class')
 
+  if (builderForm.classEntityId && classChoiceGroups.value.length && !classChoicesComplete.value) {
+    for (const group of classChoiceGroups.value) {
+      const selected = ensureClassChoiceDraft(group).filter(Boolean)
+      if (selected.length < Number(group.count || 1)) {
+        missing.push(group.title)
+      }
+    }
+  }
+
+
   if (builderForm.speciesEntityId && speciesChoiceGroups.value.length && !speciesChoicesComplete.value) {
     for (const group of speciesChoiceGroups.value) {
       if (!speciesChoiceSelections[group.key]) {
@@ -1076,7 +1323,8 @@ async function createCharacter() {
         speciesEntityId: builderForm.speciesEntityId,
         backgroundEntityId: builderForm.backgroundEntityId || null,
         abilityScores: { ...builderForm.abilityScores },
-        speciesChoices: speciesChoicePayload.value
+        speciesChoices: speciesChoicePayload.value,
+        classChoices: classChoicePayload.value
       }
     })
 
@@ -1359,7 +1607,62 @@ async function createCharacter() {
             </div>
           </div>
 
-          <label class="block">
+
+
+          <!-- Class Builder Choices -->
+          <div
+            v-if="classChoiceGroups.length"
+            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.42)] p-3"
+          >
+            <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Required Class Choices</div>
+
+            <div class="mt-3 grid gap-3">
+              <div
+                v-for="group in classChoiceGroups"
+                :key="group.key"
+                class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <div class="font-semibold text-white">{{ group.title }}</div>
+                    <div class="mt-1 text-xs text-[#9f9278]">
+                      {{ group.note }} Choose {{ group.count }}.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-3 grid gap-2">
+                  <label
+                    v-for="slot in classChoiceSlots(group)"
+                    :key="`${group.key}-${slot}`"
+                    class="block"
+                  >
+                    <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">
+                      Pick {{ slot + 1 }}
+                    </span>
+
+                    <select
+                      v-model="classChoiceSelections[group.key][slot]"
+                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                    >
+                      <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
+                      <option
+                        v-for="option in group.options"
+                        :key="`${group.key}-${option.value}`"
+                        :value="option.value"
+                        :disabled="isClassChoiceOptionDisabled(group, slot, option.value)"
+                        class="bg-[#090909] text-[#f5e7bd] disabled:text-[#756a57]"
+                      >
+                        {{ option.label }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+<label class="block">
             <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Character Name</span>
             <input
               v-model="builderForm.name"
@@ -1535,7 +1838,27 @@ async function createCharacter() {
 
 
 
-          <!-- Review Species Choices -->
+
+
+          <!-- Review Class Choices -->
+          <div
+            v-if="Object.keys(classChoicePayload).length"
+            class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+          >
+            <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Class Choices</div>
+            <div class="mt-2 grid gap-2">
+              <div
+                v-for="choice in Object.values(classChoicePayload)"
+                :key="choice.label"
+                class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(20,17,12,0.42)] p-2 text-sm"
+              >
+                <span class="text-[#9f9278]">{{ choice.label }}:</span>
+                <span class="font-semibold text-white"> {{ choice.values.join(', ') }}</span>
+              </div>
+            </div>
+          </div>
+
+<!-- Review Species Choices -->
           <div
             v-if="Object.keys(speciesChoicePayload).length"
             class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"

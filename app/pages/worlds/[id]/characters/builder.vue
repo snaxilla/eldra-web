@@ -204,10 +204,77 @@ function clean5eText(value: any) {
     .replace(/\{@damage\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
     .replace(/\{@hit\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
     .replace(/\{@dc\s+([^|}]+)(?:\|[^}]*)?\}/g, 'DC $1')
-    .replace(/\{@(?:i|b)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@(?:i|b|italic|bold)\s+([^}]+)\}/g, '$1')
     .replace(/\{@[a-zA-Z]+\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
-    .replace(/\s+/g, ' ')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim()
+}
+
+function tableToText(value: any) {
+  const caption = clean5eText(value?.caption || value?.name || '')
+  const labels = Array.isArray(value?.colLabels)
+    ? value.colLabels.map(clean5eText).filter(Boolean)
+    : []
+
+  const rows = Array.isArray(value?.rows) ? value.rows : []
+
+  const renderedRows = rows
+    .map((row: any) => {
+      const cells = Array.isArray(row)
+        ? row
+        : Array.isArray(row?.row)
+          ? row.row
+          : Array.isArray(row?.items)
+            ? row.items
+            : []
+
+      if (!cells.length) return ''
+
+      if (labels.length === cells.length) {
+        return cells
+          .map((cell: any, index: number) => `${labels[index]}: ${entriesToText(cell)}`)
+          .filter(Boolean)
+          .join(' · ')
+      }
+
+      return cells.map(entriesToText).filter(Boolean).join(' · ')
+    })
+    .filter(Boolean)
+
+  return [
+    caption,
+    ...renderedRows
+  ].filter(Boolean).join('\n')
+}
+
+function listToText(value: any) {
+  const items = Array.isArray(value?.items)
+    ? value.items
+    : Array.isArray(value)
+      ? value
+      : []
+
+  return items
+    .map((item: any) => {
+      const text = entriesToText(item)
+      return text ? `- ${text}` : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function namedEntryToText(value: any) {
+  const name = clean5eText(value?.name || '')
+  const body = entriesToText(value?.entries ?? value?.entry ?? value?.items)
+
+  if (name && body) return `${name}\n${body}`
+  return name || body
 }
 
 function entriesToText(value: any): string {
@@ -226,14 +293,23 @@ function entriesToText(value: any): string {
   }
 
   if (typeof value === 'object') {
+    const type = String(value.type || '').toLowerCase()
+
+    if (type === 'table') return tableToText(value)
+    if (type === 'list') return listToText(value)
+    if (type === 'item') return namedEntryToText(value)
+    if (type === 'entries' || type === 'section' || type === 'inset' || type === 'variant') return namedEntryToText(value)
+
     const parts: string[] = []
 
     if (value.name) {
-      parts.push(`## ${clean5eText(value.name)}`)
+      parts.push(clean5eText(value.name))
     }
 
     if (typeof value.entry === 'string') {
       parts.push(clean5eText(value.entry))
+    } else if (value.entry) {
+      parts.push(entriesToText(value.entry))
     }
 
     if (Array.isArray(value.entries)) {
@@ -241,12 +317,11 @@ function entriesToText(value: any): string {
     }
 
     if (Array.isArray(value.items)) {
-      parts.push(
-        value.items
-          .map((item: any) => `- ${entriesToText(item)}`)
-          .filter(Boolean)
-          .join('\n')
-      )
+      parts.push(listToText(value))
+    }
+
+    if (value.rows || value.colLabels) {
+      parts.push(tableToText(value))
     }
 
     return parts.filter(Boolean).join('\n\n').trim()
@@ -335,6 +410,15 @@ function fluffTextFromRaw(raw: any) {
   return ''
 }
 
+function mechanicsText(value: any) {
+  return clean5eText(entriesToText(value) || value)
+    .replace(/^\s*["{[\]}:,]+/gm, '')
+    .replace(/\bcolStyles\b[^\n]*/gi, '')
+    .replace(/\brows\b\s*[:=]*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function shortText(value: any, limit = 640) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (!text) return ''
@@ -411,8 +495,8 @@ const speciesMechanicsDescription = computed(() => {
   const core = blockData(entity, 'species_core')
   const raw = rawJson(entity) || {}
 
-  return clean5eText(core.traits || core.mechanics || '') ||
-    entriesToText(raw.entries)
+  return mechanicsText(raw.entries) ||
+    mechanicsText(core.traits || core.mechanics || '')
 })
 
 const speciesDescription = computed(() => {
@@ -441,7 +525,7 @@ const classMechanicsDescription = computed(() => {
     core.tool_proficiencies || simpleValue(raw.startingProficiencies?.tools) ? `Tools: ${core.tool_proficiencies || simpleValue(raw.startingProficiencies?.tools)}` : ''
   ].filter(Boolean)
 
-  return lines.join('\n')
+  return mechanicsText(lines.join('\n'))
 })
 
 const classDescription = computed(() => {

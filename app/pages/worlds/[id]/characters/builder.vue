@@ -90,6 +90,32 @@ const { data: selectedBackgroundDetail } = await useAsyncData(
   }
 )
 
+function normalizeFetchedEntityDetail(value: any, fallback: any = null) {
+  const detail = value || null
+
+  if (!detail) return fallback || null
+
+  const entity = detail?.entity && typeof detail.entity === 'object'
+    ? detail.entity
+    : detail
+
+  const blocks = Array.isArray(detail?.blocks)
+    ? detail.blocks
+    : Array.isArray(entity?.blocks)
+      ? entity.blocks
+      : Array.isArray(fallback?.blocks)
+        ? fallback.blocks
+        : []
+
+  return {
+    ...fallback,
+    ...entity,
+    blocks,
+    image: entity?.image ?? detail?.image ?? fallback?.image ?? null,
+    imageUrl: entity?.imageUrl ?? detail?.imageUrl ?? entity?.image_url ?? detail?.image_url ?? fallback?.imageUrl ?? fallback?.image_url ?? ''
+  }
+}
+
 function normalizeEntityType(value: any) {
   return String(value || '').trim().toLowerCase()
 }
@@ -128,16 +154,31 @@ const selectedSpeciesName = computed(() => selectedSpeciesDetail.value?.title ||
 const selectedClassName = computed(() => selectedClassDetail.value?.title || selectedClassOption.value?.title || '')
 const selectedBackgroundName = computed(() => selectedBackgroundDetail.value?.title || selectedBackgroundOption.value?.title || '')
 
-const selectedSpeciesEntity = computed(() => selectedSpeciesDetail.value || selectedSpeciesOption.value?.entity || null)
-const selectedClassEntity = computed(() => selectedClassDetail.value || selectedClassOption.value?.entity || null)
-const selectedBackgroundEntity = computed(() => selectedBackgroundDetail.value || selectedBackgroundOption.value?.entity || null)
+const selectedSpeciesEntity = computed(() => normalizeFetchedEntityDetail(selectedSpeciesDetail.value, selectedSpeciesOption.value?.entity || null))
+const selectedClassEntity = computed(() => normalizeFetchedEntityDetail(selectedClassDetail.value, selectedClassOption.value?.entity || null))
+const selectedBackgroundEntity = computed(() => normalizeFetchedEntityDetail(selectedBackgroundDetail.value, selectedBackgroundOption.value?.entity || null))
 
 function imageUrlFor(entity: any) {
-  if (!entity) return ''
-  if (entity?.imageUrl) return String(entity.imageUrl)
-  if (entity?.image_url) return String(entity.image_url)
-  if (entity?.image?.id) return `/api/assets/${entity.image.id}`
-  if (typeof entity?.image === 'string' || typeof entity?.image === 'number') return `/api/assets/${entity.image}`
+  const source = entity?.entity && typeof entity.entity === 'object'
+    ? {
+        ...entity.entity,
+        blocks: entity.blocks || entity.entity.blocks,
+        image: entity.entity.image ?? entity.image,
+        imageUrl: entity.entity.imageUrl ?? entity.imageUrl ?? entity.entity.image_url ?? entity.image_url
+      }
+    : entity
+
+  if (!source) return ''
+
+  const directUrl = source?.imageUrl || source?.image_url
+  if (directUrl) return String(directUrl)
+
+  const image = source?.image
+
+  if (image?.id) return `/api/assets/${image.id}`
+  if (image?.filename_disk) return `/api/assets/${image.id || image.filename_disk}`
+  if (typeof image === 'string' || typeof image === 'number') return `/api/assets/${image}`
+
   return ''
 }
 
@@ -268,6 +309,12 @@ function fallbackLore(name: any, table: Record<string, string>) {
   return found?.[1] || ''
 }
 
+function classIntroTextFromRaw(raw: any) {
+  if (!raw || typeof raw !== 'object') return ''
+
+  return entriesToText(raw.entries)
+}
+
 function fluffTextFromRaw(raw: any) {
   if (!raw || typeof raw !== 'object') return ''
 
@@ -328,7 +375,14 @@ function simpleValue(value: any): string {
     if (value.walk) return `${value.walk} ft.`
     if (value.faces) return `d${value.faces}`
 
-    return Object.values(value).map(simpleValue).filter(Boolean).join(', ')
+    return Object.entries(value)
+      .map(([key, item]) => {
+        const rendered = simpleValue(item)
+        if (!rendered) return ''
+        return `${key}: ${rendered}`
+      })
+      .filter(Boolean)
+      .join(', ')
   }
 
   return ''
@@ -397,6 +451,7 @@ const classDescription = computed(() => {
   const raw = rawJson(entity) || {}
 
   return fluffTextFromRaw(raw) ||
+    classIntroTextFromRaw(raw) ||
     entitySummary(entity) ||
     fallbackLore(selectedClassName.value, CLASS_LORE_FALLBACKS)
 })

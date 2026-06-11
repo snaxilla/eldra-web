@@ -14,6 +14,7 @@ const createError = ref('')
 const advancedScores = ref(false)
 const speciesMechanicsOpen = ref(false)
 const classMechanicsOpen = ref(false)
+const speciesChoiceSelections = reactive<Record<string, string>>({})
 
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
 const ABILITIES = [
@@ -544,6 +545,239 @@ function mechanicsCardsFromEntries(value: any, fallbackTitle = 'Details') {
   return cards
 }
 
+function builderChoiceKey(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function tableCells(row: any) {
+  if (Array.isArray(row)) return row
+  if (Array.isArray(row?.row)) return row.row
+  if (Array.isArray(row?.items)) return row.items
+  return []
+}
+
+function choiceGroupLooksRelevant(title: string, labels: string[]) {
+  const haystack = [title, ...labels].join(' ').toLowerCase()
+
+  return [
+    'lineage',
+    'ancestry',
+    'ancestor',
+    'heritage',
+    'legacy',
+    'kind',
+    'type',
+    'dragon'
+  ].some((needle) => haystack.includes(needle))
+}
+
+function speciesChoiceGroupsFromRaw(raw: any) {
+  const groups: Array<{
+    key: string
+    title: string
+    note: string
+    options: Array<{ value: string; label: string; detail: string; meta: Record<string, string> }>
+  }> = []
+
+  function visit(value: any) {
+    if (!value) return
+
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item)
+      return
+    }
+
+    if (typeof value !== 'object') return
+
+    const type = String(value.type || '').toLowerCase()
+
+    if (type === 'table' || value.rows || value.colLabels) {
+      const title = clean5eText(value.caption || value.name || '')
+      const labels = Array.isArray(value.colLabels)
+        ? value.colLabels.map((label: any) => clean5eText(label)).filter(Boolean)
+        : []
+
+      if (choiceGroupLooksRelevant(title, labels)) {
+        const rows = Array.isArray(value.rows) ? value.rows : []
+        const options = rows
+          .map((row: any) => {
+            const cells = tableCells(row)
+            if (!cells.length) return null
+
+            const label = clean5eText(entriesToText(cells[0]))
+            if (!label) return null
+
+            const meta: Record<string, string> = {}
+            const details: string[] = []
+
+            for (let index = 1; index < cells.length; index += 1) {
+              const cellText = clean5eText(entriesToText(cells[index]))
+              if (!cellText) continue
+
+              const labelText = labels[index] || `Detail ${index}`
+              meta[labelText] = cellText
+              details.push(`${labelText}: ${cellText}`)
+            }
+
+            return {
+              value: label,
+              label,
+              detail: details.join('\n'),
+              meta
+            }
+          })
+          .filter(Boolean) as Array<{ value: string; label: string; detail: string; meta: Record<string, string> }>
+
+        if (options.length) {
+          const cleanTitle =
+            title ||
+            labels[0] ||
+            'Species Choice'
+
+          groups.push({
+            key: builderChoiceKey(cleanTitle),
+            title: cleanTitle,
+            note: labels.length ? labels.join(' · ') : '',
+            options
+          })
+        }
+      }
+    }
+
+    if (value.entries) visit(value.entries)
+    if (value.items) visit(value.items)
+  }
+
+  visit(raw?.entries)
+
+  return groups
+}
+
+function fallbackSpeciesChoiceGroups(name: any) {
+  const key = loreKey(name)
+
+  if (key.includes('elf')) {
+    return [{
+      key: 'elven-lineage',
+      title: 'Elven Lineage',
+      note: 'Choose the lineage that shapes your magic and traits.',
+      options: [
+        {
+          value: 'Drow',
+          label: 'Drow',
+          detail: 'Darkvision increases to 120 feet. You know Dancing Lights, then gain Faerie Fire and Darkness at higher levels.',
+          meta: {}
+        },
+        {
+          value: 'High Elf',
+          label: 'High Elf',
+          detail: 'You know Prestidigitation and can later replace that cantrip from the Wizard spell list. You gain Detect Magic and Misty Step at higher levels.',
+          meta: {}
+        },
+        {
+          value: 'Wood Elf',
+          label: 'Wood Elf',
+          detail: 'Your speed increases to 35 feet. You know Druidcraft, then gain Longstrider and Pass without Trace at higher levels.',
+          meta: {}
+        }
+      ]
+    }]
+  }
+
+  if (key.includes('dragonborn')) {
+    const dragonOptions = [
+      ['Black', 'Acid'],
+      ['Blue', 'Lightning'],
+      ['Brass', 'Fire'],
+      ['Bronze', 'Lightning'],
+      ['Copper', 'Acid'],
+      ['Gold', 'Fire'],
+      ['Green', 'Poison'],
+      ['Red', 'Fire'],
+      ['Silver', 'Cold'],
+      ['White', 'Cold']
+    ]
+
+    return [{
+      key: 'draconic-ancestry',
+      title: 'Draconic Ancestry',
+      note: 'Choose the dragon type that determines your breath weapon and resistance.',
+      options: dragonOptions.map(([dragon, damage]) => ({
+        value: dragon,
+        label: dragon,
+        detail: `Damage Type: ${damage}`,
+        meta: {
+          'Damage Type': damage
+        }
+      }))
+    }]
+  }
+
+  return []
+}
+
+const speciesChoiceGroups = computed(() => {
+  const raw = rawJson(selectedSpeciesEntity.value) || {}
+  const parsed = speciesChoiceGroupsFromRaw(raw)
+
+  return parsed.length
+    ? parsed
+    : fallbackSpeciesChoiceGroups(selectedSpeciesName.value)
+})
+
+function speciesChoiceSelected(group: any) {
+  return speciesChoiceSelections[group.key] || ''
+}
+
+function selectedSpeciesChoiceOption(group: any) {
+  const selected = speciesChoiceSelected(group)
+  if (!selected) return null
+
+  return group.options.find((option: any) =>
+    String(option.value) === String(selected)
+  ) || null
+}
+
+const speciesChoicesComplete = computed(() =>
+  speciesChoiceGroups.value.every((group: any) => Boolean(speciesChoiceSelections[group.key]))
+)
+
+const speciesChoicePayload = computed(() => {
+  const payload: Record<string, any> = {}
+
+  for (const group of speciesChoiceGroups.value) {
+    const selected = speciesChoiceSelected(group)
+    if (!selected) continue
+
+    const option = selectedSpeciesChoiceOption(group)
+
+    payload[group.key] = {
+      label: group.title,
+      value: selected,
+      detail: option?.detail || '',
+      meta: option?.meta || {}
+    }
+  }
+
+  return payload
+})
+
+watch(
+  () => builderForm.speciesEntityId,
+  () => {
+    for (const key of Object.keys(speciesChoiceSelections)) {
+      delete speciesChoiceSelections[key]
+    }
+
+    speciesMechanicsOpen.value = false
+  }
+)
+
 function shortText(value: any, limit = 640) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (!text) return ''
@@ -797,6 +1031,14 @@ const missingRequirements = computed(() => {
   if (!builderForm.speciesEntityId) missing.push('Species')
   if (!builderForm.classEntityId) missing.push('Class')
 
+  if (builderForm.speciesEntityId && speciesChoiceGroups.value.length && !speciesChoicesComplete.value) {
+    for (const group of speciesChoiceGroups.value) {
+      if (!speciesChoiceSelections[group.key]) {
+        missing.push(group.title)
+      }
+    }
+  }
+
   return missing
 })
 
@@ -833,7 +1075,8 @@ async function createCharacter() {
         classEntityId: builderForm.classEntityId,
         speciesEntityId: builderForm.speciesEntityId,
         backgroundEntityId: builderForm.backgroundEntityId || null,
-        abilityScores: { ...builderForm.abilityScores }
+        abilityScores: { ...builderForm.abilityScores },
+        speciesChoices: speciesChoicePayload.value
       }
     })
 
@@ -946,7 +1189,54 @@ async function createCharacter() {
                     {{ speciesDescription || 'Pick a species to see who they are, what they look like, and why they are cool.' }}
                   </p>
 
+
+
+                  <!-- Species Builder Choices -->
                   <div
+                    v-if="speciesChoiceGroups.length"
+                    class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.42)] p-3"
+                  >
+                    <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Required Species Choices</div>
+
+                    <div class="mt-3 grid gap-3">
+                      <label
+                        v-for="group in speciesChoiceGroups"
+                        :key="group.key"
+                        class="block"
+                      >
+                        <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">{{ group.title }}</span>
+                        <select
+                          v-model="speciesChoiceSelections[group.key]"
+                          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                        >
+                          <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose {{ group.title }}...</option>
+                          <option
+                            v-for="option in group.options"
+                            :key="`${group.key}-${option.value}`"
+                            :value="option.value"
+                            class="bg-[#090909] text-[#f5e7bd]"
+                          >
+                            {{ option.label }}
+                          </option>
+                        </select>
+
+                        <div
+                          v-if="selectedSpeciesChoiceOption(group)"
+                          class="mt-2 rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3 text-xs leading-5 text-[#d8ceb8]"
+                        >
+                          <div class="font-semibold text-white">{{ selectedSpeciesChoiceOption(group)?.label }}</div>
+                          <p
+                            v-if="selectedSpeciesChoiceOption(group)?.detail"
+                            class="mt-1 whitespace-pre-line text-[#9f9278]"
+                          >
+                            {{ selectedSpeciesChoiceOption(group)?.detail }}
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+<div
                     v-if="speciesMechanicsDescription || speciesMechanicCards.length"
                     class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)]"
                   >
@@ -1243,7 +1533,27 @@ async function createCharacter() {
             </div>
           </div>
 
-          <div class="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
+
+
+          <!-- Review Species Choices -->
+          <div
+            v-if="Object.keys(speciesChoicePayload).length"
+            class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+          >
+            <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Species Choices</div>
+            <div class="mt-2 grid gap-2">
+              <div
+                v-for="choice in Object.values(speciesChoicePayload)"
+                :key="`${choice.label}-${choice.value}`"
+                class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(20,17,12,0.42)] p-2 text-sm"
+              >
+                <span class="text-[#9f9278]">{{ choice.label }}:</span>
+                <span class="font-semibold text-white"> {{ choice.value }}</span>
+              </div>
+            </div>
+          </div>
+
+<div class="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
             <div
               v-for="ability in ABILITIES"
               :key="`review-${ability.key}`"

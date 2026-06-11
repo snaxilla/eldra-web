@@ -114,6 +114,30 @@ function parseSpeciesSpeed(blocks: any[]) {
   return 30
 }
 
+function normalizeSpeciesChoices(value: any) {
+  const raw = asObject(value)
+  const out: Record<string, any> = {}
+
+  for (const [key, choice] of Object.entries(raw)) {
+    const safeKey = cleanText(key)
+    const data = asObject(choice)
+
+    if (!safeKey) continue
+
+    const selectedValue = cleanText(data.value)
+    if (!selectedValue) continue
+
+    out[safeKey] = {
+      label: cleanText(data.label || safeKey),
+      value: selectedValue,
+      detail: cleanText(data.detail || ''),
+      meta: asObject(data.meta)
+    }
+  }
+
+  return out
+}
+
 function normalizeAbilityScores(value: any) {
   const raw = asObject(value)
   const fallback = {
@@ -183,6 +207,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const abilityScores = normalizeAbilityScores(body?.abilityScores)
+  const speciesChoices = normalizeSpeciesChoices(body?.speciesChoices)
 
   const [
     className,
@@ -249,8 +274,30 @@ export default defineEventHandler(async (event) => {
       initiative: '',
       speed: String(speed),
       hitDice: `d${hitDieFaces}`
+    },
+    choices: {
+      builderSpeciesChoices: speciesChoices
     }
   })
+
+
+  const savedSheet = updatedSheetPayload?.sheet || updatedSheetPayload
+  const existingChoices = asObject(savedSheet?.choices)
+  const hasSpeciesChoices = Object.keys(speciesChoices).length > 0
+
+  if (savedSheet?.id && hasSpeciesChoices) {
+    await dxFetch(`/items/character_sheets/${savedSheet.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        choices: {
+          ...existingChoices,
+          builderSpeciesChoices: speciesChoices
+        }
+      })
+    }).catch(() => null)
+  }
+
+  const builderSpeciesChoicesDirectPatch = true
 
   return {
     ok: true,

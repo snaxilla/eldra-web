@@ -419,6 +419,131 @@ function mechanicsText(value: any) {
     .trim()
 }
 
+function mechanicsCardsFromText(value: any, fallbackTitle = 'Details') {
+  const text = mechanicsText(value)
+
+  if (!text) return []
+
+  const markdownHeadingMatches = Array.from(text.matchAll(/^#{1,6}\s+(.+)$/gm))
+
+  if (!markdownHeadingMatches.length) {
+    return [{
+      title: fallbackTitle,
+      body: text
+    }]
+  }
+
+  const cards: Array<{ title: string; body: string }> = []
+
+  for (let index = 0; index < markdownHeadingMatches.length; index += 1) {
+    const match = markdownHeadingMatches[index]
+    const next = markdownHeadingMatches[index + 1]
+    const title = clean5eText(match[1])
+    const start = Number(match.index || 0) + match[0].length
+    const end = next?.index ?? text.length
+    const body = clean5eText(text.slice(start, end))
+
+    if (title || body) {
+      cards.push({
+        title: title || fallbackTitle,
+        body
+      })
+    }
+  }
+
+  return cards
+}
+
+function mechanicsCardBody(value: any) {
+  if (value === null || value === undefined) return ''
+
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const type = String(value.type || '').toLowerCase()
+
+    if (type === 'table') return tableToText(value)
+
+    if (value.entries !== undefined) return entriesToText(value.entries)
+    if (value.entry !== undefined) return entriesToText(value.entry)
+    if (value.items !== undefined) return entriesToText(value.items)
+    if (value.rows !== undefined || value.colLabels !== undefined) return tableToText(value)
+  }
+
+  return entriesToText(value)
+}
+
+function mechanicsCardsFromEntries(value: any, fallbackTitle = 'Details') {
+  const cards: Array<{ title: string; body: string }> = []
+
+  function pushCard(title: any, body: any) {
+    const cleanTitle = clean5eText(title || fallbackTitle)
+    const cleanBody = clean5eText(body)
+
+    if (!cleanTitle && !cleanBody) return
+
+    cards.push({
+      title: cleanTitle || fallbackTitle,
+      body: cleanBody
+    })
+  }
+
+  function visit(entry: any, fallback = fallbackTitle) {
+    if (entry === null || entry === undefined) return
+
+    if (typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean') {
+      const text = clean5eText(entry)
+      if (text) pushCard(fallback, text)
+      return
+    }
+
+    if (Array.isArray(entry)) {
+      const looseText: string[] = []
+
+      for (const item of entry) {
+        if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+          const text = clean5eText(item)
+          if (text) looseText.push(text)
+          continue
+        }
+
+        if (looseText.length) {
+          pushCard(fallback, looseText.join('\n\n'))
+          looseText.length = 0
+        }
+
+        visit(item, fallback)
+      }
+
+      if (looseText.length) {
+        pushCard(fallback, looseText.join('\n\n'))
+      }
+
+      return
+    }
+
+    if (typeof entry === 'object') {
+      const type = String(entry.type || '').toLowerCase()
+      const title = clean5eText(entry.name || entry.caption || '')
+
+      if (title) {
+        pushCard(title, mechanicsCardBody(entry))
+        return
+      }
+
+      if (type === 'table') {
+        pushCard(entry.caption || 'Table', tableToText(entry))
+        return
+      }
+
+      const body = mechanicsCardBody(entry)
+      if (body) pushCard(fallback, body)
+    }
+  }
+
+  visit(value)
+
+  return cards
+}
+
 function shortText(value: any, limit = 640) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (!text) return ''
@@ -497,6 +622,19 @@ const speciesMechanicsDescription = computed(() => {
 
   return mechanicsText(raw.entries) ||
     mechanicsText(core.traits || core.mechanics || '')
+})
+
+const speciesMechanicCards = computed(() => {
+  const entity = selectedSpeciesEntity.value
+  if (!entity) return []
+
+  const core = blockData(entity, 'species_core')
+  const raw = rawJson(entity) || {}
+
+  const rawCards = mechanicsCardsFromEntries(raw.entries, 'Trait')
+  if (rawCards.length) return rawCards
+
+  return mechanicsCardsFromText(core.traits || core.mechanics || speciesMechanicsDescription.value, 'Traits / Mechanics')
 })
 
 const speciesDescription = computed(() => {
@@ -809,7 +947,7 @@ async function createCharacter() {
                   </p>
 
                   <div
-                    v-if="speciesMechanicsDescription"
+                    v-if="speciesMechanicsDescription || speciesMechanicCards.length"
                     class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)]"
                   >
                     <button
@@ -825,7 +963,36 @@ async function createCharacter() {
                       v-show="speciesMechanicsOpen"
                       class="border-t border-[rgba(201,164,90,0.14)] px-3 py-3"
                     >
-                      <p class="max-h-56 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
+
+                      <div
+                        v-if="speciesMechanicCards.length"
+                        class="grid gap-2"
+                      >
+                        <article
+                          v-for="(card, index) in speciesMechanicCards"
+                          :key="`species-mechanic-${card.title}-${index}`"
+                          class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.54)] p-3"
+                        >
+                          <div class="text-sm font-semibold text-white">{{ card.title }}</div>
+                          <p
+                            v-if="card.body"
+                            class="mt-2 whitespace-pre-line break-words text-xs leading-5 text-[#9f9278]"
+                          >
+                            {{ card.body }}
+                          </p>
+                          <div
+                            v-else
+                            class="mt-2 text-xs text-[#9f9278]"
+                          >
+                            No additional text.
+                          </div>
+                        </article>
+                      </div>
+
+                      <p
+                        v-else
+                        class="max-h-56 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]"
+                      >
                         {{ speciesMechanicsDescription }}
                       </p>
                     </div>

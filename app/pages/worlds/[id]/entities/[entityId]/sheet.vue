@@ -2276,17 +2276,23 @@ function portraitUploadCharacterType() {
   return 'npc'
 }
 
+function triggerPortraitUpload() {
+  portraitUploadError.value = ''
+  portraitUploadSuccess.value = ''
+  portraitUploadInput.value?.click()
+}
+
 function handlePortraitClick() {
   portraitUploadError.value = ''
   portraitUploadSuccess.value = ''
 
-  if (mode.value === 'build') {
-    portraitUploadInput.value?.click()
+  if (entityImageUrl.value) {
+    portraitLightboxOpen.value = true
     return
   }
 
-  if (entityImageUrl.value) {
-    portraitLightboxOpen.value = true
+  if (mode.value === 'build') {
+    triggerPortraitUpload()
   }
 }
 
@@ -4606,14 +4612,18 @@ async function saveSheet() {
           <div class="mt-3 grid grid-cols-[84px_minmax(0,1fr)] gap-3">
 
 
-            <button
-              type="button"
-              class="eldra-frame-corners group relative mr-3 flex h-[112px] w-[86px] shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.70)] bg-[rgba(20,17,12,0.86)] p-1 text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.28)]"
-              :class="mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.10)]' : entityImageUrl ? 'cursor-zoom-in' : 'cursor-default'"
-              :title="mode === 'build' ? 'Change portrait' : entityImageUrl ? 'View portrait' : 'No portrait set'"
+
+            <div
+              role="button"
+              tabindex="0"
+              class="eldra-frame-corners group relative mr-4 flex h-[128px] w-[98px] shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
+              :class="entityImageUrl ? 'cursor-zoom-in' : mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.10)]' : 'cursor-default'"
+              :title="entityImageUrl ? 'View portrait' : mode === 'build' ? 'Add portrait' : 'No portrait set'"
               @click.stop="handlePortraitClick"
+              @keydown.enter.prevent="handlePortraitClick"
+              @keydown.space.prevent="handlePortraitClick"
             >
-              <div class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.20)] bg-[rgba(8,17,27,0.84)]">
+              <div class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(8,17,27,0.84)]">
                 <img
                   v-if="entityImageUrl"
                   :src="entityImageUrl"
@@ -4625,19 +4635,21 @@ async function saveSheet() {
                   v-else
                   class="flex h-full w-full flex-col items-center justify-center gap-1 bg-[rgba(201,164,90,0.08)] px-2 text-center"
                 >
-                  <UIcon name="i-lucide-image-plus" class="h-6 w-6 text-[#c9a45a]" />
+                  <UIcon name="i-lucide-image-plus" class="h-7 w-7 text-[#c9a45a]" />
                   <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
                 </div>
               </div>
 
-              <div
+              <button
                 v-if="mode === 'build'"
-                class="absolute inset-x-1 bottom-1 bg-black/76 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 md:opacity-0 md:transition md:group-hover:opacity-100"
+                type="button"
+                class="absolute inset-x-1 bottom-1 bg-black/78 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 transition hover:bg-black/88 md:opacity-0 md:group-hover:opacity-100"
+                @click.stop="triggerPortraitUpload"
               >
                 <span v-if="portraitUploading">Uploading...</span>
                 <span v-else>Change</span>
-              </div>
-            </button>
+              </button>
+            </div>
 
             <div class="min-w-0">
               <div class="grid grid-cols-4 gap-1.5 text-center text-[11px]">

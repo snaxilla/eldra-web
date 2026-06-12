@@ -291,7 +291,7 @@ function buildSaveRows(scores: Record<string, number>, saveProfs: Set<string>, p
   })
 }
 
-function buildSkillRows(scores: Record<string, number>, skillProfs: Set<string>, proficiencyBonus: number) {
+function buildSkillRows(sheet: any, scores: Record<string, number>, skillProfs: Set<string>, proficiencyBonus: number) {
   const builderClassSkillChoices = builderClassSkillChoiceSet(sheet)
   return SKILLS.map((skill) => {
     const modifier = abilityModifier(scores[skill.ability])
@@ -845,7 +845,7 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}, invent
     proficiencyBonusText: signed(proficiencyBonus),
     abilities: buildAbilityRows(scores),
     saves: buildSaveRows(scores, saveProfs, proficiencyBonus),
-    skills: buildSkillRows(scores, skillProfs, proficiencyBonus),
+    skills: buildSkillRows(sheet, scores, skillProfs, proficiencyBonus),
     combat: {
       initiative,
       initiativeText: signed(initiative),

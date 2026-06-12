@@ -1,4 +1,4 @@
-import { getCharacterSheetForEntity } from '../../../../../utils/character-sheets'
+import { safeEnsureCharacterSheetForEntity } from '../../../../../utils/character-sheet-safe'
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
@@ -11,5 +11,5 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return await getCharacterSheetForEntity(worldId, entityId)
+  return await safeEnsureCharacterSheetForEntity(worldId, entityId)
 })

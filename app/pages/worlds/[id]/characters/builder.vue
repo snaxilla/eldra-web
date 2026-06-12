@@ -843,9 +843,19 @@ function titleCaseWords(value: any) {
 function builderDisplayValue(value: any): string {
   if (value === null || value === undefined || value === '') return ''
 
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        return builderDisplayValue(JSON.parse(trimmed))
+      } catch {}
+    }
+
     return titleCaseWords(clean5eText(value))
   }
+
+  if (typeof value === 'number' || typeof value === 'boolean') return clean5eText(value)
 
   if (Array.isArray(value)) {
     return value.map(builderDisplayValue).filter(Boolean).join(', ')

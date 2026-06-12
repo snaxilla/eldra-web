@@ -99,6 +99,98 @@ function normalizeToken(value: any) {
     .replace(/\s+/g, ' ')
 }
 
+function builderClassChoiceGroups(sheet: any) {
+  const choices = plainObject(sheet?.choices)
+  return plainObject(choices.builderClassChoices ?? choices.builder_class_choices)
+}
+
+function builderClassSkillChoiceSet(sheet: any) {
+  const groups = builderClassChoiceGroups(sheet)
+  const selected = new Set<string>()
+
+  for (const [key, rawGroup] of Object.entries(groups) as any[]) {
+    const group = plainObject(rawGroup)
+    const groupText = normalizeToken(`${key} ${group.label || ''}`)
+
+    if (!groupText.includes('skill')) continue
+
+    const values = Array.isArray(group.values)
+      ? group.values
+      : Array.isArray(group.selected)
+        ? group.selected
+        : []
+
+    for (const value of values) {
+      const token = normalizeToken(value)
+      if (token) selected.add(token)
+    }
+  }
+
+  return selected
+}
+
+function builderClassSkillChoiceMatches(selected: Set<string>, skill: any) {
+  const candidates = [
+    skill?.key,
+    skill?.label,
+    skill?.name,
+    skill?.slug
+  ]
+
+  return candidates.some((candidate) => {
+    const token = normalizeToken(candidate)
+    return Boolean(token && selected.has(token))
+  })
+}
+
+function builderClassSkillChoiceValues(sheet: any) {
+  return Array.from(builderClassSkillChoiceSet(sheet))
+}
+
+function pendingChoiceLooksLikeClassSkillChoice(sheet: any, choice: any) {
+  if (normalizeToken(choice?.type) !== 'skill') return false
+
+  const className = normalizeToken(sheet?.class_name ?? sheet?.className)
+  const text = normalizeToken([
+    choice?.sourceKey,
+    choice?.source_key,
+    choice?.label,
+    choice?.category,
+    choice?.sourceType,
+    choice?.source_type
+  ].filter(Boolean).join(' '))
+
+  if (!text.includes('skill')) return false
+  if (text.includes('species') || text.includes('background') || text.includes('feat')) return false
+  if (text.includes('class')) return true
+  if (className && text.includes(className)) return true
+
+  return false
+}
+
+function applyBuilderClassChoicesToPendingChoices(sheet: any, pendingChoices: any[]) {
+  if (!Array.isArray(pendingChoices) || !pendingChoices.length) return pendingChoices
+
+  const selectedSkills = builderClassSkillChoiceValues(sheet)
+  if (!selectedSkills.length) return pendingChoices
+
+  return pendingChoices.map((choice: any) => {
+    if (!pendingChoiceLooksLikeClassSkillChoice(sheet, choice)) return choice
+
+    const count = Math.max(1, Number(choice?.count || choice?.slots || selectedSkills.length || 1))
+    const existing = Array.isArray(choice?.selected) ? choice.selected : []
+    const merged = Array.from(new Set([...existing, ...selectedSkills])).slice(0, count)
+    const remaining = Math.max(0, count - merged.length)
+
+    return {
+      ...choice,
+      selected: merged,
+      remaining,
+      complete: remaining === 0
+    }
+  })
+}
+
 function splitTokens(value: any): string[] {
   if (!value) return []
 
@@ -200,9 +292,10 @@ function buildSaveRows(scores: Record<string, number>, saveProfs: Set<string>, p
 }
 
 function buildSkillRows(scores: Record<string, number>, skillProfs: Set<string>, proficiencyBonus: number) {
+  const builderClassSkillChoices = builderClassSkillChoiceSet(sheet)
   return SKILLS.map((skill) => {
     const modifier = abilityModifier(scores[skill.ability])
-    const proficient = skillProfs.has(skill.key)
+    const proficient = builderClassSkillChoiceMatches(builderClassSkillChoices, skill) || skillProfs.has(skill.key)
     const total = modifier + (proficient ? proficiencyBonus : 0)
 
     return {

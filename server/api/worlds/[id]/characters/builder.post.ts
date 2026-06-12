@@ -23,6 +23,56 @@ function abilityModifier(score: any) {
   return Math.floor((parsed - 10) / 2)
 }
 
+function normalizeSpeciesChoices(value: any) {
+  const raw = asObject(value)
+  const out: Record<string, any> = {}
+
+  for (const [key, choice] of Object.entries(raw)) {
+    const safeKey = cleanText(key)
+    const data = asObject(choice)
+
+    if (!safeKey) continue
+
+    const selectedValue = cleanText(data.value)
+    if (!selectedValue) continue
+
+    out[safeKey] = {
+      label: cleanText(data.label || safeKey),
+      value: selectedValue,
+      detail: cleanText(data.detail || ''),
+      meta: asObject(data.meta)
+    }
+  }
+
+  return out
+}
+
+function normalizeClassChoices(value: any) {
+  const raw = asObject(value)
+  const out: Record<string, any> = {}
+
+  for (const [key, choice] of Object.entries(raw)) {
+    const safeKey = cleanText(key)
+    const data = asObject(choice)
+
+    if (!safeKey) continue
+
+    const values = Array.isArray(data.values)
+      ? data.values.map(cleanText).filter(Boolean)
+      : []
+
+    if (!values.length) continue
+
+    out[safeKey] = {
+      label: cleanText(data.label || safeKey),
+      values,
+      note: cleanText(data.note || '')
+    }
+  }
+
+  return out
+}
+
 async function linkedEntityTitle(id: any) {
   const entityId = integerOrNull(id)
   if (!entityId) return ''
@@ -114,56 +164,6 @@ function parseSpeciesSpeed(blocks: any[]) {
   return 30
 }
 
-function normalizeClassChoices(value: any) {
-  const raw = asObject(value)
-  const out: Record<string, any> = {}
-
-  for (const [key, choice] of Object.entries(raw)) {
-    const safeKey = cleanText(key)
-    const data = asObject(choice)
-
-    if (!safeKey) continue
-
-    const values = Array.isArray(data.values)
-      ? data.values.map(cleanText).filter(Boolean)
-      : []
-
-    if (!values.length) continue
-
-    out[safeKey] = {
-      label: cleanText(data.label || safeKey),
-      values,
-      note: cleanText(data.note || '')
-    }
-  }
-
-  return out
-}
-
-function normalizeSpeciesChoices(value: any) {
-  const raw = asObject(value)
-  const out: Record<string, any> = {}
-
-  for (const [key, choice] of Object.entries(raw)) {
-    const safeKey = cleanText(key)
-    const data = asObject(choice)
-
-    if (!safeKey) continue
-
-    const selectedValue = cleanText(data.value)
-    if (!selectedValue) continue
-
-    out[safeKey] = {
-      label: cleanText(data.label || safeKey),
-      value: selectedValue,
-      detail: cleanText(data.detail || ''),
-      meta: asObject(data.meta)
-    }
-  }
-
-  return out
-}
-
 function normalizeAbilityScores(value: any) {
   const raw = asObject(value)
   const fallback = {
@@ -193,146 +193,160 @@ function startingHp(level: number, hitDieFaces: number, conScore: number) {
   return Math.max(1, firstLevel + Math.max(0, level - 1) * laterLevelGain)
 }
 
-export default defineEventHandler(async (event) => {
-  const worldId = String(getRouterParam(event, 'id') || '')
-  const body = await readBody(event)
+async function patchSheetChoices(sheetId: any, speciesChoices: Record<string, any>, classChoices: Record<string, any>) {
+  if (!sheetId) return null
 
-  if (!worldId) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing world id'
-    })
-  }
-
-  const name = cleanText(body?.name || body?.title)
-
-  if (!name) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Character name is required'
-    })
-  }
-
-  const level = Math.min(20, Math.max(1, Number(body?.level || 1)))
-  const classEntityId = integerOrNull(body?.classEntityId)
-  const speciesEntityId = integerOrNull(body?.speciesEntityId)
-  const backgroundEntityId = integerOrNull(body?.backgroundEntityId)
-
-  if (!classEntityId) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Choose a class before creating this character'
-    })
-  }
-
-  if (!speciesEntityId) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Choose a species before creating this character'
-    })
-  }
-
-  const abilityScores = normalizeAbilityScores(body?.abilityScores)
-  const speciesChoices = normalizeSpeciesChoices(body?.speciesChoices)
-  const classChoices = normalizeClassChoices(body?.classChoices)
-
-  const [
-    className,
-    speciesName,
-    backgroundName,
-    classBlocks,
-    speciesBlocks
-  ] = await Promise.all([
-    linkedEntityTitle(classEntityId),
-    linkedEntityTitle(speciesEntityId),
-    linkedEntityTitle(backgroundEntityId),
-    linkedEntityBlocks(classEntityId),
-    linkedEntityBlocks(speciesEntityId)
-  ])
-
-  const hitDieFaces = parseHitDieFaces(classBlocks)
-  const maxHp = startingHp(level, hitDieFaces, abilityScores.con)
-  const speed = parseSpeciesSpeed(speciesBlocks)
-  const now = new Date().toISOString()
-  const slug = `${slugify(name)}-${Date.now().toString(36)}`
-
-  const created = await dxFetch('/items/entities', {
-    method: 'POST',
-    body: JSON.stringify({
-      title: name,
-      slug,
-      world_id: Number(worldId),
-      system_key: 'dnd5e',
-      entity_type: 'pc',
-      status: 'draft',
-      visibility: 'world',
-      summary: cleanText(body?.summary || `${speciesName || 'Adventurer'} ${className ? `• ${className}` : ''}`),
-      created_at: now,
-      updated_at: now
-    })
-  })
-
-  const entity = created?.data
-
-  if (!entity?.id) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Character entity was not created correctly'
-    })
-  }
-
-  await ensureCharacterSheetForEntity(worldId, String(entity.id))
-
-  const updatedSheetPayload = await updateCharacterSheetForEntity(worldId, String(entity.id), {
-    name,
-    level: String(level),
-    className,
-    speciesName,
-    backgroundName,
-    classEntityId,
-    speciesEntityId,
-    backgroundEntityId,
-    abilityScores,
-    combatStats: {
-      armorClass: '',
-      maxHp: String(maxHp),
-      currentHp: String(maxHp),
-      tempHp: '0',
-      initiative: '',
-      speed: String(speed),
-      hitDice: `d${hitDieFaces}`
-    },
-    choices: {
-      builderSpeciesChoices: speciesChoices,
-      builderClassChoices: classChoices
-    }
-  })
-
-
-  const savedSheet = updatedSheetPayload?.sheet || updatedSheetPayload
-  const existingChoices = asObject(savedSheet?.choices)
   const hasSpeciesChoices = Object.keys(speciesChoices).length > 0
   const hasClassChoices = Object.keys(classChoices).length > 0
 
-  if (savedSheet?.id && (hasSpeciesChoices || hasClassChoices)) {
-    await dxFetch(`/items/character_sheets/${savedSheet.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        choices: {
-          ...existingChoices,
-          builderSpeciesChoices: speciesChoices,
-          builderClassChoices: classChoices
-        }
+  if (!hasSpeciesChoices && !hasClassChoices) return null
+
+  const currentRes = await dxFetch(`/items/character_sheets/${sheetId}?fields=id,choices`)
+  const current = currentRes?.data || null
+  const existingChoices = asObject(current?.choices)
+
+  return await dxFetch(`/items/character_sheets/${sheetId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      choices: {
+        ...existingChoices,
+        builderSpeciesChoices: speciesChoices,
+        builderClassChoices: classChoices
+      }
+    })
+  })
+}
+
+export default defineEventHandler(async (event) => {
+  try {
+    const worldId = String(getRouterParam(event, 'id') || '')
+    const body = await readBody(event)
+
+    if (!worldId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Missing world id'
       })
-    }).catch(() => null)
-  }
+    }
 
-  const builderSpeciesChoicesDirectPatch = true
+    const name = cleanText(body?.name || body?.title)
 
-  return {
-    ok: true,
-    id: entity.id,
-    entity,
-    sheet: updatedSheetPayload?.sheet || updatedSheetPayload
+    if (!name) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Character name is required'
+      })
+    }
+
+    const level = Math.min(20, Math.max(1, Number(body?.level || 1)))
+    const classEntityId = integerOrNull(body?.classEntityId)
+    const speciesEntityId = integerOrNull(body?.speciesEntityId)
+    const backgroundEntityId = integerOrNull(body?.backgroundEntityId)
+    const abilityScores = normalizeAbilityScores(body?.abilityScores)
+    const speciesChoices = normalizeSpeciesChoices(body?.speciesChoices)
+    const classChoices = normalizeClassChoices(body?.classChoices)
+
+    if (!classEntityId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Choose a class before creating this character'
+      })
+    }
+
+    if (!speciesEntityId) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Choose a species before creating this character'
+      })
+    }
+
+    const [
+      className,
+      speciesName,
+      backgroundName,
+      classBlocks,
+      speciesBlocks
+    ] = await Promise.all([
+      linkedEntityTitle(classEntityId),
+      linkedEntityTitle(speciesEntityId),
+      linkedEntityTitle(backgroundEntityId),
+      linkedEntityBlocks(classEntityId),
+      linkedEntityBlocks(speciesEntityId)
+    ])
+
+    const hitDieFaces = parseHitDieFaces(classBlocks)
+    const maxHp = startingHp(level, hitDieFaces, abilityScores.con)
+    const speed = parseSpeciesSpeed(speciesBlocks)
+    const now = new Date().toISOString()
+    const slug = `${slugify(name)}-${Date.now().toString(36)}`
+
+    const created = await dxFetch('/items/entities', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: name,
+        slug,
+        world_id: Number(worldId),
+        system_key: 'dnd5e',
+        entity_type: 'pc',
+        status: 'draft',
+        visibility: 'world',
+        summary: cleanText(body?.summary || `${speciesName || 'Adventurer'} ${className ? `• ${className}` : ''}`),
+        created_at: now,
+        updated_at: now
+      })
+    })
+
+    const entity = created?.data
+
+    if (!entity?.id) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Character entity was not created correctly'
+      })
+    }
+
+    const ensured = await ensureCharacterSheetForEntity(worldId, String(entity.id))
+
+    const updatedSheetPayload = await updateCharacterSheetForEntity(worldId, String(entity.id), {
+      name,
+      level: String(level),
+      className,
+      speciesName,
+      backgroundName,
+      classEntityId,
+      speciesEntityId,
+      backgroundEntityId,
+      abilityScores,
+      combatStats: {
+        armorClass: '',
+        maxHp: String(maxHp),
+        currentHp: String(maxHp),
+        tempHp: '0',
+        initiative: '',
+        speed: String(speed),
+        hitDice: `d${hitDieFaces}`
+      }
+    })
+
+    const updatedSheet = updatedSheetPayload?.sheet || updatedSheetPayload || ensured?.sheet || ensured
+    await patchSheetChoices(updatedSheet?.id, speciesChoices, classChoices)
+
+    return {
+      ok: true,
+      id: entity.id,
+      entity,
+      sheet: updatedSheet
+    }
+  } catch (error: any) {
+    console.error('[guided-character-builder]', error)
+
+    throw createError({
+      statusCode: error?.statusCode || error?.response?.status || 500,
+      statusMessage:
+        error?.statusMessage ||
+        error?.data?.message ||
+        error?.message ||
+        'Guided character builder failed'
+    })
   }
 })

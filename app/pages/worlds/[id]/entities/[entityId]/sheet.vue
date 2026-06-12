@@ -2626,6 +2626,73 @@ function shownCombatStat(key: string) {
   return ''
 }
 
+function headerSignedValue(value: any, fallback = '') {
+  if (value === null || value === undefined || value === '') return fallback
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return String(value)
+
+  return `${parsed >= 0 ? '+' : ''}${parsed}`
+}
+
+function headerCombatFallback(key: string) {
+  const combatStats = asObject(sheet.value?.combat_stats)
+
+  const candidates: Record<string, any[]> = {
+    armorClass: [
+      math.value?.combat?.armorClass?.current,
+      math.value?.combat?.armorClass?.best?.value,
+      combatStats.armorClass,
+      combatStats.armor_class
+    ],
+    initiative: [
+      math.value?.combat?.initiativeText,
+      combatStats.initiative,
+      abilityMod(shownAbilityScore('dex'))
+    ],
+    speed: [
+      math.value?.combat?.speed,
+      combatStats.speed,
+      30
+    ],
+    proficiencyBonus: [
+      math.value?.proficiencyBonusText,
+      headerSignedValue(math.value?.proficiencyBonus, ''),
+      '+2'
+    ]
+  }
+
+  for (const candidate of candidates[key] || []) {
+    const text = String(candidate ?? '').trim()
+    if (text) return text
+  }
+
+  return '—'
+}
+
+const mobileHeaderStatCards = computed(() => [
+  {
+    key: 'armorClass',
+    label: 'AC',
+    value: shownCombatStat('armorClass') || headerCombatFallback('armorClass')
+  },
+  {
+    key: 'initiative',
+    label: 'Init',
+    value: shownCombatStat('initiative') || headerCombatFallback('initiative')
+  },
+  {
+    key: 'speed',
+    label: 'Spd',
+    value: shownCombatStat('speed') || headerCombatFallback('speed')
+  },
+  {
+    key: 'proficiencyBonus',
+    label: 'PB',
+    value: math.value?.proficiencyBonusText || headerCombatFallback('proficiencyBonus')
+  }
+])
+
 const hitPointMath = computed(() => asObject(math.value?.combat?.hitPoints))
 
 const hpCurrentDisplay = computed(() => shownCombatStat('currentHp') || '—')
@@ -4480,12 +4547,12 @@ async function saveSheet() {
             <div class="min-w-0">
               <div class="grid grid-cols-4 gap-1.5 text-center text-[11px]">
                 <div
-                  v-for="stat in mobileQuickStats"
+                  v-for="stat in mobileHeaderStatCards"
                   :key="stat.label"
-                  class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.86)] px-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                  class="min-w-[72px] min-h-[54px] shrink-0 overflow-visible text-center rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(12,23,33,0.86)] px-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                 >
                   <div class="text-[#9f9278]">{{ stat.label }}</div>
-                  <div class="mt-0.5 truncate font-semibold text-white">{{ stat.value }}</div>
+                  <div class="mt-0.5 truncate font-semibold text-white">{{ stat.value || '—' }}</div>
                 </div>
               </div>
 

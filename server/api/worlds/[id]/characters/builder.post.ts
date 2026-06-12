@@ -1,5 +1,4 @@
 import { dxFetch, slugify } from '../../../../utils/entity-factory'
-import { ensureCharacterSheetForEntity } from '../../../../utils/character-sheets'
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -203,7 +202,49 @@ async function findActiveSheet(worldId: string, entityId: string) {
   return Array.isArray(res?.data) ? (res.data[0] || null) : null
 }
 
-async function patchCharacterSheet(options: {
+async function upsertCharacterCoreSheetLink(entityId: string, sheetId: any) {
+  const params = new URLSearchParams()
+  params.set('filter[entity_id][_eq]', String(entityId))
+  params.set('filter[block_key][_eq]', 'character_core')
+  params.set('limit', '1')
+  params.set('fields', 'id,data')
+
+  const res = await dxFetch(`/items/block_instances?${params.toString()}`)
+  const existing = Array.isArray(res?.data) ? (res.data[0] || null) : null
+  const existingData = asObject(existing?.data)
+
+  const data = {
+    ...existingData,
+    characterType: 'pc',
+    linkedSheetId: sheetId,
+    playerName: existingData.playerName ?? existingData.player_name ?? null,
+    pronouns: existingData.pronouns ?? null,
+    publicRole: existingData.publicRole ?? existingData.public_role ?? null
+  }
+
+  if (existing?.id) {
+    await dxFetch(`/items/block_instances/${existing.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ data })
+    }).catch(() => null)
+
+    return
+  }
+
+  await dxFetch('/items/block_instances', {
+    method: 'POST',
+    body: JSON.stringify({
+      entity_id: Number(entityId),
+      block_key: 'character_core',
+      label: 'Character Core',
+      sort: 10,
+      repeatable: false,
+      data
+    })
+  }).catch(() => null)
+}
+
+async function createOrPatchCharacterSheet(options: {
   worldId: string
   entityId: string
   name: string
@@ -221,24 +262,19 @@ async function patchCharacterSheet(options: {
   speciesChoices: Record<string, any>
   classChoices: Record<string, any>
 }) {
-  await ensureCharacterSheetForEntity(options.worldId, options.entityId)
+  const now = new Date().toISOString()
+  const existing = await findActiveSheet(options.worldId, options.entityId)
+  const existingCombatStats = asObject(existing?.combat_stats)
+  const existingChoices = asObject(existing?.choices)
 
-  const activeSheet = await findActiveSheet(options.worldId, options.entityId)
-
-  if (!activeSheet?.id) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Character sheet was not created correctly'
-    })
-  }
-
-  const existingChoices = asObject(activeSheet.choices)
-
-  const patchBody = {
+  const payload = {
+    world_id: Number(options.worldId),
+    entity_id: Number(options.entityId),
+    is_active: true,
     name: options.name,
     level: options.level,
     class_name: options.className,
-    subclass_name: activeSheet.subclass_name || '',
+    subclass_name: existing?.subclass_name || '',
     species_name: options.speciesName,
     background_name: options.backgroundName,
     class_entity_id: options.classEntityId,
@@ -246,32 +282,66 @@ async function patchCharacterSheet(options: {
     background_entity_id: options.backgroundEntityId,
     ability_scores: options.abilityScores,
     combat_stats: {
-      ...asObject(activeSheet.combat_stats),
-      armorClass: asObject(activeSheet.combat_stats).armorClass || '',
+      ...existingCombatStats,
+      armorClass: existingCombatStats.armorClass || '',
       maxHp: String(options.maxHp),
       currentHp: String(options.maxHp),
-      tempHp: String(asObject(activeSheet.combat_stats).tempHp || '0'),
-      initiative: asObject(activeSheet.combat_stats).initiative || '',
+      tempHp: String(existingCombatStats.tempHp || '0'),
+      initiative: existingCombatStats.initiative || '',
       speed: String(options.speed),
       hitDice: `d${options.hitDieFaces}`
+    },
+    spellcasting: {
+      ...asObject(existing?.spellcasting),
+      knownSpellIds: Array.isArray(existing?.spellcasting?.knownSpellIds) ? existing.spellcasting.knownSpellIds : [],
+      preparedSpellIds: Array.isArray(existing?.spellcasting?.preparedSpellIds) ? existing.spellcasting.preparedSpellIds : [],
+      alwaysPreparedSpellIds: Array.isArray(existing?.spellcasting?.alwaysPreparedSpellIds) ? existing.spellcasting.alwaysPreparedSpellIds : [],
+      usedSlots: asObject(existing?.spellcasting?.usedSlots)
     },
     choices: {
       ...existingChoices,
       builderSpeciesChoices: options.speciesChoices,
       builderClassChoices: options.classChoices
     },
-    updated_at: new Date().toISOString()
+    updated_at: now
   }
 
-  const patched = await dxFetch(`/items/character_sheets/${activeSheet.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(patchBody)
+  if (existing?.id) {
+    const patched = await dxFetch(`/items/character_sheets/${existing.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    })
+
+    const patchedSheet = patched?.data || {
+      ...existing,
+      ...payload
+    }
+
+    await upsertCharacterCoreSheetLink(options.entityId, patchedSheet.id || existing.id)
+
+    return patchedSheet
+  }
+
+  const created = await dxFetch('/items/character_sheets', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...payload,
+      created_at: now
+    })
   })
 
-  return patched?.data || {
-    ...activeSheet,
-    ...patchBody
+  const createdSheet = created?.data
+
+  if (!createdSheet?.id) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Character sheet was not created correctly'
+    })
   }
+
+  await upsertCharacterCoreSheetLink(options.entityId, createdSheet.id)
+
+  return createdSheet
 }
 
 export default defineEventHandler(async (event) => {
@@ -362,7 +432,7 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const sheet = await patchCharacterSheet({
+    const characterSheet = await createOrPatchCharacterSheet({
       worldId,
       entityId: String(entity.id),
       name,
@@ -385,7 +455,7 @@ export default defineEventHandler(async (event) => {
       ok: true,
       id: entity.id,
       entity,
-      sheet
+      sheet: characterSheet
     }
   } catch (error: any) {
     console.error('[guided-character-builder]', error)

@@ -86,6 +86,10 @@ const spellPanelsOpen = reactive<Record<string, boolean>>({
   known: true
 })
 const portraitLightboxOpen = ref(false)
+const portraitUploadInput = ref<HTMLInputElement | null>(null)
+const portraitUploading = ref(false)
+const portraitUploadError = ref('')
+const portraitUploadSuccess = ref('')
 const hpDrawerOpen = ref(false)
 const hpSaving = ref(false)
 const hpSaveError = ref('')
@@ -2263,6 +2267,68 @@ function closeItemDrawer() {
   selectedItemDetail.value = null
 }
 
+function portraitUploadCharacterType() {
+  const raw = String(entity.value?.entity_type || entity.value?.entityType || '').toLowerCase()
+
+  if (raw === 'pc' || raw === 'player_character') return 'pc'
+  if (raw === 'npc_sheet') return 'npc_sheet'
+
+  return 'npc'
+}
+
+function handlePortraitClick() {
+  portraitUploadError.value = ''
+  portraitUploadSuccess.value = ''
+
+  if (mode.value === 'build') {
+    portraitUploadInput.value?.click()
+    return
+  }
+
+  if (entityImageUrl.value) {
+    portraitLightboxOpen.value = true
+  }
+}
+
+async function handlePortraitUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+
+  if (!file || portraitUploading.value) return
+
+  portraitUploading.value = true
+  portraitUploadError.value = ''
+  portraitUploadSuccess.value = ''
+
+  try {
+    const formData = new FormData()
+    formData.append('title', String(sheet.value?.name || entity.value?.title || 'Character'))
+    formData.append('summary', String(entity.value?.summary || ''))
+    formData.append('characterType', portraitUploadCharacterType())
+    formData.append('image', file)
+
+    await $fetch(`/api/worlds/${worldId.value}/characters/${entityId.value}/update`, {
+      method: 'POST',
+      body: formData
+    })
+
+    await refresh()
+
+    portraitUploadSuccess.value = 'Portrait updated.'
+  } catch (err: any) {
+    portraitUploadError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to update portrait.'
+  } finally {
+    portraitUploading.value = false
+    if (portraitUploadInput.value) {
+      portraitUploadInput.value.value = ''
+    }
+  }
+}
+
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
@@ -4277,6 +4343,14 @@ async function saveSheet() {
 </script>
 
 <template>
+
+  <input
+    ref="portraitUploadInput"
+    type="file"
+    accept="image/*"
+    class="hidden"
+    @change="handlePortraitUpload"
+  >
   <div
     :class="{ 'eldra-sheet-compact': useCompactSheetLayout }"
     class="eldra-mobile-sheet-root fixed inset-0 z-[9999] h-[100dvh] overflow-y-auto bg-[#05080d] md:relative md:inset-auto md:z-auto md:h-full md:bg-transparent"
@@ -4530,18 +4604,35 @@ async function saveSheet() {
           </div>
 
           <div class="mt-3 grid grid-cols-[84px_minmax(0,1fr)] gap-3">
+
             <button
-              v-if="entityImageUrl"
               type="button"
-              class="h-[112px] w-[84px] overflow-hidden rounded-none border-2 border-[rgba(201,164,90,0.78)] bg-[rgba(7,16,26,0.64)] shadow-[0_0_0_1px_rgba(0,0,0,0.72),0_14px_26px_rgba(0,0,0,0.38)] transition hover:border-[rgba(245,231,189,0.85)]"
-              title="View portrait"
-              @click="portraitLightboxOpen = true"
+              class="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(8,17,27,0.82)] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.25)]"
+              :class="mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.10)]' : entityImageUrl ? 'cursor-zoom-in' : 'cursor-default'"
+              :title="mode === 'build' ? 'Change portrait' : entityImageUrl ? 'View portrait' : 'No portrait set'"
+              @click.stop="handlePortraitClick"
             >
               <img
+                v-if="entityImageUrl"
                 :src="entityImageUrl"
                 :alt="sheet?.name || entity?.title || 'Character Portrait'"
-                class="h-full w-full object-cover object-[center_18%]"
+                class="h-full w-full object-cover"
               >
+
+              <div
+                v-else
+                class="flex h-full w-full flex-col items-center justify-center gap-1 bg-[rgba(201,164,90,0.08)] px-2 text-center"
+              >
+                <UIcon name="i-lucide-image-plus" class="h-6 w-6 text-[#c9a45a]" />
+                <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
+              </div>
+
+              <div
+                v-if="mode === 'build'"
+                class="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 md:opacity-0 md:transition md:group-hover:opacity-100"
+              >
+                { portraitUploading ? 'Uploading' : 'Change' }
+              </div>
             </button>
 
             <div class="min-w-0">
@@ -6726,6 +6817,15 @@ async function saveSheet() {
       <ClientOnly>
         <EldraDiceBox ref="diceBoxRef" />
       </ClientOnly>
+
+
+    <div
+      v-if="portraitUploadError || portraitUploadSuccess"
+      class="fixed left-4 right-4 top-4 z-[180] rounded-none border p-3 text-sm shadow-[0_12px_32px_rgba(0,0,0,0.35)] md:left-auto md:w-[360px]"
+      :class="portraitUploadError ? 'border-red-500/30 bg-red-950/90 text-red-100' : 'border-emerald-500/30 bg-emerald-950/90 text-emerald-100'"
+    >
+      {{ portraitUploadError || portraitUploadSuccess }}
+    </div>
 
     <!-- Portrait Lightbox -->
 

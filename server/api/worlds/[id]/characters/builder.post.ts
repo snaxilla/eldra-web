@@ -1,8 +1,5 @@
 import { dxFetch, slugify } from '../../../../utils/entity-factory'
-import {
-  ensureCharacterSheetForEntity,
-  updateCharacterSheetForEntity
-} from '../../../../utils/character-sheets'
+import { ensureCharacterSheetForEntity } from '../../../../utils/character-sheets'
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -193,28 +190,88 @@ function startingHp(level: number, hitDieFaces: number, conScore: number) {
   return Math.max(1, firstLevel + Math.max(0, level - 1) * laterLevelGain)
 }
 
-async function patchSheetChoices(sheetId: any, speciesChoices: Record<string, any>, classChoices: Record<string, any>) {
-  if (!sheetId) return null
+async function findActiveSheet(worldId: string, entityId: string) {
+  const params = new URLSearchParams()
+  params.set('filter[world_id][_eq]', String(worldId))
+  params.set('filter[entity_id][_eq]', String(entityId))
+  params.set('filter[is_active][_eq]', 'true')
+  params.set('sort', '-id')
+  params.set('limit', '1')
+  params.set('fields', '*')
 
-  const hasSpeciesChoices = Object.keys(speciesChoices).length > 0
-  const hasClassChoices = Object.keys(classChoices).length > 0
+  const res = await dxFetch(`/items/character_sheets?${params.toString()}`)
+  return Array.isArray(res?.data) ? (res.data[0] || null) : null
+}
 
-  if (!hasSpeciesChoices && !hasClassChoices) return null
+async function patchCharacterSheet(options: {
+  worldId: string
+  entityId: string
+  name: string
+  level: number
+  className: string
+  speciesName: string
+  backgroundName: string
+  classEntityId: number
+  speciesEntityId: number
+  backgroundEntityId: number | null
+  abilityScores: Record<string, number>
+  maxHp: number
+  speed: number
+  hitDieFaces: number
+  speciesChoices: Record<string, any>
+  classChoices: Record<string, any>
+}) {
+  await ensureCharacterSheetForEntity(options.worldId, options.entityId)
 
-  const currentRes = await dxFetch(`/items/character_sheets/${sheetId}?fields=id,choices`)
-  const current = currentRes?.data || null
-  const existingChoices = asObject(current?.choices)
+  const activeSheet = await findActiveSheet(options.worldId, options.entityId)
 
-  return await dxFetch(`/items/character_sheets/${sheetId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      choices: {
-        ...existingChoices,
-        builderSpeciesChoices: speciesChoices,
-        builderClassChoices: classChoices
-      }
+  if (!activeSheet?.id) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Character sheet was not created correctly'
     })
+  }
+
+  const existingChoices = asObject(activeSheet.choices)
+
+  const patchBody = {
+    name: options.name,
+    level: options.level,
+    class_name: options.className,
+    subclass_name: activeSheet.subclass_name || '',
+    species_name: options.speciesName,
+    background_name: options.backgroundName,
+    class_entity_id: options.classEntityId,
+    species_entity_id: options.speciesEntityId,
+    background_entity_id: options.backgroundEntityId,
+    ability_scores: options.abilityScores,
+    combat_stats: {
+      ...asObject(activeSheet.combat_stats),
+      armorClass: asObject(activeSheet.combat_stats).armorClass || '',
+      maxHp: String(options.maxHp),
+      currentHp: String(options.maxHp),
+      tempHp: String(asObject(activeSheet.combat_stats).tempHp || '0'),
+      initiative: asObject(activeSheet.combat_stats).initiative || '',
+      speed: String(options.speed),
+      hitDice: `d${options.hitDieFaces}`
+    },
+    choices: {
+      ...existingChoices,
+      builderSpeciesChoices: options.speciesChoices,
+      builderClassChoices: options.classChoices
+    },
+    updated_at: new Date().toISOString()
+  }
+
+  const patched = await dxFetch(`/items/character_sheets/${activeSheet.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patchBody)
   })
+
+  return patched?.data || {
+    ...activeSheet,
+    ...patchBody
+  }
 }
 
 export default defineEventHandler(async (event) => {
@@ -305,11 +362,11 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const ensured = await ensureCharacterSheetForEntity(worldId, String(entity.id))
-
-    const updatedSheetPayload = await updateCharacterSheetForEntity(worldId, String(entity.id), {
+    const sheet = await patchCharacterSheet({
+      worldId,
+      entityId: String(entity.id),
       name,
-      level: String(level),
+      level,
       className,
       speciesName,
       backgroundName,
@@ -317,25 +374,18 @@ export default defineEventHandler(async (event) => {
       speciesEntityId,
       backgroundEntityId,
       abilityScores,
-      combatStats: {
-        armorClass: '',
-        maxHp: String(maxHp),
-        currentHp: String(maxHp),
-        tempHp: '0',
-        initiative: '',
-        speed: String(speed),
-        hitDice: `d${hitDieFaces}`
-      }
+      maxHp,
+      speed,
+      hitDieFaces,
+      speciesChoices,
+      classChoices
     })
-
-    const updatedSheet = updatedSheetPayload?.sheet || updatedSheetPayload || ensured?.sheet || ensured
-    await patchSheetChoices(updatedSheet?.id, speciesChoices, classChoices)
 
     return {
       ok: true,
       id: entity.id,
       entity,
-      sheet: updatedSheet
+      sheet
     }
   } catch (error: any) {
     console.error('[guided-character-builder]', error)

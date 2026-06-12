@@ -4605,33 +4605,37 @@ async function saveSheet() {
 
           <div class="mt-3 grid grid-cols-[84px_minmax(0,1fr)] gap-3">
 
+
             <button
               type="button"
-              class="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(8,17,27,0.82)] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.25)]"
+              class="eldra-frame-corners group relative mr-3 flex h-[112px] w-[86px] shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.70)] bg-[rgba(20,17,12,0.86)] p-1 text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.28)]"
               :class="mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.10)]' : entityImageUrl ? 'cursor-zoom-in' : 'cursor-default'"
               :title="mode === 'build' ? 'Change portrait' : entityImageUrl ? 'View portrait' : 'No portrait set'"
               @click.stop="handlePortraitClick"
             >
-              <img
-                v-if="entityImageUrl"
-                :src="entityImageUrl"
-                :alt="sheet?.name || entity?.title || 'Character Portrait'"
-                class="h-full w-full object-cover"
-              >
+              <div class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.20)] bg-[rgba(8,17,27,0.84)]">
+                <img
+                  v-if="entityImageUrl"
+                  :src="entityImageUrl"
+                  :alt="sheet?.name || entity?.title || 'Character Portrait'"
+                  class="h-full w-full object-cover"
+                >
 
-              <div
-                v-else
-                class="flex h-full w-full flex-col items-center justify-center gap-1 bg-[rgba(201,164,90,0.08)] px-2 text-center"
-              >
-                <UIcon name="i-lucide-image-plus" class="h-6 w-6 text-[#c9a45a]" />
-                <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
+                <div
+                  v-else
+                  class="flex h-full w-full flex-col items-center justify-center gap-1 bg-[rgba(201,164,90,0.08)] px-2 text-center"
+                >
+                  <UIcon name="i-lucide-image-plus" class="h-6 w-6 text-[#c9a45a]" />
+                  <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
+                </div>
               </div>
 
               <div
                 v-if="mode === 'build'"
-                class="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 md:opacity-0 md:transition md:group-hover:opacity-100"
+                class="absolute inset-x-1 bottom-1 bg-black/76 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 md:opacity-0 md:transition md:group-hover:opacity-100"
               >
-                { portraitUploading ? 'Uploading' : 'Change' }
+                <span v-if="portraitUploading">Uploading...</span>
+                <span v-else>Change</span>
               </div>
             </button>
 

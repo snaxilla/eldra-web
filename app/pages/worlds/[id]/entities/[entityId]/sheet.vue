@@ -2282,12 +2282,18 @@ function triggerPortraitUpload() {
   portraitUploadInput.value?.click()
 }
 
+function openPortraitLightbox() {
+  if (entityImageUrl.value) {
+    portraitLightboxOpen.value = true
+  }
+}
+
 function handlePortraitClick() {
   portraitUploadError.value = ''
   portraitUploadSuccess.value = ''
 
   if (entityImageUrl.value) {
-    portraitLightboxOpen.value = true
+    openPortraitLightbox()
     return
   }
 
@@ -4613,17 +4619,18 @@ async function saveSheet() {
 
 
 
+
             <div
-              role="button"
-              tabindex="0"
-              class="eldra-frame-corners group relative mr-4 flex h-[128px] w-[98px] shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
-              :class="entityImageUrl ? 'cursor-zoom-in' : mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.10)]' : 'cursor-default'"
-              :title="entityImageUrl ? 'View portrait' : mode === 'build' ? 'Add portrait' : 'No portrait set'"
-              @click.stop="handlePortraitClick"
-              @keydown.enter.prevent="handlePortraitClick"
-              @keydown.space.prevent="handlePortraitClick"
+              class="eldra-frame-corners group relative mt-2 mr-5 flex h-[124px] w-[96px] shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
             >
-              <div class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(8,17,27,0.84)]">
+              <button
+                type="button"
+                class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(8,17,27,0.84)] text-[#f5e7bd]"
+                :class="entityImageUrl ? 'cursor-zoom-in' : mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.10)]' : 'cursor-default'"
+                @click.stop="handlePortraitClick"
+                @keydown.enter.prevent="handlePortraitClick"
+                @keydown.space.prevent="handlePortraitClick"
+              >
                 <img
                   v-if="entityImageUrl"
                   :src="entityImageUrl"
@@ -4638,12 +4645,12 @@ async function saveSheet() {
                   <UIcon name="i-lucide-image-plus" class="h-7 w-7 text-[#c9a45a]" />
                   <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
                 </div>
-              </div>
+              </button>
 
               <button
                 v-if="mode === 'build'"
                 type="button"
-                class="absolute inset-x-1 bottom-1 bg-black/78 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 transition hover:bg-black/88 md:opacity-0 md:group-hover:opacity-100"
+                class="absolute inset-x-1 bottom-1 z-10 bg-black/80 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 transition hover:bg-black/90 md:opacity-0 md:group-hover:opacity-100"
                 @click.stop="triggerPortraitUpload"
               >
                 <span v-if="portraitUploading">Uploading...</span>
@@ -6849,7 +6856,7 @@ async function saveSheet() {
       <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
         <div
           v-if="levelUpOpen"
-          class="fixed inset-0 z-[146] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
+          class="fixed inset-0 z-[220] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
           @click.self="closeLevelUpDrawer"
         >
           <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[520px]">

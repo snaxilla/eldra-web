@@ -4623,29 +4623,48 @@ async function saveSheet() {
             <div
               class="eldra-frame-corners group relative mt-2 mr-5 flex h-[124px] w-[96px] shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
             >
-              <button
-                type="button"
-                class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(8,17,27,0.84)] text-[#f5e7bd]"
-                :class="entityImageUrl ? 'cursor-zoom-in' : mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.10)]' : 'cursor-default'"
-                @click.stop="handlePortraitClick"
-                @keydown.enter.prevent="handlePortraitClick"
-                @keydown.space.prevent="handlePortraitClick"
-              >
-                <img
-                  v-if="entityImageUrl"
-                  :src="entityImageUrl"
-                  :alt="sheet?.name || entity?.title || 'Character Portrait'"
-                  class="h-full w-full object-cover"
-                >
 
-                <div
+              <div
+                class="eldra-frame-corners group relative mt-3 mr-4 mb-2 flex h-[124px] w-[96px] shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
+              >
+                <button
+                  v-if="entityImageUrl"
+                  type="button"
+                  class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(8,17,27,0.84)] text-[#f5e7bd] transition hover:brightness-110"
+                  title="View portrait"
+                  @click.stop.prevent="openPortraitLightbox()"
+                  @keydown.enter.prevent="openPortraitLightbox()"
+                  @keydown.space.prevent="openPortraitLightbox()"
+                >
+                  <img
+                    :src="entityImageUrl"
+                    :alt="sheet?.name || entity?.title || 'Character Portrait'"
+                    class="h-full w-full object-cover"
+                  >
+                </button>
+
+                <button
                   v-else
-                  class="flex h-full w-full flex-col items-center justify-center gap-1 bg-[rgba(201,164,90,0.08)] px-2 text-center"
+                  type="button"
+                  class="relative flex h-full w-full flex-col items-center justify-center gap-1 overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(201,164,90,0.08)] px-2 text-center text-[#f5e7bd] transition"
+                  :class="mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.14)]' : 'cursor-default'"
+                  title="No portrait set"
+                  @click.stop.prevent="mode === 'build' && triggerPortraitUpload()"
                 >
                   <UIcon name="i-lucide-image-plus" class="h-7 w-7 text-[#c9a45a]" />
                   <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
-                </div>
-              </button>
+                </button>
+
+                <button
+                  v-if="mode === 'build'"
+                  type="button"
+                  class="absolute inset-x-1 bottom-1 z-10 bg-black/82 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 transition hover:bg-black/92 md:opacity-0 md:group-hover:opacity-100"
+                  @click.stop.prevent="triggerPortraitUpload()"
+                >
+                  <span v-if="portraitUploading">Uploading...</span>
+                  <span v-else>Change</span>
+                </button>
+              </div>
 
               <button
                 v-if="mode === 'build'"
@@ -6850,434 +6869,39 @@ async function saveSheet() {
       {{ portraitUploadError || portraitUploadSuccess }}
     </div>
 
+
     <!-- Portrait Lightbox -->
-
-      <!-- Level Up Drawer -->
-      <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-        <div
-          v-if="levelUpOpen"
-          class="fixed inset-0 z-[220] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
-          @click.self="closeLevelUpDrawer"
+    <Transition enter-from-class="opacity-0" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-150">
+      <div
+        v-if="portraitLightboxOpen"
+        class="fixed inset-0 z-[260] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
+        @click.self="portraitLightboxOpen = false"
+      >
+        <button
+          type="button"
+          class="absolute right-4 top-4 rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.86)] p-3 text-[#f5e7bd]"
+          @click="portraitLightboxOpen = false"
         >
-          <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[520px]">
-            <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-              <div class="min-w-0">
-                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build Mode</div>
-                <h2 class="mt-2 truncate text-2xl font-semibold text-white">Level Manager</h2>
-                <div class="mt-1 text-xs text-[#9f9278]">
-                  Set levels up or down, then walk through HP, subclass, choices, and spells.
-                </div>
-              </div>
+          <UIcon name="i-lucide-x" class="h-5 w-5" />
+        </button>
 
-              <button
-                type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
-                @click="closeLevelUpDrawer"
-              >
-                <UIcon name="i-lucide-x" class="h-4 w-4" />
-              </button>
-            </div>
+        <div class="max-h-[86dvh] max-w-[92vw] overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.86)] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+          <img
+            v-if="entityImageUrl"
+            :src="entityImageUrl"
+            :alt="sheet?.name || entity?.title || 'Character Portrait'"
+            class="max-h-[82dvh] max-w-full object-contain"
+          >
 
-            <div class="flex-1 overflow-y-auto px-5 py-5">
-              <div class="grid gap-3">
-                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
-                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 1</div>
-                  <div class="mt-1 text-lg font-semibold text-white">Choose target level</div>
-
-                  <div class="mt-3 grid grid-cols-[minmax(0,1fr)_140px] gap-3">
-                    <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3">
-                      <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Starting</div>
-                      <div class="mt-1 text-2xl font-semibold text-white">Level {{ levelUpStartingLevelNumber }}</div>
-                    </div>
-
-                    <label class="block">
-                      <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Target</span>
-                      <select
-                        v-model="levelUpTargetLevel"
-                        class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                      >
-                        <option
-                          v-for="option in levelOptions"
-                          :key="option.value"
-                          :value="option.value"
-                          class="bg-[#090909] text-[#f5e7bd]"
-                        >
-                          {{ option.label }}
-                        </option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-
-                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2</div>
-                      <div class="mt-1 text-lg font-semibold text-white">Preview unlocks</div>
-                    </div>
-
-                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      {{ levelUpUnlockCards.length }} Feature{{ levelUpUnlockCards.length === 1 ? '' : 's' }}
-                    </div>
-                  </div>
-
-                  <div v-if="levelUpUnlockCards.length" class="mt-3 grid gap-2">
-                    <article
-                      v-for="feature in levelUpUnlockCards"
-                      :key="`level-up-feature-${feature.id}`"
-                      class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3"
-                    >
-                      <div class="min-w-0">
-                        <div class="truncate font-semibold text-white">{{ feature.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">
-                          Level {{ feature.level || levelUpTargetNumber }}<span v-if="feature.source"> · {{ feature.source }}</span>
-                        </div>
-                      </div>
-
-                      <p class="mt-2 break-words text-xs leading-5 text-[#9f9278]">
-                        {{ shortText(feature.description, 180) || 'Feature details will appear here when imported.' }}
-                      </p>
-                    </article>
-                  </div>
-
-                  <div v-else class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-sm text-[#9f9278]">
-                    No imported class features found for the selected level.
-                  </div>
-                </div>
-
-                <div
-                  v-if="levelUpSubclassUnlocked"
-                  class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
-                >
-                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2B</div>
-                  <div class="mt-1 text-lg font-semibold text-white">Choose {{ levelUpSubclassLabel }}</div>
-                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                    This level unlocks a subclass/tradition choice.
-                  </p>
-
-                  <label
-                    v-if="subclassOptions.length"
-                    class="mt-3 block"
-                  >
-                    <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ levelUpSubclassLabel }}</span>
-                    <select
-                      v-model="levelUpSubclassDraft"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    >
-                      <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose {{ levelUpSubclassLabel }}...</option>
-                      <option
-                        v-for="option in subclassOptions"
-                        :key="`${option.name}-${option.source}-${option.classSource}`"
-                        :value="option.name"
-                        class="bg-[#090909] text-[#f5e7bd]"
-                      >
-                        {{ option.name }}{{ option.source ? ` (${option.source})` : '' }}
-                      </option>
-                    </select>
-                    <div class="mt-2 text-xs leading-5 text-[#9f9278]">
-                      Showing {{ subclassOptions.length }} {{ subclassOptions.length === 1 ? 'option' : 'options' }} for {{ subclassOptionPayload?.className || resolvedClass?.title || sheet?.class_name || 'this class' }}.
-                    </div>
-                  </label>
-
-                  <label
-                    v-else
-                    class="mt-3 block"
-                  >
-                    <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ levelUpSubclassLabel }}</span>
-                    <input
-                      v-model="levelUpSubclassDraft"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                      placeholder="No subclass options found. Type manually or import subclass data."
-                    >
-                    <div class="mt-2 rounded-none border border-amber-300/24 bg-amber-400/10 p-2 text-xs leading-5 text-amber-100">
-                      No subclass options were found for this class. We should import/fix subclass data before relying on manual entry.
-                    </div>
-                  </label>
-
-                  <!-- Selected Subclass Preview -->
-                  <div
-                    v-if="selectedLevelUpSubclassOption"
-                    class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.48)] p-3"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Selected Preview</div>
-                        <div class="mt-1 truncate text-lg font-semibold text-white">
-                          {{ selectedLevelUpSubclassOption.name }}
-                        </div>
-                        <div class="mt-1 text-xs text-[#9f9278]">
-                          <span v-if="selectedLevelUpSubclassOption.source">{{ selectedLevelUpSubclassOption.source }}</span>
-                          <span v-if="selectedLevelUpSubclassOption.page"> · p. {{ selectedLevelUpSubclassOption.page }}</span>
-                          <span v-if="selectedLevelUpSubclassOption.featureCount"> · {{ selectedLevelUpSubclassOption.featureCount }} feature{{ selectedLevelUpSubclassOption.featureCount === 1 ? '' : 's' }}</span>
-                        </div>
-                      </div>
-
-                      <div
-                        v-if="selectedLevelUpSubclassOption.recommended"
-                        class="eldra-gold-chip shrink-0 rounded-none border px-2 py-0.5 text-[10px]"
-                      >
-                        Recommended
-                      </div>
-                    </div>
-
-                    <p
-                      v-if="selectedLevelUpSubclassDescription"
-                      class="mt-3 whitespace-pre-line break-words text-xs leading-5 text-[#d8ceb8]"
-                    >
-                      {{ selectedLevelUpSubclassDescription }}
-                    </p>
-
-
-                    <div
-                      v-if="selectedLevelUpSubclassFeatures.length"
-                      class="mt-3 grid gap-2"
-                    >
-                      <article
-                        v-for="(feature, index) in selectedLevelUpSubclassFeatures"
-                        :key="`selected-subclass-feature-${feature.title}-${feature.level}-${index}`"
-                        class="rounded-none border border-[rgba(65,82,103,0.56)] bg-[rgba(8,17,27,0.62)] p-3"
-                      >
-                        <button
-                          type="button"
-                          class="flex w-full items-start justify-between gap-3 text-left"
-                          @click="toggleSubclassFeatureCard('level', feature, index)"
-                        >
-                          <div class="min-w-0">
-                            <div class="truncate font-semibold text-white">{{ feature.title }}</div>
-                            <div class="mt-1 text-xs text-[#9f9278]">
-                              Level {{ feature.level || '—' }}<span v-if="feature.source"> · {{ feature.source }}</span>
-                            </div>
-                          </div>
-
-                          <UIcon :name="subclassFeatureCardChevron('level', feature, index)" class="h-4 w-4 shrink-0 text-[#9f9278]" />
-                        </button>
-
-                        <div
-                          v-show="subclassFeatureCardOpen('level', feature, index)"
-                          class="mt-3 border-t border-[rgba(201,164,90,0.14)] pt-3"
-                        >
-                          <p
-                            v-if="feature.description"
-                            class="whitespace-pre-line break-words text-xs leading-5 text-[#9f9278]"
-                          >
-                            {{ feature.description }}
-                          </p>
-
-                          <div
-                            v-else
-                            class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-xs text-[#9f9278]"
-                          >
-                            No description resolved for this subclass feature yet.
-                          </div>
-                        </div>
-                      </article>
-                    </div>
-
-                    <div
-                      v-else
-                      class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-xs text-[#9f9278]"
-                    >
-                      This subclass was found, but no subclass feature preview entries were resolved yet.
-                    </div>
-                  </div>
-
-                </div>
-
-                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
-                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 2C</div>
-                  <div class="mt-1 text-lg font-semibold text-white">Hit Points</div>
-                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                    Fixed average uses {{ levelUpFixedHitDieAverage(levelUpHitDieFaces()) }} + CON per level changed, minimum 1 HP per level.
-                  </p>
-
-                  <div class="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      class="rounded-none border px-3 py-2 text-xs font-semibold"
-                      :class="levelUpHpMode === 'fixed'
-                        ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-                        : 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
-                      @click="levelUpHpMode = 'fixed'"
-                    >
-                      Fixed Average
-                    </button>
-
-                    <button
-                      type="button"
-                      class="rounded-none border px-3 py-2 text-xs font-semibold"
-                      :class="levelUpHpMode === 'manual'
-                        ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-                        : 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
-                      @click="levelUpHpMode = 'manual'"
-                    >
-                      Manual HP
-                    </button>
-                  </div>
-
-                  <div class="mt-3 grid grid-cols-2 gap-3">
-                    <div class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3">
-                      <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Projected Max</div>
-                      <div class="mt-1 text-2xl font-semibold text-white">{{ levelUpProjectedMaxHp }}</div>
-                      <div class="mt-1 text-xs text-[#9f9278]">
-                        {{ levelUpHpDelta >= 0 ? '+' : '' }}{{ levelUpHpDelta }} HP from level change
-                      </div>
-                    </div>
-
-                    <label class="block">
-                      <span class="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">Manual Max HP</span>
-                      <input
-                        v-model="levelUpManualMaxHp"
-                        inputmode="numeric"
-                        class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                        :disabled="levelUpHpMode !== 'manual'"
-                      >
-                    </label>
-                  </div>
-                </div>
-
-                <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3">
-                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 3</div>
-                  <div class="mt-1 text-lg font-semibold text-white">Apply level</div>
-                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                    This updates level, HP, current HP, and subclass selection if one was chosen.
-                  </p>
-
-                  <button
-                    type="button"
-                    class="mt-3 eldra-button w-full rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                    :disabled="levelUpSaving || levelUpTargetNumber === levelUpStartingLevelNumber || levelUpApplied"
-                    @click="applyLevelUp"
-                  >
-                    {{ levelUpSaving ? 'Applying...' : `Apply Level ${levelUpTargetNumber}` }}
-                  </button>
-                </div>
-
-                <div v-if="levelUpError" class="rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-                  {{ levelUpError }}
-                </div>
-
-                <div v-if="levelUpSuccess" class="rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                  {{ levelUpSuccess }}
-                </div>
-
-                <div
-                  v-if="levelUpApplied"
-                  class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.52)] p-3"
-                >
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
-                      <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 4</div>
-                      <div class="mt-1 text-lg font-semibold text-white">Incomplete Choices</div>
-                    </div>
-
-                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      {{ levelUpPendingChoiceCards.length }} Pending
-                    </div>
-                  </div>
-
-                  <div v-if="levelUpPendingChoiceCards.length" class="mt-3 grid gap-3">
-                    <div
-                      v-for="choice in levelUpPendingChoiceCards"
-                      :key="`level-choice-${choice.sourceKey}`"
-                      class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-3"
-                    >
-                      <div class="font-semibold text-white">{{ choice.label }}</div>
-
-                      <div class="mt-3 grid gap-2">
-                        <label
-                          v-for="slot in choiceSlots(choice)"
-                          :key="`level-${choice.sourceKey}-${slot}`"
-                          class="block"
-                        >
-                          <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">
-                            Pick {{ slot + 1 }}
-                          </span>
-
-                          <select
-                            v-if="choiceOptions(choice).length"
-                            v-model="choiceDrafts[choice.sourceKey][slot]"
-                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                          >
-                            <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
-                            <option
-                              v-for="option in choiceOptions(choice)"
-                              :key="option"
-                              :value="option"
-                              :disabled="isChoiceOptionDisabled(choice, slot, option)"
-                              class="bg-[#090909] text-[#f5e7bd] disabled:text-[#756a57]"
-                            >
-                              {{ choiceOptionLabel(choice, slot, option) }}
-                            </option>
-                          </select>
-
-                          <input
-                            v-else
-                            v-model="choiceDrafts[choice.sourceKey][slot]"
-                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                            :placeholder="choice.category ? `Choose from category ${choice.category}` : 'Type choice...'"
-                          >
-                        </label>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                      :disabled="choiceSaving"
-                      @click="saveChoices"
-                    >
-                      {{ choiceSaving ? 'Saving...' : 'Save Choices' }}
-                    </button>
-                  </div>
-
-                  <div v-else class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-3 text-sm text-[#9f9278]">
-                    No incomplete choices for this level right now.
-                  </div>
-                </div>
-
-                <div
-                  v-if="levelUpApplied"
-                  class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
-                >
-                  <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Step 5</div>
-                  <div class="mt-1 text-lg font-semibold text-white">Spells and review</div>
-                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
-                    If this level grants spell choices, new slots, or prepared spells, use the spell manager next.
-                  </p>
-
-                  <div class="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      class="eldra-button rounded-none px-4 py-3 text-sm font-semibold"
-                      @click="openSpellBuilderFromLevelUp"
-                    >
-                      Manage Spells
-                    </button>
-
-                    <button
-                      type="button"
-                      class="eldra-button rounded-none px-4 py-3 text-sm font-semibold"
-                      @click="closeLevelUpDrawer"
-                    >
-                      Finish
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
-              <button
-                type="button"
-                class="eldra-button w-full rounded-none px-4 py-3 text-sm font-medium"
-                @click="closeLevelUpDrawer"
-              >
-                Close
-              </button>
-            </div>
-          </aside>
+          <div
+            v-else
+            class="flex h-[40dvh] w-[70vw] max-w-[520px] items-center justify-center text-sm text-[#9f9278]"
+          >
+            No portrait set.
+          </div>
         </div>
-      </Transition>
+      </div>
+    </Transition>
 
       <!-- Spell Builder Drawer -->
       <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">

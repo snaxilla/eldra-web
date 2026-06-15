@@ -150,6 +150,8 @@ function expandBuilderChoiceOption(value: any) {
   const rawText = String(raw || '').trim()
   const normalized = normalizeBuilderChoiceCategory(rawText)
 
+  if (!normalized) return []
+
   if ([
     'skill',
     'skills',
@@ -164,6 +166,8 @@ function expandBuilderChoiceOption(value: any) {
   if (
     normalized === 'your choice of skill' ||
     normalized === 'your choice of skills' ||
+    normalized.includes('choose any skill') ||
+    normalized.includes('choose any skills') ||
     normalized.includes('any skill') ||
     normalized.includes('any skills')
   ) {
@@ -172,6 +176,18 @@ function expandBuilderChoiceOption(value: any) {
 
   if (BUILDER_TOOL_CATEGORY_OPTIONS[normalized]) {
     return BUILDER_TOOL_CATEGORY_OPTIONS[normalized]
+  }
+
+  if (normalized.includes('musical instrument')) {
+    return BUILDER_TOOL_CATEGORY_OPTIONS['musical instrument'] || []
+  }
+
+  if (normalized.includes('gaming set')) {
+    return BUILDER_TOOL_CATEGORY_OPTIONS['gaming set'] || []
+  }
+
+  if (normalized.includes('artisan')) {
+    return BUILDER_TOOL_CATEGORY_OPTIONS["artisan's tools"] || []
   }
 
   if (rawText.includes(',')) {
@@ -1053,19 +1069,27 @@ function classChoiceOptionList(value: any) {
       ? Object.entries(value)
         .filter(([, item]) => item === true || item !== false)
         .map(([key, item]) => item === true ? key : item)
-      : []
+      : value
+        ? [value]
+        : []
 
   const seen = new Set<string>()
 
   return source
-    .flatMap((item: any) => expandBuilderChoiceOption(item))
+    .flatMap((item: any) => {
+      if (item && typeof item === 'object' && Array.isArray(item.from)) {
+        return item.from.flatMap((nested: any) => expandBuilderChoiceOption(nested))
+      }
+
+      return expandBuilderChoiceOption(item)
+    })
     .map((item: any) => {
       const raw = typeof item === 'string'
         ? item
         : item?.name || item?.value || item?.skill || item?.tool || builderDisplayValue(item)
 
-      const label = titleCaseWords(raw)
       const value = String(raw || '').trim()
+      const label = titleCaseWords(value)
 
       if (!value || seen.has(value.toLowerCase())) return null
       seen.add(value.toLowerCase())
@@ -1079,12 +1103,33 @@ function classChoiceOptionList(value: any) {
 }
 
 function classChoiceGroupFromChoose(key: string, title: string, note: string, choose: any, index = 0) {
-  const from = choose?.from || choose?.options || choose?.items || []
+  const source = choose && typeof choose === 'object' && !Array.isArray(choose)
+    ? choose
+    : {}
+
+  const from = source.from ??
+    source.options ??
+    source.items ??
+    source.proficiencies ??
+    source.skills ??
+    source.tools ??
+    choose
+
+  const countRaw = source.count ??
+    source.choose ??
+    source.amount ??
+    source.number ??
+    source.qty ??
+    1
+
+  const count = Math.max(1, Number.isFinite(Number(countRaw))
+    ? Math.floor(Number(countRaw))
+    : builderChoiceCountFromText(countRaw)
+  )
+
   const options = classChoiceOptionList(from)
 
   if (!options.length) return null
-
-  const count = Math.max(1, Number(choose?.count || choose?.choose || choose?.amount || 1))
 
   return {
     key: index ? `${key}-${index}` : key,
@@ -1168,9 +1213,23 @@ function classChoiceGroupsFromValue(key: string, title: string, note: string, va
     return groups
   }
 
-  if (value?.choose) {
-    const group = classChoiceGroupFromChoose(key, title, note, value.choose)
+  if (value?.choose && Array.isArray(value?.from)) {
+    const group = classChoiceGroupFromChoose(key, title, note, value)
     if (group) groups.push(group)
+    return groups
+  }
+
+  if (value?.choose) {
+    if (Array.isArray(value.choose)) {
+      value.choose.forEach((choice: any, index: number) => {
+        const group = classChoiceGroupFromChoose(key, title, note, choice, index)
+        if (group) groups.push(group)
+      })
+    } else {
+      const group = classChoiceGroupFromChoose(key, title, note, value.choose)
+      if (group) groups.push(group)
+    }
+
     return groups
   }
 
@@ -1185,6 +1244,12 @@ function classChoiceGroupsFromValue(key: string, title: string, note: string, va
       const nestedTextGroup = classChoiceGroupFromText(index ? `${key}-${index}` : key, title, note, item)
       if (nestedTextGroup) {
         groups.push(nestedTextGroup)
+        return
+      }
+
+      if (item?.choose && Array.isArray(item?.from)) {
+        const group = classChoiceGroupFromChoose(key, title, note, item, index)
+        if (group) groups.push(group)
         return
       }
 
@@ -1232,16 +1297,114 @@ function classChoiceGroupsFromRaw(raw: any) {
   return groups
 }
 
+function classKeyForFallback(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function fallbackClassSkillGroup(className: any) {
+  const key = classKeyForFallback(className)
+
+  const skillFallbacks: Record<string, { count: number; options: string[] }> = {
+    bard: {
+      count: 3,
+      options: BUILDER_SKILL_OPTIONS
+    },
+    rogue: {
+      count: 4,
+      options: ['Acrobatics', 'Athletics', 'Deception', 'Insight', 'Intimidation', 'Investigation', 'Perception', 'Performance', 'Persuasion', 'Sleight of Hand', 'Stealth']
+    },
+    fighter: {
+      count: 2,
+      options: ['Acrobatics', 'Animal Handling', 'Athletics', 'History', 'Insight', 'Intimidation', 'Perception', 'Survival']
+    },
+    paladin: {
+      count: 2,
+      options: ['Athletics', 'Insight', 'Intimidation', 'Medicine', 'Persuasion', 'Religion']
+    },
+    ranger: {
+      count: 3,
+      options: ['Animal Handling', 'Athletics', 'Insight', 'Investigation', 'Nature', 'Perception', 'Stealth', 'Survival']
+    },
+    wizard: {
+      count: 2,
+      options: ['Arcana', 'History', 'Insight', 'Investigation', 'Medicine', 'Religion']
+    },
+    cleric: {
+      count: 2,
+      options: ['History', 'Insight', 'Medicine', 'Persuasion', 'Religion']
+    },
+    druid: {
+      count: 2,
+      options: ['Arcana', 'Animal Handling', 'Insight', 'Medicine', 'Nature', 'Perception', 'Religion', 'Survival']
+    },
+    barbarian: {
+      count: 2,
+      options: ['Animal Handling', 'Athletics', 'Intimidation', 'Nature', 'Perception', 'Survival']
+    },
+    monk: {
+      count: 2,
+      options: ['Acrobatics', 'Athletics', 'History', 'Insight', 'Religion', 'Stealth']
+    },
+    sorcerer: {
+      count: 2,
+      options: ['Arcana', 'Deception', 'Insight', 'Intimidation', 'Persuasion', 'Religion']
+    },
+    warlock: {
+      count: 2,
+      options: ['Arcana', 'Deception', 'History', 'Intimidation', 'Investigation', 'Nature', 'Religion']
+    }
+  }
+
+  const fallback = skillFallbacks[key]
+  if (!fallback) return null
+
+  return {
+    key: 'class-skills',
+    title: 'Class Skills',
+    note: 'Choose the trained skills this class starts with.',
+    count: fallback.count,
+    options: classChoiceOptionList(fallback.options)
+  }
+}
+
+function fallbackClassToolGroup(className: any) {
+  const key = classKeyForFallback(className)
+
+  if (key !== 'bard') return null
+
+  return {
+    key: 'class-tools',
+    title: 'Class Tools',
+    note: 'Choose tool proficiencies this class starts with.',
+    count: 3,
+    options: classChoiceOptionList(['musical instrument'])
+  }
+}
+
+function classChoiceGroupHasOptions(group: any) {
+  return Array.isArray(group?.options) && group.options.length > 0
+}
+
+function classChoiceGroupLooksLike(group: any, token: string) {
+  const text = normalizeBuilderChoiceCategory(`${group?.key || ''} ${group?.title || ''} ${group?.note || ''}`)
+  return text.includes(token)
+}
+
 const classChoiceGroups = computed(() => {
   const entity = selectedClassEntity.value
   const raw = rawJson(entity) || {}
   const core = blockData(entity, 'class_core')
+  const selectedName = selectedClassName.value || raw.name || core.name || ''
   const groups = [...classChoiceGroupsFromRaw(raw)]
+    .filter(classChoiceGroupHasOptions)
 
-  const hasSkillGroup = groups.some((group: any) => {
-    const text = normalizeBuilderChoiceCategory(`${group.key} ${group.title} ${group.note}`)
-    return text.includes('skill')
-  })
+  const hasSkillGroup = groups.some((group: any) =>
+    classChoiceGroupHasOptions(group) && classChoiceGroupLooksLike(group, 'skill')
+  )
 
   if (!hasSkillGroup) {
     const skillText = firstBuilderDisplayValue(
@@ -1256,15 +1419,15 @@ const classChoiceGroups = computed(() => {
       'Class Skills',
       'Choose the trained skills this class starts with.',
       skillText
-    )
+    ) || fallbackClassSkillGroup(selectedName)
 
-    if (skillGroup) groups.push(skillGroup)
+    if (skillGroup && classChoiceGroupHasOptions(skillGroup)) groups.push(skillGroup)
   }
 
-  const hasToolGroup = groups.some((group: any) => {
-    const text = normalizeBuilderChoiceCategory(`${group.key} ${group.title} ${group.note}`)
-    return text.includes('tool') || text.includes('instrument')
-  })
+  const hasToolGroup = groups.some((group: any) =>
+    classChoiceGroupHasOptions(group) &&
+    (classChoiceGroupLooksLike(group, 'tool') || classChoiceGroupLooksLike(group, 'instrument'))
+  )
 
   if (!hasToolGroup) {
     const toolText = firstBuilderDisplayValue(
@@ -1279,12 +1442,22 @@ const classChoiceGroups = computed(() => {
       'Class Tools',
       'Choose tool proficiencies this class starts with.',
       toolText
-    )
+    ) || fallbackClassToolGroup(selectedName)
 
-    if (toolGroup) groups.push(toolGroup)
+    if (toolGroup && classChoiceGroupHasOptions(toolGroup)) groups.push(toolGroup)
   }
 
-  return groups
+  const seen = new Set<string>()
+
+  return groups.filter((group: any) => {
+    if (!classChoiceGroupHasOptions(group)) return false
+
+    const key = String(group.key || group.title || '').toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+
+    return true
+  })
 })
 
 function ensureClassChoiceDraft(group: any) {

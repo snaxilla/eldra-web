@@ -112,6 +112,27 @@ const BUILDER_TOOL_CATEGORY_OPTIONS: Record<string, string[]> = {
   ]
 }
 
+const BUILDER_SKILL_OPTIONS = [
+  'Acrobatics',
+  'Animal Handling',
+  'Arcana',
+  'Athletics',
+  'Deception',
+  'History',
+  'Insight',
+  'Intimidation',
+  'Investigation',
+  'Medicine',
+  'Nature',
+  'Perception',
+  'Performance',
+  'Persuasion',
+  'Religion',
+  'Sleight of Hand',
+  'Stealth',
+  'Survival'
+]
+
 function normalizeBuilderChoiceCategory(value: any) {
   return String(value || '')
     .trim()
@@ -126,13 +147,41 @@ function expandBuilderChoiceOption(value: any) {
     ? value
     : value?.name || value?.value || value?.skill || value?.tool || builderDisplayValue(value)
 
-  const normalized = normalizeBuilderChoiceCategory(raw)
+  const rawText = String(raw || '').trim()
+  const normalized = normalizeBuilderChoiceCategory(rawText)
+
+  if ([
+    'skill',
+    'skills',
+    'any skill',
+    'any skills',
+    'all skill',
+    'all skills'
+  ].includes(normalized)) {
+    return BUILDER_SKILL_OPTIONS
+  }
+
+  if (
+    normalized === 'your choice of skill' ||
+    normalized === 'your choice of skills' ||
+    normalized.includes('any skill') ||
+    normalized.includes('any skills')
+  ) {
+    return BUILDER_SKILL_OPTIONS
+  }
 
   if (BUILDER_TOOL_CATEGORY_OPTIONS[normalized]) {
     return BUILDER_TOOL_CATEGORY_OPTIONS[normalized]
   }
 
-  return [raw]
+  if (rawText.includes(',')) {
+    return rawText
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  return [rawText]
 }
 
 const steps = [
@@ -1074,11 +1123,21 @@ function classChoiceGroupFromText(key: string, title: string, note: string, valu
   const text = String(builderDisplayValue(value) || clean5eText(value) || '').trim()
   if (!text) return null
 
-  const match = text.match(/choose\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:from\s+)?(.+?)\.?$/i)
+  const match = text.match(/choose\s+(?:any\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:from\s+)?(.+?)\.?$/i)
   if (!match) return null
 
   const count = builderChoiceCountFromText(match[1])
-  const category = String(match[2] || '')
+  let category = String(match[2] || '').trim()
+
+  const skillListMatch = category.match(/^skills?\s+from\s+(.+)$/i)
+  if (skillListMatch) {
+    category = skillListMatch[1]
+  }
+
+  category = category
+    .replace(/^any\s+/i, '')
+    .replace(/^proficienc(?:y|ies)\s+(?:in\s+)?/i, '')
+    .replace(/\s+of\s+your\s+choice.*$/i, '')
     .replace(/\s+or\s+.*$/i, '')
     .replace(/\s+and\s+.*$/i, '')
     .trim()
@@ -1179,6 +1238,29 @@ const classChoiceGroups = computed(() => {
   const core = blockData(entity, 'class_core')
   const groups = [...classChoiceGroupsFromRaw(raw)]
 
+  const hasSkillGroup = groups.some((group: any) => {
+    const text = normalizeBuilderChoiceCategory(`${group.key} ${group.title} ${group.note}`)
+    return text.includes('skill')
+  })
+
+  if (!hasSkillGroup) {
+    const skillText = firstBuilderDisplayValue(
+      core.skill_proficiencies,
+      core.skillProficiencies,
+      core.skills,
+      raw.startingProficiencies?.skills
+    )
+
+    const skillGroup = classChoiceGroupFromText(
+      'class-skills',
+      'Class Skills',
+      'Choose the trained skills this class starts with.',
+      skillText
+    )
+
+    if (skillGroup) groups.push(skillGroup)
+  }
+
   const hasToolGroup = groups.some((group: any) => {
     const text = normalizeBuilderChoiceCategory(`${group.key} ${group.title} ${group.note}`)
     return text.includes('tool') || text.includes('instrument')
@@ -1188,7 +1270,8 @@ const classChoiceGroups = computed(() => {
     const toolText = firstBuilderDisplayValue(
       core.tool_proficiencies,
       core.toolProficiencies,
-      core.tools
+      core.tools,
+      raw.startingProficiencies?.tools
     )
 
     const toolGroup = classChoiceGroupFromText(
@@ -1789,7 +1872,7 @@ async function createCharacter() {
         </div>
       </div>
 
-      <section class="eldra-ornate-panel eldra-frame-corners mt-4 rounded-none border p-4 md:p-5">
+      <section class="eldra-ornate-panel mt-4 rounded-none border p-4 md:p-5">
         <div v-if="stepIndex === 0" class="grid gap-4">
           <div>
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Step 1</div>
@@ -1801,7 +1884,7 @@ async function createCharacter() {
               <div class="mb-2 text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Builder Portrait</div>
               <button
                 type="button"
-                class="eldra-frame-corners group relative flex h-[150px] w-[116px] items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.70)] bg-[rgba(8,17,27,0.82)] p-[5px] text-[#f5e7bd]"
+                class="group relative flex h-[150px] w-[116px] items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.70)] bg-[rgba(8,17,27,0.82)] p-[5px] text-[#f5e7bd]"
                 @click="triggerBuilderPortraitUpload"
               >
                 <img

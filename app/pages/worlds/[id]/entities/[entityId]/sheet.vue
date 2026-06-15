@@ -4622,7 +4622,7 @@ async function saveSheet() {
 
 
             <div
-              class="eldra-frame-corners group relative mt-0 mb-2 flex h-[118px] w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
+              class="group relative mt-0 mb-2 flex h-[118px] w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
             >
               <button
                 v-if="entityImageUrl"
@@ -6896,7 +6896,7 @@ async function saveSheet() {
           class="fixed inset-0 z-[260] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
           @click.self="closeSpellBuilder"
         >
-          <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[520px]">
+          <aside class="eldra-ornate-panel fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[520px]">
             <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
               <div class="min-w-0">
                 <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build Mode</div>

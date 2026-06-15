@@ -12,6 +12,14 @@ const stepIndex = ref(0)
 const creating = ref(false)
 const createError = ref('')
 const advancedScores = ref(false)
+const builderPortraitInput = ref<HTMLInputElement | null>(null)
+const builderPortraitFile = ref<File | null>(null)
+const builderPortraitPreviewUrl = ref('')
+const builderImageLightbox = ref({
+  open: false,
+  url: '',
+  title: ''
+})
 const speciesMechanicsOpen = ref(false)
 const classMechanicsOpen = ref(false)
 const speciesChoiceSelections = reactive<Record<string, string>>({})
@@ -880,6 +888,15 @@ function builderDisplayValue(value: any): string {
   return ''
 }
 
+function firstBuilderDisplayValue(...values: any[]) {
+  for (const value of values) {
+    const rendered = builderDisplayValue(value)
+    if (rendered) return rendered
+  }
+
+  return ''
+}
+
 function classChoiceOptionList(value: any) {
   const source = Array.isArray(value)
     ? value
@@ -1135,13 +1152,21 @@ const classMechanicsDescription = computed(() => {
 
   const core = blockData(entity, 'class_core')
   const raw = rawJson(entity) || {}
+
+  const hitDie = firstBuilderDisplayValue(core.hit_die, raw.hd)
+  const primary = firstBuilderDisplayValue(core.primary_ability, raw.primaryAbility)
+  const saves = firstBuilderDisplayValue(core.saving_throws, raw.proficiency)
+  const armor = firstBuilderDisplayValue(core.armor_proficiencies, raw.startingProficiencies?.armor)
+  const weapons = firstBuilderDisplayValue(core.weapon_proficiencies, raw.startingProficiencies?.weapons)
+  const tools = firstBuilderDisplayValue(core.tool_proficiencies, raw.startingProficiencies?.tools)
+
   const lines = [
-    core.hit_die || simpleValue(raw.hd) ? `Hit Die: ${core.hit_die || simpleValue(raw.hd)}` : '',
-    core.primary_ability || builderDisplayValue(raw.primaryAbility) ? `Primary Ability: ${core.primary_ability || builderDisplayValue(raw.primaryAbility)}` : '',
-    core.saving_throws || builderDisplayValue(raw.proficiency) ? `Saving Throws: ${core.saving_throws || builderDisplayValue(raw.proficiency).toUpperCase()}` : '',
-    core.armor_proficiencies || builderDisplayValue(raw.startingProficiencies?.armor) ? `Armor: ${core.armor_proficiencies || builderDisplayValue(raw.startingProficiencies?.armor)}` : '',
-    core.weapon_proficiencies || builderDisplayValue(raw.startingProficiencies?.weapons) ? `Weapons: ${core.weapon_proficiencies || builderDisplayValue(raw.startingProficiencies?.weapons)}` : '',
-    core.tool_proficiencies || builderDisplayValue(raw.startingProficiencies?.tools) ? `Tools: ${core.tool_proficiencies || builderDisplayValue(raw.startingProficiencies?.tools)}` : ''
+    hitDie ? `Hit Die: ${hitDie}` : '',
+    primary ? `Primary Ability: ${primary}` : '',
+    saves ? `Saving Throws: ${saves}` : '',
+    armor ? `Armor: ${armor}` : '',
+    weapons ? `Weapons: ${weapons}` : '',
+    tools ? `Tools: ${tools}` : ''
   ].filter(Boolean)
 
   return mechanicsText(lines.join('\n'))
@@ -1192,10 +1217,14 @@ const classInfoLines = computed(() => {
   const core = blockData(entity, 'class_core')
   const raw = rawJson(entity) || {}
 
+  const hitDie = firstBuilderDisplayValue(core.hit_die, raw.hd)
+  const primary = firstBuilderDisplayValue(core.primary_ability, raw.primaryAbility)
+  const saves = firstBuilderDisplayValue(core.saving_throws, raw.proficiency)
+
   return [
-    core.hit_die || simpleValue(raw.hd) ? `Hit Die: ${core.hit_die || simpleValue(raw.hd)}` : '',
-    core.primary_ability || builderDisplayValue(raw.primaryAbility) ? `Primary: ${core.primary_ability || builderDisplayValue(raw.primaryAbility)}` : '',
-    core.saving_throws || builderDisplayValue(raw.proficiency) ? `Saves: ${core.saving_throws || builderDisplayValue(raw.proficiency).toUpperCase()}` : '',
+    hitDie ? `Hit Die: ${hitDie}` : '',
+    primary ? `Primary: ${primary}` : '',
+    saves ? `Saves: ${saves}` : '',
     sourceText(entity)
   ].filter(Boolean)
 })
@@ -1207,9 +1236,14 @@ const backgroundInfoLines = computed(() => {
   const core = blockData(entity, 'background_core')
   const raw = rawJson(entity) || {}
 
+  const skills = firstBuilderDisplayValue(core.skill_proficiencies, raw.skillProficiencies)
+  const tools = firstBuilderDisplayValue(core.tool_proficiencies, raw.toolProficiencies)
+  const languages = firstBuilderDisplayValue(core.languages, raw.languageProficiencies)
+
   return [
-    core.skill_proficiencies || simpleValue(raw.skillProficiencies) ? `Skills: ${core.skill_proficiencies || simpleValue(raw.skillProficiencies)}` : '',
-    core.tool_proficiencies || simpleValue(raw.toolProficiencies) ? `Tools: ${core.tool_proficiencies || simpleValue(raw.toolProficiencies)}` : '',
+    skills ? `Skills: ${skills}` : '',
+    tools ? `Tools: ${tools}` : '',
+    languages ? `Languages: ${languages}` : '',
     sourceText(entity)
   ].filter(Boolean)
 })
@@ -1317,6 +1351,67 @@ function goToStep(index: number) {
   stepIndex.value = index
 }
 
+function triggerBuilderPortraitUpload() {
+  builderPortraitInput.value?.click()
+}
+
+function handleBuilderPortraitUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+
+  if (!file) return
+
+  if (builderPortraitPreviewUrl.value) {
+    URL.revokeObjectURL(builderPortraitPreviewUrl.value)
+  }
+
+  builderPortraitFile.value = file
+  builderPortraitPreviewUrl.value = URL.createObjectURL(file)
+}
+
+function clearBuilderPortrait() {
+  if (builderPortraitPreviewUrl.value) {
+    URL.revokeObjectURL(builderPortraitPreviewUrl.value)
+  }
+
+  builderPortraitPreviewUrl.value = ''
+  builderPortraitFile.value = null
+
+  if (builderPortraitInput.value) {
+    builderPortraitInput.value.value = ''
+  }
+}
+
+async function uploadBuilderPortraitForEntity(createdEntityId: string) {
+  if (!builderPortraitFile.value || !createdEntityId) return
+
+  const formData = new FormData()
+  formData.append('title', builderForm.name || 'Character')
+  formData.append('summary', `${selectedSpeciesName.value || 'Adventurer'}${selectedClassName.value ? ` • ${selectedClassName.value}` : ''}`)
+  formData.append('characterType', 'pc')
+  formData.append('image', builderPortraitFile.value)
+
+  await $fetch(`/api/worlds/${worldId.value}/characters/${createdEntityId}/update`, {
+    method: 'POST',
+    body: formData
+  })
+}
+
+function openBuilderImageLightbox(url: any, title: any = 'Image Preview') {
+  const imageUrl = String(url || '').trim()
+  if (!imageUrl) return
+
+  builderImageLightbox.value = {
+    open: true,
+    url: imageUrl,
+    title: String(title || 'Image Preview')
+  }
+}
+
+function closeBuilderImageLightbox() {
+  builderImageLightbox.value.open = false
+}
+
 async function createCharacter() {
   if (!canCreate.value) return
 
@@ -1343,6 +1438,8 @@ async function createCharacter() {
       throw new Error('Character was created, but no entity id was returned.')
     }
 
+    await uploadBuilderPortraitForEntity(entityId)
+
     workspaceMode.value = 'build'
     await router.push(`/worlds/${worldId.value}/entities/${entityId}/sheet`)
   } catch (err: any) {
@@ -1358,6 +1455,14 @@ async function createCharacter() {
 </script>
 
 <template>
+
+  <input
+    ref="builderPortraitInput"
+    type="file"
+    accept="image/*"
+    class="hidden"
+    @change="handleBuilderPortraitUpload"
+  >
   <div class="fixed inset-0 z-[9999] overflow-y-auto bg-[#05080d] md:relative md:inset-auto md:z-auto md:bg-transparent">
     <div class="pointer-events-none fixed inset-0 z-0 md:hidden">
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(48,68,92,0.48),rgba(5,10,16,1)_62%)]"></div>
@@ -1403,6 +1508,61 @@ async function createCharacter() {
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Step 1</div>
             <h2 class="mt-2 text-xl font-semibold text-white">What are they?</h2>
             <p class="mt-1 text-sm leading-6 text-[#d8ceb8]">Start with species, then class. The preview cards explain what each choice means before the sheet is created.</p>
+
+          <div class="grid gap-3 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.42)] p-3 md:grid-cols-[132px_minmax(0,1fr)]">
+            <div>
+              <div class="mb-2 text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Builder Portrait</div>
+              <button
+                type="button"
+                class="eldra-frame-corners group relative flex h-[150px] w-[116px] items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.70)] bg-[rgba(8,17,27,0.82)] p-[5px] text-[#f5e7bd]"
+                @click="triggerBuilderPortraitUpload"
+              >
+                <img
+                  v-if="builderPortraitPreviewUrl"
+                  :src="builderPortraitPreviewUrl"
+                  alt="Selected character portrait"
+                  class="h-full w-full object-cover"
+                >
+
+                <div
+                  v-else
+                  class="flex h-full w-full flex-col items-center justify-center gap-2 bg-[rgba(201,164,90,0.08)] px-2 text-center"
+                >
+                  <UIcon name="i-lucide-image-plus" class="h-7 w-7 text-[#c9a45a]" />
+                  <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">Add Image</span>
+                </div>
+
+                <div class="absolute inset-x-1 bottom-1 bg-black/80 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df]">
+                  Change
+                </div>
+              </button>
+
+              <button
+                v-if="builderPortraitFile"
+                type="button"
+                class="mt-2 rounded-none border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-200"
+                @click="clearBuilderPortrait"
+              >
+                Remove
+              </button>
+            </div>
+
+            <div class="grid content-start gap-3">
+              <label class="block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Character Name</span>
+                <input
+                  v-model="builderForm.name"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  placeholder="Dingus Khan"
+                >
+              </label>
+
+              <div class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3 text-xs leading-5 text-[#9f9278]">
+                Pick a portrait now, or leave it blank and add one later from the sheet in Build mode.
+              </div>
+            </div>
+          </div>
+
           </div>
 
           <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -1418,12 +1578,19 @@ async function createCharacter() {
               </label>
 
               <article class="min-h-[220px] overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)]">
-                <img
+
+                <button
                   v-if="selectedSpeciesImageUrl"
-                  :src="selectedSpeciesImageUrl"
-                  :alt="selectedSpeciesName || 'Species'"
-                  class="h-36 w-full object-cover"
+                  type="button"
+                  class="block w-full overflow-hidden rounded-none text-left transition hover:brightness-110"
+                  @click="openBuilderImageLightbox(selectedSpeciesImageUrl, selectedSpeciesName || 'Species Preview')"
                 >
+                  <img
+                    :src="selectedSpeciesImageUrl"
+                    :alt="selectedSpeciesName || 'Species'"
+                    class="h-36 w-full object-cover"
+                  >
+                </button>
 
                 <div v-else class="flex h-36 items-center justify-center bg-[rgba(201,164,90,0.08)] text-[#c9a45a]">
                   <UIcon name="i-lucide-users" class="h-10 w-10" />
@@ -1561,12 +1728,19 @@ async function createCharacter() {
               </label>
 
               <article class="min-h-[220px] overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)]">
-                <img
+
+                <button
                   v-if="selectedClassImageUrl"
-                  :src="selectedClassImageUrl"
-                  :alt="selectedClassName || 'Class'"
-                  class="h-36 w-full object-cover"
+                  type="button"
+                  class="block w-full overflow-hidden rounded-none text-left transition hover:brightness-110"
+                  @click="openBuilderImageLightbox(selectedClassImageUrl, selectedClassName || 'Class Preview')"
                 >
+                  <img
+                    :src="selectedClassImageUrl"
+                    :alt="selectedClassName || 'Class'"
+                    class="h-36 w-full object-cover"
+                  >
+                </button>
 
                 <div v-else class="flex h-36 items-center justify-center bg-[rgba(201,164,90,0.08)] text-[#c9a45a]">
                   <UIcon name="i-lucide-swords" class="h-10 w-10" />
@@ -1671,16 +1845,6 @@ async function createCharacter() {
               </div>
             </div>
           </div>
-
-<label class="block">
-            <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Character Name</span>
-            <input
-              v-model="builderForm.name"
-              class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
-              placeholder="Dingus Khan"
-            >
-          </label>
-
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block">
               <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Background</span>
@@ -1707,12 +1871,19 @@ async function createCharacter() {
             class="overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)]"
           >
             <div class="grid gap-3 p-3 md:grid-cols-[180px_minmax(0,1fr)]">
-              <img
+
+              <button
                 v-if="selectedBackgroundImageUrl"
-                :src="selectedBackgroundImageUrl"
-                :alt="selectedBackgroundName || 'Background'"
-                class="h-36 w-full object-cover"
+                type="button"
+                class="block w-full overflow-hidden rounded-none text-left transition hover:brightness-110"
+                @click="openBuilderImageLightbox(selectedBackgroundImageUrl, selectedBackgroundName || 'Background Preview')"
               >
+                <img
+                  :src="selectedBackgroundImageUrl"
+                  :alt="selectedBackgroundName || 'Background'"
+                  class="h-36 w-full object-cover"
+                >
+              </button>
 
               <div v-else class="flex h-36 items-center justify-center bg-[rgba(201,164,90,0.08)] text-[#c9a45a]">
                 <UIcon name="i-lucide-scroll-text" class="h-10 w-10" />
@@ -1908,7 +2079,32 @@ async function createCharacter() {
         </div>
       </section>
 
-      <div class="sticky bottom-0 z-20 -mx-3 mt-4 border-t border-[rgba(201,164,90,0.20)] bg-[rgba(7,13,20,0.94)] p-3 backdrop-blur md:mx-0 md:rounded-none md:border">
+
+      <Transition enter-from-class="opacity-0" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-150">
+        <div
+          v-if="builderImageLightbox.open"
+          class="fixed inset-0 z-[260] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
+          @click.self="closeBuilderImageLightbox"
+        >
+          <button
+            type="button"
+            class="absolute right-4 top-4 rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.86)] p-3 text-[#f5e7bd]"
+            @click="closeBuilderImageLightbox"
+          >
+            <UIcon name="i-lucide-x" class="h-5 w-5" />
+          </button>
+
+          <div class="max-h-[88dvh] max-w-[94vw] overflow-hidden rounded-none border border-[rgba(201,164,90,0.58)] bg-[rgba(7,16,26,0.86)] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <img
+              :src="builderImageLightbox.url"
+              :alt="builderImageLightbox.title"
+              class="max-h-[84dvh] max-w-full object-contain"
+            >
+          </div>
+        </div>
+      </Transition>
+
+<div class="sticky bottom-0 z-20 -mx-3 mt-4 border-t border-[rgba(201,164,90,0.20)] bg-[rgba(7,13,20,0.94)] p-3 backdrop-blur md:mx-0 md:rounded-none md:border">
         <div class="grid grid-cols-2 gap-3">
           <button
             type="button"

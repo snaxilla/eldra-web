@@ -4615,62 +4615,48 @@ async function saveSheet() {
             </div>
           </div>
 
-          <div class="mt-3 grid grid-cols-[84px_minmax(0,1fr)] gap-3">
+          <div class="mt-3 grid grid-cols-[104px_minmax(0,1fr)] items-start gap-3">
+
 
 
 
 
             <div
-              class="eldra-frame-corners group relative mt-2 mr-5 flex h-[124px] w-[96px] shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
+              class="eldra-frame-corners group relative mt-0 mb-2 flex h-[118px] w-[92px] shrink-0 items-center justify-center overflow-hidden rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
             >
-
-              <div
-                class="eldra-frame-corners group relative mt-3 mr-4 mb-2 flex h-[124px] w-[96px] shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.78)] bg-[rgba(20,17,12,0.88)] p-[5px] text-[#f5e7bd] shadow-[0_10px_30px_rgba(0,0,0,0.30)]"
+              <button
+                v-if="entityImageUrl"
+                type="button"
+                class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(8,17,27,0.84)] text-[#f5e7bd] transition hover:brightness-110"
+                aria-label="View portrait"
+                @click.stop.prevent="portraitLightboxOpen = true"
+                @keydown.enter.prevent="portraitLightboxOpen = true"
+                @keydown.space.prevent="portraitLightboxOpen = true"
               >
-                <button
-                  v-if="entityImageUrl"
-                  type="button"
-                  class="relative h-full w-full overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(8,17,27,0.84)] text-[#f5e7bd] transition hover:brightness-110"
-                  title="View portrait"
-                  @click.stop.prevent="openPortraitLightbox()"
-                  @keydown.enter.prevent="openPortraitLightbox()"
-                  @keydown.space.prevent="openPortraitLightbox()"
+                <img
+                  :src="entityImageUrl"
+                  :alt="sheet?.name || entity?.title || 'Character Portrait'"
+                  class="h-full w-full object-cover"
                 >
-                  <img
-                    :src="entityImageUrl"
-                    :alt="sheet?.name || entity?.title || 'Character Portrait'"
-                    class="h-full w-full object-cover"
-                  >
-                </button>
+              </button>
 
-                <button
-                  v-else
-                  type="button"
-                  class="relative flex h-full w-full flex-col items-center justify-center gap-1 overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(201,164,90,0.08)] px-2 text-center text-[#f5e7bd] transition"
-                  :class="mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.14)]' : 'cursor-default'"
-                  title="No portrait set"
-                  @click.stop.prevent="mode === 'build' && triggerPortraitUpload()"
-                >
-                  <UIcon name="i-lucide-image-plus" class="h-7 w-7 text-[#c9a45a]" />
-                  <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
-                </button>
-
-                <button
-                  v-if="mode === 'build'"
-                  type="button"
-                  class="absolute inset-x-1 bottom-1 z-10 bg-black/82 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 transition hover:bg-black/92 md:opacity-0 md:group-hover:opacity-100"
-                  @click.stop.prevent="triggerPortraitUpload()"
-                >
-                  <span v-if="portraitUploading">Uploading...</span>
-                  <span v-else>Change</span>
-                </button>
-              </div>
+              <button
+                v-else
+                type="button"
+                class="relative flex h-full w-full flex-col items-center justify-center gap-1 overflow-hidden rounded-none border border-[rgba(255,247,223,0.22)] bg-[rgba(201,164,90,0.08)] px-2 text-center text-[#f5e7bd] transition"
+                :class="mode === 'build' ? 'cursor-pointer hover:bg-[rgba(201,164,90,0.14)]' : 'cursor-default'"
+                aria-label="No portrait set"
+                @click.stop.prevent="mode === 'build' && triggerPortraitUpload()"
+              >
+                <UIcon name="i-lucide-image-plus" class="h-7 w-7 text-[#c9a45a]" />
+                <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9f9278]">No Image</span>
+              </button>
 
               <button
                 v-if="mode === 'build'"
                 type="button"
-                class="absolute inset-x-1 bottom-1 z-10 bg-black/80 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 transition hover:bg-black/90 md:opacity-0 md:group-hover:opacity-100"
-                @click.stop="triggerPortraitUpload"
+                class="absolute inset-x-1 bottom-1 z-10 bg-black/82 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df] opacity-100 transition hover:bg-black/92 md:opacity-0 md:group-hover:opacity-100"
+                @click.stop.prevent="triggerPortraitUpload()"
               >
                 <span v-if="portraitUploading">Uploading...</span>
                 <span v-else>Change</span>
@@ -6907,7 +6893,7 @@ async function saveSheet() {
       <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
         <div
           v-if="spellBuilderOpen"
-          class="fixed inset-0 z-[145] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
+          class="fixed inset-0 z-[260] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
           @click.self="closeSpellBuilder"
         >
           <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[520px]">

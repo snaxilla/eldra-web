@@ -143,6 +143,38 @@ function builderClassSkillChoiceMatches(selected: Set<string>, skill: any) {
   })
 }
 
+function builderBackgroundChoiceGroups(sheet: any) {
+  const choices = plainObject(sheet?.choices)
+  return plainObject(choices.builderBackgroundChoices ?? choices.builder_background_choices)
+}
+
+function builderBackgroundSkillChoiceSet(sheet: any) {
+  const groups = builderBackgroundChoiceGroups(sheet)
+  const selected = new Set<string>()
+
+  for (const [key, rawGroup] of Object.entries(groups) as any[]) {
+    const group = plainObject(rawGroup)
+    const groupText = normalizeToken(`${key} ${group.label || ''}`)
+
+    if (!groupText.includes('skill')) continue
+
+    const values = Array.isArray(group.values)
+      ? group.values
+      : Array.isArray(group.selected)
+        ? group.selected
+        : group.value
+          ? [group.value]
+          : []
+
+    for (const value of values) {
+      const token = normalizeToken(value)
+      if (token) selected.add(token)
+    }
+  }
+
+  return selected
+}
+
 function builderClassSkillChoiceValues(sheet: any) {
   return Array.from(builderClassSkillChoiceSet(sheet))
 }
@@ -293,9 +325,10 @@ function buildSaveRows(scores: Record<string, number>, saveProfs: Set<string>, p
 
 function buildSkillRows(sheet: any, scores: Record<string, number>, skillProfs: Set<string>, proficiencyBonus: number) {
   const builderClassSkillChoices = builderClassSkillChoiceSet(sheet)
+  const builderBackgroundSkillChoices = builderBackgroundSkillChoiceSet(sheet)
   return SKILLS.map((skill) => {
     const modifier = abilityModifier(scores[skill.ability])
-    const proficient = builderClassSkillChoiceMatches(builderClassSkillChoices, skill) || skillProfs.has(skill.key)
+    const proficient = builderClassSkillChoiceMatches(builderBackgroundSkillChoices, skill) || builderClassSkillChoiceMatches(builderClassSkillChoices, skill) || skillProfs.has(skill.key)
     const total = modifier + (proficient ? proficiencyBonus : 0)
 
     return {

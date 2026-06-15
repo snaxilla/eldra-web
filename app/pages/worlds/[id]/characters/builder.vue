@@ -35,6 +35,106 @@ const ABILITIES = [
   { key: 'cha', label: 'CHA', name: 'Charisma' }
 ] as const
 
+const BUILDER_TOOL_CATEGORY_OPTIONS: Record<string, string[]> = {
+  'musical instrument': [
+    'Bagpipes',
+    'Drum',
+    'Dulcimer',
+    'Flute',
+    'Lute',
+    'Lyre',
+    'Horn',
+    'Pan Flute',
+    'Shawm',
+    'Viol'
+  ],
+  'musical instruments': [
+    'Bagpipes',
+    'Drum',
+    'Dulcimer',
+    'Flute',
+    'Lute',
+    'Lyre',
+    'Horn',
+    'Pan Flute',
+    'Shawm',
+    'Viol'
+  ],
+  'gaming set': [
+    'Dice Set',
+    'Dragonchess Set',
+    'Playing Card Set',
+    'Three-Dragon Ante Set'
+  ],
+  'gaming sets': [
+    'Dice Set',
+    'Dragonchess Set',
+    'Playing Card Set',
+    'Three-Dragon Ante Set'
+  ],
+  "artisan's tools": [
+    "Alchemist's Supplies",
+    "Brewer's Supplies",
+    "Calligrapher's Supplies",
+    "Carpenter's Tools",
+    "Cartographer's Tools",
+    "Cobbler's Tools",
+    "Cook's Utensils",
+    "Glassblower's Tools",
+    "Jeweler's Tools",
+    "Leatherworker's Tools",
+    "Mason's Tools",
+    "Painter's Supplies",
+    "Potter's Tools",
+    "Smith's Tools",
+    "Tinker's Tools",
+    "Weaver's Tools",
+    "Woodcarver's Tools"
+  ],
+  'artisan tools': [
+    "Alchemist's Supplies",
+    "Brewer's Supplies",
+    "Calligrapher's Supplies",
+    "Carpenter's Tools",
+    "Cartographer's Tools",
+    "Cobbler's Tools",
+    "Cook's Utensils",
+    "Glassblower's Tools",
+    "Jeweler's Tools",
+    "Leatherworker's Tools",
+    "Mason's Tools",
+    "Painter's Supplies",
+    "Potter's Tools",
+    "Smith's Tools",
+    "Tinker's Tools",
+    "Weaver's Tools",
+    "Woodcarver's Tools"
+  ]
+}
+
+function normalizeBuilderChoiceCategory(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[{}]/g, '')
+    .replace(/\{@[^\s}]+\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\s+/g, ' ')
+}
+
+function expandBuilderChoiceOption(value: any) {
+  const raw = typeof value === 'string'
+    ? value
+    : value?.name || value?.value || value?.skill || value?.tool || builderDisplayValue(value)
+
+  const normalized = normalizeBuilderChoiceCategory(raw)
+
+  if (BUILDER_TOOL_CATEGORY_OPTIONS[normalized]) {
+    return BUILDER_TOOL_CATEGORY_OPTIONS[normalized]
+  }
+
+  return [raw]
+}
+
 const steps = [
   { key: 'origin', label: 'Origin' },
   { key: 'abilities', label: 'Abilities' },
@@ -909,6 +1009,7 @@ function classChoiceOptionList(value: any) {
   const seen = new Set<string>()
 
   return source
+    .flatMap((item: any) => expandBuilderChoiceOption(item))
     .map((item: any) => {
       const raw = typeof item === 'string'
         ? item
@@ -1062,6 +1163,89 @@ const classChoicePayload = computed(() => {
       label: group.title,
       values,
       note: group.note || ''
+    }
+  }
+
+  return payload
+})
+
+function backgroundChoiceValues(value: any) {
+  return classChoiceOptionList(value)
+    .map((option: any) => option?.label || option?.value || '')
+    .filter(Boolean)
+}
+
+function backgroundFeatValues(raw: any) {
+  const candidates = [
+    raw?.feat,
+    raw?.feats,
+    raw?.additionalFeat,
+    raw?.additionalFeats
+  ]
+
+  for (const candidate of candidates) {
+    const values = backgroundChoiceValues(candidate)
+    if (values.length) return values
+
+    const rendered = builderDisplayValue(candidate)
+    if (rendered) return [rendered]
+  }
+
+  return []
+}
+
+const backgroundChoicePayload = computed(() => {
+  const entity = selectedBackgroundEntity.value
+  if (!entity) return {}
+
+  const raw = rawJson(entity) || {}
+  const core = blockData(entity, 'background_core')
+
+  const skills = backgroundChoiceValues(core.skill_proficiencies || raw.skillProficiencies)
+  const tools = backgroundChoiceValues(core.tool_proficiencies || raw.toolProficiencies)
+  const languages = backgroundChoiceValues(core.languages || raw.languageProficiencies)
+  const feat = backgroundFeatValues(raw)
+  const abilityScores = firstBuilderDisplayValue(raw.ability, raw.abilityScores, raw.abilityScoreIncrease)
+
+  const payload: Record<string, any> = {}
+
+  if (skills.length) {
+    payload['background-skills'] = {
+      label: 'Background Skills',
+      values: skills,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (tools.length) {
+    payload['background-tools'] = {
+      label: 'Background Tools',
+      values: tools,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (languages.length) {
+    payload['background-languages'] = {
+      label: 'Background Languages',
+      values: languages,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (feat.length) {
+    payload['background-feat'] = {
+      label: 'Background Feat',
+      values: feat,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (abilityScores) {
+    payload['background-abilities'] = {
+      label: 'Background Ability Scores',
+      values: [abilityScores],
+      note: 'Suggested by background.'
     }
   }
 
@@ -1429,7 +1613,8 @@ async function createCharacter() {
         backgroundEntityId: builderForm.backgroundEntityId || null,
         abilityScores: { ...builderForm.abilityScores },
         speciesChoices: speciesChoicePayload.value,
-        classChoices: classChoicePayload.value
+        classChoices: classChoicePayload.value,
+        backgroundChoices: backgroundChoicePayload.value
       }
     })
 
@@ -1906,6 +2091,25 @@ async function createCharacter() {
                 <p class="mt-3 max-h-36 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
                   {{ backgroundDescription || 'No imported background description found yet.' }}
                 </p>
+
+                <div
+                  v-if="Object.keys(backgroundChoicePayload).length"
+                  class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)] p-3"
+                >
+                  <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Background Builder Benefits</div>
+
+                  <div class="mt-2 grid gap-2">
+                    <div
+                      v-for="choice in Object.values(backgroundChoicePayload)"
+                      :key="choice.label"
+                      class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-2 text-xs leading-5"
+                    >
+                      <span class="font-semibold text-white">{{ choice.label }}:</span>
+                      <span class="text-[#d8ceb8]"> {{ choice.values.join(', ') }}</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </article>

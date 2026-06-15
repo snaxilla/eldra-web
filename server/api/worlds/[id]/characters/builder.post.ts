@@ -19,31 +19,7 @@ function abilityModifier(score: any) {
   return Math.floor((parsed - 10) / 2)
 }
 
-function normalizeSpeciesChoices(value: any) {
-  const raw = asObject(value)
-  const out: Record<string, any> = {}
-
-  for (const [key, choice] of Object.entries(raw)) {
-    const safeKey = cleanText(key)
-    const data = asObject(choice)
-
-    if (!safeKey) continue
-
-    const selectedValue = cleanText(data.value)
-    if (!selectedValue) continue
-
-    out[safeKey] = {
-      label: cleanText(data.label || safeKey),
-      value: selectedValue,
-      detail: cleanText(data.detail || ''),
-      meta: asObject(data.meta)
-    }
-  }
-
-  return out
-}
-
-function normalizeClassChoices(value: any) {
+function normalizeChoiceGroups(value: any) {
   const raw = asObject(value)
   const out: Record<string, any> = {}
 
@@ -55,18 +31,35 @@ function normalizeClassChoices(value: any) {
 
     const values = Array.isArray(data.values)
       ? data.values.map(cleanText).filter(Boolean)
-      : []
+      : data.value
+        ? [cleanText(data.value)]
+        : []
 
     if (!values.length) continue
 
     out[safeKey] = {
       label: cleanText(data.label || safeKey),
       values,
-      note: cleanText(data.note || '')
+      value: values[0] || '',
+      detail: cleanText(data.detail || ''),
+      note: cleanText(data.note || ''),
+      meta: asObject(data.meta)
     }
   }
 
   return out
+}
+
+function normalizeSpeciesChoices(value: any) {
+  return normalizeChoiceGroups(value)
+}
+
+function normalizeClassChoices(value: any) {
+  return normalizeChoiceGroups(value)
+}
+
+function normalizeBackgroundChoices(value: any) {
+  return normalizeChoiceGroups(value)
 }
 
 async function linkedEntityTitle(id: any) {
@@ -244,6 +237,149 @@ async function upsertCharacterCoreSheetLink(entityId: string, sheetId: any) {
   }).catch(() => null)
 }
 
+async function directusFieldSet(collection: string) {
+  try {
+    const res = await dxFetch(`/fields/${collection}`)
+    const fields = Array.isArray(res?.data) ? res.data : []
+
+    return new Set(fields.map((field: any) => String(field?.field || '')).filter(Boolean))
+  } catch {
+    return new Set<string>()
+  }
+}
+
+function onlyKnownFields(payload: Record<string, any>, fields: Set<string>) {
+  if (!fields.size) return payload
+
+  const out: Record<string, any> = {}
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (fields.has(key)) out[key] = value
+  }
+
+  return out
+}
+
+async function loadExistingInventoryRows(sheetId: any) {
+  try {
+    const params = new URLSearchParams()
+    params.set('filter[sheet_id][_eq]', String(sheetId))
+    params.set('limit', '-1')
+    params.set('fields', '*')
+
+    const res = await dxFetch(`/items/character_sheet_inventory?${params.toString()}`)
+    return Array.isArray(res?.data) ? res.data : []
+  } catch {
+    return []
+  }
+}
+
+function rowInventoryName(row: any) {
+  return cleanText(
+    row?.custom_name ||
+    row?.customName ||
+    row?.name ||
+    row?.title ||
+    row?.label ||
+    row?.data?.custom_name ||
+    row?.data?.name
+  )
+}
+
+function toolInventoryItemsFromChoices(classChoices: Record<string, any>, backgroundChoices: Record<string, any>) {
+  const items: Array<{ name: string; source: string }> = []
+
+  function collect(groups: Record<string, any>, source: string) {
+    for (const [key, rawGroup] of Object.entries(groups)) {
+      const group = asObject(rawGroup)
+      const text = `${key} ${group.label || ''} ${group.note || ''}`.toLowerCase()
+
+      if (!text.includes('tool') && !text.includes('instrument')) continue
+
+      const values = Array.isArray(group.values)
+        ? group.values
+        : group.value
+          ? [group.value]
+          : []
+
+      for (const value of values) {
+        const name = cleanText(value)
+        if (name) items.push({ name, source })
+      }
+    }
+  }
+
+  collect(classChoices, 'Class Tools')
+  collect(backgroundChoices, 'Background Tools')
+
+  const seen = new Set<string>()
+
+  return items.filter((item) => {
+    const key = item.name.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+async function seedBuilderInventoryTools(sheetId: any, classChoices: Record<string, any>, backgroundChoices: Record<string, any>) {
+  if (!sheetId) return
+
+  const toolItems = toolInventoryItemsFromChoices(classChoices, backgroundChoices)
+  if (!toolItems.length) return
+
+  const fields = await directusFieldSet('character_sheet_inventory')
+  const existingRows = await loadExistingInventoryRows(sheetId)
+  const existingNames = new Set(existingRows.map(rowInventoryName).filter(Boolean).map((name) => name.toLowerCase()))
+
+  let sort = 8800
+
+  for (const item of toolItems) {
+    if (existingNames.has(item.name.toLowerCase())) continue
+
+    const basePayload: Record<string, any> = {
+      sheet_id: Number(sheetId),
+      sheet: Number(sheetId),
+      custom_name: item.name,
+      customName: item.name,
+      name: item.name,
+      title: item.name,
+      quantity: 1,
+      equipped: false,
+      carried: true,
+      item_type: 'Tool',
+      itemType: 'Tool',
+      source: 'guided_builder',
+      source_type: item.source,
+      notes: `Added by Guided Builder: ${item.source}`,
+      sort,
+      data: {
+        custom_name: item.name,
+        item_type: 'Tool',
+        source: 'guided_builder',
+        source_type: item.source
+      }
+    }
+
+    const payload = onlyKnownFields(basePayload, fields)
+
+    if (!payload.sheet_id && fields.has('sheet_id')) payload.sheet_id = Number(sheetId)
+    if (!payload.sheet && fields.has('sheet')) payload.sheet = Number(sheetId)
+
+    try {
+      await dxFetch('/items/character_sheet_inventory', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+
+      existingNames.add(item.name.toLowerCase())
+      sort += 10
+    } catch (error) {
+      console.error('[guided-character-builder] failed to seed inventory tool', item.name, error)
+    }
+  }
+}
+
 async function createOrPatchCharacterSheet(options: {
   worldId: string
   entityId: string
@@ -261,6 +397,7 @@ async function createOrPatchCharacterSheet(options: {
   hitDieFaces: number
   speciesChoices: Record<string, any>
   classChoices: Record<string, any>
+  backgroundChoices: Record<string, any>
 }) {
   const now = new Date().toISOString()
   const existing = await findActiveSheet(options.worldId, options.entityId)
@@ -301,7 +438,8 @@ async function createOrPatchCharacterSheet(options: {
     choices: {
       ...existingChoices,
       builderSpeciesChoices: options.speciesChoices,
-      builderClassChoices: options.classChoices
+      builderClassChoices: options.classChoices,
+      builderBackgroundChoices: options.backgroundChoices
     },
     updated_at: now
   }
@@ -318,6 +456,7 @@ async function createOrPatchCharacterSheet(options: {
     }
 
     await upsertCharacterCoreSheetLink(options.entityId, patchedSheet.id || existing.id)
+    await seedBuilderInventoryTools(patchedSheet.id || existing.id, options.classChoices, options.backgroundChoices)
 
     return patchedSheet
   }
@@ -340,6 +479,7 @@ async function createOrPatchCharacterSheet(options: {
   }
 
   await upsertCharacterCoreSheetLink(options.entityId, createdSheet.id)
+  await seedBuilderInventoryTools(createdSheet.id, options.classChoices, options.backgroundChoices)
 
   return createdSheet
 }
@@ -372,6 +512,7 @@ export default defineEventHandler(async (event) => {
     const abilityScores = normalizeAbilityScores(body?.abilityScores)
     const speciesChoices = normalizeSpeciesChoices(body?.speciesChoices)
     const classChoices = normalizeClassChoices(body?.classChoices)
+    const backgroundChoices = normalizeBackgroundChoices(body?.backgroundChoices)
 
     if (!classEntityId) {
       throw createError({
@@ -448,7 +589,8 @@ export default defineEventHandler(async (event) => {
       speed,
       hitDieFaces,
       speciesChoices,
-      classChoices
+      classChoices,
+      backgroundChoices
     })
 
     return {

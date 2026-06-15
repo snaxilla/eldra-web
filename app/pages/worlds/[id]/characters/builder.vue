@@ -1053,6 +1053,44 @@ function builderDisplayValue(value: any): string {
   return ''
 }
 
+function parseBuilderJsonishChoice(value: any): any {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  if (!trimmed) return value
+
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(
+        trimmed
+          .replace(/:\s*True\b/g, ': true')
+          .replace(/:\s*False\b/g, ': false')
+          .replace(/:\s*None\b/g, ': null')
+      )
+    } catch {}
+  }
+
+  return value
+}
+
+function prettyBuilderChoiceValue(value: any) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+
+  const parts = text.split('|').map((part) => part.trim()).filter(Boolean)
+  const primary = parts[0] || text
+
+  const featWithChoice = primary.match(/^([^;]+);\s*(.+)$/)
+  if (featWithChoice) {
+    return `${titleCaseWords(featWithChoice[1])} (${titleCaseWords(featWithChoice[2])})`
+  }
+
+  return titleCaseWords(primary)
+}
+
 function firstBuilderDisplayValue(...values: any[]) {
   for (const value of values) {
     const rendered = builderDisplayValue(value)
@@ -1528,9 +1566,46 @@ const classChoicePayload = computed(() => {
 })
 
 function backgroundChoiceValues(value: any) {
-  return classChoiceOptionList(value)
-    .map((option: any) => option?.label || option?.value || '')
-    .filter(Boolean)
+  const parsed = parseBuilderJsonishChoice(value)
+
+  if (!parsed) return []
+
+  if (Array.isArray(parsed)) {
+    return parsed
+      .flatMap((item) => backgroundChoiceValues(item))
+      .filter(Boolean)
+  }
+
+  if (typeof parsed === 'object') {
+    if (Array.isArray(parsed.values)) return backgroundChoiceValues(parsed.values)
+    if (Array.isArray(parsed.selected)) return backgroundChoiceValues(parsed.selected)
+    if (parsed.value) return backgroundChoiceValues(parsed.value)
+    if (parsed.choose) return backgroundChoiceValues(parsed.choose)
+    if (Array.isArray(parsed.from)) return backgroundChoiceValues(parsed.from)
+
+    const truthyKeys = Object.entries(parsed)
+      .filter(([, item]) => item === true || item === 'true' || item === 1)
+      .map(([key]) => prettyBuilderChoiceValue(key))
+      .filter(Boolean)
+
+    if (truthyKeys.length) return truthyKeys
+
+    return Object.values(parsed)
+      .flatMap((item) => backgroundChoiceValues(item))
+      .filter(Boolean)
+  }
+
+  const text = String(parsed || '').trim()
+  if (!text) return []
+
+  if (text.includes(',')) {
+    return text
+      .split(',')
+      .map((item) => prettyBuilderChoiceValue(item))
+      .filter(Boolean)
+  }
+
+  return [prettyBuilderChoiceValue(text)]
 }
 
 function backgroundFeatValues(raw: any) {
@@ -1544,9 +1619,6 @@ function backgroundFeatValues(raw: any) {
   for (const candidate of candidates) {
     const values = backgroundChoiceValues(candidate)
     if (values.length) return values
-
-    const rendered = builderDisplayValue(candidate)
-    if (rendered) return [rendered]
   }
 
   return []

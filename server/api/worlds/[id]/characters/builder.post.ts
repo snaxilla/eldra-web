@@ -62,6 +62,319 @@ function normalizeBackgroundChoices(value: any) {
   return normalizeChoiceGroups(value)
 }
 
+function parseJsonishChoice(value: any): any {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  if (!trimmed) return value
+
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(
+        trimmed
+          .replace(/:\s*True\b/g, ': true')
+          .replace(/:\s*False\b/g, ': false')
+          .replace(/:\s*None\b/g, ': null')
+      )
+    } catch {}
+  }
+
+  return value
+}
+
+function prettyChoiceValue(value: any) {
+  const text = cleanText(value)
+  if (!text) return ''
+
+  const first = text.split('|').map((part) => part.trim()).filter(Boolean)[0] || text
+  const featChoice = first.match(/^([^;]+);\s*(.+)$/)
+
+  if (featChoice) {
+    return `${titleCase(featChoice[1])} (${titleCase(featChoice[2])})`
+  }
+
+  return titleCase(first)
+}
+
+function titleCase(value: any) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function choiceValuesFromAny(value: any): string[] {
+  const parsed = parseJsonishChoice(value)
+
+  if (!parsed) return []
+
+  if (Array.isArray(parsed)) {
+    return parsed.flatMap(choiceValuesFromAny).filter(Boolean)
+  }
+
+  if (typeof parsed === 'object') {
+    if (Array.isArray(parsed.values)) return choiceValuesFromAny(parsed.values)
+    if (Array.isArray(parsed.selected)) return choiceValuesFromAny(parsed.selected)
+    if (parsed.value) return choiceValuesFromAny(parsed.value)
+    if (parsed.choose) return choiceValuesFromAny(parsed.choose)
+    if (Array.isArray(parsed.from)) return choiceValuesFromAny(parsed.from)
+
+    const truthyKeys = Object.entries(parsed)
+      .filter(([, item]) => item === true || item === 'true' || item === 1)
+      .map(([key]) => prettyChoiceValue(key))
+      .filter(Boolean)
+
+    if (truthyKeys.length) return truthyKeys
+
+    return Object.values(parsed).flatMap(choiceValuesFromAny).filter(Boolean)
+  }
+
+  const text = cleanText(parsed)
+  if (!text) return []
+
+  if (text.includes(',')) {
+    return text.split(',').map(prettyChoiceValue).filter(Boolean)
+  }
+
+  return [prettyChoiceValue(text)]
+}
+
+function rawJsonFromBlocks(blocks: any[]) {
+  return asObject(blockData(blocks, 'import_source')?.raw_json)
+}
+
+function backgroundFeatValuesFromRaw(raw: any) {
+  const candidates = [
+    raw?.feat,
+    raw?.feats,
+    raw?.additionalFeat,
+    raw?.additionalFeats
+  ]
+
+  for (const candidate of candidates) {
+    const values = choiceValuesFromAny(candidate)
+    if (values.length) return values
+  }
+
+  return []
+}
+
+function backgroundChoiceGroupsFromBlocks(blocks: any[]) {
+  const core = blockData(blocks, 'background_core')
+  const raw = rawJsonFromBlocks(blocks)
+  const out: Record<string, any> = {}
+
+  const skills = choiceValuesFromAny(core.skill_proficiencies || raw.skillProficiencies)
+  const tools = choiceValuesFromAny(core.tool_proficiencies || raw.toolProficiencies)
+  const languages = choiceValuesFromAny(core.languages || raw.languageProficiencies || raw.languages)
+  const feats = backgroundFeatValuesFromRaw(raw)
+  const abilities = choiceValuesFromAny(raw.ability || raw.abilityScores || raw.abilityScoreIncrease)
+  const equipment = equipmentValuesFromText(core.equipment || raw.startingEquipment || raw.equipment)
+
+  if (skills.length) {
+    out['background-skills'] = {
+      label: 'Background Skills',
+      values: skills,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (tools.length) {
+    out['background-tools'] = {
+      label: 'Background Tools',
+      values: tools,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (languages.length) {
+    out['background-languages'] = {
+      label: 'Background Languages',
+      values: languages,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (feats.length) {
+    out['background-feat'] = {
+      label: 'Background Feat',
+      values: feats,
+      note: 'Granted by background.'
+    }
+  }
+
+  if (abilities.length) {
+    out['background-abilities'] = {
+      label: 'Background Ability Scores',
+      values: abilities,
+      note: 'Suggested by background.'
+    }
+  }
+
+  if (equipment.length) {
+    out['background-equipment'] = {
+      label: 'Background Equipment',
+      values: equipment,
+      note: 'Granted by background.'
+    }
+  }
+
+  return out
+}
+
+function mergeChoiceGroups(primary: Record<string, any>, fallback: Record<string, any>) {
+  return {
+    ...fallback,
+    ...primary
+  }
+}
+
+function equipmentValuesFromText(value: any) {
+  const parsed = parseJsonishChoice(value)
+
+  if (!parsed) return []
+
+  if (Array.isArray(parsed)) {
+    return parsed.flatMap(equipmentValuesFromText).filter(Boolean)
+  }
+
+  if (typeof parsed === 'object') {
+    if (Array.isArray(parsed.items)) return equipmentValuesFromText(parsed.items)
+    if (Array.isArray(parsed.entries)) return equipmentValuesFromText(parsed.entries)
+    if (parsed.entry) return equipmentValuesFromText(parsed.entry)
+    return Object.values(parsed).flatMap(equipmentValuesFromText).filter(Boolean)
+  }
+
+  let text = cleanText(parsed)
+  if (!text) return []
+
+  text = text
+    .replace(/^[-*]\s*/gm, '')
+    .replace(/\(A\)\s*/gi, '')
+    .replace(/\(B\).*$/gis, '')
+    .replace(/;\s*or\s+.*$/gis, '')
+    .replace(/\bor\s+\d+\s+(?:GP|Gold Pieces?)\b.*$/gis, '')
+
+  return text
+    .split(/\n|,/)
+    .map((item) => cleanText(item))
+    .map((item) => item.replace(/^and\s+/i, '').trim())
+    .filter(Boolean)
+    .filter((item) => !/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item))
+    .map(titleCase)
+}
+
+function featNameForLookup(value: any) {
+  const text = cleanText(value)
+  if (!text) return ''
+
+  const withoutSource = text.split('|')[0] || text
+  const withoutChoice = withoutSource.split(';')[0] || withoutSource
+
+  return titleCase(withoutChoice)
+}
+
+async function findWorldEntityByTitle(worldId: string, entityType: string, title: string) {
+  const cleanTitle = cleanText(title)
+  if (!cleanTitle) return null
+
+  const params = new URLSearchParams()
+  params.set('filter[world_id][_eq]', String(worldId))
+  params.set('filter[entity_type][_eq]', entityType)
+  params.set('filter[title][_eq]', cleanTitle)
+  params.set('limit', '1')
+  params.set('fields', 'id,title,entity_type')
+
+  const exact = await dxFetch(`/items/entities?${params.toString()}`).catch(() => null)
+  const exactHit = Array.isArray(exact?.data) ? exact.data[0] : null
+  if (exactHit?.id) return exactHit
+
+  const fuzzy = new URLSearchParams()
+  fuzzy.set('filter[world_id][_eq]', String(worldId))
+  fuzzy.set('filter[entity_type][_eq]', entityType)
+  fuzzy.set('filter[title][_contains]', cleanTitle)
+  fuzzy.set('limit', '10')
+  fuzzy.set('fields', 'id,title,entity_type')
+
+  const res = await dxFetch(`/items/entities?${fuzzy.toString()}`).catch(() => null)
+  const rows = Array.isArray(res?.data) ? res.data : []
+  const needle = cleanTitle.toLowerCase()
+
+  return rows.find((row: any) => cleanText(row?.title).toLowerCase() === needle) ||
+    rows.find((row: any) => cleanText(row?.title).toLowerCase().includes(needle)) ||
+    null
+}
+
+async function backgroundFeatIdsFromChoices(worldId: string, backgroundChoices: Record<string, any>) {
+  const featNames: string[] = []
+
+  for (const [key, rawGroup] of Object.entries(backgroundChoices)) {
+    const group = asObject(rawGroup)
+    const text = `${key} ${group.label || ''}`.toLowerCase()
+
+    if (!text.includes('feat')) continue
+
+    const values = Array.isArray(group.values)
+      ? group.values
+      : group.value
+        ? [group.value]
+        : []
+
+    for (const value of values) {
+      const name = featNameForLookup(value)
+      if (name) featNames.push(name)
+    }
+  }
+
+  const ids: string[] = []
+  const seen = new Set<string>()
+
+  for (const name of featNames) {
+    const entity = await findWorldEntityByTitle(worldId, 'feat', name)
+    if (!entity?.id) continue
+
+    const id = String(entity.id)
+    if (seen.has(id)) continue
+
+    seen.add(id)
+    ids.push(id)
+  }
+
+  return ids
+}
+
+function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, any>) {
+  const out: string[] = []
+
+  for (const [key, rawGroup] of Object.entries(backgroundChoices)) {
+    const group = asObject(rawGroup)
+    const text = `${key} ${group.label || ''}`.toLowerCase()
+
+    if (!text.includes('equipment')) continue
+
+    const values = Array.isArray(group.values)
+      ? group.values
+      : group.value
+        ? [group.value]
+        : []
+
+    out.push(...values.map(cleanText).filter(Boolean))
+  }
+
+  const seen = new Set<string>()
+
+  return out.filter((item) => {
+    const key = item.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 async function linkedEntityTitle(id: any) {
   const entityId = integerOrNull(id)
   if (!entityId) return ''
@@ -380,6 +693,64 @@ async function seedBuilderInventoryTools(sheetId: any, classChoices: Record<stri
   }
 }
 
+async function seedBuilderBackgroundEquipment(sheetId: any, backgroundChoices: Record<string, any>) {
+  if (!sheetId) return
+
+  const equipmentItems = backgroundEquipmentValuesFromChoices(backgroundChoices)
+  if (!equipmentItems.length) return
+
+  const fields = await directusFieldSet('character_sheet_inventory')
+  const existingRows = await loadExistingInventoryRows(sheetId)
+  const existingNames = new Set(existingRows.map(rowInventoryName).filter(Boolean).map((name) => name.toLowerCase()))
+
+  let sort = 9000
+
+  for (const name of equipmentItems) {
+    if (existingNames.has(name.toLowerCase())) continue
+
+    const basePayload: Record<string, any> = {
+      sheet_id: Number(sheetId),
+      sheet: Number(sheetId),
+      custom_name: name,
+      customName: name,
+      name,
+      title: name,
+      quantity: 1,
+      equipped: false,
+      carried: true,
+      item_type: 'Gear',
+      itemType: 'Gear',
+      source: 'guided_builder',
+      source_type: 'Background Equipment',
+      notes: 'Added by Guided Builder: Background Equipment',
+      sort,
+      data: {
+        custom_name: name,
+        item_type: 'Gear',
+        source: 'guided_builder',
+        source_type: 'Background Equipment'
+      }
+    }
+
+    const payload = onlyKnownFields(basePayload, fields)
+
+    if (!payload.sheet_id && fields.has('sheet_id')) payload.sheet_id = Number(sheetId)
+    if (!payload.sheet && fields.has('sheet')) payload.sheet = Number(sheetId)
+
+    try {
+      await dxFetch('/items/character_sheet_inventory', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+
+      existingNames.add(name.toLowerCase())
+      sort += 10
+    } catch (error) {
+      console.error('[guided-character-builder] failed to seed background equipment', name, error)
+    }
+  }
+}
+
 async function createOrPatchCharacterSheet(options: {
   worldId: string
   entityId: string
@@ -400,6 +771,7 @@ async function createOrPatchCharacterSheet(options: {
   backgroundChoices: Record<string, any>
 }) {
   const now = new Date().toISOString()
+  const backgroundFeatIds = await backgroundFeatIdsFromChoices(options.worldId, options.backgroundChoices)
   const existing = await findActiveSheet(options.worldId, options.entityId)
   const existingCombatStats = asObject(existing?.combat_stats)
   const existingChoices = asObject(existing?.choices)
@@ -439,7 +811,14 @@ async function createOrPatchCharacterSheet(options: {
       ...existingChoices,
       builderSpeciesChoices: options.speciesChoices,
       builderClassChoices: options.classChoices,
-      builderBackgroundChoices: options.backgroundChoices
+      builderBackgroundChoices: options.backgroundChoices,
+      ...(backgroundFeatIds.length ? {
+        builderBackgroundFeat: {
+          type: 'feat',
+          label: 'Background Feat',
+          selected: backgroundFeatIds
+        }
+      } : {})
     },
     updated_at: now
   }
@@ -457,6 +836,7 @@ async function createOrPatchCharacterSheet(options: {
 
     await upsertCharacterCoreSheetLink(options.entityId, patchedSheet.id || existing.id)
     await seedBuilderInventoryTools(patchedSheet.id || existing.id, options.classChoices, options.backgroundChoices)
+    await seedBuilderBackgroundEquipment(patchedSheet.id || existing.id, options.backgroundChoices)
 
     return patchedSheet
   }
@@ -480,6 +860,7 @@ async function createOrPatchCharacterSheet(options: {
 
   await upsertCharacterCoreSheetLink(options.entityId, createdSheet.id)
   await seedBuilderInventoryTools(createdSheet.id, options.classChoices, options.backgroundChoices)
+  await seedBuilderBackgroundEquipment(createdSheet.id, options.backgroundChoices)
 
   return createdSheet
 }
@@ -512,7 +893,7 @@ export default defineEventHandler(async (event) => {
     const abilityScores = normalizeAbilityScores(body?.abilityScores)
     const speciesChoices = normalizeSpeciesChoices(body?.speciesChoices)
     const classChoices = normalizeClassChoices(body?.classChoices)
-    const backgroundChoices = normalizeBackgroundChoices(body?.backgroundChoices)
+    let backgroundChoices = normalizeBackgroundChoices(body?.backgroundChoices)
 
     if (!classEntityId) {
       throw createError({
@@ -533,14 +914,18 @@ export default defineEventHandler(async (event) => {
       speciesName,
       backgroundName,
       classBlocks,
-      speciesBlocks
+      speciesBlocks,
+      backgroundBlocks
     ] = await Promise.all([
       linkedEntityTitle(classEntityId),
       linkedEntityTitle(speciesEntityId),
       linkedEntityTitle(backgroundEntityId),
       linkedEntityBlocks(classEntityId),
-      linkedEntityBlocks(speciesEntityId)
+      linkedEntityBlocks(speciesEntityId),
+      linkedEntityBlocks(backgroundEntityId)
     ])
+
+    backgroundChoices = mergeChoiceGroups(backgroundChoices, backgroundChoiceGroupsFromBlocks(backgroundBlocks))
 
     const hitDieFaces = parseHitDieFaces(classBlocks)
     const maxHp = startingHp(level, hitDieFaces, abilityScores.con)

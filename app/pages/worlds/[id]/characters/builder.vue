@@ -1046,10 +1046,68 @@ function classChoiceGroupFromChoose(key: string, title: string, note: string, ch
   }
 }
 
+function builderChoiceCountFromText(value: any) {
+  const raw = String(value || '').trim()
+  const numeric = Number(raw)
+
+  if (Number.isFinite(numeric) && numeric > 0) return Math.floor(numeric)
+
+  const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, '')
+
+  const words: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+  }
+
+  return words[key] || 1
+}
+
+function classChoiceGroupFromText(key: string, title: string, note: string, value: any) {
+  const text = String(builderDisplayValue(value) || clean5eText(value) || '').trim()
+  if (!text) return null
+
+  const match = text.match(/choose\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:from\s+)?(.+?)\.?$/i)
+  if (!match) return null
+
+  const count = builderChoiceCountFromText(match[1])
+  const category = String(match[2] || '')
+    .replace(/\s+or\s+.*$/i, '')
+    .replace(/\s+and\s+.*$/i, '')
+    .trim()
+
+  if (!category) return null
+
+  const options = classChoiceOptionList([category])
+
+  if (!options.length) return null
+
+  return {
+    key,
+    title,
+    note,
+    count,
+    options
+  }
+}
+
 function classChoiceGroupsFromValue(key: string, title: string, note: string, value: any) {
   const groups: any[] = []
 
   if (!value) return groups
+
+  const textGroup = classChoiceGroupFromText(key, title, note, value)
+  if (textGroup) {
+    groups.push(textGroup)
+    return groups
+  }
 
   if (value?.choose) {
     const group = classChoiceGroupFromChoose(key, title, note, value.choose)
@@ -1057,10 +1115,28 @@ function classChoiceGroupsFromValue(key: string, title: string, note: string, va
     return groups
   }
 
+  if (Array.isArray(value?.from)) {
+    const group = classChoiceGroupFromChoose(key, title, note, value)
+    if (group) groups.push(group)
+    return groups
+  }
+
   if (Array.isArray(value)) {
     value.forEach((item: any, index: number) => {
+      const nestedTextGroup = classChoiceGroupFromText(index ? `${key}-${index}` : key, title, note, item)
+      if (nestedTextGroup) {
+        groups.push(nestedTextGroup)
+        return
+      }
+
       if (item?.choose) {
         const group = classChoiceGroupFromChoose(key, title, note, item.choose, index)
+        if (group) groups.push(group)
+        return
+      }
+
+      if (Array.isArray(item?.from)) {
+        const group = classChoiceGroupFromChoose(key, title, note, item, index)
         if (group) groups.push(group)
       }
     })
@@ -1098,8 +1174,34 @@ function classChoiceGroupsFromRaw(raw: any) {
 }
 
 const classChoiceGroups = computed(() => {
-  const raw = rawJson(selectedClassEntity.value) || {}
-  return classChoiceGroupsFromRaw(raw)
+  const entity = selectedClassEntity.value
+  const raw = rawJson(entity) || {}
+  const core = blockData(entity, 'class_core')
+  const groups = [...classChoiceGroupsFromRaw(raw)]
+
+  const hasToolGroup = groups.some((group: any) => {
+    const text = normalizeBuilderChoiceCategory(`${group.key} ${group.title} ${group.note}`)
+    return text.includes('tool') || text.includes('instrument')
+  })
+
+  if (!hasToolGroup) {
+    const toolText = firstBuilderDisplayValue(
+      core.tool_proficiencies,
+      core.toolProficiencies,
+      core.tools
+    )
+
+    const toolGroup = classChoiceGroupFromText(
+      'class-tools',
+      'Class Tools',
+      'Choose tool proficiencies this class starts with.',
+      toolText
+    )
+
+    if (toolGroup) groups.push(toolGroup)
+  }
+
+  return groups
 })
 
 function ensureClassChoiceDraft(group: any) {
@@ -1742,6 +1844,15 @@ async function createCharacter() {
                 >
               </label>
 
+            <label class="block">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Starting Level</span>
+              <select v-model="builderForm.level" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
+                <option v-for="level in 20" :key="level" :value="String(level)" class="bg-[#090909] text-[#f5e7bd]">
+                  Level {{ level }}
+                </option>
+              </select>
+            </label>
+
               <div class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3 text-xs leading-5 text-[#9f9278]">
                 Pick a portrait now, or leave it blank and add one later from the sheet in Build mode.
               </div>
@@ -2041,14 +2152,6 @@ async function createCharacter() {
               </select>
             </label>
 
-            <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Starting Level</span>
-              <select v-model="builderForm.level" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
-                <option v-for="level in 20" :key="level" :value="String(level)" class="bg-[#090909] text-[#f5e7bd]">
-                  Level {{ level }}
-                </option>
-              </select>
-            </label>
           </div>
 
           <article

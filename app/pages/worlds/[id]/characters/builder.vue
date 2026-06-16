@@ -972,6 +972,79 @@ function speciesChoiceDetailText(value: any): string {
   return ''
 }
 
+function speciesTraitChoiceText(entry: any) {
+  return normalizeBuilderChoiceCategory([
+    entry?.name || '',
+    speciesChoiceDetailText(entry?.entries || entry?.entry || entry?.items || entry?.rows || '')
+  ].filter(Boolean).join(' '))
+}
+
+function speciesTraitLooksTemporaryActionChoice(entry: any) {
+  const text = speciesTraitChoiceText(entry)
+
+  if (!text) return false
+
+  const actionTiming =
+    text.includes('bonus action') ||
+    text.includes('action') ||
+    text.includes('magic action') ||
+    text.includes('reaction')
+
+  const temporaryEffect =
+    text.includes('transform') ||
+    text.includes('transformation') ||
+    text.includes('for the duration') ||
+    text.includes('until the transformation') ||
+    text.includes('until it ends') ||
+    text.includes('for 1 minute') ||
+    text.includes('temporary')
+
+  const chooseAtUse =
+    text.includes('choose the option each time') ||
+    text.includes('choose an option each time') ||
+    text.includes('choose one option each time') ||
+    text.includes('using one of the options below') ||
+    text.includes('one of the options below')
+
+  if (text.includes('celestial revelation') && (actionTiming || temporaryEffect || chooseAtUse)) {
+    return true
+  }
+
+  return actionTiming && temporaryEffect && chooseAtUse
+}
+
+function speciesTraitLooksLikeBuildChoice(entry: any) {
+  if (!entry || typeof entry !== 'object') return false
+  if (speciesTraitLooksTemporaryActionChoice(entry)) return false
+
+  const nameText = normalizeBuilderChoiceCategory(entry.name || '')
+  const fullText = speciesTraitChoiceText(entry)
+
+  if (!fullText) return false
+
+  const durableChoiceName =
+    nameText.includes('lineage') ||
+    nameText.includes('ancestry') ||
+    nameText.includes('ancestor') ||
+    nameText.includes('legacy') ||
+    nameText.includes('legacies') ||
+    nameText.includes('giant ancestry') ||
+    nameText.includes('draconic ancestry') ||
+    nameText.includes('draconic ancestors')
+
+  const choiceLanguage =
+    fullText.includes('choose') ||
+    fullText.includes('choice') ||
+    fullText.includes('select') ||
+    fullText.includes('from the following') ||
+    fullText.includes('options below')
+
+  if (!durableChoiceName) return false
+  if (!choiceLanguage) return false
+
+  return true
+}
+
 function speciesChoiceRowCells(row: any) {
   if (Array.isArray(row)) return row
   if (Array.isArray(row?.row)) return row.row
@@ -1095,6 +1168,10 @@ function collectSpeciesChoiceOptions(value: any, out: any[] = []) {
 function speciesChoiceGroupCanonicalKey(group: any) {
   const text = normalizeBuilderChoiceCategory(`${group?.key || ''} ${group?.title || ''} ${group?.label || ''}`)
 
+  if (text.includes('celestial') && text.includes('revelation')) {
+    return 'species-ignore-celestial-revelation'
+  }
+
   if (text.includes('draconic') && (text.includes('ancestor') || text.includes('ancestry'))) {
     return 'species-draconic-ancestry'
   }
@@ -1113,10 +1190,6 @@ function speciesChoiceGroupCanonicalKey(group: any) {
 
   if (text.includes('giant') && text.includes('ancestry')) {
     return 'species-giant-ancestry'
-  }
-
-  if (text.includes('celestial') && text.includes('revelation')) {
-    return 'species-celestial-revelation'
   }
 
   if (text.includes('lineage')) {
@@ -1142,8 +1215,7 @@ function speciesChoiceGroupCanonicalTitle(group: any) {
     'species-elven-lineage': 'Elven Lineage',
     'species-gnomish-lineage': 'Gnomish Lineage',
     'species-fiendish-legacy': 'Fiendish Legacy',
-    'species-giant-ancestry': 'Giant Ancestry',
-    'species-celestial-revelation': 'Celestial Revelation'
+    'species-giant-ancestry': 'Giant Ancestry'
   }
 
   return labels[key] || clean5eText(group?.title || group?.label || 'Species Choice')
@@ -1186,23 +1258,12 @@ function genericSpeciesChoiceGroupsFromEntries(raw: any) {
   const groups: any[] = []
 
   for (const entry of entries) {
-    if (!entry || typeof entry !== 'object' || !entry.name || !entry.entries) continue
+    if (!speciesTraitLooksLikeBuildChoice(entry)) continue
 
     const title = clean5eText(entry.name)
-    const keyText = normalizeBuilderChoiceCategory(title)
-
-    const looksLikeChoice =
-      keyText.includes('lineage') ||
-      keyText.includes('ancestry') ||
-      keyText.includes('legacy') ||
-      keyText.includes('revelation') ||
-      keyText.includes('giant') ||
-      keyText.includes('draconic')
-
-    if (!looksLikeChoice) continue
-
     const options = collectSpeciesChoiceOptions(entry.entries)
     const seen = new Set<string>()
+
     const uniqueOptions = options.filter((option: any) => {
       const key = String(option?.label || option?.value || '').toLowerCase()
       if (!key || seen.has(key)) return false
@@ -1230,13 +1291,15 @@ function dedupeBuilderChoiceGroups(groups: any[]) {
   for (const rawGroup of Array.isArray(groups) ? groups : []) {
     if (!rawGroup) continue
 
+    const key = speciesChoiceGroupCanonicalKey(rawGroup)
+    if (key === 'species-ignore-celestial-revelation') continue
+
     const options = (Array.isArray(rawGroup.options) ? rawGroup.options : [])
       .map(cleanSpeciesChoiceOption)
       .filter(Boolean)
 
     if (!options.length) continue
 
-    const key = speciesChoiceGroupCanonicalKey(rawGroup)
     const title = speciesChoiceGroupCanonicalTitle(rawGroup)
 
     if (!merged.has(key)) {

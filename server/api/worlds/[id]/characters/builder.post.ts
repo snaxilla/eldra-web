@@ -44,18 +44,25 @@ function clean5eText(value: any) {
 
 function titleCase(value: any) {
   return clean5eText(value)
+    .replace(/\|[A-Za-z0-9_.:-]+(?:\|[^,\n;)]*)?/g, '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\b([A-Za-z]+)'S\b/g, "$1's")
 }
 
 function cleanBuilderCarryoverText(value: any) {
   return clean5eText(value)
+    .replace(/\|[A-Za-z0-9_.:-]+(?:\|[^,\n;)]*)?/g, '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function itemNameFromRef(value: any) {
+  return cleanBuilderCarryoverText(String(value || '').split('|')[0])
 }
 
 function integerOrNull(value: any) {
@@ -116,12 +123,25 @@ function isSkillName(value: any) {
 function looksLikeNonEquipmentItem(value: any) {
   const text = cleanBuilderCarryoverText(value)
   const key = text.toLowerCase()
+  const compact = key.replace(/[^a-z0-9]+/g, '')
 
   if (!key) return true
   if (isAbilityName(text)) return true
   if (isSkillName(text)) return true
 
-  return key.includes('ability score') ||
+  return key === 'or' ||
+    key === 'and' ||
+    key === 'any' ||
+    key === 'or b' ||
+    key === 'same as above' ||
+    key.includes('same as above') ||
+    compact === 'anygamingset' ||
+    compact === 'anymusicalinstrument' ||
+    compact === 'anyartisantool' ||
+    compact === 'anyartisanstools' ||
+    compact === 'gamingsetsameasabove' ||
+    compact === 'gamingset' ||
+    key.includes('ability score') ||
     key.includes('ability scores') ||
     key.includes('background ability') ||
     key.includes('skill proficiency') ||
@@ -132,10 +152,6 @@ function looksLikeNonEquipmentItem(value: any) {
     key.includes('magic initiate') ||
     key === 'skilled' ||
     key === 'savage attacker' ||
-    key === 'any gaming set' ||
-    key === 'any musical instrument' ||
-    key === 'any artisan tool' ||
-    key === "any artisan's tools" ||
     key.includes('choose one kind') ||
     key.includes('choose a kind') ||
     key.includes('choose one type') ||
@@ -156,9 +172,11 @@ function normalizeChoiceGroups(value: any) {
 
     const values = Array.isArray(data.values)
       ? data.values.map(cleanText).filter(Boolean)
-      : data.value
-        ? [cleanText(data.value)]
-        : []
+      : Array.isArray(data.selected)
+        ? data.selected.map(cleanText).filter(Boolean)
+        : data.value
+          ? [cleanText(data.value)]
+          : []
 
     if (!values.length) continue
 
@@ -352,6 +370,58 @@ function choiceValuesFromAny(value: any): string[] {
   return [titleCase(text)]
 }
 
+function featValuesFromAny(value: any): string[] {
+  const parsed = parseJsonish(value)
+
+  if (!parsed) return []
+
+  if (Array.isArray(parsed)) {
+    return parsed.flatMap(featValuesFromAny).filter(Boolean)
+  }
+
+  if (typeof parsed === 'object') {
+    if (parsed.name) return [titleCase(parsed.name)]
+    if (parsed.feat) return featValuesFromAny(parsed.feat)
+    if (parsed.feats) return featValuesFromAny(parsed.feats)
+    if (parsed.value) return featValuesFromAny(parsed.value)
+    if (Array.isArray(parsed.from)) return featValuesFromAny(parsed.from)
+
+    const out: string[] = []
+
+    for (const [key, item] of Object.entries(parsed)) {
+      if (item === true || item === 'true' || item === 1) {
+        out.push(titleCase(key))
+        continue
+      }
+
+      if (typeof item === 'string') {
+        out.push(`${titleCase(key)} (${titleCase(item)})`)
+        continue
+      }
+
+      if (Array.isArray(item)) {
+        out.push(...featValuesFromAny(item))
+      }
+    }
+
+    if (out.length) return out
+
+    return Object.values(parsed).flatMap(featValuesFromAny).filter(Boolean)
+  }
+
+  const text = cleanBuilderCarryoverText(parsed)
+  if (!text) return []
+
+  if (text.includes(',')) {
+    return text
+      .split(',')
+      .map((item) => titleCase(item))
+      .filter(Boolean)
+  }
+
+  return [titleCase(text)]
+}
+
 function backgroundFeatValuesFromRaw(raw: any) {
   const candidates = [
     raw?.feat,
@@ -361,7 +431,7 @@ function backgroundFeatValuesFromRaw(raw: any) {
   ]
 
   for (const candidate of candidates) {
-    const values = choiceValuesFromAny(candidate)
+    const values = featValuesFromAny(candidate)
     if (values.length) return values
   }
 
@@ -378,14 +448,28 @@ function equipmentValuesFromText(value: any): string[] {
   }
 
   if (typeof parsed === 'object') {
+    if (Array.isArray(parsed._)) return equipmentValuesFromText(parsed._)
+    if (Array.isArray(parsed.a)) return equipmentValuesFromText(parsed.a)
     if (Array.isArray(parsed.items)) return equipmentValuesFromText(parsed.items)
     if (Array.isArray(parsed.entries)) return equipmentValuesFromText(parsed.entries)
     if (Array.isArray(parsed.defaultData)) return equipmentValuesFromText(parsed.defaultData)
-    if (parsed.item) return [titleCase(parsed.item)].filter((item) => item && !looksLikeNonEquipmentItem(item))
-    if (parsed.special) return [titleCase(parsed.special)].filter((item) => item && !looksLikeNonEquipmentItem(item))
+    if (Array.isArray(parsed.equipment)) return equipmentValuesFromText(parsed.equipment)
     if (parsed.entry) return equipmentValuesFromText(parsed.entry)
 
-    return Object.values(parsed).flatMap(equipmentValuesFromText).filter(Boolean)
+    if (parsed.item) {
+      const name = itemNameFromRef(parsed.item)
+      const quantity = Math.max(1, Number(parsed.quantity || parsed.count || 1) || 1)
+      const label = quantity > 1 ? `${quantity} ${name}` : name
+
+      return [label].filter((item) => item && !looksLikeNonEquipmentItem(item))
+    }
+
+    if (parsed.special) {
+      const label = cleanBuilderCarryoverText(parsed.special)
+      return [label].filter((item) => item && !looksLikeNonEquipmentItem(item))
+    }
+
+    return []
   }
 
   let raw = String(parsed || '')
@@ -427,7 +511,6 @@ function equipmentValuesFromText(value: any): string[] {
     .filter(Boolean)
     .filter((item) => !looksLikeNonEquipmentItem(item))
     .filter((item) => !/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item))
-    .map(titleCase)
     .filter((item) => {
       const key = item.toLowerCase()
       if (!key || seen.has(key)) return false
@@ -613,6 +696,139 @@ async function featIdsFromChoiceGroups(worldId: string, choiceGroups: Record<str
   return ids
 }
 
+function normalizeItemLookupText(value: any) {
+  return cleanBuilderCarryoverText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function inventoryItemQuantityAndName(value: any) {
+  let text = cleanBuilderCarryoverText(value)
+    .replace(/\((?:same as above|see above)\)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  let quantity = 1
+
+  const leadingQuantity = text.match(/^(\d+)\s+(.+)$/)
+  if (leadingQuantity) {
+    quantity = Math.max(1, Number(leadingQuantity[1]) || 1)
+    text = leadingQuantity[2].trim()
+  } else {
+    const trailingQuantity = text.match(/^(.+?)\s*(?:x\s*(\d+)|\((\d+)\))$/i)
+    if (trailingQuantity) {
+      quantity = Math.max(1, Number(trailingQuantity[2] || trailingQuantity[3]) || 1)
+      text = trailingQuantity[1].trim()
+    }
+  }
+
+  text = text
+    .replace(/^a\s+/i, '')
+    .replace(/^an\s+/i, '')
+    .replace(/^one\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return {
+    quantity,
+    name: titleCase(text)
+  }
+}
+
+function itemLookupCandidateTitles(value: any) {
+  const parsed = inventoryItemQuantityAndName(value)
+  const name = parsed.name
+  const out = new Set<string>()
+
+  function add(candidate: any) {
+    const text = titleCase(candidate)
+    if (text && !looksLikeNonEquipmentItem(text)) out.add(text)
+  }
+
+  add(name)
+
+  const lower = name.toLowerCase()
+
+  if (lower === 'arrows') add('Arrow')
+  if (lower === 'arrow') add('Arrows')
+  if (lower === 'crossbow bolts') add('Crossbow Bolt')
+  if (lower === 'bolts') add('Crossbow Bolt')
+
+  if (lower === "traveler's clothes" || lower === 'travelers clothes') add("Clothes, Traveler's")
+  if (lower === 'common clothes') add('Clothes, Common')
+  if (lower === 'fine clothes') add('Clothes, Fine')
+  if (lower === 'costume clothes') add('Clothes, Costume')
+
+  return Array.from(out)
+}
+
+function itemLookupScore(wanted: any, title: any) {
+  const wantedText = normalizeItemLookupText(wanted)
+  const titleText = normalizeItemLookupText(title)
+
+  if (!wantedText || !titleText) return 0
+  if (wantedText === titleText) return 100
+
+  const wantedTokens = wantedText.split(/\s+/).filter((token) =>
+    token.length > 1 && !['the', 'and', 'with', 'set', 'kit'].includes(token)
+  )
+
+  if (!wantedTokens.length) return 0
+
+  const matches = wantedTokens.filter((token) => titleText.includes(token)).length
+  if (matches !== wantedTokens.length) return 0
+
+  return Math.round((matches / wantedTokens.length) * 80)
+}
+
+async function queryWorldItems(worldId: string, params: URLSearchParams) {
+  params.set('filter[world_id][_eq]', String(worldId))
+  params.set('filter[entity_type][_eq]', 'item')
+  params.set('fields', 'id,title,entity_type')
+  params.set('limit', params.get('limit') || '25')
+
+  const res = await dxFetch(`/items/entities?${params.toString()}`).catch(() => null)
+  return Array.isArray(res?.data) ? res.data : []
+}
+
+async function findWorldItemByName(worldId: string, name: string) {
+  const candidates = itemLookupCandidateTitles(name)
+
+  for (const candidate of candidates) {
+    const exactParams = new URLSearchParams()
+    exactParams.set('filter[title][_eq]', candidate)
+    exactParams.set('limit', '1')
+
+    const exactRows = await queryWorldItems(worldId, exactParams)
+    if (exactRows[0]?.id) return exactRows[0]
+  }
+
+  const parsed = inventoryItemQuantityAndName(name)
+  const tokens = normalizeItemLookupText(parsed.name)
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !['the', 'and', 'with', 'set', 'kit'].includes(token))
+
+  const searchToken = tokens[0]
+  if (!searchToken) return null
+
+  const fuzzyParams = new URLSearchParams()
+  fuzzyParams.set('filter[title][_contains]', searchToken)
+  fuzzyParams.set('limit', '25')
+
+  const rows = await queryWorldItems(worldId, fuzzyParams)
+
+  const ranked = rows
+    .map((row: any) => ({
+      row,
+      score: Math.max(...candidates.map((candidate) => itemLookupScore(candidate, row?.title)))
+    }))
+    .filter((entry: any) => entry.score > 0)
+    .sort((a: any, b: any) => b.score - a.score)
+
+  return ranked[0]?.row || null
+}
+
 function toolInventoryItemsFromChoices(classChoices: Record<string, any>, backgroundChoices: Record<string, any>) {
   const items: Array<{ name: string; source: string }> = []
 
@@ -644,8 +860,8 @@ function toolInventoryItemsFromChoices(classChoices: Record<string, any>, backgr
   const seen = new Set<string>()
 
   return items.filter((item) => {
-    const key = item.name.toLowerCase()
-    if (seen.has(key)) return false
+    const key = normalizeItemLookupText(item.name)
+    if (!key || seen.has(key)) return false
     seen.add(key)
     return true
   })
@@ -666,7 +882,7 @@ function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, 
         ? [group.value]
         : []
 
-    out.push(...values.map(titleCase).filter(Boolean))
+    out.push(...values.map(cleanBuilderCarryoverText).filter(Boolean))
   }
 
   const seen = new Set<string>()
@@ -674,8 +890,8 @@ function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, 
   return out
     .filter((item) => !looksLikeNonEquipmentItem(item))
     .filter((item) => {
-      const key = item.toLowerCase()
-      if (seen.has(key)) return false
+      const key = normalizeItemLookupText(inventoryItemQuantityAndName(item).name)
+      if (!key || seen.has(key)) return false
       seen.add(key)
       return true
     })
@@ -730,18 +946,32 @@ function rowInventoryName(row: any) {
   )
 }
 
-async function seedInventoryItems(sheetId: any, items: Array<{ name: string; source: string; itemType: string }>) {
+async function seedInventoryItems(worldId: string, sheetId: any, items: Array<{ name: string; source: string; itemType: string }>) {
   if (!sheetId || !items.length) return
 
   const fields = await directusFieldSet('character_sheet_inventory')
   const existingRows = await loadExistingInventoryRows(sheetId)
-  const existingNames = new Set(existingRows.map(rowInventoryName).filter(Boolean).map((name) => name.toLowerCase()))
+  const existingNames = new Set(existingRows.map(rowInventoryName).filter(Boolean).map((name) => normalizeItemLookupText(name)))
 
   let sort = 8800
 
   for (const item of items) {
-    const name = titleCase(item.name)
-    if (!name || existingNames.has(name.toLowerCase()) || looksLikeNonEquipmentItem(name)) continue
+    const parsed = inventoryItemQuantityAndName(item.name)
+    const requestedName = parsed.name
+
+    if (!requestedName || looksLikeNonEquipmentItem(requestedName)) continue
+
+    const linkedItem = await findWorldItemByName(worldId, requestedName)
+    const linkedIdRaw = linkedItem?.id
+    const linkedIdNumber = Number(linkedIdRaw)
+    const linkedId = linkedIdRaw
+      ? Number.isFinite(linkedIdNumber) ? linkedIdNumber : String(linkedIdRaw)
+      : null
+
+    const name = titleCase(linkedItem?.title || requestedName)
+    const existingKey = normalizeItemLookupText(name)
+
+    if (!name || existingNames.has(existingKey) || looksLikeNonEquipmentItem(name)) continue
 
     const basePayload: Record<string, any> = {
       sheet_id: Number(sheetId),
@@ -750,7 +980,7 @@ async function seedInventoryItems(sheetId: any, items: Array<{ name: string; sou
       customName: name,
       name,
       title: name,
-      quantity: 1,
+      quantity: parsed.quantity,
       equipped: false,
       carried: true,
       item_type: item.itemType,
@@ -763,8 +993,19 @@ async function seedInventoryItems(sheetId: any, items: Array<{ name: string; sou
         custom_name: name,
         item_type: item.itemType,
         source: 'guided_builder',
-        source_type: item.source
+        source_type: item.source,
+        linked_item_title: linkedItem?.title || null
       }
+    }
+
+    if (linkedId !== null) {
+      basePayload.item_entity_id = linkedId
+      basePayload.itemEntityId = linkedId
+      basePayload.entity_item_id = linkedId
+      basePayload.item_id = linkedId
+      basePayload.linked_item_entity_id = linkedId
+      basePayload.linkedItemId = linkedId
+      basePayload.data.item_entity_id = linkedId
     }
 
     const payload = onlyKnownFields(basePayload, fields)
@@ -778,7 +1019,7 @@ async function seedInventoryItems(sheetId: any, items: Array<{ name: string; sou
         body: JSON.stringify(payload)
       })
 
-      existingNames.add(name.toLowerCase())
+      existingNames.add(existingKey)
       sort += 10
     } catch (error) {
       console.error('[guided-character-builder] failed to seed inventory item', name, error)
@@ -866,6 +1107,7 @@ async function createOrPatchCharacterSheet(options: {
   const existing = await findActiveSheet(options.worldId, options.entityId)
   const existingCombatStats = asObject(existing?.combat_stats)
   const existingChoices = asObject(existing?.choices)
+  const existingSpellcasting = asObject(existing?.spellcasting)
 
   const payload = {
     world_id: Number(options.worldId),
@@ -892,11 +1134,11 @@ async function createOrPatchCharacterSheet(options: {
       hitDice: `d${options.hitDieFaces}`
     },
     spellcasting: {
-      ...asObject(existing?.spellcasting),
-      knownSpellIds: Array.isArray(existing?.spellcasting?.knownSpellIds) ? existing.spellcasting.knownSpellIds : [],
-      preparedSpellIds: Array.isArray(existing?.spellcasting?.preparedSpellIds) ? existing.spellcasting.preparedSpellIds : [],
-      alwaysPreparedSpellIds: Array.isArray(existing?.spellcasting?.alwaysPreparedSpellIds) ? existing.spellcasting.alwaysPreparedSpellIds : [],
-      usedSlots: asObject(existing?.spellcasting?.usedSlots)
+      ...existingSpellcasting,
+      knownSpellIds: Array.isArray(existingSpellcasting.knownSpellIds) ? existingSpellcasting.knownSpellIds : [],
+      preparedSpellIds: Array.isArray(existingSpellcasting.preparedSpellIds) ? existingSpellcasting.preparedSpellIds : [],
+      alwaysPreparedSpellIds: Array.isArray(existingSpellcasting.alwaysPreparedSpellIds) ? existingSpellcasting.alwaysPreparedSpellIds : [],
+      usedSlots: asObject(existingSpellcasting.usedSlots)
     },
     choices: {
       ...existingChoices,
@@ -957,7 +1199,7 @@ async function createOrPatchCharacterSheet(options: {
       itemType: 'Gear'
     }))
 
-  await seedInventoryItems(savedSheet.id, [...toolItems, ...equipmentItems])
+  await seedInventoryItems(options.worldId, savedSheet.id, [...toolItems, ...equipmentItems])
 
   return savedSheet
 }

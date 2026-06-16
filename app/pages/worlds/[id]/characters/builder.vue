@@ -910,11 +910,13 @@ function speciesFeatChoiceGroupsFromRaw(raw: any) {
           return {
             value: id,
             label: title,
-            detail: featOptionSourceLine(option),
+            detail: featOptionLongDetail(option),
             meta: {
               choiceType: 'feat',
               featId: id,
-              featTitle: title
+              featTitle: title,
+              hasSpellChoices: Boolean(option?.hasSpellChoices),
+              spellChoiceSummary: option?.spellChoiceSummary || ''
             }
           }
         })
@@ -928,8 +930,145 @@ function speciesFeatChoiceGroupsFromRaw(raw: any) {
 function speciesRawMechanicChoiceGroups(raw: any) {
   return [
     ...speciesSkillChoiceGroupsFromRaw(raw),
-    ...speciesFeatChoiceGroupsFromRaw(raw)
+    ...speciesFeatChoiceGroupsFromRaw(raw),
+    ...genericSpeciesChoiceGroupsFromEntries(raw)
   ]
+}
+
+function speciesChoiceSlug(value: any) {
+  return normalizeBuilderChoiceCategory(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'choice'
+}
+
+function speciesChoiceDetailText(value: any): string {
+  if (!value) return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return clean5eText(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(speciesChoiceDetailText).filter(Boolean).join('\n')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name && !['item', 'entries'].includes(String(value.type || ''))) {
+      parts.push(clean5eText(value.name))
+    }
+
+    if (value.entry) parts.push(speciesChoiceDetailText(value.entry))
+    if (value.entries) parts.push(speciesChoiceDetailText(value.entries))
+    if (value.items) parts.push(speciesChoiceDetailText(value.items))
+    if (value.rows) parts.push(speciesChoiceDetailText(value.rows))
+
+    return parts.filter(Boolean).join('\n')
+  }
+
+  return ''
+}
+
+function collectSpeciesChoiceOptions(value: any, out: any[] = []) {
+  if (!value) return out
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectSpeciesChoiceOptions(item, out))
+    return out
+  }
+
+  if (typeof value === 'object') {
+    const type = String(value.type || '').toLowerCase()
+
+    if (value.name && (type === 'item' || type === 'entries')) {
+      const label = clean5eText(value.name)
+      const detail = speciesChoiceDetailText(value.entries || value.entry || value.items)
+
+      if (label && detail) {
+        out.push({
+          value: label,
+          label,
+          detail,
+          meta: {
+            choiceType: 'species-option'
+          }
+        })
+      }
+
+      return out
+    }
+
+    if (type === 'table' && Array.isArray(value.rows)) {
+      value.rows.forEach((row: any) => {
+        const cells = Array.isArray(row) ? row : row?.row || row?.cells || []
+        const label = clean5eText(speciesChoiceDetailText(cells[0]))
+        const detail = speciesChoiceDetailText(cells.slice(1))
+
+        if (label && detail) {
+          out.push({
+            value: label,
+            label,
+            detail,
+            meta: {
+              choiceType: 'species-option'
+            }
+          })
+        }
+      })
+
+      return out
+    }
+
+    if (Array.isArray(value.items)) collectSpeciesChoiceOptions(value.items, out)
+    if (Array.isArray(value.entries)) collectSpeciesChoiceOptions(value.entries, out)
+    if (Array.isArray(value.rows)) collectSpeciesChoiceOptions(value.rows, out)
+  }
+
+  return out
+}
+
+function genericSpeciesChoiceGroupsFromEntries(raw: any) {
+  const entries = Array.isArray(raw?.entries) ? raw.entries : []
+  const groups: any[] = []
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || !entry.name || !entry.entries) continue
+
+    const title = clean5eText(entry.name)
+    const keyText = normalizeBuilderChoiceCategory(title)
+
+    const looksLikeChoice =
+      keyText.includes('lineage') ||
+      keyText.includes('ancestry') ||
+      keyText.includes('legacy') ||
+      keyText.includes('revelation') ||
+      keyText.includes('giant') ||
+      keyText.includes('draconic')
+
+    if (!looksLikeChoice) continue
+
+    const options = collectSpeciesChoiceOptions(entry.entries)
+    const seen = new Set<string>()
+    const uniqueOptions = options.filter((option: any) => {
+      const key = String(option?.label || option?.value || '').toLowerCase()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    if (uniqueOptions.length < 2) continue
+
+    groups.push({
+      key: `species-${speciesChoiceSlug(title)}`,
+      title,
+      note: `Choose this character's ${title.toLowerCase()}.`,
+      count: 1,
+      options: uniqueOptions
+    })
+  }
+
+  return groups
 }
 
 function dedupeBuilderChoiceGroups(groups: any[]) {
@@ -1743,6 +1882,27 @@ function featOptionSourceLine(option: any) {
   ].filter(Boolean)
 
   return parts.join(' · ')
+}
+
+function featOptionDescription(option: any) {
+  return clean5eText(
+    option?.description ||
+    option?.benefits ||
+    option?.summary ||
+    ''
+  )
+}
+
+function featOptionLongDetail(option: any) {
+  const parts = [
+    featOptionSourceLine(option),
+    featOptionDescription(option),
+    option?.hasSpellChoices || option?.spellChoiceSummary
+      ? String(option?.spellChoiceSummary || 'Follow-up choices required for this feat.')
+      : ''
+  ]
+
+  return parts.filter(Boolean).join('\n\n')
 }
 
 function normalizedFeatCategoryToken(value: any) {

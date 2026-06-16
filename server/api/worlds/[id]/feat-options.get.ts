@@ -8,6 +8,41 @@ function cleanText(value: any) {
   return String(value ?? '').trim()
 }
 
+function clean5eText(value: any): string {
+  return String(value || '')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature|optionalfeature|status)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function entriesToText(value: any): string {
+  if (!value) return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return clean5eText(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(entriesToText).filter(Boolean).join('\n\n')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name) parts.push(clean5eText(value.name))
+    if (value.entry) parts.push(entriesToText(value.entry))
+    if (value.entries) parts.push(entriesToText(value.entries))
+    if (value.items) parts.push(entriesToText(value.items))
+    if (value.rows) parts.push(entriesToText(value.rows))
+
+    return parts.filter(Boolean).join('\n\n')
+  }
+
+  return ''
+}
+
 function titleCase(value: any) {
   return String(value || '')
     .replace(/[_-]+/g, ' ')
@@ -106,6 +141,40 @@ async function loadEntityBlocks(entityId: any) {
   return Array.isArray(res?.data) ? res.data : []
 }
 
+function featHasSpellChoices(title: string, raw: any, core: any) {
+  const name = title.toLowerCase()
+
+  return Boolean(
+    name.includes('magic initiate') ||
+    name.includes('ritual caster') ||
+    name.includes('fey touched') ||
+    name.includes('shadow touched') ||
+    raw?.additionalSpells ||
+    raw?.additionalSpell ||
+    raw?.spellcasting ||
+    raw?.spells ||
+    core?.additional_spells ||
+    core?.additionalSpells
+  )
+}
+
+function featSpellChoiceSummary(title: string, raw: any, core: any) {
+  if (String(title || '').toLowerCase().includes('magic initiate')) {
+    return 'Follow-up choices required: choose a spell list, two cantrips, and one 1st-level spell.'
+  }
+
+  const text = entriesToText(
+    raw?.additionalSpells ||
+    raw?.additionalSpell ||
+    raw?.spells ||
+    core?.additional_spells ||
+    core?.additionalSpells ||
+    ''
+  )
+
+  return text ? `Follow-up spell choices may be required: ${text}` : ''
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
 
@@ -138,6 +207,7 @@ export default defineEventHandler(async (event) => {
     const importSource = blockData(blocks, 'import_source')
     const raw = asObject(importSource.raw_json ?? importSource.rawJson)
 
+    const title = cleanText(entity.title || core.name || raw.name || 'Feat')
     const categories = categoryValues(
       core.category,
       core.feat_category,
@@ -160,7 +230,18 @@ export default defineEventHandler(async (event) => {
       raw.page
     )
 
-    const title = cleanText(entity.title || core.name || raw.name || 'Feat')
+    const description = clean5eText(
+      entriesToText(
+        core.benefits ||
+        core.description ||
+        raw.entries ||
+        entity.summary ||
+        ''
+      )
+    )
+
+    const spellChoiceSummary = featSpellChoiceSummary(title, raw, core)
+    const hasSpellChoices = featHasSpellChoices(title, raw, core)
 
     return {
       id: String(entity.id),
@@ -168,13 +249,19 @@ export default defineEventHandler(async (event) => {
       title,
       label: title,
       slug: entity.slug ? String(entity.slug) : '',
-      summary: cleanText(entity.summary || core.benefits || raw.entries || ''),
+      summary: description || clean5eText(entity.summary || ''),
+      description,
+      benefits: description,
       source,
       page,
+      sourceLine: [source, page ? `p. ${page}` : ''].filter(Boolean).join(' · '),
       category: categories[0] || '',
       categories,
       rawCategory: raw.category ?? null,
-      prerequisite: cleanText(core.prerequisites || raw.prerequisite || ''),
+      prerequisite: clean5eText(entriesToText(core.prerequisites || core.prerequisite || raw.prerequisite || '')),
+      hasSpellChoices,
+      spellChoiceSummary,
+      additionalSpells: raw.additionalSpells || raw.additionalSpell || core.additional_spells || core.additionalSpells || null,
       imageUrl: entity.image ? `/api/assets/${entity.image}` : null
     }
   }))

@@ -311,6 +311,21 @@ const speciesOptions = computed(() => optionList('species'))
 const classOptions = computed(() => optionList('class'))
 const backgroundOptions = computed(() => optionList('background'))
 
+const { data: featOptionPayload } = await useFetch(() => `/api/worlds/${worldId.value}/feat-options`, {
+  default: () => [],
+  watch: [worldId]
+})
+
+const featOptions = computed(() => {
+  const payload = featOptionPayload.value as any
+
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.items)) return payload.items
+  if (Array.isArray(payload?.data)) return payload.data
+
+  return []
+})
+
 function optionById(options: any[], id: any) {
   const needle = String(id || '')
   if (!needle) return null
@@ -832,6 +847,99 @@ function speciesChoiceGroupsFromRaw(raw: any) {
   return groups
 }
 
+function speciesSkillChoiceGroupsFromRaw(raw: any) {
+  const groups: any[] = []
+  const profs = Array.isArray(raw?.skillProficiencies) ? raw.skillProficiencies : []
+
+  profs.forEach((entry: any, index: number) => {
+    const anyCount = Number(entry?.any || entry?.choose?.any || entry?.choose || entry?.count || 0)
+    if (!Number.isFinite(anyCount) || anyCount <= 0) return
+
+    groups.push({
+      key: index ? `species-skills-${index}` : 'species-skills',
+      title: 'Species Skill',
+      note: 'Choose the skill proficiency granted by this species.',
+      count: Math.floor(anyCount),
+      options: BUILDER_SKILL_OPTIONS.map((skill) => ({
+        value: skill,
+        label: skill,
+        detail: 'Adds proficiency with this skill.',
+        meta: {
+          choiceType: 'skill'
+        }
+      }))
+    })
+  })
+
+  return groups
+}
+
+function speciesFeatChoiceGroupsFromRaw(raw: any) {
+  const groups: any[] = []
+  const feats = Array.isArray(raw?.feats) ? raw.feats : []
+  const originOptions = originFeatOptions.value
+
+  feats.forEach((entry: any, index: number) => {
+    const anyFromCategory = entry?.anyFromCategory || entry?.choose?.anyFromCategory || null
+    const category = Array.isArray(anyFromCategory?.category)
+      ? anyFromCategory.category.map((item: any) => String(item).toLowerCase())
+      : [String(anyFromCategory?.category || '').toLowerCase()]
+
+    const isOrigin = category.includes('o') || category.includes('origin')
+    const count = Math.max(1, Number(anyFromCategory?.count || entry?.count || entry?.choose?.count || 1))
+
+    if (!anyFromCategory || !isOrigin || !originOptions.length) return
+
+    groups.push({
+      key: index ? `species-feat-${index}` : 'species-feat',
+      title: 'Origin Feat',
+      note: 'Choose the Origin feat granted by this species.',
+      count,
+      options: originOptions
+        .map((option: any) => {
+          const id = featOptionId(option)
+          const title = featOptionTitle(option)
+          if (!id || !title) return null
+
+          return {
+            value: id,
+            label: title,
+            detail: featOptionSourceLine(option),
+            meta: {
+              choiceType: 'feat',
+              featId: id,
+              featTitle: title
+            }
+          }
+        })
+        .filter(Boolean)
+    })
+  })
+
+  return groups
+}
+
+function speciesRawMechanicChoiceGroups(raw: any) {
+  return [
+    ...speciesSkillChoiceGroupsFromRaw(raw),
+    ...speciesFeatChoiceGroupsFromRaw(raw)
+  ]
+}
+
+function dedupeBuilderChoiceGroups(groups: any[]) {
+  const seen = new Set<string>()
+
+  return groups.filter((group: any) => {
+    const key = String(group?.key || group?.title || '').toLowerCase()
+    const hasOptions = Array.isArray(group?.options) && group.options.length > 0
+
+    if (!key || !hasOptions || seen.has(key)) return false
+
+    seen.add(key)
+    return true
+  })
+}
+
 function fallbackSpeciesChoiceGroups(name: any) {
   const key = loreKey(name)
 
@@ -897,7 +1005,10 @@ function fallbackSpeciesChoiceGroups(name: any) {
 
 const speciesChoiceGroups = computed(() => {
   const raw = rawJson(selectedSpeciesEntity.value) || {}
-  const parsed = speciesChoiceGroupsFromRaw(raw)
+  const parsed = dedupeBuilderChoiceGroups([
+    ...speciesChoiceGroupsFromRaw(raw),
+    ...speciesRawMechanicChoiceGroups(raw)
+  ])
 
   return parsed.length
     ? parsed
@@ -933,7 +1044,10 @@ const speciesChoicePayload = computed(() => {
     payload[group.key] = {
       label: group.title,
       value: selected,
+      values: [selected],
+      valueLabel: option?.label || selected,
       detail: option?.detail || '',
+      note: group.note || '',
       meta: option?.meta || {}
     }
   }
@@ -1607,6 +1721,49 @@ function backgroundChoiceValues(value: any) {
 
   return [prettyBuilderChoiceValue(text)]
 }
+
+function featOptionId(option: any) {
+  return String(option?.id ?? option?.entity_id ?? option?.value ?? '').trim()
+}
+
+function featOptionTitle(option: any) {
+  return String(option?.title || option?.name || option?.label || option?.value || 'Feat').trim()
+}
+
+function featOptionSourceLine(option: any) {
+  const parts = [
+    option?.source || option?.sourceBook || option?.source_book || '',
+    option?.page ? `p. ${option.page}` : option?.sourcePage ? `p. ${option.sourcePage}` : option?.source_page ? `p. ${option.source_page}` : ''
+  ].filter(Boolean)
+
+  return parts.join(' · ')
+}
+
+function featOptionLooksOrigin(option: any) {
+  const raw = rawJson(option) || option?.raw || option?.raw_json || {}
+  const text = [
+    option?.category,
+    option?.type,
+    option?.featCategory,
+    option?.feat_category,
+    option?.sourceCategory,
+    option?.source_category,
+    raw?.category,
+    raw?.type
+  ].filter(Boolean).join(' ').toLowerCase()
+
+  return text.includes('origin') ||
+    text === 'o' ||
+    text.includes('category: o') ||
+    text.split(/\s+/).includes('o')
+}
+
+const originFeatOptions = computed(() => {
+  const options = Array.isArray(featOptions.value) ? featOptions.value : []
+  const origin = options.filter((option: any) => featOptionLooksOrigin(option))
+
+  return origin.length ? origin : options
+})
 
 function backgroundFeatValues(raw: any) {
   const candidates = [
@@ -2687,7 +2844,7 @@ async function createCharacter() {
                 class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(20,17,12,0.42)] p-2 text-sm"
               >
                 <span class="text-[#9f9278]">{{ choice.label }}:</span>
-                <span class="font-semibold text-white"> {{ choice.value }}</span>
+                <span class="font-semibold text-white"> {{ choice.valueLabel || choice.selectedLabel || choice.value }}</span>
               </div>
             </div>
           </div>

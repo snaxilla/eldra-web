@@ -347,6 +347,42 @@ async function backgroundFeatIdsFromChoices(worldId: string, backgroundChoices: 
   return ids
 }
 
+async function speciesFeatIdsFromChoices(worldId: string, speciesChoices: Record<string, any>) {
+  const ids: string[] = []
+  const seen = new Set<string>()
+
+  for (const [key, rawGroup] of Object.entries(speciesChoices)) {
+    const group = asObject(rawGroup)
+    const text = `${key} ${group.label || ''} ${group.note || ''} ${group.meta?.choiceType || ''}`.toLowerCase()
+
+    if (!text.includes('feat')) continue
+
+    const values = Array.isArray(group.values)
+      ? group.values
+      : group.value
+        ? [group.value]
+        : []
+
+    for (const value of values) {
+      const directId = integerOrNull(value)
+      let id = directId ? String(directId) : ''
+
+      if (!id) {
+        const name = featNameForLookup(value)
+        const entity = await findWorldEntityByTitle(worldId, 'feat', name)
+        id = entity?.id ? String(entity.id) : ''
+      }
+
+      if (!id || seen.has(id)) continue
+
+      seen.add(id)
+      ids.push(id)
+    }
+  }
+
+  return ids
+}
+
 function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, any>) {
   const out: string[] = []
 
@@ -771,6 +807,7 @@ async function createOrPatchCharacterSheet(options: {
   backgroundChoices: Record<string, any>
 }) {
   const now = new Date().toISOString()
+  const speciesFeatIds = await speciesFeatIdsFromChoices(options.worldId, options.speciesChoices)
   const backgroundFeatIds = await backgroundFeatIdsFromChoices(options.worldId, options.backgroundChoices)
   const existing = await findActiveSheet(options.worldId, options.entityId)
   const existingCombatStats = asObject(existing?.combat_stats)
@@ -810,6 +847,13 @@ async function createOrPatchCharacterSheet(options: {
     choices: {
       ...existingChoices,
       builderSpeciesChoices: options.speciesChoices,
+      ...(speciesFeatIds.length ? {
+        builderSpeciesFeat: {
+          type: 'feat',
+          label: 'Species Feat',
+          selected: speciesFeatIds
+        }
+      } : {}),
       builderClassChoices: options.classChoices,
       builderBackgroundChoices: options.backgroundChoices,
       ...(backgroundFeatIds.length ? {

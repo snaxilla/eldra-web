@@ -963,8 +963,65 @@ function speciesChoiceDetailText(value: any): string {
     if (value.entries) parts.push(speciesChoiceDetailText(value.entries))
     if (value.items) parts.push(speciesChoiceDetailText(value.items))
     if (value.rows) parts.push(speciesChoiceDetailText(value.rows))
+    if (value.cell) parts.push(speciesChoiceDetailText(value.cell))
+    if (value.text) parts.push(speciesChoiceDetailText(value.text))
 
     return parts.filter(Boolean).join('\n')
+  }
+
+  return ''
+}
+
+function speciesChoiceRowCells(row: any) {
+  if (Array.isArray(row)) return row
+  if (Array.isArray(row?.row)) return row.row
+  if (Array.isArray(row?.cells)) return row.cells
+  if (Array.isArray(row?.items)) return row.items
+  return []
+}
+
+function speciesChoiceBestLabelIndex(cells: any[]) {
+  const texts = cells.map(speciesChoiceCellText)
+
+  const preferred = texts.findIndex((text) => {
+    const clean = String(text || '').trim()
+    if (!clean) return false
+    if (/^\d+$/.test(clean)) return false
+    if (/^d\d+$/i.test(clean)) return false
+    if (/damage\s+type/i.test(clean)) return false
+    if (clean.length > 64) return false
+    return true
+  })
+
+  return preferred >= 0 ? preferred : 0
+}
+
+function speciesChoiceCellText(value: any): string {
+  if (value === null || value === undefined || value === '') return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return clean5eText(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(speciesChoiceCellText).filter(Boolean).join(' ')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name && !value.entry && !value.entries && !value.items && !value.rows) {
+      parts.push(clean5eText(value.name))
+    }
+
+    if (value.entry) parts.push(speciesChoiceCellText(value.entry))
+    if (value.entries) parts.push(speciesChoiceCellText(value.entries))
+    if (value.items) parts.push(speciesChoiceCellText(value.items))
+    if (value.rows) parts.push(speciesChoiceCellText(value.rows))
+    if (value.cell) parts.push(speciesChoiceCellText(value.cell))
+    if (value.text) parts.push(speciesChoiceCellText(value.text))
+
+    return parts.filter(Boolean).join(' ')
   }
 
   return ''
@@ -1001,11 +1058,18 @@ function collectSpeciesChoiceOptions(value: any, out: any[] = []) {
 
     if (type === 'table' && Array.isArray(value.rows)) {
       value.rows.forEach((row: any) => {
-        const cells = Array.isArray(row) ? row : row?.row || row?.cells || []
-        const label = clean5eText(speciesChoiceDetailText(cells[0]))
-        const detail = speciesChoiceDetailText(cells.slice(1))
+        const cells = speciesChoiceRowCells(row)
+        if (!cells.length) return
 
-        if (label && detail) {
+        const labelIndex = speciesChoiceBestLabelIndex(cells)
+        const label = clean5eText(speciesChoiceCellText(cells[labelIndex]))
+        const detail = cells
+          .filter((_, index) => index !== labelIndex)
+          .map(speciesChoiceDetailText)
+          .filter(Boolean)
+          .join('\n')
+
+        if (label) {
           out.push({
             value: label,
             label,
@@ -1026,6 +1090,95 @@ function collectSpeciesChoiceOptions(value: any, out: any[] = []) {
   }
 
   return out
+}
+
+function speciesChoiceGroupCanonicalKey(group: any) {
+  const text = normalizeBuilderChoiceCategory(`${group?.key || ''} ${group?.title || ''} ${group?.label || ''}`)
+
+  if (text.includes('draconic') && (text.includes('ancestor') || text.includes('ancestry'))) {
+    return 'species-draconic-ancestry'
+  }
+
+  if (text.includes('elven') && text.includes('lineage')) {
+    return 'species-elven-lineage'
+  }
+
+  if (text.includes('gnomish') && text.includes('lineage')) {
+    return 'species-gnomish-lineage'
+  }
+
+  if (text.includes('fiendish') && (text.includes('legacy') || text.includes('legacies'))) {
+    return 'species-fiendish-legacy'
+  }
+
+  if (text.includes('giant') && text.includes('ancestry')) {
+    return 'species-giant-ancestry'
+  }
+
+  if (text.includes('celestial') && text.includes('revelation')) {
+    return 'species-celestial-revelation'
+  }
+
+  if (text.includes('lineage')) {
+    return `species-${speciesChoiceSlug(text.replace(/lineages/g, 'lineage'))}`
+  }
+
+  if (text.includes('legacy') || text.includes('legacies')) {
+    return `species-${speciesChoiceSlug(text.replace(/legacies/g, 'legacy'))}`
+  }
+
+  if (text.includes('ancestry') || text.includes('ancestor')) {
+    return `species-${speciesChoiceSlug(text.replace(/ancestors/g, 'ancestry').replace(/ancestor/g, 'ancestry'))}`
+  }
+
+  return `species-${speciesChoiceSlug(group?.key || group?.title || 'choice')}`
+}
+
+function speciesChoiceGroupCanonicalTitle(group: any) {
+  const key = speciesChoiceGroupCanonicalKey(group)
+
+  const labels: Record<string, string> = {
+    'species-draconic-ancestry': 'Draconic Ancestry',
+    'species-elven-lineage': 'Elven Lineage',
+    'species-gnomish-lineage': 'Gnomish Lineage',
+    'species-fiendish-legacy': 'Fiendish Legacy',
+    'species-giant-ancestry': 'Giant Ancestry',
+    'species-celestial-revelation': 'Celestial Revelation'
+  }
+
+  return labels[key] || clean5eText(group?.title || group?.label || 'Species Choice')
+}
+
+function speciesChoiceOptionKey(option: any) {
+  return normalizeBuilderChoiceCategory(option?.label || option?.value || '')
+}
+
+function cleanSpeciesChoiceOption(option: any) {
+  const rawLabel = clean5eText(option?.label || option?.value || option?.name || '')
+  const rawValue = clean5eText(option?.value || option?.label || option?.name || rawLabel)
+
+  if (!rawLabel && !rawValue) return null
+
+  const label = rawLabel || rawValue
+  const value = rawValue || label
+  const detail = clean5eText(option?.detail || option?.description || '')
+
+  if (!label || !value) return null
+
+  return {
+    ...option,
+    value,
+    label,
+    detail: detail === label ? '' : detail,
+    meta: option?.meta || {}
+  }
+}
+
+function longerSpeciesText(current: any, next: any) {
+  const a = String(current || '').trim()
+  const b = String(next || '').trim()
+
+  return b.length > a.length ? b : a
 }
 
 function genericSpeciesChoiceGroupsFromEntries(raw: any) {
@@ -1072,17 +1225,68 @@ function genericSpeciesChoiceGroupsFromEntries(raw: any) {
 }
 
 function dedupeBuilderChoiceGroups(groups: any[]) {
-  const seen = new Set<string>()
+  const merged = new Map<string, any>()
 
-  return groups.filter((group: any) => {
-    const key = String(group?.key || group?.title || '').toLowerCase()
-    const hasOptions = Array.isArray(group?.options) && group.options.length > 0
+  for (const rawGroup of Array.isArray(groups) ? groups : []) {
+    if (!rawGroup) continue
 
-    if (!key || !hasOptions || seen.has(key)) return false
+    const options = (Array.isArray(rawGroup.options) ? rawGroup.options : [])
+      .map(cleanSpeciesChoiceOption)
+      .filter(Boolean)
 
-    seen.add(key)
-    return true
-  })
+    if (!options.length) continue
+
+    const key = speciesChoiceGroupCanonicalKey(rawGroup)
+    const title = speciesChoiceGroupCanonicalTitle(rawGroup)
+
+    if (!merged.has(key)) {
+      merged.set(key, {
+        ...rawGroup,
+        key,
+        title,
+        count: Math.max(1, Number(rawGroup.count || 1)),
+        options: []
+      })
+    }
+
+    const group = merged.get(key)
+    group.count = Math.max(Number(group.count || 1), Number(rawGroup.count || 1))
+    group.note = group.note || rawGroup.note || `Choose this character's ${String(title).toLowerCase()}.`
+
+    const optionMap = new Map<string, any>()
+
+    for (const existingOption of group.options || []) {
+      optionMap.set(speciesChoiceOptionKey(existingOption), existingOption)
+    }
+
+    for (const option of options) {
+      const optionKey = speciesChoiceOptionKey(option)
+      if (!optionKey) continue
+
+      const existing = optionMap.get(optionKey)
+
+      if (!existing) {
+        optionMap.set(optionKey, option)
+        continue
+      }
+
+      optionMap.set(optionKey, {
+        ...existing,
+        ...option,
+        label: existing.label || option.label,
+        value: existing.value || option.value,
+        detail: longerSpeciesText(existing.detail, option.detail),
+        meta: {
+          ...(existing.meta || {}),
+          ...(option.meta || {})
+        }
+      })
+    }
+
+    group.options = Array.from(optionMap.values())
+  }
+
+  return Array.from(merged.values())
 }
 
 function fallbackSpeciesChoiceGroups(name: any) {
@@ -1155,9 +1359,9 @@ const speciesChoiceGroups = computed(() => {
     ...speciesRawMechanicChoiceGroups(raw)
   ])
 
-  return parsed.length
-    ? parsed
-    : fallbackSpeciesChoiceGroups(selectedSpeciesName.value)
+  if (parsed.length) return parsed
+
+  return dedupeBuilderChoiceGroups(fallbackSpeciesChoiceGroups(selectedSpeciesName.value))
 })
 
 function speciesChoiceSelected(group: any) {

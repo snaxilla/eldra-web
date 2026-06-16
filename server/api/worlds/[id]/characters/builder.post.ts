@@ -44,6 +44,7 @@ function clean5eText(value: any) {
 
 function titleCase(value: any) {
   return clean5eText(value)
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -130,7 +131,17 @@ function looksLikeNonEquipmentItem(value: any) {
     key.startsWith('feat ') ||
     key.includes('magic initiate') ||
     key === 'skilled' ||
-    key === 'savage attacker'
+    key === 'savage attacker' ||
+    key === 'any gaming set' ||
+    key === 'any musical instrument' ||
+    key === 'any artisan tool' ||
+    key === "any artisan's tools" ||
+    key.includes('choose one kind') ||
+    key.includes('choose a kind') ||
+    key.includes('choose one type') ||
+    key.includes('choose a type') ||
+    key.includes('choose a or b') ||
+    key.includes('choose one of')
 }
 
 function normalizeChoiceGroups(value: any) {
@@ -370,36 +381,56 @@ function equipmentValuesFromText(value: any): string[] {
     if (Array.isArray(parsed.items)) return equipmentValuesFromText(parsed.items)
     if (Array.isArray(parsed.entries)) return equipmentValuesFromText(parsed.entries)
     if (Array.isArray(parsed.defaultData)) return equipmentValuesFromText(parsed.defaultData)
-    if (parsed.item) return [cleanBuilderCarryoverText(parsed.item)].filter(Boolean)
-    if (parsed.special) return [cleanBuilderCarryoverText(parsed.special)].filter(Boolean)
+    if (parsed.item) return [titleCase(parsed.item)].filter((item) => item && !looksLikeNonEquipmentItem(item))
+    if (parsed.special) return [titleCase(parsed.special)].filter((item) => item && !looksLikeNonEquipmentItem(item))
     if (parsed.entry) return equipmentValuesFromText(parsed.entry)
 
     return Object.values(parsed).flatMap(equipmentValuesFromText).filter(Boolean)
   }
 
-  let text = cleanBuilderCarryoverText(parsed)
-  if (!text) return []
+  let raw = String(parsed || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\{@(?:feat|skill|item|spell|filter|book|action|variantrule|condition|class|race|creature|damage|sense|status)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/^\s*[-*]\s*/gm, '')
+    .trim()
 
-  text = text
-    .replace(/^[-*]\s*/gm, '')
+  if (!raw) return []
+
+  const equipmentLabel = raw.match(/(?:^|\n)\s*(?:equipment|starting equipment)\s*:\s*/i)
+  if (equipmentLabel?.index !== undefined) {
+    raw = raw.slice(equipmentLabel.index + equipmentLabel[0].length)
+  }
+
+  raw = raw
     .replace(/\(A\)\s*/gi, '')
     .replace(/\(B\).*$/gis, '')
-    .replace(/;\s*or\s+.*$/gis, '')
-    .replace(/\bor\s+\d+\s+(?:GP|Gold Pieces?)\b.*$/gis, '')
+    .replace(/choose\s+a\s+or\s+b\s*:\s*/gi, '')
+    .replace(/choose\s+one\s+of\s+the\s+following\s*:\s*/gi, '')
+    .replace(/choose\s+one\s+kind\s+of\s+[^,;\n]+/gi, '')
+    .replace(/;?\s*or\s+\d+\s+(?:GP|Gold Pieces?)\b.*$/gis, '')
+
+  const hardStop = raw.search(/\n\s*(?:ability scores?|feat|skill proficiencies?|tool proficienc(?:y|ies)|languages?|feature)\s*:/i)
+  if (hardStop > 0) {
+    raw = raw.slice(0, hardStop)
+  }
 
   const seen = new Set<string>()
 
-  return text
-    .split(/\n|,/)
+  return raw
+    .split(/\n|,|;/)
     .map((item) => cleanBuilderCarryoverText(item))
     .map((item) => item.replace(/^and\s+/i, '').trim())
+    .map((item) => item.replace(/^equipment\s*:\s*/i, '').trim())
     .filter(Boolean)
     .filter((item) => !looksLikeNonEquipmentItem(item))
     .filter((item) => !/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item))
     .map(titleCase)
     .filter((item) => {
       const key = item.toLowerCase()
-      if (seen.has(key)) return false
+      if (!key || seen.has(key)) return false
       seen.add(key)
       return true
     })
@@ -415,7 +446,12 @@ function backgroundChoiceGroupsFromBlocks(blocks: any[]) {
   const languages = choiceValuesFromAny(core.languages || raw.languageProficiencies || raw.languages)
   const feats = backgroundFeatValuesFromRaw(raw)
   const abilities = choiceValuesFromAny(raw.ability || raw.abilityScores || raw.abilityScoreIncrease)
-  const equipment = equipmentValuesFromText(core.equipment || raw.startingEquipment || raw.equipment)
+
+  let equipment = equipmentValuesFromText(core.equipment)
+
+  if (!equipment.length) {
+    equipment = equipmentValuesFromText(raw.startingEquipment || raw.equipment)
+  }
 
   if (skills.length) {
     out['background-skills'] = {
@@ -490,29 +526,52 @@ async function findWorldEntityByTitle(worldId: string, entityType: string, title
   const cleanTitle = cleanText(title)
   if (!cleanTitle) return null
 
-  const params = new URLSearchParams()
-  params.set('filter[world_id][_eq]', String(worldId))
-  params.set('filter[entity_type][_eq]', entityType)
-  params.set('filter[title][_eq]', cleanTitle)
-  params.set('limit', '1')
-  params.set('fields', 'id,title,entity_type')
+  async function query(params: URLSearchParams) {
+    const res = await dxFetch(`/items/entities?${params.toString()}`).catch(() => null)
+    return Array.isArray(res?.data) ? res.data : []
+  }
 
-  const exact = await dxFetch(`/items/entities?${params.toString()}`).catch(() => null)
-  const exactHit = Array.isArray(exact?.data) ? exact.data[0] : null
-  if (exactHit?.id) return exactHit
+  const exactTyped = new URLSearchParams()
+  exactTyped.set('filter[world_id][_eq]', String(worldId))
+  exactTyped.set('filter[entity_type][_eq]', entityType)
+  exactTyped.set('filter[title][_eq]', cleanTitle)
+  exactTyped.set('limit', '1')
+  exactTyped.set('fields', 'id,title,entity_type')
+
+  const exactTypedRows = await query(exactTyped)
+  if (exactTypedRows[0]?.id) return exactTypedRows[0]
+
+  const exactAny = new URLSearchParams()
+  exactAny.set('filter[world_id][_eq]', String(worldId))
+  exactAny.set('filter[title][_eq]', cleanTitle)
+  exactAny.set('limit', '10')
+  exactAny.set('fields', 'id,title,entity_type')
+
+  const exactAnyRows = await query(exactAny)
+  const preferredExact = exactAnyRows.find((row: any) =>
+    String(row?.entity_type || '').toLowerCase().includes(entityType.toLowerCase())
+  ) || exactAnyRows[0]
+
+  if (preferredExact?.id) return preferredExact
 
   const fuzzy = new URLSearchParams()
   fuzzy.set('filter[world_id][_eq]', String(worldId))
-  fuzzy.set('filter[entity_type][_eq]', entityType)
   fuzzy.set('filter[title][_contains]', cleanTitle)
-  fuzzy.set('limit', '10')
+  fuzzy.set('limit', '25')
   fuzzy.set('fields', 'id,title,entity_type')
 
-  const res = await dxFetch(`/items/entities?${fuzzy.toString()}`).catch(() => null)
-  const rows = Array.isArray(res?.data) ? res.data : []
+  const rows = await query(fuzzy)
   const needle = cleanTitle.toLowerCase()
 
-  return rows.find((row: any) => cleanText(row?.title).toLowerCase() === needle) ||
+  return rows.find((row: any) =>
+    String(row?.entity_type || '').toLowerCase().includes(entityType.toLowerCase()) &&
+    cleanText(row?.title).toLowerCase() === needle
+  ) ||
+    rows.find((row: any) => cleanText(row?.title).toLowerCase() === needle) ||
+    rows.find((row: any) =>
+      String(row?.entity_type || '').toLowerCase().includes(entityType.toLowerCase()) &&
+      cleanText(row?.title).toLowerCase().includes(needle)
+    ) ||
     rows.find((row: any) => cleanText(row?.title).toLowerCase().includes(needle)) ||
     null
 }

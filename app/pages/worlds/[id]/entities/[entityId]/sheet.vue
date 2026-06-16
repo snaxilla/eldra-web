@@ -1823,6 +1823,176 @@ const equippedWeaponActions = computed(() => {
   return [unarmedStrike, ...equippedWeapons]
 })
 
+function actionCardListValue(value: any) {
+  if (Array.isArray(value)) return value
+  if (Array.isArray(value?.value)) return value.value
+  return []
+}
+
+function normalizeActionClassText(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function sheetClassNameText() {
+  return String(
+    sheet.value?.class_name ||
+    sheet.value?.className ||
+    resolvedClass.value?.title ||
+    ''
+  ).trim()
+}
+
+function currentSheetLevelNumber() {
+  const parsed = Number(sheet.value?.level || math.value?.level || 1)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1
+}
+
+function classActionFeatureText() {
+  const candidates: any[] = []
+
+  const resolved = resolvedClass.value || {}
+  const rawFeatures = [
+    resolved.features,
+    resolved.classFeatures,
+    resolved.class_features,
+    resolved.featureRefs,
+    resolved.feature_refs,
+    resolved.rawFeatures,
+    resolved.raw_features
+  ]
+
+  for (const value of rawFeatures) {
+    if (Array.isArray(value)) candidates.push(...value)
+  }
+
+  return candidates
+    .map((feature: any) => {
+      if (typeof feature === 'string') return feature
+      if (feature?.name) return feature.name
+      if (feature?.title) return feature.title
+      if (feature?.classFeature) return feature.classFeature
+      return ''
+    })
+    .filter(Boolean)
+    .join(' ')
+}
+
+const classFeatureActionDefinitions = [
+  {
+    id: 'class-barbarian-rage',
+    classNames: ['barbarian'],
+    featureNames: ['rage'],
+    level: 1,
+    name: 'Rage',
+    timing: 'Bonus Action',
+    timingKey: 'bonus',
+    icon: 'i-lucide-flame',
+    source: 'Barbarian',
+    notes: 'Limited uses per Long Rest.',
+    description: 'Enter a rage as a Bonus Action. While raging, you gain the class benefits from Rage, including improved physical ferocity and resilience as defined by your class article.'
+  },
+  {
+    id: 'class-fighter-second-wind',
+    classNames: ['fighter'],
+    featureNames: ['second wind'],
+    level: 1,
+    name: 'Second Wind',
+    timing: 'Bonus Action',
+    timingKey: 'bonus',
+    icon: 'i-lucide-heart-pulse',
+    source: 'Fighter',
+    notes: 'Limited uses per rest.',
+    description: 'Draw on stamina to recover hit points using the Second Wind class feature.'
+  },
+  {
+    id: 'class-rogue-cunning-action',
+    classNames: ['rogue'],
+    featureNames: ['cunning action'],
+    level: 2,
+    name: 'Cunning Action',
+    timing: 'Bonus Action',
+    timingKey: 'bonus',
+    icon: 'i-lucide-footprints',
+    source: 'Rogue',
+    notes: 'Dash, Disengage, or Hide.',
+    description: 'Use a Bonus Action for quick movement or stealth options granted by Cunning Action.'
+  }
+]
+
+function classFeatureActionApplies(definition: any) {
+  const classText = normalizeActionClassText(sheetClassNameText())
+  const featureText = normalizeActionClassText(classActionFeatureText())
+  const level = currentSheetLevelNumber()
+
+  const classMatches = Array.isArray(definition.classNames) &&
+    definition.classNames.some((name: string) => classText.includes(normalizeActionClassText(name)))
+
+  if (!classMatches) return false
+  if (level < Number(definition.level || 1)) return false
+
+  const featureNames = Array.isArray(definition.featureNames) ? definition.featureNames : []
+
+  if (!featureText || !featureNames.length) return true
+
+  return featureNames.some((name: string) => featureText.includes(normalizeActionClassText(name)))
+}
+
+function normalizeClassFeatureAction(action: any) {
+  const name = String(action?.name || action?.title || 'Class Feature').trim()
+  const timing = String(action?.timing || action?.actionKind || action?.actionType || 'Action').trim()
+  const timingKey = normalizeActionClassText(action?.timingKey || timing).includes('bonus')
+    ? 'bonus'
+    : normalizeActionClassText(action?.timingKey || timing).includes('reaction')
+      ? 'reaction'
+      : 'action'
+
+  return {
+    ...action,
+    id: String(action?.id || `class-action-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`),
+    name,
+    title: name,
+    timing,
+    timingKey,
+    actionKind: timing,
+    icon: action?.icon || 'i-lucide-sparkles',
+    source: action?.source || sheetClassNameText() || 'Class',
+    itemType: action?.itemType || 'Class Feature',
+    isClassFeatureAction: true
+  }
+}
+
+const classFeatureActionCards = computed(() => {
+  const explicitActions = Array.isArray(resolvedClass.value?.actions)
+    ? resolvedClass.value.actions
+    : []
+
+  const registryActions = classFeatureActionDefinitions.filter(classFeatureActionApplies)
+
+  const seen = new Set<string>()
+
+  return [...explicitActions, ...registryActions]
+    .map(normalizeClassFeatureAction)
+    .filter((action: any) => {
+      const key = `${action.name}|${action.timing}`.toLowerCase()
+      if (!action.name || !action.timing || seen.has(key)) return false
+
+      seen.add(key)
+      return true
+    })
+})
+
+const classBonusActionCards = computed(() =>
+  classFeatureActionCards.value.filter((action: any) => action.timingKey === 'bonus')
+)
+
+const classReactionActionCards = computed(() =>
+  classFeatureActionCards.value.filter((action: any) => action.timingKey === 'reaction')
+)
+
 function selectedBuilderSpeciesChoiceText(...needles: string[]) {
   const choices = asObject(sheet.value?.choices)
   const speciesChoices = asObject(choices.builderSpeciesChoices ?? choices.builder_species_choices)
@@ -1960,13 +2130,15 @@ const speciesReactionActionCards = computed(() =>
 )
 
 const displayedBonusActionCards = computed(() => [
+  ...classBonusActionCards.value,
   ...speciesBonusActionCards.value,
-  ...bonusActionCards
+  ...actionCardListValue(bonusActionCards)
 ])
 
 const displayedReactionActionCards = computed(() => [
+  ...classReactionActionCards.value,
   ...speciesReactionActionCards.value,
-  ...reactionActionCards
+  ...actionCardListValue(reactionActionCards)
 ])
 
 function rollSpeciesActionDamage(action: any) {

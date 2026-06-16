@@ -1823,6 +1823,163 @@ const equippedWeaponActions = computed(() => {
   return [unarmedStrike, ...equippedWeapons]
 })
 
+function selectedBuilderSpeciesChoiceText(...needles: string[]) {
+  const choices = asObject(sheet.value?.choices)
+  const speciesChoices = asObject(choices.builderSpeciesChoices ?? choices.builder_species_choices)
+  const loweredNeedles = needles.map((needle) => String(needle || '').toLowerCase()).filter(Boolean)
+
+  for (const [key, rawGroup] of Object.entries(speciesChoices) as any[]) {
+    const group = asObject(rawGroup)
+    const meta = asObject(group.meta)
+
+    const haystack = [
+      key,
+      group.label,
+      group.title,
+      group.note,
+      group.valueLabel,
+      group.selectedLabel,
+      group.detail,
+      meta.choiceType
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+
+    if (loweredNeedles.length && !loweredNeedles.some((needle) => haystack.includes(needle))) continue
+
+    const selected = Array.isArray(group.values)
+      ? group.values[0]
+      : Array.isArray(group.selected)
+        ? group.selected[0]
+        : group.value ?? group.valueLabel ?? group.selectedLabel
+
+    const text = String(group.valueLabel || group.selectedLabel || selected || '').trim()
+    if (text) return text
+  }
+
+  return ''
+}
+
+function selectedDraconicAncestryDamageType() {
+  const selected = selectedBuilderSpeciesChoiceText('draconic') ||
+    selectedBuilderSpeciesChoiceText('ancestry') ||
+    selectedBuilderSpeciesChoiceText('dragon')
+
+  const key = String(selected || '').trim().toLowerCase()
+
+  const map: Record<string, string> = {
+    black: 'acid',
+    copper: 'acid',
+    blue: 'lightning',
+    bronze: 'lightning',
+    brass: 'fire',
+    gold: 'fire',
+    red: 'fire',
+    green: 'poison',
+    silver: 'cold',
+    white: 'cold'
+  }
+
+  return map[key] || ''
+}
+
+function speciesActionTimingKey(action: any) {
+  const timing = String(action?.timing || action?.actionKind || action?.actionType || '').toLowerCase()
+
+  if (timing.includes('bonus')) return 'bonus'
+  if (timing.includes('reaction')) return 'reaction'
+  if (timing.includes('attack')) return 'attack'
+
+  return 'action'
+}
+
+function decoratedSpeciesAction(action: any) {
+  const name = String(action?.name || action?.title || 'Species Action').trim()
+  const timing = String(action?.timing || action?.actionKind || 'Action').trim()
+  const timingKey = speciesActionTimingKey(action)
+  const breathDamageType = name.toLowerCase().includes('breath weapon')
+    ? selectedDraconicAncestryDamageType()
+    : ''
+
+  const damageType = breathDamageType || String(action?.damageType || '').trim()
+  const damageFormula = String(action?.damageFormula || action?.damage || '').trim()
+  const detail = String(action?.detail || action?.description || '').trim()
+
+  return {
+    ...action,
+    id: String(action?.id || `species-action-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`),
+    name,
+    title: name,
+    timing,
+    timingKey,
+    actionKind: timing,
+    itemType: action?.itemType || 'Species Action',
+    icon: timingKey === 'bonus'
+      ? 'i-lucide-sparkles'
+      : timingKey === 'reaction'
+        ? 'i-lucide-rotate-ccw'
+        : 'i-lucide-badge-plus',
+    detail: breathDamageType && detail
+      ? `${detail} Damage Type: ${damageType}.`
+      : detail,
+    description: breathDamageType && detail
+      ? `${detail} Damage Type: ${damageType}.`
+      : detail,
+    damage: damageFormula,
+    damageFormula,
+    damageType,
+    notes: action?.uses || action?.notes || '',
+    source: action?.source || resolvedSpecies.value?.title || 'Species',
+    isSpeciesAction: true
+  }
+}
+
+const resolvedSpeciesActionCards = computed(() => {
+  const actions = Array.isArray(resolvedSpecies.value?.actions)
+    ? resolvedSpecies.value.actions
+    : []
+
+  return actions
+    .map((action: any) => decoratedSpeciesAction(action))
+    .filter((action: any) => action.name && action.timing)
+})
+
+const mainSpeciesActionCards = computed(() =>
+  resolvedSpeciesActionCards.value.filter((action: any) =>
+    !['bonus', 'reaction'].includes(action.timingKey)
+  )
+)
+
+const speciesBonusActionCards = computed(() =>
+  resolvedSpeciesActionCards.value.filter((action: any) => action.timingKey === 'bonus')
+)
+
+const speciesReactionActionCards = computed(() =>
+  resolvedSpeciesActionCards.value.filter((action: any) => action.timingKey === 'reaction')
+)
+
+const displayedBonusActionCards = computed(() => [
+  ...speciesBonusActionCards.value,
+  ...bonusActionCards
+])
+
+const displayedReactionActionCards = computed(() => [
+  ...speciesReactionActionCards.value,
+  ...reactionActionCards
+])
+
+function rollSpeciesActionDamage(action: any) {
+  const expression = String(action?.damageFormula || action?.damage || '').trim()
+  if (!expression) return
+
+  rollDiceBox(
+    expression,
+    `${action?.name || 'Species Action'} Damage`,
+    action?.damageType ? `${action.damageType} damage` : 'Species Action'
+  )
+}
+
 function inventoryArmorClassValue(item: any) {
   const core = inventoryItemCore(item)
   const raw = inventoryItemRaw(item)
@@ -5406,6 +5563,107 @@ async function saveSheet() {
                 class="mt-0 grid gap-3 md:mt-6"
               >
 
+
+                <div
+                  v-if="mainSpeciesActionCards.length"
+                  class="eldra-codex-soft rounded-none p-4"
+                >
+                  <button
+                    type="button"
+                    class="mb-3 flex w-full items-center justify-between gap-3 text-left"
+                    @click="toggleActionPanel('species-actions')"
+                  >
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Species Actions</div>
+
+                    <div class="flex items-center gap-2">
+                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                        {{ mainSpeciesActionCards.length }} Action{{ mainSpeciesActionCards.length === 1 ? '' : 's' }}
+                      </div>
+                      <UIcon :name="actionPanelChevron('species-actions')" class="h-4 w-4 text-[#9f9278]" />
+                    </div>
+                  </button>
+
+                  <div
+                    v-show="actionPanelOpen('species-actions')"
+                    class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  >
+                    <article
+                      v-for="action in mainSpeciesActionCards"
+                      :key="`species-action-${action.id}`"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div class="truncate font-semibold text-white">{{ action.name }}</div>
+                          <div class="mt-1 text-xs text-[#9f9278]">{{ action.source || 'Species' }}</div>
+                        </div>
+
+                        <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                          {{ action.timing }}
+                        </span>
+                      </div>
+
+                      <div
+                        v-if="action.damage || action.damageType"
+                        class="mt-3 grid gap-2 text-xs"
+                        :class="action.damage && action.damageType ? 'grid-cols-2' : 'grid-cols-1'"
+                      >
+                        <div
+                          v-if="action.damage"
+                          class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2"
+                        >
+                          <div class="uppercase tracking-[0.18em] text-[#9f9278]">Damage</div>
+                          <div class="mt-1 font-semibold text-white">{{ action.damage }}</div>
+                        </div>
+
+                        <div
+                          v-if="action.damageType"
+                          class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2"
+                        >
+                          <div class="uppercase tracking-[0.18em] text-[#9f9278]">Type</div>
+                          <div class="mt-1 font-semibold text-white">{{ action.damageType }}</div>
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="action.notes"
+                        class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]"
+                      >
+                        {{ action.notes }}
+                      </div>
+
+                      <p
+                        v-if="action.detail"
+                        class="mt-3 text-xs leading-5 text-[#d8ceb8]"
+                      >
+                        {{ shortText(action.detail, 260) }}
+                      </p>
+
+                      <div
+                        class="mt-3 grid gap-2"
+                        :class="action.damageFormula ? 'grid-cols-2' : 'grid-cols-1'"
+                      >
+                        <button
+                          v-if="action.damageFormula"
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                          @click.stop="rollSpeciesActionDamage(action)"
+                        >
+                          Damage
+                        </button>
+
+                        <button
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                          @click.stop="openItemDrawer(action)"
+                        >
+                          Details
+                        </button>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
                 <div
                   v-if="equippedWeaponActions.length"
                   class="eldra-codex-soft rounded-none p-4"
@@ -5700,7 +5958,7 @@ async function saveSheet() {
                       class="space-y-2"
                     >
                       <article
-                        v-for="action in bonusActionCards"
+                        v-for="action in displayedBonusActionCards"
                         :key="action.name"
                         class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                       >
@@ -5739,7 +5997,7 @@ async function saveSheet() {
                       class="space-y-2"
                     >
                       <article
-                        v-for="action in reactionActionCards"
+                        v-for="action in displayedReactionActionCards"
                         :key="action.name"
                         class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                       >

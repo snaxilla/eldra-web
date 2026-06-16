@@ -127,6 +127,220 @@ function resolveFeatChoices(value: any) {
   return choices
 }
 
+function entryText(value: any): string {
+  value = parseJsonish(value)
+
+  if (value === null || value === undefined || value === '') return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return clean5eText(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(entryText).filter(Boolean).join(' ')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name) parts.push(clean5eText(value.name))
+    if (value.entry) parts.push(entryText(value.entry))
+    if (value.entries) parts.push(entryText(value.entries))
+    if (value.items) parts.push(entryText(value.items))
+    if (value.rows) parts.push(entryText(value.rows))
+
+    return parts.filter(Boolean).join(' ')
+  }
+
+  return ''
+}
+
+function speciesActionSlug(value: any) {
+  return String(value || 'species-action')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'species-action'
+}
+
+function speciesActionTimingFromText(value: any) {
+  const text = clean5eText(entryText(value)).toLowerCase()
+
+  if (
+    text.includes('when you take the attack action') ||
+    text.includes('replace one of your attacks') ||
+    text.includes('replace one attack')
+  ) {
+    return 'Attack Action'
+  }
+
+  if (
+    text.includes('bonus action') ||
+    text.includes('as a bonus action') ||
+    text.includes('using a bonus action')
+  ) {
+    return 'Bonus Action'
+  }
+
+  if (
+    text.includes('reaction') ||
+    text.includes('as a reaction') ||
+    text.includes('using your reaction')
+  ) {
+    return 'Reaction'
+  }
+
+  if (
+    text.includes('as an action') ||
+    text.includes('as a magic action') ||
+    text.includes('magic action') ||
+    text.includes('take an action')
+  ) {
+    return 'Action'
+  }
+
+  return ''
+}
+
+function speciesActionDamageFormulaFromText(value: any) {
+  const text = clean5eText(entryText(value))
+  const match = text.match(/\b(\d+d\d+(?:\s*[+-]\s*\d+)?)\b/i)
+  return match?.[1]?.replace(/\s+/g, '') || ''
+}
+
+function speciesActionDamageTypeFromText(value: any) {
+  const text = clean5eText(entryText(value)).toLowerCase()
+
+  const types = [
+    'acid',
+    'bludgeoning',
+    'cold',
+    'fire',
+    'force',
+    'lightning',
+    'necrotic',
+    'piercing',
+    'poison',
+    'psychic',
+    'radiant',
+    'slashing',
+    'thunder'
+  ]
+
+  for (const type of types) {
+    if (text.includes(`${type} damage`)) return type
+  }
+
+  return ''
+}
+
+function speciesActionUsesFromText(value: any) {
+  const text = clean5eText(entryText(value))
+
+  if (/proficiency bonus times/i.test(text)) return 'PB per Long Rest'
+  if (/once you use .* long rest/i.test(text)) return '1 per Long Rest'
+  if (/once .* long rest/i.test(text)) return '1 per Long Rest'
+  if (/finish a long rest/i.test(text)) return 'Long Rest'
+  if (/finish a short or long rest/i.test(text)) return 'Short or Long Rest'
+
+  return ''
+}
+
+function normalizeSpeciesAction(rawAction: any, index = 0) {
+  const action = parseJsonish(rawAction) || {}
+  const name = clean5eText(action.name || action.title || action.label || `Species Action ${index + 1}`)
+  const detail = clean5eText(action.detail || action.description || action.summary || entryText(action.entries || action.entry || action.items || action.rows || action))
+  const timing = clean5eText(action.timing || action.actionType || action.action_type || speciesActionTimingFromText(action))
+  const damageFormula = clean5eText(action.damageFormula || action.damage_formula || action.damage || speciesActionDamageFormulaFromText(action))
+  const damageType = clean5eText(action.damageType || action.damage_type || speciesActionDamageTypeFromText(action))
+  const uses = clean5eText(action.uses || action.resource || speciesActionUsesFromText(action))
+
+  if (!name || !timing) return null
+
+  return {
+    id: `species-action-${speciesActionSlug(name)}-${index}`,
+    name,
+    title: name,
+    timing,
+    actionKind: timing,
+    source: 'Species',
+    itemType: 'Species Action',
+    detail,
+    description: detail,
+    damage: damageFormula,
+    damageFormula,
+    damageType,
+    uses,
+    notes: uses,
+    isSpeciesAction: true
+  }
+}
+
+function resolveExplicitSpeciesActions(core: any, raw: any) {
+  const out: any[] = []
+
+  const candidates = [
+    parseJsonish(core.actions),
+    parseJsonish(core.species_actions),
+    parseJsonish(core.speciesActions),
+    parseJsonish(raw.actions),
+    parseJsonish(raw.speciesActions)
+  ]
+
+  for (const candidate of candidates) {
+    const list = Array.isArray(candidate) ? candidate : candidate ? [candidate] : []
+
+    for (const action of list) {
+      const normalized = normalizeSpeciesAction(action, out.length)
+      if (normalized) out.push(normalized)
+    }
+  }
+
+  return out
+}
+
+function resolveEntrySpeciesActions(raw: any) {
+  const entries = Array.isArray(raw?.entries) ? raw.entries : []
+  const out: any[] = []
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue
+
+    const timing = speciesActionTimingFromText(entry)
+    if (!timing) continue
+
+    const normalized = normalizeSpeciesAction({
+      name: entry.name,
+      timing,
+      entries: entry.entries || entry.entry || entry.items || entry.rows,
+      damage: speciesActionDamageFormulaFromText(entry),
+      damageType: speciesActionDamageTypeFromText(entry),
+      uses: speciesActionUsesFromText(entry)
+    }, out.length)
+
+    if (normalized) out.push(normalized)
+  }
+
+  return out
+}
+
+function resolveSpeciesActions(core: any, raw: any) {
+  const actions = [
+    ...resolveExplicitSpeciesActions(core, raw),
+    ...resolveEntrySpeciesActions(raw)
+  ]
+
+  const seen = new Set<string>()
+
+  return actions.filter((action: any) => {
+    const key = `${String(action.name || '').toLowerCase()}|${String(action.timing || '').toLowerCase()}`
+    if (!action?.name || !action?.timing || seen.has(key)) return false
+
+    seen.add(key)
+    return true
+  })
+}
+
 function featureCount(value: any) {
   return Array.isArray(value) ? value.length : 0
 }
@@ -182,6 +396,7 @@ function resolveSpecies(entity: any, blocks: any[]) {
     skillChoices: resolveSkillChoices(raw.skillProficiencies),
     featChoices: resolveFeatChoices(raw.feats),
     rawTraitCount: Array.isArray(raw.entries) ? raw.entries.length : 0,
+      actions: resolveSpeciesActions(core, raw),
     source: raw.source || null,
     page: raw.page || null
   }

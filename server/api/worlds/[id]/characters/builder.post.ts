@@ -8,6 +8,15 @@ function cleanText(value: any) {
   return String(value ?? '').trim()
 }
 
+function cleanBuilderCarryoverText(value: any) {
+  return cleanText(value)
+    .replace(/\{@(?:feat|skill|item|spell|filter)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function integerOrNull(value: any) {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null
@@ -245,11 +254,15 @@ function equipmentValuesFromText(value: any) {
   if (typeof parsed === 'object') {
     if (Array.isArray(parsed.items)) return equipmentValuesFromText(parsed.items)
     if (Array.isArray(parsed.entries)) return equipmentValuesFromText(parsed.entries)
+    if (Array.isArray(parsed.defaultData)) return equipmentValuesFromText(parsed.defaultData)
+    if (parsed.item) return [cleanBuilderCarryoverText(parsed.item)].filter(Boolean)
+    if (parsed.special) return [cleanBuilderCarryoverText(parsed.special)].filter(Boolean)
     if (parsed.entry) return equipmentValuesFromText(parsed.entry)
+
     return Object.values(parsed).flatMap(equipmentValuesFromText).filter(Boolean)
   }
 
-  let text = cleanText(parsed)
+  let text = cleanBuilderCarryoverText(parsed)
   if (!text) return []
 
   text = text
@@ -259,23 +272,33 @@ function equipmentValuesFromText(value: any) {
     .replace(/;\s*or\s+.*$/gis, '')
     .replace(/\bor\s+\d+\s+(?:GP|Gold Pieces?)\b.*$/gis, '')
 
+  const seen = new Set<string>()
+
   return text
     .split(/\n|,/)
-    .map((item) => cleanText(item))
+    .map((item) => cleanBuilderCarryoverText(item))
     .map((item) => item.replace(/^and\s+/i, '').trim())
     .filter(Boolean)
+    .filter((item) => !looksLikeNonEquipmentItem(item))
     .filter((item) => !/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item))
     .map(titleCase)
+    .filter((item) => {
+      const key = item.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 function featNameForLookup(value: any) {
-  const text = cleanText(value)
+  const text = cleanBuilderCarryoverText(value)
   if (!text) return ''
 
   const withoutSource = text.split('|')[0] || text
   const withoutChoice = withoutSource.split(';')[0] || withoutSource
+  const withoutParenthetical = withoutChoice.replace(/\([^)]*\)/g, '').trim()
 
-  return titleCase(withoutChoice)
+  return titleCase(withoutParenthetical)
 }
 
 async function findWorldEntityByTitle(worldId: string, entityType: string, title: string) {
@@ -368,6 +391,71 @@ async function speciesFeatIdsFromChoices(worldId: string, speciesChoices: Record
       let id = directId ? String(directId) : ''
 
       if (!id) {
+
+function isAbilityName(value: any) {
+  const key = cleanBuilderCarryoverText(value).toLowerCase()
+
+  return [
+    'str',
+    'dex',
+    'con',
+    'int',
+    'wis',
+    'cha',
+    'strength',
+    'dexterity',
+    'constitution',
+    'intelligence',
+    'wisdom',
+    'charisma'
+  ].includes(key)
+}
+
+function isSkillName(value: any) {
+  const key = cleanBuilderCarryoverText(value).toLowerCase()
+
+  return [
+    'acrobatics',
+    'animal handling',
+    'arcana',
+    'athletics',
+    'deception',
+    'history',
+    'insight',
+    'intimidation',
+    'investigation',
+    'medicine',
+    'nature',
+    'perception',
+    'performance',
+    'persuasion',
+    'religion',
+    'sleight of hand',
+    'stealth',
+    'survival'
+  ].includes(key)
+}
+
+function looksLikeNonEquipmentItem(value: any) {
+  const text = cleanBuilderCarryoverText(value)
+  const key = text.toLowerCase()
+
+  if (!key) return true
+  if (isAbilityName(text)) return true
+  if (isSkillName(text)) return true
+
+  return key.includes('ability score') ||
+    key.includes('ability scores') ||
+    key.includes('background ability') ||
+    key.includes('skill proficiency') ||
+    key.includes('skill proficiencies') ||
+    key.includes('background skill') ||
+    key.includes('tool proficiency') ||
+    key.includes('background feat') ||
+    key.startsWith('feat ') ||
+    key.includes('magic initiate') ||
+    key === 'skilled'
+}
         const name = featNameForLookup(value)
         const entity = await findWorldEntityByTitle(worldId, 'feat', name)
         id = entity?.id ? String(entity.id) : ''
@@ -398,17 +486,19 @@ function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, 
         ? [group.value]
         : []
 
-    out.push(...values.map(cleanText).filter(Boolean))
+    out.push(...values.map(cleanBuilderCarryoverText).filter(Boolean))
   }
 
   const seen = new Set<string>()
 
-  return out.filter((item) => {
-    const key = item.toLowerCase()
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  return out
+    .filter((item) => !looksLikeNonEquipmentItem(item))
+    .filter((item) => {
+      const key = item.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 async function linkedEntityTitle(id: any) {

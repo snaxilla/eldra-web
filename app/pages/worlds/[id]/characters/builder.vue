@@ -880,12 +880,18 @@ function speciesFeatChoiceGroupsFromRaw(raw: any) {
   const originOptions = originFeatOptions.value
 
   feats.forEach((entry: any, index: number) => {
-    const anyFromCategory = entry?.anyFromCategory || entry?.choose?.anyFromCategory || null
-    const category = Array.isArray(anyFromCategory?.category)
-      ? anyFromCategory.category.map((item: any) => String(item).toLowerCase())
-      : [String(anyFromCategory?.category || '').toLowerCase()]
+    const anyFromCategory =
+      entry?.anyFromCategory ||
+      entry?.choose?.anyFromCategory ||
+      entry?.feat?.anyFromCategory ||
+      null
 
-    const isOrigin = category.includes('o') || category.includes('origin')
+    const rawCategory = anyFromCategory?.category ?? entry?.category ?? entry?.featCategory
+    const categories = Array.isArray(rawCategory)
+      ? rawCategory.map(normalizedFeatCategoryToken)
+      : [normalizedFeatCategoryToken(rawCategory)]
+
+    const isOrigin = categories.some((category) => category === 'o' || category === 'origin')
     const count = Math.max(1, Number(anyFromCategory?.count || entry?.count || entry?.choose?.count || 1))
 
     if (!anyFromCategory || !isOrigin || !originOptions.length) return
@@ -1739,23 +1745,73 @@ function featOptionSourceLine(option: any) {
   return parts.join(' · ')
 }
 
-function featOptionLooksOrigin(option: any) {
-  const raw = rawJson(option) || option?.raw || option?.raw_json || {}
-  const text = [
-    option?.category,
-    option?.type,
-    option?.featCategory,
-    option?.feat_category,
-    option?.sourceCategory,
-    option?.source_category,
-    raw?.category,
-    raw?.type
-  ].filter(Boolean).join(' ').toLowerCase()
+function normalizedFeatCategoryToken(value: any) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
 
-  return text.includes('origin') ||
-    text === 'o' ||
-    text.includes('category: o') ||
-    text.split(/\s+/).includes('o')
+function featOptionCategories(option: any) {
+  const raw = option?.raw || option?.raw_json || option?.rawJson || {}
+  const values: any[] = []
+
+  function collect(value: any) {
+    if (value === null || value === undefined || value === '') return
+
+    if (Array.isArray(value)) {
+      value.forEach(collect)
+      return
+    }
+
+    if (typeof value === 'object') {
+      if (value.category !== undefined) {
+        collect(value.category)
+        return
+      }
+
+      if (value.name !== undefined) {
+        collect(value.name)
+        return
+      }
+
+      Object.values(value).forEach(collect)
+      return
+    }
+
+    values.push(value)
+  }
+
+  collect(option?.category)
+  collect(option?.categories)
+  collect(option?.rawCategory)
+  collect(option?.raw_category)
+  collect(option?.featCategory)
+  collect(option?.feat_category)
+  collect(raw?.category)
+  collect(raw?.featCategory)
+
+  return Array.from(new Set(
+    values
+      .map(normalizedFeatCategoryToken)
+      .filter(Boolean)
+  ))
+}
+
+function featOptionLooksOrigin(option: any) {
+  const categories = featOptionCategories(option)
+
+  if (categories.some((category) => category === 'o' || category === 'origin')) return true
+
+  const text = normalizedFeatCategoryToken([
+    option?.categoryLabel,
+    option?.categoryName,
+    option?.summary,
+    option?.prerequisite
+  ].filter(Boolean).join(' '))
+
+  return text.includes('origin feat')
 }
 
 const originFeatOptions = computed(() => {

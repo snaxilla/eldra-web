@@ -471,6 +471,34 @@ function equipmentValuesForChoice(choice: any, selectedTool = '') {
   )
 }
 
+function backgroundCurrencyValuesForChoice(choice: any) {
+  const key = String(choice || '').trim().toUpperCase()
+  const segment = key === 'B'
+    ? equipmentSegment('B')
+    : equipmentSegment('A')
+
+  if (!segment) return []
+
+  const matches = Array.from(segment.matchAll(/(\d+)\s*(PP|GP|SP|CP|Gold Pieces?|Silver Pieces?|Copper Pieces?|Platinum Pieces?)/gi))
+
+  return dedupeValues(matches.map((match) => {
+    const amount = Number(match[1] || 0)
+    const unitText = String(match[2] || '').toLowerCase()
+
+    if (!amount) return ''
+
+    const unit = unitText.startsWith('platinum') || unitText === 'pp'
+      ? 'PP'
+      : unitText.startsWith('silver') || unitText === 'sp'
+        ? 'SP'
+        : unitText.startsWith('copper') || unitText === 'cp'
+          ? 'CP'
+          : 'GP'
+
+    return `${amount} ${unit}`
+  }))
+}
+
 const payload = computed(() => {
   const raw = backgroundRaw.value
   const core = backgroundCore.value
@@ -494,6 +522,10 @@ const payload = computed(() => {
 
   const equipment = backgroundEquipmentChoiceGroup.value
     ? equipmentValuesForChoice(selectedEquipmentChoice, selectedTools[0] || '')
+    : []
+
+  const currency = backgroundEquipmentChoiceGroup.value
+    ? backgroundCurrencyValuesForChoice(selectedEquipmentChoice)
     : []
 
   if (skills.length) {
@@ -540,6 +572,16 @@ const payload = computed(() => {
     out['background-equipment'] = {
       label: 'Background Equipment',
       values: equipment,
+      note: backgroundEquipmentChoiceGroup.value
+        ? `Chosen equipment option ${selectedEquipmentChoice || '-'}`
+        : 'Granted by background.'
+    }
+  }
+
+  if (currency.length) {
+    out['background-currency'] = {
+      label: 'Background Currency',
+      values: currency,
       note: backgroundEquipmentChoiceGroup.value
         ? `Chosen equipment option ${selectedEquipmentChoice || '-'}`
         : 'Granted by background.'

@@ -901,6 +901,95 @@ function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, 
     })
 }
 
+function currencyBagFromText(value: any) {
+  const bag = {
+    pp: 0,
+    gp: 0,
+    sp: 0,
+    cp: 0
+  }
+
+  const text = cleanBuilderCarryoverText(value)
+  const matches = Array.from(text.matchAll(/(\d+)\s*(PP|GP|SP|CP|Gold Pieces?|Silver Pieces?|Copper Pieces?|Platinum Pieces?)/gi))
+
+  for (const match of matches) {
+    const amount = Math.max(0, Number(match[1] || 0) || 0)
+    const unitText = String(match[2] || '').toLowerCase()
+
+    if (!amount) continue
+
+    if (unitText.startsWith('platinum') || unitText === 'pp') bag.pp += amount
+    else if (unitText.startsWith('silver') || unitText === 'sp') bag.sp += amount
+    else if (unitText.startsWith('copper') || unitText === 'cp') bag.cp += amount
+    else bag.gp += amount
+  }
+
+  return bag
+}
+
+function addCurrencyBags(a: any, b: any) {
+  return {
+    pp: Math.max(0, Number(a?.pp || 0) || 0) + Math.max(0, Number(b?.pp || 0) || 0),
+    gp: Math.max(0, Number(a?.gp || 0) || 0) + Math.max(0, Number(b?.gp || 0) || 0),
+    sp: Math.max(0, Number(a?.sp || 0) || 0) + Math.max(0, Number(b?.sp || 0) || 0),
+    cp: Math.max(0, Number(a?.cp || 0) || 0) + Math.max(0, Number(b?.cp || 0) || 0)
+  }
+}
+
+function backgroundCurrencyFromChoices(backgroundChoices: Record<string, any>) {
+  let bag = {
+    pp: 0,
+    gp: 0,
+    sp: 0,
+    cp: 0
+  }
+
+  for (const [key, rawGroup] of Object.entries(backgroundChoices)) {
+    const group = asObject(rawGroup)
+    const text = `${key} ${group.label || ''}`.toLowerCase()
+
+    if (!text.includes('currency') && !text.includes('coin')) continue
+
+    const values = Array.isArray(group.values)
+      ? group.values
+      : group.value
+        ? [group.value]
+        : []
+
+    for (const value of values) {
+      bag = addCurrencyBags(bag, currencyBagFromText(value))
+    }
+  }
+
+  return bag
+}
+
+function existingCurrencyFromResources(resources: any) {
+  const data = asObject(resources)
+  const nested = asObject(data.currency || data.coins || data.coinage)
+
+  return {
+    pp: Math.max(0, Number(nested.pp ?? data.pp ?? 0) || 0),
+    gp: Math.max(0, Number(nested.gp ?? data.gp ?? 0) || 0),
+    sp: Math.max(0, Number(nested.sp ?? data.sp ?? 0) || 0),
+    cp: Math.max(0, Number(nested.cp ?? data.cp ?? 0) || 0)
+  }
+}
+
+function currencyHasAnyValue(currency: any) {
+  return Boolean(
+    Number(currency?.pp || 0) ||
+    Number(currency?.gp || 0) ||
+    Number(currency?.sp || 0) ||
+    Number(currency?.cp || 0)
+  )
+}
+
+function mergeBuilderCurrency(resources: any, backgroundCurrency: any) {
+  const base = existingCurrencyFromResources(resources)
+  return addCurrencyBags(base, backgroundCurrency)
+}
+
 async function directusFieldSet(collection: string) {
   try {
     const res = await dxFetch(`/fields/${collection}`)
@@ -1112,6 +1201,9 @@ async function createOrPatchCharacterSheet(options: {
   const existingCombatStats = asObject(existing?.combat_stats)
   const existingChoices = asObject(existing?.choices)
   const existingSpellcasting = asObject(existing?.spellcasting)
+  const existingResources = asObject(existing?.resources)
+  const backgroundCurrency = backgroundCurrencyFromChoices(options.backgroundChoices)
+  const mergedCurrency = mergeBuilderCurrency(existingResources, backgroundCurrency)
 
   const payload = {
     world_id: Number(options.worldId),
@@ -1143,6 +1235,19 @@ async function createOrPatchCharacterSheet(options: {
       preparedSpellIds: Array.isArray(existingSpellcasting.preparedSpellIds) ? existingSpellcasting.preparedSpellIds : [],
       alwaysPreparedSpellIds: Array.isArray(existingSpellcasting.alwaysPreparedSpellIds) ? existingSpellcasting.alwaysPreparedSpellIds : [],
       usedSlots: asObject(existingSpellcasting.usedSlots)
+    },
+    resources: {
+      ...existingResources,
+      currency: mergedCurrency,
+      coins: mergedCurrency,
+      coinage: mergedCurrency,
+      pp: mergedCurrency.pp,
+      gp: mergedCurrency.gp,
+      sp: mergedCurrency.sp,
+      cp: mergedCurrency.cp,
+      builderBackgroundCurrency: currencyHasAnyValue(backgroundCurrency)
+        ? backgroundCurrency
+        : asObject(existingResources.builderBackgroundCurrency)
     },
     choices: {
       ...existingChoices,

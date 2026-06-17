@@ -891,6 +891,7 @@ function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, 
 
   return out
     .filter((item) => !looksLikeNonEquipmentItem(item))
+    .filter((item) => !/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item))
     .filter((item) => {
       const key = normalizeItemLookupText(inventoryItemQuantityAndName(item).name)
       if (!key || seen.has(key)) return false

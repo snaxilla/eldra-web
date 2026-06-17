@@ -2705,12 +2705,187 @@ const knownSpells = computed(() => spellOptionsByIds(knownSpellIds.value))
 const preparedSpells = computed(() => spellOptionsByIds(preparedSpellIds.value))
 const alwaysPreparedSpells = computed(() => spellOptionsByIds(alwaysPreparedSpellIds.value))
 
+function speciesSpellPlainObject(value: any) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function speciesSpellArrayValue(value: any) {
+  return Array.isArray(value) ? value : []
+}
+
+function normalizeSpeciesSpellText(value: any) {
+  return String(value || '')
+    .replace(/\{@(?:spell|filter|item|feat|skill|action|variantrule|condition|class|race|damage|sense|status)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeSpeciesSpellKey(value: any) {
+  return normalizeSpeciesSpellText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function speciesSpellTitle(option: any) {
+  return String(option?.title || option?.name || option?.label || option?.value || '').trim()
+}
+
+function allSpeciesSpellOptions() {
+  const source = typeof spellOptions === 'undefined'
+    ? []
+    : speciesSpellArrayValue(spellOptions.value)
+
+  return source
+    .map((option: any) => ({
+      ...option,
+      title: speciesSpellTitle(option)
+    }))
+    .filter((option: any) => option.title)
+}
+
+function speciesSpellOptionByName(name: any) {
+  const key = normalizeSpeciesSpellKey(name)
+  if (!key) return null
+
+  return allSpeciesSpellOptions().find((option: any) =>
+    normalizeSpeciesSpellKey(option.title) === key
+  ) || null
+}
+
+function selectedSpeciesChoiceSpellTextBlocks() {
+  const choices = speciesSpellPlainObject(sheet.value?.choices)
+  const speciesChoices = speciesSpellPlainObject(choices.builderSpeciesChoices ?? choices.builder_species_choices)
+  const blocks: string[] = []
+
+  for (const [key, rawGroup] of Object.entries(speciesChoices) as any[]) {
+    const group = speciesSpellPlainObject(rawGroup)
+    const values = Array.isArray(group.values)
+      ? group.values
+      : Array.isArray(group.selected)
+        ? group.selected
+        : group.value
+          ? [group.value]
+          : []
+
+    const text = [
+      key,
+      group.label,
+      group.title,
+      group.valueLabel,
+      group.selectedLabel,
+      group.detail,
+      group.note,
+      ...values
+    ]
+      .map(normalizeSpeciesSpellText)
+      .filter(Boolean)
+      .join(' ')
+
+    if (text) blocks.push(text)
+  }
+
+  return blocks
+}
+
+function speciesGrantedSpellLevelSegments(text: string) {
+  const clean = normalizeSpeciesSpellText(text)
+  if (!clean) return []
+
+  const regex = /Level\s+(\d+)\s*:/gi
+  const matches = Array.from(clean.matchAll(regex))
+  const segments: Array<{ level: number; text: string }> = []
+
+  if (!matches.length) {
+    return [{ level: 1, text: clean }]
+  }
+
+  const firstIndex = matches[0]?.index || 0
+  if (firstIndex > 0) {
+    segments.push({
+      level: 1,
+      text: clean.slice(0, firstIndex).trim()
+    })
+  }
+
+  for (let index = 0; index < matches.length; index++) {
+    const match = matches[index]
+    const next = matches[index + 1]
+    const start = (match.index || 0) + match[0].length
+    const end = next?.index ?? clean.length
+    const level = Math.max(1, Number(match[1] || 1))
+
+    segments.push({
+      level,
+      text: clean.slice(start, end).trim()
+    })
+  }
+
+  return segments.filter((segment) => segment.text)
+}
+
+function speciesSpellCurrentLevel() {
+  const parsed = Number(sheet.value?.level || math.value?.level || 1)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1
+}
+
+function speciesSpellTextContainsSpell(segmentText: string, spellTitle: string) {
+  const segmentKey = ` ${normalizeSpeciesSpellKey(segmentText)} `
+  const spellKey = normalizeSpeciesSpellKey(spellTitle)
+
+  if (!segmentKey || !spellKey) return false
+
+  return segmentKey.includes(` ${spellKey} `)
+}
+
+const speciesGrantedSpellCards = computed(() => {
+  const level = speciesSpellCurrentLevel()
+  const options = allSpeciesSpellOptions()
+    .sort((a: any, b: any) => speciesSpellTitle(b).length - speciesSpellTitle(a).length)
+
+  const found = new Map<string, any>()
+
+  for (const block of selectedSpeciesChoiceSpellTextBlocks()) {
+    for (const segment of speciesGrantedSpellLevelSegments(block)) {
+      if (segment.level > level) continue
+
+      for (const option of options) {
+        const title = speciesSpellTitle(option)
+        if (!title) continue
+        if (!speciesSpellTextContainsSpell(segment.text, title)) continue
+
+        const id = String(option.id || option.value || title)
+        if (found.has(id)) continue
+
+        found.set(id, {
+          ...option,
+          id,
+          title,
+          grantSource: 'Species / Lineage',
+          grantLevel: segment.level
+        })
+      }
+    }
+  }
+
+  return Array.from(found.values())
+})
+
+const speciesGrantedSpellIds = computed(() =>
+  speciesGrantedSpellCards.value
+    .map((spell: any) => String(spell.id || '').trim())
+    .filter(Boolean)
+)
+
 const selectedSpellCount = computed(() => {
   const ids = new Set([
     ...knownSpellIds.value,
     ...preparedSpellIds.value,
     ...alwaysPreparedSpellIds.value,
-    ...selectedChoiceSpellIds.value
+    ...selectedChoiceSpellIds.value,
+      ...speciesGrantedSpellIds.value
   ])
 
   return ids.size
@@ -6773,6 +6948,39 @@ async function saveSheet() {
                 </div>
               </div>
 
+
+
+              <div
+                v-if="speciesGrantedSpellCards.length"
+                class="eldra-codex-soft rounded-none p-4 lg:col-span-2"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Species / Lineage Spells</div>
+                    <div class="mt-1 text-sm text-[#d8ceb8]">Spells granted by selected species traits or lineage choices.</div>
+                  </div>
+
+                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                    {{ speciesGrantedSpellCards.length }} Spell{{ speciesGrantedSpellCards.length === 1 ? '' : 's' }}
+                  </div>
+                </div>
+
+                <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <button
+                    v-for="spell in speciesGrantedSpellCards"
+                    :key="`species-granted-spell-${spell.id}`"
+                    type="button"
+                    class="block rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3 text-left text-sm text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.10)]"
+                    @click.stop="openSpellDrawer(spell)"
+                  >
+                    <div class="font-medium text-white">{{ spell.title }}</div>
+                    <div class="mt-1 text-xs text-[#9f9278]">
+                      {{ spellOptionLevelLabel(spell) || 'Species Spell' }}
+                      <span v-if="spell.grantLevel"> · Level {{ spell.grantLevel }}</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
 
               <div class="eldra-codex-soft rounded-none p-4 lg:col-span-2">
                 <div class="flex flex-wrap items-center justify-between gap-3">

@@ -2279,6 +2279,42 @@ function setBackgroundChoicesComplete(value: any) {
   backgroundChoicesComplete.value = value !== false
 }
 
+const classSpellcastingPayload = ref<Record<string, any>>({})
+const classSpellChoicesComplete = ref(true)
+
+function setClassSpellcastingPayload(payload: any) {
+  classSpellcastingPayload.value =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload
+      : {}
+}
+
+function setClassSpellChoicesComplete(value: any) {
+  classSpellChoicesComplete.value = value !== false
+}
+
+watch(
+  () => [builderForm.classEntityId, builderForm.level],
+  () => {
+    classSpellcastingPayload.value = {}
+    classSpellChoicesComplete.value = true
+  }
+)
+
+async function applyClassSpellcastingToCreatedCharacter(created: any) {
+  const entityId = String(created?.id || created?.entity?.id || '')
+  const payload = classSpellcastingPayload.value || {}
+
+  if (!entityId || !Object.keys(payload).length) return
+
+  await $fetch(`/api/worlds/${worldId.value}/entities/${entityId}/sheet`, {
+    method: 'PATCH',
+    body: {
+      spellcasting: payload
+    }
+  })
+}
+
 watch(
   () => builderForm.backgroundEntityId,
   () => {
@@ -2645,6 +2681,13 @@ async function createCharacter() {
       return
     }
 
+
+    if (builderForm.classEntityId && !classSpellChoicesComplete.value) {
+      createError.value = 'Complete class spell choices before creating this character.'
+      stepIndex.value = 0
+      return
+    }
+
     const created = await $fetch<any>(`/api/worlds/${worldId.value}/characters/builder`, {
       method: 'POST',
       body: {
@@ -2659,6 +2702,8 @@ async function createCharacter() {
         backgroundChoices: backgroundChoicePayload.value
       }
     })
+
+    await applyClassSpellcastingToCreatedCharacter(created)
 
     const entityId = String(created?.id || created?.entity?.id || '')
     if (!entityId) {
@@ -3081,6 +3126,17 @@ async function createCharacter() {
               </div>
             </div>
           </div>
+          <CharactersClassSpellChoicePanel
+            v-if="builderForm.classEntityId"
+            :world-id="worldId"
+            :class-name="selectedClassName"
+            :class-entity="selectedClassEntity"
+            :level="Number(builderForm.level || 1)"
+            :ability-scores="builderForm.abilityScores"
+            @update:spellcasting="setClassSpellcastingPayload"
+            @update:complete="setClassSpellChoicesComplete"
+          />
+
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block">
               <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Background</span>

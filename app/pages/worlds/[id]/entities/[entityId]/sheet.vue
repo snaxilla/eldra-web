@@ -2756,38 +2756,28 @@ function speciesSpellOptionByName(name: any) {
 }
 
 function selectedSpeciesChoiceSpellTextBlocks() {
-  const choices = speciesSpellPlainObject(sheet.value?.choices)
-  const speciesChoices = speciesSpellPlainObject(choices.builderSpeciesChoices ?? choices.builder_species_choices)
   const blocks: string[] = []
 
-  for (const [key, rawGroup] of Object.entries(speciesChoices) as any[]) {
-    const group = speciesSpellPlainObject(rawGroup)
-    const values = Array.isArray(group.values)
-      ? group.values
-      : Array.isArray(group.selected)
-        ? group.selected
-        : group.value
-          ? [group.value]
-          : []
+  for (const entry of selectedSpeciesSpellChoiceGroups()) {
+    const directText = normalizeSpeciesSpellText([
+      entry.key,
+      entry.label,
+      entry.selectedText,
+      entry.detail,
+      entry.note,
+      ...entry.values
+    ].filter(Boolean).join(' '))
 
-    const text = [
-      key,
-      group.label,
-      group.title,
-      group.valueLabel,
-      group.selectedLabel,
-      group.detail,
-      group.note,
-      ...values
-    ]
-      .map(normalizeSpeciesSpellText)
-      .filter(Boolean)
-      .join(' ')
+    const traitSegment = speciesSpellTraitSegmentForChoice(entry.selectedText)
+    const fallback = speciesSpellFallbackTextForChoice(entry.selectedText)
 
-    if (text) blocks.push(text)
+    for (const block of [directText, traitSegment, fallback]) {
+      const clean = normalizeSpeciesSpellText(block)
+      if (clean) blocks.push(clean)
+    }
   }
 
-  return blocks
+  return Array.from(new Set(blocks))
 }
 
 function speciesGrantedSpellLevelSegments(text: string) {
@@ -2843,6 +2833,7 @@ function speciesSpellTextContainsSpell(segmentText: string, spellTitle: string) 
 const speciesGrantedSpellCards = computed(() => {
   const level = speciesSpellCurrentLevel()
   const options = allSpeciesSpellOptions()
+    .slice()
     .sort((a: any, b: any) => speciesSpellTitle(b).length - speciesSpellTitle(a).length)
 
   const found = new Map<string, any>()

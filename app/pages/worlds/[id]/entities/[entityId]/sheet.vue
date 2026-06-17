@@ -2701,8 +2701,67 @@ function spellOptionsByIds(ids: string[]) {
     .filter(Boolean)
 }
 
+function sheetKnownCasterClassKey() {
+  return String(
+    sheet.value?.class_name ||
+    sheet.value?.className ||
+    resolvedClass.value?.title ||
+    ''
+  )
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function sheetUsesKnownSpellCasting() {
+  const key = sheetKnownCasterClassKey()
+
+  return [
+    'bard',
+    'sorcerer',
+    'warlock'
+  ].some((name) => key.includes(name))
+}
+
+function spellLevelNumberById(id: any) {
+  const spell = spellOptionById(id)
+  const level = Number(
+    spell?.level ??
+    spell?.spellLevel ??
+    spell?.spell_level ??
+    spell?.core?.level ??
+    spell?.data?.level ??
+    0
+  )
+
+  return Number.isFinite(level) ? level : 0
+}
+
+const knownCasterLevelSpellIds = computed(() => {
+  if (!sheetUsesKnownSpellCasting()) return []
+
+  return knownSpellIds.value
+    .filter((id: any) => spellLevelNumberById(id) > 0)
+    .map((id: any) => String(id))
+    .filter(Boolean)
+})
+
+const displayedPreparedSpellIds = computed(() => {
+  const ids = new Set<string>()
+
+  for (const id of preparedSpellIds.value) {
+    if (id) ids.add(String(id))
+  }
+
+  for (const id of knownCasterLevelSpellIds.value) {
+    if (id) ids.add(String(id))
+  }
+
+  return Array.from(ids)
+})
+
 const knownSpells = computed(() => spellOptionsByIds(knownSpellIds.value))
-const preparedSpells = computed(() => spellOptionsByIds(preparedSpellIds.value))
+const preparedSpells = computed(() => spellOptionsByIds(displayedPreparedSpellIds.value))
 const alwaysPreparedSpells = computed(() => spellOptionsByIds(alwaysPreparedSpellIds.value))
 
 function speciesSpellPlainObject(value: any) {
@@ -2950,7 +3009,7 @@ const speciesGrantedSpellIds = computed(() => {
 const selectedSpellCount = computed(() => {
   const ids = new Set([
     ...knownSpellIds.value,
-    ...preparedSpellIds.value,
+    ...displayedPreparedSpellIds.value,
     ...alwaysPreparedSpellIds.value,
     ...selectedChoiceSpellIds.value,
       ...speciesGrantedSpellIds.value
@@ -2961,7 +3020,47 @@ const selectedSpellCount = computed(() => {
 
 function syncSpellDraftsFromSheet() {
   spellKnownDraft.value = [...knownSpellIds.value]
-  spellPreparedDraft.value = [...preparedSpellIds.value]
+  spellPreparedDraft.value = [...displayedPreparedSpellIds.value]
+}
+
+async function persistSpellDraftsToSheet() {
+  if (!sheet.value?.id) return
+
+  const currentSpellcasting = asObject(sheet.value?.spellcasting)
+  const nextSpellcasting = {
+    ...currentSpellcasting,
+    knownSpellIds: Array.from(new Set(spellKnownDraft.value.map((id: any) => String(id || '').trim()).filter(Boolean))),
+    preparedSpellIds: Array.from(new Set(spellPreparedDraft.value.map((id: any) => String(id || '').trim()).filter(Boolean))),
+    alwaysPreparedSpellIds: Array.isArray(currentSpellcasting.alwaysPreparedSpellIds)
+      ? currentSpellcasting.alwaysPreparedSpellIds
+      : [],
+    usedSlots: asObject(currentSpellcasting.usedSlots)
+  }
+
+  try {
+    const patched = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
+      method: 'PATCH',
+      body: {
+        spellcasting: nextSpellcasting
+      }
+    })
+
+    const nextSheet = patched?.sheet || patched?.data?.sheet || patched?.data || patched
+
+    if (nextSheet?.id) {
+      sheet.value = {
+        ...sheet.value,
+        ...nextSheet
+      }
+    } else {
+      sheet.value = {
+        ...sheet.value,
+        spellcasting: nextSpellcasting
+      }
+    }
+  } catch (error) {
+    console.error('[character-sheet] failed to persist spell drafts', error)
+  }
 }
 
 function stringValue(value: any, fallback = '') {
@@ -4353,18 +4452,29 @@ watch(
 )
 
 function removeKnownSpell(id: any) {
-  const needle = String(id || '')
-  if (!needle) return
+  const value = String(id || '').trim()
+  if (!value) return
 
-  spellKnownDraft.value = spellKnownDraft.value.filter((spellId) => String(spellId) !== needle)
-  spellPreparedDraft.value = spellPreparedDraft.value.filter((spellId) => String(spellId) !== needle)
+  spellKnownDraft.value = spellKnownDraft.value.filter((spellId: any) =>
+    String(spellId || '') !== value
+  )
+
+  spellPreparedDraft.value = spellPreparedDraft.value.filter((spellId: any) =>
+    String(spellId || '') !== value
+  )
+
+  void persistSpellDraftsToSheet()
 }
 
 function removePreparedSpell(id: any) {
-  const needle = String(id || '')
-  if (!needle) return
+  const value = String(id || '').trim()
+  if (!value) return
 
-  spellPreparedDraft.value = spellPreparedDraft.value.filter((spellId) => String(spellId) !== needle)
+  spellPreparedDraft.value = spellPreparedDraft.value.filter((spellId: any) =>
+    String(spellId || '') !== value
+  )
+
+  void persistSpellDraftsToSheet()
 }
 const spellSearchQuery = computed(() => spellSearch.value.trim().toLowerCase())
 
@@ -4410,16 +4520,18 @@ function addKnownSpell(id: any) {
 }
 
 function prepareSpell(id: any) {
-  const needle = String(id || '')
-  if (!needle) return
+  const value = String(id || '').trim()
+  if (!value) return
 
-  if (!isKnownSpell(needle)) {
-    spellKnownDraft.value = [...spellKnownDraft.value, needle]
+  if (!spellKnownDraft.value.includes(value)) {
+    spellKnownDraft.value.push(value)
   }
 
-  if (!isPreparedSpell(needle)) {
-    spellPreparedDraft.value = [...spellPreparedDraft.value, needle]
+  if (!spellPreparedDraft.value.includes(value)) {
+    spellPreparedDraft.value.push(value)
   }
+
+  void persistSpellDraftsToSheet()
 }
 
 const availableSpellCards = computed(() => {

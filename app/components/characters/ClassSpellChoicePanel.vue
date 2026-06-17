@@ -377,10 +377,21 @@ const choicesComplete = computed(() =>
   )
 )
 
+function classUsesKnownSpellCasting() {
+  const key = classKey()
+
+  return [
+    'bard',
+    'sorcerer',
+    'warlock'
+  ].some((name) => key.includes(name))
+}
+
 const spellcastingPayload = computed(() => {
   const known = new Set<string>()
   const prepared = new Set<string>()
   const summary: Record<string, any> = {}
+  const knownCaster = classUsesKnownSpellCasting()
 
   for (const group of choiceGroups.value) {
     const values = groupSelectedValues(group)
@@ -402,6 +413,13 @@ const spellcastingPayload = computed(() => {
     if (group.kind === 'prepared') {
       values.forEach((id) => prepared.add(String(id)))
     }
+
+    // Sorcerers, Bards, and Warlocks do not prepare spells, but the sheet's
+    // play/actions pipeline treats prepared IDs as the castable levelled spells.
+    // So known levelled spells are saved as prepared-equivalent for these classes.
+    if (knownCaster && group.kind === 'known') {
+      values.forEach((id) => prepared.add(String(id)))
+    }
   }
 
   const payload: Record<string, any> = {
@@ -416,7 +434,6 @@ const spellcastingPayload = computed(() => {
 
   return payload
 })
-
 watch(
   spellcastingPayload,
   (payload) => emit('update:spellcasting', payload),

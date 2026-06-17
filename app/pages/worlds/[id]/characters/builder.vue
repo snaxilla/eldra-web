@@ -2264,63 +2264,28 @@ function backgroundFeatValues(raw: any) {
   return []
 }
 
-const backgroundChoicePayload = computed(() => {
-  const entity = selectedBackgroundEntity.value
-  if (!entity) return {}
+const backgroundChoicePayload = ref<Record<string, any>>({})
+const backgroundChoicesComplete = ref(true)
 
-  const raw = rawJson(entity) || {}
-  const core = blockData(entity, 'background_core')
+function backgroundPlainObject(value: any) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
 
-  const skills = backgroundChoiceValues(core.skill_proficiencies || raw.skillProficiencies)
-  const tools = backgroundChoiceValues(core.tool_proficiencies || raw.toolProficiencies)
-  const languages = backgroundChoiceValues(core.languages || raw.languageProficiencies)
-  const feat = backgroundFeatValues(raw)
-  const abilityScores = firstBuilderDisplayValue(raw.ability, raw.abilityScores, raw.abilityScoreIncrease)
+function setBackgroundChoicePayload(payload: any) {
+  backgroundChoicePayload.value = backgroundPlainObject(payload)
+}
 
-  const payload: Record<string, any> = {}
+function setBackgroundChoicesComplete(value: any) {
+  backgroundChoicesComplete.value = value !== false
+}
 
-  if (skills.length) {
-    payload['background-skills'] = {
-      label: 'Background Skills',
-      values: skills,
-      note: 'Granted by background.'
-    }
+watch(
+  () => builderForm.backgroundEntityId,
+  () => {
+    backgroundChoicePayload.value = {}
+    backgroundChoicesComplete.value = true
   }
-
-  if (tools.length) {
-    payload['background-tools'] = {
-      label: 'Background Tools',
-      values: tools,
-      note: 'Granted by background.'
-    }
-  }
-
-  if (languages.length) {
-    payload['background-languages'] = {
-      label: 'Background Languages',
-      values: languages,
-      note: 'Granted by background.'
-    }
-  }
-
-  if (feat.length) {
-    payload['background-feat'] = {
-      label: 'Background Feat',
-      values: feat,
-      note: 'Granted by background.'
-    }
-  }
-
-  if (abilityScores) {
-    payload['background-abilities'] = {
-      label: 'Background Ability Scores',
-      values: [abilityScores],
-      note: 'Suggested by background.'
-    }
-  }
-
-  return payload
-})
+)
 
 watch(
   classChoiceGroups,
@@ -2673,6 +2638,13 @@ async function createCharacter() {
   createError.value = ''
 
   try {
+
+    if (builderForm.backgroundEntityId && !backgroundChoicesComplete.value) {
+      createError.value = 'Complete background choices before creating this character.'
+      stepIndex.value = 0
+      return
+    }
+
     const created = await $fetch<any>(`/api/worlds/${worldId.value}/characters/builder`, {
       method: 'POST',
       body: {
@@ -3163,23 +3135,11 @@ async function createCharacter() {
                   {{ backgroundDescription || 'No imported background description found yet.' }}
                 </p>
 
-                <div
-                  v-if="Object.keys(backgroundChoicePayload).length"
-                  class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)] p-3"
-                >
-                  <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Background Builder Benefits</div>
-
-                  <div class="mt-2 grid gap-2">
-                    <div
-                      v-for="choice in Object.values(backgroundChoicePayload)"
-                      :key="choice.label"
-                      class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-2 text-xs leading-5"
-                    >
-                      <span class="font-semibold text-white">{{ choice.label }}:</span>
-                      <span class="text-[#d8ceb8]"> {{ choice.values.join(', ') }}</span>
-                    </div>
-                  </div>
-                </div>
+                <CharactersBackgroundChoicePanel
+                  :background-entity="selectedBackgroundEntity"
+                  @update:payload="setBackgroundChoicePayload"
+                  @update:complete="setBackgroundChoicesComplete"
+                />
 
               </div>
             </div>

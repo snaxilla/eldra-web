@@ -2831,44 +2831,121 @@ function speciesSpellTextContainsSpell(segmentText: string, spellTitle: string) 
 }
 
 const speciesGrantedSpellCards = computed(() => {
-  const level = speciesSpellCurrentLevel()
-  const options = allSpeciesSpellOptions()
-    .slice()
-    .sort((a: any, b: any) => speciesSpellTitle(b).length - speciesSpellTitle(a).length)
+  try {
+    const currentLevel = Math.max(1, Number(sheet.value?.level || math.value?.level || 1) || 1)
+    const choices = asObject(sheet.value?.choices)
+    const speciesChoices = asObject(choices.builderSpeciesChoices ?? choices.builder_species_choices)
+    const selectedTexts: string[] = []
 
-  const found = new Map<string, any>()
+    for (const [key, rawGroup] of Object.entries(speciesChoices) as any[]) {
+      const group = asObject(rawGroup)
+      const values = Array.isArray(group.values)
+        ? group.values
+        : Array.isArray(group.selected)
+          ? group.selected
+          : group.value
+            ? [group.value]
+            : []
 
-  for (const block of selectedSpeciesChoiceSpellTextBlocks()) {
-    for (const segment of speciesGrantedSpellLevelSegments(block)) {
-      if (segment.level > level) continue
-
-      for (const option of options) {
-        const title = speciesSpellTitle(option)
-        if (!title) continue
-        if (!speciesSpellTextContainsSpell(segment.text, title)) continue
-
-        const id = String(option.id || option.value || title)
-        if (found.has(id)) continue
-
-        found.set(id, {
-          ...option,
-          id,
-          title,
-          grantSource: 'Species / Lineage',
-          grantLevel: segment.level
-        })
-      }
+      selectedTexts.push(
+        String(key || ''),
+        String(group.label || ''),
+        String(group.title || ''),
+        String(group.valueLabel || ''),
+        String(group.selectedLabel || ''),
+        String(group.detail || ''),
+        String(group.note || ''),
+        ...values.map((value: any) => String(value || ''))
+      )
     }
-  }
 
-  return Array.from(found.values())
+    const selectedKey = selectedTexts
+      .join(' ')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+
+    if (!selectedKey) return []
+
+    const grants: Array<{ match: string[]; level: number; spell: string }> = [
+      { match: ['high elf', 'elf high'], level: 1, spell: 'Prestidigitation' },
+      { match: ['high elf', 'elf high'], level: 3, spell: 'Detect Magic' },
+      { match: ['high elf', 'elf high'], level: 5, spell: 'Misty Step' },
+
+      { match: ['wood elf', 'elf wood'], level: 1, spell: 'Druidcraft' },
+      { match: ['wood elf', 'elf wood'], level: 3, spell: 'Longstrider' },
+      { match: ['wood elf', 'elf wood'], level: 5, spell: 'Pass without Trace' },
+
+      { match: ['drow'], level: 1, spell: 'Dancing Lights' },
+      { match: ['drow'], level: 3, spell: 'Faerie Fire' },
+      { match: ['drow'], level: 5, spell: 'Darkness' },
+
+      { match: ['forest gnome', 'gnome forest'], level: 1, spell: 'Minor Illusion' },
+      { match: ['forest gnome', 'gnome forest'], level: 1, spell: 'Speak with Animals' }
+    ]
+
+    const normalizedSpellTitle = (value: any) =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/['’]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+
+    const titleForSpell = (spell: any) =>
+      String(spell?.title || spell?.name || spell?.label || spell?.value || '').trim()
+
+    const allSpells = Array.isArray(spellOptions.value)
+      ? spellOptions.value
+      : []
+
+    const found = new Map<string, any>()
+
+    for (const grant of grants) {
+      if (grant.level > currentLevel) continue
+
+      const matchesChoice = grant.match.some((candidate) => {
+        const needle = candidate.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+        return selectedKey.includes(needle)
+      })
+
+      if (!matchesChoice) continue
+
+      const grantKey = normalizedSpellTitle(grant.spell)
+      const spell = allSpells.find((option: any) =>
+        normalizedSpellTitle(titleForSpell(option)) === grantKey
+      )
+
+      if (!spell) continue
+
+      const id = String(spell.id || spell.value || grant.spell)
+      if (found.has(id)) continue
+
+      found.set(id, {
+        ...spell,
+        id,
+        title: titleForSpell(spell) || grant.spell,
+        grantSource: 'Species / Lineage',
+        grantLevel: grant.level
+      })
+    }
+
+    return Array.from(found.values())
+  } catch (error) {
+    console.error('[sheet] failed to resolve species granted spells', error)
+    return []
+  }
 })
 
-const speciesGrantedSpellIds = computed(() =>
-  speciesGrantedSpellCards.value
-    .map((spell: any) => String(spell.id || '').trim())
-    .filter(Boolean)
-)
+const speciesGrantedSpellIds = computed(() => {
+  try {
+    return speciesGrantedSpellCards.value
+      .map((spell: any) => String(spell.id || '').trim())
+      .filter(Boolean)
+  } catch (error) {
+    console.error('[sheet] failed to resolve species granted spell ids', error)
+    return []
+  }
+})
 
 const selectedSpellCount = computed(() => {
   const ids = new Set([

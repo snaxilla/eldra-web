@@ -82,6 +82,7 @@ function clean5eText(value: any) {
     .replace(/\{@(?:feat|skill|item|spell|filter|book|action|variantrule|condition|class|race|creature|damage|sense|status)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
     .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
     .replace(/\{@[^}]+\}/g, '')
+    .replace(/[#*_`]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -123,6 +124,7 @@ function entryText(value: any): string {
   const parsed = parseJsonish(value)
 
   if (!parsed) return ''
+
   if (typeof parsed === 'string' || typeof parsed === 'number' || typeof parsed === 'boolean') {
     return clean5eText(parsed)
   }
@@ -132,7 +134,7 @@ function entryText(value: any): string {
   }
 
   if (typeof parsed === 'object') {
-    return [
+    const parts = [
       parsed.name,
       parsed.title,
       parsed.label,
@@ -147,7 +149,8 @@ function entryText(value: any): string {
     ]
       .map(entryText)
       .filter(Boolean)
-      .join('\n')
+
+    return parts.join('\n')
   }
 
   return ''
@@ -235,15 +238,43 @@ const backgroundDescription = computed(() => {
   return entryText([
     core.description,
     core.summary,
+    raw.description,
+    raw.summary,
+    raw.entries
+  ])
+})
+
+function looksLikeABChoice(value: any) {
+  const text = clean5eText(value)
+  return /choose\s+a\s+or\s+b/i.test(text) ||
+    (/\(A\)/i.test(text) && /\(B\)/i.test(text))
+}
+
+const equipmentChoiceText = computed(() => {
+  const core = backgroundCore.value
+  const raw = backgroundRaw.value
+
+  const candidates = [
     core.equipment,
     core.starting_equipment,
     core.startingEquipment,
-    raw.entries,
-    raw.description,
-    raw.summary,
+    raw.startingEquipment?.entries,
     raw.startingEquipment,
-    raw.equipment
-  ])
+    raw.equipment?.entries,
+    raw.equipment,
+    raw.entries
+  ]
+
+  for (const candidate of candidates) {
+    const text = entryText(candidate)
+
+    if (looksLikeABChoice(text)) {
+      return text
+    }
+  }
+
+  const fallback = entryText(candidates)
+  return looksLikeABChoice(fallback) ? fallback : ''
 })
 
 function isAmbiguousTool(value: any) {
@@ -321,12 +352,7 @@ const backgroundToolChoiceGroup = computed(() => {
   }
 })
 
-const hasEquipmentChoice = computed(() => {
-  const text = backgroundDescription.value
-
-  return /choose\s+a\s+or\s+b/i.test(text) ||
-    (/\(A\)/i.test(text) && /\(B\)/i.test(text))
-})
+const hasEquipmentChoice = computed(() => looksLikeABChoice(equipmentChoiceText.value))
 
 const backgroundEquipmentChoiceGroup = computed(() => {
   if (!hasEquipmentChoice.value) return null
@@ -415,68 +441,43 @@ const choicesComplete = computed(() =>
 )
 
 function equipmentSegment(choice: 'A' | 'B') {
-  const text = backgroundDescription.value
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
+  const text = clean5eText(equipmentChoiceText.value)
+    .replace(/\s+/g, ' ')
+    .trim()
 
   if (!text) return ''
 
+  const aMatch = /\(A\)/i.exec(text)
+  const bMatch = /\(B\)/i.exec(text)
+
   if (choice === 'A') {
-    const match = text.match(/\(A\)\s*([\s\S]*?)(?:;\s*or\s*\(B\)|\s+or\s+\(B\)|\(B\)|$)/i)
-    return String(match?.[1] || '').trim()
+    if (!aMatch) return ''
+
+    const start = aMatch.index + aMatch[0].length
+    const end = bMatch ? bMatch.index : text.length
+
+    return text
+      .slice(start, end)
+      .replace(/;\s*or\s*$/i, '')
+      .replace(/\s+or\s*$/i, '')
+      .replace(/^[:;\s]+/, '')
+      .trim()
   }
 
-  const match = text.match(/\(B\)\s*([\s\S]*)/i)
-  return String(match?.[1] || '').trim()
+  if (!bMatch) return ''
+
+  return text
+    .slice(bMatch.index + bMatch[0].length)
+    .replace(/^[:;\s]+/, '')
+    .trim()
 }
 
-function cleanEquipmentItem(value: any, selectedTool = '') {
-  let item = clean5eText(value)
-    .replace(/choose\s+a\s+or\s+b\s*:/gi, '')
-    .replace(/\(A\)|\(B\)/gi, '')
-    .replace(/^or\s+/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (/same as above/i.test(item)) {
-    return selectedTool || ''
-  }
-
-  item = item
-    .replace(/\s*\(same as above\)\s*/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item)) return ''
-  if (/^(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item)) return ''
-  if (/^or$/i.test(item)) return ''
-
-  return titleCase(item)
-}
-
-function equipmentValuesForChoice(choice: any, selectedTool = '') {
+function currencyValuesForChoice(choice: any) {
   const key = String(choice || '').trim().toUpperCase()
 
-  if (!key) return []
-  if (key === 'B') return ['50 GP']
+  if (key !== 'A' && key !== 'B') return []
 
-  const segment = equipmentSegment('A')
-  if (!segment) return []
-
-  return dedupeValues(
-    segment
-      .split(/\n|,|;/)
-      .map((item) => cleanEquipmentItem(item, selectedTool))
-      .filter(Boolean)
-  )
-}
-
-function backgroundCurrencyValuesForChoice(choice: any) {
-  const key = String(choice || '').trim().toUpperCase()
-  const segment = key === 'B'
-    ? equipmentSegment('B')
-    : equipmentSegment('A')
-
+  const segment = equipmentSegment(key as 'A' | 'B')
   if (!segment) return []
 
   const matches = Array.from(segment.matchAll(/(\d+)\s*(PP|GP|SP|CP|Gold Pieces?|Silver Pieces?|Copper Pieces?|Platinum Pieces?)/gi))
@@ -497,6 +498,52 @@ function backgroundCurrencyValuesForChoice(choice: any) {
 
     return `${amount} ${unit}`
   }))
+}
+
+function cleanEquipmentItem(value: any, selectedTool = '') {
+  let item = clean5eText(value)
+    .replace(/choose\s+a\s+or\s+b\s*:/gi, '')
+    .replace(/\(A\)|\(B\)/gi, '')
+    .replace(/^or\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (/same as above/i.test(item)) {
+    return selectedTool || ''
+  }
+
+  item = item
+    .replace(/\s*\(same as above\)\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (/^\d+\s*(?:PP|GP|SP|CP|Gold Pieces?|Silver Pieces?|Copper Pieces?|Platinum Pieces?)$/i.test(item)) return ''
+  if (/^(?:PP|GP|SP|CP|Gold Pieces?|Silver Pieces?|Copper Pieces?|Platinum Pieces?)$/i.test(item)) return ''
+  if (/^or$/i.test(item)) return ''
+
+  return titleCase(item)
+}
+
+function equipmentValuesForChoice(choice: any, selectedTool = '') {
+  const key = String(choice || '').trim().toUpperCase()
+
+  if (key === 'B') {
+    // Emit the B currency as an equipment group too, so it overrides server fallback
+    // background equipment parsing, while the server inventory filter ignores coins.
+    return currencyValuesForChoice('B')
+  }
+
+  if (key !== 'A') return []
+
+  const segment = equipmentSegment('A')
+  if (!segment) return []
+
+  return dedupeValues(
+    segment
+      .split(/\n|,|;/)
+      .map((item) => cleanEquipmentItem(item, selectedTool))
+      .filter(Boolean)
+  )
 }
 
 const payload = computed(() => {
@@ -525,7 +572,7 @@ const payload = computed(() => {
     : []
 
   const currency = backgroundEquipmentChoiceGroup.value
-    ? backgroundCurrencyValuesForChoice(selectedEquipmentChoice)
+    ? currencyValuesForChoice(selectedEquipmentChoice)
     : []
 
   if (skills.length) {
@@ -574,7 +621,10 @@ const payload = computed(() => {
       values: equipment,
       note: backgroundEquipmentChoiceGroup.value
         ? `Chosen equipment option ${selectedEquipmentChoice || '-'}`
-        : 'Granted by background.'
+        : 'Granted by background.',
+      meta: {
+        selectedEquipmentChoice
+      }
     }
   }
 
@@ -584,7 +634,10 @@ const payload = computed(() => {
       values: currency,
       note: backgroundEquipmentChoiceGroup.value
         ? `Chosen equipment option ${selectedEquipmentChoice || '-'}`
-        : 'Granted by background.'
+        : 'Granted by background.',
+      meta: {
+        selectedEquipmentChoice
+      }
     }
   }
 

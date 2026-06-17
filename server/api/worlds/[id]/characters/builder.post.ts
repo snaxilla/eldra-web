@@ -152,6 +152,7 @@ function looksLikeNonEquipmentItem(value: any) {
     key.startsWith('feat ') ||
     key.includes('magic initiate') ||
     key === 'crafter' ||
+    key === 'gold only' ||
     key === 'skilled' ||
     key === 'savage attacker' ||
     key.includes('choose one kind') ||

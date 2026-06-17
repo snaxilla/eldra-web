@@ -560,11 +560,6 @@ watch(
   (value) => emit('update:complete', value),
   { immediate: true }
 )
-
-onBeforeUnmount(() => {
-  emit('update:payload', {})
-  emit('update:complete', true)
-})
 </script>
 
 <template>

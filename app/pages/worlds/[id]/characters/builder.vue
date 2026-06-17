@@ -2264,323 +2264,20 @@ function backgroundFeatValues(raw: any) {
   return []
 }
 
-function dedupeBackgroundBuilderValues(values: any[]) {
-  const seen = new Set<string>()
-  const out: string[] = []
-
-  for (const value of Array.isArray(values) ? values : []) {
-    const text = String(value || '').trim()
-    const key = normalizeBuilderChoiceCategory(text)
-
-    if (!text || !key || seen.has(key)) continue
-
-    seen.add(key)
-    out.push(text)
-  }
-
-  return out
-}
-
-function backgroundRawToolValues() {
-  const entity = selectedBackgroundEntity.value
-  const raw = rawJson(entity) || {}
-  const core = blockData(entity, 'background_core')
-
-  return dedupeBackgroundBuilderValues(backgroundChoiceValues(
-    core.tool_proficiencies ||
-    core.toolProficiencies ||
-    core.tool_proficiency ||
-    core.toolProficiency ||
-    core.tools ||
-    raw.toolProficiencies ||
-    raw.tool_proficiencies ||
-    raw.toolProficiency ||
-    raw.tool_proficiency ||
-    raw.tools
-  ))
-}
-
-function backgroundOptionObjects(values: any[]) {
-  return (Array.isArray(values) ? values : [])
-    .map((option: any) => {
-      if (option && typeof option === 'object') {
-        const value = String(option.value || option.label || option.name || '').trim()
-        const label = String(option.label || option.value || option.name || value).trim()
-        return value ? { ...option, value, label } : null
-      }
-
-      const value = String(option || '').trim()
-      return value ? { value, label: value } : null
-    })
-    .filter(Boolean)
-}
-
-function isAmbiguousBackgroundToolValue(value: any) {
-  const normalized = normalizeBuilderChoiceCategory(value)
-  const compact = normalized.replace(/[^a-z0-9]+/g, '')
-
-  if (!normalized) return false
-
-  return normalized.includes('choose') ||
-    normalized.startsWith('any ') ||
-    compact.startsWith('any') ||
-    compact === 'gamingset' ||
-    compact === 'musicalinstrument' ||
-    compact === 'artisantool' ||
-    compact === 'artisanstool' ||
-    compact === 'artisanstools' ||
-    compact === 'anygamingset' ||
-    compact === 'anymusicalinstrument' ||
-    compact === 'anyartisantool' ||
-    compact === 'anyartisanstool' ||
-    compact === 'anyartisanstools'
-}
-
-function backgroundToolOptionsForValues(values: any[]) {
-  const rawValues = Array.isArray(values)
-    ? values.map((value) => String(value || '').trim()).filter(Boolean)
-    : []
-
-  const text = normalizeBuilderChoiceCategory(rawValues.join(' '))
-  const compact = text.replace(/[^a-z0-9]+/g, '')
-
-  let options = backgroundOptionObjects(classChoiceOptionList(rawValues))
-  const generic = !options.length || options.some((option: any) =>
-    normalizeBuilderChoiceCategory(option.value).replace(/[^a-z0-9]+/g, '').startsWith('any')
-  )
-
-  if (generic) {
-    if (text.includes('artisan') || compact.includes('artisantool')) {
-      options = backgroundOptionObjects(BUILDER_TOOL_CATEGORY_OPTIONS["artisan's tools"] || [])
-    } else if (text.includes('gaming') || compact.includes('gamingset')) {
-      options = backgroundOptionObjects(BUILDER_TOOL_CATEGORY_OPTIONS['gaming set'] || [])
-    } else if (text.includes('musical') || text.includes('instrument') || compact.includes('musicalinstrument')) {
-      options = backgroundOptionObjects(BUILDER_TOOL_CATEGORY_OPTIONS['musical instrument'] || [])
-    }
-  }
-
-  return options
-}
-
-function backgroundToolChoiceGroup() {
-  const values = backgroundRawToolValues()
-  if (!values.length) return null
-  if (!values.some(isAmbiguousBackgroundToolValue)) return null
-
-  const options = backgroundToolOptionsForValues(values)
-  if (!options.length) return null
-
-  return {
-    key: 'background-tools',
-    title: 'Background Tool Proficiency',
-    label: 'Background Tools',
-    note: 'Choose the tool proficiency granted by this background.',
-    count: 1,
-    options
-  }
-}
-
-function backgroundEquipmentChoiceText() {
-  const entity = selectedBackgroundEntity.value
-  const raw = rawJson(entity) || {}
-  const core = blockData(entity, 'background_core')
-
-  return [
-    core.equipment,
-    core.starting_equipment,
-    core.startingEquipment,
-    raw.startingEquipment,
-    raw.equipment,
-    backgroundDescription.value
-  ]
-    .map((value) => {
-      if (typeof value === 'string') return value
-
-      try {
-        return JSON.stringify(value || '')
-      } catch {
-        return ''
-      }
-    })
-    .filter(Boolean)
-    .join('\n')
-}
-
-function backgroundHasEquipmentChoice() {
-  const choiceText = backgroundEquipmentChoiceText()
-
-  return /choose\s+a\s+or\s+b/i.test(choiceText) ||
-    (/\(A\)/i.test(choiceText) && /\(B\)/i.test(choiceText))
-}
-
-function backgroundEquipmentChoiceGroup() {
-  if (!backgroundHasEquipmentChoice()) return null
-
-  return {
-    key: 'background-equipment-choice',
-    title: 'Background Equipment',
-    label: 'Background Equipment',
-    note: 'Choose starting equipment package A or take the gold option.',
-    count: 1,
-    options: [
-      { value: 'A', label: 'A - Starting equipment package' },
-      { value: 'B', label: 'B - Gold only' }
-    ]
-  }
-}
-
-function backgroundChoiceSlots(group: any) {
-  const count = Math.max(1, Number(group?.count || 1))
-  return Array.from({ length: count }, (_, index) => index)
-}
-
-const backgroundChoiceGroups = computed(() => {
-  const groups: any[] = []
-  const toolGroup = backgroundToolChoiceGroup()
-  const equipmentGroup = backgroundEquipmentChoiceGroup()
-
-  if (toolGroup) groups.push(toolGroup)
-  if (equipmentGroup) groups.push(equipmentGroup)
-
-  return groups
-})
-
-const backgroundChoiceSelections = reactive<Record<string, string[]>>({})
-
-function ensureBackgroundChoiceSelections() {
-  for (const group of backgroundChoiceGroups.value) {
-    const count = Math.max(1, Number(group?.count || 1))
-
-    if (!Array.isArray(backgroundChoiceSelections[group.key])) {
-      backgroundChoiceSelections[group.key] = []
-    }
-
-    for (let index = 0; index < count; index++) {
-      if (backgroundChoiceSelections[group.key][index] === undefined) {
-        backgroundChoiceSelections[group.key][index] = ''
-      }
-    }
-
-    backgroundChoiceSelections[group.key].splice(count)
-  }
-
-  for (const key of Object.keys(backgroundChoiceSelections)) {
-    if (!backgroundChoiceGroups.value.some((group: any) => group.key === key)) {
-      delete backgroundChoiceSelections[key]
-    }
-  }
-}
-
-watch(
-  backgroundChoiceGroups,
-  () => ensureBackgroundChoiceSelections(),
-  { immediate: true, deep: true }
-)
-
-function backgroundChoiceSelectedValues(group: any) {
-  if (!group?.key) return []
-
-  return (backgroundChoiceSelections[group.key] || [])
-    .map((value: any) => String(value || '').trim())
-    .filter(Boolean)
-}
-
-const backgroundChoicesComplete = computed(() =>
-  backgroundChoiceGroups.value.every((group: any) =>
-    backgroundChoiceSelectedValues(group).length >= Math.max(1, Number(group?.count || 1))
-  )
-)
-
-function isBackgroundChoiceOptionDisabled(group: any, slot: number, option: any) {
-  const value = String(option || '').trim()
-  if (!value) return false
-
-  return (backgroundChoiceSelections[group.key] || []).some((selected, index) =>
-    index !== slot && String(selected || '').trim() === value
-  )
-}
-
-function backgroundEquipmentChoiceSegment(choice: 'A' | 'B') {
-  const choiceText = backgroundEquipmentChoiceText()
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-
-  if (!choiceText) return ''
-
-  if (choice === 'A') {
-    const match = choiceText.match(/\(A\)\s*([\s\S]*?)(?:;\s*or\s*\(B\)|\s+or\s+\(B\)|\(B\)|$)/i)
-    return String(match?.[1] || '').trim()
-  }
-
-  const match = choiceText.match(/\(B\)\s*([\s\S]*)/i)
-  return String(match?.[1] || '').trim()
-}
-
-function cleanBackgroundEquipmentChoiceItem(value: any, selectedTool = '') {
-  let item = String(value || '')
-    .replace(/\{@(?:feat|skill|item|spell|filter|book|action|variantrule|condition|class|race|creature|damage|sense|status)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
-    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
-    .replace(/\{@[^}]+\}/g, '')
-    .replace(/choose\s+a\s+or\s+b\s*:/gi, '')
-    .replace(/\(A\)|\(B\)/gi, '')
-    .replace(/^or\s+/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (/same as above/i.test(item)) {
-    return selectedTool || ''
-  }
-
-  return item
-    .replace(/\s*\(same as above\)\s*/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function backgroundEquipmentValuesForChoice(choice: any, selectedTool = '') {
-  const key = String(choice || '').trim().toUpperCase()
-
-  if (!key) return []
-  if (key === 'B') return ['50 GP']
-
-  const segment = backgroundEquipmentChoiceSegment('A')
-  if (!segment) return []
-
-  const values = segment
-    .split(/\n|,|;/)
-    .map((item) => cleanBackgroundEquipmentChoiceItem(item, selectedTool))
-    .filter(Boolean)
-    .filter((item) => !/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item))
-
-  return dedupeBackgroundBuilderValues(values)
-}
-
 const backgroundChoicePayload = computed(() => {
   const entity = selectedBackgroundEntity.value
   if (!entity) return {}
 
   const raw = rawJson(entity) || {}
   const core = blockData(entity, 'background_core')
+
+  const skills = backgroundChoiceValues(core.skill_proficiencies || raw.skillProficiencies)
+  const tools = backgroundChoiceValues(core.tool_proficiencies || raw.toolProficiencies)
+  const languages = backgroundChoiceValues(core.languages || raw.languageProficiencies)
+  const feat = backgroundFeatValues(raw)
+  const abilityScores = firstBuilderDisplayValue(raw.ability, raw.abilityScores, raw.abilityScoreIncrease)
+
   const payload: Record<string, any> = {}
-
-  const skills = dedupeBackgroundBuilderValues(backgroundChoiceValues(core.skill_proficiencies || raw.skillProficiencies))
-  const rawTools = backgroundRawToolValues()
-  const toolGroup = backgroundToolChoiceGroup()
-  const selectedTools = toolGroup ? backgroundChoiceSelectedValues(toolGroup) : []
-  const tools = selectedTools.length
-    ? selectedTools
-    : rawTools.filter((value) => !isAmbiguousBackgroundToolValue(value))
-
-  const languages = dedupeBackgroundBuilderValues(backgroundChoiceValues(core.languages || raw.languageProficiencies))
-  const feat = dedupeBackgroundBuilderValues(backgroundFeatValues(raw))
-  const abilityScores = dedupeBackgroundBuilderValues(backgroundChoiceValues(raw.ability || raw.abilityScores || raw.abilityScoreIncrease))
-
-  const equipmentGroup = backgroundEquipmentChoiceGroup()
-  const selectedEquipmentChoice = equipmentGroup ? backgroundChoiceSelectedValues(equipmentGroup)[0] : ''
-  const selectedTool = selectedTools[0] || ''
-  const equipment = equipmentGroup
-    ? backgroundEquipmentValuesForChoice(selectedEquipmentChoice, selectedTool)
-    : []
 
   if (skills.length) {
     payload['background-skills'] = {
@@ -2594,7 +2291,7 @@ const backgroundChoicePayload = computed(() => {
     payload['background-tools'] = {
       label: 'Background Tools',
       values: tools,
-      note: selectedTools.length ? 'Chosen in Guided Builder.' : 'Granted by background.'
+      note: 'Granted by background.'
     }
   }
 
@@ -2614,21 +2311,11 @@ const backgroundChoicePayload = computed(() => {
     }
   }
 
-  if (abilityScores.length) {
+  if (abilityScores) {
     payload['background-abilities'] = {
       label: 'Background Ability Scores',
-      values: abilityScores,
+      values: [abilityScores],
       note: 'Suggested by background.'
-    }
-  }
-
-  if (equipment.length) {
-    payload['background-equipment'] = {
-      label: 'Background Equipment',
-      values: equipment,
-      note: equipmentGroup
-        ? `Chosen equipment option ${selectedEquipmentChoice || '-'}`
-        : 'Granted by background.'
     }
   }
 
@@ -2986,19 +2673,6 @@ async function createCharacter() {
   createError.value = ''
 
   try {
-
-    if (builderForm.backgroundEntityId && backgroundChoiceGroups.value.length && !backgroundChoicesComplete.value) {
-      const incomplete = backgroundChoiceGroups.value.find((group: any) =>
-        backgroundChoiceSelectedValues(group).length < Math.max(1, Number(group?.count || 1))
-      )
-
-      createError.value = incomplete
-        ? `Choose ${incomplete.title || incomplete.label || 'background choices'} before creating this character.`
-        : 'Complete background choices before creating this character.'
-      stepIndex.value = 0
-      return
-    }
-
     const created = await $fetch<any>(`/api/worlds/${worldId.value}/characters/builder`, {
       method: 'POST',
       body: {
@@ -3488,60 +3162,6 @@ async function createCharacter() {
                 <p class="mt-3 max-h-36 overflow-y-auto whitespace-pre-line pr-1 text-xs leading-5 text-[#9f9278]">
                   {{ backgroundDescription || 'No imported background description found yet.' }}
                 </p>
-
-                <div
-                  v-if="backgroundChoiceGroups.length"
-                  class="mt-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-3"
-                >
-                  <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Required Background Choices</div>
-                    <div
-                      class="rounded-none border px-2 py-0.5 text-[10px]"
-                      :class="backgroundChoicesComplete ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100' : 'border-amber-300/25 bg-amber-400/10 text-amber-100'"
-                    >
-                      {{ backgroundChoicesComplete ? 'Complete' : 'Needed' }}
-                    </div>
-                  </div>
-
-                  <div class="mt-3 grid gap-3">
-                    <div
-                      v-for="group in backgroundChoiceGroups"
-                      :key="group.key"
-                      class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3"
-                    >
-                      <div class="font-semibold text-white">{{ group.title || group.label }}</div>
-                      <div v-if="group.note" class="mt-1 text-xs leading-5 text-[#9f9278]">{{ group.note }}</div>
-
-                      <div class="mt-3 grid gap-2">
-                        <label
-                          v-for="slot in backgroundChoiceSlots(group)"
-                          :key="`${group.key}-${slot}`"
-                          class="block"
-                        >
-                          <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">
-                            Pick {{ slot + 1 }}
-                          </span>
-
-                          <select
-                            v-model="backgroundChoiceSelections[group.key][slot]"
-                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                          >
-                            <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
-                            <option
-                              v-for="option in group.options"
-                              :key="`${group.key}-${option.value}`"
-                              :value="option.value"
-                              :disabled="isBackgroundChoiceOptionDisabled(group, slot, option.value)"
-                              class="bg-[#090909] text-[#f5e7bd] disabled:text-[#756a57]"
-                            >
-                              {{ option.label }}
-                            </option>
-                          </select>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
                 <div
                   v-if="Object.keys(backgroundChoicePayload).length"

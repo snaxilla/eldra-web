@@ -138,6 +138,7 @@ function looksLikeNonEquipmentItem(value: any) {
     compact === 'anygamingset' ||
     compact === 'anymusicalinstrument' ||
     compact === 'anyartisantool' ||
+    compact === 'anyartisanstool' ||
     compact === 'anyartisanstools' ||
     compact === 'gamingsetsameasabove' ||
     compact === 'gamingset' ||
@@ -150,6 +151,7 @@ function looksLikeNonEquipmentItem(value: any) {
     key.includes('background feat') ||
     key.startsWith('feat ') ||
     key.includes('magic initiate') ||
+    key === 'crafter' ||
     key === 'skilled' ||
     key === 'savage attacker' ||
     key.includes('choose one kind') ||

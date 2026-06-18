@@ -939,7 +939,7 @@ function buildSpellSlotRows(sheet: any, level: number, resolved: any) {
     .filter((row) => row.max > 0)
 }
 
-export function computeCharacterSheetMath(sheet: any, resolved: any = {}, inventory: any[] = []) {
+function computeCharacterSheetMathBase(sheet: any, resolved: any = {}, inventory: any[] = []) {
   const level = integerOrNull(sheet?.level) ?? 1
   const proficiencyBonus = proficiencyBonusForLevel(level)
   const scores = abilityScoresForSheet(sheet)
@@ -974,4 +974,267 @@ export function computeCharacterSheetMath(sheet: any, resolved: any = {}, invent
       },
     pendingChoices: buildPendingChoices(sheet, resolved)
   }
+}
+
+
+function guidedPendingAsObject(value: any) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function guidedPendingText(value: any): string {
+  if (value === null || value === undefined) return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ''
+  }
+}
+
+function guidedPendingNormalize(value: any) {
+  return guidedPendingText(value)
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function guidedPendingChoiceValues(value: any): string[] {
+  if (value === null || value === undefined || value === '') return []
+
+  if (Array.isArray(value)) {
+    return value.flatMap(guidedPendingChoiceValues).filter(Boolean)
+  }
+
+  if (typeof value === 'object') {
+    const obj = guidedPendingAsObject(value)
+
+    if (Array.isArray(obj.values)) return guidedPendingChoiceValues(obj.values)
+    if (Array.isArray(obj.selected)) return guidedPendingChoiceValues(obj.selected)
+    if (obj.value) return guidedPendingChoiceValues(obj.value)
+    if (obj.valueLabel) return guidedPendingChoiceValues(obj.valueLabel)
+    if (obj.selectedLabel) return guidedPendingChoiceValues(obj.selectedLabel)
+
+    const truthyKeys = Object.entries(obj)
+      .filter(([, item]) => item === true || item === 'true' || item === 1)
+      .map(([key]) => String(key || '').trim())
+      .filter(Boolean)
+
+    if (truthyKeys.length) return truthyKeys
+
+    return Object.values(obj).flatMap(guidedPendingChoiceValues).filter(Boolean)
+  }
+
+  const textValue = String(value || '').trim()
+  return textValue ? [textValue] : []
+}
+
+const GUIDED_PENDING_SKILL_KEYS = new Set([
+  'acrobatics',
+  'animal handling',
+  'arcana',
+  'athletics',
+  'deception',
+  'history',
+  'insight',
+  'intimidation',
+  'investigation',
+  'medicine',
+  'nature',
+  'perception',
+  'performance',
+  'persuasion',
+  'religion',
+  'sleight of hand',
+  'stealth',
+  'survival'
+])
+
+function guidedPendingLooksLikeSkillName(value: any) {
+  return GUIDED_PENDING_SKILL_KEYS.has(guidedPendingNormalize(value))
+}
+
+function guidedPendingBuilderClassSkillValues(sheet: any) {
+  const sheetChoices = guidedPendingAsObject(sheet?.choices)
+  const classChoices = guidedPendingAsObject(
+    sheetChoices.builderClassChoices ??
+    sheetChoices.builder_class_choices
+  )
+
+  const out: string[] = []
+
+  for (const [key, rawGroup] of Object.entries(classChoices)) {
+    const group = guidedPendingAsObject(rawGroup)
+    const values = guidedPendingChoiceValues(group.values ?? group.selected ?? group.value)
+
+    if (!values.length) continue
+
+    const groupText = guidedPendingNormalize([
+      key,
+      group.label,
+      group.title,
+      group.note,
+      group.detail,
+      group.valueLabel,
+      group.selectedLabel
+    ].join(' '))
+
+    const valuesLookLikeSkills = values.some(guidedPendingLooksLikeSkillName)
+
+    if (
+      groupText.includes('skill') ||
+      String(key || '').toLowerCase().includes('skill') ||
+      valuesLookLikeSkills
+    ) {
+      out.push(...values)
+    }
+  }
+
+  return Array.from(new Set(
+    out
+      .map((value) => guidedPendingNormalize(value))
+      .filter(Boolean)
+  ))
+}
+
+function guidedPendingRequiredCount(choice: any) {
+  const obj = guidedPendingAsObject(choice)
+
+  const candidates = [
+    obj.count,
+    obj.required,
+    obj.requiredCount,
+    obj.required_count,
+    obj.choose,
+    obj.pick,
+    obj.picks,
+    obj.remaining,
+    obj.selectionCount,
+    obj.selection_count
+  ]
+
+  for (const candidate of candidates) {
+    const parsed = Number(candidate)
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed)
+    }
+  }
+
+  const text = guidedPendingNormalize(choice)
+
+  const chooseMatch = text.match(/\bchoose\s+(\d+)\b/)
+  if (chooseMatch) return Math.max(1, Number(chooseMatch[1]) || 1)
+
+  const pickMatch = text.match(/\bpick\s+(\d+)\b/)
+  if (pickMatch) return Math.max(1, Number(pickMatch[1]) || 1)
+
+  const selectionsMatch = text.match(/\b(\d+)\s+selections?\s+remaining\b/)
+  if (selectionsMatch) return Math.max(1, Number(selectionsMatch[1]) || 1)
+
+  return 1
+}
+
+function guidedPendingLooksLikeClassSkillChoice(sheet: any, choice: any) {
+  const text = guidedPendingNormalize(choice)
+  const className = guidedPendingNormalize(sheet?.class_name || sheet?.className || '')
+
+  if (!text.includes('skill')) return false
+
+  const asksForChoice =
+    text.includes('choose') ||
+    text.includes('pick') ||
+    text.includes('selection') ||
+    text.includes('remaining')
+
+  if (!asksForChoice) return false
+
+  return text.includes('class') ||
+    text.includes('class skill') ||
+    Boolean(className && text.includes(className))
+}
+
+function guidedFilterResolvedPendingChoices(sheet: any, pendingChoices: any[]) {
+  if (!Array.isArray(pendingChoices) || !pendingChoices.length) return []
+
+  const chosenClassSkills = guidedPendingBuilderClassSkillValues(sheet)
+
+  if (!chosenClassSkills.length) return pendingChoices
+
+  return pendingChoices.filter((choice) => {
+    if (!guidedPendingLooksLikeClassSkillChoice(sheet, choice)) return true
+
+    const required = guidedPendingRequiredCount(choice)
+
+    return chosenClassSkills.length < required
+  })
+}
+
+function guidedPatchChoiceCounts(math: any, count: number) {
+  const next = {
+    ...guidedPendingAsObject(math)
+  }
+
+  for (const key of [
+    'choices',
+    'choiceCount',
+    'pendingChoiceCount',
+    'remainingChoices'
+  ]) {
+    if (typeof next[key] === 'number') {
+      next[key] = count
+    }
+  }
+
+  for (const key of [
+    'levelManager',
+    'levelSummary',
+    'summary'
+  ]) {
+    if (next[key] && typeof next[key] === 'object' && !Array.isArray(next[key])) {
+      next[key] = {
+        ...next[key]
+      }
+
+      for (const countKey of [
+        'choices',
+        'choiceCount',
+        'pendingChoiceCount',
+        'remainingChoices'
+      ]) {
+        if (typeof next[key][countKey] === 'number') {
+          next[key][countKey] = count
+        }
+      }
+    }
+  }
+
+  return next
+}
+
+function guidedWithResolvedPendingChoicesFiltered(sheet: any, math: any) {
+  if (!math || typeof math !== 'object') return math
+
+  const pendingChoices = Array.isArray(math.pendingChoices)
+    ? math.pendingChoices
+    : []
+
+  if (!pendingChoices.length) return math
+
+  const filteredPendingChoices = guidedFilterResolvedPendingChoices(sheet, pendingChoices)
+
+  if (filteredPendingChoices.length === pendingChoices.length) return math
+
+  return {
+    ...guidedPatchChoiceCounts(math, filteredPendingChoices.length),
+    pendingChoices: filteredPendingChoices
+  }
+}
+
+export function computeCharacterSheetMath(sheet: any, resolved: any, inventory: any[] = []) {
+  const math = computeCharacterSheetMathBase(sheet, resolved, inventory)
+  return guidedWithResolvedPendingChoicesFiltered(sheet, math)
 }

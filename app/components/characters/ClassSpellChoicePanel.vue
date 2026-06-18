@@ -65,22 +65,6 @@ const CLASS_SPELL_RULES: Record<string, {
   }
 }
 
-const spellOptionsUrl = computed(() =>
-  props.worldId ? `/api/worlds/${props.worldId}/spell-options` : ''
-)
-
-const { data: spellOptionPayload } = await useFetch(spellOptionsUrl, {
-  default: () => [],
-  watch: [spellOptionsUrl]
-})
-
-function asArray(value: any) {
-  if (Array.isArray(value)) return value
-  if (Array.isArray(value?.data)) return value.data
-  if (Array.isArray(value?.items)) return value.items
-  return []
-}
-
 function plainText(value: any) {
   if (value === null || value === undefined) return ''
 
@@ -140,95 +124,23 @@ function spellTitle(option: any) {
 }
 
 function spellLevel(option: any) {
-  const candidates = [
-    option?.level,
-    option?.spellLevel,
-    option?.spell_level,
-    option?.core?.level,
-    option?.data?.level
-  ]
-
-  for (const candidate of candidates) {
-    const parsed = Number(candidate)
-    if (Number.isFinite(parsed)) return parsed
-  }
-
-  const label = String(option?.levelLabel || option?.subtitle || '').toLowerCase()
-  if (label.includes('cantrip')) return 0
-
-  const match = label.match(/\b([0-9])(?:st|nd|rd|th)?\b/)
-  if (match) return Number(match[1])
-
-  return 0
+  const parsed = Number(option?.level ?? option?.spellLevel ?? option?.spell_level ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function spellSource(option: any) {
-  return String(
-    option?.source ||
-    option?.sourceBook ||
-    option?.source_book ||
-    option?.book ||
-    ''
-  ).trim()
+  return String(option?.source || option?.sourceBook || option?.source_book || option?.book || '').trim()
 }
 
-function spellOptionText(option: any) {
-  return [
-    option?.title,
-    option?.name,
-    option?.label,
-    option?.source,
-    option?.sourceBook,
-    option?.level,
-    option?.levelLabel,
-    option?.classes,
-    option?.classNames,
-    option?.className,
-    option?.school,
-    option?.summary,
-    option?.description,
-    option?.raw,
-    option?.data
-  ]
-    .map(plainText)
-    .filter(Boolean)
-    .join(' ')
-}
-
-const normalizedSpellOptions = computed(() =>
-  asArray(spellOptionPayload.value)
-    .map((option: any) => ({
-      ...option,
-      id: spellId(option),
-      title: spellTitle(option),
-      level: spellLevel(option),
-      source: spellSource(option)
-    }))
-    .filter((option: any) => option.id && option.title)
-    .sort((a: any, b: any) =>
-      a.level - b.level ||
-      a.title.localeCompare(b.title)
-    )
-)
-
-function spellLooksAvailableToClass(option: any) {
+function classUsesKnownSpellCasting() {
   const key = classKey()
-  if (!key) return true
 
-  const text = normalizedKey(spellOptionText(option))
-  if (!text) return false
-
-  return text.includes(key)
+  return [
+    'bard',
+    'sorcerer',
+    'warlock'
+  ].some((name) => key.includes(name))
 }
-
-const classFilteredSpells = computed(() => {
-  const all = normalizedSpellOptions.value
-  const matching = all.filter(spellLooksAvailableToClass)
-
-  // A bunch of current spell-option payloads may not expose class metadata.
-  // If no class-specific matches exist, fall back to all imported spells so the picker is still usable.
-  return matching.length ? matching : all
-})
 
 const spellRule = computed(() => {
   const key = classKey()
@@ -236,6 +148,44 @@ const spellRule = computed(() => {
 
   return Object.entries(CLASS_SPELL_RULES).find(([className]) => key.includes(className))?.[1] || null
 })
+
+const classSpellOptionsUrl = computed(() => {
+  if (!props.worldId || !classDisplayName()) return ''
+
+  const params = new URLSearchParams()
+  params.set('className', classDisplayName())
+
+  return `/api/worlds/${props.worldId}/class-spell-options?${params.toString()}`
+})
+
+const { data: classSpellOptionPayload, pending: spellsLoading } = await useFetch(classSpellOptionsUrl, {
+  default: () => [],
+  watch: [classSpellOptionsUrl]
+})
+
+function asArray(value: any) {
+  if (Array.isArray(value)) return value
+  if (Array.isArray(value?.data)) return value.data
+  if (Array.isArray(value?.items)) return value.items
+  return []
+}
+
+const legalClassSpellOptions = computed(() =>
+  asArray(classSpellOptionPayload.value)
+    .map((option: any) => ({
+      ...option,
+      id: spellId(option),
+      title: spellTitle(option),
+      level: spellLevel(option),
+      source: spellSource(option),
+      classNames: Array.isArray(option?.classNames) ? option.classNames : []
+    }))
+    .filter((option: any) => option.id && option.title)
+    .sort((a: any, b: any) =>
+      Number(a.level || 0) - Number(b.level || 0) ||
+      String(a.title || '').localeCompare(String(b.title || ''))
+    )
+)
 
 const choiceGroups = computed<SpellChoiceGroup[]>(() => {
   const rule = spellRule.value
@@ -247,7 +197,7 @@ const choiceGroups = computed<SpellChoiceGroup[]>(() => {
     groups.push({
       key: 'class-cantrips',
       title: `${classDisplayName()} Cantrips`,
-      note: `Choose ${rule.cantrips} cantrip${rule.cantrips === 1 ? '' : 's'} for this character.`,
+      note: `Choose ${rule.cantrips} cantrip${rule.cantrips === 1 ? '' : 's'} from the ${classDisplayName()} spell list.`,
       count: rule.cantrips,
       level: 0,
       kind: 'cantrip'
@@ -258,7 +208,7 @@ const choiceGroups = computed<SpellChoiceGroup[]>(() => {
     groups.push({
       key: 'class-known-1',
       title: `${classDisplayName()} Level 1 Spells Known`,
-      note: `Choose ${rule.known} level 1 spell${rule.known === 1 ? '' : 's'} known by this character.`,
+      note: `Choose ${rule.known} level 1 spell${rule.known === 1 ? '' : 's'} from the ${classDisplayName()} spell list.`,
       count: rule.known,
       level: 1,
       kind: 'known'
@@ -271,7 +221,7 @@ const choiceGroups = computed<SpellChoiceGroup[]>(() => {
     groups.push({
       key: 'class-prepared-1',
       title: `${classDisplayName()} Prepared Level 1 Spells`,
-      note: `Choose ${count} level 1 prepared spell${count === 1 ? '' : 's'} for this character.`,
+      note: `Choose ${count} level 1 prepared spell${count === 1 ? '' : 's'} from the ${classDisplayName()} spell list.`,
       count,
       level: 1,
       kind: 'prepared'
@@ -331,6 +281,20 @@ watch(
   }
 )
 
+watch(
+  legalClassSpellOptions,
+  () => {
+    const legalIds = new Set(legalClassSpellOptions.value.map((spell: any) => String(spell.id)))
+
+    for (const [key, values] of Object.entries(spellSelections)) {
+      spellSelections[key] = values.map((value) =>
+        legalIds.has(String(value || '')) ? value : ''
+      )
+    }
+  },
+  { deep: true }
+)
+
 function groupSelectedValues(group: SpellChoiceGroup) {
   return (spellSelections[group.key] || [])
     .map((value) => String(value || '').trim())
@@ -340,7 +304,7 @@ function groupSelectedValues(group: SpellChoiceGroup) {
 function groupOptions(group: SpellChoiceGroup) {
   const query = normalizedKey(spellSearch.value)
 
-  return classFilteredSpells.value
+  return legalClassSpellOptions.value
     .filter((spell: any) => Number(spell.level) === Number(group.level))
     .filter((spell: any) => {
       if (!query) return true
@@ -351,7 +315,7 @@ function groupOptions(group: SpellChoiceGroup) {
 function spellById(id: any) {
   const needle = String(id || '')
   if (!needle) return null
-  return normalizedSpellOptions.value.find((spell: any) => String(spell.id) === needle) || null
+  return legalClassSpellOptions.value.find((spell: any) => String(spell.id) === needle) || null
 }
 
 function selectedSpellTitle(id: any) {
@@ -376,16 +340,6 @@ const choicesComplete = computed(() =>
     groupSelectedValues(group).length >= group.count
   )
 )
-
-function classUsesKnownSpellCasting() {
-  const key = classKey()
-
-  return [
-    'bard',
-    'sorcerer',
-    'warlock'
-  ].some((name) => key.includes(name))
-}
 
 const spellcastingPayload = computed(() => {
   const known = new Set<string>()
@@ -414,9 +368,6 @@ const spellcastingPayload = computed(() => {
       values.forEach((id) => prepared.add(String(id)))
     }
 
-    // Sorcerers, Bards, and Warlocks do not prepare spells, but the sheet's
-    // play/actions pipeline treats prepared IDs as the castable levelled spells.
-    // So known levelled spells are saved as prepared-equivalent for these classes.
     if (knownCaster && group.kind === 'known') {
       values.forEach((id) => prepared.add(String(id)))
     }
@@ -434,6 +385,7 @@ const spellcastingPayload = computed(() => {
 
   return payload
 })
+
 watch(
   spellcastingPayload,
   (payload) => emit('update:spellcasting', payload),
@@ -462,7 +414,7 @@ const panelVisible = computed(() =>
         <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Required Class Spells</div>
         <div class="mt-1 text-sm font-semibold text-white">{{ classDisplayName() }} Spell Choices</div>
         <div class="mt-1 text-xs leading-5 text-[#9f9278]">
-          Pick starting cantrips and spells now so the sheet is not empty after creation.
+          Player choices are limited to imported spells on the {{ classDisplayName() }} class list.
         </div>
       </div>
 
@@ -474,8 +426,15 @@ const panelVisible = computed(() =>
       </div>
     </div>
 
+    <div
+      v-if="spellsLoading"
+      class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.52)] p-3 text-xs text-[#9f9278]"
+    >
+      Loading {{ classDisplayName() }} spell list...
+    </div>
+
     <label class="mt-3 block">
-      <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">Search imported spells</span>
+      <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">Search {{ classDisplayName() }} spells</span>
       <input
         v-model="spellSearch"
         type="text"
@@ -525,7 +484,7 @@ const panelVisible = computed(() =>
           v-if="!groupOptions(group).length"
           class="mt-3 rounded-none border border-amber-300/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100"
         >
-          No imported level {{ group.level }} spell options found for this group. Import spells first, or clear the search.
+          No imported level {{ group.level }} {{ classDisplayName() }} spells found. Import that source, or clear the search.
         </div>
       </div>
     </div>

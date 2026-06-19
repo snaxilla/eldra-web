@@ -7436,65 +7436,10 @@ async function saveSheet() {
                 </article>
               </div>
 
-              <div class="eldra-codex-soft rounded-none p-4">
-                <button
-                  type="button"
-                  class="flex w-full items-center justify-between gap-3 text-left"
-                  @click="toggleFeaturePanel('feats')"
-                >
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Resolved from imported feat articles saved on this sheet.</div>
-                  </div>
-
-                  <div class="flex items-center gap-2">
-                    <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                      {{ selectedFeats.length }} Feat{{ selectedFeats.length === 1 ? '' : 's' }}
-                    </div>
-                    <UIcon :name="featurePanelChevron('feats')" class="h-4 w-4 text-[#9f9278]" />
-                  </div>
-                </button>
-
-                <div
-                  v-show="featurePanelOpen('feats')"
-                  class="mt-4 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-3"
-                >
-                  <article
-                    v-for="feat in selectedFeats"
-                    :key="feat.id"
-                    class="min-w-0 overflow-hidden rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
-                  >
-                    <div class="flex min-w-0 items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <div class="max-w-full truncate font-semibold text-white">{{ feat.title }}</div>
-                        <div class="mt-1 text-xs text-[#9f9278]">
-                          <span v-if="feat.source">{{ feat.source }}</span>
-                          <span v-if="feat.page"> · p. {{ feat.page }}</span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
-                        @click.stop="openFeatureDrawer(featFeatureCard(feat))"
-                      >
-                        Details
-                      </button>
-                    </div>
-
-                    <p v-if="feat.benefits" class="mt-3 break-words text-xs leading-5 text-[#9f9278]">
-                      {{ shortText(feat.benefits, 180) }}
-                    </p>
-                  </article>
-
-                  <div
-                    v-if="!selectedFeats.length"
-                    class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278] md:col-span-2 xl:col-span-3"
-                  >
-                    No feat choices selected yet.
-                  </div>
-                </div>
-              </div>
+              <CharactersSheetSelectedFeats
+                :world-id="worldId"
+                :sheet="sheet"
+              />
             </section>
 
 

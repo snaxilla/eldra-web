@@ -4,54 +4,7 @@ function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
-function cleanText(value: any) {
-  return String(value ?? '').trim()
-}
-
-function clean5eText(value: any): string {
-  return String(value || '')
-    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature|optionalfeature|status)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
-    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
-    .replace(/\{@[^}]+\}/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function entriesToText(value: any): string {
-  if (!value) return ''
-
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return clean5eText(value)
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(entriesToText).filter(Boolean).join('\n\n')
-  }
-
-  if (typeof value === 'object') {
-    const parts: string[] = []
-
-    if (value.name) parts.push(clean5eText(value.name))
-    if (value.entry) parts.push(entriesToText(value.entry))
-    if (value.entries) parts.push(entriesToText(value.entries))
-    if (value.items) parts.push(entriesToText(value.items))
-    if (value.rows) parts.push(entriesToText(value.rows))
-
-    return parts.filter(Boolean).join('\n\n')
-  }
-
-  return ''
-}
-
-function titleCase(value: any) {
-  return String(value || '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
-}
-
-function parseJsonish(value: any) {
+function parseJsonish(value: any): any {
   if (typeof value !== 'string') return value
 
   const trimmed = value.trim()
@@ -68,57 +21,65 @@ function parseJsonish(value: any) {
           .replace(/:\s*False\b/g, ': false')
           .replace(/:\s*None\b/g, ': null')
       )
-    } catch {}
+    } catch {
+      return value
+    }
   }
 
   return value
 }
 
-function pushCategory(out: string[], value: any) {
+function clean5eText(value: any) {
+  return String(value ?? '')
+    .replace(/\{@(?:feat|skill|item|spell|filter|book|action|variantrule|condition|class|race|creature|damage|sense|status|classFeature|subclassFeature)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/[#*_`]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function titleCase(value: any) {
+  return clean5eText(value)
+    .replace(/\|[A-Za-z0-9_.:-]+(?:\|[^,\n;)]*)?/g, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\b([A-Za-z]+)'S\b/g, "$1's")
+}
+
+function entryText(value: any): string {
   const parsed = parseJsonish(value)
 
-  if (parsed === null || parsed === undefined || parsed === '') return
+  if (!parsed) return ''
+
+  if (typeof parsed === 'string' || typeof parsed === 'number' || typeof parsed === 'boolean') {
+    return clean5eText(parsed)
+  }
 
   if (Array.isArray(parsed)) {
-    parsed.forEach((item) => pushCategory(out, item))
-    return
+    return parsed.map(entryText).filter(Boolean).join('\n\n')
   }
 
   if (typeof parsed === 'object') {
-    if (parsed.category !== undefined) {
-      pushCategory(out, parsed.category)
-      return
-    }
+    const parts: string[] = []
 
-    if (parsed.name !== undefined) {
-      pushCategory(out, parsed.name)
-      return
-    }
+    if (parsed.name) parts.push(`## ${clean5eText(parsed.name)}`)
+    if (parsed.entry) parts.push(entryText(parsed.entry))
+    if (parsed.entries) parts.push(entryText(parsed.entries))
+    if (parsed.items) parts.push(entryText(parsed.items))
+    if (parsed.rows) parts.push(entryText(parsed.rows))
+    if (parsed.description) parts.push(entryText(parsed.description))
+    if (parsed.summary) parts.push(entryText(parsed.summary))
+    if (parsed.text) parts.push(entryText(parsed.text))
+    if (parsed.detail) parts.push(entryText(parsed.detail))
 
-    Object.values(parsed).forEach((item) => pushCategory(out, item))
-    return
+    return parts.filter(Boolean).join('\n\n')
   }
 
-  String(parsed)
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .forEach((item) => out.push(item))
-}
-
-function categoryValues(...values: any[]) {
-  const out: string[] = []
-
-  values.forEach((value) => pushCategory(out, value))
-
-  const seen = new Set<string>()
-
-  return out.filter((item) => {
-    const key = item.toLowerCase()
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  return ''
 }
 
 function blockData(blocks: any[], key: string) {
@@ -129,50 +90,67 @@ function blockData(blocks: any[], key: string) {
   return asObject(block?.data)
 }
 
-async function loadEntityBlocks(entityId: any) {
+async function fetchFeatEntities(worldId: string) {
   const params = new URLSearchParams()
-  params.set('filter[entity_id][_eq]', String(entityId))
+  params.set('filter[world_id][_eq]', String(worldId))
+  params.set('filter[entity_type][_eq]', 'feat')
+  params.set('fields', 'id,title,slug,summary,entity_type')
   params.set('limit', '-1')
-  params.append('fields[]', 'entity_id')
-  params.append('fields[]', 'block_key')
-  params.append('fields[]', 'data')
+  params.set('sort', 'title')
 
-  const res = await dxFetch(`/items/block_instances?${params.toString()}`)
+  const res = await dxFetch(`/items/entities?${params.toString()}`)
   return Array.isArray(res?.data) ? res.data : []
 }
 
-function featHasSpellChoices(title: string, raw: any, core: any) {
-  const name = title.toLowerCase()
+async function fetchBlocksForEntityIds(entityIds: string[]) {
+  const out: any[] = []
+  const chunkSize = 75
 
-  return Boolean(
-    name.includes('magic initiate') ||
-    name.includes('ritual caster') ||
-    name.includes('fey touched') ||
-    name.includes('shadow touched') ||
-    raw?.additionalSpells ||
-    raw?.additionalSpell ||
-    raw?.spellcasting ||
-    raw?.spells ||
-    core?.additional_spells ||
-    core?.additionalSpells
-  )
-}
+  for (let index = 0; index < entityIds.length; index += chunkSize) {
+    const chunk = entityIds.slice(index, index + chunkSize)
+    if (!chunk.length) continue
 
-function featSpellChoiceSummary(title: string, raw: any, core: any) {
-  if (String(title || '').toLowerCase().includes('magic initiate')) {
-    return 'Follow-up choices required: choose a spell list, two cantrips, and one 1st-level spell.'
+    const params = new URLSearchParams()
+    params.set('filter[entity_id][_in]', chunk.join(','))
+    params.set('filter[block_key][_in]', 'feat_core,import_source')
+    params.set('fields', 'id,entity_id,block_key,data')
+    params.set('limit', '-1')
+
+    const res = await dxFetch(`/items/block_instances?${params.toString()}`).catch(() => null)
+    if (Array.isArray(res?.data)) out.push(...res.data)
   }
 
-  const text = entriesToText(
-    raw?.additionalSpells ||
-    raw?.additionalSpell ||
-    raw?.spells ||
-    core?.additional_spells ||
-    core?.additionalSpells ||
-    ''
-  )
+  return out
+}
 
-  return text ? `Follow-up spell choices may be required: ${text}` : ''
+function optionFromFeatEntity(entity: any, blocks: any[]) {
+  const featCore = blockData(blocks, 'feat_core')
+  const importSource = blockData(blocks, 'import_source')
+  const raw = asObject(parseJsonish(importSource.raw_json ?? importSource.rawJson))
+
+  const title = clean5eText(entity?.title || featCore.name || raw.name || 'Untitled Feat')
+  const source = clean5eText(raw.source || importSource.source_book || importSource.source || '')
+  const page = clean5eText(raw.page || importSource.source_page || importSource.page || '')
+  const prerequisite = clean5eText(featCore.prerequisite || raw.prerequisite || '')
+  const description = entryText(featCore.description || raw.entries || raw.description || entity.summary || '')
+
+  return {
+    id: String(entity.id),
+    value: String(entity.id),
+    title,
+    label: title,
+    slug: clean5eText(entity.slug),
+    summary: clean5eText(entity.summary),
+    source,
+    sourceBook: source,
+    page,
+    sourcePage: page,
+    prerequisite,
+    description,
+    category: titleCase(raw.category || raw.featCategory || raw.categoryLabel || ''),
+    rawName: clean5eText(raw.name || ''),
+    entityType: 'feat'
+  }
 }
 
 export default defineEventHandler(async (event) => {
@@ -185,86 +163,23 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const params = new URLSearchParams()
-  params.set('filter[world_id][_eq]', worldId)
-  params.set('filter[entity_type][_eq]', 'feat')
-  params.set('sort', 'title')
-  params.set('limit', '-1')
-  params.append('fields[]', 'id')
-  params.append('fields[]', 'title')
-  params.append('fields[]', 'slug')
-  params.append('fields[]', 'summary')
-  params.append('fields[]', 'entity_type')
-  params.append('fields[]', 'world_id')
-  params.append('fields[]', 'image')
+  const featEntities = await fetchFeatEntities(worldId)
+  const entityIds = featEntities.map((entity: any) => String(entity.id)).filter(Boolean)
+  const blocks = await fetchBlocksForEntityIds(entityIds)
+  const blocksByEntityId = new Map<string, any[]>()
 
-  const res = await dxFetch(`/items/entities?${params.toString()}`)
-  const rows = Array.isArray(res?.data) ? res.data : []
+  for (const block of blocks) {
+    const key = String(block?.entity_id || '')
+    if (!key) continue
 
-  const options = await Promise.all(rows.map(async (entity: any) => {
-    const blocks = await loadEntityBlocks(entity.id).catch(() => [])
-    const core = blockData(blocks, 'feat_core')
-    const importSource = blockData(blocks, 'import_source')
-    const raw = asObject(importSource.raw_json ?? importSource.rawJson)
-
-    const title = cleanText(entity.title || core.name || raw.name || 'Feat')
-    const categories = categoryValues(
-      core.category,
-      core.feat_category,
-      core.featCategory,
-      raw.category,
-      raw.featCategory
-    )
-
-    const source = cleanText(
-      core.source ||
-      importSource.source_book ||
-      importSource.sourceBook ||
-      raw.source
-    )
-
-    const page = cleanText(
-      core.page ||
-      importSource.source_page ||
-      importSource.sourcePage ||
-      raw.page
-    )
-
-    const description = clean5eText(
-      entriesToText(
-        core.benefits ||
-        core.description ||
-        raw.entries ||
-        entity.summary ||
-        ''
-      )
-    )
-
-    const spellChoiceSummary = featSpellChoiceSummary(title, raw, core)
-    const hasSpellChoices = featHasSpellChoices(title, raw, core)
-
-    return {
-      id: String(entity.id),
-      value: String(entity.id),
-      title,
-      label: title,
-      slug: entity.slug ? String(entity.slug) : '',
-      summary: description || clean5eText(entity.summary || ''),
-      description,
-      benefits: description,
-      source,
-      page,
-      sourceLine: [source, page ? `p. ${page}` : ''].filter(Boolean).join(' · '),
-      category: categories[0] || '',
-      categories,
-      rawCategory: raw.category ?? null,
-      prerequisite: clean5eText(entriesToText(core.prerequisites || core.prerequisite || raw.prerequisite || '')),
-      hasSpellChoices,
-      spellChoiceSummary,
-      additionalSpells: raw.additionalSpells || raw.additionalSpell || core.additional_spells || core.additionalSpells || null,
-      imageUrl: entity.image ? `/api/assets/${entity.image}` : null
+    if (!blocksByEntityId.has(key)) {
+      blocksByEntityId.set(key, [])
     }
-  }))
 
-  return options.sort((a: any, b: any) => a.title.localeCompare(b.title))
+    blocksByEntityId.get(key)?.push(block)
+  }
+
+  return featEntities
+    .map((entity: any) => optionFromFeatEntity(entity, blocksByEntityId.get(String(entity.id)) || []))
+    .sort((a: any, b: any) => String(a.title || '').localeCompare(String(b.title || '')))
 })

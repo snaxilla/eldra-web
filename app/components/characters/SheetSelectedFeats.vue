@@ -107,6 +107,19 @@ function featChoiceSpellList(value: any) {
   return match?.[1] || ''
 }
 
+function looksNumericId(value: any) {
+  return /^\d+$/.test(String(value || '').trim())
+}
+
+function placeholderFeatName(value: any) {
+  const key = normalizedKey(value)
+  return key === 'feat' ||
+    key === 'origin feat' ||
+    key === 'background feat' ||
+    key === 'species feat' ||
+    key === 'selected feat'
+}
+
 const featOptionsUrl = computed(() =>
   props.worldId ? `/api/worlds/${props.worldId}/feat-options` : ''
 )
@@ -154,6 +167,32 @@ const builderFeatChoiceSummary = computed(() => {
   }
 })
 
+function pushFeatRef(rows: any[], source: string, value: any, groupKey = '') {
+  const text = cleanText(value)
+  if (!text) return
+
+  if (looksNumericId(text)) {
+    rows.push({
+      source,
+      id: text,
+      name: '',
+      originalName: text,
+      groupKey
+    })
+    return
+  }
+
+  if (placeholderFeatName(text)) return
+
+  rows.push({
+    source,
+    name: stripFeatChoiceSuffix(text),
+    originalName: text,
+    spellList: featChoiceSpellList(text),
+    groupKey
+  })
+}
+
 function collectFeatRefsFromChoiceMap(source: string, choices: Record<string, any> = {}) {
   const rows: any[] = []
 
@@ -171,15 +210,16 @@ function collectFeatRefsFromChoiceMap(source: string, choices: Record<string, an
 
     if (!labelText.includes('feat')) continue
 
-    const values = choiceValues(group.values ?? group.selected ?? group.value)
+    const values = [
+      ...choiceValues(group.values),
+      ...choiceValues(group.selected),
+      ...choiceValues(group.value),
+      ...choiceValues(group.valueLabel),
+      ...choiceValues(group.selectedLabel)
+    ]
+
     for (const value of values) {
-      rows.push({
-        source,
-        name: stripFeatChoiceSuffix(value),
-        originalName: cleanText(value),
-        spellList: featChoiceSpellList(value),
-        groupKey: key
-      })
+      pushFeatRef(rows, source, value, key)
     }
   }
 
@@ -189,8 +229,6 @@ function collectFeatRefsFromChoiceMap(source: string, choices: Record<string, an
 const selectedFeatRefs = computed(() => {
   const sheet = asObject(props.sheet)
   const choices = asObject(sheet.choices)
-  const spellcasting = asObject(sheet.spellcasting)
-
   const rows: any[] = []
 
   for (const id of choiceValues(
@@ -203,12 +241,7 @@ const selectedFeatRefs = computed(() => {
     choices.featIds ??
     choices.feat_ids
   )) {
-    rows.push({
-      source: 'sheet',
-      id,
-      name: '',
-      originalName: ''
-    })
+    pushFeatRef(rows, 'sheet', id)
   }
 
   rows.push(
@@ -232,19 +265,23 @@ const selectedFeatRefs = computed(() => {
     })
   }
 
-  // Some older sheets may only have feat spell IDs but no builderFeatChoices.
-  // Do not invent a Magic Initiate card from spell IDs alone; a feat name is needed.
-
   const seen = new Set<string>()
 
   return rows.filter((row) => {
     const idMatch = row.id ? featById(row.id) : null
     const nameMatch = row.name ? featByName(row.name) : null
+
+    // Numeric IDs should either resolve to an imported feat entity or disappear.
+    // Otherwise the UI shows ugly cards like "351".
+    if (row.id && !idMatch && !row.name) return false
+
     const key = idMatch
       ? `id:${idMatch.id}`
       : nameMatch
         ? `id:${nameMatch.id}`
-        : `name:${normalizedKey(row.name || row.originalName)}`
+        : row.name || row.originalName
+          ? `name:${normalizedKey(row.name || row.originalName)}`
+          : ''
 
     if (!key || seen.has(key)) return false
 
@@ -283,6 +320,7 @@ const selectedFeatCards = computed(() => {
         selectedSource: row.source,
         selectedName: row.originalName || feat.title,
         spellList: cleanText(builderChoice.spellList || row.spellList || ''),
+        spellcastingAbility: cleanText(builderChoice.spellcastingAbility || ''),
         choiceValues: choiceValues(builderChoice.values || []),
         cantripSpellIds: choiceValues(builderChoice.cantripSpellIds || []),
         levelOneSpellIds: choiceValues(builderChoice.levelOneSpellIds || []),
@@ -322,11 +360,7 @@ function selectedSourceLabel(source: any) {
 
 <template>
   <div class="eldra-codex-soft rounded-none p-4">
-    <button
-      type="button"
-      class="flex w-full items-center justify-between gap-3 text-left"
-      @click="$emit?.('noop')"
-    >
+    <div class="flex w-full items-center justify-between gap-3 text-left">
       <div>
         <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Selected Feats</div>
         <div class="mt-1 text-sm text-[#d8ceb8]">
@@ -337,7 +371,7 @@ function selectedSourceLabel(source: any) {
       <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
         {{ selectedFeatCards.length }} Feat{{ selectedFeatCards.length === 1 ? '' : 's' }}
       </div>
-    </button>
+    </div>
 
     <div
       v-if="selectedFeatCards.length"
@@ -379,12 +413,16 @@ function selectedSourceLabel(source: any) {
         </p>
 
         <div
-          v-if="feat.spellList || feat.choiceValues?.length"
+          v-if="feat.spellList || feat.spellcastingAbility || feat.choiceValues?.length"
           class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2 text-xs leading-5 text-[#d8ceb8]"
         >
           <div v-if="feat.spellList">
             <span class="font-semibold text-white">Spell List:</span>
             {{ feat.spellList }}
+          </div>
+          <div v-if="feat.spellcastingAbility">
+            <span class="font-semibold text-white">Ability:</span>
+            {{ feat.spellcastingAbility }}
           </div>
           <div v-if="feat.choiceValues?.length" class="mt-1">
             <span class="font-semibold text-white">Chosen Spells:</span>
@@ -441,12 +479,16 @@ function selectedSourceLabel(source: any) {
           </div>
 
           <div
-            v-if="selectedFeatForDrawer.spellList || selectedFeatForDrawer.choiceValues?.length"
+            v-if="selectedFeatForDrawer.spellList || selectedFeatForDrawer.spellcastingAbility || selectedFeatForDrawer.choiceValues?.length"
             class="mt-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(9,17,26,0.42)] p-3 text-sm leading-6 text-[#d8ceb8]"
           >
             <div v-if="selectedFeatForDrawer.spellList">
               <span class="font-semibold text-white">Spell List:</span>
               {{ selectedFeatForDrawer.spellList }}
+            </div>
+            <div v-if="selectedFeatForDrawer.spellcastingAbility">
+              <span class="font-semibold text-white">Ability:</span>
+              {{ selectedFeatForDrawer.spellcastingAbility }}
             </div>
             <div v-if="selectedFeatForDrawer.choiceValues?.length" class="mt-1">
               <span class="font-semibold text-white">Chosen Spells:</span>

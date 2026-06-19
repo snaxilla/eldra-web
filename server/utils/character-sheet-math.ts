@@ -1060,13 +1060,30 @@ function guidedPendingLooksLikeSkillName(value: any) {
   return GUIDED_PENDING_SKILL_KEYS.has(guidedPendingNormalize(value))
 }
 
-function guidedPendingBuilderClassSkillValues(sheet: any) {
-  const sheetChoices = guidedPendingAsObject(sheet?.choices)
-  const classChoices = guidedPendingAsObject(
+function guidedPendingSheetChoices(sheet: any) {
+  return guidedPendingAsObject(sheet?.choices)
+}
+
+function guidedPendingBuilderClassChoices(sheet: any) {
+  const sheetChoices = guidedPendingSheetChoices(sheet)
+
+  return guidedPendingAsObject(
     sheetChoices.builderClassChoices ??
     sheetChoices.builder_class_choices
   )
+}
 
+function guidedPendingBuilderSpeciesChoices(sheet: any) {
+  const sheetChoices = guidedPendingSheetChoices(sheet)
+
+  return guidedPendingAsObject(
+    sheetChoices.builderSpeciesChoices ??
+    sheetChoices.builder_species_choices
+  )
+}
+
+function guidedPendingBuilderClassSkillValues(sheet: any) {
+  const classChoices = guidedPendingBuilderClassChoices(sheet)
   const out: string[] = []
 
   for (const [key, rawGroup] of Object.entries(classChoices)) {
@@ -1103,8 +1120,90 @@ function guidedPendingBuilderClassSkillValues(sheet: any) {
   ))
 }
 
+function guidedPendingBuilderSpeciesSkillValues(sheet: any) {
+  const speciesChoices = guidedPendingBuilderSpeciesChoices(sheet)
+  const out: string[] = []
+
+  for (const [key, rawGroup] of Object.entries(speciesChoices)) {
+    const group = guidedPendingAsObject(rawGroup)
+    const values = guidedPendingChoiceValues(group.values ?? group.selected ?? group.value)
+
+    if (!values.length) continue
+
+    const groupText = guidedPendingNormalize([
+      key,
+      group.label,
+      group.title,
+      group.note,
+      group.detail,
+      group.valueLabel,
+      group.selectedLabel
+    ].join(' '))
+
+    const valuesLookLikeSkills = values.some(guidedPendingLooksLikeSkillName)
+
+    if (
+      groupText.includes('skill') ||
+      String(key || '').toLowerCase().includes('skill') ||
+      valuesLookLikeSkills
+    ) {
+      out.push(...values)
+    }
+  }
+
+  return Array.from(new Set(
+    out
+      .map((value) => guidedPendingNormalize(value))
+      .filter(Boolean)
+  ))
+}
+
+function guidedPendingBuilderSpeciesFeatValues(sheet: any) {
+  const speciesChoices = guidedPendingBuilderSpeciesChoices(sheet)
+  const out: string[] = []
+
+  for (const [key, rawGroup] of Object.entries(speciesChoices)) {
+    const group = guidedPendingAsObject(rawGroup)
+
+    const groupText = guidedPendingNormalize([
+      key,
+      group.label,
+      group.title,
+      group.note,
+      group.detail,
+      group.valueLabel,
+      group.selectedLabel
+    ].join(' '))
+
+    if (!groupText.includes('feat')) continue
+
+    const values = guidedPendingChoiceValues([
+      group.values,
+      group.selected,
+      group.value,
+      group.valueLabel,
+      group.selectedLabel
+    ])
+
+    if (values.length) {
+      out.push(...values)
+      continue
+    }
+
+    if (groupText.includes('magic initiate')) {
+      out.push('magic initiate')
+    }
+  }
+
+  return Array.from(new Set(
+    out
+      .map((value) => guidedPendingNormalize(value))
+      .filter(Boolean)
+  ))
+}
+
 function guidedPendingBuilderFeatChoiceGroups(sheet: any) {
-  const sheetChoices = guidedPendingAsObject(sheet?.choices)
+  const sheetChoices = guidedPendingSheetChoices(sheet)
   const spellcasting = guidedPendingAsObject(sheet?.spellcasting)
 
   const sources = [
@@ -1243,6 +1342,45 @@ function guidedPendingLooksLikeClassSkillChoice(sheet: any, choice: any) {
     Boolean(className && text.includes(className))
 }
 
+function guidedPendingLooksLikeSpeciesSkillChoice(sheet: any, choice: any) {
+  const text = guidedPendingNormalize(choice)
+  const speciesName = guidedPendingNormalize(sheet?.species_name || sheet?.speciesName || '')
+
+  if (!text.includes('skill')) return false
+
+  const asksForChoice =
+    text.includes('choose') ||
+    text.includes('pick') ||
+    text.includes('selection') ||
+    text.includes('remaining')
+
+  if (!asksForChoice) return false
+
+  return text.includes('species') ||
+    text.includes('race') ||
+    Boolean(speciesName && text.includes(speciesName))
+}
+
+function guidedPendingLooksLikeSpeciesFeatChoice(sheet: any, choice: any) {
+  const text = guidedPendingNormalize(choice)
+  const speciesName = guidedPendingNormalize(sheet?.species_name || sheet?.speciesName || '')
+
+  if (!text.includes('feat')) return false
+
+  const asksForChoice =
+    text.includes('choose') ||
+    text.includes('pick') ||
+    text.includes('selection') ||
+    text.includes('remaining')
+
+  if (!asksForChoice) return false
+
+  return text.includes('species') ||
+    text.includes('race') ||
+    text.includes('origin') ||
+    Boolean(speciesName && text.includes(speciesName))
+}
+
 function guidedPendingLooksLikeMagicInitiateChoice(choice: any) {
   const text = guidedPendingNormalize(choice)
 
@@ -1263,12 +1401,24 @@ function guidedFilterResolvedPendingChoices(sheet: any, pendingChoices: any[]) {
   if (!Array.isArray(pendingChoices) || !pendingChoices.length) return []
 
   const chosenClassSkills = guidedPendingBuilderClassSkillValues(sheet)
+  const chosenSpeciesSkills = guidedPendingBuilderSpeciesSkillValues(sheet)
+  const chosenSpeciesFeats = guidedPendingBuilderSpeciesFeatValues(sheet)
   const magicInitiateResolved = guidedPendingMagicInitiateResolved(sheet)
 
   return pendingChoices.filter((choice) => {
     if (chosenClassSkills.length && guidedPendingLooksLikeClassSkillChoice(sheet, choice)) {
       const required = guidedPendingRequiredCount(choice)
       return chosenClassSkills.length < required
+    }
+
+    if (chosenSpeciesSkills.length && guidedPendingLooksLikeSpeciesSkillChoice(sheet, choice)) {
+      const required = guidedPendingRequiredCount(choice)
+      return chosenSpeciesSkills.length < required
+    }
+
+    if (chosenSpeciesFeats.length && guidedPendingLooksLikeSpeciesFeatChoice(sheet, choice)) {
+      const required = guidedPendingRequiredCount(choice)
+      return chosenSpeciesFeats.length < required
     }
 
     if (magicInitiateResolved && guidedPendingLooksLikeMagicInitiateChoice(choice)) {

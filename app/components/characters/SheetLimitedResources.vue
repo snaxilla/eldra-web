@@ -4,6 +4,9 @@ const props = defineProps<{
   entityId: string | number
   sheet?: any
   math?: any
+  speciesActions?: any[]
+  classFeatures?: any[]
+  bonusActions?: any[]
 }>()
 
 type LimitedResourceDef = {
@@ -23,6 +26,10 @@ const localUses = ref<Record<string, number>>({})
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function asArray(value: any) {
+  return Array.isArray(value) ? value : []
 }
 
 function normalizedKey(value: any) {
@@ -53,23 +60,65 @@ function proficiencyBonus() {
 }
 
 function classKey() {
-  return normalizedKey(props.sheet?.class_name || props.sheet?.className || '')
+  return normalizedKey(
+    props.sheet?.class_name ||
+    props.sheet?.className ||
+    props.sheet?.class ||
+    props.sheet?.class_title ||
+    props.sheet?.classTitle ||
+    ''
+  )
 }
 
 function speciesKey() {
-  return normalizedKey(props.sheet?.species_name || props.sheet?.speciesName || '')
+  return normalizedKey(
+    props.sheet?.species_name ||
+    props.sheet?.speciesName ||
+    props.sheet?.species ||
+    props.sheet?.species_title ||
+    props.sheet?.speciesTitle ||
+    ''
+  )
 }
 
-function mathTextBlob() {
+function safeJsonText(value: any) {
   try {
-    return normalizedKey(JSON.stringify(props.math || {}))
+    return normalizedKey(JSON.stringify(value || {}))
   } catch {
     return ''
   }
 }
 
-function hasMathText(value: string) {
-  return mathTextBlob().includes(normalizedKey(value))
+function actionBlob() {
+  return normalizedKey([
+    safeJsonText(props.speciesActions),
+    safeJsonText(props.classFeatures),
+    safeJsonText(props.bonusActions),
+    safeJsonText(props.math)
+  ].join(' '))
+}
+
+function blobHas(value: string) {
+  return actionBlob().includes(normalizedKey(value))
+}
+
+function arrayHasNamedAction(items: any[], names: string[]) {
+  const wanted = names.map(normalizedKey).filter(Boolean)
+
+  return asArray(items).some((item: any) => {
+    const text = normalizedKey([
+      item?.name,
+      item?.title,
+      item?.label,
+      item?.key,
+      item?.description,
+      item?.summary,
+      item?.detail,
+      item?.source
+    ].join(' '))
+
+    return wanted.some((needle) => text.includes(needle))
+  })
 }
 
 function barbarianRageMax(level: number) {
@@ -116,7 +165,29 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
   const species = speciesKey()
   const out: LimitedResourceDef[] = []
 
-  if (cls.includes('barbarian') || hasMathText('Rage')) {
+  const hasRage =
+    cls.includes('barbarian') ||
+    arrayHasNamedAction(props.bonusActions || [], ['Rage']) ||
+    arrayHasNamedAction(props.classFeatures || [], ['Rage']) ||
+    blobHas('rage')
+
+  const hasSecondWind =
+    cls.includes('fighter') ||
+    arrayHasNamedAction(props.bonusActions || [], ['Second Wind']) ||
+    arrayHasNamedAction(props.classFeatures || [], ['Second Wind']) ||
+    blobHas('second wind')
+
+  const hasBreathWeapon =
+    species.includes('dragonborn') ||
+    arrayHasNamedAction(props.speciesActions || [], ['Breath Weapon']) ||
+    blobHas('breath weapon')
+
+  const hasHealingHands =
+    species.includes('aasimar') ||
+    arrayHasNamedAction(props.speciesActions || [], ['Healing Hands']) ||
+    blobHas('healing hands')
+
+  if (hasRage) {
     out.push({
       key: 'rage',
       label: 'Rage',
@@ -128,7 +199,7 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
     })
   }
 
-  if (cls.includes('fighter') || hasMathText('Second Wind')) {
+  if (hasSecondWind) {
     out.push({
       key: 'second-wind',
       label: 'Second Wind',
@@ -140,7 +211,7 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
     })
   }
 
-  if (species.includes('dragonborn') || hasMathText('Breath Weapon')) {
+  if (hasBreathWeapon) {
     out.push({
       key: 'breath-weapon',
       label: 'Breath Weapon',
@@ -148,11 +219,11 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
       max: pb,
       reset: 'Long Rest',
       source: 'Dragonborn',
-      description: 'Track uses of your draconic Breath Weapon. The attack/effect card still lives in Actions.'
+      description: 'Track uses of your draconic Breath Weapon. The attack/effect card still lives in Species Actions.'
     })
   }
 
-  if (species.includes('aasimar') || hasMathText('Healing Hands')) {
+  if (hasHealingHands) {
     out.push({
       key: 'healing-hands',
       label: 'Healing Hands',

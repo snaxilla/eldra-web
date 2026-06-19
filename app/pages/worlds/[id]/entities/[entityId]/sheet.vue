@@ -6089,47 +6089,14 @@ async function saveSheet() {
                 v-else-if="activeSheetTab === 'actions'"
                 class="mt-0 grid gap-3 md:mt-6"
               >
-
-
-
-
-
-
                 <CharactersSheetLimitedResources
-
-
-
-
-
-
                   :world-id="worldId"
-
-
-
-
-
-
                   :entity-id="entityId"
-
-
-
-
-
-
                   :sheet="sheet"
-
-
-
-
-
-
                   :math="math"
-
-
-
-
-
-
+                  :species-actions="speciesAttackActions"
+                  :class-features="currentClassFeatureCards"
+                  :bonus-actions="bonusActionCards"
                 />
 
                 <div

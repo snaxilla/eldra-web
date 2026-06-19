@@ -6094,7 +6094,7 @@ async function saveSheet() {
                   :entity-id="entityId"
                   :sheet="sheet"
                   :math="math"
-                  :species-actions="speciesAttackActions"
+                  :species-actions="mainSpeciesActionCards"
                   :class-features="currentClassFeatureCards"
                   :bonus-actions="bonusActionCards"
                 />

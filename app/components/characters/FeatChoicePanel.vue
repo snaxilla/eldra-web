@@ -10,18 +10,23 @@ const emit = defineEmits<{
   (event: 'update:complete', complete: boolean): void
 }>()
 
-type SpellListName = 'Bard' | 'Cleric' | 'Druid' | 'Sorcerer' | 'Warlock' | 'Wizard'
+type SpellListName = 'Cleric' | 'Druid' | 'Wizard'
+type SpellAbilityName = 'Int' | 'Wis' | 'Cha'
 
 const SPELL_LIST_OPTIONS: Array<{ value: SpellListName; label: string }> = [
-  { value: 'Bard', label: 'Bard' },
   { value: 'Cleric', label: 'Cleric' },
   { value: 'Druid', label: 'Druid' },
-  { value: 'Sorcerer', label: 'Sorcerer' },
-  { value: 'Warlock', label: 'Warlock' },
   { value: 'Wizard', label: 'Wizard' }
 ]
 
+const SPELL_ABILITY_OPTIONS: Array<{ value: SpellAbilityName; label: string }> = [
+  { value: 'Int', label: 'Intelligence' },
+  { value: 'Wis', label: 'Wisdom' },
+  { value: 'Cha', label: 'Charisma' }
+]
+
 const spellListSelections = reactive<Record<string, string>>({})
+const spellAbilitySelections = reactive<Record<string, string>>({})
 const cantripSelections = reactive<Record<string, string[]>>({})
 const levelOneSelections = reactive<Record<string, string[]>>({})
 const spellOptionsByList = ref<Record<string, any[]>>({})
@@ -68,6 +73,23 @@ function normalizedKey(value: any) {
     .trim()
 }
 
+function uniqueStrings(values: any[]) {
+  const seen = new Set<string>()
+  const out: string[] = []
+
+  for (const value of values) {
+    const text = cleanText(value)
+    const key = normalizedKey(text)
+
+    if (!text || !key || seen.has(key)) continue
+
+    seen.add(key)
+    out.push(text)
+  }
+
+  return out
+}
+
 function spellId(option: any) {
   return String(option?.id || option?.value || '').trim()
 }
@@ -100,6 +122,9 @@ function choiceValues(value: any): string[] {
     if (obj.value) return choiceValues(obj.value)
     if (obj.valueLabel) return choiceValues(obj.valueLabel)
     if (obj.selectedLabel) return choiceValues(obj.selectedLabel)
+    if (obj.label) return choiceValues(obj.label)
+    if (obj.title) return choiceValues(obj.title)
+    if (obj.name) return choiceValues(obj.name)
 
     const truthyKeys = Object.entries(obj)
       .filter(([, item]) => item === true || item === 'true' || item === 1)
@@ -126,7 +151,7 @@ function choiceValues(value: any): string[] {
 
 function fixedMagicInitiateList(value: any) {
   const text = titleCase(value)
-  const match = text.match(/Magic Initiate\s*\((Bard|Cleric|Druid|Sorcerer|Warlock|Wizard)\)/i)
+  const match = text.match(/Magic Initiate\s*\((Cleric|Druid|Wizard)\)/i)
   if (!match?.[1]) return ''
 
   const normalized = titleCase(match[1])
@@ -135,9 +160,31 @@ function fixedMagicInitiateList(value: any) {
 
 function isMagicInitiate(value: any) {
   const key = normalizedKey(value)
+
   return key === 'magic initiate' ||
     key.startsWith('magic initiate ') ||
-    key.includes(' magic initiate ')
+    key.includes(' magic initiate ') ||
+    key.includes('magic initiate cleric') ||
+    key.includes('magic initiate druid') ||
+    key.includes('magic initiate wizard')
+}
+
+function magicInitiateNameFromGroup(group: any, candidate: any) {
+  const direct = titleCase(candidate)
+
+  if (isMagicInitiate(direct)) return direct
+
+  const label = titleCase(group.valueLabel || group.selectedLabel || group.name || group.title)
+  if (isMagicInitiate(label)) return label
+
+  const detail = cleanText(group.detail || group.description || group.summary || '')
+  if (isMagicInitiate(detail)) {
+    return label && normalizedKey(label) !== 'origin feat'
+      ? label
+      : 'Magic Initiate'
+  }
+
+  return ''
 }
 
 function collectFeatRowsFromChoiceMap(source: string, choices: Record<string, any> = {}) {
@@ -150,25 +197,51 @@ function collectFeatRowsFromChoiceMap(source: string, choices: Record<string, an
 
   for (const [choiceKey, rawGroup] of Object.entries(choices || {})) {
     const group = asObject(rawGroup)
-    const labelText = normalizedKey([
+
+    const groupText = normalizedKey([
       choiceKey,
       group.label,
       group.title,
       group.note,
-      group.detail
+      group.detail,
+      group.valueLabel,
+      group.selectedLabel
     ].join(' '))
 
-    if (!labelText.includes('feat')) continue
+    const looksFeatRelated =
+      groupText.includes('feat') ||
+      groupText.includes('magic initiate')
 
-    const values = choiceValues(group.values ?? group.selected ?? group.value)
-    for (const value of values) {
-      if (!isMagicInitiate(value)) continue
+    const candidateValues = uniqueStrings([
+      group.valueLabel,
+      group.selectedLabel,
+      ...choiceValues(group.values),
+      ...choiceValues(group.selected),
+      ...choiceValues(group.value),
+      group.detail
+    ])
+
+    const candidates = candidateValues.length
+      ? candidateValues
+      : [group.valueLabel, group.selectedLabel, group.detail, group.label].filter(Boolean)
+
+    for (const candidate of candidates) {
+      const featName = magicInitiateNameFromGroup(group, candidate)
+
+      if (!featName) continue
+      if (!looksFeatRelated && !isMagicInitiate(featName)) continue
+
+      const fixedSpellList =
+        fixedMagicInitiateList(featName) ||
+        fixedMagicInitiateList(group.valueLabel) ||
+        fixedMagicInitiateList(group.selectedLabel) ||
+        fixedMagicInitiateList(group.detail)
 
       rows.push({
-        key: `${source}-${choiceKey}-${normalizedKey(value).replace(/\s+/g, '-')}`,
+        key: `${source}-${choiceKey}-${normalizedKey(featName).replace(/\s+/g, '-') || 'magic-initiate'}`,
         source,
-        featName: titleCase(value),
-        fixedSpellList: fixedMagicInitiateList(value)
+        featName,
+        fixedSpellList
       })
     }
   }
@@ -183,9 +256,12 @@ const magicInitiateRows = computed(() => {
   ]
 
   const seen = new Set<string>()
+
   return rows.filter((row) => {
     const key = row.key
-    if (seen.has(key)) return false
+
+    if (!key || seen.has(key)) return false
+
     seen.add(key)
     return true
   })
@@ -193,6 +269,10 @@ const magicInitiateRows = computed(() => {
 
 function selectedSpellList(row: any) {
   return String(row.fixedSpellList || spellListSelections[row.key] || '').trim()
+}
+
+function selectedSpellAbility(row: any) {
+  return String(spellAbilitySelections[row.key] || '').trim()
 }
 
 function ensureChoiceState() {
@@ -203,6 +283,10 @@ function ensureChoiceState() {
       spellListSelections[row.key] = row.fixedSpellList
     } else if (spellListSelections[row.key] === undefined) {
       spellListSelections[row.key] = ''
+    }
+
+    if (spellAbilitySelections[row.key] === undefined) {
+      spellAbilitySelections[row.key] = ''
     }
 
     if (!Array.isArray(cantripSelections[row.key])) {
@@ -222,6 +306,10 @@ function ensureChoiceState() {
 
   for (const key of Object.keys(spellListSelections)) {
     if (!activeKeys.has(key)) delete spellListSelections[key]
+  }
+
+  for (const key of Object.keys(spellAbilitySelections)) {
+    if (!activeKeys.has(key)) delete spellAbilitySelections[key]
   }
 
   for (const key of Object.keys(cantripSelections)) {
@@ -263,6 +351,7 @@ watch(
         params.set('className', list)
 
         const result = await $fetch<any[]>(`/api/worlds/${props.worldId}/class-spell-options?${params.toString()}`)
+
         spellOptionsByList.value = {
           ...spellOptionsByList.value,
           [list]: asArray(result)
@@ -281,6 +370,7 @@ watch(
         }
       } catch (error) {
         console.error('[feat-choice-panel] failed to load spell list', list, error)
+
         spellOptionsByList.value = {
           ...spellOptionsByList.value,
           [list]: []
@@ -348,6 +438,7 @@ function optionDisabled(values: string[], slot: number, optionId: any) {
 const choicesComplete = computed(() =>
   magicInitiateRows.value.every((row) =>
     Boolean(selectedSpellList(row)) &&
+    Boolean(selectedSpellAbility(row)) &&
     selectedCantripValues(row).length >= 2 &&
     selectedLevelOneValues(row).length >= 1
   )
@@ -358,14 +449,16 @@ const spellcastingPayload = computed(() => {
   const prepared = new Set<string>()
   const featSpellIds = new Set<string>()
   const summary: Record<string, any> = {}
+  const abilities: Record<string, string> = {}
 
   for (const row of magicInitiateRows.value) {
     const spellList = selectedSpellList(row)
+    const spellAbility = selectedSpellAbility(row)
     const cantrips = selectedCantripValues(row)
     const levelOne = selectedLevelOneValues(row)
     const all = [...cantrips, ...levelOne]
 
-    if (!spellList || !all.length) continue
+    if (!spellList || !spellAbility || !all.length) continue
 
     for (const id of all) {
       featSpellIds.add(String(id))
@@ -376,10 +469,13 @@ const spellcastingPayload = computed(() => {
       prepared.add(String(id))
     }
 
+    abilities[row.key] = spellAbility
+
     summary[row.key] = {
       label: `${row.featName}${spellList ? ` (${spellList})` : ''}`,
       featName: row.featName,
       spellList,
+      spellcastingAbility: spellAbility,
       values: all.map(spellNameById),
       cantripSpellIds: cantrips,
       levelOneSpellIds: levelOne,
@@ -397,7 +493,8 @@ const spellcastingPayload = computed(() => {
     featChoiceSpellIds: Array.from(featSpellIds),
     featChoiceSpells: Array.from(featSpellIds),
     featSpellIds: Array.from(featSpellIds),
-    builderFeatChoices: summary
+    builderFeatChoices: summary,
+    builderFeatSpellcastingAbilities: abilities
   }
 })
 
@@ -426,7 +523,7 @@ const panelVisible = computed(() => magicInitiateRows.value.length > 0)
         <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Required Feat Choices</div>
         <div class="mt-1 text-sm font-semibold text-white">Magic Initiate Spell Choices</div>
         <div class="mt-1 text-xs leading-5 text-[#9f9278]">
-          Pick feat-granted cantrips and the level 1 spell now so they appear on the sheet.
+          Pick feat-granted cantrips, the level 1 spell, and the spellcasting ability now so they appear on the sheet.
         </div>
       </div>
 
@@ -456,27 +553,47 @@ const panelVisible = computed(() => magicInitiateRows.value.length > 0)
       >
         <div class="font-semibold text-white">{{ row.featName }}</div>
         <div class="mt-1 text-xs leading-5 text-[#9f9278]">
-          Choose two cantrips and one level 1 spell from the selected spell list.
+          Choose a spell list, spellcasting ability, two cantrips, and one level 1 spell.
         </div>
 
-        <label class="mt-3 block">
-          <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">Spell List</span>
-          <select
-            v-model="spellListSelections[row.key]"
-            :disabled="Boolean(row.fixedSpellList)"
-            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white disabled:opacity-70"
-          >
-            <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
-            <option
-              v-for="option in SPELL_LIST_OPTIONS"
-              :key="`${row.key}-${option.value}`"
-              :value="option.value"
-              class="bg-[#090909] text-[#f5e7bd]"
+        <div class="mt-3 grid gap-3 md:grid-cols-2">
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">Spell List</span>
+            <select
+              v-model="spellListSelections[row.key]"
+              :disabled="Boolean(row.fixedSpellList)"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white disabled:opacity-70"
             >
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
+              <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
+              <option
+                v-for="option in SPELL_LIST_OPTIONS"
+                :key="`${row.key}-${option.value}`"
+                :value="option.value"
+                class="bg-[#090909] text-[#f5e7bd]"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+
+          <label class="block">
+            <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">Spellcasting Ability</span>
+            <select
+              v-model="spellAbilitySelections[row.key]"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            >
+              <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
+              <option
+                v-for="option in SPELL_ABILITY_OPTIONS"
+                :key="`${row.key}-ability-${option.value}`"
+                :value="option.value"
+                class="bg-[#090909] text-[#f5e7bd]"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+        </div>
 
         <div v-if="selectedSpellList(row)" class="mt-3 grid gap-3">
           <div class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.48)] p-3">
@@ -566,6 +683,9 @@ const panelVisible = computed(() => magicInitiateRows.value.length > 0)
         >
           <span class="font-semibold text-white">{{ choice.label }}:</span>
           <span class="text-[#d8ceb8]"> {{ choice.values.join(', ') }}</span>
+          <span v-if="choice.spellcastingAbility" class="text-[#9f9278]">
+            · {{ choice.spellcastingAbility }}
+          </span>
         </div>
       </div>
     </div>

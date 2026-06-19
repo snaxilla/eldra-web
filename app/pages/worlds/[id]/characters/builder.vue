@@ -2315,6 +2315,114 @@ async function applyClassSpellcastingToCreatedCharacter(created: any) {
   })
 }
 
+const featSpellcastingPayload = ref<Record<string, any>>({})
+const featChoicesComplete = ref(true)
+
+function setFeatSpellcastingPayload(payload: any) {
+  featSpellcastingPayload.value =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload
+      : {}
+}
+
+function setFeatChoicesComplete(value: any) {
+  featChoicesComplete.value = value !== false
+}
+
+watch(
+  () => [
+    JSON.stringify(speciesChoicePayload.value || {}),
+    JSON.stringify(backgroundChoicePayload.value || {})
+  ],
+  () => {
+    featSpellcastingPayload.value = {}
+    featChoicesComplete.value = true
+  }
+)
+
+function builderUniqueIds(...values: any[]) {
+  const seen = new Set<string>()
+  const out: string[] = []
+
+  for (const value of values.flat()) {
+    const text = String(value || '').trim()
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    out.push(text)
+  }
+
+  return out
+}
+
+function mergeBuilderSpellcastingPayloads(...payloads: any[]) {
+  const out: Record<string, any> = {}
+
+  for (const rawPayload of payloads) {
+    const payload =
+      rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)
+        ? rawPayload
+        : {}
+
+    for (const [key, value] of Object.entries(payload)) {
+      if (Array.isArray(value)) continue
+
+      if (value && typeof value === 'object') {
+        out[key] = {
+          ...(out[key] && typeof out[key] === 'object' && !Array.isArray(out[key]) ? out[key] : {}),
+          ...value
+        }
+      } else if (value !== undefined) {
+        out[key] = value
+      }
+    }
+  }
+
+  const knownSpellIds = payloads.flatMap((payload: any) =>
+    Array.isArray(payload?.knownSpellIds) ? payload.knownSpellIds : []
+  )
+
+  const preparedSpellIds = payloads.flatMap((payload: any) =>
+    Array.isArray(payload?.preparedSpellIds) ? payload.preparedSpellIds : []
+  )
+
+  const selectedChoiceSpellIds = payloads.flatMap((payload: any) => [
+    ...(Array.isArray(payload?.selectedChoiceSpellIds) ? payload.selectedChoiceSpellIds : []),
+    ...(Array.isArray(payload?.featChoiceSpellIds) ? payload.featChoiceSpellIds : []),
+    ...(Array.isArray(payload?.featChoiceSpells) ? payload.featChoiceSpells : []),
+    ...(Array.isArray(payload?.featSpellIds) ? payload.featSpellIds : [])
+  ])
+
+  out.knownSpellIds = builderUniqueIds(knownSpellIds)
+  out.preparedSpellIds = builderUniqueIds(preparedSpellIds)
+
+  const featSpellIds = builderUniqueIds(selectedChoiceSpellIds)
+  if (featSpellIds.length) {
+    out.selectedChoiceSpellIds = featSpellIds
+    out.featChoiceSpellIds = featSpellIds
+    out.featChoiceSpells = featSpellIds
+    out.featSpellIds = featSpellIds
+  }
+
+  return out
+}
+
+async function applyBuilderSpellcastingToCreatedCharacter(created: any) {
+  const entityId = String(created?.id || created?.entity?.id || '')
+  const payload = mergeBuilderSpellcastingPayloads(
+    classSpellcastingPayload.value,
+    featSpellcastingPayload.value
+  )
+
+  if (!entityId || !Object.keys(payload).length) return
+
+  await $fetch(`/api/worlds/${worldId.value}/entities/${entityId}/sheet`, {
+    method: 'PATCH',
+    body: {
+      spellcasting: payload
+    }
+  })
+}
+
 watch(
   () => builderForm.backgroundEntityId,
   () => {
@@ -2688,6 +2796,13 @@ async function createCharacter() {
       return
     }
 
+
+    if (!featChoicesComplete.value) {
+      createError.value = 'Complete feat choices before creating this character.'
+      stepIndex.value = 0
+      return
+    }
+
     const created = await $fetch<any>(`/api/worlds/${worldId.value}/characters/builder`, {
       method: 'POST',
       body: {
@@ -2703,7 +2818,7 @@ async function createCharacter() {
       }
     })
 
-    await applyClassSpellcastingToCreatedCharacter(created)
+    await applyBuilderSpellcastingToCreatedCharacter(created)
 
     const entityId = String(created?.id || created?.entity?.id || '')
     if (!entityId) {
@@ -3135,6 +3250,15 @@ async function createCharacter() {
             :ability-scores="builderForm.abilityScores"
             @update:spellcasting="setClassSpellcastingPayload"
             @update:complete="setClassSpellChoicesComplete"
+          />
+
+          <CharactersFeatChoicePanel
+            class="md:col-span-2"
+            :world-id="worldId"
+            :species-choices="speciesChoicePayload"
+            :background-choices="backgroundChoicePayload"
+            @update:spellcasting="setFeatSpellcastingPayload"
+            @update:complete="setFeatChoicesComplete"
           />
 
           <div class="grid gap-3 md:grid-cols-2">

@@ -6090,6 +6090,13 @@ async function saveSheet() {
                 class="mt-0 grid gap-3 md:mt-6"
               >
 
+              <CharactersSheetLimitedResources
+                :world-id="worldId"
+                :entity-id="entityId"
+                :sheet="sheet"
+                :math="math"
+              />
+
 
                 <div
                   v-if="mainSpeciesActionCards.length"

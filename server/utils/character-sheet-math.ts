@@ -976,7 +976,6 @@ function computeCharacterSheetMathBase(sheet: any, resolved: any = {}, inventory
   }
 }
 
-
 function guidedPendingAsObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
@@ -1015,6 +1014,9 @@ function guidedPendingChoiceValues(value: any): string[] {
 
     if (Array.isArray(obj.values)) return guidedPendingChoiceValues(obj.values)
     if (Array.isArray(obj.selected)) return guidedPendingChoiceValues(obj.selected)
+    if (Array.isArray(obj.spellIds)) return guidedPendingChoiceValues(obj.spellIds)
+    if (Array.isArray(obj.cantripSpellIds)) return guidedPendingChoiceValues(obj.cantripSpellIds)
+    if (Array.isArray(obj.levelOneSpellIds)) return guidedPendingChoiceValues(obj.levelOneSpellIds)
     if (obj.value) return guidedPendingChoiceValues(obj.value)
     if (obj.valueLabel) return guidedPendingChoiceValues(obj.valueLabel)
     if (obj.selectedLabel) return guidedPendingChoiceValues(obj.selectedLabel)
@@ -1101,6 +1103,90 @@ function guidedPendingBuilderClassSkillValues(sheet: any) {
   ))
 }
 
+function guidedPendingBuilderFeatChoiceGroups(sheet: any) {
+  const sheetChoices = guidedPendingAsObject(sheet?.choices)
+  const spellcasting = guidedPendingAsObject(sheet?.spellcasting)
+
+  const sources = [
+    spellcasting.builderFeatChoices,
+    spellcasting.builder_feat_choices,
+    sheetChoices.builderFeatChoices,
+    sheetChoices.builder_feat_choices
+  ]
+
+  const out: Record<string, any> = {}
+
+  for (const source of sources) {
+    const obj = guidedPendingAsObject(source)
+
+    for (const [key, value] of Object.entries(obj)) {
+      out[key] = value
+    }
+  }
+
+  return out
+}
+
+function guidedPendingBuilderMagicInitiateChoices(sheet: any) {
+  const groups = guidedPendingBuilderFeatChoiceGroups(sheet)
+  const out: any[] = []
+
+  for (const [key, rawGroup] of Object.entries(groups)) {
+    const group = guidedPendingAsObject(rawGroup)
+
+    const groupText = guidedPendingNormalize([
+      key,
+      group.label,
+      group.title,
+      group.featName,
+      group.spellList,
+      group.source,
+      group.values,
+      group.detail,
+      group.note
+    ].join(' '))
+
+    if (!groupText.includes('magic initiate')) continue
+
+    const spellIds = guidedPendingChoiceValues(
+      group.spellIds ??
+      group.selectedChoiceSpellIds ??
+      group.featChoiceSpellIds ??
+      group.featChoiceSpells ??
+      group.featSpellIds
+    )
+
+    const cantripIds = guidedPendingChoiceValues(group.cantripSpellIds)
+    const levelOneIds = guidedPendingChoiceValues(group.levelOneSpellIds)
+    const displayedValues = guidedPendingChoiceValues(group.values)
+
+    const hasSpellList =
+      Boolean(String(group.spellList || '').trim()) ||
+      /\bmagic initiate\s+[a-z]+\b/.test(groupText) ||
+      /\bmagic initiate\s*\([a-z]+\)/.test(groupText)
+
+    const hasEnoughSpells =
+      spellIds.length >= 3 ||
+      (cantripIds.length >= 2 && levelOneIds.length >= 1) ||
+      displayedValues.length >= 3
+
+    if (hasEnoughSpells) {
+      out.push({
+        key,
+        spellList: String(group.spellList || '').trim(),
+        hasSpellList,
+        hasEnoughSpells
+      })
+    }
+  }
+
+  return out
+}
+
+function guidedPendingMagicInitiateResolved(sheet: any) {
+  return guidedPendingBuilderMagicInitiateChoices(sheet).length > 0
+}
+
 function guidedPendingRequiredCount(choice: any) {
   const obj = guidedPendingAsObject(choice)
 
@@ -1157,19 +1243,39 @@ function guidedPendingLooksLikeClassSkillChoice(sheet: any, choice: any) {
     Boolean(className && text.includes(className))
 }
 
+function guidedPendingLooksLikeMagicInitiateChoice(choice: any) {
+  const text = guidedPendingNormalize(choice)
+
+  if (!text.includes('magic initiate')) return false
+
+  return text.includes('spell list') ||
+    text.includes('spellcasting ability') ||
+    text.includes('choose spell') ||
+    text.includes('choose cantrip') ||
+    text.includes('cantrip') ||
+    text.includes('level 1 spell') ||
+    text.includes('1st level spell') ||
+    text.includes('selection') ||
+    text.includes('remaining')
+}
+
 function guidedFilterResolvedPendingChoices(sheet: any, pendingChoices: any[]) {
   if (!Array.isArray(pendingChoices) || !pendingChoices.length) return []
 
   const chosenClassSkills = guidedPendingBuilderClassSkillValues(sheet)
-
-  if (!chosenClassSkills.length) return pendingChoices
+  const magicInitiateResolved = guidedPendingMagicInitiateResolved(sheet)
 
   return pendingChoices.filter((choice) => {
-    if (!guidedPendingLooksLikeClassSkillChoice(sheet, choice)) return true
+    if (chosenClassSkills.length && guidedPendingLooksLikeClassSkillChoice(sheet, choice)) {
+      const required = guidedPendingRequiredCount(choice)
+      return chosenClassSkills.length < required
+    }
 
-    const required = guidedPendingRequiredCount(choice)
+    if (magicInitiateResolved && guidedPendingLooksLikeMagicInitiateChoice(choice)) {
+      return false
+    }
 
-    return chosenClassSkills.length < required
+    return true
   })
 }
 
@@ -1238,3 +1344,4 @@ export function computeCharacterSheetMath(sheet: any, resolved: any, inventory: 
   const math = computeCharacterSheetMathBase(sheet, resolved, inventory)
   return guidedWithResolvedPendingChoicesFiltered(sheet, math)
 }
+

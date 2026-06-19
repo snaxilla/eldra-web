@@ -4,11 +4,22 @@ function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
-function mergeLimitedResourceUses(existing: any, incoming: any) {
-  return {
-    ...asObject(existing),
-    ...asObject(incoming)
+function safeNumber(value: any) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
+}
+
+function normalizeLimitedResourceUses(value: any) {
+  const out: Record<string, number> = {}
+
+  for (const [key, rawValue] of Object.entries(asObject(value))) {
+    const normalizedKey = String(key || '').trim()
+    if (!normalizedKey) continue
+
+    out[normalizedKey] = safeNumber(rawValue)
   }
+
+  return out
 }
 
 function mergeResources(existing: any, patch: any) {
@@ -18,10 +29,10 @@ function mergeResources(existing: any, patch: any) {
   return {
     ...existingResources,
     ...patchResources,
-    limitedResourceUses: mergeLimitedResourceUses(
-      existingResources.limitedResourceUses ?? existingResources.limited_resource_uses,
-      patchResources.limitedResourceUses ?? patchResources.limited_resource_uses
-    )
+    limitedResourceUses: {
+      ...normalizeLimitedResourceUses(existingResources.limitedResourceUses ?? existingResources.limited_resource_uses),
+      ...normalizeLimitedResourceUses(patchResources.limitedResourceUses ?? patchResources.limited_resource_uses)
+    }
   }
 }
 

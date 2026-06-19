@@ -52,6 +52,26 @@ function proficiencyBonus() {
   )))
 }
 
+function classKey() {
+  return normalizedKey(props.sheet?.class_name || props.sheet?.className || '')
+}
+
+function speciesKey() {
+  return normalizedKey(props.sheet?.species_name || props.sheet?.speciesName || '')
+}
+
+function mathTextBlob() {
+  try {
+    return normalizedKey(JSON.stringify(props.math || {}))
+  } catch {
+    return ''
+  }
+}
+
+function hasMathText(value: string) {
+  return mathTextBlob().includes(normalizedKey(value))
+}
+
 function barbarianRageMax(level: number) {
   if (level >= 17) return 6
   if (level >= 12) return 5
@@ -64,14 +84,6 @@ function fighterSecondWindMax(level: number) {
   if (level >= 10) return 4
   if (level >= 4) return 3
   return 2
-}
-
-function classKey() {
-  return normalizedKey(props.sheet?.class_name || props.sheet?.className || '')
-}
-
-function speciesKey() {
-  return normalizedKey(props.sheet?.species_name || props.sheet?.speciesName || '')
 }
 
 function currentResources() {
@@ -104,7 +116,7 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
   const species = speciesKey()
   const out: LimitedResourceDef[] = []
 
-  if (cls.includes('barbarian')) {
+  if (cls.includes('barbarian') || hasMathText('Rage')) {
     out.push({
       key: 'rage',
       label: 'Rage',
@@ -116,7 +128,7 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
     })
   }
 
-  if (cls.includes('fighter')) {
+  if (cls.includes('fighter') || hasMathText('Second Wind')) {
     out.push({
       key: 'second-wind',
       label: 'Second Wind',
@@ -128,7 +140,7 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
     })
   }
 
-  if (species.includes('dragonborn')) {
+  if (species.includes('dragonborn') || hasMathText('Breath Weapon')) {
     out.push({
       key: 'breath-weapon',
       label: 'Breath Weapon',
@@ -140,7 +152,7 @@ const limitedResourceDefs = computed<LimitedResourceDef[]>(() => {
     })
   }
 
-  if (species.includes('aasimar')) {
+  if (species.includes('aasimar') || hasMathText('Healing Hands')) {
     out.push({
       key: 'healing-hands',
       label: 'Healing Hands',

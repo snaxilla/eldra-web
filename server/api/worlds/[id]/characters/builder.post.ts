@@ -901,6 +901,38 @@ function backgroundEquipmentValuesFromChoices(backgroundChoices: Record<string, 
     })
 }
 
+function classEquipmentValuesFromChoices(classChoices: Record<string, any>) {
+  const out: string[] = []
+
+  for (const [key, rawGroup] of Object.entries(classChoices)) {
+    const group = asObject(rawGroup)
+    const text = `${key} ${group.label || ''}`.toLowerCase()
+
+    if (!text.includes('equipment')) continue
+    if (text.includes('currency') || text.includes('coin')) continue
+
+    const values = Array.isArray(group.values)
+      ? group.values
+      : group.value
+        ? [group.value]
+        : []
+
+    out.push(...values.map(cleanBuilderCarryoverText).filter(Boolean))
+  }
+
+  const seen = new Set<string>()
+
+  return out
+    .filter((item) => !looksLikeNonEquipmentItem(item))
+    .filter((item) => !/^\d+\s*(?:GP|SP|CP|PP|Gold Pieces?)$/i.test(item))
+    .filter((item) => {
+      const key = normalizeItemLookupText(inventoryItemQuantityAndName(item).name)
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
 function currencyBagFromText(value: any) {
   const bag = {
     pp: 0,
@@ -1202,7 +1234,7 @@ async function createOrPatchCharacterSheet(options: {
   const existingChoices = asObject(existing?.choices)
   const existingSpellcasting = asObject(existing?.spellcasting)
   const existingResources = asObject(existing?.resources)
-  const backgroundCurrency = backgroundCurrencyFromChoices(options.backgroundChoices)
+  const backgroundCurrency = addCurrencyBags(backgroundCurrencyFromChoices(options.backgroundChoices), backgroundCurrencyFromChoices(options.classChoices))
   const mergedCurrency = mergeBuilderCurrency(existingResources, backgroundCurrency)
 
   const payload = {
@@ -1301,7 +1333,7 @@ async function createOrPatchCharacterSheet(options: {
       itemType: 'Tool'
     }))
 
-  const equipmentItems = backgroundEquipmentValuesFromChoices(options.backgroundChoices)
+  const equipmentItems = [...classEquipmentValuesFromChoices(options.classChoices), ...backgroundEquipmentValuesFromChoices(options.backgroundChoices)]
     .map((name) => ({
       name,
       source: 'Background Equipment',

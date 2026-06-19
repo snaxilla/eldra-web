@@ -2293,6 +2293,33 @@ function setClassSpellChoicesComplete(value: any) {
   classSpellChoicesComplete.value = value !== false
 }
 
+const classEquipmentPayload = ref<Record<string, any>>({})
+const classEquipmentChoicesComplete = ref(true)
+
+function setClassEquipmentPayload(payload: any) {
+  classEquipmentPayload.value =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload
+      : {}
+}
+
+function setClassEquipmentChoicesComplete(value: any) {
+  classEquipmentChoicesComplete.value = value !== false
+}
+
+const mergedClassChoicePayload = computed(() => ({
+  ...classChoicePayload.value,
+  ...classEquipmentPayload.value
+}))
+
+watch(
+  () => builderForm.classEntityId,
+  () => {
+    classEquipmentPayload.value = {}
+    classEquipmentChoicesComplete.value = true
+  }
+)
+
 watch(
   () => [builderForm.classEntityId, builderForm.level],
   () => {
@@ -2803,6 +2830,13 @@ async function createCharacter() {
       return
     }
 
+
+    if (builderForm.classEntityId && !classEquipmentChoicesComplete.value) {
+      createError.value = 'Complete class equipment choices before creating this character.'
+      stepIndex.value = 0
+      return
+    }
+
     const created = await $fetch<any>(`/api/worlds/${worldId.value}/characters/builder`, {
       method: 'POST',
       body: {
@@ -2813,7 +2847,7 @@ async function createCharacter() {
         backgroundEntityId: builderForm.backgroundEntityId || null,
         abilityScores: { ...builderForm.abilityScores },
         speciesChoices: speciesChoicePayload.value,
-        classChoices: classChoicePayload.value,
+        classChoices: mergedClassChoicePayload.value,
         backgroundChoices: backgroundChoicePayload.value
       }
     })
@@ -3261,6 +3295,13 @@ async function createCharacter() {
             @update:complete="setFeatChoicesComplete"
           />
 
+          <CharactersClassEquipmentChoicePanel
+            class="md:col-span-2"
+            :class-entity="selectedClassEntity"
+            @update:payload="setClassEquipmentPayload"
+            @update:complete="setClassEquipmentChoicesComplete"
+          />
+
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block">
               <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Background</span>
@@ -3438,13 +3479,13 @@ async function createCharacter() {
 
           <!-- Review Class Choices -->
           <div
-            v-if="Object.keys(classChoicePayload).length"
+            v-if="Object.keys(mergedClassChoicePayload).length"
             class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
           >
             <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Class Choices</div>
             <div class="mt-2 grid gap-2">
               <div
-                v-for="choice in Object.values(classChoicePayload)"
+                v-for="choice in Object.values(mergedClassChoicePayload)"
                 :key="choice.label"
                 class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(20,17,12,0.42)] p-2 text-sm"
               >

@@ -4515,6 +4515,7 @@ async function takeLongRest() {
     syncFormFromSheet()
     syncSpellDraftsFromSheet()
     restSaveSuccess.value = 'Long rest complete.'
+
     await resetLimitedResourcesForLongRest()
 
     closeRestPopover()
@@ -5441,7 +5442,7 @@ async function saveSheet() {
                     </div>
 
                     <div class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]">
-                      <div>Long Rest restores HP to max, clears temp HP, and resets spell slots.</div>
+                      <div>Long Rest restores HP to max, clears temp HP, resets spell slots, and clears long-rest resources.</div>
                       <div class="mt-1">Short Rest tracking comes next with Hit Dice and short-rest resources.</div>
                     </div>
 

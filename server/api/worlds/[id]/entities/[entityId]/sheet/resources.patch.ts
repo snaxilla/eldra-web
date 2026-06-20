@@ -22,17 +22,22 @@ function normalizeLimitedResourceUses(value: any) {
   return out
 }
 
-function mergeResources(existing: any, patch: any) {
+function mergeResources(existing: any, patch: any, resetLimitedResourceUses = false) {
   const existingResources = asObject(existing)
   const patchResources = asObject(patch)
+  const patchLimitedUses = normalizeLimitedResourceUses(
+    patchResources.limitedResourceUses ?? patchResources.limited_resource_uses
+  )
 
   return {
     ...existingResources,
     ...patchResources,
-    limitedResourceUses: {
-      ...normalizeLimitedResourceUses(existingResources.limitedResourceUses ?? existingResources.limited_resource_uses),
-      ...normalizeLimitedResourceUses(patchResources.limitedResourceUses ?? patchResources.limited_resource_uses)
-    }
+    limitedResourceUses: resetLimitedResourceUses
+      ? patchLimitedUses
+      : {
+          ...normalizeLimitedResourceUses(existingResources.limitedResourceUses ?? existingResources.limited_resource_uses),
+          ...patchLimitedUses
+        }
   }
 }
 
@@ -69,7 +74,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const resources = mergeResources(sheet.resources, body?.resources)
+  const resetLimitedResourceUses = body?.resetLimitedResourceUses === true ||
+    body?.resources?.resetLimitedResourceUses === true
+
+  const resources = mergeResources(sheet.resources, body?.resources, resetLimitedResourceUses)
 
   const patched = await dxFetch(`/items/character_sheets/${sheet.id}`, {
     method: 'PATCH',

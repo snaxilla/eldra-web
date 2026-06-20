@@ -2152,6 +2152,273 @@ function rollSpeciesActionDamage(action: any) {
   )
 }
 
+const limitedResourceUsesDraft = ref<Record<string, number>>({})
+const limitedResourceSaveState = reactive({
+  saving: false,
+  error: '',
+  success: ''
+})
+
+function limitedResourceAsObject(value: any) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function limitedResourceNumber(value: any, fallback = 0) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function normalizedLimitedResourceText(value: any) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function sheetLimitedResourceUses() {
+  const resources = limitedResourceAsObject(sheet.value?.resources)
+  return limitedResourceAsObject(resources.limitedResourceUses ?? resources.limited_resource_uses)
+}
+
+watch(
+  () => sheet.value?.resources,
+  () => {
+    const next: Record<string, number> = {}
+
+    for (const [key, value] of Object.entries(sheetLimitedResourceUses())) {
+      const normalizedKey = String(key || '').trim()
+      if (!normalizedKey) continue
+
+      next[normalizedKey] = Math.max(0, Math.floor(limitedResourceNumber(value, 0)))
+    }
+
+    limitedResourceUsesDraft.value = next
+  },
+  { immediate: true, deep: true }
+)
+
+function limitedResourceProficiencyBonus() {
+  return Math.max(2, Math.floor(limitedResourceNumber(
+    math.value?.proficiencyBonus ??
+    math.value?.proficiency_bonus ??
+    sheet.value?.proficiencyBonus ??
+    sheet.value?.proficiency_bonus,
+    2
+  )))
+}
+
+function speciesActionLimitedResourceKey(action: any) {
+  const text = normalizedLimitedResourceText([
+    action?.name,
+    action?.title,
+    action?.label,
+    action?.detail,
+    action?.description,
+    action?.notes,
+    action?.source
+  ].join(' '))
+
+  if (text.includes('breath weapon')) return 'breath-weapon'
+  if (text.includes('healing hands')) return 'healing-hands'
+
+  return ''
+}
+
+function speciesActionLimitedResourceMax(action: any) {
+  const key = speciesActionLimitedResourceKey(action)
+
+  if (key === 'breath-weapon') return limitedResourceProficiencyBonus()
+  if (key === 'healing-hands') return 1
+
+  return 0
+}
+
+function speciesActionLimitedResourceReset(action: any) {
+  const key = speciesActionLimitedResourceKey(action)
+
+  if (key === 'breath-weapon') return 'Long Rest'
+  if (key === 'healing-hands') return 'Long Rest'
+
+  return ''
+}
+
+function resourceStateForSpeciesAction(action: any) {
+  const key = speciesActionLimitedResourceKey(action)
+  if (!key) return null
+
+  const max = speciesActionLimitedResourceMax(action)
+  if (!max) return null
+
+  const used = Math.max(0, Math.min(max, Math.floor(limitedResourceNumber(limitedResourceUsesDraft.value[key], 0))))
+  const remaining = Math.max(0, max - used)
+
+  return {
+    key,
+    label: String(action?.name || action?.title || 'Limited Resource'),
+    max,
+    used,
+    remaining,
+    reset: speciesActionLimitedResourceReset(action)
+  }
+}
+
+function speciesActionResourceStatusText(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state) return ''
+
+  return `${state.remaining} / ${state.max} Remaining`
+}
+
+function speciesActionResourceUsedText(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state) return ''
+
+  return `${state.used} Used`
+}
+
+function speciesActionResourceResetText(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  return state?.reset || '—'
+}
+
+function canUseSpeciesActionResource(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  return Boolean(state && state.remaining > 0 && !limitedResourceSaveState.saving)
+}
+
+function canUndoSpeciesActionResource(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  return Boolean(state && state.used > 0 && !limitedResourceSaveState.saving)
+}
+
+function speciesActionButtonGridClass(action: any) {
+  const count = [
+    resourceStateForSpeciesAction(action),
+    action?.damageFormula,
+    true
+  ].filter(Boolean).length
+
+  if (count >= 3) return 'grid-cols-3'
+  if (count === 2) return 'grid-cols-2'
+  return 'grid-cols-1'
+}
+
+async function persistLimitedResourceUses() {
+  if (!worldId.value || !entityId.value) return
+
+  limitedResourceSaveState.saving = true
+  limitedResourceSaveState.error = ''
+  limitedResourceSaveState.success = ''
+
+  try {
+    const res = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/resources`, {
+      method: 'PATCH',
+      body: {
+        resources: {
+          limitedResourceUses: limitedResourceUsesDraft.value
+        }
+      }
+    })
+
+    const nextResources = limitedResourceAsObject(res?.resources)
+    const nextUses = limitedResourceAsObject(nextResources.limitedResourceUses ?? nextResources.limited_resource_uses ?? limitedResourceUsesDraft.value)
+    const normalized: Record<string, number> = {}
+
+    for (const [key, value] of Object.entries(nextUses)) {
+      const normalizedKey = String(key || '').trim()
+      if (!normalizedKey) continue
+
+      normalized[normalizedKey] = Math.max(0, Math.floor(limitedResourceNumber(value, 0)))
+    }
+
+    limitedResourceUsesDraft.value = normalized
+
+    if (sheet.value) {
+      sheet.value = {
+        ...sheet.value,
+        resources: {
+          ...limitedResourceAsObject(sheet.value.resources),
+          ...nextResources,
+          limitedResourceUses: normalized
+        }
+      }
+    }
+
+    limitedResourceSaveState.success = 'Saved.'
+  } catch (error: any) {
+    limitedResourceSaveState.error = error?.data?.message || error?.statusMessage || error?.message || 'Failed to save resource use.'
+  } finally {
+    limitedResourceSaveState.saving = false
+  }
+}
+
+function useSpeciesActionResource(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state || state.remaining <= 0) return
+
+  limitedResourceUsesDraft.value = {
+    ...limitedResourceUsesDraft.value,
+    [state.key]: state.used + 1
+  }
+
+  void persistLimitedResourceUses()
+}
+
+function undoSpeciesActionResource(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state || state.used <= 0) return
+
+  limitedResourceUsesDraft.value = {
+    ...limitedResourceUsesDraft.value,
+    [state.key]: Math.max(0, state.used - 1)
+  }
+
+  void persistLimitedResourceUses()
+}
+
+function resetSpeciesActionResource(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state) return
+
+  limitedResourceUsesDraft.value = {
+    ...limitedResourceUsesDraft.value,
+    [state.key]: 0
+  }
+
+  void persistLimitedResourceUses()
+}
+
+async function resetLimitedResourcesForLongRest() {
+  limitedResourceUsesDraft.value = {}
+
+  try {
+    const res = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/resources`, {
+      method: 'PATCH',
+      body: {
+        resetLimitedResourceUses: true,
+        resources: {
+          limitedResourceUses: {}
+        }
+      }
+    })
+
+    if (sheet.value) {
+      sheet.value = {
+        ...sheet.value,
+        resources: {
+          ...limitedResourceAsObject(sheet.value.resources),
+          ...limitedResourceAsObject(res?.resources),
+          limitedResourceUses: {}
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[character-sheet] failed to reset limited resources on long rest', error)
+  }
+}
+
+
 function inventoryArmorClassValue(item: any) {
   const core = inventoryItemCore(item)
   const raw = inventoryItemRaw(item)
@@ -4248,6 +4515,8 @@ async function takeLongRest() {
     syncFormFromSheet()
     syncSpellDraftsFromSheet()
     restSaveSuccess.value = 'Long rest complete.'
+    await resetLimitedResourcesForLongRest()
+
     closeRestPopover()
   } catch (err: any) {
     restSaveError.value =
@@ -6089,16 +6358,6 @@ async function saveSheet() {
                 v-else-if="activeSheetTab === 'actions'"
                 class="mt-0 grid gap-3 md:mt-6"
               >
-                <CharactersSheetLimitedResources
-                  :world-id="worldId"
-                  :entity-id="entityId"
-                  :sheet="sheet"
-                  :math="math"
-                  :species-actions="mainSpeciesActionCards"
-                  :class-features="currentClassFeatureCards"
-                  :bonus-actions="bonusActionCards"
-                />
-
                 <div
                   v-if="mainSpeciesActionCards.length"
                   class="eldra-codex-soft rounded-none p-4"
@@ -6133,9 +6392,18 @@ async function saveSheet() {
                           <div class="mt-1 text-xs text-[#9f9278]">{{ action.source || 'Species' }}</div>
                         </div>
 
-                        <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
-                          {{ action.timing }}
-                        </span>
+                        <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                          <span
+                            v-if="resourceStateForSpeciesAction(action)"
+                            class="rounded-none border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-100"
+                          >
+                            {{ speciesActionResourceStatusText(action) }}
+                          </span>
+
+                          <span class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                            {{ action.timing }}
+                          </span>
+                        </div>
                       </div>
 
                       <div
@@ -6167,6 +6435,58 @@ async function saveSheet() {
                         {{ action.notes }}
                       </div>
 
+                      <div
+                        v-if="resourceStateForSpeciesAction(action)"
+                        class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#d8ceb8]"
+                      >
+                        <div class="grid grid-cols-3 gap-2">
+                          <div>
+                            <div class="uppercase tracking-[0.18em] text-[#9f9278]">Uses</div>
+                            <div class="mt-1 font-semibold text-white">{{ speciesActionResourceStatusText(action) }}</div>
+                          </div>
+
+                          <div>
+                            <div class="uppercase tracking-[0.18em] text-[#9f9278]">Used</div>
+                            <div class="mt-1 font-semibold text-white">{{ speciesActionResourceUsedText(action) }}</div>
+                          </div>
+
+                          <div>
+                            <div class="uppercase tracking-[0.18em] text-[#9f9278]">Reset</div>
+                            <div class="mt-1 font-semibold text-white">{{ speciesActionResourceResetText(action) }}</div>
+                          </div>
+                        </div>
+
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+                            :disabled="!canUndoSpeciesActionResource(action)"
+                            @click.stop="undoSpeciesActionResource(action)"
+                          >
+                            Undo Use
+                          </button>
+
+                          <button
+                            type="button"
+                            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+                            :disabled="!canUndoSpeciesActionResource(action)"
+                            @click.stop="resetSpeciesActionResource(action)"
+                          >
+                            Reset Uses
+                          </button>
+                        </div>
+
+                        <div
+                          v-if="limitedResourceSaveState.error || limitedResourceSaveState.success"
+                          class="mt-3 rounded-none border px-3 py-2 text-xs"
+                          :class="limitedResourceSaveState.error
+                            ? 'border-red-400/24 bg-red-500/10 text-red-100'
+                            : 'border-emerald-400/24 bg-emerald-500/10 text-emerald-100'"
+                        >
+                          {{ limitedResourceSaveState.error || limitedResourceSaveState.success }}
+                        </div>
+                      </div>
+
                       <p
                         v-if="action.detail"
                         class="mt-3 text-xs leading-5 text-[#d8ceb8]"
@@ -6176,8 +6496,18 @@ async function saveSheet() {
 
                       <div
                         class="mt-3 grid gap-2"
-                        :class="action.damageFormula ? 'grid-cols-2' : 'grid-cols-1'"
+                        :class="speciesActionButtonGridClass(action)"
                       >
+                        <button
+                          v-if="resourceStateForSpeciesAction(action)"
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+                          :disabled="!canUseSpeciesActionResource(action)"
+                          @click.stop="useSpeciesActionResource(action)"
+                        >
+                          Use
+                        </button>
+
                         <button
                           v-if="action.damageFormula"
                           type="button"
@@ -6190,7 +6520,7 @@ async function saveSheet() {
                         <button
                           type="button"
                           class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
-                          @click.stop="openItemDrawer(action)"
+                          @click.stop="openFeatureDrawer(action)"
                         >
                           Details
                         </button>

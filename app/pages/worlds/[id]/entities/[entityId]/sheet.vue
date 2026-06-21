@@ -4727,6 +4727,27 @@ async function levelUpOnceFromManager() {
   await saveCharacterLevelFromManager(nextLevel)
 }
 
+const subclassSetupChoiceRequired = computed(() => {
+  const level = Number(currentLevelNumber.value || sheet.value?.level || sheetForm.level || 1)
+  const hasClass = Boolean(sheet.value?.class_entity_id || sheetForm.classEntityId || sheet.value?.class_name || sheetForm.className)
+  const hasSubclass = Boolean(sheet.value?.subclass_entity_id || sheetForm.subclassName || sheet.value?.subclass_name)
+
+  return hasClass && !hasSubclass && level >= 3
+})
+
+const levelSetupChoiceCount = computed(() =>
+  levelUpPendingChoiceCards.value.length +
+  (subclassSetupChoiceRequired.value ? 1 : 0)
+)
+
+function applyChildSheetPatchResult(saved: any) {
+  if (!saved) return
+
+  data.value = saved as any
+  syncFormFromSheet()
+  syncSpellDraftsFromSheet()
+}
+
 async function takeShortRest() {
   restSaveError.value = ''
   restSaveSuccess.value = 'Short rest noted. Hit Dice spending and short-rest resources come next.'
@@ -6097,10 +6118,20 @@ async function saveSheet() {
                   data-sheet-level-manager-mobile
                   :level="currentLevelNumber"
                   :class-name="resolvedClass?.title || sheet?.class_name || '—'"
-                  :choice-count="levelUpPendingChoiceCards.length"
+                  :choice-count="levelSetupChoiceCount"
                   :saving="sheetSaving"
                   @save-level="saveCharacterLevelFromManager"
                   @level-up="levelUpOnceFromManager"
+                />
+
+                <CharactersSheetLevelSetupChoices
+                  v-if="mode === 'build'"
+                  class="mt-3"
+                  :world-id="worldId"
+                  :entity-id="entityId"
+                  :sheet="sheet"
+                  :level="currentLevelNumber"
+                  @saved="applyChildSheetPatchResult"
                 />
 
 
@@ -6237,10 +6268,20 @@ async function saveSheet() {
             class="mt-4"
             :level="currentLevelNumber"
             :class-name="resolvedClass?.title || sheet?.class_name || '—'"
-            :choice-count="levelUpPendingChoiceCards.length"
+            :choice-count="levelSetupChoiceCount"
             :saving="sheetSaving"
             @save-level="saveCharacterLevelFromManager"
             @level-up="levelUpOnceFromManager"
+          />
+
+          <CharactersSheetLevelSetupChoices
+            v-if="mode === 'build'"
+            class="mt-3"
+            :world-id="worldId"
+            :entity-id="entityId"
+            :sheet="sheet"
+            :level="currentLevelNumber"
+            @saved="applyChildSheetPatchResult"
           />
 
           <div v-if="activeSheetTab === 'overview'" class="mt-6 hidden gap-3 md:grid md:grid-cols-2 lg:grid-cols-4">

@@ -3,6 +3,8 @@ definePageMeta({
   layout: 'world-workspace'
 })
 
+const BUILDER_LEVEL_OPTIONS = Array.from({ length: 20 }, (_item, index) => index + 1)
+
 const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
@@ -2976,6 +2978,20 @@ async function createCharacter() {
                   class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
                   placeholder="Dingus Khan"
                 >
+              </label>
+
+              <label data-guided-starting-level class="block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Starting Level</span>
+                <select v-model="builderForm.level" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
+                  <option
+                    v-for="levelOption in BUILDER_LEVEL_OPTIONS"
+                    :key="levelOption"
+                    :value="String(levelOption)"
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    Level {{ levelOption }}
+                  </option>
+                </select>
               </label>
 
             <label class="block">

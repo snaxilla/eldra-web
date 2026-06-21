@@ -1,5 +1,11 @@
 import { createEntityRecord, uploadImageToDirectus, dxFetch } from '../../../../utils/entity-factory'
 
+function clampCreateCharacterLevel(value: any) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 1
+  return Math.max(1, Math.min(20, Math.floor(parsed)))
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
   if (!worldId) {
@@ -30,6 +36,8 @@ export default defineEventHandler(async (event) => {
     archetypeRaw === 'pc' ? 'pc' :
     archetypeRaw === 'npc_sheet' ? 'npc_sheet' :
     'npc'
+    const startingLevel = clampCreateCharacterLevel(getField('level') || getField('startingLevel') || 1)
+
 
   if (!title) {
     throw createError({

@@ -168,6 +168,12 @@ async function upsertCharacterCoreSheetLink(entityId: string, entityType: string
   }).catch(() => null)
 }
 
+function clampSheetLevel(value: any, fallback = 1) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(1, Math.min(20, Math.floor(parsed)))
+}
+
 function defaultAbilityScores() {
   return {
     str: 10,
@@ -195,7 +201,7 @@ function defaultCombatStats() {
   }
 }
 
-async function createSheetForEntity(worldId: string, entity: any) {
+async function createSheetForEntity(worldId: string, entity: any, options: { level?: any } = {}) {
   const created = await dxFetch('/items/character_sheets', {
     method: 'POST',
     body: JSON.stringify({
@@ -256,12 +262,12 @@ export async function getCharacterSheetForEntity(worldId: string, entityId: stri
   }
 }
 
-export async function ensureCharacterSheetForEntity(worldId: string, entityId: string) {
+export async function ensureCharacterSheetForEntity(worldId: string, entityId: string, options: { level?: any } = {}) {
   const entity = await loadCharacterEntity(worldId, entityId)
   let sheet = await findActiveSheet(worldId, entityId)
 
   if (!sheet) {
-    sheet = await createSheetForEntity(worldId, entity)
+    sheet = await createSheetForEntity(worldId, entity, options)
   } else {
     await upsertCharacterCoreSheetLink(String(entity.id), entity.entity_type, sheet.id)
   }

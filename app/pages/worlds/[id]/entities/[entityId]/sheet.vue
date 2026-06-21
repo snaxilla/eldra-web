@@ -4681,6 +4681,52 @@ function baseSheetPatchBody(overrides: Record<string, any> = {}) {
   }
 }
 
+function clampCharacterSheetLevel(value: any) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 1
+  return Math.max(1, Math.min(20, Math.floor(parsed)))
+}
+
+async function saveCharacterLevelFromManager(targetLevel: any) {
+  const target = clampCharacterSheetLevel(targetLevel)
+  if (sheetSaving.value) return
+
+  const previousLevel = sheetForm.level
+
+  sheetSaving.value = true
+  sheetSaveError.value = ''
+  sheetSaveSuccess.value = ''
+  sheetForm.level = String(target)
+
+  try {
+    const saved = await $fetch(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet`, {
+      method: 'PATCH',
+      body: baseSheetPatchBody({
+        level: String(target)
+      })
+    })
+
+    data.value = saved as any
+    syncFormFromSheet()
+    syncSpellDraftsFromSheet()
+    sheetSaveSuccess.value = `Level ${target} saved.`
+  } catch (err: any) {
+    sheetForm.level = previousLevel
+    sheetSaveError.value =
+      err?.data?.statusMessage ||
+      err?.data?.message ||
+      err?.message ||
+      'Failed to save level.'
+  } finally {
+    sheetSaving.value = false
+  }
+}
+
+async function levelUpOnceFromManager() {
+  const nextLevel = Math.min(20, clampCharacterSheetLevel(sheet.value?.level || sheetForm.level || 1) + 1)
+  await saveCharacterLevelFromManager(nextLevel)
+}
+
 async function takeShortRest() {
   restSaveError.value = ''
   restSaveSuccess.value = 'Short rest noted. Hit Dice spending and short-rest resources come next.'
@@ -6046,44 +6092,16 @@ async function saveSheet() {
             >
 
               <!-- Level Manager Entry -->
-              <div
-                v-if="mode === 'build'"
-                class="eldra-codex-soft rounded-none p-4"
-              >
-                <div class="flex items-center justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Level Manager</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">
-                      Current level {{ currentLevelNumber }}. Guided level-up choices live here.
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    class="eldra-button shrink-0 rounded-none px-3 py-2 text-xs font-semibold"
-                    @click="openLevelUpDrawer"
-                  >
-                    Level Up
-                  </button>
-                </div>
-
-                <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
-                  <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
-                    <div class="uppercase tracking-[0.18em] text-[#9f9278]">Level</div>
-                    <div class="mt-1 text-lg font-semibold text-white">{{ currentLevelNumber }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
-                    <div class="uppercase tracking-[0.18em] text-[#9f9278]">Choices</div>
-                    <div class="mt-1 text-lg font-semibold text-white">{{ levelUpPendingChoiceCards.length }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-2">
-                    <div class="uppercase tracking-[0.18em] text-[#9f9278]">Class</div>
-                    <div class="mt-1 truncate text-lg font-semibold text-white">{{ resolvedClass?.title || sheet?.class_name || '—' }}</div>
-                  </div>
-                </div>
-              </div>
+                <CharactersSheetLevelManager
+                  v-if="mode === 'build'"
+                  data-sheet-level-manager-mobile
+                  :level="currentLevelNumber"
+                  :class-name="resolvedClass?.title || sheet?.class_name || '—'"
+                  :choice-count="levelUpPendingChoiceCards.length"
+                  :saving="sheetSaving"
+                  @save-level="saveCharacterLevelFromManager"
+                  @level-up="levelUpOnceFromManager"
+                />
 
 
               <div class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(10,20,29,0.82)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -6212,6 +6230,18 @@ async function saveSheet() {
           <div v-if="sheetSaveSuccess" class="mt-4 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
             {{ sheetSaveSuccess }}
           </div>
+
+          <CharactersSheetLevelManager
+            v-if="activeSheetTab === 'overview' && mode === 'build'"
+            data-sheet-level-manager-desktop
+            class="mt-4"
+            :level="currentLevelNumber"
+            :class-name="resolvedClass?.title || sheet?.class_name || '—'"
+            :choice-count="levelUpPendingChoiceCards.length"
+            :saving="sheetSaving"
+            @save-level="saveCharacterLevelFromManager"
+            @level-up="levelUpOnceFromManager"
+          />
 
           <div v-if="activeSheetTab === 'overview'" class="mt-6 hidden gap-3 md:grid md:grid-cols-2 lg:grid-cols-4">
             <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">

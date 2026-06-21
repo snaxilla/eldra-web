@@ -2064,6 +2064,122 @@ function speciesActionTimingKey(action: any) {
   return 'action'
 }
 
+function levelGateText(value: any) {
+  if (value === null || value === undefined) return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(levelGateText).filter(Boolean).join(' ')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    for (const key of [
+      'name',
+      'title',
+      'label',
+      'detail',
+      'description',
+      'summary',
+      'text',
+      'notes',
+      'entries',
+      'items',
+      'raw',
+      'data',
+      'core'
+    ]) {
+      if ((value as any)[key] !== undefined) {
+        parts.push(levelGateText((value as any)[key]))
+      }
+    }
+
+    return parts.filter(Boolean).join(' ')
+  }
+
+  return ''
+}
+
+function numericLevelGate(value: any) {
+  const candidates = [
+    value?.requiredLevel,
+    value?.required_level,
+    value?.minimumLevel,
+    value?.minimum_level,
+    value?.minLevel,
+    value?.min_level,
+    value?.unlockLevel,
+    value?.unlock_level,
+    value?.characterLevel,
+    value?.character_level,
+    value?.grantLevel,
+    value?.grant_level,
+    value?.level
+  ]
+
+  for (const candidate of candidates) {
+    const parsed = Number(candidate)
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed)
+    }
+  }
+
+  return 0
+}
+
+function textLevelGate(value: any) {
+  const text = levelGateText(value)
+    .replace(/\{@(?:classFeature|subclassFeature|feat|action|spell|item|filter|race|species|class)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text) return 0
+
+  // Only treat level text as a feature/action gate when it reads like an unlock sentence.
+  // This avoids hiding level 1 features just because their damage improves at later levels.
+  const patterns = [
+    /(?:^|[.!?]\s+)(?:when you reach|upon reaching|starting at|beginning at)\s+(?:character\s+)?level\s+(\d{1,2})\b/i,
+    /(?:^|[.!?]\s+)at\s+(?:character\s+)?level\s+(\d{1,2})\b/i,
+    /(?:^|[.!?]\s+)at\s+(\d{1,2})(?:st|nd|rd|th)\s+level\b/i,
+    /(?:^|[.!?]\s+)starting\s+at\s+(\d{1,2})(?:st|nd|rd|th)\s+level\b/i
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const parsed = Number(match?.[1] || 0)
+
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed)
+    }
+  }
+
+  return 0
+}
+
+function actionMinimumLevel(value: any) {
+  const textGate = textLevelGate(value)
+  if (textGate > 0) return textGate
+
+  const numericGate = numericLevelGate(value)
+  if (numericGate > 0) return numericGate
+
+  return 1
+}
+
+function actionAvailableAtCurrentLevel(action: any) {
+  return actionMinimumLevel(action) <= currentSheetLevelNumber()
+}
+
+function filterActionsForCurrentLevel<T = any>(items: T[]) {
+  return (Array.isArray(items) ? items : []).filter((item: any) => actionAvailableAtCurrentLevel(item)) as T[]
+}
+
 function decoratedSpeciesAction(action: any) {
   const name = String(action?.name || action?.title || 'Species Action').trim()
   const timing = String(action?.timing || action?.actionKind || 'Action').trim()
@@ -2101,7 +2217,8 @@ function decoratedSpeciesAction(action: any) {
     damageType,
     notes: action?.uses || action?.notes || '',
     source: action?.source || resolvedSpecies.value?.title || 'Species',
-    isSpeciesAction: true
+    isSpeciesAction: true,
+    requiredLevel: actionMinimumLevel({ ...action, name, detail, description: detail })
   }
 }
 
@@ -2113,6 +2230,7 @@ const resolvedSpeciesActionCards = computed(() => {
   return actions
     .map((action: any) => decoratedSpeciesAction(action))
     .filter((action: any) => action.name && action.timing)
+    .filter((action: any) => actionAvailableAtCurrentLevel(action))
 })
 
 const mainSpeciesActionCards = computed(() =>
@@ -2129,17 +2247,21 @@ const speciesReactionActionCards = computed(() =>
   resolvedSpeciesActionCards.value.filter((action: any) => action.timingKey === 'reaction')
 )
 
-const displayedBonusActionCards = computed(() => [
-  ...classBonusActionCards.value,
-  ...speciesBonusActionCards.value,
-  ...actionCardListValue(bonusActionCards)
-])
+const displayedBonusActionCards = computed(() =>
+  filterActionsForCurrentLevel([
+    ...classBonusActionCards.value,
+    ...speciesBonusActionCards.value,
+    ...actionCardListValue(bonusActionCards)
+  ])
+)
 
-const displayedReactionActionCards = computed(() => [
-  ...classReactionActionCards.value,
-  ...speciesReactionActionCards.value,
-  ...actionCardListValue(reactionActionCards)
-])
+const displayedReactionActionCards = computed(() =>
+  filterActionsForCurrentLevel([
+    ...classReactionActionCards.value,
+    ...speciesReactionActionCards.value,
+    ...actionCardListValue(reactionActionCards)
+  ])
+)
 
 function rollSpeciesActionDamage(action: any) {
   const expression = String(action?.damageFormula || action?.damage || '').trim()

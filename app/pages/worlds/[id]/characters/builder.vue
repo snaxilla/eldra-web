@@ -2994,15 +2994,6 @@ async function createCharacter() {
                 </select>
               </label>
 
-            <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Starting Level</span>
-              <select v-model="builderForm.level" class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white">
-                <option v-for="level in 20" :key="level" :value="String(level)" class="bg-[#090909] text-[#f5e7bd]">
-                  Level {{ level }}
-                </option>
-              </select>
-            </label>
-
               <div class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3 text-xs leading-5 text-[#9f9278]">
                 Pick a portrait now, or leave it blank and add one later from the sheet in Build mode.
               </div>

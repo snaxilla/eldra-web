@@ -2145,6 +2145,11 @@ function rollSpeciesActionDamage(action: any) {
   const expression = String(action?.damageFormula || action?.damage || '').trim()
   if (!expression) return
 
+  if (resourceStateForSpeciesAction(action)) {
+    if (!canUseSpeciesActionResource(action)) return
+    useSpeciesActionResource(action)
+  }
+
   rollDiceBox(
     expression,
     `${action?.name || 'Species Action'} Damage`,
@@ -2268,6 +2273,52 @@ function speciesActionResourceStatusText(action: any) {
   if (!state) return ''
 
   return `${state.remaining} / ${state.max} Remaining`
+}
+
+function speciesActionResourcePipIndexes(action: any) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state) return []
+
+  return Array.from({ length: state.max }, (_item, index) => index)
+}
+
+function speciesActionResourcePipAvailable(action: any, index: number) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state) return false
+
+  return Number(index) >= Number(state.used || 0)
+}
+
+function speciesActionResourcePipClass(action: any, index: number) {
+  return speciesActionResourcePipAvailable(action, index)
+    ? 'block h-3 w-3 rounded-full border border-emerald-200/80 bg-emerald-300/80 shadow-[0_0_10px_rgba(110,231,183,0.24)]'
+    : 'block h-3 w-3 rounded-full border border-[rgba(148,163,184,0.35)] bg-transparent opacity-50'
+}
+
+function speciesActionResourcePipTitle(action: any, index: number) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state) return ''
+
+  const number = Number(index) + 1
+  return speciesActionResourcePipAvailable(action, index)
+    ? `Use ${state.label || 'resource'} ${number}`
+    : `Restore ${state.label || 'resource'} ${number}`
+}
+
+function toggleSpeciesActionResourcePip(action: any, index: number) {
+  const state = resourceStateForSpeciesAction(action)
+  if (!state || limitedResourceSaveState.saving) return
+
+  const nextUsed = speciesActionResourcePipAvailable(action, index)
+    ? Math.min(state.max, state.used + 1)
+    : Math.max(0, state.used - 1)
+
+  limitedResourceUsesDraft.value = {
+    ...limitedResourceUsesDraft.value,
+    [state.key]: nextUsed
+  }
+
+  void persistLimitedResourceUses()
 }
 
 function speciesActionResourceUsedText(action: any) {
@@ -4648,6 +4699,50 @@ async function castSpell(spell: any) {
   await saveSpellSlotUsage(row.level, Number(row.used || 0) + 1)
 }
 
+async function spendSpellSlotForActionRoll(spell: any) {
+  if (!spellConsumesSlot(spell)) return true
+
+  const row = lowestAvailableSlotRowForSpell(spell)
+
+  if (!row) {
+    spellSaveSuccess.value = ''
+    spellSaveError.value = 'No spell slots available.'
+    return false
+  }
+
+  await saveSpellSlotUsage(row.level, Number(row.used || 0) + 1)
+
+  return !spellSaveError.value
+}
+
+function spellRollTextBlob(spell: any) {
+  try {
+    return JSON.stringify([
+      spell?.title,
+      spell?.name,
+      spell?.summary,
+      spell?.description,
+      spell?.detail,
+      spell?.core,
+      spell?.raw,
+      spell?.data
+    ])
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+  } catch {
+    return ''
+  }
+}
+
+function spellLooksLikeAttackRollSpell(spell: any) {
+  return spellRollTextBlob(spell).includes('spell attack')
+}
+
+async function rollSpellAttackAndConsumeSlot(spell: any) {
+  if (!(await spendSpellSlotForActionRoll(spell))) return
+  rollSpellAttack(spell)
+}
+
 const shownKnownSpells = computed(() =>
   mode.value === 'build' ? spellOptionsByIds(spellKnownDraft.value) : knownSpells.value
 )
@@ -6456,6 +6551,22 @@ async function saveSheet() {
                       </div>
 
                       <div
+                        v-if="resourceStateForSpeciesAction(action)"
+                        class="mt-2 flex items-center gap-1.5"
+                      >
+                        <button
+                          v-for="pipIndex in speciesActionResourcePipIndexes(action)"
+                          :key="`species-action-resource-${action.id}-${pipIndex}`"
+                          type="button"
+                          class="rounded-full p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-emerald-200/50"
+                          :title="speciesActionResourcePipTitle(action, pipIndex)"
+                          @click.stop="toggleSpeciesActionResourcePip(action, pipIndex)"
+                        >
+                          <span :class="speciesActionResourcePipClass(action, pipIndex)" />
+                        </button>
+                      </div>
+
+                      <div
                         v-if="action.damage || action.damageType"
                         class="mt-3 grid gap-2 text-xs"
                         :class="action.damage && action.damageType ? 'grid-cols-2' : 'grid-cols-1'"
@@ -6508,7 +6619,8 @@ async function saveSheet() {
                         <button
                           v-if="action.damageFormula"
                           type="button"
-                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+                          :disabled="resourceStateForSpeciesAction(action) ? !canUseSpeciesActionResource(action) : false"
                           @click.stop="rollSpeciesActionDamage(action)"
                         >
                           Damage
@@ -6718,8 +6830,9 @@ async function saveSheet() {
                               <button
                                 v-if="spellUsesAttackRoll(spell)"
                                 type="button"
-                                class="mt-2 w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
-                                @click.stop="rollSpellAttack(spell)"
+                                class="mt-2 w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+                                :disabled="!canCastSpell(spell)"
+                                @click.stop="rollSpellAttackAndConsumeSlot(spell)"
                               >
                                 Roll Spell Attack
                               </button>

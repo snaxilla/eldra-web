@@ -2392,6 +2392,61 @@ function resetSpeciesActionResource(action: any) {
 async function resetLimitedResourcesForLongRest() {
   limitedResourceUsesDraft.value = {}
 
+  function resourcesWithClearedLimitedUses(currentResources: any, nextResources: any = {}) {
+    return {
+      ...limitedResourceAsObject(currentResources),
+      ...limitedResourceAsObject(nextResources),
+      limitedResourceUses: {}
+    }
+  }
+
+  function patchLocalDataResources(nextResources: any = {}) {
+    const current: any = data.value
+
+    if (!current || typeof current !== 'object') return
+
+    if (current.sheet && typeof current.sheet === 'object') {
+      data.value = {
+        ...current,
+        sheet: {
+          ...current.sheet,
+          resources: resourcesWithClearedLimitedUses(current.sheet.resources, nextResources)
+        }
+      } as any
+      return
+    }
+
+    if (current.data?.sheet && typeof current.data.sheet === 'object') {
+      data.value = {
+        ...current,
+        data: {
+          ...current.data,
+          sheet: {
+            ...current.data.sheet,
+            resources: resourcesWithClearedLimitedUses(current.data.sheet.resources, nextResources)
+          }
+        }
+      } as any
+      return
+    }
+
+    if (current.data && typeof current.data === 'object') {
+      data.value = {
+        ...current,
+        data: {
+          ...current.data,
+          resources: resourcesWithClearedLimitedUses(current.data.resources, nextResources)
+        }
+      } as any
+      return
+    }
+
+    if (sheet.value) {
+      // Last-resort fallback for the current in-memory shape.
+      ;(sheet.value as any).resources = resourcesWithClearedLimitedUses((sheet.value as any).resources, nextResources)
+    }
+  }
+
   try {
     const res = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/resources`, {
       method: 'PATCH',
@@ -2403,18 +2458,10 @@ async function resetLimitedResourcesForLongRest() {
       }
     })
 
-    if (sheet.value) {
-      sheet.value = {
-        ...sheet.value,
-        resources: {
-          ...limitedResourceAsObject(sheet.value.resources),
-          ...limitedResourceAsObject(res?.resources),
-          limitedResourceUses: {}
-        }
-      }
-    }
+    patchLocalDataResources(res?.resources)
   } catch (error) {
     console.error('[character-sheet] failed to reset limited resources on long rest', error)
+    patchLocalDataResources()
   }
 }
 
@@ -4516,6 +4563,7 @@ async function takeLongRest() {
     syncSpellDraftsFromSheet()
     restSaveSuccess.value = 'Long rest complete.'
 
+
     await resetLimitedResourcesForLongRest()
 
     closeRestPopover()
@@ -6434,58 +6482,6 @@ async function saveSheet() {
                         class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]"
                       >
                         {{ action.notes }}
-                      </div>
-
-                      <div
-                        v-if="resourceStateForSpeciesAction(action)"
-                        class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#d8ceb8]"
-                      >
-                        <div class="grid grid-cols-3 gap-2">
-                          <div>
-                            <div class="uppercase tracking-[0.18em] text-[#9f9278]">Uses</div>
-                            <div class="mt-1 font-semibold text-white">{{ speciesActionResourceStatusText(action) }}</div>
-                          </div>
-
-                          <div>
-                            <div class="uppercase tracking-[0.18em] text-[#9f9278]">Used</div>
-                            <div class="mt-1 font-semibold text-white">{{ speciesActionResourceUsedText(action) }}</div>
-                          </div>
-
-                          <div>
-                            <div class="uppercase tracking-[0.18em] text-[#9f9278]">Reset</div>
-                            <div class="mt-1 font-semibold text-white">{{ speciesActionResourceResetText(action) }}</div>
-                          </div>
-                        </div>
-
-                        <div class="mt-3 grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
-                            :disabled="!canUndoSpeciesActionResource(action)"
-                            @click.stop="undoSpeciesActionResource(action)"
-                          >
-                            Undo Use
-                          </button>
-
-                          <button
-                            type="button"
-                            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
-                            :disabled="!canUndoSpeciesActionResource(action)"
-                            @click.stop="resetSpeciesActionResource(action)"
-                          >
-                            Reset Uses
-                          </button>
-                        </div>
-
-                        <div
-                          v-if="limitedResourceSaveState.error || limitedResourceSaveState.success"
-                          class="mt-3 rounded-none border px-3 py-2 text-xs"
-                          :class="limitedResourceSaveState.error
-                            ? 'border-red-400/24 bg-red-500/10 text-red-100'
-                            : 'border-emerald-400/24 bg-emerald-500/10 text-emerald-100'"
-                        >
-                          {{ limitedResourceSaveState.error || limitedResourceSaveState.success }}
-                        </div>
                       </div>
 
                       <p

@@ -3342,6 +3342,15 @@ async function createCharacter() {
               </div>
             </div>
           </div>
+          <CharactersClassSubclassChoicePanel
+            class="md:col-span-2"
+            :world-id="worldId"
+            :class-entity="selectedClassEntity"
+            :level="Number(builderForm.level || 1)"
+            @update:payload="setClassSubclassPayload"
+            @update:complete="setClassSubclassChoicesComplete"
+          />
+
           <CharactersClassSpellChoicePanel
             v-if="builderForm.classEntityId"
             :world-id="worldId"
@@ -3351,15 +3360,6 @@ async function createCharacter() {
             :ability-scores="builderForm.abilityScores"
             @update:spellcasting="setClassSpellcastingPayload"
             @update:complete="setClassSpellChoicesComplete"
-          />
-
-          <CharactersClassSubclassChoicePanel
-            class="md:col-span-2"
-            :world-id="worldId"
-            :class-entity="selectedClassEntity"
-            :level="Number(builderForm.level || 1)"
-            @update:payload="setClassSubclassPayload"
-            @update:complete="setClassSubclassChoicesComplete"
           />
 
           <CharactersFeatChoicePanel

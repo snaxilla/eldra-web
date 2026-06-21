@@ -252,11 +252,121 @@ function localSubclassTitle(raw: any) {
   return name
 }
 
-function optionFromLocalSubclass(raw: any, wantedClassName: string) {
+function localSubclassShortName(raw: any) {
+  const direct = cleanText(
+    raw.shortName ||
+    raw.short_name ||
+    raw.subclassShortName ||
+    raw.subclass_short_name ||
+    ''
+  )
+
+  if (direct) return direct
+
+  const name = cleanText(raw.name || raw.title || '')
+
+  return name
+    .replace(/^Circle of the\s+/i, '')
+    .replace(/^College of\s+/i, '')
+    .replace(/^Oath of the\s+/i, '')
+    .replace(/^Oath of\s+/i, '')
+    .replace(/^Path of the\s+/i, '')
+    .replace(/^Path of\s+/i, '')
+    .replace(/^Way of the\s+/i, '')
+    .replace(/^Way of\s+/i, '')
+    .replace(/^The\s+/i, '')
+    .trim()
+}
+
+function localSubclassFeatureClassName(feature: any, fallbackClassName: string) {
+  return cleanText(
+    feature.className ||
+    feature.class_name ||
+    feature.class ||
+    feature.parentClass ||
+    feature.parent_class ||
+    fallbackClassName ||
+    ''
+  )
+}
+
+function localSubclassFeatureShortName(feature: any) {
+  return cleanText(
+    feature.subclassShortName ||
+    feature.subclass_short_name ||
+    feature.subclassName ||
+    feature.subclass_name ||
+    feature.subclass ||
+    ''
+  )
+}
+
+function localSubclassFeatureMatches(feature: any, subclass: any, wantedClassName: string) {
+  const wantedClassKey = normalizedKey(wantedClassName)
+  const featureClassKey = normalizedKey(localSubclassFeatureClassName(feature, wantedClassName))
+
+  if (wantedClassKey && featureClassKey && wantedClassKey !== featureClassKey) {
+    return false
+  }
+
+  const subclassShortKey = normalizedKey(localSubclassShortName(subclass))
+  const subclassNameKey = normalizedKey(localSubclassTitle(subclass))
+  const featureShortKey = normalizedKey(localSubclassFeatureShortName(feature))
+
+  if (!featureShortKey) return false
+
+  if (subclassShortKey && featureShortKey === subclassShortKey) return true
+  if (subclassNameKey && featureShortKey === subclassNameKey) return true
+
+  return Boolean(
+    subclassNameKey &&
+    (
+      subclassNameKey.includes(featureShortKey) ||
+      featureShortKey.includes(subclassShortKey)
+    )
+  )
+}
+
+function featureSummary(feature: any) {
+  return oneLineSummary(
+    feature.entries ||
+    feature.description ||
+    feature.summary ||
+    feature.headerEntries ||
+    '',
+    620
+  )
+}
+
+function localSubclassFeatureCards(subclass: any, classData: any, wantedClassName: string) {
+  const features = Array.isArray(classData?.subclassFeature)
+    ? classData.subclassFeature
+    : []
+
+  return features
+    .filter((feature: any) => localSubclassFeatureMatches(feature, subclass, wantedClassName))
+    .map((feature: any) => ({
+      name: cleanText(feature.name || feature.title || 'Subclass Feature'),
+      level: Number(feature.level || feature.classLevel || feature.class_level || 0) || null,
+      source: cleanText(feature.source || ''),
+      page: cleanText(feature.page || ''),
+      summary: featureSummary(feature)
+    }))
+    .filter((feature: any) => feature.name)
+    .sort((a: any, b: any) =>
+      Number(a.level || 0) - Number(b.level || 0) ||
+      String(a.name || '').localeCompare(String(b.name || ''))
+    )
+}
+
+function optionFromLocalSubclass(raw: any, wantedClassName: string, classData: any = {}) {
   const title = localSubclassTitle(raw)
   const source = cleanText(raw.source || raw.classSource || '')
   const page = cleanText(raw.page || raw.classPage || '')
   const className = cleanText(raw.className || raw.class_name || raw.class || wantedClassName || '')
+  const features = localSubclassFeatureCards(raw, classData, className || wantedClassName)
+  const ownSummary = oneLineSummary(raw.entries || raw.fluff?.entries || '', 620)
+  const featureSummaryText = features.map((feature: any) => feature.summary).filter(Boolean)[0] || ''
 
   return {
     id: `lookup:${slugify(`${className}-${title}-${source}`)}`,
@@ -264,12 +374,13 @@ function optionFromLocalSubclass(raw: any, wantedClassName: string) {
     title,
     label: title,
     slug: slugify(title),
-    summary: oneLineSummary(raw.entries || raw.fluff?.entries || ''),
+    summary: ownSummary || featureSummaryText,
     source,
     sourceBook: source,
     page,
     sourcePage: page,
     classNames: [className].filter(Boolean),
+    features,
     entityType: 'subclass',
     directusEntity: false,
     lookupOnly: true
@@ -297,7 +408,7 @@ function localSubclassOptions(wantedClassName: string) {
     for (const raw of subclasses) {
       if (!subclassMatchesWanted(raw, wantedKey, fileMatches)) continue
 
-      const option = optionFromLocalSubclass(raw, wantedClassName)
+      const option = optionFromLocalSubclass(raw, wantedClassName, data)
       if (!option.title) continue
 
       out.push(option)
@@ -327,8 +438,7 @@ function optionMatchesWanted(option: any, wantedClassName: string) {
 }
 
 function dedupeSubclassOptions(options: any[]) {
-  const seen = new Set<string>()
-  const out: any[] = []
+  const byKey = new Map<string, any>()
 
   for (const option of options) {
     const key = [
@@ -337,13 +447,30 @@ function dedupeSubclassOptions(options: any[]) {
       normalizedKey((option.classNames || []).join(' '))
     ].join('|')
 
-    if (!option.title || seen.has(key)) continue
+    if (!option.title || !key) continue
 
-    seen.add(key)
-    out.push(option)
+    const existing = byKey.get(key)
+
+    if (!existing) {
+      byKey.set(key, option)
+      continue
+    }
+
+    const existingFeatures = Array.isArray(existing.features) ? existing.features : []
+    const optionFeatures = Array.isArray(option.features) ? option.features : []
+
+    byKey.set(key, {
+      ...existing,
+      summary: existing.summary || option.summary || '',
+      features: optionFeatures.length > existingFeatures.length ? optionFeatures : existingFeatures,
+      directusEntity: Boolean(existing.directusEntity || option.directusEntity),
+      lookupOnly: Boolean(existing.lookupOnly && !option.directusEntity),
+      id: existing.directusEntity ? existing.id : option.directusEntity ? option.id : existing.id,
+      value: existing.directusEntity ? existing.value : option.directusEntity ? option.value : existing.value
+    })
   }
 
-  return out.sort((a, b) =>
+  return Array.from(byKey.values()).sort((a, b) =>
     String(a.title || '').localeCompare(String(b.title || '')) ||
     String(a.source || '').localeCompare(String(b.source || ''))
   )

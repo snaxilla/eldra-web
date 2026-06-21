@@ -81,6 +81,17 @@ const selectedSubclass = computed(() =>
   subclassOptions.value.find((option: any) => String(option.id) === String(selectedSubclassId.value)) || null
 )
 
+const selectedSubclassFeatures = computed(() =>
+  Array.isArray(selectedSubclass.value?.features)
+    ? selectedSubclass.value.features
+    : []
+)
+
+function featureLevelLabel(feature: any) {
+  return feature?.level ? `Level ${feature.level}` : 'Feature'
+}
+
+
 const choicesComplete = computed(() =>
   !shouldChooseSubclass.value || Boolean(selectedSubclass.value)
 )
@@ -201,7 +212,38 @@ function sourceLabel(option: any) {
       v-if="selectedSubclass?.summary"
       class="mt-3 rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3 text-xs leading-5 text-[#d8ceb8]"
     >
+      <div class="mb-1 text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Subclass Summary</div>
       {{ selectedSubclass.summary }}
+    </div>
+
+    <div
+      v-if="selectedSubclassFeatures.length"
+      class="mt-3 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)] p-3"
+    >
+      <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">What This Subclass Does</div>
+
+      <div class="mt-2 grid gap-2">
+        <article
+          v-for="feature in selectedSubclassFeatures"
+          :key="`${feature.name}-${feature.level || 'feature'}`"
+          class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-2 text-xs leading-5"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="font-semibold text-white">{{ feature.name }}</div>
+            <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+              {{ featureLevelLabel(feature) }}
+            </div>
+          </div>
+
+          <p v-if="feature.summary" class="mt-1 text-[#d8ceb8]">
+            {{ feature.summary }}
+          </p>
+
+          <div v-if="feature.source || feature.page" class="mt-1 text-[10px] text-[#9f9278]">
+            {{ [feature.source, feature.page ? `p. ${feature.page}` : ''].filter(Boolean).join(' · ') }}
+          </div>
+        </article>
+      </div>
     </div>
 
     <div

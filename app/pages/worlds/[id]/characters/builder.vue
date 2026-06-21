@@ -2309,9 +2309,46 @@ function setClassEquipmentChoicesComplete(value: any) {
   classEquipmentChoicesComplete.value = value !== false
 }
 
+const classSubclassPayload = ref<Record<string, any>>({})
+const classSubclassChoicesComplete = ref(true)
+
+function setClassSubclassPayload(payload: any) {
+  classSubclassPayload.value =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload
+      : {}
+}
+
+function setClassSubclassChoicesComplete(value: any) {
+  classSubclassChoicesComplete.value = value !== false
+}
+
+function selectedGuidedSubclassChoice() {
+  const group = classSubclassPayload.value?.['class-subclass']
+  if (!group) return null
+
+  const meta = group.meta && typeof group.meta === 'object' ? group.meta : {}
+
+  const rawSubclassEntityId = String(meta.subclassEntityId || group.value || '').trim()
+
+  return {
+    subclassEntityId: /^\d+$/.test(rawSubclassEntityId) ? rawSubclassEntityId : '',
+    subclassName: String(meta.subclassName || group.valueLabel || group.values?.[0] || '').trim()
+  }
+}
+
+watch(
+  () => [builderForm.classEntityId, builderForm.level],
+  () => {
+    classSubclassPayload.value = {}
+    classSubclassChoicesComplete.value = true
+  }
+)
+
 const mergedClassChoicePayload = computed(() => ({
   ...classChoicePayload.value,
-  ...classEquipmentPayload.value
+  ...classEquipmentPayload.value,
+  ...classSubclassPayload.value
 }))
 
 watch(
@@ -2340,6 +2377,21 @@ async function applyClassSpellcastingToCreatedCharacter(created: any) {
     method: 'PATCH',
     body: {
       spellcasting: payload
+    }
+  })
+}
+
+async function applyBuilderSubclassToCreatedCharacter(created: any) {
+  const entityId = String(created?.id || created?.entity?.id || '')
+  const selected = selectedGuidedSubclassChoice()
+
+  if (!entityId || !selected?.subclassName) return
+
+  await $fetch(`/api/worlds/${worldId.value}/entities/${entityId}/sheet`, {
+    method: 'PATCH',
+    body: {
+      subclassName: selected.subclassName,
+      subclassEntityId: selected.subclassEntityId || null
     }
   })
 }
@@ -2819,6 +2871,12 @@ async function createCharacter() {
     }
 
 
+    if (builderForm.classEntityId && !classSubclassChoicesComplete.value) {
+      createError.value = 'Complete subclass choice before creating this character.'
+      stepIndex.value = 0
+      return
+    }
+
     if (builderForm.classEntityId && !classSpellChoicesComplete.value) {
       createError.value = 'Complete class spell choices before creating this character.'
       stepIndex.value = 0
@@ -2853,6 +2911,8 @@ async function createCharacter() {
         backgroundChoices: backgroundChoicePayload.value
       }
     })
+
+    await applyBuilderSubclassToCreatedCharacter(created)
 
     await applyBuilderSpellcastingToCreatedCharacter(created)
 
@@ -3291,6 +3351,15 @@ async function createCharacter() {
             :ability-scores="builderForm.abilityScores"
             @update:spellcasting="setClassSpellcastingPayload"
             @update:complete="setClassSpellChoicesComplete"
+          />
+
+          <CharactersClassSubclassChoicePanel
+            class="md:col-span-2"
+            :world-id="worldId"
+            :class-entity="selectedClassEntity"
+            :level="Number(builderForm.level || 1)"
+            @update:payload="setClassSubclassPayload"
+            @update:complete="setClassSubclassChoicesComplete"
           />
 
           <CharactersFeatChoicePanel

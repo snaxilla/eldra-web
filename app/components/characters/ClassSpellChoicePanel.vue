@@ -222,13 +222,24 @@ function queryMatches(option: any) {
   return normalizedKey(`${option.title} ${option.source} level ${option.level}`).includes(query)
 }
 
-const subclassGrantedSpellOptions = computed(() =>
-  spellOptions.value
+const subclassGrantedSpellOptions = computed(() => {
+  const maxLevel = maxSpellLevelForClassLevel()
+
+  return spellOptions.value
     .filter((option: any) => option.isSubclassSpell)
     .filter((option: any) => {
       const level = Number(option.level || 0)
-      return level > 0 && level <= maxSpellLevelForClassLevel()
+
+      return level === 0 || (level > 0 && level <= maxLevel)
     })
+})
+
+const subclassGrantedCantripOptions = computed(() =>
+  subclassGrantedSpellOptions.value.filter((option: any) => Number(option.level || 0) === 0)
+)
+
+const subclassGrantedLeveledSpellOptions = computed(() =>
+  subclassGrantedSpellOptions.value.filter((option: any) => Number(option.level || 0) > 0)
 )
 
 const subclassGrantedSpellIds = computed(() =>
@@ -357,6 +368,8 @@ const spellcastingPayload = computed(() => {
       cantripSpellIds: selectedCantripIds.value,
       leveledSpellIds: selectedLeveledSpellIds.value,
       subclassSpellIds: alwaysPrepared,
+      subclassCantripSpellIds: subclassGrantedCantripOptions.value.map((spell: any) => String(spell.id || '')).filter(Boolean),
+      subclassLeveledSpellIds: subclassGrantedLeveledSpellOptions.value.map((spell: any) => String(spell.id || '')).filter(Boolean),
       alwaysPreparedSpellIds: alwaysPrepared,
       maxSpellLevel: maxSpellLevelForClassLevel(),
       values: known.map(spellNameById)
@@ -449,7 +462,7 @@ function subclassSpellHeader() {
       >
         <div class="font-semibold text-white">{{ subclassSpellHeader() }}</div>
         <div class="mt-1 text-xs leading-5 text-emerald-100/90">
-          These spells are granted by your subclass/circle, are always prepared, and do not count against your normal prepared spell choices.
+          These spells and cantrips are granted by your subclass/circle. Cantrips do not count against normal cantrip choices; leveled spells are always prepared and do not count against normal prepared spell choices.
         </div>
 
         <div class="mt-3 grid gap-2 sm:grid-cols-2">
@@ -459,7 +472,7 @@ function subclassSpellHeader() {
             class="rounded-none border border-emerald-400/20 bg-[rgba(8,17,27,0.52)] p-2 text-xs leading-5"
           >
             <div class="font-semibold text-white">{{ spell.title }}</div>
-            <div class="mt-1 text-[#9f9278]">Level {{ spell.level }} · {{ spell.source || 'Unknown' }}</div>
+            <div class="mt-1 text-[#9f9278]">{{ spell.level ? `Level ${spell.level}` : 'Cantrip' }} · {{ spell.source || 'Unknown' }}</div>
           </div>
         </div>
       </div>
@@ -504,7 +517,7 @@ function subclassSpellHeader() {
         <div class="font-semibold text-white">{{ className }} Prepared {{ preparedSpellLevelLabel }}</div>
         <div class="mt-1 text-xs text-[#9f9278]">
           Choose {{ leveledSpellChoiceCount() }} spell{{ leveledSpellChoiceCount() === 1 ? '' : 's' }} from spell levels 1 through {{ maxSpellLevelForClassLevel() }}.
-          Subclass/circle spells above are already prepared.
+          Subclass/circle grants above do not count against these choices.
         </div>
 
         <div class="mt-3 grid gap-2">

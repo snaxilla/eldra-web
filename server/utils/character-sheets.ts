@@ -468,6 +468,11 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
     sheet = await createSheetForEntity(worldId, entity)
   }
 
+  const classNameProvided = body?.className !== undefined || body?.class_name !== undefined
+  const subclassNameProvided = body?.subclassName !== undefined || body?.subclass_name !== undefined
+  const speciesNameProvided = body?.speciesName !== undefined || body?.species_name !== undefined
+  const backgroundNameProvided = body?.backgroundName !== undefined || body?.background_name !== undefined
+
   const classEntityIdProvided = body?.classEntityId !== undefined || body?.class_entity_id !== undefined
   const speciesEntityIdProvided = body?.speciesEntityId !== undefined || body?.species_entity_id !== undefined
   const backgroundEntityIdProvided = body?.backgroundEntityId !== undefined || body?.background_entity_id !== undefined
@@ -475,10 +480,10 @@ export async function updateCharacterSheetForEntity(worldId: string, entityId: s
   const payload = {
     name: nullableString(body?.name) || String(entity.title || 'Unnamed Character'),
     level: positiveInteger(body?.level, Number(sheet?.level || 1)),
-    class_name: nullableString(body?.className ?? body?.class_name),
-    subclass_name: nullableString(body?.subclassName ?? body?.subclass_name),
-    species_name: nullableString(body?.speciesName ?? body?.species_name),
-    background_name: nullableString(body?.backgroundName ?? body?.background_name),
+    class_name: classNameProvided ? nullableString(body?.className ?? body?.class_name) : nullableString(sheet?.class_name),
+    subclass_name: subclassNameProvided ? nullableString(body?.subclassName ?? body?.subclass_name) : nullableString(sheet?.subclass_name),
+    species_name: speciesNameProvided ? nullableString(body?.speciesName ?? body?.species_name) : nullableString(sheet?.species_name),
+    background_name: backgroundNameProvided ? nullableString(body?.backgroundName ?? body?.background_name) : nullableString(sheet?.background_name),
     class_entity_id: classEntityIdProvided ? integerOrNull(body?.classEntityId ?? body?.class_entity_id) : integerOrNull(sheet?.class_entity_id),
     species_entity_id: speciesEntityIdProvided ? integerOrNull(body?.speciesEntityId ?? body?.species_entity_id) : integerOrNull(sheet?.species_entity_id),
     background_entity_id: backgroundEntityIdProvided ? integerOrNull(body?.backgroundEntityId ?? body?.background_entity_id) : integerOrNull(sheet?.background_entity_id),

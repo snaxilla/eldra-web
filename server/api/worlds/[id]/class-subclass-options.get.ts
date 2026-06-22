@@ -179,13 +179,25 @@ function optionFromSubclassEntity(entity: any, blocks: any[]) {
     raw.entries
   )
 
+  const explicitUnlockLevel = Number(
+    subclassCore.unlockLevel ||
+    subclassCore.unlock_level ||
+    subclassCore.level ||
+    raw.subclassLevel ||
+    raw.subclass_level ||
+    raw.level ||
+    0
+  )
+
   return {
     id: String(entity.id),
     value: String(entity.id),
     title,
     label: title,
     slug: cleanText(entity.slug),
+    unlockLevel: Number.isFinite(explicitUnlockLevel) && explicitUnlockLevel > 0 ? explicitUnlockLevel : subclassUnlockLevelFallback(rawSubclassClassNames(entity, blocks)[0] || ''),
     summary,
+    detail: cleanText(raw.entries || raw.fluff?.entries || entity.summary || ''),
     source,
     sourceBook: source,
     page,
@@ -327,6 +339,40 @@ function localSubclassFeatureMatches(feature: any, subclass: any, wantedClassNam
   )
 }
 
+
+function featureDetail(feature: any) {
+  return cleanText(
+    feature.entries ||
+    feature.description ||
+    feature.summary ||
+    feature.headerEntries ||
+    ''
+  )
+}
+
+function subclassUnlockLevelFromFeatures(features: any[], fallback = 3) {
+  const levels = (Array.isArray(features) ? features : [])
+    .map((feature: any) => Number(feature?.level || 0))
+    .filter((level: number) => Number.isFinite(level) && level > 0)
+
+  if (!levels.length) return fallback
+
+  return Math.min(...levels)
+}
+
+function subclassUnlockLevelFallback(className: any) {
+  const key = normalizedKey(className)
+
+  // 2014/legacy defaults. Source feature levels override these when present.
+  if (key.includes('cleric')) return 1
+  if (key.includes('sorcerer')) return 1
+  if (key.includes('warlock')) return 1
+  if (key.includes('druid')) return 2
+  if (key.includes('wizard')) return 2
+
+  return 3
+}
+
 function featureSummary(feature: any) {
   return oneLineSummary(
     feature.entries ||
@@ -345,13 +391,18 @@ function localSubclassFeatureCards(subclass: any, classData: any, wantedClassNam
 
   return features
     .filter((feature: any) => localSubclassFeatureMatches(feature, subclass, wantedClassName))
-    .map((feature: any) => ({
-      name: cleanText(feature.name || feature.title || 'Subclass Feature'),
-      level: Number(feature.level || feature.classLevel || feature.class_level || 0) || null,
-      source: cleanText(feature.source || ''),
-      page: cleanText(feature.page || ''),
-      summary: featureSummary(feature)
-    }))
+    .map((feature: any) => {
+      const detail = featureDetail(feature)
+
+      return {
+        name: cleanText(feature.name || feature.title || 'Subclass Feature'),
+        level: Number(feature.level || feature.classLevel || feature.class_level || 0) || null,
+        source: cleanText(feature.source || ''),
+        page: cleanText(feature.page || ''),
+        summary: detail ? oneLineSummary(detail, 420) : featureSummary(feature),
+        detail
+      }
+    })
     .filter((feature: any) => feature.name)
     .sort((a: any, b: any) =>
       Number(a.level || 0) - Number(b.level || 0) ||
@@ -365,8 +416,11 @@ function optionFromLocalSubclass(raw: any, wantedClassName: string, classData: a
   const page = cleanText(raw.page || raw.classPage || '')
   const className = cleanText(raw.className || raw.class_name || raw.class || wantedClassName || '')
   const features = localSubclassFeatureCards(raw, classData, className || wantedClassName)
-  const ownSummary = oneLineSummary(raw.entries || raw.fluff?.entries || '', 620)
+  const ownDetail = cleanText(raw.entries || raw.fluff?.entries || '')
+  const ownSummary = oneLineSummary(ownDetail, 420)
   const featureSummaryText = features.map((feature: any) => feature.summary).filter(Boolean)[0] || ''
+  const fallbackUnlockLevel = subclassUnlockLevelFallback(className || wantedClassName)
+  const unlockLevel = subclassUnlockLevelFromFeatures(features, fallbackUnlockLevel)
 
   return {
     id: `lookup:${slugify(`${className}-${title}-${source}`)}`,
@@ -374,7 +428,9 @@ function optionFromLocalSubclass(raw: any, wantedClassName: string, classData: a
     title,
     label: title,
     slug: slugify(title),
+    unlockLevel,
     summary: ownSummary || featureSummaryText,
+    detail: ownDetail,
     source,
     sourceBook: source,
     page,
@@ -461,7 +517,14 @@ function dedupeSubclassOptions(options: any[]) {
 
     byKey.set(key, {
       ...existing,
+      unlockLevel: Math.min(
+        Number(existing.unlockLevel || 99),
+        Number(option.unlockLevel || 99)
+      ) === 99
+        ? existing.unlockLevel || option.unlockLevel || 3
+        : Math.min(Number(existing.unlockLevel || 99), Number(option.unlockLevel || 99)),
       summary: existing.summary || option.summary || '',
+      detail: existing.detail || option.detail || '',
       features: optionFeatures.length > existingFeatures.length ? optionFeatures : existingFeatures,
       directusEntity: Boolean(existing.directusEntity || option.directusEntity),
       lookupOnly: Boolean(existing.lookupOnly && !option.directusEntity),

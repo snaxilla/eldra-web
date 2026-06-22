@@ -2,6 +2,8 @@
 const props = defineProps<{
   worldId: string | number
   className?: string
+  subclassName?: string
+  subclassLookupId?: string
   level?: number | string
 }>()
 
@@ -127,8 +129,8 @@ function leveledSpellChoiceCount() {
 
   if (!maxSpellLevelForClassLevel()) return 0
 
-  // Prepared casters use ability mod + level. We don't know the final ability score here yet,
-  // so use +2 as the safe default. That matches the current builder behavior for the level 3 Druid test.
+  // Prepared casters use level + casting mod. We do not know final ability math here,
+  // so +2 is the same safe default the builder has been using.
   if (cls.includes('cleric') || cls.includes('druid') || cls.includes('wizard')) {
     return Math.max(1, level + 2)
   }
@@ -178,6 +180,10 @@ const classSpellOptionsUrl = computed(() => {
   const params = new URLSearchParams()
   params.set('className', String(props.className || ''))
 
+  if (props.subclassName) {
+    params.set('subclassName', String(props.subclassName || ''))
+  }
+
   return `/api/worlds/${props.worldId}/class-spell-options?${params.toString()}`
 })
 
@@ -197,7 +203,10 @@ const spellOptions = computed(() =>
       id: spellId(option),
       title: spellTitle(option),
       level: spellLevel(option),
-      source: spellSource(option)
+      source: spellSource(option),
+      isSubclassSpell: option?.isSubclassSpell === true ||
+        option?.subclassMatch === true ||
+        option?.alwaysPrepared === true
     }))
     .filter((option: any) => option.id && option.title)
     .sort((a: any, b: any) =>
@@ -213,9 +222,29 @@ function queryMatches(option: any) {
   return normalizedKey(`${option.title} ${option.source} level ${option.level}`).includes(query)
 }
 
+const subclassGrantedSpellOptions = computed(() =>
+  spellOptions.value
+    .filter((option: any) => option.isSubclassSpell)
+    .filter((option: any) => {
+      const level = Number(option.level || 0)
+      return level > 0 && level <= maxSpellLevelForClassLevel()
+    })
+)
+
+const subclassGrantedSpellIds = computed(() =>
+  subclassGrantedSpellOptions.value
+    .map((spell: any) => String(spell.id || '').trim())
+    .filter(Boolean)
+)
+
+const subclassGrantedSpellIdSet = computed(() =>
+  new Set(subclassGrantedSpellIds.value)
+)
+
 const cantripOptions = computed(() =>
   spellOptions.value
     .filter((option: any) => Number(option.level || 0) === 0)
+    .filter((option: any) => !subclassGrantedSpellIdSet.value.has(String(option.id || '')))
     .filter(queryMatches)
 )
 
@@ -227,6 +256,7 @@ const leveledSpellOptions = computed(() => {
       const level = Number(option.level || 0)
       return level > 0 && level <= maxLevel
     })
+    .filter((option: any) => !subclassGrantedSpellIdSet.value.has(String(option.id || '')))
     .filter(queryMatches)
 })
 
@@ -256,6 +286,7 @@ function normalizeSelectionArray(value: string[], size: number) {
 watch(
   () => [
     props.className,
+    props.subclassName,
     characterLevel(),
     cantripCountForClassLevel(),
     leveledSpellChoiceCount()
@@ -263,6 +294,15 @@ watch(
   () => {
     cantripSelections.value = normalizeSelectionArray(cantripSelections.value, cantripCountForClassLevel())
     leveledSpellSelections.value = normalizeSelectionArray(leveledSpellSelections.value, leveledSpellChoiceCount())
+  },
+  { immediate: true }
+)
+
+watch(
+  subclassGrantedSpellIdSet,
+  (ids) => {
+    cantripSelections.value = cantripSelections.value.map((id) => ids.has(String(id || '')) ? '' : id)
+    leveledSpellSelections.value = leveledSpellSelections.value.map((id) => ids.has(String(id || '')) ? '' : id)
   },
   { immediate: true }
 )
@@ -292,25 +332,32 @@ function spellNameById(id: any) {
 const spellcastingPayload = computed(() => {
   if (!isSpellcastingClass()) return {}
 
+  const alwaysPrepared = Array.from(new Set(subclassGrantedSpellIds.value))
   const known = Array.from(new Set([
     ...selectedCantripIds.value,
+    ...selectedLeveledSpellIds.value,
+    ...alwaysPrepared
+  ]))
+
+  const prepared = Array.from(new Set([
     ...selectedLeveledSpellIds.value
   ]))
 
-  // For now, all class-selected leveled spells are marked prepared so they show up on the Actions tab.
-  // Later the level-up flow can separate known/prepared rules per class.
-  const prepared = [...selectedLeveledSpellIds.value]
-
-  if (!known.length && !prepared.length) return {}
+  if (!known.length && !prepared.length && !alwaysPrepared.length) return {}
 
   return {
     knownSpellIds: known,
     preparedSpellIds: prepared,
+    alwaysPreparedSpellIds: alwaysPrepared,
     builderClassSpellChoices: {
       className: props.className || '',
+      subclassName: props.subclassName || '',
+      subclassLookupId: props.subclassLookupId || '',
       level: characterLevel(),
       cantripSpellIds: selectedCantripIds.value,
       leveledSpellIds: selectedLeveledSpellIds.value,
+      subclassSpellIds: alwaysPrepared,
+      alwaysPreparedSpellIds: alwaysPrepared,
       maxSpellLevel: maxSpellLevelForClassLevel(),
       values: known.map(spellNameById)
     }
@@ -331,8 +378,13 @@ watch(
 
 const panelVisible = computed(() =>
   isSpellcastingClass() &&
-  (cantripCountForClassLevel() > 0 || leveledSpellChoiceCount() > 0)
+  (cantripCountForClassLevel() > 0 || leveledSpellChoiceCount() > 0 || subclassGrantedSpellOptions.value.length > 0)
 )
+
+function subclassSpellHeader() {
+  if (props.subclassName) return `${props.subclassName} Spells`
+  return 'Subclass Spells'
+}
 </script>
 
 <template>
@@ -392,6 +444,27 @@ const panelVisible = computed(() =>
 
     <div v-else class="mt-3 grid gap-3">
       <div
+        v-if="subclassGrantedSpellOptions.length"
+        class="rounded-none border border-emerald-400/20 bg-emerald-400/10 p-3"
+      >
+        <div class="font-semibold text-white">{{ subclassSpellHeader() }}</div>
+        <div class="mt-1 text-xs leading-5 text-emerald-100/90">
+          These spells are granted by your subclass/circle, are always prepared, and do not count against your normal prepared spell choices.
+        </div>
+
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          <div
+            v-for="spell in subclassGrantedSpellOptions"
+            :key="`subclass-spell-${spell.id}`"
+            class="rounded-none border border-emerald-400/20 bg-[rgba(8,17,27,0.52)] p-2 text-xs leading-5"
+          >
+            <div class="font-semibold text-white">{{ spell.title }}</div>
+            <div class="mt-1 text-[#9f9278]">Level {{ spell.level }} · {{ spell.source || 'Unknown' }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div
         v-if="cantripCountForClassLevel()"
         class="rounded-none border border-[rgba(65,82,103,0.50)] bg-[rgba(8,17,27,0.52)] p-3"
       >
@@ -431,6 +504,7 @@ const panelVisible = computed(() =>
         <div class="font-semibold text-white">{{ className }} Prepared {{ preparedSpellLevelLabel }}</div>
         <div class="mt-1 text-xs text-[#9f9278]">
           Choose {{ leveledSpellChoiceCount() }} spell{{ leveledSpellChoiceCount() === 1 ? '' : 's' }} from spell levels 1 through {{ maxSpellLevelForClassLevel() }}.
+          Subclass/circle spells above are already prepared.
         </div>
 
         <div class="mt-3 grid gap-2">
@@ -480,6 +554,14 @@ const panelVisible = computed(() =>
           >
             <span class="font-semibold text-white">{{ className }} {{ preparedSpellLevelLabel }}:</span>
             <span class="text-[#d8ceb8]"> {{ selectedLeveledSpellIds.map(spellNameById).join(', ') }}</span>
+          </div>
+
+          <div
+            v-if="subclassGrantedSpellIds.length"
+            class="rounded-none border border-emerald-400/20 bg-emerald-400/10 p-2 text-xs leading-5"
+          >
+            <span class="font-semibold text-white">{{ subclassSpellHeader() }}:</span>
+            <span class="text-[#d8ceb8]"> {{ subclassGrantedSpellIds.map(spellNameById).join(', ') }}</span>
           </div>
         </div>
       </div>

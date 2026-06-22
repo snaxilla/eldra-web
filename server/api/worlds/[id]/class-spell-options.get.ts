@@ -1,21 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { dxFetch } from '../../../utils/entity-factory'
-
-const CLASS_NAMES = [
-  'Artificer',
-  'Bard',
-  'Cleric',
-  'Druid',
-  'Paladin',
-  'Ranger',
-  'Sorcerer',
-  'Warlock',
-  'Wizard'
-]
+import { join } from 'node:path'
+import { directusServiceRequest } from '../../../utils/directus'
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+async function dxFetch(path: string, options: any = {}) {
+  return await directusServiceRequest(path, {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...(options.headers || {})
+    }
+  })
 }
 
 function parseJsonish(value: any): any {
@@ -44,107 +42,171 @@ function parseJsonish(value: any): any {
 }
 
 function cleanText(value: any) {
-  return String(value ?? '').trim()
+  if (Array.isArray(value)) return value.map(cleanText).filter(Boolean).join(' ')
+  if (value && typeof value === 'object') {
+    if (value.name || value.title) return cleanText(value.name || value.title)
+    if (value.entries) return cleanText(value.entries)
+    return ''
+  }
+
+  return String(value ?? '')
+    .replace(/\{@(?:class|subclass|classFeature|subclassFeature|feat|spell|item|filter|book|action|race|species)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/[#*_`]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function normalizedKey(value: any) {
   return cleanText(value)
     .toLowerCase()
     .replace(/['’]/g, '')
-    .replace(/[^a-z0-9/]+/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
     .trim()
-}
-
-function lookupSpellKey(value: any) {
-  return cleanText(value)
-    .toLowerCase()
-    .replace(/\{@(?:spell|filter|item|feat|skill|action|variantrule|condition|class|race|creature|damage|sense|status)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
-    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
-    .replace(/\{@[^}]+\}/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function canonicalClassName(value: any) {
-  const text = normalizedKey(value)
-
-  return CLASS_NAMES.find((name) =>
-    text === normalizedKey(name) || text.includes(normalizedKey(name))
-  ) || ''
-}
-
-function numberOrZero(value: any) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function sourceKey(value: any) {
-  return cleanText(value).toLowerCase()
+  return String(value ?? '').trim().toLowerCase()
 }
 
-function possibleLookupPaths() {
-  return [
+function subclassAliases(value: any) {
+  const text = cleanText(value)
+  const short = text
+    .replace(/^Circle of the\s+/i, '')
+    .replace(/^Circle of\s+/i, '')
+    .replace(/^College of\s+/i, '')
+    .replace(/^Oath of the\s+/i, '')
+    .replace(/^Oath of\s+/i, '')
+    .replace(/^Path of the\s+/i, '')
+    .replace(/^Path of\s+/i, '')
+    .replace(/^Way of the\s+/i, '')
+    .replace(/^Way of\s+/i, '')
+    .replace(/^The\s+/i, '')
+    .trim()
+
+  return Array.from(new Set([
+    normalizedKey(text),
+    normalizedKey(short)
+  ].filter(Boolean)))
+}
+
+function localSpellLookupPath() {
+  const candidates = [
+    process.env.ELDRA_5ETOOLS_SPELL_SOURCE_LOOKUP || '',
+    process.env.ELDRA_5ETOOLS_DATA_DIR ? join(process.env.ELDRA_5ETOOLS_DATA_DIR, 'generated/gendata-spell-source-lookup.json') : '',
     '/opt/eldra/datasets/5etools-src/data/generated/gendata-spell-source-lookup.json',
-    resolve(process.cwd(), '../datasets/5etools-src/data/generated/gendata-spell-source-lookup.json'),
-    resolve(process.cwd(), 'datasets/5etools-src/data/generated/gendata-spell-source-lookup.json'),
-    resolve(process.cwd(), 'data/generated/gendata-spell-source-lookup.json')
-  ]
+    join(process.cwd(), 'datasets/5etools-src/data/generated/gendata-spell-source-lookup.json'),
+    join(process.cwd(), '../datasets/5etools-src/data/generated/gendata-spell-source-lookup.json')
+  ].filter(Boolean)
+
+  return candidates.find((path) => existsSync(path)) || ''
 }
 
-let cachedLookup: any = null
+let cachedSpellLookup: any = null
 
-function loadSpellSourceLookup() {
-  if (cachedLookup) return cachedLookup
+function spellSourceLookup() {
+  if (cachedSpellLookup) return cachedSpellLookup
 
-  const path = possibleLookupPaths().find((candidate) => existsSync(candidate))
+  const path = localSpellLookupPath()
 
   if (!path) {
-    cachedLookup = {}
-    return cachedLookup
+    cachedSpellLookup = {}
+    return cachedSpellLookup
   }
 
   try {
-    cachedLookup = JSON.parse(readFileSync(path, 'utf8'))
+    cachedSpellLookup = JSON.parse(readFileSync(path, 'utf8'))
   } catch {
-    cachedLookup = {}
+    cachedSpellLookup = {}
   }
 
-  return cachedLookup
+  return cachedSpellLookup
 }
 
-function directClassSourcesForSpell(lookupEntry: any) {
-  const out = new Set<string>()
-  const classData = asObject(lookupEntry?.class)
+function spellLookupEntry(title: any, source: any) {
+  const lookup = spellSourceLookup()
+  const spellName = normalizedKey(title)
+  const preferredSource = sourceKey(source)
 
-  for (const [source, classMap] of Object.entries(classData)) {
-    const classes = asObject(classMap)
+  if (preferredSource && lookup?.[preferredSource]?.[spellName]) {
+    return lookup[preferredSource][spellName]
+  }
 
-    for (const [className, enabled] of Object.entries(classes)) {
-      if (enabled) out.add(`${source}:${className}`)
+  for (const sourceBucket of Object.values(lookup) as any[]) {
+    if (sourceBucket?.[spellName]) return sourceBucket[spellName]
+  }
+
+  return null
+}
+
+function objectHasClass(value: any, className: string) {
+  const wanted = normalizedKey(className)
+  if (!wanted || !value || typeof value !== 'object') return false
+
+  if (Array.isArray(value)) {
+    return value.some((item) => objectHasClass(item, className))
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (normalizedKey(key) === wanted) return true
+    if (child && typeof child === 'object' && objectHasClass(child, className)) return true
+  }
+
+  return false
+}
+
+function objectHasSubclass(value: any, aliases: string[]) {
+  if (!aliases.length || !value || typeof value !== 'object') return false
+
+  if (Array.isArray(value)) {
+    return value.some((item) => objectHasSubclass(item, aliases))
+  }
+
+  const maybeName = normalizedKey((value as any).name || (value as any).title || '')
+  if (maybeName && aliases.includes(maybeName)) return true
+
+  for (const [key, child] of Object.entries(value)) {
+    const keyNormalized = normalizedKey(key)
+    if (aliases.includes(keyNormalized)) return true
+
+    if (child && typeof child === 'object' && objectHasSubclass(child, aliases)) return true
+  }
+
+  return false
+}
+
+function objectClassSubclassMatches(value: any, className: string, subclassName: string) {
+  const classKey = normalizedKey(className)
+  const aliases = subclassAliases(subclassName)
+
+  if (!classKey || !aliases.length || !value || typeof value !== 'object') return false
+
+  if (Array.isArray(value)) {
+    return value.some((item) => objectClassSubclassMatches(item, className, subclassName))
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (normalizedKey(key) === classKey && objectHasSubclass(child, aliases)) return true
+
+    if (child && typeof child === 'object' && objectClassSubclassMatches(child, className, subclassName)) {
+      return true
     }
   }
 
-  return out
+  return false
 }
 
-function directClassNamesForSpell(lookupEntry: any) {
-  const out = new Set<string>()
+function lookupMatchesClass(entry: any, className: string) {
+  if (!entry || !className) return false
 
-  for (const token of directClassSourcesForSpell(lookupEntry)) {
-    const className = token.split(':').slice(1).join(':')
-    if (className) out.add(className)
-  }
-
-  return Array.from(out).sort((a, b) => a.localeCompare(b))
+  return objectHasClass(entry.class, className) ||
+    objectHasClass(entry.classVariant, className)
 }
 
-function spellAllowedForClass(lookupEntry: any, className: string) {
-  if (!className) return false
-
-  const wanted = normalizedKey(className)
-  const directClassNames = directClassNamesForSpell(lookupEntry)
-
-  return directClassNames.some((name) => normalizedKey(name) === wanted)
+function lookupMatchesSubclass(entry: any, className: string, subclassName: string) {
+  if (!entry || !className || !subclassName) return false
+  return objectClassSubclassMatches(entry.subclass, className, subclassName)
 }
 
 function blockData(blocks: any[], key: string) {
@@ -159,11 +221,11 @@ async function fetchSpellEntities(worldId: string) {
   const params = new URLSearchParams()
   params.set('filter[world_id][_eq]', String(worldId))
   params.set('filter[entity_type][_eq]', 'spell')
-  params.set('fields', 'id,title,slug,summary,entity_type')
+  params.set('fields', 'id,title,slug,summary,entity_type,world_id')
   params.set('limit', '-1')
   params.set('sort', 'title')
 
-  const res = await dxFetch(`/items/entities?${params.toString()}`)
+  const res = await dxFetch(`/items/entities?${params.toString()}`).catch(() => null)
   return Array.isArray(res?.data) ? res.data : []
 }
 
@@ -188,41 +250,76 @@ async function fetchBlocksForEntityIds(entityIds: string[]) {
   return out
 }
 
-function spellOptionFromEntity(entity: any, blocks: any[], requestedClass: string, lookup: any) {
-  const spellCore = blockData(blocks, 'spell_core')
+function spellLevelFromBlocks(entity: any, blocks: any[]) {
+  const core = blockData(blocks, 'spell_core')
+  const raw = asObject(parseJsonish(blockData(blocks, 'import_source').raw_json ?? blockData(blocks, 'import_source').rawJson))
+  const parsed = Number(core.level ?? core.spell_level ?? raw.level ?? 0)
+
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function spellSourceFromBlocks(entity: any, blocks: any[]) {
   const importSource = blockData(blocks, 'import_source')
   const raw = asObject(parseJsonish(importSource.raw_json ?? importSource.rawJson))
 
-  const title = cleanText(entity?.title || spellCore.name || raw.name)
-  const source = cleanText(raw.source || importSource.source_book || importSource.source || '')
-  const lookupEntry = asObject(lookup?.[sourceKey(source)]?.[lookupSpellKey(title)])
-  const directClassNames = directClassNamesForSpell(lookupEntry)
+  return cleanText(
+    raw.source ||
+    importSource.source_book ||
+    importSource.source ||
+    entity.source ||
+    ''
+  )
+}
 
-  if (!title || !source || !spellAllowedForClass(lookupEntry, requestedClass)) {
-    return null
-  }
+function spellPageFromBlocks(blocks: any[]) {
+  const importSource = blockData(blocks, 'import_source')
+  const raw = asObject(parseJsonish(importSource.raw_json ?? importSource.rawJson))
+
+  return cleanText(raw.page || importSource.source_page || importSource.page || '')
+}
+
+function spellSummary(entity: any, blocks: any[]) {
+  const core = blockData(blocks, 'spell_core')
+  const raw = asObject(parseJsonish(blockData(blocks, 'import_source').raw_json ?? blockData(blocks, 'import_source').rawJson))
+  const text = cleanText(entity.summary || core.description || raw.entries || '')
+
+  return text.length > 360 ? `${text.slice(0, 360).trim()}...` : text
+}
+
+function spellOption(entity: any, blocks: any[], match: any) {
+  const title = cleanText(entity.title || 'Untitled Spell')
+  const source = spellSourceFromBlocks(entity, blocks)
+  const page = spellPageFromBlocks(blocks)
+  const level = spellLevelFromBlocks(entity, blocks)
+  const subclassMatch = Boolean(match?.subclass)
 
   return {
     id: String(entity.id),
     value: String(entity.id),
     title,
     label: title,
-    level: numberOrZero(spellCore.level ?? raw.level),
+    slug: cleanText(entity.slug),
+    summary: spellSummary(entity, blocks),
+    level,
+    spellLevel: level,
     source,
     sourceBook: source,
-    slug: cleanText(entity.slug),
-    summary: cleanText(entity.summary),
-    classNames: directClassNames,
-    classSources: Array.from(directClassSourcesForSpell(lookupEntry)).sort(),
-    classListSource: '5etools-generated-lookup',
-    legalForClass: requestedClass
+    page,
+    sourcePage: page,
+    classMatch: Boolean(match?.class),
+    subclassMatch,
+    isSubclassSpell: subclassMatch,
+    alwaysPrepared: subclassMatch,
+    grantSource: subclassMatch ? 'Subclass / Circle' : 'Class',
+    subclassName: match?.subclassName || ''
   }
 }
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
   const query = getQuery(event)
-  const requestedClass = canonicalClassName(query.className || query.class || '')
+  const className = cleanText(query.className || query.class_name || '')
+  const subclassName = cleanText(query.subclassName || query.subclass_name || '')
 
   if (!worldId) {
     throw createError({
@@ -231,13 +328,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  if (!requestedClass) {
-    return []
-  }
+  if (!className) return []
 
-  const lookup = loadSpellSourceLookup()
-  const spellEntities = await fetchSpellEntities(worldId)
-  const entityIds = spellEntities.map((entity: any) => String(entity.id)).filter(Boolean)
+  const spells = await fetchSpellEntities(worldId)
+  const entityIds = spells.map((spell: any) => String(spell.id)).filter(Boolean)
   const blocks = await fetchBlocksForEntityIds(entityIds)
   const blocksByEntityId = new Map<string, any[]>()
 
@@ -245,25 +339,34 @@ export default defineEventHandler(async (event) => {
     const key = String(block?.entity_id || '')
     if (!key) continue
 
-    if (!blocksByEntityId.has(key)) {
-      blocksByEntityId.set(key, [])
-    }
-
+    if (!blocksByEntityId.has(key)) blocksByEntityId.set(key, [])
     blocksByEntityId.get(key)?.push(block)
   }
 
-  return spellEntities
-    .map((entity: any) =>
-      spellOptionFromEntity(
-        entity,
-        blocksByEntityId.get(String(entity.id)) || [],
-        requestedClass,
-        lookup
-      )
-    )
+  const out = spells
+    .map((entity: any) => {
+      const entityBlocks = blocksByEntityId.get(String(entity.id)) || []
+      const title = cleanText(entity.title || '')
+      const source = spellSourceFromBlocks(entity, entityBlocks)
+      const lookup = spellLookupEntry(title, source)
+
+      const classMatch = lookupMatchesClass(lookup, className)
+      const subclassMatch = lookupMatchesSubclass(lookup, className, subclassName)
+
+      if (!classMatch && !subclassMatch) return null
+
+      return spellOption(entity, entityBlocks, {
+        class: classMatch,
+        subclass: subclassMatch,
+        subclassName
+      })
+    })
     .filter(Boolean)
     .sort((a: any, b: any) =>
       Number(a.level || 0) - Number(b.level || 0) ||
-      String(a.title || '').localeCompare(String(b.title || ''))
+      String(a.title || '').localeCompare(String(b.title || '')) ||
+      String(a.source || '').localeCompare(String(b.source || ''))
     )
+
+  return out
 })

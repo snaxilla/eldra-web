@@ -2337,6 +2337,18 @@ function selectedGuidedSubclassChoice() {
   }
 }
 
+const selectedGuidedSubclassForSpellPanel = computed(() => {
+  const group = classSubclassPayload.value?.['class-subclass']
+  if (!group) return null
+
+  const meta = group.meta && typeof group.meta === 'object' ? group.meta : {}
+
+  return {
+    subclassName: String(meta.subclassName || group.valueLabel || group.values?.[0] || '').trim(),
+    subclassLookupId: String(meta.subclassLookupId || group.value || '').trim()
+  }
+})
+
 watch(
   () => [builderForm.classEntityId, builderForm.level],
   () => {
@@ -3360,6 +3372,8 @@ async function createCharacter() {
             :ability-scores="builderForm.abilityScores"
             @update:spellcasting="setClassSpellcastingPayload"
             @update:complete="setClassSpellChoicesComplete"
+          :subclass-name="selectedGuidedSubclassForSpellPanel?.subclassName || ''"
+          :subclass-lookup-id="selectedGuidedSubclassForSpellPanel?.subclassLookupId || ''"
           />
 
           <CharactersFeatChoicePanel

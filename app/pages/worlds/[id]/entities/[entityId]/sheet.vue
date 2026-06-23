@@ -6769,6 +6769,7 @@ async function saveSheet() {
                     :entity-id="entityId"
                     :sheet="sheet"
                     :resources="classResourceCards"
+                    @open-option-detail="openFeatureDrawer"
                   />
 
                 <div

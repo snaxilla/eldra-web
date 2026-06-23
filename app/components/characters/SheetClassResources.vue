@@ -30,6 +30,10 @@ const props = defineProps<{
   resources?: ClassResource[]
 }>()
 
+const emit = defineEmits<{
+  openOptionDetail: [option: any]
+}>()
+
 const saving = ref(false)
 const saveError = ref('')
 const saveSuccess = ref('')
@@ -248,6 +252,16 @@ function optionTitle(option: any) {
 function optionSummary(option: any) {
   return String(option?.summary || option?.detail || option?.markdown || '').trim()
 }
+
+function openOptionDetail(option: any) {
+  emit('openOptionDetail', {
+    ...option,
+    title: option?.title || option?.name || 'Feature',
+    type: 'Channel Divinity Option',
+    description: option?.detail || option?.markdown || option?.summary || '',
+    source: option?.source || 'Class Feature'
+  })
+}
 </script>
 
 <template>
@@ -374,10 +388,12 @@ function optionSummary(option: any) {
             Available Options
           </div>
 
-          <div
+          <button
             v-for="option in resource.options"
             :key="option.id || optionTitle(option)"
-            class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.48)] p-3"
+            type="button"
+            class="w-full rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.48)] p-3 text-left transition hover:border-[rgba(201,164,90,0.46)] hover:bg-[rgba(201,164,90,0.08)] focus:outline-none focus:ring-1 focus:ring-[#d6b56d]/40"
+            @click.stop="openOptionDetail(option)"
           >
             <div class="flex items-start justify-between gap-2">
               <div class="font-semibold text-[#fff7df]">{{ optionTitle(option) }}</div>
@@ -395,7 +411,7 @@ function optionSummary(option: any) {
             >
               {{ optionSummary(option) }}
             </p>
-          </div>
+          </button>
         </div>
 
         <div

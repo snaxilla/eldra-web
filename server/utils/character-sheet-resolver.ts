@@ -199,6 +199,33 @@ function speciesActionTimingFromText(value: any) {
     return 'Action'
   }
 
+  /*
+   * Natural weapons are usually described as anatomy rather than an explicit action:
+   * "Your bite is a natural weapon..." / "You can use your claws..." / "deals 1d6 piercing damage."
+   * They should still show in the sheet as attack-action options instead of being dropped.
+   */
+  const looksLikeNaturalWeapon =
+    text.includes('natural weapon') ||
+    text.includes('unarmed strike') ||
+    text.includes('your bite') ||
+    text.includes('your claws') ||
+    text.includes('your claw') ||
+    text.includes('your talons') ||
+    text.includes('your horns') ||
+    text.includes('your hooves') ||
+    text.includes('fanged maw') ||
+    text.includes('maw') ||
+    text.includes('bite attack') ||
+    text.includes('claw attack')
+
+  const hasWeaponDamage =
+    /\b\d+d\d+(?:\s*[+-]\s*\d+)?\b/i.test(text) &&
+    /\b(acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder) damage\b/i.test(text)
+
+  if (looksLikeNaturalWeapon && hasWeaponDamage) {
+    return 'Attack Action'
+  }
+
   return ''
 }
 

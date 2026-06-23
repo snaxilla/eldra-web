@@ -1,6 +1,17 @@
-import { dxFetch } from './entity-factory'
+import { directusServiceRequest } from './directus'
 import { resolveCharacterSheetSources } from './character-sheet-resolver'
 import { computeCharacterSheetMath } from './character-sheet-math'
+
+async function dxFetch(path: string, options: any = {}) {
+  return await directusServiceRequest(path, {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {})
+    }
+  })
+}
 
 function normalizeCharacterType(value: any) {
   const type = String(value || '').trim().toLowerCase()

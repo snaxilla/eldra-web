@@ -1,3 +1,4 @@
+import { directusServiceRequest } from './directus'
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
@@ -17,34 +18,14 @@ export function slugify(value: string) {
 }
 
 export async function dxFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${baseUrl()}${path}`, {
+  return await directusServiceRequest(path, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token()}`,
+      Accept: 'application/json',
       ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {})
     }
   })
-
-  const text = await res.text()
-  let json: any = null
-
-  try {
-    json = text ? JSON.parse(text) : null
-  } catch {}
-
-  if (!res.ok) {
-    throw createError({
-      statusCode: res.status,
-      statusMessage:
-        json?.errors?.[0]?.message ||
-        json?.message ||
-        text ||
-        `Directus error (${res.status})`
-    })
-  }
-
-  return json
 }
 
 export async function uploadImageToDirectus(filePart: any) {

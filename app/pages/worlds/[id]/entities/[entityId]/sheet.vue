@@ -8,6 +8,20 @@ const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const entityId = computed(() => String(route.params.entityId || ''))
+
+const classFeatureManifestUrl = computed(() =>
+  worldId.value && entityId.value
+    ? `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/feature-manifest`
+    : null
+)
+
+const { data: classFeatureManifest } = await useFetch(classFeatureManifestUrl, {
+  default: () => ({
+    features: [],
+    resources: []
+  }),
+  watch: [classFeatureManifestUrl]
+})
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 const sheetViewportWidth = ref(0)
 const sheetPointerCoarse = ref(false)
@@ -387,8 +401,57 @@ const classFeatureCards = computed(() => {
     })
 })
 
-const currentClassFeatureCards = computed(() =>
-  classFeatureCards.value.filter((feature: any) => !feature.level || feature.level <= Number(math.value?.level || sheet.value?.level || 1))
+const currentClassFeatureCards = computed(() => {
+  const manifestFeatures = manifestArray(classFeatureManifest.value?.features)
+  const currentLevel = Math.max(1, Math.floor(Number(sheet.value?.level || sheetForm.level || 1)))
+
+  if (manifestFeatures.length) {
+    return manifestFeatures
+      .filter((feature: any) => Number(feature?.level || 1) <= currentLevel)
+      .map((feature: any, index: number) => {
+        const name = String(feature?.name || feature?.title || `Class Feature ${index + 1}`)
+        const id = String(feature?.id || `class-feature-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)
+
+        return {
+          ...feature,
+          id,
+          name,
+          title: name,
+          source: feature?.source || feature?.kind || sheet.value?.class_name || 'Class',
+          detail: feature?.detail || feature?.markdown || feature?.summary || '',
+          description: feature?.detail || feature?.markdown || feature?.summary || '',
+          summary: feature?.summary || feature?.detail || feature?.markdown || '',
+          featureType: feature?.kind === 'subclass' ? 'Subclass Feature' : 'Class Feature',
+          found: feature?.found !== false
+        }
+      })
+  }
+
+  const savedFeatures = manifestArray(sheet.value?.features)
+
+  return savedFeatures
+    .filter((feature: any) => Number(feature?.level || 1) <= currentLevel)
+    .map((feature: any, index: number) => {
+      const name = String(feature?.name || feature?.title || `Class Feature ${index + 1}`)
+      const id = String(feature?.id || `saved-class-feature-${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)
+
+      return {
+        ...feature,
+        id,
+        name,
+        title: name,
+        source: feature?.source || sheet.value?.class_name || 'Class',
+        detail: feature?.detail || feature?.description || feature?.summary || '',
+        description: feature?.detail || feature?.description || feature?.summary || '',
+        summary: feature?.summary || feature?.detail || feature?.description || '',
+        featureType: feature?.featureType || feature?.feature_type || 'Class Feature',
+        found: true
+      }
+    })
+})
+
+const classResourceCards = computed(() =>
+  manifestArray(classFeatureManifest.value?.resources)
 )
 
 const upcomingClassFeatureCards = computed(() =>
@@ -3155,6 +3218,11 @@ async function handlePortraitUpload(event: Event) {
       portraitUploadInput.value.value = ''
     }
   }
+}
+
+
+function manifestArray(value: any) {
+  return Array.isArray(value) ? value : []
 }
 
 function asObject(value: any) {
@@ -6695,6 +6763,14 @@ async function saveSheet() {
                 v-else-if="activeSheetTab === 'actions'"
                 class="mt-0 grid gap-3 md:mt-6"
               >
+                  <CharactersSheetClassResources
+                    v-if="classResourceCards.length"
+                    :world-id="worldId"
+                    :entity-id="entityId"
+                    :sheet="sheet"
+                    :resources="classResourceCards"
+                  />
+
                 <div
                   v-if="mainSpeciesActionCards.length"
                   class="eldra-codex-soft rounded-none p-4"

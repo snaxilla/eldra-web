@@ -285,7 +285,7 @@ function openOptionDetail(option: any) {
   >
     <button
       type="button"
-      class="mb-3 flex w-full flex-wrap items-start justify-between gap-3 text-left"
+      class="mb-3 flex w-full items-center justify-between gap-3 text-left"
       @click="classResourcesCollapsed = !classResourcesCollapsed"
     >
       <div>
@@ -299,10 +299,10 @@ function openOptionDetail(option: any) {
         <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
           {{ shownResources.length }} Resource{{ shownResources.length === 1 ? '' : 's' }}
         </div>
-
-        <span class="text-[#9f9278]">
-          {{ classResourcesCollapsed ? '▾' : '▴' }}
-        </span>
+        <UIcon
+          :name="classResourcesCollapsed ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'"
+          class="h-4 w-4 text-[#9f9278]"
+        />
       </div>
     </button>
 

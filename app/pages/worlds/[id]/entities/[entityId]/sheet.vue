@@ -2344,6 +2344,23 @@ function speciesActionAttackFormula(action: any) {
   return `${stats.abilityLabel}${stats.proficient ? ' + PB' : ''}`
 }
 
+function speciesActionDamageText(action: any) {
+  const base = String(action?.damageFormula || action?.damage || '').trim()
+  if (!base) return ''
+
+  if (!speciesActionCanAttack(action)) return base
+
+  const stats = speciesActionAttackStats(action)
+  return damageRollText(base, stats.abilityMod)
+}
+
+function speciesActionDamageFormulaText(action: any) {
+  if (!speciesActionCanAttack(action)) return ''
+
+  const stats = speciesActionAttackStats(action)
+  return stats.abilityLabel
+}
+
 function speciesActionCanAttack(action: any) {
   const timing = String(action?.timing || action?.actionKind || '').toLowerCase()
   const name = String(action?.name || '').toLowerCase()
@@ -2372,7 +2389,7 @@ function rollSpeciesActionAttack(action: any) {
 }
 
 function rollSpeciesActionDamage(action: any) {
-  const expression = String(action?.damageFormula || action?.damage || '').trim()
+  const expression = String(speciesActionDamageText(action) || action?.damageFormula || action?.damage || '').trim()
   if (!expression) return
 
   if (resourceStateForSpeciesAction(action)) {
@@ -6908,7 +6925,10 @@ async function saveSheet() {
                           class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2"
                         >
                           <div class="uppercase tracking-[0.18em] text-[#9f9278]">Damage</div>
-                          <div class="mt-1 font-semibold text-white">{{ action.damage }}</div>
+                          <div class="mt-1 font-semibold text-white">{{ speciesActionDamageText(action) || action.damage }}</div>
+                          <div v-if="speciesActionDamageFormulaText(action)" class="mt-0.5 text-[10px] text-[#9f9278]">
+                            {{ speciesActionDamageFormulaText(action) }}
+                          </div>
                         </div>
 
                         <div
@@ -7216,7 +7236,7 @@ async function saveSheet() {
                   </div>
                 </div>
 
-                <div class="eldra-codex-soft rounded-none p-4">
+                <div class="eldra-codex-soft order-50 rounded-none p-4">
                   <button
                     type="button"
                     class="mb-3 flex w-full items-center justify-between gap-3 text-left"
@@ -7253,7 +7273,7 @@ async function saveSheet() {
                 </div>
 
                 <div class="grid gap-3 lg:grid-cols-2">
-                  <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="eldra-codex-soft order-60 rounded-none p-4">
                     <button
                       type="button"
                       class="mb-3 flex w-full items-center justify-between gap-3 text-left"
@@ -7292,7 +7312,7 @@ async function saveSheet() {
                     </div>
                   </div>
 
-                  <div class="eldra-codex-soft rounded-none p-4">
+                  <div class="eldra-codex-soft order-70 rounded-none p-4">
                     <button
                       type="button"
                       class="mb-3 flex w-full items-center justify-between gap-3 text-left"

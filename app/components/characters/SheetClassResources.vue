@@ -39,6 +39,7 @@ const saveError = ref('')
 const saveSuccess = ref('')
 const localUses = ref<Record<string, number>>({})
 const spendDrafts = ref<Record<string, number>>({})
+const collapsedResourceKeys = ref<Record<string, boolean>>({})
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -253,6 +254,18 @@ function optionSummary(option: any) {
   return String(option?.summary || option?.detail || option?.markdown || '').trim()
 }
 
+function resourceCollapsed(resource: any) {
+  return Boolean(collapsedResourceKeys.value[resource.usedKey || resource.key])
+}
+
+function toggleResourceCollapsed(resource: any) {
+  const key = resource.usedKey || resource.key
+  collapsedResourceKeys.value = {
+    ...collapsedResourceKeys.value,
+    [key]: !collapsedResourceKeys.value[key]
+  }
+}
+
 function openOptionDetail(option: any) {
   emit('openOptionDetail', {
     ...option,
@@ -288,22 +301,36 @@ function openOptionDetail(option: any) {
         :key="resource.key"
         class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
       >
-        <div class="flex items-start justify-between gap-3">
+        <button
+          type="button"
+          class="flex w-full items-start justify-between gap-3 text-left"
+          @click="toggleResourceCollapsed(resource)"
+        >
           <div class="min-w-0">
             <div class="truncate font-semibold text-white">{{ resource.label }}</div>
             <div class="mt-1 text-xs text-[#9f9278]">{{ resource.source }} · {{ resource.kind }}</div>
           </div>
 
-          <span
-            class="shrink-0 rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
-            :class="remainingCount(resource)
-              ? 'border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]'
-              : 'border-red-500/25 bg-red-500/10 text-red-200'"
-          >
-            {{ resourceStatusText(resource) }}
-          </span>
-        </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <span
+              class="rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+              :class="remainingCount(resource)
+                ? 'border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]'
+                : 'border-red-500/25 bg-red-500/10 text-red-200'"
+            >
+              {{ resourceStatusText(resource) }}
+            </span>
 
+            <span class="text-[#9f9278]">
+              {{ resourceCollapsed(resource) ? '▾' : '▴' }}
+            </span>
+          </div>
+        </button>
+
+        <div
+          v-show="!resourceCollapsed(resource)"
+          class="mt-3"
+        >
         <div
           v-if="pipIndexes(resource).length"
           class="mt-3 flex flex-wrap items-center gap-1.5"
@@ -466,6 +493,7 @@ function openOptionDetail(option: any) {
               Reset
             </button>
           </template>
+        </div>
         </div>
       </article>
     </div>

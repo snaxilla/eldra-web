@@ -6761,10 +6761,11 @@ async function saveSheet() {
 
               <section
                 v-else-if="activeSheetTab === 'actions'"
-                class="mt-0 grid gap-3 md:mt-6"
+                class="mt-0 flex flex-col gap-3 md:mt-6"
               >
                   <CharactersSheetClassResources
                     v-if="classResourceCards.length"
+                    class="order-30"
                     :world-id="worldId"
                     :entity-id="entityId"
                     :sheet="sheet"
@@ -6774,7 +6775,7 @@ async function saveSheet() {
 
                 <div
                   v-if="mainSpeciesActionCards.length"
-                  class="eldra-codex-soft rounded-none p-4"
+                  class="eldra-codex-soft order-10 rounded-none p-4"
                 >
                   <button
                     type="button"

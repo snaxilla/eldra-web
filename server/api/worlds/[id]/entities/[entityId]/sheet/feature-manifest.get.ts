@@ -17,6 +17,16 @@ type ManifestFeature = {
   found: boolean
 }
 
+type ManifestResourceOption = {
+  id: string
+  name: string
+  title: string
+  activation: string
+  summary: string
+  detail: string
+  markdown: string
+}
+
 type ManifestResource = {
   key: string
   label: string
@@ -28,6 +38,7 @@ type ManifestResource = {
   unit: string
   mode: 'uses' | 'pool'
   description: string
+  options?: ManifestResourceOption[]
 }
 
 function cleanText(value: any): string {
@@ -372,9 +383,35 @@ function resetTextFromFeature(text: string, fallback = 'Long Rest') {
   return fallback
 }
 
+function hasChannelDivinityLanguage(feature: ManifestFeature) {
+  const text = normalizedKey(`${feature.name} ${feature.title} ${feature.detail} ${feature.summary}`)
+  if (!text.includes('channel divinity')) return false
+
+  const name = normalizedKey(feature.name)
+  if (name === 'channel divinity') return false
+
+  return true
+}
+
+function channelDivinityOptions(features: ManifestFeature[]) {
+  return features
+    .filter((feature) => feature.kind === 'subclass')
+    .filter(hasChannelDivinityLanguage)
+    .map((feature) => ({
+      id: feature.id,
+      name: feature.name,
+      title: feature.title,
+      activation: feature.activation,
+      summary: feature.summary,
+      detail: feature.detail,
+      markdown: feature.markdown
+    }))
+}
+
 function resourceDefinitions(features: ManifestFeature[], className: string, level: number) {
   const out: ManifestResource[] = []
   const seen = new Set<string>()
+  const channelOptions = channelDivinityOptions(features)
 
   function add(resource: ManifestResource) {
     if (!resource.key || seen.has(resource.key)) return
@@ -397,7 +434,10 @@ function resourceDefinitions(features: ManifestFeature[], className: string, lev
         kind: 'Class Resource',
         unit: 'Use',
         mode: 'uses',
-        description: feature.summary || 'Track expended uses of Channel Divinity.'
+        description: channelOptions.length
+          ? 'Expend Channel Divinity to use one of the options below.'
+          : feature.summary || 'Track expended uses of Channel Divinity.',
+        options: channelOptions
       })
     }
 
@@ -487,7 +527,7 @@ export default defineEventHandler(async (event) => {
     return {
       source: 'no-class',
       worldId,
-      entityId,
+      entityId: entityId,
       sheetId: sheet.id,
       level,
       features: [],

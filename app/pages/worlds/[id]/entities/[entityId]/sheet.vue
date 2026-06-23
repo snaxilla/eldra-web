@@ -6829,7 +6829,7 @@ async function saveSheet() {
               >
                   <CharactersSheetClassResources
                     v-if="classResourceCards.length"
-                    class="order-30"
+                    class="order-3"
                     :world-id="worldId"
                     :entity-id="entityId"
                     :sheet="sheet"
@@ -6839,7 +6839,7 @@ async function saveSheet() {
 
                 <div
                   v-if="mainSpeciesActionCards.length"
-                  class="eldra-codex-soft order-20 rounded-none p-4"
+                  class="eldra-codex-soft order-2 rounded-none p-4"
                 >
                   <button
                     type="button"
@@ -7001,7 +7001,7 @@ async function saveSheet() {
 
                 <div
                   v-if="equippedWeaponActions.length"
-                  class="eldra-codex-soft order-10 rounded-none p-4"
+                  class="eldra-codex-soft order-1 rounded-none p-4"
                 >
                   <button
                     type="button"
@@ -7109,7 +7109,7 @@ async function saveSheet() {
 
                 <div
                   v-if="actionSpellCards.length"
-                  class="eldra-codex-soft order-40 rounded-none p-4"
+                  class="eldra-codex-soft order-4 rounded-none p-4"
                 >
                   <button
                     type="button"
@@ -7236,7 +7236,7 @@ async function saveSheet() {
                   </div>
                 </div>
 
-                <div class="eldra-codex-soft order-50 rounded-none p-4">
+                <div class="eldra-codex-soft order-5 rounded-none p-4">
                   <button
                     type="button"
                     class="mb-3 flex w-full items-center justify-between gap-3 text-left"
@@ -7273,7 +7273,7 @@ async function saveSheet() {
                 </div>
 
                 <div class="grid gap-3 lg:grid-cols-2">
-                  <div class="eldra-codex-soft order-60 rounded-none p-4">
+                  <div class="eldra-codex-soft order-6 rounded-none p-4">
                     <button
                       type="button"
                       class="mb-3 flex w-full items-center justify-between gap-3 text-left"
@@ -7312,7 +7312,7 @@ async function saveSheet() {
                     </div>
                   </div>
 
-                  <div class="eldra-codex-soft order-70 rounded-none p-4">
+                  <div class="eldra-codex-soft order-7 rounded-none p-4">
                     <button
                       type="button"
                       class="mb-3 flex w-full items-center justify-between gap-3 text-left"

@@ -40,6 +40,7 @@ const saveSuccess = ref('')
 const localUses = ref<Record<string, number>>({})
 const spendDrafts = ref<Record<string, number>>({})
 const collapsedResourceKeys = ref<Record<string, boolean>>({})
+const classResourcesCollapsed = ref(false)
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -282,7 +283,11 @@ function openOptionDetail(option: any) {
     v-if="shownResources.length"
     class="eldra-codex-soft rounded-none p-4"
   >
-    <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+    <button
+      type="button"
+      class="mb-3 flex w-full flex-wrap items-start justify-between gap-3 text-left"
+      @click="classResourcesCollapsed = !classResourcesCollapsed"
+    >
       <div>
         <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Class Resources</div>
         <div class="mt-1 text-sm text-[#d8ceb8]">
@@ -290,12 +295,21 @@ function openOptionDetail(option: any) {
         </div>
       </div>
 
-      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-        {{ shownResources.length }} Resource{{ shownResources.length === 1 ? '' : 's' }}
-      </div>
-    </div>
+      <div class="flex items-center gap-2">
+        <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+          {{ shownResources.length }} Resource{{ shownResources.length === 1 ? '' : 's' }}
+        </div>
 
-    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <span class="text-[#9f9278]">
+          {{ classResourcesCollapsed ? '▾' : '▴' }}
+        </span>
+      </div>
+    </button>
+
+    <div
+      v-show="!classResourcesCollapsed"
+      class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+    >
       <article
         v-for="resource in shownResources"
         :key="resource.key"

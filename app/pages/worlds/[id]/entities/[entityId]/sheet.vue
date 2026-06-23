@@ -2326,6 +2326,51 @@ const displayedReactionActionCards = computed(() =>
   ])
 )
 
+function speciesActionAttackStats(action: any) {
+  const source = {
+    id: 'unarmed-strike',
+    name: action?.name || 'Species Attack'
+  }
+
+  return attackBonusForWeapon(source)
+}
+
+function speciesActionAttackBonusText(action: any) {
+  return signedNumberText(speciesActionAttackStats(action).total)
+}
+
+function speciesActionAttackFormula(action: any) {
+  const stats = speciesActionAttackStats(action)
+  return `${stats.abilityLabel}${stats.proficient ? ' + PB' : ''}`
+}
+
+function speciesActionCanAttack(action: any) {
+  const timing = String(action?.timing || action?.actionKind || '').toLowerCase()
+  const name = String(action?.name || '').toLowerCase()
+  const detail = String(action?.detail || action?.description || '').toLowerCase()
+
+  return Boolean(
+    timing.includes('attack') ||
+    detail.includes('natural weapon') ||
+    detail.includes('unarmed strike') ||
+    name.includes('bite') ||
+    name.includes('claw') ||
+    name.includes('talon') ||
+    name.includes('horn') ||
+    name.includes('maw')
+  )
+}
+
+function rollSpeciesActionAttack(action: any) {
+  const stats = speciesActionAttackStats(action)
+
+  rollDiceBox(
+    diceBoxNotationWithBonus('1d20', stats.total),
+    `${action?.name || 'Species Action'} Attack`,
+    'Attack'
+  )
+}
+
 function rollSpeciesActionDamage(action: any) {
   const expression = String(action?.damageFormula || action?.damage || '').trim()
   if (!expression) return
@@ -2530,12 +2575,14 @@ function canUndoSpeciesActionResource(action: any) {
 
 function speciesActionButtonGridClass(action: any) {
   const count = [
+    speciesActionCanAttack(action),
     resourceStateForSpeciesAction(action),
     action?.damageFormula,
     true
   ].filter(Boolean).length
 
-  if (count >= 3) return 'grid-cols-3'
+  if (count >= 4) return 'grid-cols-4'
+  if (count === 3) return 'grid-cols-3'
   if (count === 2) return 'grid-cols-2'
   return 'grid-cols-1'
 }
@@ -6775,7 +6822,7 @@ async function saveSheet() {
 
                 <div
                   v-if="mainSpeciesActionCards.length"
-                  class="eldra-codex-soft order-10 rounded-none p-4"
+                  class="eldra-codex-soft order-20 rounded-none p-4"
                 >
                   <button
                     type="button"
@@ -6838,10 +6885,24 @@ async function saveSheet() {
                       </div>
 
                       <div
-                        v-if="action.damage || action.damageType"
+                        v-if="speciesActionCanAttack(action) || action.damage || action.damageType"
                         class="mt-3 grid gap-2 text-xs"
-                        :class="action.damage && action.damageType ? 'grid-cols-2' : 'grid-cols-1'"
+                        :class="[
+                          speciesActionCanAttack(action) && action.damage && action.damageType ? 'grid-cols-3' : '',
+                          speciesActionCanAttack(action) && ((action.damage && !action.damageType) || (!action.damage && action.damageType)) ? 'grid-cols-2' : '',
+                          !speciesActionCanAttack(action) && action.damage && action.damageType ? 'grid-cols-2' : '',
+                          (!speciesActionCanAttack(action) && ((action.damage && !action.damageType) || (!action.damage && action.damageType))) || (speciesActionCanAttack(action) && !action.damage && !action.damageType) ? 'grid-cols-1' : ''
+                        ]"
                       >
+                        <div
+                          v-if="speciesActionCanAttack(action)"
+                          class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2"
+                        >
+                          <div class="uppercase tracking-[0.18em] text-[#9f9278]">To Hit</div>
+                          <div class="mt-1 font-semibold text-white">{{ speciesActionAttackBonusText(action) }}</div>
+                          <div class="mt-0.5 text-[10px] text-[#9f9278]">{{ speciesActionAttackFormula(action) }}</div>
+                        </div>
+
                         <div
                           v-if="action.damage"
                           class="rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-2"
@@ -6878,6 +6939,15 @@ async function saveSheet() {
                         :class="speciesActionButtonGridClass(action)"
                       >
                         <button
+                          v-if="speciesActionCanAttack(action)"
+                          type="button"
+                          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df]"
+                          @click.stop="rollSpeciesActionAttack(action)"
+                        >
+                          To Hit
+                        </button>
+
+                        <button
                           v-if="resourceStateForSpeciesAction(action)"
                           type="button"
                           class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
@@ -6911,7 +6981,7 @@ async function saveSheet() {
 
                 <div
                   v-if="equippedWeaponActions.length"
-                  class="eldra-codex-soft rounded-none p-4"
+                  class="eldra-codex-soft order-10 rounded-none p-4"
                 >
                   <button
                     type="button"
@@ -7019,7 +7089,7 @@ async function saveSheet() {
 
                 <div
                   v-if="actionSpellCards.length"
-                  class="eldra-codex-soft rounded-none p-4"
+                  class="eldra-codex-soft order-40 rounded-none p-4"
                 >
                   <button
                     type="button"

@@ -139,7 +139,9 @@ function clampSpendAmount(resource: any, value: any) {
 
 function spendAmount(resource: any) {
   const key = resource.usedKey || resource.key
-  return clampSpendAmount(resource, spendDrafts.value[key])
+  const clamped = clampSpendAmount(resource, spendDrafts.value[key])
+  const maxSpend = resource.mode === 'pool' ? Math.max(1, remainingCount(resource)) : Number(resource.max || 1)
+  return Math.max(1, Math.min(clamped, maxSpend))
 }
 
 function setSpendAmount(resource: any, value: any) {
@@ -211,17 +213,13 @@ function useResource(resource: any) {
   setUsed(resource, usedCount(resource) + 1)
 }
 
-function restoreResource(resource: any) {
-  if (saving.value) return
+function restoreHitPointsFromPool(resource: any) {
+  if (saving.value || resource.mode !== 'pool') return
 
-  if (resource.mode === 'pool') {
-    const amount = Math.min(spendAmount(resource), usedCount(resource))
-    if (amount <= 0) return
-    setUsed(resource, usedCount(resource) - amount)
-    return
-  }
+  const amount = Math.min(spendAmount(resource), remainingCount(resource))
+  if (amount <= 0) return
 
-  undoResource(resource)
+  setUsed(resource, usedCount(resource) + amount)
 }
 
 function undoResource(resource: any) {
@@ -404,33 +402,54 @@ function optionSummary(option: any) {
           class="mt-3 grid gap-2"
           :class="resource.mode === 'pool' ? 'grid-cols-2' : 'grid-cols-3'"
         >
-          <button
-            type="button"
-            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
-            :disabled="saving || remainingCount(resource) <= 0"
-            @click.stop="useResource(resource)"
-          >
-            {{ resource.mode === 'pool' ? `Use ${spendAmount(resource)} ${resource.unit || 'HP'}` : 'Use' }}
-          </button>
+          <template v-if="resource.mode === 'pool'">
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+              :disabled="saving || remainingCount(resource) <= 0"
+              @click.stop="restoreHitPointsFromPool(resource)"
+            >
+              Restore {{ spendAmount(resource) }} {{ resource.unit || 'HP' }}
+            </button>
 
-          <button
-            type="button"
-            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
-            :disabled="saving || usedCount(resource) <= 0"
-            @click.stop="resource.mode === 'pool' ? restoreResource(resource) : undoResource(resource)"
-          >
-            {{ resource.mode === 'pool' ? `Restore ${spendAmount(resource)} ${resource.unit || 'HP'}` : 'Undo' }}
-          </button>
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+              :disabled="saving || usedCount(resource) <= 0"
+              @click.stop="resetResource(resource)"
+            >
+              Reset Pool
+            </button>
+          </template>
 
-          <button
-            type="button"
-            class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
-            :class="resource.mode === 'pool' ? 'col-span-2' : ''"
-            :disabled="saving || usedCount(resource) <= 0"
-            @click.stop="resetResource(resource)"
-          >
-            Reset
-          </button>
+          <template v-else>
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+              :disabled="saving || remainingCount(resource) <= 0"
+              @click.stop="useResource(resource)"
+            >
+              Use
+            </button>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+              :disabled="saving || usedCount(resource) <= 0"
+              @click.stop="undoResource(resource)"
+            >
+              Undo
+            </button>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-center text-xs font-semibold text-[#fff7df] disabled:opacity-40"
+              :disabled="saving || usedCount(resource) <= 0"
+              @click.stop="resetResource(resource)"
+            >
+              Reset
+            </button>
+          </template>
         </div>
       </article>
     </div>

@@ -13,6 +13,8 @@ const props = withDefaults(defineProps<{
   readMoreLabel: 'Read More'
 })
 
+const route = useRoute()
+
 const emit = defineEmits<{
   close: []
   readMore: [entity: any]
@@ -38,7 +40,9 @@ watch(
   }
 )
 
-const drawerWorldId = computed(() => String(props.worldId || '').trim())
+const drawerWorldId = computed(() =>
+  String(props.worldId || route.params.id || activeEntity.value?.worldId || activeEntity.value?.world_id || '').trim()
+)
 
 function titleCase(value: any) {
   return String(value || '')
@@ -273,8 +277,8 @@ function readMore() {
             </div>
 
             <WorldMentionText
-              v-if="entitySummary && drawerWorldId"
-              :world-id="drawerWorldId"
+              v-if="entitySummary"
+              :world-id="drawerWorldId || 0"
               :markdown="entitySummary"
               class="mt-3 text-sm leading-7 text-[#d8ceb8]"
               @open-mention="openNestedMention"

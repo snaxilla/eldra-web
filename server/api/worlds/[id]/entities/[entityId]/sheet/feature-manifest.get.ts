@@ -383,35 +383,76 @@ function resetTextFromFeature(text: string, fallback = 'Long Rest') {
   return fallback
 }
 
-function hasChannelDivinityLanguage(feature: ManifestFeature) {
-  const text = normalizedKey(`${feature.name} ${feature.title} ${feature.detail} ${feature.summary}`)
-  if (!text.includes('channel divinity')) return false
-
-  const name = normalizedKey(feature.name)
-  if (name === 'channel divinity') return false
-
-  return true
+function resourceOptionObject(feature: ManifestFeature): ManifestResourceOption {
+  return {
+    id: feature.id,
+    name: feature.name,
+    title: feature.title,
+    activation: feature.activation,
+    summary: feature.summary,
+    detail: feature.detail,
+    markdown: feature.markdown
+  }
 }
 
-function channelDivinityOptions(features: ManifestFeature[]) {
+function featureLooksLikeResourceParent(feature: ManifestFeature, resourceName: string) {
+  return normalizedKey(feature.name) === normalizedKey(resourceName)
+}
+
+function featureMentionsResourceUse(feature: ManifestFeature, resourceName: string) {
+  const resourceKey = normalizedKey(resourceName)
+  const featureName = normalizedKey(feature.name)
+  const featureTitle = normalizedKey(feature.title)
+  const text = normalizedKey(`${feature.name} ${feature.title} ${feature.detail} ${feature.summary} ${feature.markdown}`)
+
+  if (!resourceKey) return false
+  if (featureLooksLikeResourceParent(feature, resourceName)) return false
+
+  /*
+   * Generic resource option detection:
+   * - "Channel Divinity: Harness Divine Power"
+   * - "Rage: Foo"
+   * - "Wild Shape: Foo"
+   * - any feature text that says it expends/spends/uses that resource
+   */
+  if (featureName.startsWith(`${resourceKey} `)) return true
+  if (featureName.startsWith(`${resourceKey}:`)) return true
+  if (featureTitle.startsWith(`${resourceKey} `)) return true
+  if (featureTitle.startsWith(`${resourceKey}:`)) return true
+
+  if (!text.includes(resourceKey)) return false
+
+  return (
+    text.includes(`use your ${resourceKey}`) ||
+    text.includes(`use this ${resourceKey}`) ||
+    text.includes(`use a ${resourceKey}`) ||
+    text.includes(`using your ${resourceKey}`) ||
+    text.includes(`expend a use of ${resourceKey}`) ||
+    text.includes(`expend one use of ${resourceKey}`) ||
+    text.includes(`spend a use of ${resourceKey}`) ||
+    text.includes(`spend one use of ${resourceKey}`) ||
+    text.includes(`with your ${resourceKey}`)
+  )
+}
+
+function resourceOptionsFor(features: ManifestFeature[], resourceName: string) {
+  const seen = new Set<string>()
+
   return features
-    .filter((feature) => feature.kind === 'subclass')
-    .filter(hasChannelDivinityLanguage)
-    .map((feature) => ({
-      id: feature.id,
-      name: feature.name,
-      title: feature.title,
-      activation: feature.activation,
-      summary: feature.summary,
-      detail: feature.detail,
-      markdown: feature.markdown
-    }))
+    .filter((feature) => featureMentionsResourceUse(feature, resourceName))
+    .map(resourceOptionObject)
+    .filter((option) => {
+      const key = normalizedKey(`${option.title} ${option.detail}`)
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 function resourceDefinitions(features: ManifestFeature[], className: string, level: number) {
   const out: ManifestResource[] = []
   const seen = new Set<string>()
-  const channelOptions = channelDivinityOptions(features)
+  const channelOptions = resourceOptionsFor(features, 'Channel Divinity')
 
   function add(resource: ManifestResource) {
     if (!resource.key || seen.has(resource.key)) return

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import WorldMentionText from '~/components/world/WorldMentionText.vue'
 const props = withDefaults(defineProps<{
   open: boolean
   entity: any | null
+  worldId?: string | number
   mode?: 'play' | 'build'
   allowBuildActions?: boolean
   readMoreLabel?: string
@@ -15,7 +17,26 @@ const emit = defineEmits<{
   close: []
   readMore: [entity: any]
   openMap: [entity: any]
+  openMention: [mention: any]
 }>()
+
+const nestedContextEntity = ref<any | null>(null)
+
+const activeEntity = computed(() => nestedContextEntity.value || props.entity)
+
+watch(
+  () => props.entity,
+  () => {
+    nestedContextEntity.value = null
+  }
+)
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) nestedContextEntity.value = null
+  }
+)
 
 function titleCase(value: any) {
   return String(value || '')
@@ -27,27 +48,27 @@ function titleCase(value: any) {
 }
 
 const entityTitle = computed(() =>
-  String(props.entity?.title || props.entity?.name || props.entity?.label || 'Linked Context')
+  String(activeEntity.value?.title || activeEntity.value?.name || activeEntity.value?.label || 'Linked Context')
 )
 
 const rawEntityType = computed(() =>
   String(
-    props.entity?.entityType ||
-    props.entity?.entity_type ||
-    props.entity?.type ||
-    props.entity?.kind ||
+    activeEntity.value?.entityType ||
+    activeEntity.value?.entity_type ||
+    activeEntity.value?.type ||
+    activeEntity.value?.kind ||
     'Entity'
   ).trim()
 )
 
 const displayType = computed(() =>
   String(
-    props.entity?.displayType ||
-    props.entity?.display_type ||
-    props.entity?.subtype ||
-    props.entity?.subType ||
-    props.entity?.locationType ||
-    props.entity?.location_type ||
+    activeEntity.value?.displayType ||
+    activeEntity.value?.display_type ||
+    activeEntity.value?.subtype ||
+    activeEntity.value?.subType ||
+    activeEntity.value?.locationType ||
+    activeEntity.value?.location_type ||
     rawEntityType.value ||
     'Entity'
   ).trim()
@@ -55,29 +76,29 @@ const displayType = computed(() =>
 
 const entitySummary = computed(() =>
   String(
-    props.entity?.summary ||
-    props.entity?.description ||
-    props.entity?.detail ||
-    props.entity?.markdown ||
+    activeEntity.value?.summary ||
+    activeEntity.value?.description ||
+    activeEntity.value?.detail ||
+    activeEntity.value?.markdown ||
     ''
   ).trim()
 )
 
 const entityImageUrl = computed(() =>
-  String(props.entity?.imageUrl || props.entity?.image_url || props.entity?.image || '').trim()
+  String(activeEntity.value?.imageUrl || activeEntity.value?.image_url || activeEntity.value?.image || '').trim()
 )
 
 const entityUrl = computed(() =>
-  String(props.entity?.url || props.entity?.articleUrl || props.entity?.article_url || '').trim()
+  String(activeEntity.value?.url || activeEntity.value?.articleUrl || activeEntity.value?.article_url || '').trim()
 )
 
 const entityTags = computed(() => {
-  const raw = props.entity?.tags || props.entity?.keywords || []
+  const raw = activeEntity.value?.tags || activeEntity.value?.keywords || []
   if (Array.isArray(raw)) return raw.map((tag: any) => String(tag || '').trim()).filter(Boolean)
   return []
 })
 
-const isResolved = computed(() => props.entity?.resolved !== false)
+const isResolved = computed(() => activeEntity.value?.resolved !== false)
 
 const eyebrowLabel = computed(() =>
   isResolved.value ? (titleCase(displayType.value) || 'Entity') : 'Unresolved'
@@ -91,7 +112,7 @@ const detailHeading = computed(() => {
 const detailLines = computed(() => {
   if (!isResolved.value) return []
 
-  const provided = props.entity?.detailLines || props.entity?.detail_lines
+  const provided = activeEntity.value?.detailLines || activeEntity.value?.detail_lines
   if (Array.isArray(provided)) {
     const lines = provided.map((line: any) => String(line || '').trim()).filter(Boolean)
     if (lines.length) return lines
@@ -118,15 +139,15 @@ const chipTags = computed(() => {
 })
 
 const destinationMapTitle = computed(() =>
-  String(props.entity?.destinationMapTitle || props.entity?.destination_map_title || '').trim()
+  String(activeEntity.value?.destinationMapTitle || activeEntity.value?.destination_map_title || '').trim()
 )
 
 const destinationMapUrl = computed(() =>
-  String(props.entity?.destinationMapUrl || props.entity?.destination_map_url || '').trim()
+  String(activeEntity.value?.destinationMapUrl || activeEntity.value?.destination_map_url || '').trim()
 )
 
 function openDestinationMap() {
-  emit('openMap', props.entity)
+  emit('openMap', activeEntity.value)
 }
 
 function close() {
@@ -163,9 +184,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onLightboxKeydown)
 })
 
+function openNestedMention(mention: any) {
+  nestedContextEntity.value = mention || null
+  emit('openMention', mention)
+}
+
 function readMore() {
   if (entityUrl.value) return
-  emit('readMore', props.entity)
+  emit('readMore', activeEntity.value)
 }
 </script>
 
@@ -244,8 +270,16 @@ function readMore() {
               Summary
             </div>
 
+            <WorldMentionText
+              v-if="entitySummary && worldId"
+              :world-id="worldId"
+              :markdown="entitySummary"
+              class="mt-3 text-sm leading-7 text-[#d8ceb8]"
+              @open-mention="openNestedMention"
+            />
+
             <p
-              v-if="entitySummary"
+              v-else-if="entitySummary"
               class="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#d8ceb8]"
             >
               {{ entitySummary }}

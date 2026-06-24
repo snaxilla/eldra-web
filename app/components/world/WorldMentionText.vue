@@ -19,17 +19,12 @@ function normalizeMention(value: any) {
     .trim()
 }
 
-function escapeHtml(value: any) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function mentionKey(value: any) {
-  return normalizeMention(value).toLowerCase()
+function normalizedKey(value: any) {
+  return normalizeMention(value)
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
 }
 
 const mentionTexts = computed(() => {
@@ -38,7 +33,7 @@ const mentionTexts = computed(() => {
 
   for (const match of raw.matchAll(/@\[([^\]]+)\]/g)) {
     const label = normalizeMention(match[1])
-    if (label) found.set(mentionKey(label), label)
+    if (label) found.set(normalizedKey(label), label)
   }
 
   return Array.from(found.values())
@@ -76,34 +71,84 @@ watch(
   { immediate: true }
 )
 
-const renderedHtml = computed(() => {
+type RenderPart =
+  | {
+      type: 'html'
+      key: string
+      html: string
+    }
+  | {
+      type: 'mention'
+      key: string
+      label: string
+      resolved: any
+    }
+
+/*
+ * Important:
+ * Do not inject <button> through renderMarkdown/v-html. Some markdown renderers
+ * sanitize or escape interactive HTML. Instead, put stable text placeholders
+ * through markdown, split the final HTML on those placeholders, and render the
+ * actual mention buttons with Vue.
+ */
+const renderedParts = computed<RenderPart[]>(() => {
   const raw = String(props.markdown || '')
+  const mentions: string[] = []
+  const tokenPrefix = 'ELDRA_MENTION_TOKEN_'
 
-  const withMentionButtons = raw.replace(/@\[([^\]]+)\]/g, (_match, label) => {
+  const markdownWithTokens = raw.replace(/@\[([^\]]+)\]/g, (_match, label) => {
     const cleanLabel = normalizeMention(label)
-    const key = mentionKey(cleanLabel)
-    const resolved = resolvedMentions.value[key]
-    const stateClass = resolved?.resolved
-      ? 'eldra-mention-link'
-      : 'eldra-mention-link eldra-mention-link-unresolved'
-
-    return `<button type="button" class="${stateClass}" data-eldra-mention="${encodeURIComponent(cleanLabel)}">${escapeHtml(cleanLabel)}</button>`
+    const index = mentions.length
+    mentions.push(cleanLabel)
+    return `${tokenPrefix}${index}__`
   })
 
-  return renderMarkdown(withMentionButtons)
+  const html = renderMarkdown(markdownWithTokens)
+  const parts: RenderPart[] = []
+  const tokenRegex = new RegExp(`${tokenPrefix}(\\d+)__`, 'g')
+
+  let cursor = 0
+  let match: RegExpExecArray | null
+
+  while ((match = tokenRegex.exec(html)) !== null) {
+    const before = html.slice(cursor, match.index)
+    if (before) {
+      parts.push({
+        type: 'html',
+        key: `html-${parts.length}`,
+        html: before
+      })
+    }
+
+    const index = Number(match[1])
+    const label = mentions[index] || ''
+    const key = normalizedKey(label)
+    const resolved = resolvedMentions.value[key]
+
+    parts.push({
+      type: 'mention',
+      key: `mention-${index}-${key || label}`,
+      label,
+      resolved
+    })
+
+    cursor = match.index + match[0].length
+  }
+
+  const after = html.slice(cursor)
+  if (after) {
+    parts.push({
+      type: 'html',
+      key: `html-${parts.length}`,
+      html: after
+    })
+  }
+
+  return parts
 })
 
-function onClick(event: MouseEvent) {
-  const target = event.target as HTMLElement | null
-  const button = target?.closest?.('[data-eldra-mention]') as HTMLElement | null
-
-  if (!button) return
-
-  event.preventDefault()
-  event.stopPropagation()
-
-  const label = decodeURIComponent(button.dataset.eldraMention || '')
-  const resolved = resolvedMentions.value[mentionKey(label)]
+function openMention(label: string) {
+  const resolved = resolvedMentions.value[normalizedKey(label)]
 
   emit('openMention', {
     label,
@@ -111,22 +156,51 @@ function onClick(event: MouseEvent) {
     ...(resolved || {
       resolved: false,
       title: label,
-      summary: `No matching world entity was found for "${label}".`
+      entityType: 'Unresolved Mention',
+      summary: `No matching world entity was found for "${label}".`,
+      markdown: `No matching world entity was found for **${label}**.`
     })
   })
 }
 </script>
 
 <template>
-  <div
-    class="world-mention-text"
-    v-html="renderedHtml"
-    @click="onClick"
-  />
+  <div class="world-mention-text">
+    <template v-for="part in renderedParts" :key="part.key">
+      <span
+        v-if="part.type === 'html'"
+        v-html="part.html"
+      />
+
+      <button
+        v-else
+        type="button"
+        :class="[
+          'eldra-mention-link',
+          part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
+        ]"
+        @click.prevent.stop="openMention(part.label)"
+      >
+        {{ part.label }}
+      </button>
+    </template>
+  </div>
 </template>
 
 <style scoped>
-.world-mention-text :deep(.eldra-mention-link) {
+.world-mention-text {
+  display: block;
+}
+
+.world-mention-text :deep(p) {
+  margin: 0 0 1rem;
+}
+
+.world-mention-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.eldra-mention-link {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -145,13 +219,13 @@ function onClick(event: MouseEvent) {
   transition: border-color 140ms ease, background 140ms ease, filter 140ms ease;
 }
 
-.world-mention-text :deep(.eldra-mention-link:hover) {
+.eldra-mention-link:hover {
   border-color: rgba(255, 224, 139, 0.72);
   background: linear-gradient(180deg, rgba(201, 164, 90, 0.28), rgba(20, 17, 12, 0.68));
   filter: brightness(1.08);
 }
 
-.world-mention-text :deep(.eldra-mention-link-unresolved) {
+.eldra-mention-link-unresolved {
   border-color: rgba(159, 146, 120, 0.32);
   color: #c8bda6;
   background: rgba(12, 16, 22, 0.52);

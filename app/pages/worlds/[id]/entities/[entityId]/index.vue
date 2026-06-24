@@ -4,6 +4,7 @@ definePageMeta({
 })
 
 import { renderMarkdown } from '~/utils/renderMarkdown'
+import WorldMentionText from '~/components/world/WorldMentionText.vue'
 
 const route = useRoute()
 

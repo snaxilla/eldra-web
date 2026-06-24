@@ -38,6 +38,8 @@ watch(
   }
 )
 
+const drawerWorldId = computed(() => String(props.worldId || '').trim())
+
 function titleCase(value: any) {
   return String(value || '')
     .replace(/_/g, ' ')
@@ -271,8 +273,8 @@ function readMore() {
             </div>
 
             <WorldMentionText
-              v-if="entitySummary && worldId"
-              :world-id="worldId"
+              v-if="entitySummary && drawerWorldId"
+              :world-id="drawerWorldId"
               :markdown="entitySummary"
               class="mt-3 text-sm leading-7 text-[#d8ceb8]"
               @open-mention="openNestedMention"

@@ -862,13 +862,30 @@ const buildDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const contextDrawerTitle = ref('')
 const contextDrawerMarkdown = ref('')
+const contextDrawerMeta = ref('')
+const contextDrawerImageUrl = ref('')
+const contextDrawerUrl = ref('')
 
 const contextDrawerHtml = computed(() => renderMarkdown(contextDrawerMarkdown.value || ''))
+
+function openMentionContext(mention: any) {
+  contextDrawerTitle.value = mention?.title || mention?.label || 'Linked Context'
+  contextDrawerMeta.value = mention?.resolved
+    ? String(mention?.entityType || mention?.type || 'Entity')
+    : 'Unresolved Mention'
+  contextDrawerImageUrl.value = mention?.imageUrl || ''
+  contextDrawerUrl.value = mention?.url || ''
+  contextDrawerMarkdown.value = mention?.markdown || mention?.summary || `No context found for ${mention?.label || 'this mention'}.`
+  contextDrawerOpen.value = true
+}
 
 function closeContextDrawer() {
   contextDrawerOpen.value = false
   contextDrawerTitle.value = ''
   contextDrawerMarkdown.value = ''
+  contextDrawerMeta.value = ''
+  contextDrawerImageUrl.value = ''
+  contextDrawerUrl.value = ''
 }
 
 async function onImageSelected(event: Event) {
@@ -1229,11 +1246,13 @@ async function onImageSelected(event: Event) {
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
           </div>
 
-        <div
+        <WorldMentionText
           v-else-if="articleMarkdown"
+          :world-id="worldId"
+          :markdown="articleMarkdown"
           class="eldra-rich-content mt-6 text-[16px] leading-8"
-          v-html="renderedArticleContent"
-        ></div>
+          @open-mention="openMentionContext"
+        />
 
         <div
           v-else
@@ -1302,6 +1321,9 @@ async function onImageSelected(event: Event) {
               <h2 class="mt-3 text-2xl font-semibold text-white">
                 {{ contextDrawerTitle || 'Linked Context' }}
               </h2>
+              <div v-if="contextDrawerMeta" class="mt-2 text-xs uppercase tracking-[0.24em] text-[#9f9278]">
+                {{ contextDrawerMeta }}
+              </div>
             </div>
 
             <button
@@ -1315,10 +1337,29 @@ async function onImageSelected(event: Event) {
 
           <div class="flex-1 overflow-y-auto p-5">
             <div
+              v-if="contextDrawerImageUrl"
+              class="mb-4 overflow-hidden rounded-none border border-[rgba(201,164,90,0.28)] bg-[#050505]/50"
+            >
+              <img
+                :src="contextDrawerImageUrl"
+                :alt="contextDrawerTitle || 'Mention image'"
+                class="max-h-56 w-full object-cover"
+              />
+            </div>
+
+            <div
               v-if="contextDrawerMarkdown"
               class="markdown-content text-sm leading-7 text-zinc-200"
               v-html="contextDrawerHtml"
             ></div>
+
+            <NuxtLink
+              v-if="contextDrawerUrl"
+              :to="contextDrawerUrl"
+              class="eldra-button mt-5 inline-flex rounded-none px-4 py-2 text-sm font-semibold"
+            >
+              Open Full Article
+            </NuxtLink>
 
             <div
               v-else

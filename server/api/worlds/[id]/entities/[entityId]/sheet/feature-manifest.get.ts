@@ -137,6 +137,26 @@ function classFiles() {
   return []
 }
 
+
+function sourceKey(value: any) {
+  return cleanText(value).toUpperCase()
+}
+
+function sourceRank(value: any) {
+  const source = sourceKey(value)
+
+  /*
+   * Prefer the 2024 Player's Handbook when duplicate class entries exist.
+   * The builder currently stores "Cleric", not "Cleric|XPHB", so without this
+   * we accidentally grab the older PHB row first.
+   */
+  if (source === 'XPHB') return 0
+  if (source === 'PHB') return 20
+  if (source) return 10
+
+  return 30
+}
+
 function loadClassData(className: string) {
   const wanted = normalizedKey(className)
 
@@ -150,7 +170,14 @@ function loadClassData(className: string) {
     }
 
     const classes = Array.isArray(data?.class) ? data.class : []
-    const found = classes.find((entry: any) => normalizedKey(entry?.name) === wanted)
+    const matches = classes
+      .filter((entry: any) => normalizedKey(entry?.name) === wanted)
+      .sort((a: any, b: any) =>
+        sourceRank(a?.source) - sourceRank(b?.source) ||
+        String(a?.source || '').localeCompare(String(b?.source || ''))
+      )
+
+    const found = matches[0]
 
     if (found) {
       return {
@@ -184,6 +211,7 @@ function parseFeatureRef(value: any) {
   }
 }
 
+
 function featureMatchesRef(feature: any, ref: any) {
   if (!feature || !ref?.name) return false
 
@@ -191,6 +219,11 @@ function featureMatchesRef(feature: any, ref: any) {
   const refName = normalizedKey(ref.name)
 
   if (featureName !== refName) return false
+
+  const featureSource = sourceKey(feature.source)
+  const refSource = sourceKey(ref.source)
+
+  if (refSource && featureSource && featureSource !== refSource) return false
 
   const featureLevel = Math.floor(numberValue(feature.level || feature.classLevel || feature.class_level, 0))
   if (ref.level && featureLevel && ref.level !== featureLevel) return false
@@ -317,29 +350,107 @@ function subclassFeatureMatches(feature: any, subclassName: string) {
   return aliases.some((alias) => featureName.includes(alias))
 }
 
+
+function nestedClassFeatureRefs(value: any) {
+  const refs: any[] = []
+
+  function visit(entry: any) {
+    if (!entry) return
+
+    if (Array.isArray(entry)) {
+      for (const item of entry) visit(item)
+      return
+    }
+
+    if (typeof entry !== 'object') return
+
+    if (entry.classFeature) {
+      refs.push(parseFeatureRef({ classFeature: entry.classFeature }))
+    }
+
+    for (const item of Object.values(entry)) {
+      visit(item)
+    }
+  }
+
+  visit(value)
+
+  return refs
+}
+
+function inheritedResourceNameForParent(feature: any) {
+  const name = normalizedKey(feature?.name || '')
+
+  if (name === 'channel divinity') return 'Channel Divinity'
+  if (name === 'bardic inspiration') return 'Bardic Inspiration'
+  if (name === 'wild shape') return 'Wild Shape'
+  if (name === 'rage') return 'Rage'
+
+  return ''
+}
+
+
 function classFeatureCards(data: any, level: number) {
   const refs = Array.isArray(data?.classEntry?.classFeatures)
     ? data.classEntry.classFeatures
     : []
 
-  return refs
-    .map(parseFeatureRef)
-    .filter((ref: any) => ref.name && ref.level && ref.level <= level)
-    .map((ref: any) => {
-      const feature = findClassFeature(data.data, ref)
-      return feature
-        ? featureCardFromClassFeature(feature, ref, 'class')
-        : fallbackFeatureCard(ref, 'class')
-    })
-    .filter((feature: ManifestFeature) => {
-      const name = normalizedKey(feature.name)
+  const out: ManifestFeature[] = []
+  const seenCards = new Set<string>()
+  const seenRefs = new Set<string>()
 
-      if (name === 'subclass feature') return false
-      if (name.endsWith(' subclass')) return false
+  function shouldKeepFeature(feature: ManifestFeature) {
+    const name = normalizedKey(feature.name)
 
-      return true
-    })
+    if (name === 'subclass feature') return false
+    if (name.endsWith(' subclass')) return false
+
+    return true
+  }
+
+  function addRef(ref: any, depth = 0, inheritedResourceName = '') {
+    if (!ref?.name || !ref?.level || ref.level > level) return
+    if (depth > 5) return
+
+    const refKey = normalizedKey(`${ref.raw} ${ref.name} ${ref.source} ${ref.level} ${inheritedResourceName}`)
+    if (!refKey || seenRefs.has(refKey)) return
+    seenRefs.add(refKey)
+
+    const feature = findClassFeature(data.data, ref)
+    const card = feature
+      ? featureCardFromClassFeature(feature, ref, 'class')
+      : fallbackFeatureCard(ref, 'class')
+
+    if (inheritedResourceName) {
+      card.tags = Array.from(new Set([
+        ...card.tags,
+        inheritedResourceName
+      ]))
+    }
+
+    const cardKey = normalizedKey(`${card.kind} ${card.level} ${card.name} ${card.source} ${card.detail}`)
+    if (shouldKeepFeature(card) && !seenCards.has(cardKey)) {
+      seenCards.add(cardKey)
+      out.push(card)
+    }
+
+    if (!feature) return
+
+    const nextInheritedResourceName = inheritedResourceNameForParent(feature) || inheritedResourceName
+    const nestedRefs = nestedClassFeatureRefs(feature.entries)
+
+    for (const nestedRef of nestedRefs) {
+      addRef(nestedRef, depth + 1, nextInheritedResourceName)
+    }
+  }
+
+  for (const ref of refs.map(parseFeatureRef)) {
+    addRef(ref)
+  }
+
+  return out
 }
+
 
 function subclassFeatureCards(data: any, subclassName: string, level: number) {
   if (!subclassName) return []
@@ -348,9 +459,26 @@ function subclassFeatureCards(data: any, subclassName: string, level: number) {
     ? data.data.subclassFeature
     : []
 
-  return features
+  const classSource = sourceKey(data?.classEntry?.source)
+
+  const matchingFeatures = features
     .filter((feature: any) => subclassFeatureMatches(feature, subclassName))
     .filter((feature: any) => Math.floor(numberValue(feature?.level || 0, 0)) <= level)
+
+  /*
+   * If this character is using XPHB Cleric, prefer XPHB Life Domain rows and
+   * do not mix in old PHB Life Domain rows. If no same-source subclass exists,
+   * fall back to the old behavior so legacy/non-core subclasses still appear.
+   */
+  const sameSourceFeatures = classSource
+    ? matchingFeatures.filter((feature: any) => sourceKey(feature?.source) === classSource)
+    : []
+
+  const selectedFeatures = sameSourceFeatures.length
+    ? sameSourceFeatures
+    : matchingFeatures
+
+  return selectedFeatures
     .map((feature: any) => {
       const level = Math.floor(numberValue(feature?.level || 1, 1))
       return featureCardFromClassFeature(feature, {
@@ -407,6 +535,8 @@ function featureMentionsResourceUse(feature: ManifestFeature, resourceName: stri
 
   if (!resourceKey) return false
   if (featureLooksLikeResourceParent(feature, resourceName)) return false
+
+  if ((feature.tags || []).some((tag) => normalizedKey(tag) === resourceKey)) return true
 
   /*
    * Generic resource option detection:

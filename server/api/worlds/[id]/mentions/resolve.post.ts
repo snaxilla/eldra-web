@@ -97,14 +97,7 @@ function mentionMarkdown(target: any) {
     return `No matching world entity was found for **${target?.title || target?.label || 'this mention'}**.`
   }
 
-  const lines = [
-    target.imageUrl ? `![${target.title}](${target.imageUrl})` : '',
-    target.summary || 'No summary has been written for this entity yet.',
-    '',
-    target.url ? `[Open Full Article](${target.url})` : ''
-  ]
-
-  return lines.filter(Boolean).join('\n\n')
+  return target.summary || 'No summary has been written for this entity yet.'
 }
 
 export default defineEventHandler(async (event) => {

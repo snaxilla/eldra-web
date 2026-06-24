@@ -27,6 +27,15 @@ function normalizedKey(value: any) {
     .trim()
 }
 
+function renderInlineMarkdown(value: string) {
+  const html = renderMarkdown(value || '')
+
+  const singleParagraph = html.match(/^<p>([\s\S]*)<\/p>\s*$/i)
+  if (singleParagraph) return singleParagraph[1]
+
+  return html
+}
+
 const mentionTexts = computed(() => {
   const raw = String(props.markdown || '')
   const found = new Map<string, string>()
@@ -71,7 +80,7 @@ watch(
   { immediate: true }
 )
 
-type RenderPart =
+type InlinePart =
   | {
       type: 'html'
       key: string
@@ -84,67 +93,71 @@ type RenderPart =
       resolved: any
     }
 
+type BlockPart = {
+  key: string
+  parts: InlinePart[]
+}
+
 /*
- * Important:
- * Do not inject <button> through renderMarkdown/v-html. Some markdown renderers
- * sanitize or escape interactive HTML. Instead, put stable text placeholders
- * through markdown, split the final HTML on those placeholders, and render the
- * actual mention buttons with Vue.
+ * Parse mentions before markdown rendering.
+ * Do not split already-rendered HTML; that breaks paragraph tags and causes
+ * visible <p> garbage / duplicated output.
  */
-const renderedParts = computed<RenderPart[]>(() => {
+const renderedBlocks = computed<BlockPart[]>(() => {
   const raw = String(props.markdown || '')
-  const mentions: string[] = []
-  const tokenPrefix = 'ELDRA_MENTION_TOKEN_'
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
 
-  const markdownWithTokens = raw.replace(/@\[([^\]]+)\]/g, (_match, label) => {
-    const cleanLabel = normalizeMention(label)
-    const index = mentions.length
-    mentions.push(cleanLabel)
-    return `${tokenPrefix}${index}__`
-  })
+  const blocks = raw
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
 
-  const html = renderMarkdown(markdownWithTokens)
-  const parts: RenderPart[] = []
-  const tokenRegex = new RegExp(`${tokenPrefix}(\\d+)__`, 'g')
+  return blocks.map((block, blockIndex) => {
+    const parts: InlinePart[] = []
+    const regex = /@\[([^\]]+)\]/g
+    let cursor = 0
+    let mentionIndex = 0
+    let match: RegExpExecArray | null
 
-  let cursor = 0
-  let match: RegExpExecArray | null
+    while ((match = regex.exec(block)) !== null) {
+      const before = block.slice(cursor, match.index)
+      if (before) {
+        parts.push({
+          type: 'html',
+          key: `b${blockIndex}-html-${parts.length}`,
+          html: renderInlineMarkdown(before)
+        })
+      }
 
-  while ((match = tokenRegex.exec(html)) !== null) {
-    const before = html.slice(cursor, match.index)
-    if (before) {
+      const label = normalizeMention(match[1])
+      const key = normalizedKey(label)
+
+      parts.push({
+        type: 'mention',
+        key: `b${blockIndex}-mention-${mentionIndex}-${key || label}`,
+        label,
+        resolved: resolvedMentions.value[key]
+      })
+
+      mentionIndex += 1
+      cursor = match.index + match[0].length
+    }
+
+    const after = block.slice(cursor)
+    if (after) {
       parts.push({
         type: 'html',
-        key: `html-${parts.length}`,
-        html: before
+        key: `b${blockIndex}-html-${parts.length}`,
+        html: renderInlineMarkdown(after)
       })
     }
 
-    const index = Number(match[1])
-    const label = mentions[index] || ''
-    const key = normalizedKey(label)
-    const resolved = resolvedMentions.value[key]
-
-    parts.push({
-      type: 'mention',
-      key: `mention-${index}-${key || label}`,
-      label,
-      resolved
-    })
-
-    cursor = match.index + match[0].length
-  }
-
-  const after = html.slice(cursor)
-  if (after) {
-    parts.push({
-      type: 'html',
-      key: `html-${parts.length}`,
-      html: after
-    })
-  }
-
-  return parts
+    return {
+      key: `block-${blockIndex}`,
+      parts
+    }
+  })
 })
 
 function openMention(label: string) {
@@ -166,24 +179,30 @@ function openMention(label: string) {
 
 <template>
   <div class="world-mention-text">
-    <template v-for="part in renderedParts" :key="part.key">
-      <span
-        v-if="part.type === 'html'"
-        v-html="part.html"
-      />
+    <p
+      v-for="block in renderedBlocks"
+      :key="block.key"
+      class="world-mention-paragraph"
+    >
+      <template v-for="part in block.parts" :key="part.key">
+        <span
+          v-if="part.type === 'html'"
+          v-html="part.html"
+        />
 
-      <button
-        v-else
-        type="button"
-        :class="[
-          'eldra-mention-link',
-          part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
-        ]"
-        @click.prevent.stop="openMention(part.label)"
-      >
-        {{ part.label }}
-      </button>
-    </template>
+        <button
+          v-else
+          type="button"
+          :class="[
+            'eldra-mention-link',
+            part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
+          ]"
+          @click.prevent.stop="openMention(part.label)"
+        >
+          {{ part.label }}
+        </button>
+      </template>
+    </p>
   </div>
 </template>
 
@@ -192,11 +211,11 @@ function openMention(label: string) {
   display: block;
 }
 
-.world-mention-text :deep(p) {
+.world-mention-paragraph {
   margin: 0 0 1rem;
 }
 
-.world-mention-text :deep(p:last-child) {
+.world-mention-paragraph:last-child {
   margin-bottom: 0;
 }
 
@@ -206,22 +225,22 @@ function openMention(label: string) {
   max-width: 100%;
   margin: 0 0.1rem;
   padding: 0.05rem 0.38rem;
-  border: 1px solid rgba(201, 164, 90, 0.45);
+  border: 1px solid rgba(201, 164, 90, 0.48);
   border-radius: 0;
-  background: linear-gradient(180deg, rgba(201, 164, 90, 0.18), rgba(20, 17, 12, 0.52));
+  background: linear-gradient(180deg, rgba(201, 164, 90, 0.20), rgba(20, 17, 12, 0.58));
   color: #fff7df;
   font: inherit;
   font-weight: 700;
   line-height: 1.55;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: 0 0 18px rgba(201, 164, 90, 0.08);
+  box-shadow: 0 0 18px rgba(201, 164, 90, 0.10);
   transition: border-color 140ms ease, background 140ms ease, filter 140ms ease;
 }
 
 .eldra-mention-link:hover {
-  border-color: rgba(255, 224, 139, 0.72);
-  background: linear-gradient(180deg, rgba(201, 164, 90, 0.28), rgba(20, 17, 12, 0.68));
+  border-color: rgba(255, 224, 139, 0.76);
+  background: linear-gradient(180deg, rgba(201, 164, 90, 0.30), rgba(20, 17, 12, 0.72));
   filter: brightness(1.08);
 }
 

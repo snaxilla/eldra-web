@@ -66,6 +66,45 @@ function extractImageUrl(entity: any, blocks: any[] = []) {
   return ''
 }
 
+function displayTypeFromBlocks(entity: any, blocks: any[]) {
+  const locationCore = blockByKey(blocks, 'location_core')?.data || null
+  const characterCore = blockByKey(blocks, 'character_core')?.data || null
+  const itemCore = blockByKey(blocks, 'item_core')?.data || null
+  const spellCore = blockByKey(blocks, 'spell_core')?.data || null
+  const speciesCore = blockByKey(blocks, 'species_core')?.data || null
+  const classCore = blockByKey(blocks, 'class_core')?.data || null
+  const backgroundCore = blockByKey(blocks, 'background_core')?.data || null
+
+  return cleanText(
+    locationCore?.location_type ||
+    locationCore?.locationType ||
+    locationCore?.type ||
+    characterCore?.character_type ||
+    characterCore?.characterType ||
+    characterCore?.type ||
+    itemCore?.item_type ||
+    itemCore?.itemType ||
+    itemCore?.type ||
+    spellCore?.school ||
+    speciesCore?.type ||
+    classCore?.type ||
+    backgroundCore?.type ||
+    entity?.entity_type ||
+    'Entity'
+  )
+}
+
+function tagsFromEntity(entity: any, blocks: any[]) {
+  const tags: string[] = []
+  const type = displayTypeFromBlocks(entity, blocks)
+
+  if (type) tags.push(type)
+
+  if (entity?.id) tags.push('Linked Article')
+
+  return Array.from(new Set(tags.filter(Boolean)))
+}
+
 function summaryFromEntity(entity: any, blocks: any[]) {
   const articleOverride = String(blockByKey(blocks, 'article_override')?.data?.markdown || '').trim()
   const overview = String(blockByKey(blocks, 'overview')?.data?.text || '').trim()
@@ -221,6 +260,8 @@ export default defineEventHandler(async (event) => {
     const url = `/worlds/${worldId}/entities/${entity.id}`
     const imageUrl = extractImageUrl(entity, entityBlocks)
 
+    const displayType = displayTypeFromBlocks(entity, entityBlocks)
+
     const target = {
       resolved: true,
       label: mention,
@@ -229,9 +270,11 @@ export default defineEventHandler(async (event) => {
       slug: entity.slug,
       entityType,
       type: entityType,
+      displayType,
       summary: summaryFromEntity(entity, entityBlocks),
       imageUrl,
-      url
+      url,
+      tags: tagsFromEntity(entity, entityBlocks)
     }
 
     out[key] = {

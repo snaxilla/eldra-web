@@ -16,18 +16,40 @@ const emit = defineEmits<{
   readMore: [entity: any]
 }>()
 
+function titleCase(value: any) {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
 const entityTitle = computed(() =>
   String(props.entity?.title || props.entity?.name || props.entity?.label || 'Linked Context')
 )
 
-const entityType = computed(() =>
+const rawEntityType = computed(() =>
   String(
     props.entity?.entityType ||
     props.entity?.entity_type ||
     props.entity?.type ||
     props.entity?.kind ||
     'Entity'
-  )
+  ).trim()
+)
+
+const displayType = computed(() =>
+  String(
+    props.entity?.displayType ||
+    props.entity?.display_type ||
+    props.entity?.subtype ||
+    props.entity?.subType ||
+    props.entity?.locationType ||
+    props.entity?.location_type ||
+    rawEntityType.value ||
+    'Entity'
+  ).trim()
 )
 
 const entitySlug = computed(() =>
@@ -60,14 +82,13 @@ const entityTags = computed(() => {
 
 const isResolved = computed(() => props.entity?.resolved !== false)
 
-const primaryTypeLabel = computed(() => {
-  const type = entityType.value
-    .replace(/_/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+const eyebrowLabel = computed(() =>
+  isResolved.value ? titleCase(displayType.value).toUpperCase() : 'UNRESOLVED'
+)
 
-  return type ? type.toUpperCase() : 'ENTITY'
-})
+const detailTypeLabel = computed(() =>
+  titleCase(displayType.value || rawEntityType.value || 'Entity')
+)
 
 function close() {
   emit('close')
@@ -88,13 +109,13 @@ function readMore() {
   >
     <aside
       v-if="open"
-      class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 flex h-full w-[420px] max-w-[100vw] flex-col border-l border-[rgba(201,164,90,0.34)] bg-[linear-gradient(to_bottom,rgba(20,17,12,0.96),rgba(6,5,4,0.94))] shadow-2xl backdrop-blur-xl"
+      class="fixed right-0 top-0 z-40 flex h-full w-[420px] max-w-[100vw] flex-col border-l border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgba(20,17,12,0.94),rgba(6,5,4,0.92))] shadow-2xl backdrop-blur-xl"
     >
-      <header class="border-b border-[rgba(201,164,90,0.24)] px-5 py-5">
+      <header class="border-b border-[rgba(201,164,90,0.20)] px-5 py-5">
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
             <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
-              {{ isResolved ? primaryTypeLabel : 'UNRESOLVED' }}
+              {{ eyebrowLabel }}
             </div>
 
             <h2 class="mt-3 break-words text-2xl font-semibold leading-tight text-[#fff7df]">
@@ -103,7 +124,7 @@ function readMore() {
 
             <div
               v-if="entitySlug"
-              class="mt-2 text-xs uppercase tracking-[0.22em] text-[#9f9278]"
+              class="mt-2 text-xs uppercase tracking-[0.24em] text-[#9f9278]"
             >
               {{ entitySlug }}
             </div>
@@ -111,7 +132,7 @@ function readMore() {
 
           <button
             type="button"
-            class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.72)] p-2 text-[#c9a45a] transition hover:bg-[rgba(201,164,90,0.16)] hover:text-[#fff7df]"
+            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.62)] p-2 text-[#c9a45a] transition hover:bg-[rgba(201,164,90,0.14)] hover:text-[#fff7df]"
             @click="close"
           >
             <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -122,7 +143,7 @@ function readMore() {
       <div class="flex-1 overflow-y-auto p-5">
         <div
           v-if="entityImageUrl"
-          class="mb-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(5,5,5,0.58)]"
+          class="mb-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(5,5,5,0.52)]"
         >
           <img
             :src="entityImageUrl"
@@ -132,22 +153,22 @@ function readMore() {
         </div>
 
         <section
-          v-if="isResolved && entityType"
-          class="eldra-ornate-panel eldra-frame-corners mb-5 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.48)] p-4"
+          v-if="isResolved && detailTypeLabel"
+          class="mb-5 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(12,10,7,0.58)] p-4"
         >
-          <div class="mb-4 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            {{ primaryTypeLabel }} Details
+          <div class="mb-4 text-xs uppercase tracking-[0.30em] text-[#9f9278]">
+            {{ titleCase(rawEntityType || 'Entity').toUpperCase() }} Details
           </div>
 
-          <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(10,8,5,0.54)] px-4 py-3 text-sm text-[#f5e7bd]">
-            Type: {{ entityType.replace(/_/g, ' ') }}
+          <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(5,5,5,0.36)] px-4 py-3 text-sm text-[#f5e7bd]">
+            Type: {{ detailTypeLabel }}
           </div>
         </section>
 
         <section
-          class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.54)] p-5"
+          class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(12,10,7,0.58)] p-5"
         >
-          <div class="mb-4 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+          <div class="mb-4 text-xs uppercase tracking-[0.30em] text-[#9f9278]">
             Summary
           </div>
 
@@ -163,7 +184,7 @@ function readMore() {
           <span
             v-for="tag in entityTags"
             :key="tag"
-            class="eldra-gold-chip rounded-none border px-3 py-1 text-xs font-medium"
+            class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.14)] px-3 py-1 text-xs font-medium text-[#f5e7bd]"
           >
             {{ tag }}
           </span>
@@ -173,7 +194,7 @@ function readMore() {
           <NuxtLink
             v-if="entityUrl"
             :to="entityUrl"
-            class="eldra-button inline-flex rounded-none px-4 py-2 text-sm font-semibold"
+            class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-4 py-2 text-sm font-semibold text-[#f5e7bd] transition hover:bg-[rgba(201,164,90,0.20)]"
           >
             Open Full Article
           </NuxtLink>
@@ -181,7 +202,7 @@ function readMore() {
           <button
             v-else-if="isResolved"
             type="button"
-            class="eldra-button inline-flex rounded-none px-4 py-2 text-sm font-semibold"
+            class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-4 py-2 text-sm font-semibold text-[#f5e7bd] transition hover:bg-[rgba(201,164,90,0.20)]"
             @click="readMore"
           >
             {{ readMoreLabel }}
@@ -190,11 +211,24 @@ function readMore() {
 
         <div
           v-if="allowBuildActions && mode === 'build'"
-          class="mt-6 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.54)] p-4 text-sm text-[#d8ceb8]"
+          class="mt-6 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(12,10,7,0.58)] p-4 text-sm text-[#d8ceb8]"
         >
           Build actions for this context can be injected by the host page. This shared drawer does not create map pins or articles by itself.
         </div>
       </div>
+
+      <footer
+        v-if="isResolved && !entityUrl"
+        class="border-t border-[rgba(201,164,90,0.20)] p-5"
+      >
+        <button
+          type="button"
+          class="w-full rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.70)] px-4 py-3 text-sm font-semibold text-[#f5e7bd] transition hover:bg-[rgba(201,164,90,0.16)]"
+          @click="readMore"
+        >
+          {{ readMoreLabel }}
+        </button>
+      </footer>
     </aside>
   </Transition>
 </template>

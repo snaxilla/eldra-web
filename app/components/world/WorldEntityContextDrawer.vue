@@ -14,6 +14,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   close: []
   readMore: [entity: any]
+  openMap: [entity: any]
 }>()
 
 function titleCase(value: any) {
@@ -90,6 +91,12 @@ const detailHeading = computed(() => {
 const detailLines = computed(() => {
   if (!isResolved.value) return []
 
+  const provided = props.entity?.detailLines || props.entity?.detail_lines
+  if (Array.isArray(provided)) {
+    const lines = provided.map((line: any) => String(line || '').trim()).filter(Boolean)
+    if (lines.length) return lines
+  }
+
   const lines: string[] = []
   const type = titleCase(displayType.value || rawEntityType.value || 'Entity')
 
@@ -109,6 +116,18 @@ const chipTags = computed(() => {
 
   return Array.from(new Set(tags.filter(Boolean)))
 })
+
+const destinationMapTitle = computed(() =>
+  String(props.entity?.destinationMapTitle || props.entity?.destination_map_title || '').trim()
+)
+
+const destinationMapUrl = computed(() =>
+  String(props.entity?.destinationMapUrl || props.entity?.destination_map_url || '').trim()
+)
+
+function openDestinationMap() {
+  emit('openMap', props.entity)
+}
 
 function close() {
   emit('close')
@@ -258,6 +277,18 @@ function readMore() {
           </div>
 
           <div
+            v-if="destinationMapTitle"
+            class="eldra-codex-soft mt-5 rounded-none p-4"
+          >
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Destination Map
+            </div>
+            <div class="mt-2 text-sm font-medium text-white">
+              {{ destinationMapTitle }}
+            </div>
+          </div>
+
+          <div
             v-if="allowBuildActions && mode === 'build'"
             class="eldra-codex-soft mt-5 rounded-none p-4"
           >
@@ -290,6 +321,23 @@ function readMore() {
               @click="readMore"
             >
               {{ readMoreLabel }}
+            </button>
+
+            <NuxtLink
+              v-if="destinationMapUrl"
+              :to="destinationMapUrl"
+              class="eldra-button flex-1 rounded-none px-4 py-3 text-center text-sm font-medium"
+            >
+              Open Map
+            </NuxtLink>
+
+            <button
+              v-else-if="destinationMapTitle"
+              type="button"
+              class="eldra-button flex-1 rounded-none px-4 py-3 text-center text-sm font-medium"
+              @click="openDestinationMap"
+            >
+              Open Map
             </button>
           </div>
         </div>

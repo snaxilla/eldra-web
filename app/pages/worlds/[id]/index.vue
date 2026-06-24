@@ -3,6 +3,8 @@ definePageMeta({
   layout: 'world-workspace'
 })
 
+import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+
 const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
@@ -541,6 +543,43 @@ function openLinkedMap() {
   if (!selectedPin.value?.linkedMap?.slug) return
   router.push(`/worlds/${worldId.value}?map=${selectedPin.value.linkedMap.slug}`)
 }
+
+const selectedPinContextEntity = computed(() => {
+  const pin = selectedPin.value
+  if (!pin) return null
+
+  const displayType = formatLocationType(pin.pinType) || 'Location'
+  const tags = [
+    iconLabel(pin.icon),
+    pin.hasLinkedEntity ? 'Linked Article' : '',
+    pin.hasLinkedMap ? 'Linked Map' : '',
+    !pin.hasLinkedEntity && !pin.hasLinkedMap ? 'Pin Note' : ''
+  ].filter(Boolean)
+
+  return {
+    resolved: true,
+    id: pin.entity?.id || pin.id,
+    title: pin.resolvedTitle || pin.title || 'Selected Location',
+    entityType: 'location',
+    type: 'location',
+    displayType,
+    summary: pin.resolvedSummary || '',
+    imageUrl: pin.resolvedImageUrl || '',
+    url: selectedPinReadMoreUrl.value || '',
+    tags,
+    detailLines: pinLocationMetaLines(pin),
+    destinationMapTitle: pin.linkedMap?.title || '',
+    destinationMapUrl: selectedPinMapUrl.value || ''
+  }
+})
+
+function closeSelectedPinContext() {
+  selectedPinId.value = null
+}
+
+function openSelectedPinContextMap() {
+  openLinkedMap()
+}
 </script>
 
 <template>
@@ -609,132 +648,14 @@ function openLinkedMap() {
       </div>
     </div>
 
-    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-      <div
-        v-if="selectedPin && mode === 'play'"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] border-l backdrop-blur"
-      >
-        <div class="flex h-full flex-col">
-          <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-            <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
-                {{ formatLocationType(selectedPin.pinType) || 'Location' }}
-              </div>
-              <div class="mt-1 text-xl font-semibold text-white">
-                {{ selectedPin.resolvedTitle }}
-              </div>
-            </div>
-
-            <button
-              class="text-[#9f9278] transition hover:text-white"
-              @click="selectedPinId = null"
-            >
-              <UIcon name="i-lucide-x" class="h-5 w-5" />
-            </button>
-          </div>
-
-          <div class="flex-1 overflow-y-auto p-5">
-            <div
-              v-if="selectedPin.resolvedImageUrl"
-              class="eldra-image-frame mb-5 overflow-hidden rounded-none border bg-black/20"
-            >
-              <img
-                :src="selectedPin.resolvedImageUrl"
-                :alt="selectedPin.resolvedTitle"
-                class="h-56 w-full object-cover"
-              >
-            </div>
-
-              <div
-                v-if="pinLocationMetaLines(selectedPin).length"
-                class="eldra-codex-soft mt-5 rounded-none p-4"
-              >
-                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Location Details</div>
-                <div class="mt-3 grid gap-2 text-sm leading-6 text-[#d8ceb8]">
-                  <div
-                    v-for="line in pinLocationMetaLines(selectedPin)"
-                    :key="line"
-                    class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] px-3 py-2"
-                  >
-                    {{ line }}
-                  </div>
-                </div>
-              </div>
-
-              <div class="eldra-codex-soft mt-5 rounded-none p-4">
-                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Summary</div>
-                <p
-                  v-if="selectedPin.resolvedSummary"
-                  class="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#d8ceb8]"
-                >
-                  {{ selectedPin.resolvedSummary }}
-                </p>
-                <p
-                  v-else
-                  class="mt-3 text-sm leading-7 text-[#9f9278]"
-                >
-                  No summary yet.
-                </p>
-              </div>
-
-              <div class="mt-6 flex flex-wrap gap-2">
-                <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                  {{ iconLabel(selectedPin.icon) }}
-                </div>
-
-                <div
-                  v-if="selectedPin.hasLinkedEntity"
-                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
-                >
-                  Linked Article
-                </div>
-
-                <div
-                  v-if="selectedPin.hasLinkedMap"
-                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
-                >
-                  Linked Map
-                </div>
-
-                <div
-                  v-if="!selectedPin.hasLinkedEntity && !selectedPin.hasLinkedMap"
-                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs"
-                >
-                  Pin Note
-                </div>
-              </div>
-            <div
-              v-if="selectedPin.linkedMap"
-              class="eldra-codex-soft mt-5 rounded-none p-4"
-            >
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Destination Map</div>
-              <div class="mt-2 text-sm font-medium text-white">{{ selectedPin.linkedMap.title }}</div>
-            </div>
-          </div>
-
-          <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
-            <div class="flex gap-3">
-              <NuxtLink
-                v-if="selectedPinReadMoreUrl"
-                :to="selectedPinReadMoreUrl"
-                class="eldra-button flex-1 rounded-none px-4 py-3 text-center text-sm font-medium"
-              >
-                Read More
-              </NuxtLink>
-
-              <button
-                v-if="selectedPinMapUrl"
-                type="button"
-                class="eldra-button flex-1 rounded-none px-4 py-3 text-center text-sm font-medium"
-                @click="openLinkedMap"
-              >
-                Open Map
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Transition>
+    <WorldEntityContextDrawer
+      :open="Boolean(selectedPin && mode === 'play')"
+      :entity="selectedPinContextEntity"
+      :mode="mode"
+      :allow-build-actions="false"
+      @close="closeSelectedPinContext"
+      @open-map="openSelectedPinContextMap"
+    />
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div

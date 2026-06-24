@@ -27,22 +27,86 @@ function normalizedKey(value: any) {
     .trim()
 }
 
+function decodeHtmlEntities(value: string) {
+  return String(value || '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
+function stripUnsafeHtml(value: string) {
+  return String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+}
+
+/*
+ * TipTap saves article overrides as HTML, while generated/imported articles are
+ * often Markdown/plain text. Normalize both into paragraph-ish blocks before
+ * mention parsing so visible <p> tags never leak into Play mode.
+ */
+function articleBlocks(value: any) {
+  const raw = stripUnsafeHtml(String(value || '').trim())
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+
+  if (!raw) return []
+
+  if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
+    const paragraphMatches = Array.from(raw.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/gi))
+
+    if (paragraphMatches.length) {
+      return paragraphMatches
+        .map((match) => decodeHtmlEntities(
+          String(match[1] || '')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/?(strong|b)>/gi, '**')
+            .replace(/<\/?(em|i)>/gi, '*')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+        ))
+        .filter(Boolean)
+    }
+
+    return [
+      decodeHtmlEntities(
+        raw
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>\s*<p(?:\s[^>]*)?>/gi, '\n\n')
+          .replace(/<\/?(strong|b)>/gi, '**')
+          .replace(/<\/?(em|i)>/gi, '*')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      )
+    ].filter(Boolean)
+  }
+
+  return raw
+    .split(/\n{2,}/)
+    .map((block) => decodeHtmlEntities(block.trim()))
+    .filter(Boolean)
+}
+
 function renderInlineMarkdown(value: string) {
   const html = renderMarkdown(value || '')
-
   const singleParagraph = html.match(/^<p>([\s\S]*)<\/p>\s*$/i)
-  if (singleParagraph) return singleParagraph[1]
-
-  return html
+  return singleParagraph ? singleParagraph[1] : html
 }
 
 const mentionTexts = computed(() => {
-  const raw = String(props.markdown || '')
   const found = new Map<string, string>()
 
-  for (const match of raw.matchAll(/@\[([^\]]+)\]/g)) {
-    const label = normalizeMention(match[1])
-    if (label) found.set(normalizedKey(label), label)
+  for (const block of articleBlocks(props.markdown)) {
+    for (const match of block.matchAll(/@\[([^\]]+)\]/g)) {
+      const label = normalizeMention(match[1])
+      if (label) found.set(normalizedKey(label), label)
+    }
   }
 
   return Array.from(found.values())
@@ -60,9 +124,7 @@ async function resolveMentions() {
   try {
     const response: any = await $fetch(`/api/worlds/${props.worldId}/mentions/resolve`, {
       method: 'POST',
-      body: {
-        mentions
-      }
+      body: { mentions }
     })
 
     resolvedMentions.value = response?.mentions || {}
@@ -98,22 +160,8 @@ type BlockPart = {
   parts: InlinePart[]
 }
 
-/*
- * Parse mentions before markdown rendering.
- * Do not split already-rendered HTML; that breaks paragraph tags and causes
- * visible <p> garbage / duplicated output.
- */
 const renderedBlocks = computed<BlockPart[]>(() => {
-  const raw = String(props.markdown || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-
-  const blocks = raw
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-
-  return blocks.map((block, blockIndex) => {
+  return articleBlocks(props.markdown).map((block, blockIndex) => {
     const parts: InlinePart[] = []
     const regex = /@\[([^\]]+)\]/g
     let cursor = 0
@@ -122,6 +170,7 @@ const renderedBlocks = computed<BlockPart[]>(() => {
 
     while ((match = regex.exec(block)) !== null) {
       const before = block.slice(cursor, match.index)
+
       if (before) {
         parts.push({
           type: 'html',
@@ -145,6 +194,7 @@ const renderedBlocks = computed<BlockPart[]>(() => {
     }
 
     const after = block.slice(cursor)
+
     if (after) {
       parts.push({
         type: 'html',

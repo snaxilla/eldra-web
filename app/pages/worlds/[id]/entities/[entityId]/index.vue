@@ -1314,7 +1314,7 @@ async function onImageSelected(event: Event) {
         class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] max-w-[100vw] border-l border-[rgba(201,164,90,0.34)] bg-[linear-gradient(to_bottom,rgba(20,17,12,0.96),rgba(6,5,4,0.94))] shadow-2xl backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
+          <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.24)] px-5 py-5">
             <div>
               <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
                 {{ contextDrawerMeta || 'Summary' }}
@@ -1368,7 +1368,7 @@ async function onImageSelected(event: Event) {
             </NuxtLink>
 
             <div
-              v-else
+              v-if="!contextDrawerMarkdown && !contextDrawerUrl"
               class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.62)] p-5 text-sm leading-7 text-[#d8ceb8]"
             >
               Linked article context will appear here once a resolved mention is selected.

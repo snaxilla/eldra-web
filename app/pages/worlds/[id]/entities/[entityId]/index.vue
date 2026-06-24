@@ -5,6 +5,7 @@ definePageMeta({
 
 import { renderMarkdown } from '~/utils/renderMarkdown'
 import WorldMentionText from '~/components/world/WorldMentionText.vue'
+import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 
 const route = useRoute()
 
@@ -861,33 +862,18 @@ const detailSections = computed(() => {
 
 const buildDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
-const contextDrawerTitle = ref('')
-const contextDrawerMarkdown = ref('')
-const contextDrawerMeta = ref('')
-const contextDrawerImageUrl = ref('')
-const contextDrawerUrl = ref('')
-
-const contextDrawerHtml = computed(() => renderMarkdown(contextDrawerMarkdown.value || ''))
+const contextDrawerEntity = ref<any | null>(null)
 
 function openMentionContext(mention: any) {
-  contextDrawerTitle.value = mention?.title || mention?.label || 'Linked Context'
-  contextDrawerMeta.value = mention?.resolved
-    ? String(mention?.entityType || mention?.type || 'Entity')
-    : 'Unresolved Mention'
-  contextDrawerImageUrl.value = mention?.imageUrl || ''
-  contextDrawerUrl.value = mention?.url || ''
-  contextDrawerMarkdown.value = mention?.markdown || mention?.summary || `No context found for ${mention?.label || 'this mention'}.`
+  contextDrawerEntity.value = mention || null
   contextDrawerOpen.value = true
 }
 
 function closeContextDrawer() {
   contextDrawerOpen.value = false
-  contextDrawerTitle.value = ''
-  contextDrawerMarkdown.value = ''
-  contextDrawerMeta.value = ''
-  contextDrawerImageUrl.value = ''
-  contextDrawerUrl.value = ''
+  contextDrawerEntity.value = null
 }
+
 
 async function onImageSelected(event: Event) {
   const input = event.target as HTMLInputElement
@@ -1303,80 +1289,13 @@ async function onImageSelected(event: Event) {
       </aside>
     </Transition>
 
-    <Transition
-      enter-from-class="translate-x-full opacity-0"
-      enter-active-class="transition duration-200"
-      leave-to-class="translate-x-full opacity-0"
-      leave-active-class="transition duration-200"
-    >
-      <aside
-        v-if="contextDrawerOpen"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] max-w-[100vw] border-l border-[rgba(201,164,90,0.34)] bg-[linear-gradient(to_bottom,rgba(20,17,12,0.96),rgba(6,5,4,0.94))] shadow-2xl backdrop-blur-xl"
-      >
-        <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.24)] px-5 py-5">
-            <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
-                {{ contextDrawerMeta || 'Summary' }}
-              </div>
-              <h2 class="mt-3 text-2xl font-semibold text-[#fff7df]">
-                {{ contextDrawerTitle || 'Linked Context' }}
-              </h2>
-            </div>
-
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(20,17,12,0.72)] p-2 text-[#c9a45a] transition hover:bg-[rgba(201,164,90,0.16)] hover:text-[#fff7df]"
-              @click="closeContextDrawer"
-            >
-              <UIcon name="i-lucide-x" class="h-5 w-5" />
-            </button>
-          </div>
-
-          <div class="flex-1 overflow-y-auto p-5">
-            <div
-              v-if="contextDrawerImageUrl"
-              class="mb-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(5,5,5,0.58)]"
-            >
-              <img
-                :src="contextDrawerImageUrl"
-                :alt="contextDrawerTitle || 'Mention image'"
-                class="max-h-64 w-full object-cover"
-              />
-            </div>
-
-            <div
-              v-if="contextDrawerMarkdown"
-              class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.54)] p-5"
-            >
-              <div class="mb-4 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-                Summary
-              </div>
-
-              <div
-                class="markdown-content text-sm leading-7 text-[#f5e7bd]"
-                v-html="contextDrawerHtml"
-              ></div>
-            </div>
-
-            <NuxtLink
-              v-if="contextDrawerUrl"
-              :to="contextDrawerUrl"
-              class="eldra-button mt-5 inline-flex rounded-none px-4 py-2 text-sm font-semibold"
-            >
-              Open Full Article
-            </NuxtLink>
-
-            <div
-              v-if="!contextDrawerMarkdown && !contextDrawerUrl"
-              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.62)] p-5 text-sm leading-7 text-[#d8ceb8]"
-            >
-              Linked article context will appear here once a resolved mention is selected.
-            </div>
-          </div>
-        </div>
-      </aside>
-    </Transition>
+    <WorldEntityContextDrawer
+      :open="contextDrawerOpen"
+      :entity="contextDrawerEntity"
+      :mode="mode"
+      :allow-build-actions="false"
+      @close="closeContextDrawer"
+    />
 
     <Teleport to="body">
       <Transition

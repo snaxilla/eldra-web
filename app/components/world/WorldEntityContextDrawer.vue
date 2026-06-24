@@ -23,20 +23,27 @@ const emit = defineEmits<{
 }>()
 
 const nestedContextEntity = ref<any | null>(null)
+const contextHistory = ref<any[]>([])
 
 const activeEntity = computed(() => nestedContextEntity.value || props.entity)
+
+const canGoBack = computed(() => contextHistory.value.length > 0)
 
 watch(
   () => props.entity,
   () => {
     nestedContextEntity.value = null
+    contextHistory.value = []
   }
 )
 
 watch(
   () => props.open,
   (open) => {
-    if (!open) nestedContextEntity.value = null
+    if (!open) {
+      nestedContextEntity.value = null
+      contextHistory.value = []
+    }
   }
 )
 
@@ -157,7 +164,14 @@ function openDestinationMap() {
 }
 
 function close() {
+  nestedContextEntity.value = null
+  contextHistory.value = []
   emit('close')
+}
+
+function goBackContext() {
+  const previous = contextHistory.value.pop()
+  nestedContextEntity.value = previous || null
 }
 
 const imageLightboxOpen = ref(false)
@@ -191,6 +205,12 @@ onBeforeUnmount(() => {
 })
 
 function openNestedMention(mention: any) {
+  const current = activeEntity.value
+
+  if (current) {
+    contextHistory.value.push(current)
+  }
+
   nestedContextEntity.value = mention || null
   emit('openMention', mention)
 }
@@ -213,19 +233,29 @@ function readMore() {
       class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] border-l backdrop-blur"
     >
       <div class="flex h-full flex-col">
-        <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-          <div>
+        <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+          <div class="min-w-0">
+            <button
+              v-if="canGoBack"
+              type="button"
+              class="mb-3 inline-flex items-center gap-1 text-xs uppercase tracking-[0.24em] text-[#9f9278] transition hover:text-white"
+              @click="goBackContext"
+            >
+              <UIcon name="i-lucide-arrow-left" class="h-4 w-4" />
+              Back
+            </button>
+
             <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
               {{ eyebrowLabel }}
             </div>
 
-            <div class="mt-1 text-xl font-semibold text-white">
+            <div class="mt-1 break-words text-xl font-semibold text-white">
               {{ entityTitle }}
             </div>
           </div>
 
           <button
-            class="text-[#9f9278] transition hover:text-white"
+            class="shrink-0 text-[#9f9278] transition hover:text-white"
             type="button"
             @click="close"
           >

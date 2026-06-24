@@ -114,6 +114,36 @@ function close() {
   emit('close')
 }
 
+const imageLightboxOpen = ref(false)
+
+function openImageLightbox() {
+  if (!entityImageUrl.value) return
+  imageLightboxOpen.value = true
+}
+
+function closeImageLightbox() {
+  imageLightboxOpen.value = false
+}
+
+function onLightboxKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeImageLightbox()
+}
+
+watch(imageLightboxOpen, (open) => {
+  if (!import.meta.client) return
+
+  if (open) {
+    window.addEventListener('keydown', onLightboxKeydown)
+  } else {
+    window.removeEventListener('keydown', onLightboxKeydown)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+  window.removeEventListener('keydown', onLightboxKeydown)
+})
+
 function readMore() {
   if (entityUrl.value) return
   emit('readMore', props.entity)
@@ -153,16 +183,23 @@ function readMore() {
         </div>
 
         <div class="flex-1 overflow-y-auto p-5">
-          <div
+          <button
             v-if="entityImageUrl"
-            class="eldra-image-frame mb-5 overflow-hidden rounded-none border bg-black/20"
+            type="button"
+            class="eldra-image-frame group mb-5 block w-full overflow-hidden rounded-none border bg-black/20 text-left transition hover:brightness-110"
+            title="View image"
+            @click="openImageLightbox"
           >
             <img
               :src="entityImageUrl"
               :alt="entityTitle"
               class="h-56 w-full object-cover"
             >
-          </div>
+
+            <div class="border-t border-[rgba(201,164,90,0.18)] bg-[rgba(5,5,5,0.62)] px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-[#9f9278] transition group-hover:text-[#f5e7bd]">
+              Click to view image
+            </div>
+          </button>
 
           <div
             v-if="detailLines.length"
@@ -259,4 +296,39 @@ function readMore() {
       </div>
     </div>
   </Transition>
+
+  <Teleport to="body">
+    <Transition
+      enter-from-class="opacity-0"
+      enter-active-class="transition duration-150"
+      leave-to-class="opacity-0"
+      leave-active-class="transition duration-150"
+    >
+      <div
+        v-if="imageLightboxOpen"
+        class="fixed inset-0 z-[220] flex items-center justify-center bg-black/88 p-4 backdrop-blur-sm"
+        @click.self="closeImageLightbox"
+      >
+        <button
+          type="button"
+          class="absolute right-5 top-5 rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(20,17,12,0.82)] p-3 text-[#c9a45a] transition hover:bg-[rgba(201,164,90,0.16)] hover:text-[#fff7df]"
+          @click="closeImageLightbox"
+        >
+          <UIcon name="i-lucide-x" class="h-6 w-6" />
+        </button>
+
+        <figure class="max-h-[92vh] max-w-[94vw]">
+          <img
+            :src="entityImageUrl"
+            :alt="entityTitle"
+            class="max-h-[86vh] max-w-[94vw] rounded-none border border-[rgba(201,164,90,0.38)] object-contain shadow-2xl"
+          >
+
+          <figcaption class="mt-3 text-center text-xs uppercase tracking-[0.28em] text-[#c9a45a]">
+            {{ entityTitle }}
+          </figcaption>
+        </figure>
+      </div>
+    </Transition>
+  </Teleport>
 </template>

@@ -6,6 +6,8 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
+import Image from '@tiptap/extension-image'
+import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
 import Placeholder from '@tiptap/extension-placeholder'
 
 type MentionEntity = {
@@ -267,6 +269,12 @@ const editor = useEditor({
     }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Highlight.configure({ multicolor: false }),
+    Image.configure({
+      allowBase64: false,
+      HTMLAttributes: {
+        class: 'eldra-article-image my-6 max-h-[720px] w-full rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl'
+      }
+    }),
     Placeholder.configure({ placeholder: 'Write your article here. Type @ to mention something in this world...' })
   ],
   editorProps: {
@@ -301,6 +309,29 @@ watch(
 )
 
 onBeforeUnmount(() => editor.value?.destroy())
+
+const mediaPickerOpen = ref(false)
+
+function openMediaPicker() {
+  mediaPickerOpen.value = true
+}
+
+function insertImageFromMedia(file: any) {
+  const src = String(file?.url || '').trim()
+  if (!src || !editor.value) return
+
+  ;(editor.value as any)
+    .chain()
+    .focus()
+    .setImage({
+      src,
+      alt: String(file?.title || file?.filename || ''),
+      title: String(file?.title || file?.filename || '')
+    })
+    .run()
+
+  mediaPickerOpen.value = false
+}
 
 function chain() {
   return editor.value?.chain().focus()
@@ -384,6 +415,7 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
 
         <button type="button" :class="buttonClass('link')" @click="setLink">Link</button>
         <button type="button" :class="buttonClass()" @click="chain()?.unsetLink().run()">Unlink</button>
+        <button type="button" :class="buttonClass('image')" @click="openMediaPicker">Image</button>
 
         <span class="mx-1 h-6 w-px bg-[rgba(201,164,90,0.22)]" />
 
@@ -437,6 +469,13 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
         No matching entities.
       </div>
     </div>
+    <WorldMediaPicker
+      v-model:open="mediaPickerOpen"
+      :world-id="worldId"
+      title="Insert Picture from Gallery"
+      select-label="Insert Image"
+      @select="insertImageFromMedia"
+    />
   </div>
 </template>
 

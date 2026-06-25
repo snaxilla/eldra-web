@@ -37,6 +37,31 @@ const articleSaving = ref(false)
 const articleSaveError = ref('')
 const articleSaveSuccess = ref('')
 
+const ARTICLE_THEME_OPTIONS = [
+  {
+    value: 'codex',
+    label: 'Codex',
+    description: 'Dark Eldra codex panel.'
+  },
+  {
+    value: 'parchment',
+    label: 'Parchment',
+    description: 'Warm paper page for lore-heavy articles.'
+  },
+  {
+    value: 'statblock',
+    label: 'Statblock',
+    description: 'Pale 5e-style rules reference.'
+  }
+]
+
+const articleThemeDraft = ref('codex')
+
+function normalizedArticleTheme(value: any) {
+  const key = String(value || '').trim().toLowerCase()
+  return ARTICLE_THEME_OPTIONS.some((option) => option.value === key) ? key : 'codex'
+}
+
 const metaTitle = ref('')
 const metaSlug = ref('')
 const metaSummary = ref('')
@@ -425,6 +450,23 @@ const articleOverrideBlock = computed(() => blockByKey('article_override'))
 const articleOverrideMarkdown = computed(() =>
   String(articleOverrideBlock.value?.data?.markdown || '').trim()
 )
+const articleOverrideTheme = computed(() =>
+  normalizedArticleTheme(articleOverrideBlock.value?.data?.theme)
+)
+const activeArticleTheme = computed(() =>
+  mode.value === 'build' ? normalizedArticleTheme(articleThemeDraft.value) : articleOverrideTheme.value
+)
+const activeArticleThemeLabel = computed(() =>
+  ARTICLE_THEME_OPTIONS.find((option) => option.value === activeArticleTheme.value)?.label || 'Codex'
+)
+const articleSectionClass = computed(() => [
+  'article-theme-shell',
+  `article-theme-shell-${activeArticleTheme.value}`
+])
+const articleContentClass = computed(() => [
+  'article-theme-content',
+  `article-theme-content-${activeArticleTheme.value}`
+])
 
 const generatedArticleMarkdown = computed(() => {
   if (!entity.value) return ''
@@ -452,9 +494,10 @@ const generatedArticleMarkdown = computed(() => {
 const articleMarkdown = computed(() => articleOverrideMarkdown.value || generatedArticleMarkdown.value || '')
 
 watch(
-  () => [entityId.value, articleOverrideMarkdown.value, generatedArticleMarkdown.value],
+  () => [entityId.value, articleOverrideMarkdown.value, generatedArticleMarkdown.value, articleOverrideTheme.value],
   () => {
     articleDraft.value = articleMarkdown.value || ''
+    articleThemeDraft.value = articleOverrideTheme.value
     articleSaveError.value = ''
     articleSaveSuccess.value = ''
   },
@@ -473,7 +516,8 @@ async function saveArticleOverride() {
       method: 'PUT',
       body: {
         data: {
-          markdown: articleDraft.value
+          markdown: articleDraft.value,
+          theme: normalizedArticleTheme(articleThemeDraft.value)
         }
       }
     })
@@ -489,6 +533,7 @@ async function saveArticleOverride() {
 
 function resetArticleDraft() {
   articleDraft.value = generatedArticleMarkdown.value || ''
+  articleThemeDraft.value = 'codex'
   articleSaveError.value = ''
   articleSaveSuccess.value = 'Draft reset. Save to keep it.'
 }
@@ -1111,9 +1156,37 @@ async function onImageSelected(event: Event) {
         </article>
       </section>
 
-<section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-7 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.20)]">
-        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-          Article
+<section
+        :class="articleSectionClass"
+        class="mt-6 rounded-none border p-7 shadow-[0_22px_70px_rgba(0,0,0,0.20)]"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="article-theme-eyebrow">
+              Article
+            </div>
+            <div class="article-theme-name">
+              {{ activeArticleThemeLabel }}
+            </div>
+          </div>
+
+          <div
+            v-if="mode === 'build'"
+            class="flex flex-wrap items-center gap-2"
+          >
+            <span class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Article Style</span>
+            <button
+              v-for="option in ARTICLE_THEME_OPTIONS"
+              :key="option.value"
+              type="button"
+              class="article-theme-button"
+              :class="normalizedArticleTheme(articleThemeDraft) === option.value ? 'article-theme-button-active' : ''"
+              :title="option.description"
+              @click="articleThemeDraft = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
         </div>
 
         <div
@@ -1203,19 +1276,29 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
-            <EldraRichTextEditor v-model="articleDraft" :world-id="worldId" />
+            <div
+              :class="articleContentClass"
+              class="mt-5"
+            >
+              <EldraRichTextEditor v-model="articleDraft" :world-id="worldId" />
+            </div>
 
             <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
           </div>
 
-        <WorldMentionText
+        <div
           v-else-if="articleMarkdown"
-          :world-id="worldId"
-          :markdown="articleMarkdown"
-          class="eldra-rich-content mt-6 text-[16px] leading-8"
-          @open-mention="openMentionContext"
-        />
+          :class="articleContentClass"
+          class="mt-6"
+        >
+          <WorldMentionText
+            :world-id="worldId"
+            :markdown="articleMarkdown"
+            class="eldra-rich-content text-[16px] leading-8"
+            @open-mention="openMentionContext"
+          />
+        </div>
 
         <div
           v-else
@@ -1433,4 +1516,166 @@ async function onImageSelected(event: Event) {
   background: transparent;
   padding: 0;
 }
+
+.article-theme-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.article-theme-shell-codex {
+  border-color: rgba(201, 164, 90, 0.34);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(201, 164, 90, 0.08), transparent 32%),
+    linear-gradient(to bottom, rgba(20, 17, 12, 0.72), rgba(7, 7, 6, 0.58));
+  backdrop-filter: blur(16px);
+}
+
+.article-theme-shell-parchment {
+  border-color: rgba(140, 97, 45, 0.64);
+  background:
+    radial-gradient(circle at 12% 14%, rgba(255, 255, 255, 0.34), transparent 18%),
+    radial-gradient(circle at 84% 8%, rgba(118, 76, 34, 0.12), transparent 20%),
+    linear-gradient(135deg, rgba(238, 219, 178, 0.97), rgba(197, 162, 101, 0.94));
+  color: #2f2114;
+  box-shadow: inset 0 0 0 1px rgba(255, 249, 228, 0.40), 0 22px 70px rgba(0, 0, 0, 0.32);
+}
+
+.article-theme-shell-statblock {
+  border-color: rgba(117, 28, 28, 0.62);
+  background:
+    linear-gradient(90deg, rgba(117, 28, 28, 0.12), transparent 22%, transparent 78%, rgba(117, 28, 28, 0.12)),
+    linear-gradient(to bottom, rgba(246, 235, 201, 0.98), rgba(226, 204, 154, 0.96));
+  color: #261a12;
+  box-shadow: inset 0 0 0 1px rgba(255, 249, 228, 0.38), 0 22px 70px rgba(0, 0, 0, 0.32);
+}
+
+.article-theme-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: #9f9278;
+}
+
+.article-theme-name {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(245, 231, 189, 0.66);
+}
+
+.article-theme-shell-parchment .article-theme-eyebrow,
+.article-theme-shell-parchment .article-theme-name {
+  color: rgba(67, 42, 22, 0.78);
+}
+
+.article-theme-shell-statblock .article-theme-eyebrow,
+.article-theme-shell-statblock .article-theme-name {
+  color: rgba(117, 28, 28, 0.82);
+}
+
+.article-theme-button {
+  border: 1px solid rgba(201, 164, 90, 0.30);
+  border-radius: 0;
+  background: rgba(20, 17, 12, 0.58);
+  padding: 0.55rem 0.8rem;
+  color: #f5e7bd;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: all 0.16s ease;
+}
+
+.article-theme-button:hover,
+.article-theme-button-active {
+  border-color: rgba(251, 191, 36, 0.85);
+  background: rgba(201, 164, 90, 0.20);
+  color: #fff7df;
+}
+
+.article-theme-content {
+  overflow: hidden;
+}
+
+.article-theme-content-codex {
+  color: #f5e7bd;
+}
+
+.article-theme-content-parchment {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 980px;
+  border: 1px solid rgba(112, 73, 35, 0.30);
+  background:
+    linear-gradient(90deg, rgba(93, 57, 25, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(255, 253, 239, 0.36), rgba(250, 236, 198, 0.76));
+  background-size: 42px 42px, auto;
+  padding: clamp(1.25rem, 2.4vw, 2.35rem);
+  color: #2f2114;
+  box-shadow: inset 0 0 45px rgba(105, 64, 27, 0.12);
+}
+
+.article-theme-content-statblock {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 980px;
+  border-top: 5px solid #7b1f1f;
+  border-bottom: 5px solid #7b1f1f;
+  background:
+    linear-gradient(to bottom, rgba(255, 251, 225, 0.98), rgba(237, 220, 170, 0.98));
+  padding: clamp(1.2rem, 2vw, 2rem);
+  color: #261a12;
+  box-shadow: inset 0 0 0 1px rgba(117, 28, 28, 0.25);
+}
+
+.article-theme-content-parchment :deep(.world-mention-text),
+.article-theme-content-statblock :deep(.world-mention-text) {
+  color: inherit;
+}
+
+.article-theme-content-parchment :deep(.world-mention-paragraph),
+.article-theme-content-statblock :deep(.world-mention-paragraph) {
+  color: inherit;
+}
+
+.article-theme-content-parchment :deep(.eldra-mention-link) {
+  border-color: rgba(115, 77, 34, 0.55);
+  background: rgba(126, 83, 35, 0.12);
+  color: #3a2412;
+  box-shadow: none;
+}
+
+.article-theme-content-statblock :deep(.eldra-mention-link) {
+  border-color: rgba(117, 28, 28, 0.46);
+  background: rgba(117, 28, 28, 0.10);
+  color: #5b1717;
+  box-shadow: none;
+}
+
+.article-theme-content-parchment :deep(.world-mention-image-frame),
+.article-theme-content-statblock :deep(.world-mention-image-frame) {
+  border-color: rgba(74, 48, 22, 0.34);
+  background: rgba(255, 249, 228, 0.35);
+  box-shadow: 0 16px 38px rgba(76, 45, 16, 0.18);
+}
+
+.article-theme-content-parchment :deep(.world-mention-image-caption),
+.article-theme-content-statblock :deep(.world-mention-image-caption) {
+  color: rgba(47, 33, 20, 0.74);
+  border-top-color: rgba(74, 48, 22, 0.18);
+}
+
+.article-theme-content-statblock :deep(.world-mention-paragraph:first-child)::first-letter {
+  float: left;
+  margin-right: 0.35rem;
+  color: #7b1f1f;
+  font-size: 3.2rem;
+  line-height: 0.9;
+  font-weight: 800;
+}
+
+.article-theme-content-parchment :deep(.ProseMirror),
+.article-theme-content-statblock :deep(.ProseMirror) {
+  color: inherit;
+}
+
 </style>

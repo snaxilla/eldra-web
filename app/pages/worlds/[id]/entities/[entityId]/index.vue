@@ -1227,7 +1227,7 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
-            <EldraRichTextEditor v-model="articleDraft" />
+            <EldraRichTextEditor v-model="articleDraft" :world-id="worldId" />
 
             <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>

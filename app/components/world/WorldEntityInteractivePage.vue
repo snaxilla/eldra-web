@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorldMentionText from '~/components/world/WorldMentionText.vue'
 import { renderMarkdown } from '~/utils/renderMarkdown'
 
 const props = defineProps<{
@@ -800,8 +801,16 @@ async function createLocationArticle() {
                   </template>
 
                   <template v-else>
-                    <div class="line-clamp-5 leading-7">
-                      {{ summaryForEntity(entity) || 'Select to preview →' }}
+                    <WorldMentionText
+                      v-if="summaryForEntity(entity)"
+                      :world-id="worldId"
+                      :markdown="summaryForEntity(entity)"
+                      :interactive="false"
+                      class="line-clamp-5 leading-7"
+                    />
+
+                    <div v-else class="line-clamp-5 leading-7">
+                      Select to preview →
                     </div>
                   </template>
                 </div>

@@ -64,7 +64,7 @@ function stripUnsafeHtml(value: string) {
 }
 
 function attrValue(tag: string, name: string) {
-  const regex = new RegExp(`${name}\\\\s*=\\\\s*("([^"]*)"|'([^']*)'|([^\\\\s"'>]+))`, 'i')
+  const regex = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i')
   const match = tag.match(regex)
 
   return decodeHtmlEntities(String(match?.[2] ?? match?.[3] ?? match?.[4] ?? '').trim())

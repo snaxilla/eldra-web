@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorldMentionText from '~/components/world/WorldMentionText.vue'
 const props = defineProps<{
   entity: {
     id: number | string
@@ -210,8 +211,16 @@ const summaryText = computed(() => {
         </div>
       </div>
 
-      <p class="mt-5 min-h-[4.8rem] text-sm leading-7 text-[#4f4030]">
-        {{ excerpt(summaryText) }}
+      <WorldMentionText
+        v-if="summaryText"
+        :world-id="entity.world_id || ''"
+        :markdown="excerpt(summaryText)"
+        :interactive="false"
+        class="mt-5 min-h-[4.8rem] text-sm leading-7 text-[#4f4030]"
+      />
+
+      <p v-else class="mt-5 min-h-[4.8rem] text-sm leading-7 text-[#4f4030]">
+        No summary yet.
       </p>
 
       <div class="mt-5 flex flex-wrap gap-2">

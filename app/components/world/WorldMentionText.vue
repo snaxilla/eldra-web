@@ -13,6 +13,22 @@ const emit = defineEmits<{
 const resolvedMentions = ref<Record<string, any>>({})
 const resolving = ref(false)
 
+type TextBlock = {
+  type: 'text'
+  key: string
+  text: string
+}
+
+type ImageBlock = {
+  type: 'image'
+  key: string
+  src: string
+  alt: string
+  title: string
+}
+
+type ArticleBlock = TextBlock | ImageBlock
+
 function normalizeMention(value: any) {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -44,12 +60,121 @@ function stripUnsafeHtml(value: string) {
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
 }
 
+function attrValue(tag: string, name: string) {
+  const regex = new RegExp(`${name}\\\\s*=\\\\s*("([^"]*)"|'([^']*)'|([^\\\\s"'>]+))`, 'i')
+  const match = tag.match(regex)
+
+  return decodeHtmlEntities(String(match?.[2] ?? match?.[3] ?? match?.[4] ?? '').trim())
+}
+
+function safeImageSrc(value: string) {
+  const src = String(value || '').trim()
+
+  if (!src) return ''
+
+  if (src.startsWith('/api/assets/')) return src
+  if (src.startsWith('/api/asset-proxy/')) return src
+  if (src.startsWith('/assets/')) return src
+  if (/^https?:\/\//i.test(src)) return src
+
+  return ''
+}
+
+function inlineHtmlToText(value: string) {
+  return decodeHtmlEntities(
+    String(value || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(strong|b)>/gi, '**')
+      .replace(/<\/?(em|i)>/gi, '*')
+      .replace(/<\/?(s|strike)>/gi, '~~')
+      .replace(/<mark(?:\s[^>]*)?>/gi, '**')
+      .replace(/<\/mark>/gi, '**')
+      .replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href, label) => {
+        const cleanLabel = String(label || '').replace(/<[^>]+>/g, '').trim()
+        const cleanHref = String(href || '').trim()
+        return cleanLabel && cleanHref ? `[${cleanLabel}](${cleanHref})` : cleanLabel || cleanHref
+      })
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .trim()
+  )
+}
+
+function pushTextBlock(blocks: ArticleBlock[], value: string, keyPrefix: string) {
+  const text = decodeHtmlEntities(String(value || '').trim())
+  if (!text) return
+
+  const parts = text
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  for (const part of parts) {
+    blocks.push({
+      type: 'text',
+      key: `${keyPrefix}-text-${blocks.length}`,
+      text: part
+    })
+  }
+}
+
+function parseHtmlArticleBlocks(rawHtml: string) {
+  const blocks: ArticleBlock[] = []
+  const raw = stripUnsafeHtml(rawHtml)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+
+  const tokenRegex = /<img\b[^>]*>|<p(?:\s[^>]*)?>[\s\S]*?<\/p>|<h[1-6](?:\s[^>]*)?>[\s\S]*?<\/h[1-6]>|<blockquote(?:\s[^>]*)?>[\s\S]*?<\/blockquote>|<hr\s*\/?>/gi
+
+  let cursor = 0
+  let tokenIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = tokenRegex.exec(raw)) !== null) {
+    const before = raw.slice(cursor, match.index)
+    pushTextBlock(blocks, inlineHtmlToText(before), `before-${tokenIndex}`)
+
+    const token = match[0]
+
+    if (/^<img\b/i.test(token)) {
+      const src = safeImageSrc(attrValue(token, 'src'))
+
+      if (src) {
+        blocks.push({
+          type: 'image',
+          key: `image-${tokenIndex}-${blocks.length}`,
+          src,
+          alt: attrValue(token, 'alt'),
+          title: attrValue(token, 'title')
+        })
+      }
+    } else if (/^<hr\b/i.test(token)) {
+      blocks.push({
+        type: 'text',
+        key: `hr-${tokenIndex}-${blocks.length}`,
+        text: '---'
+      })
+    } else {
+      pushTextBlock(blocks, inlineHtmlToText(token), `token-${tokenIndex}`)
+    }
+
+    cursor = match.index + token.length
+    tokenIndex += 1
+  }
+
+  const after = raw.slice(cursor)
+  pushTextBlock(blocks, inlineHtmlToText(after), 'after')
+
+  return blocks
+}
+
 /*
  * TipTap saves article overrides as HTML, while generated/imported articles are
- * often Markdown/plain text. Normalize both into paragraph-ish blocks before
- * mention parsing so visible <p> tags never leak into Play mode.
+ * often Markdown/plain text. Normalize both into article blocks before mention
+ * parsing. Important: preserve safe <img> tags from TipTap so Play mode can
+ * render inline gallery images.
  */
-function articleBlocks(value: any) {
+function articleBlocks(value: any): ArticleBlock[] {
   const raw = stripUnsafeHtml(String(value || '').trim())
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -57,40 +182,17 @@ function articleBlocks(value: any) {
   if (!raw) return []
 
   if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
-    const paragraphMatches = Array.from(raw.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/gi))
-
-    if (paragraphMatches.length) {
-      return paragraphMatches
-        .map((match) => decodeHtmlEntities(
-          String(match[1] || '')
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/?(strong|b)>/gi, '**')
-            .replace(/<\/?(em|i)>/gi, '*')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-        ))
-        .filter(Boolean)
-    }
-
-    return [
-      decodeHtmlEntities(
-        raw
-          .replace(/<br\s*\/?>/gi, '\n')
-          .replace(/<\/p>\s*<p(?:\s[^>]*)?>/gi, '\n\n')
-          .replace(/<\/?(strong|b)>/gi, '**')
-          .replace(/<\/?(em|i)>/gi, '*')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-      )
-    ].filter(Boolean)
+    return parseHtmlArticleBlocks(raw)
   }
 
   return raw
     .split(/\n{2,}/)
-    .map((block) => decodeHtmlEntities(block.trim()))
-    .filter(Boolean)
+    .map((block, index) => ({
+      type: 'text' as const,
+      key: `plain-${index}`,
+      text: decodeHtmlEntities(block.trim())
+    }))
+    .filter((block) => Boolean(block.text))
 }
 
 function renderInlineMarkdown(value: string) {
@@ -103,7 +205,9 @@ const mentionTexts = computed(() => {
   const found = new Map<string, string>()
 
   for (const block of articleBlocks(props.markdown)) {
-    for (const match of block.matchAll(/@\[([^\]]+)\]/g)) {
+    if (block.type !== 'text') continue
+
+    for (const match of block.text.matchAll(/@\[([^\]]+)\]/g)) {
       const label = normalizeMention(match[1])
       if (label) found.set(normalizedKey(label), label)
     }
@@ -155,21 +259,42 @@ type InlinePart =
       resolved: any
     }
 
-type BlockPart = {
+type RenderedTextBlock = {
+  type: 'text'
   key: string
   parts: InlinePart[]
 }
 
-const renderedBlocks = computed<BlockPart[]>(() => {
+type RenderedImageBlock = {
+  type: 'image'
+  key: string
+  src: string
+  alt: string
+  title: string
+}
+
+type RenderedBlock = RenderedTextBlock | RenderedImageBlock
+
+const renderedBlocks = computed<RenderedBlock[]>(() => {
   return articleBlocks(props.markdown).map((block, blockIndex) => {
+    if (block.type === 'image') {
+      return {
+        type: 'image',
+        key: block.key || `image-${blockIndex}`,
+        src: block.src,
+        alt: block.alt,
+        title: block.title
+      }
+    }
+
     const parts: InlinePart[] = []
     const regex = /@\[([^\]]+)\]/g
     let cursor = 0
     let mentionIndex = 0
     let match: RegExpExecArray | null
 
-    while ((match = regex.exec(block)) !== null) {
-      const before = block.slice(cursor, match.index)
+    while ((match = regex.exec(block.text)) !== null) {
+      const before = block.text.slice(cursor, match.index)
 
       if (before) {
         parts.push({
@@ -193,7 +318,7 @@ const renderedBlocks = computed<BlockPart[]>(() => {
       cursor = match.index + match[0].length
     }
 
-    const after = block.slice(cursor)
+    const after = block.text.slice(cursor)
 
     if (after) {
       parts.push({
@@ -204,7 +329,8 @@ const renderedBlocks = computed<BlockPart[]>(() => {
     }
 
     return {
-      key: `block-${blockIndex}`,
+      type: 'text',
+      key: block.key || `block-${blockIndex}`,
       parts
     }
   })
@@ -229,30 +355,54 @@ function openMention(label: string) {
 
 <template>
   <div class="world-mention-text">
-    <p
+    <template
       v-for="block in renderedBlocks"
       :key="block.key"
-      class="world-mention-paragraph"
     >
-      <template v-for="part in block.parts" :key="part.key">
-        <span
-          v-if="part.type === 'html'"
-          v-html="part.html"
-        />
-
-        <button
-          v-else
-          type="button"
-          :class="[
-            'eldra-mention-link',
-            part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
-          ]"
-          @click.prevent.stop="openMention(part.label)"
+      <figure
+        v-if="block.type === 'image'"
+        class="world-mention-image-frame"
+      >
+        <img
+          :src="block.src"
+          :alt="block.alt || block.title || 'Article image'"
+          :title="block.title || block.alt || undefined"
+          loading="lazy"
+          class="world-mention-image"
         >
-          {{ part.label }}
-        </button>
-      </template>
-    </p>
+
+        <figcaption
+          v-if="block.title && block.title !== block.alt"
+          class="world-mention-image-caption"
+        >
+          {{ block.title }}
+        </figcaption>
+      </figure>
+
+      <p
+        v-else
+        class="world-mention-paragraph"
+      >
+        <template v-for="part in block.parts" :key="part.key">
+          <span
+            v-if="part.type === 'html'"
+            v-html="part.html"
+          />
+
+          <button
+            v-else
+            type="button"
+            :class="[
+              'eldra-mention-link',
+              part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
+            ]"
+            @click.prevent.stop="openMention(part.label)"
+          >
+            {{ part.label }}
+          </button>
+        </template>
+      </p>
+    </template>
   </div>
 </template>
 
@@ -269,6 +419,31 @@ function openMention(label: string) {
   margin-bottom: 0;
 }
 
+.world-mention-image-frame {
+  margin: 1.35rem 0;
+  overflow: hidden;
+  border: 1px solid rgba(201, 164, 90, 0.30);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.30);
+}
+
+.world-mention-image {
+  display: block;
+  width: 100%;
+  max-height: 720px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.world-mention-image-caption {
+  border-top: 1px solid rgba(201, 164, 90, 0.20);
+  padding: 0.65rem 0.85rem;
+  color: #9f9278;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .eldra-mention-link {
   display: inline-flex;
   align-items: center;
@@ -279,25 +454,23 @@ function openMention(label: string) {
   border-radius: 0;
   background: linear-gradient(180deg, rgba(201, 164, 90, 0.20), rgba(20, 17, 12, 0.58));
   color: #fff7df;
-  font: inherit;
   font-weight: 700;
-  line-height: 1.55;
+  line-height: 1.45;
   text-decoration: none;
+  box-shadow: 0 0 18px rgba(201, 164, 90, 0.08);
+  vertical-align: baseline;
   cursor: pointer;
-  box-shadow: 0 0 18px rgba(201, 164, 90, 0.10);
-  transition: border-color 140ms ease, background 140ms ease, filter 140ms ease;
 }
 
 .eldra-mention-link:hover {
-  border-color: rgba(255, 224, 139, 0.76);
-  background: linear-gradient(180deg, rgba(201, 164, 90, 0.30), rgba(20, 17, 12, 0.72));
-  filter: brightness(1.08);
+  border-color: rgba(251, 191, 36, 0.85);
+  background: linear-gradient(180deg, rgba(201, 164, 90, 0.32), rgba(20, 17, 12, 0.72));
+  color: white;
 }
 
 .eldra-mention-link-unresolved {
-  border-color: rgba(159, 146, 120, 0.32);
-  color: #c8bda6;
-  background: rgba(12, 16, 22, 0.52);
-  box-shadow: none;
+  border-color: rgba(156, 163, 175, 0.38);
+  background: rgba(75, 85, 99, 0.18);
+  color: #d1d5db;
 }
 </style>

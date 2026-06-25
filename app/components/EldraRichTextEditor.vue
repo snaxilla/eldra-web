@@ -130,6 +130,14 @@ function closeMentionMenu() {
   activeMentionIndex.value = 0
 }
 
+function triggerBoundaryAllowsMention(value: string, index: number) {
+  if (index <= 0) return true
+
+  const before = value[index - 1] || ''
+
+  return /\s/.test(before) || ['(', '[', '{', ',', '.', ';', ':', '"', "'"].includes(before)
+}
+
 function refreshMentionMenu() {
   const instance = editor.value
   if (!instance) return closeMentionMenu()
@@ -141,15 +149,54 @@ function refreshMentionMenu() {
 
   const $from = selection.$from
   const textBefore = $from.parent.textBetween(0, $from.parentOffset, '\n', '\n')
-  const match = /@\[([^\]\n]{0,80})$/.exec(textBefore)
 
-  if (!match) return closeMentionMenu()
+  let triggerStart = -1
+  let query = ''
 
-  mentionQuery.value = match[1] || ''
+  const bracketStart = textBefore.lastIndexOf('@[')
+
+  if (bracketStart !== -1) {
+    const candidate = textBefore.slice(bracketStart + 2)
+
+    if (
+      candidate.length <= 80 &&
+      !candidate.includes(']') &&
+      !candidate.includes('\n') &&
+      triggerBoundaryAllowsMention(textBefore, bracketStart)
+    ) {
+      triggerStart = bracketStart
+      query = candidate
+    }
+  }
+
+  if (triggerStart === -1) {
+    const atStart = textBefore.lastIndexOf('@')
+
+    if (atStart !== -1) {
+      const candidate = textBefore.slice(atStart + 1)
+
+      if (
+        candidate.length <= 80 &&
+        !candidate.includes('@') &&
+        !candidate.includes('[') &&
+        !candidate.includes(']') &&
+        !candidate.includes('\n') &&
+        triggerBoundaryAllowsMention(textBefore, atStart)
+      ) {
+        triggerStart = atStart
+        query = candidate
+      }
+    }
+  }
+
+  if (triggerStart === -1) return closeMentionMenu()
+
+  mentionQuery.value = query
   mentionRange.value = {
-    from: $from.pos - match[0].length,
+    from: $from.pos - (textBefore.length - triggerStart),
     to: $from.pos
   }
+
   mentionMenuOpen.value = true
   activeMentionIndex.value = Math.min(activeMentionIndex.value, Math.max(filteredMentionEntities.value.length - 1, 0))
 }
@@ -220,7 +267,7 @@ const editor = useEditor({
     }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Highlight.configure({ multicolor: false }),
-    Placeholder.configure({ placeholder: 'Write your article here. Type @[ to mention something in this world...' })
+    Placeholder.configure({ placeholder: 'Write your article here. Type @ to mention something in this world...' })
   ],
   editorProps: {
     attributes: {
@@ -345,7 +392,7 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
         <button type="button" :class="buttonClass()" @click="chain()?.redo().run()">Redo</button>
 
         <div class="ml-auto text-xs text-[#9f9278]">
-          Type <span class="text-[#f5e7bd]">@\[</span> to mention a world entity.
+          Type <span class="text-[#f5e7bd]">@</span> to mention a world entity.
         </div>
       </div>
     </div>

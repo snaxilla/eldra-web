@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
+import { mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
@@ -18,6 +19,60 @@ type MentionEntity = {
   entityType?: string
   summary?: string
 }
+
+const IMAGE_SIZE_CLASSES: Record<string, string> = {
+  small: 'eldra-article-image eldra-article-image-small my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl',
+  medium: 'eldra-article-image eldra-article-image-medium my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl',
+  wide: 'eldra-article-image eldra-article-image-wide my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl',
+  full: 'eldra-article-image eldra-article-image-full my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl'
+}
+
+const IMAGE_ALIGN_CLASSES: Record<string, string> = {
+  left: 'mr-auto',
+  center: 'mx-auto',
+  right: 'ml-auto'
+}
+
+const EldraImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      size: {
+        default: 'full',
+        parseHTML: (element) => element.getAttribute('data-size') || 'full',
+        renderHTML: (attributes) => ({
+          'data-size': attributes.size || 'full'
+        })
+      },
+      align: {
+        default: 'center',
+        parseHTML: (element) => element.getAttribute('data-align') || 'center',
+        renderHTML: (attributes) => ({
+          'data-align': attributes.align || 'center'
+        })
+      }
+    }
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const size = String(HTMLAttributes.size || HTMLAttributes['data-size'] || 'full')
+    const align = String(HTMLAttributes.align || HTMLAttributes['data-align'] || 'center')
+    const sizeClass = IMAGE_SIZE_CLASSES[size] || IMAGE_SIZE_CLASSES.full
+    const alignClass = IMAGE_ALIGN_CLASSES[align] || IMAGE_ALIGN_CLASSES.center
+
+    const attrs = {
+      ...HTMLAttributes,
+      'data-size': size,
+      'data-align': align,
+      class: `${sizeClass} ${alignClass}`.trim()
+    }
+
+    delete attrs.size
+    delete attrs.align
+
+    return ['img', mergeAttributes(attrs)]
+  }
+})
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -269,11 +324,8 @@ const editor = useEditor({
     }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Highlight.configure({ multicolor: false }),
-    Image.configure({
-      allowBase64: false,
-      HTMLAttributes: {
-        class: 'eldra-article-image my-6 max-h-[720px] w-full rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl'
-      }
+    EldraImage.configure({
+      allowBase64: false
     }),
     Placeholder.configure({ placeholder: 'Write your article here. Type @ to mention something in this world...' })
   ],
@@ -320,17 +372,82 @@ function insertImageFromMedia(file: any) {
   const src = String(file?.url || '').trim()
   if (!src || !editor.value) return
 
+  const existing = editor.value.getAttributes('image') || {}
+  const replacingImage = editor.value.isActive('image')
+
   ;(editor.value as any)
     .chain()
     .focus()
     .setImage({
       src,
-      alt: String(file?.title || file?.filename || ''),
-      title: String(file?.title || file?.filename || '')
+      alt: String(file?.title || file?.filename || existing.alt || ''),
+      title: String(existing.title || ''),
+      size: String(existing.size || 'full'),
+      align: String(existing.align || 'center')
     })
     .run()
 
+  if (replacingImage) {
+    editor.value.commands.updateAttributes('image', {
+      size: String(existing.size || 'full'),
+      align: String(existing.align || 'center')
+    })
+  }
+
   mediaPickerOpen.value = false
+}
+
+function imageAttrs() {
+  return editor.value?.getAttributes('image') || {}
+}
+
+function imageButtonClass(name: string, value: string) {
+  return imageAttrs()?.[name] === value
+    ? 'eldra-selected-glow border-[rgba(251,191,36,0.85)] bg-[rgba(201,164,90,0.20)] text-[#fff7df]'
+    : ''
+}
+
+function setImageSize(size: 'small' | 'medium' | 'wide' | 'full') {
+  if (!editor.value?.isActive('image')) return
+  editor.value.chain().focus().updateAttributes('image', { size }).run()
+}
+
+function setImageAlign(align: 'left' | 'center' | 'right') {
+  if (!editor.value?.isActive('image')) return
+  editor.value.chain().focus().updateAttributes('image', { align }).run()
+}
+
+function editImageCaption() {
+  if (!editor.value?.isActive('image')) return
+
+  const attrs = imageAttrs()
+  const current = String(attrs.title || '')
+  const caption = window.prompt('Image caption/title', current)
+
+  if (caption === null) return
+
+  editor.value.chain().focus().updateAttributes('image', {
+    title: caption.trim()
+  }).run()
+}
+
+function editImageAltText() {
+  if (!editor.value?.isActive('image')) return
+
+  const attrs = imageAttrs()
+  const current = String(attrs.alt || '')
+  const alt = window.prompt('Image alt text', current)
+
+  if (alt === null) return
+
+  editor.value.chain().focus().updateAttributes('image', {
+    alt: alt.trim()
+  }).run()
+}
+
+function removeSelectedImage() {
+  if (!editor.value?.isActive('image')) return
+  editor.value.chain().focus().deleteSelection().run()
 }
 
 function chain() {
@@ -415,13 +532,34 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
 
         <button type="button" :class="buttonClass('link')" @click="setLink">Link</button>
         <button type="button" :class="buttonClass()" @click="chain()?.unsetLink().run()">Unlink</button>
-        <button type="button" :class="buttonClass('image')" @click="openMediaPicker">Image</button>
+        <button type="button" :class="buttonClass('image')" @click="openMediaPicker">
+          {{ editor?.isActive('image') ? 'Replace Image' : 'Image' }}
+        </button>
 
         <span class="mx-1 h-6 w-px bg-[rgba(201,164,90,0.22)]" />
 
         <button type="button" :class="buttonClass()" @click="clearFormatting">Clear</button>
         <button type="button" :class="buttonClass()" @click="chain()?.undo().run()">Undo</button>
         <button type="button" :class="buttonClass()" @click="chain()?.redo().run()">Redo</button>
+
+        <template v-if="editor?.isActive('image')">
+          <span class="mx-1 h-6 w-px bg-[rgba(201,164,90,0.22)]" />
+
+          <span class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Image</span>
+
+          <button type="button" :class="[buttonClass(), imageButtonClass('size', 'small')]" @click="setImageSize('small')">Small</button>
+          <button type="button" :class="[buttonClass(), imageButtonClass('size', 'medium')]" @click="setImageSize('medium')">Medium</button>
+          <button type="button" :class="[buttonClass(), imageButtonClass('size', 'wide')]" @click="setImageSize('wide')">Wide</button>
+          <button type="button" :class="[buttonClass(), imageButtonClass('size', 'full')]" @click="setImageSize('full')">Full</button>
+
+          <button type="button" :class="[buttonClass(), imageButtonClass('align', 'left')]" @click="setImageAlign('left')">Left</button>
+          <button type="button" :class="[buttonClass(), imageButtonClass('align', 'center')]" @click="setImageAlign('center')">Center</button>
+          <button type="button" :class="[buttonClass(), imageButtonClass('align', 'right')]" @click="setImageAlign('right')">Right</button>
+
+          <button type="button" :class="buttonClass()" @click="editImageCaption">Caption</button>
+          <button type="button" :class="buttonClass()" @click="editImageAltText">Alt</button>
+          <button type="button" :class="buttonClass()" @click="removeSelectedImage">Remove</button>
+        </template>
 
         <div class="ml-auto text-xs text-[#9f9278]">
           Type <span class="text-[#f5e7bd]">@</span> to mention a world entity.
@@ -575,4 +713,31 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
 :deep(.ProseMirror-selectednode) {
   outline: 2px solid rgba(201, 164, 90, 0.45);
 }
+:deep(.eldra-article-image) {
+  display: block;
+  max-height: 720px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+:deep(.eldra-article-image-small) {
+  width: min(100%, 360px);
+}
+
+:deep(.eldra-article-image-medium) {
+  width: min(100%, 640px);
+}
+
+:deep(.eldra-article-image-wide) {
+  width: min(100%, 980px);
+}
+
+:deep(.eldra-article-image-full) {
+  width: 100%;
+}
+
+:deep(.ProseMirror-selectednode.eldra-article-image) {
+  outline: 2px solid rgba(251, 191, 36, 0.9);
+  outline-offset: 4px;
+}
+
 </style>

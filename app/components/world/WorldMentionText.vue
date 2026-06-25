@@ -28,6 +28,8 @@ type ImageBlock = {
   src: string
   alt: string
   title: string
+  size: string
+  align: string
 }
 
 type ArticleBlock = TextBlock | ImageBlock
@@ -171,7 +173,9 @@ function parseHtmlArticleBlocks(rawHtml: string) {
           key: `image-${tokenIndex}-${blocks.length}`,
           src,
           alt: attrValue(token, 'alt'),
-          title: attrValue(token, 'title')
+          title: attrValue(token, 'title'),
+          size: attrValue(token, 'data-size') || 'full',
+          align: attrValue(token, 'data-align') || 'center'
         })
       }
     } else if (/^<hr\b/i.test(token)) {
@@ -295,6 +299,8 @@ type RenderedImageBlock = {
   src: string
   alt: string
   title: string
+  size: string
+  align: string
 }
 
 type RenderedBlock = RenderedTextBlock | RenderedImageBlock
@@ -307,7 +313,9 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
         key: block.key || `image-${blockIndex}`,
         src: block.src,
         alt: block.alt,
-        title: block.title
+        title: block.title,
+        size: block.size || 'full',
+        align: block.align || 'center'
       }
     }
 
@@ -360,6 +368,17 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
   })
 })
 
+function imageFrameClass(block: RenderedImageBlock) {
+  const size = String(block.size || 'full')
+  const align = String(block.align || 'center')
+
+  return [
+    'world-mention-image-frame',
+    `world-mention-image-${['small', 'medium', 'wide', 'full'].includes(size) ? size : 'full'}`,
+    `world-mention-image-align-${['left', 'center', 'right'].includes(align) ? align : 'center'}`
+  ]
+}
+
 function openMention(label: string) {
   const resolved = resolvedMentions.value[normalizedKey(label)]
 
@@ -385,7 +404,7 @@ function openMention(label: string) {
     >
       <figure
         v-if="block.type === 'image'"
-        class="world-mention-image-frame"
+        :class="imageFrameClass(block)"
       >
         <img
           :src="block.src"
@@ -454,12 +473,42 @@ function openMention(label: string) {
 }
 
 .world-mention-image-frame {
-  margin: 1.35rem 0;
+  margin-top: 1.35rem;
+  margin-bottom: 1.35rem;
   overflow: hidden;
   border: 1px solid rgba(201, 164, 90, 0.30);
   border-radius: 0;
   background: rgba(0, 0, 0, 0.22);
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.30);
+}
+
+.world-mention-image-small {
+  width: min(100%, 360px);
+}
+
+.world-mention-image-medium {
+  width: min(100%, 640px);
+}
+
+.world-mention-image-wide {
+  width: min(100%, 980px);
+}
+
+.world-mention-image-full {
+  width: 100%;
+}
+
+.world-mention-image-align-left {
+  margin-right: auto;
+}
+
+.world-mention-image-align-center {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.world-mention-image-align-right {
+  margin-left: auto;
 }
 
 .world-mention-image {

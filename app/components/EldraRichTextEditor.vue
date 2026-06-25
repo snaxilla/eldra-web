@@ -24,7 +24,8 @@ const IMAGE_SIZE_CLASSES: Record<string, string> = {
   small: 'eldra-article-image eldra-article-image-small my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl',
   medium: 'eldra-article-image eldra-article-image-medium my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl',
   wide: 'eldra-article-image eldra-article-image-wide my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl',
-  full: 'eldra-article-image eldra-article-image-full my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl'
+  full: 'eldra-article-image eldra-article-image-full my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl',
+  custom: 'eldra-article-image eldra-article-image-custom my-6 rounded-none border border-[rgba(201,164,90,0.28)] bg-black/20 object-contain shadow-xl'
 }
 
 const IMAGE_ALIGN_CLASSES: Record<string, string> = {
@@ -50,25 +51,41 @@ const EldraImage = Image.extend({
         renderHTML: (attributes) => ({
           'data-align': attributes.align || 'center'
         })
+      },
+      width: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-width') || null,
+        renderHTML: (attributes) => {
+          const width = String(attributes.width || '').trim()
+          return width ? { 'data-width': width } : {}
+        }
       }
     }
   },
 
   renderHTML({ HTMLAttributes }) {
-    const size = String(HTMLAttributes.size || HTMLAttributes['data-size'] || 'full')
+    const rawWidth = String(HTMLAttributes.width || HTMLAttributes['data-width'] || '').trim()
+    const width = rawWidth ? Math.max(10, Math.min(100, Number(rawWidth) || 0)) : 0
+    const size = width ? 'custom' : String(HTMLAttributes.size || HTMLAttributes['data-size'] || 'full')
     const align = String(HTMLAttributes.align || HTMLAttributes['data-align'] || 'center')
     const sizeClass = IMAGE_SIZE_CLASSES[size] || IMAGE_SIZE_CLASSES.full
     const alignClass = IMAGE_ALIGN_CLASSES[align] || IMAGE_ALIGN_CLASSES.center
 
-    const attrs = {
+    const attrs: Record<string, any> = {
       ...HTMLAttributes,
       'data-size': size,
       'data-align': align,
       class: `${sizeClass} ${alignClass}`.trim()
     }
 
+    if (width) {
+      attrs['data-width'] = String(width)
+      attrs.style = `${attrs.style || ''}; width: ${width}%; max-width: 100%;`.trim()
+    }
+
     delete attrs.size
     delete attrs.align
+    delete attrs.width
 
     return ['img', mergeAttributes(attrs)]
   }
@@ -383,14 +400,16 @@ function insertImageFromMedia(file: any) {
       alt: String(file?.title || file?.filename || existing.alt || ''),
       title: String(existing.title || ''),
       size: String(existing.size || 'full'),
-      align: String(existing.align || 'center')
+      align: String(existing.align || 'center'),
+      width: existing.width || null
     })
     .run()
 
   if (replacingImage) {
     editor.value.commands.updateAttributes('image', {
       size: String(existing.size || 'full'),
-      align: String(existing.align || 'center')
+      align: String(existing.align || 'center'),
+      width: existing.width || null
     })
   }
 
@@ -409,7 +428,36 @@ function imageButtonClass(name: string, value: string) {
 
 function setImageSize(size: 'small' | 'medium' | 'wide' | 'full') {
   if (!editor.value?.isActive('image')) return
-  editor.value.chain().focus().updateAttributes('image', { size }).run()
+  editor.value.chain().focus().updateAttributes('image', { size, width: null }).run()
+}
+
+function imageWidthPercent() {
+  const raw = Number(imageAttrs()?.width || 0)
+  return raw ? Math.max(10, Math.min(100, Math.round(raw))) : 100
+}
+
+function setImageWidth(value: any) {
+  if (!editor.value?.isActive('image')) return
+
+  const width = Math.max(10, Math.min(100, Math.round(Number(value) || 100)))
+
+  editor.value.chain().focus().updateAttributes('image', {
+    size: 'custom',
+    width
+  }).run()
+}
+
+function nudgeImageWidth(delta: number) {
+  setImageWidth(imageWidthPercent() + delta)
+}
+
+function resetImageWidth() {
+  if (!editor.value?.isActive('image')) return
+
+  editor.value.chain().focus().updateAttributes('image', {
+    size: 'full',
+    width: null
+  }).run()
 }
 
 function setImageAlign(align: 'left' | 'center' | 'right') {
@@ -556,6 +604,22 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
           <button type="button" :class="[buttonClass(), imageButtonClass('align', 'center')]" @click="setImageAlign('center')">Center</button>
           <button type="button" :class="[buttonClass(), imageButtonClass('align', 'right')]" @click="setImageAlign('right')">Right</button>
 
+          <div class="flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.54)] px-3 py-1.5">
+            <button type="button" class="text-sm text-[#f5e7bd] hover:text-white" @click="nudgeImageWidth(-5)">−</button>
+            <input
+              type="range"
+              min="10"
+              max="100"
+              step="1"
+              :value="imageWidthPercent()"
+              class="eldra-image-width-slider h-1 w-28 accent-[#c9a45a]"
+              @input="setImageWidth(($event.target as HTMLInputElement).value)"
+            >
+            <button type="button" class="text-sm text-[#f5e7bd] hover:text-white" @click="nudgeImageWidth(5)">+</button>
+            <span class="min-w-10 text-right text-xs text-[#9f9278]">{{ imageWidthPercent() }}%</span>
+          </div>
+
+          <button type="button" :class="buttonClass()" @click="resetImageWidth">Reset Width</button>
           <button type="button" :class="buttonClass()" @click="editImageCaption">Caption</button>
           <button type="button" :class="buttonClass()" @click="editImageAltText">Alt</button>
           <button type="button" :class="buttonClass()" @click="removeSelectedImage">Remove</button>
@@ -733,6 +797,14 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
 
 :deep(.eldra-article-image-full) {
   width: 100%;
+}
+
+:deep(.eldra-article-image-custom) {
+  width: var(--eldra-image-width, auto);
+}
+
+.eldra-image-width-slider {
+  cursor: pointer;
 }
 
 :deep(.ProseMirror-selectednode.eldra-article-image) {

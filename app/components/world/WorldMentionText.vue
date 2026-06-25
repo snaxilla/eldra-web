@@ -30,6 +30,7 @@ type ImageBlock = {
   title: string
   size: string
   align: string
+  width: string
 }
 
 type ArticleBlock = TextBlock | ImageBlock
@@ -175,7 +176,8 @@ function parseHtmlArticleBlocks(rawHtml: string) {
           alt: attrValue(token, 'alt'),
           title: attrValue(token, 'title'),
           size: attrValue(token, 'data-size') || 'full',
-          align: attrValue(token, 'data-align') || 'center'
+          align: attrValue(token, 'data-align') || 'center',
+          width: attrValue(token, 'data-width') || ''
         })
       }
     } else if (/^<hr\b/i.test(token)) {
@@ -301,6 +303,7 @@ type RenderedImageBlock = {
   title: string
   size: string
   align: string
+  width: string
 }
 
 type RenderedBlock = RenderedTextBlock | RenderedImageBlock
@@ -315,7 +318,8 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
         alt: block.alt,
         title: block.title,
         size: block.size || 'full',
-        align: block.align || 'center'
+        align: block.align || 'center',
+        width: block.width || ''
       }
     }
 
@@ -369,14 +373,26 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
 })
 
 function imageFrameClass(block: RenderedImageBlock) {
-  const size = String(block.size || 'full')
+  const hasWidth = Boolean(String(block.width || '').trim())
+  const size = hasWidth ? 'custom' : String(block.size || 'full')
   const align = String(block.align || 'center')
 
   return [
     'world-mention-image-frame',
-    `world-mention-image-${['small', 'medium', 'wide', 'full'].includes(size) ? size : 'full'}`,
+    `world-mention-image-${['small', 'medium', 'wide', 'full', 'custom'].includes(size) ? size : 'full'}`,
     `world-mention-image-align-${['left', 'center', 'right'].includes(align) ? align : 'center'}`
   ]
+}
+
+function imageFrameStyle(block: RenderedImageBlock) {
+  const raw = String(block.width || '').trim()
+  if (!raw) return undefined
+
+  const width = Math.max(10, Math.min(100, Math.round(Number(raw) || 100)))
+
+  return {
+    width: `${width}%`
+  }
 }
 
 function openMention(label: string) {
@@ -405,6 +421,7 @@ function openMention(label: string) {
       <figure
         v-if="block.type === 'image'"
         :class="imageFrameClass(block)"
+        :style="imageFrameStyle(block)"
       >
         <img
           :src="block.src"
@@ -496,6 +513,10 @@ function openMention(label: string) {
 
 .world-mention-image-full {
   width: 100%;
+}
+
+.world-mention-image-custom {
+  max-width: 100%;
 }
 
 .world-mention-image-align-left {

@@ -990,7 +990,13 @@ async function onImageSelected(event: Event) {
 
               <label class="mt-3 block">
                 <span class="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Summary Blurb</span>
-                <textarea v-model="metaSummary" rows="4" class="w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none focus:border-yellow-700/50"></textarea>
+                <WorldMentionAutocompleteTextarea
+                  v-model="metaSummary"
+                  :world-id="worldId"
+                  rows="4"
+                  textarea-class="w-full resize-y rounded-none border border-stone-500/20 bg-[#090909]/80 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none focus:border-yellow-700/50"
+                  placeholder="Short summary. Type @ to mention a world entity..."
+                />
               </label>
 
               <div

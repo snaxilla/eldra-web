@@ -493,40 +493,6 @@ function resetArticleDraft() {
   articleSaveSuccess.value = 'Draft reset. Save to keep it.'
 }
 
-function wrapSelection(before: string, after = before, placeholder = 'text') {
-  const textarea = document.querySelector('textarea[data-article-editor="true"]') as HTMLTextAreaElement | null
-  if (!textarea) return
-
-  const start = textarea.selectionStart ?? 0
-  const end = textarea.selectionEnd ?? 0
-  const selected = articleDraft.value.slice(start, end) || placeholder
-  const next = articleDraft.value.slice(0, start) + before + selected + after + articleDraft.value.slice(end)
-
-  articleDraft.value = next
-
-  nextTick(() => {
-    textarea.focus()
-    textarea.setSelectionRange(start + before.length, start + before.length + selected.length)
-  })
-}
-
-function insertMarkdown(markdown: string) {
-  const textarea = document.querySelector('textarea[data-article-editor="true"]') as HTMLTextAreaElement | null
-  if (!textarea) {
-    articleDraft.value += markdown
-    return
-  }
-
-  const start = textarea.selectionStart ?? articleDraft.value.length
-  const next = articleDraft.value.slice(0, start) + markdown + articleDraft.value.slice(start)
-
-  articleDraft.value = next
-
-  nextTick(() => {
-    textarea.focus()
-    textarea.setSelectionRange(start + markdown.length, start + markdown.length)
-  })
-}
 
 const articleHtml = computed(() => renderMarkdown(articleMarkdown.value || ''))
 

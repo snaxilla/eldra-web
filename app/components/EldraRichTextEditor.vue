@@ -65,7 +65,9 @@ const EldraImage = Image.extend({
 
   renderHTML({ HTMLAttributes }) {
     const rawWidth = String(HTMLAttributes.width || HTMLAttributes['data-width'] || '').trim()
-    const width = rawWidth ? Math.max(10, Math.min(100, Number(rawWidth) || 0)) : 0
+    const width = rawWidth
+      ? Math.max(1, Math.min(100, Math.round((Number(rawWidth) || 0) * 10) / 10))
+      : 0
     const size = width ? 'custom' : String(HTMLAttributes.size || HTMLAttributes['data-size'] || 'full')
     const align = String(HTMLAttributes.align || HTMLAttributes['data-align'] || 'center')
     const sizeClass = IMAGE_SIZE_CLASSES[size] || IMAGE_SIZE_CLASSES.full
@@ -428,23 +430,32 @@ function imageButtonClass(name: string, value: string) {
 
 function setImageSize(size: 'small' | 'medium' | 'wide' | 'full') {
   if (!editor.value?.isActive('image')) return
-  editor.value.chain().focus().updateAttributes('image', { size, width: null }).run()
+
+  editor.value.commands.updateAttributes('image', {
+    size,
+    width: null
+  })
 }
 
 function imageWidthPercent() {
   const raw = Number(imageAttrs()?.width || 0)
-  return raw ? Math.max(10, Math.min(100, Math.round(raw))) : 100
+  return raw ? Math.max(1, Math.min(100, Math.round(raw * 10) / 10)) : 100
+}
+
+function imageWidthLabel() {
+  const value = imageWidthPercent()
+  return Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`
 }
 
 function setImageWidth(value: any) {
   if (!editor.value?.isActive('image')) return
 
-  const width = Math.max(10, Math.min(100, Math.round(Number(value) || 100)))
+  const width = Math.max(1, Math.min(100, Math.round((Number(value) || 100) * 10) / 10))
 
-  editor.value.chain().focus().updateAttributes('image', {
+  editor.value.commands.updateAttributes('image', {
     size: 'custom',
     width
-  }).run()
+  })
 }
 
 function nudgeImageWidth(delta: number) {
@@ -454,15 +465,18 @@ function nudgeImageWidth(delta: number) {
 function resetImageWidth() {
   if (!editor.value?.isActive('image')) return
 
-  editor.value.chain().focus().updateAttributes('image', {
+  editor.value.commands.updateAttributes('image', {
     size: 'full',
     width: null
-  }).run()
+  })
 }
 
 function setImageAlign(align: 'left' | 'center' | 'right') {
   if (!editor.value?.isActive('image')) return
-  editor.value.chain().focus().updateAttributes('image', { align }).run()
+
+  editor.value.commands.updateAttributes('image', {
+    align
+  })
 }
 
 function editImageCaption() {
@@ -474,9 +488,9 @@ function editImageCaption() {
 
   if (caption === null) return
 
-  editor.value.chain().focus().updateAttributes('image', {
+  editor.value.commands.updateAttributes('image', {
     title: caption.trim()
-  }).run()
+  })
 }
 
 function editImageAltText() {
@@ -488,9 +502,9 @@ function editImageAltText() {
 
   if (alt === null) return
 
-  editor.value.chain().focus().updateAttributes('image', {
+  editor.value.commands.updateAttributes('image', {
     alt: alt.trim()
-  }).run()
+  })
 }
 
 function removeSelectedImage() {
@@ -604,19 +618,27 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
           <button type="button" :class="[buttonClass(), imageButtonClass('align', 'center')]" @click="setImageAlign('center')">Center</button>
           <button type="button" :class="[buttonClass(), imageButtonClass('align', 'right')]" @click="setImageAlign('right')">Right</button>
 
-          <div class="flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.54)] px-3 py-1.5">
-            <button type="button" class="text-sm text-[#f5e7bd] hover:text-white" @click="nudgeImageWidth(-5)">−</button>
+          <div
+            class="flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.54)] px-3 py-1.5"
+            @mousedown.stop
+            @pointerdown.stop
+            @click.stop
+          >
+            <button type="button" class="text-sm text-[#f5e7bd] hover:text-white" @click.stop="nudgeImageWidth(-1)">−</button>
             <input
               type="range"
-              min="10"
+              min="1"
               max="100"
-              step="1"
+              step="0.5"
               :value="imageWidthPercent()"
-              class="eldra-image-width-slider h-1 w-28 accent-[#c9a45a]"
+              class="eldra-image-width-slider h-1 w-40 accent-[#c9a45a]"
+              @mousedown.stop
+              @pointerdown.stop
+              @click.stop
               @input="setImageWidth(($event.target as HTMLInputElement).value)"
             >
-            <button type="button" class="text-sm text-[#f5e7bd] hover:text-white" @click="nudgeImageWidth(5)">+</button>
-            <span class="min-w-10 text-right text-xs text-[#9f9278]">{{ imageWidthPercent() }}%</span>
+            <button type="button" class="text-sm text-[#f5e7bd] hover:text-white" @click.stop="nudgeImageWidth(1)">+</button>
+            <span class="min-w-12 text-right text-xs text-[#9f9278]">{{ imageWidthLabel() }}</span>
           </div>
 
           <button type="button" :class="buttonClass()" @click="resetImageWidth">Reset Width</button>

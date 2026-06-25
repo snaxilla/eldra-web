@@ -388,10 +388,11 @@ function imageFrameStyle(block: RenderedImageBlock) {
   const raw = String(block.width || '').trim()
   if (!raw) return undefined
 
-  const width = Math.max(10, Math.min(100, Math.round(Number(raw) || 100)))
+  const width = Math.max(1, Math.min(100, Math.round((Number(raw) || 100) * 10) / 10))
+  const widthText = Number.isInteger(width) ? String(width) : width.toFixed(1)
 
   return {
-    width: `${width}%`
+    width: `${widthText}%`
   }
 }
 

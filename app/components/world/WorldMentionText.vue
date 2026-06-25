@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { renderMarkdown } from '~/utils/renderMarkdown'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   worldId: string | number
   markdown: string
-}>()
+  interactive?: boolean
+}>(), {
+  interactive: true
+})
 
 const emit = defineEmits<{
   openMention: [mention: any]
@@ -118,13 +121,36 @@ function pushTextBlock(blocks: ArticleBlock[], value: string, keyPrefix: string)
   }
 }
 
+function parseHtmlTextBlocks(value: string, keyPrefix: string) {
+  const blocks: ArticleBlock[] = []
+  const normalized = String(value || '')
+    .replace(/<\/p>\s*<p(?:\s[^>]*)?>/gi, '\n\n')
+    .replace(/<p(?:\s[^>]*)?>/gi, '')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/h[1-6]>\s*<h[1-6](?:\s[^>]*)?>/gi, '\n\n')
+    .replace(/<h[1-6](?:\s[^>]*)?>/gi, '')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<blockquote(?:\s[^>]*)?>/gi, '')
+    .replace(/<\/blockquote>/gi, '\n\n')
+
+  pushTextBlock(blocks, inlineHtmlToText(normalized), keyPrefix)
+  return blocks
+}
+
 function parseHtmlArticleBlocks(rawHtml: string) {
   const blocks: ArticleBlock[] = []
   const raw = stripUnsafeHtml(rawHtml)
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
 
-  const tokenRegex = /<img\b[^>]*>|<p(?:\s[^>]*)?>[\s\S]*?<\/p>|<h[1-6](?:\s[^>]*)?>[\s\S]*?<\/h[1-6]>|<blockquote(?:\s[^>]*)?>[\s\S]*?<\/blockquote>|<hr\s*\/?>/gi
+  /*
+   * Image-first parsing matters because TipTap commonly saves images as:
+   * <p><img src="..." alt="..."></p>
+   *
+   * If we tokenize paragraphs first, the paragraph text sanitizer strips the
+   * image before the image renderer ever sees it.
+   */
+  const tokenRegex = /<img\b[^>]*>|<hr\s*\/?>/gi
 
   let cursor = 0
   let tokenIndex = 0
@@ -132,7 +158,7 @@ function parseHtmlArticleBlocks(rawHtml: string) {
 
   while ((match = tokenRegex.exec(raw)) !== null) {
     const before = raw.slice(cursor, match.index)
-    pushTextBlock(blocks, inlineHtmlToText(before), `before-${tokenIndex}`)
+    blocks.push(...parseHtmlTextBlocks(before, `before-${tokenIndex}`))
 
     const token = match[0]
 
@@ -154,8 +180,6 @@ function parseHtmlArticleBlocks(rawHtml: string) {
         key: `hr-${tokenIndex}-${blocks.length}`,
         text: '---'
       })
-    } else {
-      pushTextBlock(blocks, inlineHtmlToText(token), `token-${tokenIndex}`)
     }
 
     cursor = match.index + token.length
@@ -163,7 +187,7 @@ function parseHtmlArticleBlocks(rawHtml: string) {
   }
 
   const after = raw.slice(cursor)
-  pushTextBlock(blocks, inlineHtmlToText(after), 'after')
+  blocks.push(...parseHtmlTextBlocks(after, 'after'))
 
   return blocks
 }
@@ -390,7 +414,7 @@ function openMention(label: string) {
           />
 
           <button
-            v-else
+            v-else-if="props.interactive"
             type="button"
             :class="[
               'eldra-mention-link',
@@ -400,6 +424,16 @@ function openMention(label: string) {
           >
             {{ part.label }}
           </button>
+
+          <span
+            v-else
+            :class="[
+              'eldra-mention-link eldra-mention-link-static',
+              part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
+            ]"
+          >
+            {{ part.label }}
+          </span>
         </template>
       </p>
     </template>
@@ -466,6 +500,16 @@ function openMention(label: string) {
   border-color: rgba(251, 191, 36, 0.85);
   background: linear-gradient(180deg, rgba(201, 164, 90, 0.32), rgba(20, 17, 12, 0.72));
   color: white;
+}
+
+.eldra-mention-link-static {
+  cursor: inherit;
+}
+
+.eldra-mention-link-static:hover {
+  border-color: rgba(201, 164, 90, 0.48);
+  background: linear-gradient(180deg, rgba(201, 164, 90, 0.20), rgba(20, 17, 12, 0.58));
+  color: #fff7df;
 }
 
 .eldra-mention-link-unresolved {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorldMentionText from '~/components/world/WorldMentionText.vue'
 const props = defineProps<{
   entityType: string
   title: string
@@ -218,8 +219,16 @@ watch(
                   </div>
                 </div>
 
-                <p class="mt-4 line-clamp-5 text-sm leading-7 text-zinc-300">
-                  {{ summaryForEntity(entity) || 'Open article →' }}
+                <WorldMentionText
+                  v-if="summaryForEntity(entity)"
+                  :world-id="worldId"
+                  :markdown="summaryForEntity(entity)"
+                  :interactive="false"
+                  class="mt-4 line-clamp-5 text-sm leading-7 text-zinc-300"
+                />
+
+                <p v-else class="mt-4 line-clamp-5 text-sm leading-7 text-zinc-300">
+                  Open article →
                 </p>
 
                 <div class="mt-6 text-sm font-medium text-[#f5e7bd]">

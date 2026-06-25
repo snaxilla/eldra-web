@@ -1110,7 +1110,11 @@ async function onImageSelected(event: Event) {
               v-if="derivedSummary"
               class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes mt-6 rounded-none border p-5 text-[15px] leading-8 text-[#f5e7bd]"
             >
-              {{ derivedSummary }}
+              <WorldMentionText
+                :world-id="worldId"
+                :markdown="derivedSummary"
+                @open-mention="openMentionContext"
+              />
             </div>
           </div>
         </div>

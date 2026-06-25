@@ -316,6 +316,22 @@ function closePinEditor() {
   createEntitySuccess.value = ''
 }
 
+async function syncLinkedArticleSummaryFromPin(payload: any) {
+  const linkedEntityId = normalizeEntityId(payload?.entityId)
+  const summary = String(payload?.summary || '').trim()
+
+  if (!linkedEntityId || !summary) return
+
+  await $fetch(`/api/worlds/${worldId.value}/entities/${linkedEntityId}`, {
+    method: 'PATCH',
+    body: {
+      summary
+    }
+  })
+
+  await refreshWorldEntities()
+}
+
 async function savePin() {
   if (!editingPin.value || !activeMap.value?.id) return
 
@@ -363,6 +379,9 @@ async function savePin() {
       pins.value.push(created)
       selectedPinId.value = created.id
     }
+
+    await syncLinkedArticleSummaryFromPin(payload)
+    await fetchPins()
 
     closePinEditor()
   } catch (e: any) {
@@ -651,6 +670,7 @@ function openSelectedPinContextMap() {
     <WorldEntityContextDrawer
       :open="Boolean(selectedPin && mode === 'play')"
       :entity="selectedPinContextEntity"
+      :world-id="worldId"
       :mode="mode"
       :allow-build-actions="false"
       @close="closeSelectedPinContext"
@@ -789,11 +809,12 @@ function openSelectedPinContextMap() {
 
               <div>
                 <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Summary / Blurb</label>
-                <textarea
+                <WorldMentionAutocompleteTextarea
                   v-model="editingPin.summary"
+                  :world-id="worldId"
                   rows="4"
-                  placeholder="Short map preview summary..."
-                  class="eldra-input w-full rounded-none px-4 py-3 text-sm placeholder-[#756a57]"
+                  textarea-class="eldra-input w-full rounded-none px-4 py-3 text-sm placeholder-[#756a57]"
+                  placeholder="Short map preview summary. Type @ to mention a world entity..."
                 />
               </div>
 

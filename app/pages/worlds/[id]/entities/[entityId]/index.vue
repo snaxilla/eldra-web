@@ -1394,14 +1394,6 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
-            <div class="mt-5">
-              <EldraRichTextEditor
-                v-model="articleDraft"
-                :world-id="worldId"
-                :article-theme="normalizedArticleTheme(articleThemeDraft)"
-              />
-            </div>
-
             <section class="article-sidebar-editor mt-5 rounded-none border p-4">
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -1536,6 +1528,16 @@ async function onImageSelected(event: Event) {
                 Disabled for this article. Short blurbs can stay clean.
               </div>
             </section>
+
+            <div class="mt-5">
+              <EldraRichTextEditor
+                v-model="articleDraft"
+                :world-id="worldId"
+                :article-theme="normalizedArticleTheme(articleThemeDraft)"
+              />
+            </div>
+
+
 
             <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>

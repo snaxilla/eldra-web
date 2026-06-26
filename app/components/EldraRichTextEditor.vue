@@ -7,6 +7,8 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
+import { Color } from '@tiptap/extension-color'
+import { TextStyle } from '@tiptap/extension-text-style'
 import Image from '@tiptap/extension-image'
 import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -96,13 +98,25 @@ const EldraImage = Image.extend({
 const props = withDefaults(defineProps<{
   modelValue: string
   worldId?: string | number
+  articleTheme?: string
 }>(), {
-  worldId: ''
+  worldId: '',
+  articleTheme: 'codex'
 })
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
+
+const normalizedArticleTheme = computed(() => {
+  const key = String(props.articleTheme || 'codex').trim().toLowerCase()
+  return ['codex', 'parchment', 'statblock'].includes(key) ? key : 'codex'
+})
+
+const editorSurfaceClass = computed(() => [
+  'rounded-none border shadow-[inset_0_0_40px_rgba(0,0,0,0.24)]',
+  `eldra-editor-surface-${normalizedArticleTheme.value}`
+])
 
 const allMentionEntities = ref<MentionEntity[]>([])
 const mentionQuery = ref('')
@@ -335,6 +349,8 @@ const editor = useEditor({
   content: props.modelValue || '',
   extensions: [
     StarterKit,
+    TextStyle,
+    Color,
     Underline,
     Link.configure({
       openOnClick: false,
@@ -520,6 +536,29 @@ function active(name: string, attrs?: Record<string, any>) {
   return editor.value?.isActive(name, attrs) ? 'eldra-selected-glow border-[rgba(251,191,36,0.85)] bg-[rgba(201,164,90,0.20)] text-[#fff7df]' : ''
 }
 
+const TEXT_COLOR_SWATCHES = [
+  { label: 'Ink', value: '#271b10' },
+  { label: 'Bone', value: '#f5e7bd' },
+  { label: 'Gold', value: '#c9a45a' },
+  { label: 'Crimson', value: '#7b1f1f' },
+  { label: 'White', value: '#fff7df' }
+]
+
+function currentTextColor() {
+  return String(editor.value?.getAttributes('textStyle')?.color || '#f5e7bd')
+}
+
+function setTextColor(value: any) {
+  const color = String(value || '').trim()
+  if (!color || !editor.value) return
+  editor.value.chain().focus().setColor(color).run()
+}
+
+function clearTextColor() {
+  if (!editor.value) return
+  editor.value.chain().focus().unsetColor().run()
+}
+
 function setLink() {
   if (!editor.value) return
 
@@ -568,6 +607,41 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
         <button type="button" :class="buttonClass('underline')" class="underline" @click="chain()?.toggleUnderline().run()">U</button>
         <button type="button" :class="buttonClass('strike')" class="line-through" @click="chain()?.toggleStrike().run()">S</button>
         <button type="button" :class="buttonClass('highlight')" @click="chain()?.toggleHighlight().run()">Highlight</button>
+
+        <div
+          class="flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.54)] px-2 py-1.5"
+          title="Text color"
+          @mousedown.stop
+          @pointerdown.stop
+          @click.stop
+        >
+          <span class="text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">Color</span>
+
+          <button
+            v-for="swatch in TEXT_COLOR_SWATCHES"
+            :key="swatch.value"
+            type="button"
+            class="h-5 w-5 rounded-none border border-[rgba(201,164,90,0.35)]"
+            :style="{ backgroundColor: swatch.value }"
+            :title="swatch.label"
+            @click.stop="setTextColor(swatch.value)"
+          />
+
+          <input
+            type="color"
+            :value="currentTextColor()"
+            class="h-6 w-8 cursor-pointer rounded-none border border-[rgba(201,164,90,0.32)] bg-transparent p-0"
+            @input="setTextColor(($event.target as HTMLInputElement).value)"
+          >
+
+          <button
+            type="button"
+            class="text-xs text-[#f5e7bd] transition hover:text-white"
+            @click.stop="clearTextColor"
+          >
+            Clear
+          </button>
+        </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
@@ -656,7 +730,7 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
     <div class="relative mt-4">
       <EditorContent
         :editor="editor"
-        class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] shadow-[inset_0_0_40px_rgba(0,0,0,0.24)]"
+        :class="editorSurfaceClass"
       />
 
       <div
@@ -832,6 +906,79 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
 :deep(.ProseMirror-selectednode.eldra-article-image) {
   outline: 2px solid rgba(251, 191, 36, 0.9);
   outline-offset: 4px;
+}
+
+
+.eldra-editor-surface-codex {
+  border-color: rgba(201, 164, 90, 0.24);
+  background: rgba(20, 17, 12, 0.72);
+}
+
+.eldra-editor-surface-parchment {
+  border-color: rgba(201, 164, 90, 0.34);
+  background:
+    radial-gradient(circle at 16% 8%, rgba(255, 246, 214, 0.16), transparent 22%),
+    radial-gradient(circle at 80% 18%, rgba(74, 42, 18, 0.11), transparent 28%),
+    linear-gradient(90deg, rgba(72, 44, 20, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(210, 181, 125, 0.96), rgba(177, 139, 82, 0.94));
+  background-size: auto, auto, 44px 44px, auto;
+  color: #271b10;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 243, 204, 0.22),
+    inset 0 0 70px rgba(64, 36, 13, 0.16);
+}
+
+.eldra-editor-surface-statblock {
+  border-color: rgba(122, 45, 34, 0.48);
+  border-top-width: 5px;
+  border-top-color: rgba(122, 35, 30, 0.88);
+  border-bottom-width: 5px;
+  border-bottom-color: rgba(122, 35, 30, 0.88);
+  background:
+    linear-gradient(90deg, rgba(122, 35, 30, 0.08), transparent 12%, transparent 88%, rgba(122, 35, 30, 0.06)),
+    linear-gradient(to bottom, rgba(209, 183, 126, 0.96), rgba(184, 149, 92, 0.95));
+  color: #24170e;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 241, 201, 0.20),
+    inset 0 0 58px rgba(70, 35, 16, 0.13);
+}
+
+.eldra-editor-surface-parchment :deep(.ProseMirror),
+.eldra-editor-surface-statblock :deep(.ProseMirror) {
+  color: inherit !important;
+  caret-color: #271b10;
+}
+
+.eldra-editor-surface-parchment :deep(.ProseMirror h1),
+.eldra-editor-surface-parchment :deep(.ProseMirror h2),
+.eldra-editor-surface-parchment :deep(.ProseMirror h3) {
+  color: #2a1b0d;
+}
+
+.eldra-editor-surface-statblock :deep(.ProseMirror h1),
+.eldra-editor-surface-statblock :deep(.ProseMirror h2),
+.eldra-editor-surface-statblock :deep(.ProseMirror h3) {
+  color: #651b18;
+}
+
+.eldra-editor-surface-parchment :deep(.ProseMirror a),
+.eldra-editor-surface-statblock :deep(.ProseMirror a) {
+  color: #5b1717;
+  text-decoration-color: rgba(91, 23, 23, 0.55);
+}
+
+.eldra-editor-surface-parchment :deep(.ProseMirror blockquote),
+.eldra-editor-surface-statblock :deep(.ProseMirror blockquote) {
+  color: inherit;
+  border-left-color: rgba(74, 48, 22, 0.42);
+  background: rgba(255, 238, 186, 0.18);
+}
+
+.eldra-editor-surface-parchment :deep(.eldra-article-image),
+.eldra-editor-surface-statblock :deep(.eldra-article-image) {
+  border-color: rgba(74, 48, 22, 0.34);
+  background: rgba(255, 238, 186, 0.18);
+  box-shadow: 0 16px 38px rgba(55, 31, 11, 0.18);
 }
 
 </style>

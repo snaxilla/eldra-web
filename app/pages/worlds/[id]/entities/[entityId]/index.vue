@@ -1115,6 +1115,11 @@ const buildDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const contextDrawerEntity = ref<any | null>(null)
 
+const pageContentClass = computed(() => [
+  'mx-auto max-w-[1500px] p-6 transition-[padding,max-width] duration-200 ease-out',
+  contextDrawerOpen.value ? 'xl:pr-[404px]' : ''
+])
+
 function openMentionContext(mention: any) {
   contextDrawerEntity.value = mention || null
   contextDrawerOpen.value = true
@@ -1171,7 +1176,7 @@ async function onImageSelected(event: Event) {
       Page Builder
     </button>
 
-    <div class="mx-auto max-w-[1500px] p-6">
+    <div :class="pageContentClass">
       <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes overflow-hidden rounded-none border backdrop-blur-xl">
         <div class="grid gap-0 lg:grid-cols-[460px_minmax(0,1fr)]">
           <div class="border-b border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.42)] p-5 lg:border-b-0 lg:border-r">
@@ -1822,6 +1827,7 @@ async function onImageSelected(event: Event) {
     <WorldEntityContextDrawer
       :open="contextDrawerOpen"
       :entity="contextDrawerEntity"
+      :world-id="worldId"
       :mode="mode"
       :allow-build-actions="false"
       @close="closeContextDrawer"

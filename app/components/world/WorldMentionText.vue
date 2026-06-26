@@ -308,6 +308,42 @@ type RenderedImageBlock = {
 
 type RenderedBlock = RenderedTextBlock | RenderedImageBlock
 
+function headingInfo(value: string) {
+  const raw = String(value || '').trim()
+
+  if (/^###\s+/.test(raw)) {
+    return { tag: 'h3', text: raw.replace(/^###\s+/, '') }
+  }
+
+  if (/^##\s+/.test(raw)) {
+    return { tag: 'h2', text: raw.replace(/^##\s+/, '') }
+  }
+
+  if (/^#\s+/.test(raw)) {
+    return { tag: 'h1', text: raw.replace(/^#\s+/, '') }
+  }
+
+  return { tag: 'p', text: raw }
+}
+
+function textBlockTag(block: any) {
+  const explicit = String(block?.tag || '').toLowerCase()
+
+  if (['h1', 'h2', 'h3', 'blockquote'].includes(explicit)) return explicit
+
+  return headingInfo(block?.text || '').tag
+}
+
+function textBlockText(block: any) {
+  const explicit = String(block?.tag || '').toLowerCase()
+
+  if (['h1', 'h2', 'h3', 'blockquote'].includes(explicit)) {
+    return String(block?.text || '')
+  }
+
+  return headingInfo(block?.text || '').text
+}
+
 const renderedBlocks = computed<RenderedBlock[]>(() => {
   return articleBlocks(props.markdown).map((block, blockIndex) => {
     if (block.type === 'image') {
@@ -323,14 +359,15 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
       }
     }
 
+    const blockText = textBlockText(block)
     const parts: InlinePart[] = []
     const regex = /@\[([^\]]+)\]/g
     let cursor = 0
     let mentionIndex = 0
     let match: RegExpExecArray | null
 
-    while ((match = regex.exec(block.text)) !== null) {
-      const before = block.text.slice(cursor, match.index)
+    while ((match = regex.exec(blockText)) !== null) {
+      const before = blockText.slice(cursor, match.index)
 
       if (before) {
         parts.push({
@@ -354,7 +391,7 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
       cursor = match.index + match[0].length
     }
 
-    const after = block.text.slice(cursor)
+    const after = blockText.slice(cursor)
 
     if (after) {
       parts.push({
@@ -367,6 +404,7 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
     return {
       type: 'text',
       key: block.key || `block-${blockIndex}`,
+      tag: textBlockTag(block),
       parts
     }
   })
@@ -440,9 +478,13 @@ function openMention(label: string) {
         </figcaption>
       </figure>
 
-      <p
+      <component
+        :is="block.tag || 'p'"
         v-else
-        class="world-mention-paragraph"
+        :class="[
+          'world-mention-paragraph',
+          `world-mention-${block.tag || 'p'}`
+        ]"
       >
         <template v-for="part in block.parts" :key="part.key">
           <span
@@ -472,7 +514,7 @@ function openMention(label: string) {
             {{ part.label }}
           </span>
         </template>
-      </p>
+      </component>
     </template>
   </div>
 </template>
@@ -488,6 +530,31 @@ function openMention(label: string) {
 
 .world-mention-paragraph:last-child {
   margin-bottom: 0;
+}
+
+.world-mention-h1 {
+  margin: 0 0 1rem;
+  color: #fff7df;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  line-height: 1.08;
+  font-weight: 850;
+  letter-spacing: -0.035em;
+}
+
+.world-mention-h2 {
+  margin: 1.45rem 0 0.85rem;
+  color: #fff7df;
+  font-size: clamp(1.45rem, 2.4vw, 2.15rem);
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.world-mention-h3 {
+  margin: 1.2rem 0 0.7rem;
+  color: #fff7df;
+  font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+  line-height: 1.2;
+  font-weight: 750;
 }
 
 .world-mention-image-frame {

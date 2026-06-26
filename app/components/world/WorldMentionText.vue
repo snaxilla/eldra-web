@@ -16,25 +16,6 @@ const emit = defineEmits<{
 const resolvedMentions = ref<Record<string, any>>({})
 const resolving = ref(false)
 
-type TextBlock = {
-  type: 'text'
-  key: string
-  text: string
-}
-
-type ImageBlock = {
-  type: 'image'
-  key: string
-  src: string
-  alt: string
-  title: string
-  size: string
-  align: string
-  width: string
-}
-
-type ArticleBlock = TextBlock | ImageBlock
-
 function normalizeMention(value: any) {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -49,6 +30,15 @@ function normalizedKey(value: any) {
     .trim()
 }
 
+function escapeHtml(value: any) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function decodeHtmlEntities(value: string) {
   return String(value || '')
     .replace(/&nbsp;/g, ' ')
@@ -60,187 +50,145 @@ function decodeHtmlEntities(value: string) {
     .replace(/&gt;/g, '>')
 }
 
+function rawArticleHtml(value: any) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  if (/<\/?[a-z][\s\S]*>/i.test(raw)) return raw
+
+  return renderMarkdown(raw)
+}
+
 function stripUnsafeHtml(value: string) {
   return String(value || '')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '')
+    .replace(/\s(?:href|src)\s*=\s*("javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]+)/gi, '')
 }
 
-function attrValue(tag: string, name: string) {
-  const regex = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i')
-  const match = tag.match(regex)
+function sanitizeInlineStyles(html: string) {
+  return html.replace(/\sstyle\s*=\s*("([^"]*)"|'([^']*)')/gi, (_match, quoted, dbl, single) => {
+    const style = String(dbl || single || '')
+    const safe: string[] = []
 
-  return decodeHtmlEntities(String(match?.[2] ?? match?.[3] ?? match?.[4] ?? '').trim())
-}
+    for (const rule of style.split(';')) {
+      const [rawName, ...rawValueParts] = rule.split(':')
+      const name = String(rawName || '').trim().toLowerCase()
+      const value = rawValueParts.join(':').trim()
 
-function safeImageSrc(value: string) {
-  const src = String(value || '').trim()
+      if (!name || !value) continue
 
-  if (!src) return ''
-
-  if (src.startsWith('/api/assets/')) return src
-  if (src.startsWith('/api/asset-proxy/')) return src
-  if (src.startsWith('/assets/')) return src
-  if (/^https?:\/\//i.test(src)) return src
-
-  return ''
-}
-
-function inlineHtmlToText(value: string) {
-  return decodeHtmlEntities(
-    String(value || '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/?(strong|b)>/gi, '**')
-      .replace(/<\/?(em|i)>/gi, '*')
-      .replace(/<\/?(s|strike)>/gi, '~~')
-      .replace(/<mark(?:\s[^>]*)?>/gi, '**')
-      .replace(/<\/mark>/gi, '**')
-      .replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href, label) => {
-        const cleanLabel = String(label || '').replace(/<[^>]+>/g, '').trim()
-        const cleanHref = String(href || '').trim()
-        return cleanLabel && cleanHref ? `[${cleanLabel}](${cleanHref})` : cleanLabel || cleanHref
-      })
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/[ \t]+/g, ' ')
-      .trim()
-  )
-}
-
-function pushTextBlock(blocks: ArticleBlock[], value: string, keyPrefix: string) {
-  const text = decodeHtmlEntities(String(value || '').trim())
-  if (!text) return
-
-  const parts = text
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-
-  for (const part of parts) {
-    blocks.push({
-      type: 'text',
-      key: `${keyPrefix}-text-${blocks.length}`,
-      text: part
-    })
-  }
-}
-
-function parseHtmlTextBlocks(value: string, keyPrefix: string) {
-  const blocks: ArticleBlock[] = []
-  const normalized = String(value || '')
-    .replace(/<\/p>\s*<p(?:\s[^>]*)?>/gi, '\n\n')
-    .replace(/<p(?:\s[^>]*)?>/gi, '')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/h[1-6]>\s*<h[1-6](?:\s[^>]*)?>/gi, '\n\n')
-    .replace(/<h[1-6](?:\s[^>]*)?>/gi, '')
-    .replace(/<\/h[1-6]>/gi, '\n\n')
-    .replace(/<blockquote(?:\s[^>]*)?>/gi, '')
-    .replace(/<\/blockquote>/gi, '\n\n')
-
-  pushTextBlock(blocks, inlineHtmlToText(normalized), keyPrefix)
-  return blocks
-}
-
-function parseHtmlArticleBlocks(rawHtml: string) {
-  const blocks: ArticleBlock[] = []
-  const raw = stripUnsafeHtml(rawHtml)
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-
-  /*
-   * Image-first parsing matters because TipTap commonly saves images as:
-   * <p><img src="..." alt="..."></p>
-   *
-   * If we tokenize paragraphs first, the paragraph text sanitizer strips the
-   * image before the image renderer ever sees it.
-   */
-  const tokenRegex = /<img\b[^>]*>|<hr\s*\/?>/gi
-
-  let cursor = 0
-  let tokenIndex = 0
-  let match: RegExpExecArray | null
-
-  while ((match = tokenRegex.exec(raw)) !== null) {
-    const before = raw.slice(cursor, match.index)
-    blocks.push(...parseHtmlTextBlocks(before, `before-${tokenIndex}`))
-
-    const token = match[0]
-
-    if (/^<img\b/i.test(token)) {
-      const src = safeImageSrc(attrValue(token, 'src'))
-
-      if (src) {
-        blocks.push({
-          type: 'image',
-          key: `image-${tokenIndex}-${blocks.length}`,
-          src,
-          alt: attrValue(token, 'alt'),
-          title: attrValue(token, 'title'),
-          size: attrValue(token, 'data-size') || 'full',
-          align: attrValue(token, 'data-align') || 'center',
-          width: attrValue(token, 'data-width') || ''
-        })
+      if (name === 'color' && /^(#[0-9a-f]{3,8}|rgba?\([^)]+\)|[a-z]+)$/i.test(value)) {
+        safe.push(`color: ${value}`)
       }
-    } else if (/^<hr\b/i.test(token)) {
-      blocks.push({
-        type: 'text',
-        key: `hr-${tokenIndex}-${blocks.length}`,
-        text: '---'
-      })
+
+      if (name === 'width' && /^(\d+(\.\d+)?%|auto)$/i.test(value)) {
+        safe.push(`width: ${value}`)
+      }
+
+      if (name === 'max-width' && /^(\d+(\.\d+)?%|auto)$/i.test(value)) {
+        safe.push(`max-width: ${value}`)
+      }
     }
 
-    cursor = match.index + token.length
-    tokenIndex += 1
-  }
-
-  const after = raw.slice(cursor)
-  blocks.push(...parseHtmlTextBlocks(after, 'after'))
-
-  return blocks
+    return safe.length ? ` style="${escapeHtml(safe.join('; '))}"` : ''
+  })
 }
 
-/*
- * TipTap saves article overrides as HTML, while generated/imported articles are
- * often Markdown/plain text. Normalize both into article blocks before mention
- * parsing. Important: preserve safe <img> tags from TipTap so Play mode can
- * render inline gallery images.
- */
-function articleBlocks(value: any): ArticleBlock[] {
-  const raw = stripUnsafeHtml(String(value || '').trim())
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
+function sanitizeHtml(value: string) {
+  let html = stripUnsafeHtml(value)
 
-  if (!raw) return []
+  html = sanitizeInlineStyles(html)
 
-  if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
-    return parseHtmlArticleBlocks(raw)
-  }
+  html = html.replace(/<a\b([^>]*)>/gi, (_match, attrs) => {
+    const hrefMatch = String(attrs || '').match(/\shref\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const href = String(hrefMatch?.[2] || hrefMatch?.[3] || '').trim()
 
-  return raw
-    .split(/\n{2,}/)
-    .map((block, index) => ({
-      type: 'text' as const,
-      key: `plain-${index}`,
-      text: decodeHtmlEntities(block.trim())
-    }))
-    .filter((block) => Boolean(block.text))
+    if (!href || /^javascript:/i.test(href)) return '<a>'
+
+    return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">`
+  })
+
+  html = html.replace(/<img\b([^>]*)>/gi, (_match, attrs) => {
+    const srcMatch = String(attrs || '').match(/\ssrc\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i)
+    const src = String(srcMatch?.[2] || srcMatch?.[3] || srcMatch?.[4] || '').trim()
+
+    if (
+      !src ||
+      !(
+        src.startsWith('/api/assets/') ||
+        src.startsWith('/api/asset-proxy/') ||
+        src.startsWith('/assets/') ||
+        /^https?:\/\//i.test(src)
+      )
+    ) {
+      return ''
+    }
+
+    const altMatch = String(attrs || '').match(/\salt\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const titleMatch = String(attrs || '').match(/\stitle\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const classMatch = String(attrs || '').match(/\sclass\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const dataSizeMatch = String(attrs || '').match(/\sdata-size\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i)
+    const dataAlignMatch = String(attrs || '').match(/\sdata-align\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i)
+    const dataWidthMatch = String(attrs || '').match(/\sdata-width\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i)
+    const styleMatch = String(attrs || '').match(/\sstyle\s*=\s*("([^"]*)"|'([^']*)')/i)
+
+    const alt = String(altMatch?.[2] || altMatch?.[3] || '').trim()
+    const title = String(titleMatch?.[2] || titleMatch?.[3] || '').trim()
+    const cls = String(classMatch?.[2] || classMatch?.[3] || 'eldra-article-image').trim()
+    const dataSize = String(dataSizeMatch?.[2] || dataSizeMatch?.[3] || dataSizeMatch?.[4] || '').trim()
+    const dataAlign = String(dataAlignMatch?.[2] || dataAlignMatch?.[3] || dataAlignMatch?.[4] || '').trim()
+    const dataWidth = String(dataWidthMatch?.[2] || dataWidthMatch?.[3] || dataWidthMatch?.[4] || '').trim()
+    const style = String(styleMatch?.[2] || styleMatch?.[3] || '').trim()
+
+    return [
+      '<img',
+      ` src="${escapeHtml(src)}"`,
+      alt ? ` alt="${escapeHtml(alt)}"` : ' alt="Article image"',
+      title ? ` title="${escapeHtml(title)}"` : '',
+      ` class="${escapeHtml(cls)}"`,
+      dataSize ? ` data-size="${escapeHtml(dataSize)}"` : '',
+      dataAlign ? ` data-align="${escapeHtml(dataAlign)}"` : '',
+      dataWidth ? ` data-width="${escapeHtml(dataWidth)}"` : '',
+      style ? ` style="${escapeHtml(style)}"` : '',
+      ' loading="lazy"',
+      '>'
+    ].join('')
+  })
+
+  const allowedTags = new Set([
+    'p', 'br', 'hr',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'strong', 'b', 'em', 'i', 'u', 's', 'strike',
+    'mark', 'span', 'a',
+    'ul', 'ol', 'li',
+    'blockquote',
+    'img'
+  ])
+
+  html = html.replace(/<\/?([a-z0-9-]+)\b[^>]*>/gi, (tag, name) => {
+    return allowedTags.has(String(name || '').toLowerCase()) ? tag : ''
+  })
+
+  return html
 }
 
-function renderInlineMarkdown(value: string) {
-  const html = renderMarkdown(value || '')
-  const singleParagraph = html.match(/^<p>([\s\S]*)<\/p>\s*$/i)
-  return singleParagraph ? singleParagraph[1] : html
+function mentionSourceText() {
+  return decodeHtmlEntities(
+    rawArticleHtml(props.markdown)
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  )
 }
 
 const mentionTexts = computed(() => {
   const found = new Map<string, string>()
 
-  for (const block of articleBlocks(props.markdown)) {
-    if (block.type !== 'text') continue
-
-    for (const match of block.text.matchAll(/@\[([^\]]+)\]/g)) {
-      const label = normalizeMention(match[1])
-      if (label) found.set(normalizedKey(label), label)
-    }
+  for (const match of mentionSourceText().matchAll(/@\[([^\]]+)\]/g)) {
+    const label = normalizeMention(match[1])
+    if (label) found.set(normalizedKey(label), label)
   }
 
   return Array.from(found.values())
@@ -276,163 +224,24 @@ watch(
   { immediate: true }
 )
 
-type InlinePart =
-  | {
-      type: 'html'
-      key: string
-      html: string
-    }
-  | {
-      type: 'mention'
-      key: string
-      label: string
-      resolved: any
+function replaceMentions(html: string) {
+  return html.replace(/@\[([^\]]+)\]/g, (_match, rawLabel) => {
+    const label = normalizeMention(rawLabel)
+    const key = normalizedKey(label)
+    const resolved = resolvedMentions.value[key]
+    const unresolvedClass = resolved?.resolved ? '' : ' eldra-mention-link-unresolved'
+
+    if (!props.interactive) {
+      return `<span class="eldra-mention-link eldra-mention-link-static${unresolvedClass}" data-mention-label="${escapeHtml(label)}">${escapeHtml(label)}</span>`
     }
 
-type RenderedTextBlock = {
-  type: 'text'
-  key: string
-  parts: InlinePart[]
-}
-
-type RenderedImageBlock = {
-  type: 'image'
-  key: string
-  src: string
-  alt: string
-  title: string
-  size: string
-  align: string
-  width: string
-}
-
-type RenderedBlock = RenderedTextBlock | RenderedImageBlock
-
-function headingInfo(value: string) {
-  const raw = String(value || '').trim()
-
-  if (/^###\s+/.test(raw)) {
-    return { tag: 'h3', text: raw.replace(/^###\s+/, '') }
-  }
-
-  if (/^##\s+/.test(raw)) {
-    return { tag: 'h2', text: raw.replace(/^##\s+/, '') }
-  }
-
-  if (/^#\s+/.test(raw)) {
-    return { tag: 'h1', text: raw.replace(/^#\s+/, '') }
-  }
-
-  return { tag: 'p', text: raw }
-}
-
-function textBlockTag(block: any) {
-  const explicit = String(block?.tag || '').toLowerCase()
-
-  if (['h1', 'h2', 'h3', 'blockquote'].includes(explicit)) return explicit
-
-  return headingInfo(block?.text || '').tag
-}
-
-function textBlockText(block: any) {
-  const explicit = String(block?.tag || '').toLowerCase()
-
-  if (['h1', 'h2', 'h3', 'blockquote'].includes(explicit)) {
-    return String(block?.text || '')
-  }
-
-  return headingInfo(block?.text || '').text
-}
-
-const renderedBlocks = computed<RenderedBlock[]>(() => {
-  return articleBlocks(props.markdown).map((block, blockIndex) => {
-    if (block.type === 'image') {
-      return {
-        type: 'image',
-        key: block.key || `image-${blockIndex}`,
-        src: block.src,
-        alt: block.alt,
-        title: block.title,
-        size: block.size || 'full',
-        align: block.align || 'center',
-        width: block.width || ''
-      }
-    }
-
-    const blockText = textBlockText(block)
-    const parts: InlinePart[] = []
-    const regex = /@\[([^\]]+)\]/g
-    let cursor = 0
-    let mentionIndex = 0
-    let match: RegExpExecArray | null
-
-    while ((match = regex.exec(blockText)) !== null) {
-      const before = blockText.slice(cursor, match.index)
-
-      if (before) {
-        parts.push({
-          type: 'html',
-          key: `b${blockIndex}-html-${parts.length}`,
-          html: renderInlineMarkdown(before)
-        })
-      }
-
-      const label = normalizeMention(match[1])
-      const key = normalizedKey(label)
-
-      parts.push({
-        type: 'mention',
-        key: `b${blockIndex}-mention-${mentionIndex}-${key || label}`,
-        label,
-        resolved: resolvedMentions.value[key]
-      })
-
-      mentionIndex += 1
-      cursor = match.index + match[0].length
-    }
-
-    const after = blockText.slice(cursor)
-
-    if (after) {
-      parts.push({
-        type: 'html',
-        key: `b${blockIndex}-html-${parts.length}`,
-        html: renderInlineMarkdown(after)
-      })
-    }
-
-    return {
-      type: 'text',
-      key: block.key || `block-${blockIndex}`,
-      tag: textBlockTag(block),
-      parts
-    }
+    return `<button type="button" class="eldra-mention-link${unresolvedClass}" data-mention-label="${escapeHtml(label)}">${escapeHtml(label)}</button>`
   })
+}
+
+const renderedHtml = computed(() => {
+  return replaceMentions(sanitizeHtml(rawArticleHtml(props.markdown)))
 })
-
-function imageFrameClass(block: RenderedImageBlock) {
-  const hasWidth = Boolean(String(block.width || '').trim())
-  const size = hasWidth ? 'custom' : String(block.size || 'full')
-  const align = String(block.align || 'center')
-
-  return [
-    'world-mention-image-frame',
-    `world-mention-image-${['small', 'medium', 'wide', 'full', 'custom'].includes(size) ? size : 'full'}`,
-    `world-mention-image-align-${['left', 'center', 'right'].includes(align) ? align : 'center'}`
-  ]
-}
-
-function imageFrameStyle(block: RenderedImageBlock) {
-  const raw = String(block.width || '').trim()
-  if (!raw) return undefined
-
-  const width = Math.max(1, Math.min(100, Math.round((Number(raw) || 100) * 10) / 10))
-  const widthText = Number.isInteger(width) ? String(width) : width.toFixed(1)
-
-  return {
-    width: `${widthText}%`
-  }
-}
 
 function openMention(label: string) {
   const resolved = resolvedMentions.value[normalizedKey(label)]
@@ -449,74 +258,26 @@ function openMention(label: string) {
     })
   })
 }
+
+function handleClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  const mention = target?.closest?.('[data-mention-label]') as HTMLElement | null
+
+  if (!mention || !props.interactive) return
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  openMention(mention.dataset.mentionLabel || '')
+}
 </script>
 
 <template>
-  <div class="world-mention-text">
-    <template
-      v-for="block in renderedBlocks"
-      :key="block.key"
-    >
-      <figure
-        v-if="block.type === 'image'"
-        :class="imageFrameClass(block)"
-        :style="imageFrameStyle(block)"
-      >
-        <img
-          :src="block.src"
-          :alt="block.alt || block.title || 'Article image'"
-          :title="block.title || block.alt || undefined"
-          loading="lazy"
-          class="world-mention-image"
-        >
-
-        <figcaption
-          v-if="block.title && block.title !== block.alt"
-          class="world-mention-image-caption"
-        >
-          {{ block.title }}
-        </figcaption>
-      </figure>
-
-      <component
-        :is="block.tag || 'p'"
-        v-else
-        :class="[
-          'world-mention-paragraph',
-          `world-mention-${block.tag || 'p'}`
-        ]"
-      >
-        <template v-for="part in block.parts" :key="part.key">
-          <span
-            v-if="part.type === 'html'"
-            v-html="part.html"
-          />
-
-          <button
-            v-else-if="props.interactive"
-            type="button"
-            :class="[
-              'eldra-mention-link',
-              part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
-            ]"
-            @click.prevent.stop="openMention(part.label)"
-          >
-            {{ part.label }}
-          </button>
-
-          <span
-            v-else
-            :class="[
-              'eldra-mention-link eldra-mention-link-static',
-              part.resolved?.resolved ? '' : 'eldra-mention-link-unresolved'
-            ]"
-          >
-            {{ part.label }}
-          </span>
-        </template>
-      </component>
-    </template>
-  </div>
+  <div
+    class="world-mention-text"
+    v-html="renderedHtml"
+    @click="handleClick"
+  />
 </template>
 
 <style scoped>
@@ -524,15 +285,16 @@ function openMention(label: string) {
   display: block;
 }
 
-.world-mention-paragraph {
+:deep(p) {
   margin: 0 0 1rem;
+  line-height: 1.9;
 }
 
-.world-mention-paragraph:last-child {
+:deep(p:last-child) {
   margin-bottom: 0;
 }
 
-.world-mention-h1 {
+:deep(h1) {
   margin: 0 0 1rem;
   color: #fff7df;
   font-size: clamp(2rem, 4vw, 3.25rem);
@@ -541,7 +303,7 @@ function openMention(label: string) {
   letter-spacing: -0.035em;
 }
 
-.world-mention-h2 {
+:deep(h2) {
   margin: 1.45rem 0 0.85rem;
   color: #fff7df;
   font-size: clamp(1.45rem, 2.4vw, 2.15rem);
@@ -549,7 +311,10 @@ function openMention(label: string) {
   font-weight: 800;
 }
 
-.world-mention-h3 {
+:deep(h3),
+:deep(h4),
+:deep(h5),
+:deep(h6) {
   margin: 1.2rem 0 0.7rem;
   color: #fff7df;
   font-size: clamp(1.15rem, 1.8vw, 1.55rem);
@@ -557,66 +322,83 @@ function openMention(label: string) {
   font-weight: 750;
 }
 
-.world-mention-image-frame {
-  margin-top: 1.35rem;
-  margin-bottom: 1.35rem;
-  overflow: hidden;
-  border: 1px solid rgba(201, 164, 90, 0.30);
-  border-radius: 0;
-  background: rgba(0, 0, 0, 0.22);
-  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.30);
+:deep(ul),
+:deep(ol) {
+  margin: 0.85rem 0;
+  padding-left: 1.85rem;
 }
 
-.world-mention-image-small {
+:deep(li) {
+  margin: 0.35rem 0;
+}
+
+:deep(blockquote) {
+  margin: 1.1rem 0;
+  border-left: 3px solid rgba(201, 164, 90, 0.58);
+  background: rgba(201, 164, 90, 0.08);
+  padding: 0.85rem 1.05rem;
+  color: #e8d9b5;
+}
+
+:deep(hr) {
+  margin: 1.35rem 0;
+  border: 0;
+  border-top: 1px solid rgba(201, 164, 90, 0.34);
+}
+
+:deep(mark) {
+  background: rgba(201, 164, 90, 0.28);
+  color: #fff7df;
+}
+
+:deep(a) {
+  color: #f5e7bd;
+  text-decoration: underline;
+  text-decoration-color: rgba(201, 164, 90, 0.75);
+  text-underline-offset: 4px;
+}
+
+:deep(.eldra-article-image) {
+  display: block;
+  max-height: 720px;
+  background: rgba(0, 0, 0, 0.28);
+  object-fit: contain;
+}
+
+:deep(.eldra-article-image-small) {
   width: min(100%, 360px);
 }
 
-.world-mention-image-medium {
+:deep(.eldra-article-image-medium) {
   width: min(100%, 640px);
 }
 
-.world-mention-image-wide {
+:deep(.eldra-article-image-wide) {
   width: min(100%, 980px);
 }
 
-.world-mention-image-full {
+:deep(.eldra-article-image-full) {
   width: 100%;
 }
 
-.world-mention-image-custom {
+:deep(.eldra-article-image-custom) {
   max-width: 100%;
 }
 
-.world-mention-image-align-left {
+:deep(.mr-auto) {
   margin-right: auto;
 }
 
-.world-mention-image-align-center {
+:deep(.mx-auto) {
   margin-left: auto;
   margin-right: auto;
 }
 
-.world-mention-image-align-right {
+:deep(.ml-auto) {
   margin-left: auto;
 }
 
-.world-mention-image {
-  display: block;
-  width: 100%;
-  max-height: 720px;
-  object-fit: contain;
-  background: rgba(0, 0, 0, 0.28);
-}
-
-.world-mention-image-caption {
-  border-top: 1px solid rgba(201, 164, 90, 0.20);
-  padding: 0.65rem 0.85rem;
-  color: #9f9278;
-  font-size: 0.78rem;
-  line-height: 1.35;
-}
-
-.eldra-mention-link {
+:deep(.eldra-mention-link) {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -634,23 +416,23 @@ function openMention(label: string) {
   cursor: pointer;
 }
 
-.eldra-mention-link:hover {
+:deep(.eldra-mention-link:hover) {
   border-color: rgba(251, 191, 36, 0.85);
   background: linear-gradient(180deg, rgba(201, 164, 90, 0.32), rgba(20, 17, 12, 0.72));
   color: white;
 }
 
-.eldra-mention-link-static {
+:deep(.eldra-mention-link-static) {
   cursor: inherit;
 }
 
-.eldra-mention-link-static:hover {
+:deep(.eldra-mention-link-static:hover) {
   border-color: rgba(201, 164, 90, 0.48);
   background: linear-gradient(180deg, rgba(201, 164, 90, 0.20), rgba(20, 17, 12, 0.58));
   color: #fff7df;
 }
 
-.eldra-mention-link-unresolved {
+:deep(.eldra-mention-link-unresolved) {
   border-color: rgba(156, 163, 175, 0.38);
   background: rgba(75, 85, 99, 0.18);
   color: #d1d5db;

@@ -16,10 +16,14 @@ const emit = defineEmits<{
 const resolvedMentions = ref<Record<string, any>>({})
 const resolving = ref(false)
 
+type TextTag = 'p' | 'h1' | 'h2' | 'h3' | 'blockquote'
+
 type TextBlock = {
   type: 'text'
   key: string
-  text: string
+  tag: TextTag
+  html: string
+  plain: string
 }
 
 type ImageBlock = {
@@ -33,7 +37,12 @@ type ImageBlock = {
   width: string
 }
 
-type ArticleBlock = TextBlock | ImageBlock
+type DividerBlock = {
+  type: 'divider'
+  key: string
+}
+
+type ArticleBlock = TextBlock | ImageBlock | DividerBlock
 
 function normalizeMention(value: any) {
   return String(value || '')
@@ -60,50 +69,20 @@ function decodeHtmlEntities(value: string) {
     .replace(/&gt;/g, '>')
 }
 
-function sanitizeInlineArticleHtml(value: string) {
-  let html = String(value || '')
-
-  html = html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '')
-    .replace(/\s(?:href|src)\s*=\s*("javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]+)/gi, '')
-
-  html = html.replace(/<span\b([^>]*)>/gi, (_match, attrs) => {
-    const styleMatch = String(attrs || '').match(/style\s*=\s*("([^"]*)"|'([^']*)')/i)
-    const style = String(styleMatch?.[2] || styleMatch?.[3] || '')
-    const colorMatch = style.match(/(?:^|;)\s*color\s*:\s*(#[0-9a-f]{3,8}|rgba?\([^)]+\)|[a-z]+)\s*(?:;|$)/i)
-    const color = String(colorMatch?.[1] || '').trim()
-
-    if (!color) return '<span>'
-
-    return `<span style="color: ${color}">`
-  })
-
-  html = html.replace(/<a\b([^>]*)>/gi, (_match, attrs) => {
-    const hrefMatch = String(attrs || '').match(/href\s*=\s*("([^"]*)"|'([^']*)')/i)
-    const href = String(hrefMatch?.[2] || hrefMatch?.[3] || '').trim()
-
-    if (!href || /^javascript:/i.test(href)) return '<a>'
-
-    return `<a href="${href.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer">`
-  })
-
-  html = html
-    .replace(/<(\/?)(strong|b|em|i|u|s|strike|mark|span|a)\b[^>]*>/gi, (match) => match)
-    .replace(/<br\s*\/?>/gi, '<br>')
-    .replace(/<\/?(p|div|h[1-6]|blockquote)[^>]*>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-
-  return decodeHtmlEntities(html)
-    .replace(/[ \t]+/g, ' ')
-    .trim()
+function escapeHtml(value: string) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 function stripUnsafeHtml(value: string) {
   return String(value || '')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '')
+    .replace(/\s(?:href|src)\s*=\s*("javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]+)/gi, '')
 }
 
 function attrValue(tag: string, name: string) {
@@ -126,67 +105,98 @@ function safeImageSrc(value: string) {
   return ''
 }
 
-function inlineHtmlToText(value: string) {
-  return sanitizeInlineArticleHtml(value)
+function plainTextFromHtml(value: string) {
+  return decodeHtmlEntities(
+    String(value || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  )
 }
 
+function sanitizeInlineHtml(value: string) {
+  let html = stripUnsafeHtml(String(value || ''))
 
-function pushTextBlock(blocks: ArticleBlock[], value: string, keyPrefix: string) {
-  const text = decodeHtmlEntities(String(value || '').trim())
-  if (!text) return
+  html = html.replace(/<span\b([^>]*)>/gi, (_match, attrs) => {
+    const styleMatch = String(attrs || '').match(/style\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const style = String(styleMatch?.[2] || styleMatch?.[3] || '')
+    const colorMatch = style.match(/(?:^|;)\s*color\s*:\s*(#[0-9a-f]{3,8}|rgba?\([^)]+\)|[a-z]+)\s*(?:;|$)/i)
+    const color = String(colorMatch?.[1] || '').trim()
 
-  const parts = text
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean)
+    return color ? `<span style="color: ${escapeHtml(color)}">` : '<span>'
+  })
 
-  for (const part of parts) {
-    blocks.push({
-      type: 'text',
-      key: `${keyPrefix}-text-${blocks.length}`,
-      text: part
-    })
-  }
+  html = html.replace(/<a\b([^>]*)>/gi, (_match, attrs) => {
+    const hrefMatch = String(attrs || '').match(/href\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const href = String(hrefMatch?.[2] || hrefMatch?.[3] || '').trim()
+
+    if (!href || /^javascript:/i.test(href)) return '<a>'
+
+    return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">`
+  })
+
+  html = html
+    .replace(/<br\s*\/?>/gi, '<br>')
+    .replace(/<(\/?)(strong|b|em|i|u|s|strike|mark|span|a)\b[^>]*>/gi, (match) => match)
+    .replace(/<[^>]+>/g, ' ')
+
+  return html
+    .replace(/[ \t]+/g, ' ')
+    .trim()
 }
 
-function parseHtmlTextBlocks(value: string, keyPrefix: string) {
+function tagForHtmlBlock(tag: string): TextTag {
+  const normalized = String(tag || '').toLowerCase()
+
+  if (normalized === 'h1') return 'h1'
+  if (normalized === 'h2') return 'h2'
+  if (['h3', 'h4', 'h5', 'h6'].includes(normalized)) return 'h3'
+  if (normalized === 'blockquote') return 'blockquote'
+
+  return 'p'
+}
+
+function headingFromMarkdownishPlain(plain: string): { tag: TextTag; plain: string } {
+  const text = String(plain || '').trim()
+
+  if (/^###\s+/.test(text)) return { tag: 'h3', plain: text.replace(/^###\s+/, '') }
+  if (/^##\s+/.test(text)) return { tag: 'h2', plain: text.replace(/^##\s+/, '') }
+  if (/^#\s+/.test(text)) return { tag: 'h1', plain: text.replace(/^#\s+/, '') }
+
+  return { tag: 'p', plain: text }
+}
+
+function pushTextBlock(blocks: ArticleBlock[], html: string, key: string, tag: TextTag = 'p') {
+  const sanitized = sanitizeInlineHtml(html)
+  const plain = plainTextFromHtml(sanitized)
+
+  if (!plain) return
+
+  const markdownish = tag === 'p' ? headingFromMarkdownishPlain(plain) : { tag, plain }
+
+  blocks.push({
+    type: 'text',
+    key,
+    tag: markdownish.tag,
+    html: markdownish.tag === tag ? sanitized : escapeHtml(markdownish.plain),
+    plain: markdownish.plain
+  })
+}
+
+function parseHtmlBlocks(html: string) {
   const blocks: ArticleBlock[] = []
-  const normalized = String(value || '')
-    .replace(/<\/p>\s*<p(?:\s[^>]*)?>/gi, '\n\n')
-    .replace(/<p(?:\s[^>]*)?>/gi, '')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/h[1-6]>\s*<h[1-6](?:\s[^>]*)?>/gi, '\n\n')
-    .replace(/<h[1-6](?:\s[^>]*)?>/gi, '')
-    .replace(/<\/h[1-6]>/gi, '\n\n')
-    .replace(/<blockquote(?:\s[^>]*)?>/gi, '')
-    .replace(/<\/blockquote>/gi, '\n\n')
+  const raw = stripUnsafeHtml(html)
 
-  pushTextBlock(blocks, inlineHtmlToText(normalized), keyPrefix)
-  return blocks
-}
-
-function parseHtmlArticleBlocks(rawHtml: string) {
-  const blocks: ArticleBlock[] = []
-  const raw = stripUnsafeHtml(rawHtml)
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-
-  /*
-   * Image-first parsing matters because TipTap commonly saves images as:
-   * <p><img src="..." alt="..."></p>
-   *
-   * If we tokenize paragraphs first, the paragraph text sanitizer strips the
-   * image before the image renderer ever sees it.
-   */
-  const tokenRegex = /<img\b[^>]*>|<hr\s*\/?>/gi
+  const tokenRegex = /<img\b[^>]*>|<hr\s*\/?>|<(p|h[1-6]|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gi
 
   let cursor = 0
-  let tokenIndex = 0
+  let index = 0
   let match: RegExpExecArray | null
 
   while ((match = tokenRegex.exec(raw)) !== null) {
     const before = raw.slice(cursor, match.index)
-    blocks.push(...parseHtmlTextBlocks(before, `before-${tokenIndex}`))
+    pushTextBlock(blocks, before, `text-before-${index}`, 'p')
 
     const token = match[0]
 
@@ -196,7 +206,7 @@ function parseHtmlArticleBlocks(rawHtml: string) {
       if (src) {
         blocks.push({
           type: 'image',
-          key: `image-${tokenIndex}-${blocks.length}`,
+          key: `image-${index}`,
           src,
           alt: attrValue(token, 'alt'),
           title: attrValue(token, 'title'),
@@ -207,59 +217,36 @@ function parseHtmlArticleBlocks(rawHtml: string) {
       }
     } else if (/^<hr\b/i.test(token)) {
       blocks.push({
-        type: 'text',
-        key: `hr-${tokenIndex}-${blocks.length}`,
-        text: '---'
+        type: 'divider',
+        key: `divider-${index}`
       })
+    } else {
+      const tagMatch = token.match(/^<(p|h[1-6]|blockquote)\b[^>]*>([\s\S]*?)<\/\1>$/i)
+      const tag = tagForHtmlBlock(tagMatch?.[1] || 'p')
+      const inner = tagMatch?.[2] || token
+
+      pushTextBlock(blocks, inner, `text-${index}`, tag)
     }
 
     cursor = match.index + token.length
-    tokenIndex += 1
+    index += 1
   }
 
   const after = raw.slice(cursor)
-  blocks.push(...parseHtmlTextBlocks(after, 'after'))
+  pushTextBlock(blocks, after, `text-after-${index}`, 'p')
 
   return blocks
 }
 
-/*
- * TipTap saves article overrides as HTML, while generated/imported articles are
- * often Markdown/plain text. Normalize both into article blocks before mention
- * parsing. Important: preserve safe <img> tags from TipTap so Play mode can
- * render inline gallery images.
- */
 function articleBlocks(value: any): ArticleBlock[] {
-  const raw = stripUnsafeHtml(String(value || '').trim())
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-
+  const raw = String(value || '').trim()
   if (!raw) return []
 
   if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
-    return parseHtmlArticleBlocks(raw)
+    return parseHtmlBlocks(raw)
   }
 
-  return raw
-    .split(/\n{2,}/)
-    .map((block, index) => ({
-      type: 'text' as const,
-      key: `plain-${index}`,
-      text: decodeHtmlEntities(block.trim())
-    }))
-    .filter((block) => Boolean(block.text))
-}
-
-function renderInlineContent(value: string) {
-  const raw = String(value || '')
-
-  if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
-    return sanitizeInlineArticleHtml(raw)
-  }
-
-  const html = renderMarkdown(raw)
-  const singleParagraph = html.match(/^<p>([\s\S]*)<\/p>\s*$/i)
-  return singleParagraph ? singleParagraph[1] : html
+  return parseHtmlBlocks(renderMarkdown(raw))
 }
 
 const mentionTexts = computed(() => {
@@ -268,7 +255,7 @@ const mentionTexts = computed(() => {
   for (const block of articleBlocks(props.markdown)) {
     if (block.type !== 'text') continue
 
-    for (const match of block.text.matchAll(/@\[([^\]]+)\]/g)) {
+    for (const match of block.plain.matchAll(/@\[([^\]]+)\]/g)) {
       const label = normalizeMention(match[1])
       if (label) found.set(normalizedKey(label), label)
     }
@@ -323,87 +310,91 @@ type InlinePart =
 type RenderedTextBlock = {
   type: 'text'
   key: string
+  tag: TextTag
   parts: InlinePart[]
 }
 
-type RenderedImageBlock = {
-  type: 'image'
-  key: string
-  src: string
-  alt: string
-  title: string
-  size: string
-  align: string
-  width: string
+type RenderedImageBlock = ImageBlock
+
+type RenderedDividerBlock = DividerBlock
+
+type RenderedBlock = RenderedTextBlock | RenderedImageBlock | RenderedDividerBlock
+
+function renderInlinePlain(value: string) {
+  return escapeHtml(value).replace(/\n/g, '<br>')
 }
 
-type RenderedBlock = RenderedTextBlock | RenderedImageBlock
+function splitTextWithMentions(block: TextBlock, blockIndex: number): InlinePart[] {
+  const plain = block.plain || ''
 
-const renderedBlocks = computed<RenderedBlock[]>(() => {
-  return articleBlocks(props.markdown).map((block, blockIndex) => {
-    if (block.type === 'image') {
-      return {
-        type: 'image',
-        key: block.key || `image-${blockIndex}`,
-        src: block.src,
-        alt: block.alt,
-        title: block.title,
-        size: block.size || 'full',
-        align: block.align || 'center',
-        width: block.width || ''
-      }
-    }
+  if (!/@\[([^\]]+)\]/.test(plain)) {
+    return [{
+      type: 'html',
+      key: `b${blockIndex}-html-0`,
+      html: block.html
+    }]
+  }
 
-    const parts: InlinePart[] = []
-    const regex = /@\[([^\]]+)\]/g
-    let cursor = 0
-    let mentionIndex = 0
-    let match: RegExpExecArray | null
+  const parts: InlinePart[] = []
+  const regex = /@\[([^\]]+)\]/g
+  let cursor = 0
+  let mentionIndex = 0
+  let match: RegExpExecArray | null
 
-    while ((match = regex.exec(block.text)) !== null) {
-      const before = block.text.slice(cursor, match.index)
+  while ((match = regex.exec(plain)) !== null) {
+    const before = plain.slice(cursor, match.index)
 
-      if (before) {
-        parts.push({
-          type: 'html',
-          key: `b${blockIndex}-html-${parts.length}`,
-          html: renderInlineContent(before)
-        })
-      }
-
-      const label = normalizeMention(match[1])
-      const key = normalizedKey(label)
-
-      parts.push({
-        type: 'mention',
-        key: `b${blockIndex}-mention-${mentionIndex}-${key || label}`,
-        label,
-        resolved: resolvedMentions.value[key]
-      })
-
-      mentionIndex += 1
-      cursor = match.index + match[0].length
-    }
-
-    const after = block.text.slice(cursor)
-
-    if (after) {
+    if (before) {
       parts.push({
         type: 'html',
         key: `b${blockIndex}-html-${parts.length}`,
-        html: renderInlineContent(after)
+        html: renderInlinePlain(before)
       })
     }
 
-    return {
-      type: 'text',
-      key: block.key || `block-${blockIndex}`,
-      parts
+    const label = normalizeMention(match[1])
+    const key = normalizedKey(label)
+
+    parts.push({
+      type: 'mention',
+      key: `b${blockIndex}-mention-${mentionIndex}-${key || label}`,
+      label,
+      resolved: resolvedMentions.value[key]
+    })
+
+    mentionIndex += 1
+    cursor = match.index + match[0].length
+  }
+
+  const after = plain.slice(cursor)
+
+  if (after) {
+    parts.push({
+      type: 'html',
+      key: `b${blockIndex}-html-${parts.length}`,
+      html: renderInlinePlain(after)
+    })
+  }
+
+  return parts
+}
+
+const renderedBlocks = computed<RenderedBlock[]>(() => {
+  return articleBlocks(props.markdown).map((block, blockIndex) => {
+    if (block.type === 'text') {
+      return {
+        type: 'text',
+        key: block.key || `text-${blockIndex}`,
+        tag: block.tag || 'p',
+        parts: splitTextWithMentions(block, blockIndex)
+      }
     }
+
+    return block
   })
 })
 
-function imageFrameClass(block: RenderedImageBlock) {
+function imageFrameClass(block: ImageBlock) {
   const hasWidth = Boolean(String(block.width || '').trim())
   const size = hasWidth ? 'custom' : String(block.size || 'full')
   const align = String(block.align || 'center')
@@ -415,7 +406,7 @@ function imageFrameClass(block: RenderedImageBlock) {
   ]
 }
 
-function imageFrameStyle(block: RenderedImageBlock) {
+function imageFrameStyle(block: ImageBlock) {
   const raw = String(block.width || '').trim()
   if (!raw) return undefined
 
@@ -425,6 +416,13 @@ function imageFrameStyle(block: RenderedImageBlock) {
   return {
     width: `${widthText}%`
   }
+}
+
+function textBlockClass(block: RenderedTextBlock) {
+  return [
+    'world-mention-text-block',
+    `world-mention-${block.tag || 'p'}`
+  ]
 }
 
 function openMention(label: string) {
@@ -471,9 +469,15 @@ function openMention(label: string) {
         </figcaption>
       </figure>
 
-      <p
+      <hr
+        v-else-if="block.type === 'divider'"
+        class="world-mention-divider"
+      >
+
+      <component
+        :is="block.tag || 'p'"
         v-else
-        class="world-mention-paragraph"
+        :class="textBlockClass(block)"
       >
         <template v-for="part in block.parts" :key="part.key">
           <span
@@ -503,7 +507,7 @@ function openMention(label: string) {
             {{ part.label }}
           </span>
         </template>
-      </p>
+      </component>
     </template>
   </div>
 </template>
@@ -513,12 +517,55 @@ function openMention(label: string) {
   display: block;
 }
 
-.world-mention-paragraph {
+.world-mention-text-block {
   margin: 0 0 1rem;
 }
 
-.world-mention-paragraph:last-child {
+.world-mention-text-block:last-child {
   margin-bottom: 0;
+}
+
+.world-mention-p {
+  line-height: 1.9;
+}
+
+.world-mention-h1 {
+  margin: 0 0 1rem;
+  color: #fff7df;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  line-height: 1.08;
+  font-weight: 850;
+  letter-spacing: -0.035em;
+}
+
+.world-mention-h2 {
+  margin: 1.45rem 0 0.85rem;
+  color: #fff7df;
+  font-size: clamp(1.45rem, 2.4vw, 2.15rem);
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.world-mention-h3 {
+  margin: 1.2rem 0 0.7rem;
+  color: #fff7df;
+  font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+  line-height: 1.2;
+  font-weight: 750;
+}
+
+.world-mention-blockquote {
+  margin: 1.1rem 0;
+  border-left: 3px solid rgba(201, 164, 90, 0.58);
+  background: rgba(201, 164, 90, 0.08);
+  padding: 0.85rem 1.05rem;
+  color: #e8d9b5;
+}
+
+.world-mention-divider {
+  margin: 1.35rem 0;
+  border: 0;
+  border-top: 1px solid rgba(201, 164, 90, 0.34);
 }
 
 .world-mention-image-frame {

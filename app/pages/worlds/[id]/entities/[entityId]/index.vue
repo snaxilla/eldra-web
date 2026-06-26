@@ -135,6 +135,26 @@ function removeArticleSidebarItem(index: number) {
   articleSidebarItemsDraft.value.splice(index, 1)
 }
 
+function moveArticleSidebarItem(index: number, direction: -1 | 1) {
+  const target = index + direction
+
+  if (target < 0 || target >= articleSidebarItemsDraft.value.length) return
+
+  const list = [...articleSidebarItemsDraft.value]
+  const [item] = list.splice(index, 1)
+  list.splice(target, 0, item)
+  articleSidebarItemsDraft.value = list
+}
+
+function articleSidebarItemResidualBody(item: any) {
+  return String(item?.body || '')
+    .replace(/@\[[^\]]+\]/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, '')
+    .trim()
+}
+
 function articleSidebarTypeLabel(value: any) {
   const key = String(value || '')
   return ARTICLE_SIDEBAR_TYPE_OPTIONS.find((option) => option.value === key)?.label || 'Notes'
@@ -1570,13 +1590,33 @@ async function onImageSelected(event: Event) {
                       >
                     </label>
 
-                    <button
-                      type="button"
-                      class="self-end rounded-none border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200 transition hover:bg-red-500/20"
-                      @click="removeArticleSidebarItem(index)"
-                    >
-                      Remove
-                    </button>
+                    <div class="flex items-end gap-2 self-end">
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-sm text-[#f5e7bd] transition hover:bg-[rgba(201,164,90,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
+                        :disabled="index === 0"
+                        @click="moveArticleSidebarItem(index, -1)"
+                      >
+                        ↑
+                      </button>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-sm text-[#f5e7bd] transition hover:bg-[rgba(201,164,90,0.12)] disabled:cursor-not-allowed disabled:opacity-35"
+                        :disabled="index === articleSidebarItemsDraft.length - 1"
+                        @click="moveArticleSidebarItem(index, 1)"
+                      >
+                        ↓
+                      </button>
+
+                      <button
+                        type="button"
+                        class="rounded-none border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200 transition hover:bg-red-500/20"
+                        @click="removeArticleSidebarItem(index)"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
 
                   <label class="mt-3 block">
@@ -1713,9 +1753,9 @@ async function onImageSelected(event: Event) {
                 </div>
 
                 <WorldMentionText
-                  v-if="item.body"
+                  v-if="item.body && (!articleSidebarItemMentions(item).length || articleSidebarItemResidualBody(item))"
                   :world-id="worldId"
-                  :markdown="item.body"
+                  :markdown="articleSidebarItemMentions(item).length ? articleSidebarItemResidualBody(item) : item.body"
                   class="article-detail-sidebar-body"
                   @open-mention="openMentionContext"
                 />

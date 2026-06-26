@@ -1280,7 +1280,11 @@ async function onImageSelected(event: Event) {
             </div>
 
             <div class="mt-5">
-              <EldraRichTextEditor v-model="articleDraft" :world-id="worldId" />
+              <EldraRichTextEditor
+                v-model="articleDraft"
+                :world-id="worldId"
+                :article-theme="normalizedArticleTheme(articleThemeDraft)"
+              />
             </div>
 
             <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
@@ -1681,6 +1685,35 @@ async function onImageSelected(event: Event) {
 
 .article-theme-content-parchment :deep(.ProseMirror),
 .article-theme-content-statblock :deep(.ProseMirror) {
+  color: inherit;
+}
+
+
+.article-theme-content-parchment :deep(h1),
+.article-theme-content-parchment :deep(h2),
+.article-theme-content-parchment :deep(h3),
+.article-theme-content-parchment :deep(.ProseMirror h1),
+.article-theme-content-parchment :deep(.ProseMirror h2),
+.article-theme-content-parchment :deep(.ProseMirror h3) {
+  color: #2a1b0d;
+}
+
+.article-theme-content-statblock :deep(h1),
+.article-theme-content-statblock :deep(h2),
+.article-theme-content-statblock :deep(h3),
+.article-theme-content-statblock :deep(.ProseMirror h1),
+.article-theme-content-statblock :deep(.ProseMirror h2),
+.article-theme-content-statblock :deep(.ProseMirror h3) {
+  color: #651b18;
+}
+
+.article-theme-content-parchment :deep(.ProseMirror),
+.article-theme-content-statblock :deep(.ProseMirror) {
+  background: transparent;
+}
+
+.article-theme-content-parchment :deep(.eldra-editor-prosemirror),
+.article-theme-content-statblock :deep(.eldra-editor-prosemirror) {
   color: inherit;
 }
 

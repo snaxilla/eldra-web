@@ -60,6 +60,46 @@ function decodeHtmlEntities(value: string) {
     .replace(/&gt;/g, '>')
 }
 
+function sanitizeInlineArticleHtml(value: string) {
+  let html = String(value || '')
+
+  html = html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '')
+    .replace(/\s(?:href|src)\s*=\s*("javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]+)/gi, '')
+
+  html = html.replace(/<span\b([^>]*)>/gi, (_match, attrs) => {
+    const styleMatch = String(attrs || '').match(/style\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const style = String(styleMatch?.[2] || styleMatch?.[3] || '')
+    const colorMatch = style.match(/(?:^|;)\s*color\s*:\s*(#[0-9a-f]{3,8}|rgba?\([^)]+\)|[a-z]+)\s*(?:;|$)/i)
+    const color = String(colorMatch?.[1] || '').trim()
+
+    if (!color) return '<span>'
+
+    return `<span style="color: ${color}">`
+  })
+
+  html = html.replace(/<a\b([^>]*)>/gi, (_match, attrs) => {
+    const hrefMatch = String(attrs || '').match(/href\s*=\s*("([^"]*)"|'([^']*)')/i)
+    const href = String(hrefMatch?.[2] || hrefMatch?.[3] || '').trim()
+
+    if (!href || /^javascript:/i.test(href)) return '<a>'
+
+    return `<a href="${href.replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer">`
+  })
+
+  html = html
+    .replace(/<(\/?)(strong|b|em|i|u|s|strike|mark|span|a)\b[^>]*>/gi, (match) => match)
+    .replace(/<br\s*\/?>/gi, '<br>')
+    .replace(/<\/?(p|div|h[1-6]|blockquote)[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+
+  return decodeHtmlEntities(html)
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+}
+
 function stripUnsafeHtml(value: string) {
   return String(value || '')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -87,24 +127,9 @@ function safeImageSrc(value: string) {
 }
 
 function inlineHtmlToText(value: string) {
-  return decodeHtmlEntities(
-    String(value || '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/?(strong|b)>/gi, '**')
-      .replace(/<\/?(em|i)>/gi, '*')
-      .replace(/<\/?(s|strike)>/gi, '~~')
-      .replace(/<mark(?:\s[^>]*)?>/gi, '**')
-      .replace(/<\/mark>/gi, '**')
-      .replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href, label) => {
-        const cleanLabel = String(label || '').replace(/<[^>]+>/g, '').trim()
-        const cleanHref = String(href || '').trim()
-        return cleanLabel && cleanHref ? `[${cleanLabel}](${cleanHref})` : cleanLabel || cleanHref
-      })
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/[ \t]+/g, ' ')
-      .trim()
-  )
+  return sanitizeInlineArticleHtml(value)
 }
+
 
 function pushTextBlock(blocks: ArticleBlock[], value: string, keyPrefix: string) {
   const text = decodeHtmlEntities(String(value || '').trim())
@@ -225,8 +250,14 @@ function articleBlocks(value: any): ArticleBlock[] {
     .filter((block) => Boolean(block.text))
 }
 
-function renderInlineMarkdown(value: string) {
-  const html = renderMarkdown(value || '')
+function renderInlineContent(value: string) {
+  const raw = String(value || '')
+
+  if (/<\/?[a-z][\s\S]*>/i.test(raw)) {
+    return sanitizeInlineArticleHtml(raw)
+  }
+
+  const html = renderMarkdown(raw)
   const singleParagraph = html.match(/^<p>([\s\S]*)<\/p>\s*$/i)
   return singleParagraph ? singleParagraph[1] : html
 }
@@ -336,7 +367,7 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
         parts.push({
           type: 'html',
           key: `b${blockIndex}-html-${parts.length}`,
-          html: renderInlineMarkdown(before)
+          html: renderInlineContent(before)
         })
       }
 
@@ -360,7 +391,7 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
       parts.push({
         type: 'html',
         key: `b${blockIndex}-html-${parts.length}`,
-        html: renderInlineMarkdown(after)
+        html: renderInlineContent(after)
       })
     }
 

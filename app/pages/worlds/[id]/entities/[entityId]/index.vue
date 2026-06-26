@@ -1116,8 +1116,10 @@ const contextDrawerOpen = ref(false)
 const contextDrawerEntity = ref<any | null>(null)
 
 const pageContentClass = computed(() => [
-  'mx-auto max-w-[1500px] p-6 transition-[padding,max-width] duration-200 ease-out',
-  contextDrawerOpen.value ? 'xl:pr-[404px]' : ''
+  'p-6 transition-[padding,max-width,margin] duration-200 ease-out',
+  contextDrawerOpen.value
+    ? 'xl:mr-[404px] xl:max-w-none'
+    : 'mx-auto max-w-[1500px]'
 ])
 
 function openMentionContext(mention: any) {

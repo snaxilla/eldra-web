@@ -45,13 +45,13 @@ const ARTICLE_THEME_OPTIONS = [
   },
   {
     value: 'parchment',
-    label: 'Parchment',
-    description: 'Warm paper page for lore-heavy articles.'
+    label: 'Archive',
+    description: 'Warm vellum page inside an Eldra frame.'
   },
   {
     value: 'statblock',
-    label: 'Statblock',
-    description: 'Pale 5e-style rules reference.'
+    label: 'Rulesheet',
+    description: 'Muted rules-reference page inside an Eldra frame.'
   }
 ]
 
@@ -453,19 +453,22 @@ const articleOverrideMarkdown = computed(() =>
 const articleOverrideTheme = computed(() =>
   normalizedArticleTheme(articleOverrideBlock.value?.data?.theme)
 )
-const activeArticleTheme = computed(() =>
+const selectedArticleTheme = computed(() =>
   mode.value === 'build' ? normalizedArticleTheme(articleThemeDraft.value) : articleOverrideTheme.value
 )
+const displayArticleTheme = computed(() =>
+  mode.value === 'build' ? 'codex' : selectedArticleTheme.value
+)
 const activeArticleThemeLabel = computed(() =>
-  ARTICLE_THEME_OPTIONS.find((option) => option.value === activeArticleTheme.value)?.label || 'Codex'
+  ARTICLE_THEME_OPTIONS.find((option) => option.value === selectedArticleTheme.value)?.label || 'Codex'
 )
 const articleSectionClass = computed(() => [
   'article-theme-shell',
-  `article-theme-shell-${activeArticleTheme.value}`
+  `article-theme-shell-${displayArticleTheme.value}`
 ])
 const articleContentClass = computed(() => [
   'article-theme-content',
-  `article-theme-content-${activeArticleTheme.value}`
+  `article-theme-content-${displayArticleTheme.value}`
 ])
 
 const generatedArticleMarkdown = computed(() => {
@@ -1276,10 +1279,7 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
-            <div
-              :class="articleContentClass"
-              class="mt-5"
-            >
+            <div class="mt-5">
               <EldraRichTextEditor v-model="articleDraft" :world-id="worldId" />
             </div>
 
@@ -1520,9 +1520,6 @@ async function onImageSelected(event: Event) {
 .article-theme-shell {
   position: relative;
   overflow: hidden;
-}
-
-.article-theme-shell-codex {
   border-color: rgba(201, 164, 90, 0.34);
   background:
     radial-gradient(circle at 20% 0%, rgba(201, 164, 90, 0.08), transparent 32%),
@@ -1530,23 +1527,24 @@ async function onImageSelected(event: Event) {
   backdrop-filter: blur(16px);
 }
 
+.article-theme-shell-codex {
+  border-color: rgba(201, 164, 90, 0.34);
+}
+
 .article-theme-shell-parchment {
-  border-color: rgba(140, 97, 45, 0.64);
+  border-color: rgba(201, 164, 90, 0.42);
   background:
-    radial-gradient(circle at 12% 14%, rgba(255, 255, 255, 0.34), transparent 18%),
-    radial-gradient(circle at 84% 8%, rgba(118, 76, 34, 0.12), transparent 20%),
-    linear-gradient(135deg, rgba(238, 219, 178, 0.97), rgba(197, 162, 101, 0.94));
-  color: #2f2114;
-  box-shadow: inset 0 0 0 1px rgba(255, 249, 228, 0.40), 0 22px 70px rgba(0, 0, 0, 0.32);
+    radial-gradient(circle at 18% 0%, rgba(201, 164, 90, 0.12), transparent 32%),
+    radial-gradient(circle at 80% 12%, rgba(166, 105, 42, 0.10), transparent 30%),
+    linear-gradient(to bottom, rgba(24, 20, 13, 0.84), rgba(8, 7, 5, 0.68));
 }
 
 .article-theme-shell-statblock {
-  border-color: rgba(117, 28, 28, 0.62);
+  border-color: rgba(153, 55, 46, 0.52);
   background:
-    linear-gradient(90deg, rgba(117, 28, 28, 0.12), transparent 22%, transparent 78%, rgba(117, 28, 28, 0.12)),
-    linear-gradient(to bottom, rgba(246, 235, 201, 0.98), rgba(226, 204, 154, 0.96));
-  color: #261a12;
-  box-shadow: inset 0 0 0 1px rgba(255, 249, 228, 0.38), 0 22px 70px rgba(0, 0, 0, 0.32);
+    radial-gradient(circle at 18% 0%, rgba(201, 164, 90, 0.09), transparent 32%),
+    linear-gradient(90deg, rgba(117, 28, 28, 0.16), transparent 18%, transparent 82%, rgba(117, 28, 28, 0.13)),
+    linear-gradient(to bottom, rgba(22, 17, 12, 0.86), rgba(8, 7, 5, 0.72));
 }
 
 .article-theme-eyebrow {
@@ -1564,14 +1562,12 @@ async function onImageSelected(event: Event) {
   color: rgba(245, 231, 189, 0.66);
 }
 
-.article-theme-shell-parchment .article-theme-eyebrow,
 .article-theme-shell-parchment .article-theme-name {
-  color: rgba(67, 42, 22, 0.78);
+  color: rgba(226, 184, 111, 0.76);
 }
 
-.article-theme-shell-statblock .article-theme-eyebrow,
 .article-theme-shell-statblock .article-theme-name {
-  color: rgba(117, 28, 28, 0.82);
+  color: rgba(231, 139, 116, 0.78);
 }
 
 .article-theme-button {
@@ -1603,28 +1599,38 @@ async function onImageSelected(event: Event) {
 .article-theme-content-parchment {
   margin-left: auto;
   margin-right: auto;
-  max-width: 980px;
-  border: 1px solid rgba(112, 73, 35, 0.30);
+  max-width: 1040px;
+  border: 1px solid rgba(201, 164, 90, 0.34);
   background:
-    linear-gradient(90deg, rgba(93, 57, 25, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(255, 253, 239, 0.36), rgba(250, 236, 198, 0.76));
-  background-size: 42px 42px, auto;
+    radial-gradient(circle at 16% 8%, rgba(255, 246, 214, 0.16), transparent 22%),
+    radial-gradient(circle at 80% 18%, rgba(74, 42, 18, 0.11), transparent 28%),
+    linear-gradient(90deg, rgba(72, 44, 20, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(210, 181, 125, 0.96), rgba(177, 139, 82, 0.94));
+  background-size: auto, auto, 44px 44px, auto;
   padding: clamp(1.25rem, 2.4vw, 2.35rem);
-  color: #2f2114;
-  box-shadow: inset 0 0 45px rgba(105, 64, 27, 0.12);
+  color: #271b10;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 243, 204, 0.22),
+    inset 0 0 70px rgba(64, 36, 13, 0.16),
+    0 20px 55px rgba(0, 0, 0, 0.28);
 }
 
 .article-theme-content-statblock {
   margin-left: auto;
   margin-right: auto;
-  max-width: 980px;
-  border-top: 5px solid #7b1f1f;
-  border-bottom: 5px solid #7b1f1f;
+  max-width: 1040px;
+  border: 1px solid rgba(122, 45, 34, 0.48);
+  border-top: 5px solid rgba(122, 35, 30, 0.88);
+  border-bottom: 5px solid rgba(122, 35, 30, 0.88);
   background:
-    linear-gradient(to bottom, rgba(255, 251, 225, 0.98), rgba(237, 220, 170, 0.98));
+    linear-gradient(90deg, rgba(122, 35, 30, 0.08), transparent 12%, transparent 88%, rgba(122, 35, 30, 0.06)),
+    linear-gradient(to bottom, rgba(209, 183, 126, 0.96), rgba(184, 149, 92, 0.95));
   padding: clamp(1.2rem, 2vw, 2rem);
-  color: #261a12;
-  box-shadow: inset 0 0 0 1px rgba(117, 28, 28, 0.25);
+  color: #24170e;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 241, 201, 0.20),
+    inset 0 0 58px rgba(70, 35, 16, 0.13),
+    0 20px 55px rgba(0, 0, 0, 0.28);
 }
 
 .article-theme-content-parchment :deep(.world-mention-text),
@@ -1638,24 +1644,24 @@ async function onImageSelected(event: Event) {
 }
 
 .article-theme-content-parchment :deep(.eldra-mention-link) {
-  border-color: rgba(115, 77, 34, 0.55);
-  background: rgba(126, 83, 35, 0.12);
-  color: #3a2412;
+  border-color: rgba(75, 48, 20, 0.56);
+  background: rgba(82, 52, 22, 0.13);
+  color: #2c1a0b;
   box-shadow: none;
 }
 
 .article-theme-content-statblock :deep(.eldra-mention-link) {
   border-color: rgba(117, 28, 28, 0.46);
   background: rgba(117, 28, 28, 0.10);
-  color: #5b1717;
+  color: #561616;
   box-shadow: none;
 }
 
 .article-theme-content-parchment :deep(.world-mention-image-frame),
 .article-theme-content-statblock :deep(.world-mention-image-frame) {
   border-color: rgba(74, 48, 22, 0.34);
-  background: rgba(255, 249, 228, 0.35);
-  box-shadow: 0 16px 38px rgba(76, 45, 16, 0.18);
+  background: rgba(255, 238, 186, 0.18);
+  box-shadow: 0 16px 38px rgba(55, 31, 11, 0.18);
 }
 
 .article-theme-content-parchment :deep(.world-mention-image-caption),

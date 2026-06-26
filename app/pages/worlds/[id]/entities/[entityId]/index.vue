@@ -5,6 +5,7 @@ definePageMeta({
 
 import { renderMarkdown } from '~/utils/renderMarkdown'
 import WorldMentionText from '~/components/world/WorldMentionText.vue'
+import WorldMentionAutocompleteTextarea from '~/components/world/WorldMentionAutocompleteTextarea.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 
 const route = useRoute()
@@ -56,6 +57,88 @@ const ARTICLE_THEME_OPTIONS = [
 ]
 
 const articleThemeDraft = ref('codex')
+const articleSidebarEnabledDraft = ref(false)
+const articleSidebarItemsDraft = ref<any[]>([])
+
+const ARTICLE_SIDEBAR_TYPE_OPTIONS = [
+  { label: 'People', value: 'people' },
+  { label: 'Places', value: 'places' },
+  { label: 'Secrets', value: 'secrets' },
+  { label: 'Notes', value: 'notes' },
+  { label: 'Custom', value: 'custom' }
+]
+
+const ARTICLE_SIDEBAR_VISIBILITY_OPTIONS = [
+  {
+    label: 'Players',
+    value: 'public',
+    description: 'Visible in Play mode.'
+  },
+  {
+    label: 'GM Only',
+    value: 'gm',
+    description: 'Stored now, hidden from Play mode until GM permissions are wired.'
+  },
+  {
+    label: 'Hidden Draft',
+    value: 'hidden',
+    description: 'Hidden from Play mode.'
+  }
+]
+
+function normalizedArticleSidebarVisibility(value: any) {
+  const key = String(value || '').trim().toLowerCase()
+  return ARTICLE_SIDEBAR_VISIBILITY_OPTIONS.some((option) => option.value === key) ? key : 'public'
+}
+
+function articleSidebarVisibilityLabel(value: any) {
+  const key = normalizedArticleSidebarVisibility(value)
+  return ARTICLE_SIDEBAR_VISIBILITY_OPTIONS.find((option) => option.value === key)?.label || 'Players'
+}
+
+function isArticleSidebarItemVisible(item: any) {
+  if (mode.value === 'build') return true
+
+  return normalizedArticleSidebarVisibility(item?.visibility) === 'public'
+}
+
+function makeArticleSidebarItem(type = 'notes') {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    title: '',
+    body: '',
+    visibility: type === 'secrets' ? 'gm' : 'public'
+  }
+}
+
+function normalizeArticleSidebarItems(value: any) {
+  const list = Array.isArray(value) ? value : []
+
+  return list
+    .map((item: any) => ({
+      id: String(item?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+      type: ARTICLE_SIDEBAR_TYPE_OPTIONS.some((option) => option.value === item?.type) ? item.type : 'notes',
+      title: String(item?.title || '').trim(),
+      body: String(item?.body || '').trim(),
+      visibility: normalizedArticleSidebarVisibility(item?.visibility)
+    }))
+    .filter((item: any) => item.title || item.body)
+}
+
+function addArticleSidebarItem(type = 'notes') {
+  articleSidebarEnabledDraft.value = true
+  articleSidebarItemsDraft.value.push(makeArticleSidebarItem(type))
+}
+
+function removeArticleSidebarItem(index: number) {
+  articleSidebarItemsDraft.value.splice(index, 1)
+}
+
+function articleSidebarTypeLabel(value: any) {
+  const key = String(value || '')
+  return ARTICLE_SIDEBAR_TYPE_OPTIONS.find((option) => option.value === key)?.label || 'Notes'
+}
 
 function normalizedArticleTheme(value: any) {
   const key = String(value || '').trim().toLowerCase()
@@ -453,6 +536,23 @@ const articleOverrideMarkdown = computed(() =>
 const articleOverrideTheme = computed(() =>
   normalizedArticleTheme(articleOverrideBlock.value?.data?.theme)
 )
+const articleOverrideSidebarEnabled = computed(() =>
+  Boolean(articleOverrideBlock.value?.data?.sidebarEnabled)
+)
+const articleOverrideSidebarItems = computed(() =>
+  normalizeArticleSidebarItems(articleOverrideBlock.value?.data?.sidebarItems)
+)
+const activeArticleSidebarEnabled = computed(() =>
+  mode.value === 'build' ? articleSidebarEnabledDraft.value : articleOverrideSidebarEnabled.value
+)
+const activeArticleSidebarItems = computed(() =>
+  mode.value === 'build' ? normalizeArticleSidebarItems(articleSidebarItemsDraft.value) : articleOverrideSidebarItems.value
+)
+const visibleArticleSidebarItems = computed(() =>
+  activeArticleSidebarEnabled.value
+    ? activeArticleSidebarItems.value.filter((item: any) => (item.title || item.body) && isArticleSidebarItemVisible(item))
+    : []
+)
 const selectedArticleTheme = computed(() =>
   mode.value === 'build' ? normalizedArticleTheme(articleThemeDraft.value) : articleOverrideTheme.value
 )
@@ -497,10 +597,21 @@ const generatedArticleMarkdown = computed(() => {
 const articleMarkdown = computed(() => articleOverrideMarkdown.value || generatedArticleMarkdown.value || '')
 
 watch(
-  () => [entityId.value, articleOverrideMarkdown.value, generatedArticleMarkdown.value, articleOverrideTheme.value],
+  () => [
+    entityId.value,
+    articleOverrideMarkdown.value,
+    generatedArticleMarkdown.value,
+    articleOverrideTheme.value,
+    articleOverrideSidebarEnabled.value,
+    JSON.stringify(articleOverrideSidebarItems.value)
+  ],
   () => {
     articleDraft.value = articleMarkdown.value || ''
     articleThemeDraft.value = articleOverrideTheme.value
+    articleSidebarEnabledDraft.value = articleOverrideSidebarEnabled.value
+    articleSidebarItemsDraft.value = articleOverrideSidebarItems.value.length
+      ? articleOverrideSidebarItems.value.map((item: any) => ({ ...item }))
+      : []
     articleSaveError.value = ''
     articleSaveSuccess.value = ''
   },
@@ -520,7 +631,9 @@ async function saveArticleOverride() {
       body: {
         data: {
           markdown: articleDraft.value,
-          theme: normalizedArticleTheme(articleThemeDraft.value)
+          theme: normalizedArticleTheme(articleThemeDraft.value),
+          sidebarEnabled: Boolean(articleSidebarEnabledDraft.value),
+          sidebarItems: normalizeArticleSidebarItems(articleSidebarItemsDraft.value)
         }
       }
     })
@@ -537,6 +650,8 @@ async function saveArticleOverride() {
 function resetArticleDraft() {
   articleDraft.value = generatedArticleMarkdown.value || ''
   articleThemeDraft.value = 'codex'
+  articleSidebarEnabledDraft.value = false
+  articleSidebarItemsDraft.value = []
   articleSaveError.value = ''
   articleSaveSuccess.value = 'Draft reset. Save to keep it.'
 }
@@ -1287,6 +1402,141 @@ async function onImageSelected(event: Event) {
               />
             </div>
 
+            <section class="article-sidebar-editor mt-5 rounded-none border p-4">
+              <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.28em] text-[#9f9278]">
+                    Article Sidebar
+                  </div>
+                  <p class="mt-1 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
+                    Optional right-side details card for important people, places, secrets, and notes.
+                  </p>
+                </div>
+
+                <label class="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[#f5e7bd]">
+                  <input
+                    v-model="articleSidebarEnabledDraft"
+                    type="checkbox"
+                    class="h-4 w-4 accent-[#c9a45a]"
+                  >
+                  Enable Sidebar
+                </label>
+              </div>
+
+              <div
+                v-if="articleSidebarEnabledDraft"
+                class="mt-4 space-y-3"
+              >
+                <article
+                  v-for="(item, index) in articleSidebarItemsDraft"
+                  :key="item.id || index"
+                  class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.44)] p-3"
+                >
+                  <div class="grid gap-3 md:grid-cols-[150px_150px_minmax(0,1fr)_auto]">
+                    <label>
+                      <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Type</span>
+                      <select
+                        v-model="item.type"
+                        class="eldra-input w-full rounded-none px-3 py-2 text-sm"
+                        @change="item.visibility = item.type === 'secrets' && item.visibility === 'public' ? 'gm' : item.visibility"
+                      >
+                        <option
+                          v-for="option in ARTICLE_SIDEBAR_TYPE_OPTIONS"
+                          :key="option.value"
+                          :value="option.value"
+                        >
+                          {{ option.label }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Visibility</span>
+                      <select
+                        v-model="item.visibility"
+                        class="eldra-input w-full rounded-none px-3 py-2 text-sm"
+                      >
+                        <option
+                          v-for="option in ARTICLE_SIDEBAR_VISIBILITY_OPTIONS"
+                          :key="option.value"
+                          :value="option.value"
+                        >
+                          {{ option.label }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Title</span>
+                      <input
+                        v-model="item.title"
+                        type="text"
+                        placeholder="Important People, Tavern Rumors, Nearby Places..."
+                        class="eldra-input w-full rounded-none px-3 py-2 text-sm"
+                      >
+                    </label>
+
+                    <button
+                      type="button"
+                      class="self-end rounded-none border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200 transition hover:bg-red-500/20"
+                      @click="removeArticleSidebarItem(index)"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <label class="mt-3 block">
+                    <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Body</span>
+                    <WorldMentionAutocompleteTextarea
+                      v-model="item.body"
+                      :world-id="worldId"
+                      rows="3"
+                      textarea-class="eldra-input w-full resize-y rounded-none px-3 py-2 text-sm leading-6"
+                      placeholder="Type @ to mention people, places, factions, items..."
+                    />
+                  </label>
+                </article>
+
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="eldra-button rounded-none px-3 py-2 text-sm"
+                    @click="addArticleSidebarItem('people')"
+                  >
+                    Add People
+                  </button>
+                  <button
+                    type="button"
+                    class="eldra-button rounded-none px-3 py-2 text-sm"
+                    @click="addArticleSidebarItem('places')"
+                  >
+                    Add Places
+                  </button>
+                  <button
+                    type="button"
+                    class="eldra-button rounded-none px-3 py-2 text-sm"
+                    @click="addArticleSidebarItem('secrets')"
+                  >
+                    Add Secret
+                  </button>
+                  <button
+                    type="button"
+                    class="eldra-button rounded-none px-3 py-2 text-sm"
+                    @click="addArticleSidebarItem('notes')"
+                  >
+                    Add Note
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-else
+                class="mt-4 rounded-none border border-[rgba(201,164,90,0.14)] bg-black/10 px-4 py-3 text-sm text-[#9f9278]"
+              >
+                Disabled for this article. Short blurbs can stay clean.
+              </div>
+            </section>
+
             <div v-if="articleSaveError" class="mt-3 text-sm text-red-300">{{ articleSaveError }}</div>
             <div v-if="articleSaveSuccess" class="mt-3 text-sm text-emerald-300">{{ articleSaveSuccess }}</div>
           </div>
@@ -1296,12 +1546,52 @@ async function onImageSelected(event: Event) {
           :class="articleContentClass"
           class="mt-6"
         >
-          <WorldMentionText
-            :world-id="worldId"
-            :markdown="articleMarkdown"
-            class="eldra-rich-content text-[16px] leading-8"
-            @open-mention="openMentionContext"
-          />
+          <div
+            class="article-theme-layout"
+            :class="visibleArticleSidebarItems.length ? 'article-theme-layout-with-sidebar' : 'article-theme-layout-single'"
+          >
+            <WorldMentionText
+              :world-id="worldId"
+              :markdown="articleMarkdown"
+              class="eldra-rich-content article-theme-main text-[16px] leading-8"
+              @open-mention="openMentionContext"
+            />
+
+            <aside
+              v-if="visibleArticleSidebarItems.length"
+              class="article-detail-sidebar"
+            >
+              <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">
+                Key Details
+              </div>
+
+              <article
+                v-for="item in visibleArticleSidebarItems"
+                :key="item.id"
+                class="article-detail-sidebar-card"
+              >
+                <div class="article-detail-sidebar-type">
+                  {{ articleSidebarTypeLabel(item.type) }}
+                  <span class="opacity-60">/ {{ articleSidebarVisibilityLabel(item.visibility) }}</span>
+                </div>
+
+                <h3
+                  v-if="item.title"
+                  class="article-detail-sidebar-title"
+                >
+                  {{ item.title }}
+                </h3>
+
+                <WorldMentionText
+                  v-if="item.body"
+                  :world-id="worldId"
+                  :markdown="item.body"
+                  class="article-detail-sidebar-body"
+                  @open-mention="openMentionContext"
+                />
+              </article>
+            </aside>
+          </div>
         </div>
 
         <div
@@ -1715,6 +2005,101 @@ async function onImageSelected(event: Event) {
 .article-theme-content-parchment :deep(.eldra-editor-prosemirror),
 .article-theme-content-statblock :deep(.eldra-editor-prosemirror) {
   color: inherit;
+}
+
+
+.article-sidebar-editor {
+  border-color: rgba(201, 164, 90, 0.22);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(201, 164, 90, 0.07), transparent 30%),
+    rgba(8, 7, 5, 0.34);
+}
+
+.article-theme-layout {
+  display: grid;
+  gap: clamp(1.25rem, 2vw, 2rem);
+}
+
+.article-theme-layout-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.article-theme-layout-with-sidebar {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  align-items: start;
+}
+
+.article-theme-main {
+  min-width: 0;
+}
+
+.article-detail-sidebar {
+  position: sticky;
+  top: 5.5rem;
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.article-detail-sidebar-card {
+  border: 1px solid rgba(201, 164, 90, 0.24);
+  background:
+    linear-gradient(to bottom, rgba(20, 17, 12, 0.68), rgba(8, 7, 5, 0.46));
+  padding: 0.95rem;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.14);
+}
+
+.article-detail-sidebar-type {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  color: #9f9278;
+}
+
+.article-detail-sidebar-title {
+  margin-top: 0.35rem;
+  color: #fff7df;
+  font-size: 1rem;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.article-detail-sidebar-body {
+  margin-top: 0.55rem;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: #e8d9b5;
+}
+
+.article-theme-content-parchment .article-detail-sidebar-card,
+.article-theme-content-statblock .article-detail-sidebar-card {
+  border-color: rgba(74, 48, 22, 0.28);
+  background: rgba(255, 238, 186, 0.18);
+  box-shadow: inset 0 0 24px rgba(74, 48, 22, 0.08);
+}
+
+.article-theme-content-parchment .article-detail-sidebar-title,
+.article-theme-content-statblock .article-detail-sidebar-title {
+  color: #2a1b0d;
+}
+
+.article-theme-content-parchment .article-detail-sidebar-body,
+.article-theme-content-statblock .article-detail-sidebar-body {
+  color: #2f2114;
+}
+
+.article-theme-content-statblock .article-detail-sidebar-type {
+  color: rgba(117, 28, 28, 0.72);
+}
+
+@media (max-width: 1100px) {
+  .article-theme-layout-with-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .article-detail-sidebar {
+    position: static;
+  }
 }
 
 </style>

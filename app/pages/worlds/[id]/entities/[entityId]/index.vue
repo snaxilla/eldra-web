@@ -553,6 +553,108 @@ const visibleArticleSidebarItems = computed(() =>
     ? activeArticleSidebarItems.value.filter((item: any) => (item.title || item.body) && isArticleSidebarItemVisible(item))
     : []
 )
+
+const articleSidebarMentionMap = ref<Record<string, any>>({})
+const articleSidebarMentionsLoading = ref(false)
+
+function extractArticleSidebarMentionLabels(items: any[]) {
+  const found = new Map<string, string>()
+
+  for (const item of items || []) {
+    const body = String(item?.body || '')
+    const title = String(item?.title || '')
+
+    for (const source of [title, body]) {
+      for (const match of source.matchAll(/@\[([^\]]+)\]/g)) {
+        const label = String(match?.[1] || '').replace(/\s+/g, ' ').trim()
+        const key = label.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+        if (label && key) found.set(key, label)
+      }
+    }
+  }
+
+  return Array.from(found.values())
+}
+
+function normalizedSidebarMentionKey(value: any) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function articleSidebarItemMentions(item: any) {
+  const body = String(item?.body || '')
+  const found = new Map<string, string>()
+
+  for (const match of body.matchAll(/@\[([^\]]+)\]/g)) {
+    const label = String(match?.[1] || '').replace(/\s+/g, ' ').trim()
+    const key = normalizedSidebarMentionKey(label)
+    if (label && key) found.set(key, label)
+  }
+
+  return Array.from(found.values())
+    .map((label) => {
+      const resolved = articleSidebarMentionMap.value[normalizedSidebarMentionKey(label)] || null
+
+      return {
+        label,
+        resolved,
+        title: resolved?.title || label,
+        type: resolved?.displayType || resolved?.entityType || resolved?.type || 'Entity',
+        summary: resolved?.summary || '',
+        imageUrl: resolved?.imageUrl || resolved?.image || ''
+      }
+    })
+}
+
+function articleSidebarMentionImage(mention: any) {
+  const src = String(mention?.imageUrl || '').trim()
+  return src
+}
+
+function articleSidebarMentionInitials(mention: any) {
+  const title = String(mention?.title || mention?.label || '?').trim()
+  const words = title.split(/\s+/).filter(Boolean)
+
+  return words.slice(0, 2).map((word) => word[0]?.toUpperCase() || '').join('') || '?'
+}
+
+async function resolveArticleSidebarMentions() {
+  const labels = extractArticleSidebarMentionLabels(visibleArticleSidebarItems.value)
+
+  articleSidebarMentionMap.value = {}
+
+  if (!worldId.value || !labels.length) return
+
+  articleSidebarMentionsLoading.value = true
+
+  try {
+    const response: any = await $fetch(`/api/worlds/${worldId.value}/mentions/resolve`, {
+      method: 'POST',
+      body: {
+        mentions: labels
+      }
+    })
+
+    articleSidebarMentionMap.value = response?.mentions || {}
+  } catch (error) {
+    console.error('[ArticleSidebar] failed to resolve sidebar mentions', error)
+    articleSidebarMentionMap.value = {}
+  } finally {
+    articleSidebarMentionsLoading.value = false
+  }
+}
+
+watch(
+  () => [worldId.value, JSON.stringify(visibleArticleSidebarItems.value)],
+  () => resolveArticleSidebarMentions(),
+  { immediate: true }
+)
+
 const selectedArticleTheme = computed(() =>
   mode.value === 'build' ? normalizedArticleTheme(articleThemeDraft.value) : articleOverrideTheme.value
 )
@@ -1552,18 +1654,11 @@ async function onImageSelected(event: Event) {
             class="article-theme-layout"
             :class="visibleArticleSidebarItems.length ? 'article-theme-layout-with-sidebar' : 'article-theme-layout-single'"
           >
-            <WorldMentionText
-              :world-id="worldId"
-              :markdown="articleMarkdown"
-              class="eldra-rich-content article-theme-main text-[16px] leading-8"
-              @open-mention="openMentionContext"
-            />
-
             <aside
               v-if="visibleArticleSidebarItems.length"
-              class="article-detail-sidebar"
+              class="article-detail-sidebar article-detail-sidebar-top"
             >
-              <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">
+              <div class="article-detail-sidebar-heading">
                 Key Details
               </div>
 
@@ -1584,6 +1679,39 @@ async function onImageSelected(event: Event) {
                   {{ item.title }}
                 </h3>
 
+                <div
+                  v-if="articleSidebarItemMentions(item).length"
+                  class="article-detail-portrait-grid"
+                >
+                  <button
+                    v-for="mention in articleSidebarItemMentions(item)"
+                    :key="mention.label"
+                    type="button"
+                    class="article-detail-portrait-card"
+                    @click="openMentionContext(mention.resolved || { resolved: false, title: mention.title, label: mention.label })"
+                  >
+                    <span class="article-detail-portrait-frame">
+                      <img
+                        v-if="articleSidebarMentionImage(mention)"
+                        :src="articleSidebarMentionImage(mention)"
+                        :alt="mention.title"
+                        loading="lazy"
+                      >
+                      <span
+                        v-else
+                        class="article-detail-portrait-fallback"
+                      >
+                        {{ articleSidebarMentionInitials(mention) }}
+                      </span>
+                    </span>
+
+                    <span class="article-detail-portrait-text">
+                      <span class="article-detail-portrait-name">{{ mention.title }}</span>
+                      <span class="article-detail-portrait-type">{{ mention.type }}</span>
+                    </span>
+                  </button>
+                </div>
+
                 <WorldMentionText
                   v-if="item.body"
                   :world-id="worldId"
@@ -1593,6 +1721,13 @@ async function onImageSelected(event: Event) {
                 />
               </article>
             </aside>
+
+            <WorldMentionText
+              :world-id="worldId"
+              :markdown="articleMarkdown"
+              class="eldra-rich-content article-theme-main text-[16px] leading-8"
+              @open-mention="openMentionContext"
+            />
           </div>
         </div>
 
@@ -2027,20 +2162,33 @@ async function onImageSelected(event: Event) {
 }
 
 .article-theme-layout-with-sidebar {
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  grid-template-areas:
+    "main sidebar";
   align-items: start;
 }
 
 .article-theme-main {
+  grid-area: main;
   min-width: 0;
 }
 
 .article-detail-sidebar {
-  position: sticky;
-  top: 5.5rem;
+  grid-area: sidebar;
   display: grid;
   gap: 0.85rem;
   min-width: 0;
+}
+
+.article-detail-sidebar-top {
+  align-self: start;
+}
+
+.article-detail-sidebar-heading {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: #9f9278;
 }
 
 .article-detail-sidebar-card {
@@ -2073,6 +2221,82 @@ async function onImageSelected(event: Event) {
   color: #e8d9b5;
 }
 
+.article-detail-portrait-grid {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.article-detail-portrait-card {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  width: 100%;
+  border: 1px solid rgba(201, 164, 90, 0.24);
+  background:
+    linear-gradient(to right, rgba(201, 164, 90, 0.11), rgba(20, 17, 12, 0.30));
+  padding: 0.45rem;
+  text-align: left;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.article-detail-portrait-card:hover {
+  border-color: rgba(251, 191, 36, 0.72);
+  background:
+    linear-gradient(to right, rgba(201, 164, 90, 0.18), rgba(20, 17, 12, 0.40));
+  transform: translateY(-1px);
+}
+
+.article-detail-portrait-frame {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border: 1px solid rgba(201, 164, 90, 0.38);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(201, 164, 90, 0.18), rgba(12, 10, 7, 0.78));
+}
+
+.article-detail-portrait-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.article-detail-portrait-fallback {
+  color: #f5e7bd;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.article-detail-portrait-text {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.article-detail-portrait-name {
+  overflow: hidden;
+  color: #fff7df;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-detail-portrait-type {
+  overflow: hidden;
+  color: #9f9278;
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .article-theme-content-parchment .article-detail-sidebar-card,
 .article-theme-content-statblock .article-detail-sidebar-card {
   border-color: rgba(74, 48, 22, 0.28);
@@ -2090,6 +2314,22 @@ async function onImageSelected(event: Event) {
   color: #2f2114;
 }
 
+.article-theme-content-parchment .article-detail-portrait-card,
+.article-theme-content-statblock .article-detail-portrait-card {
+  border-color: rgba(74, 48, 22, 0.28);
+  background: rgba(255, 238, 186, 0.18);
+}
+
+.article-theme-content-parchment .article-detail-portrait-name,
+.article-theme-content-statblock .article-detail-portrait-name {
+  color: #2a1b0d;
+}
+
+.article-theme-content-parchment .article-detail-portrait-type,
+.article-theme-content-statblock .article-detail-portrait-type {
+  color: rgba(47, 33, 20, 0.62);
+}
+
 .article-theme-content-statblock .article-detail-sidebar-type {
   color: rgba(117, 28, 28, 0.72);
 }
@@ -2097,6 +2337,9 @@ async function onImageSelected(event: Event) {
 @media (max-width: 1100px) {
   .article-theme-layout-with-sidebar {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "sidebar"
+      "main";
   }
 
   .article-detail-sidebar {

@@ -4,38 +4,76 @@ function cleanText(value: any) {
   return String(value ?? '').replace(/\s+/g, ' ').trim()
 }
 
-function normalizeTimeline(row: any) {
+function worldSlugPrefix(worldId: number) {
+  return `w${worldId}-`
+}
+
+function normalizeTimeline(row: any, worldId: number) {
   return {
     id: String(row?.id || ''),
-    worldId: row?.world_id ?? null,
-    title: cleanText(row?.title || 'Untitled Timeline'),
+    worldId,
+    title: cleanText(row?.name || 'Untitled Timeline'),
     slug: cleanText(row?.slug || ''),
     description: String(row?.description || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),
-    sortOrder: Number(row?.sort_order || 0),
-    createdAt: row?.created_at || null,
-    updatedAt: row?.updated_at || null
+    sortOrder: Number(row?.sort || 0),
+    startYear: row?.start_year ?? null,
+    endYear: row?.end_year ?? null
   }
+}
+
+function normalizeDate(value: any) {
+  return cleanText(value)
 }
 
 function normalizeEvent(row: any, timeline: any) {
   const slug = cleanText(row?.slug || '')
+  const start = normalizeDate(row?.start_date)
+  const end = normalizeDate(row?.end_date)
+
   return {
     id: String(row?.id || ''),
-    worldId: row?.world_id ?? null,
-    timelineId: String(row?.timeline_id || ''),
+    worldId: timeline.worldId,
+    timelineId: String(timeline.id || ''),
     title: cleanText(row?.title || 'Untitled Event'),
     slug,
-    eventKind: cleanText(row?.event_kind || 'event'),
-    dateLabel: cleanText(row?.date_label || ''),
-    endDateLabel: cleanText(row?.end_date_label || ''),
-    sortOrder: Number(row?.sort_order || 0),
-    summaryMarkdown: String(row?.summary_markdown || '').trim(),
+    eventKind: 'event',
+    dateLabel: start,
+    endDateLabel: end,
+    sortOrder: 0,
+    summaryMarkdown: String(row?.body || row?.summary || '').trim(),
+    summary: String(row?.summary || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),
+    status: cleanText(row?.status || 'draft'),
     url: `/worlds/${timeline.worldId}/timelines/${timeline.slug || timeline.id}#${slug || row?.id}`,
-    createdAt: row?.created_at || null,
-    updatedAt: row?.updated_at || null
+    createdAt: row?.date_created || null,
+    updatedAt: row?.date_updated || null
   }
+}
+
+async function findTimeline(worldId: number, timelineKey: string) {
+  const prefix = worldSlugPrefix(worldId)
+
+  const res = await directusServiceRequest('/items/eras', {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { slug: { _starts_with: prefix } },
+          {
+            _or: [
+              { id: { _eq: timelineKey } },
+              { slug: { _eq: timelineKey } }
+            ]
+          }
+        ]
+      },
+      limit: 1,
+      fields: 'id,name,slug,description,start_year,end_year,sort,visibility'
+    }
+  })
+
+  return Array.isArray(res?.data) ? res.data[0] : null
 }
 
 export default defineEventHandler(async (event) => {
@@ -46,39 +84,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing world or timeline id' })
   }
 
-  const timelineRes = await directusServiceRequest('/items/world_timelines', {
-    method: 'GET',
-    query: {
-      filter: {
-        world_id: { _eq: worldId },
-        _or: [
-          { id: { _eq: timelineKey } },
-          { slug: { _eq: timelineKey } }
-        ]
-      },
-      limit: 1,
-      fields: '*'
-    }
-  })
-
-  const timelineRow = Array.isArray(timelineRes?.data) ? timelineRes.data[0] : null
+  const timelineRow = await findTimeline(worldId, timelineKey)
 
   if (!timelineRow) {
     throw createError({ statusCode: 404, statusMessage: 'Timeline not found' })
   }
 
-  const timeline = normalizeTimeline(timelineRow)
+  const timeline = normalizeTimeline(timelineRow, worldId)
 
-  const eventsRes = await directusServiceRequest('/items/world_timeline_events', {
+  const eventsRes = await directusServiceRequest('/items/events', {
     method: 'GET',
     query: {
       filter: {
-        world_id: { _eq: worldId },
-        timeline_id: { _eq: timeline.id }
+        era: { _eq: timeline.id }
       },
-      sort: 'sort_order,date_label,title',
+      sort: 'start_date,title',
       limit: -1,
-      fields: '*'
+      fields: 'id,title,slug,era,start_date,end_date,summary,body,visibility,status'
     }
   })
 

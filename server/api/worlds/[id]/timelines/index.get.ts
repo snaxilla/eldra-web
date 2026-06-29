@@ -4,17 +4,23 @@ function cleanText(value: any) {
   return String(value ?? '').replace(/\s+/g, ' ').trim()
 }
 
-function normalizeTimeline(row: any) {
+function worldSlugPrefix(worldId: number) {
+  return `w${worldId}-`
+}
+
+function normalizeTimeline(row: any, worldId: number) {
   return {
     id: String(row?.id || ''),
-    worldId: row?.world_id ?? null,
-    title: cleanText(row?.title || 'Untitled Timeline'),
+    worldId,
+    title: cleanText(row?.name || 'Untitled Timeline'),
     slug: cleanText(row?.slug || ''),
     description: String(row?.description || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),
-    sortOrder: Number(row?.sort_order || 0),
-    createdAt: row?.created_at || null,
-    updatedAt: row?.updated_at || null
+    sortOrder: Number(row?.sort || 0),
+    startYear: row?.start_year ?? null,
+    endYear: row?.end_year ?? null,
+    createdAt: row?.date_created || null,
+    updatedAt: row?.date_updated || null
   }
 }
 
@@ -25,17 +31,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing world id' })
   }
 
-  const res = await directusServiceRequest('/items/world_timelines', {
+  const prefix = worldSlugPrefix(worldId)
+
+  const res = await directusServiceRequest('/items/eras', {
     method: 'GET',
     query: {
-      filter: { world_id: { _eq: worldId } },
-      sort: 'sort_order,title',
+      filter: {
+        slug: { _starts_with: prefix }
+      },
+      sort: 'sort,name',
       limit: -1,
-      fields: '*'
+      fields: 'id,name,slug,description,start_year,end_year,sort,visibility'
     }
   })
 
-  const timelines = Array.isArray(res?.data) ? res.data.map(normalizeTimeline) : []
+  const timelines = Array.isArray(res?.data)
+    ? res.data.map((row: any) => normalizeTimeline(row, worldId))
+    : []
 
   return {
     worldId,

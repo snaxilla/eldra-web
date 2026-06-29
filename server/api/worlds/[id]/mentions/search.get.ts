@@ -16,12 +16,18 @@ function titleCase(value: any) {
     .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+function worldSlugPrefix(worldId: number) {
+  return `w${worldId}-`
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = Number(getRouterParam(event, 'id') || 0)
 
   if (!worldId) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world id' })
   }
+
+  const prefix = worldSlugPrefix(worldId)
 
   const entitiesRes = await directusServiceRequest('/items/entities', {
     method: 'GET',
@@ -33,34 +39,38 @@ export default defineEventHandler(async (event) => {
     }
   })
 
-  const timelinesRes = await directusServiceRequest('/items/world_timelines', {
+  const erasRes = await directusServiceRequest('/items/eras', {
     method: 'GET',
     query: {
-      filter: { world_id: { _eq: worldId } },
-      sort: 'sort_order,title',
+      filter: {
+        slug: { _starts_with: prefix }
+      },
+      sort: 'sort,name',
       limit: -1,
-      fields: 'id,title,slug,description,visibility,sort_order'
+      fields: 'id,name,slug,description,start_year,end_year,sort,visibility'
     }
   }).catch(() => ({ data: [] }))
 
-  const timelines = Array.isArray(timelinesRes?.data) ? timelinesRes.data : []
-  const timelineTitleById = new Map<string, string>()
-  const timelineSlugById = new Map<string, string>()
+  const eras = Array.isArray(erasRes?.data) ? erasRes.data : []
+  const eraById = new Map<string, any>()
 
-  for (const timeline of timelines) {
-    timelineTitleById.set(String(timeline.id), cleanText(timeline.title || 'Timeline'))
-    timelineSlugById.set(String(timeline.id), cleanText(timeline.slug || timeline.id))
+  for (const era of eras) {
+    eraById.set(String(era.id), era)
   }
 
-  const eventsRes = await directusServiceRequest('/items/world_timeline_events', {
-    method: 'GET',
-    query: {
-      filter: { world_id: { _eq: worldId } },
-      sort: 'sort_order,date_label,title',
-      limit: -1,
-      fields: 'id,timeline_id,title,slug,event_kind,date_label,end_date_label,summary_markdown,visibility,sort_order'
-    }
-  }).catch(() => ({ data: [] }))
+  const eventsRes = eras.length
+    ? await directusServiceRequest('/items/events', {
+      method: 'GET',
+      query: {
+        filter: {
+          era: { _in: eras.map((era: any) => era.id) }
+        },
+        sort: 'start_date,title',
+        limit: -1,
+        fields: 'id,title,slug,era,start_date,end_date,summary,body,visibility,status'
+      }
+    }).catch(() => ({ data: [] }))
+    : { data: [] }
 
   const entities = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
   const events = Array.isArray(eventsRes?.data) ? eventsRes.data : []
@@ -78,38 +88,38 @@ export default defineEventHandler(async (event) => {
     }))
     .filter((entity: any) => entity.targetId && entity.title)
 
-  const timelineSuggestions = timelines
-    .map((timeline: any) => ({
-      id: `timeline:${timeline.id}`,
-      targetId: String(timeline.id || ''),
-      title: cleanText(timeline.title || ''),
-      slug: cleanText(timeline.slug || ''),
+  const timelineSuggestions = eras
+    .map((era: any) => ({
+      id: `timeline:${era.id}`,
+      targetId: String(era.id || ''),
+      title: cleanText(era.name || ''),
+      slug: cleanText(era.slug || ''),
       entity_type: 'timeline',
       entityType: 'Timeline',
-      summary: shortText(timeline.description || ''),
+      summary: shortText(era.description || ''),
       mentionType: 'timeline'
     }))
     .filter((timeline: any) => timeline.targetId && timeline.title)
 
   const eventSuggestions = events
     .map((item: any) => {
-      const timelineTitle = timelineTitleById.get(String(item.timeline_id)) || 'Timeline'
-      const kind = titleCase(item.event_kind || 'event')
+      const era = eraById.get(String(item.era)) || null
+      const timelineTitle = cleanText(era?.name || 'Timeline')
       const date = cleanText(
-        item.date_label && item.end_date_label
-          ? `${item.date_label} - ${item.end_date_label}`
-          : item.date_label || item.end_date_label || ''
+        item.start_date && item.end_date
+          ? `${item.start_date} - ${item.end_date}`
+          : item.start_date || item.end_date || ''
       )
 
       return {
         id: `timeline_event:${item.id}`,
         targetId: String(item.id || ''),
-        timelineId: String(item.timeline_id || ''),
+        timelineId: String(item.era || ''),
         title: cleanText(item.title || ''),
         slug: cleanText(item.slug || ''),
         entity_type: 'timeline_event',
-        entityType: kind || 'Timeline Event',
-        summary: shortText([timelineTitle, date, item.summary_markdown].filter(Boolean).join(' / ')),
+        entityType: 'Timeline Event',
+        summary: shortText([timelineTitle, date, item.summary || item.body].filter(Boolean).join(' / ')),
         mentionType: 'timeline_event'
       }
     })

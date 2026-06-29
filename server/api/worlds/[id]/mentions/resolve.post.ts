@@ -30,18 +30,22 @@ function shortText(value: any, limit = 420) {
   return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
 }
 
+function titleCase(value: any) {
+  return cleanText(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function worldSlugPrefix(worldId: number) {
+  return `w${worldId}-`
+}
+
 function blockKey(block: any) {
   return String(block?.block_key || block?.blockKey || '')
 }
 
 function blockByKey(blocks: any[], key: string) {
   return blocks.find((block: any) => blockKey(block) === key) || null
-}
-
-function titleCase(value: any) {
-  return cleanText(value)
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 function extractImageUrl(entity: any, blocks: any[] = []) {
@@ -187,28 +191,38 @@ export default defineEventHandler(async (event) => {
     }
   })
 
-  const timelinesRes = await directusServiceRequest('/items/world_timelines', {
-    method: 'GET',
-    query: {
-      filter: { world_id: { _eq: worldId } },
-      sort: 'sort_order,title',
-      limit: -1,
-      fields: '*'
-    }
-  }).catch(() => ({ data: [] }))
+  const prefix = worldSlugPrefix(worldId)
 
-  const eventsRes = await directusServiceRequest('/items/world_timeline_events', {
+  const erasRes = await directusServiceRequest('/items/eras', {
     method: 'GET',
     query: {
-      filter: { world_id: { _eq: worldId } },
-      sort: 'sort_order,date_label,title',
+      filter: {
+        slug: { _starts_with: prefix }
+      },
+      sort: 'sort,name',
       limit: -1,
-      fields: '*'
+      fields: 'id,name,slug,description,start_year,end_year,sort,visibility'
     }
   }).catch(() => ({ data: [] }))
 
   const entities = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
-  const timelines = Array.isArray(timelinesRes?.data) ? timelinesRes.data : []
+  const eras = Array.isArray(erasRes?.data) ? erasRes.data : []
+  const eraIds = eras.map((era: any) => era.id).filter(Boolean)
+
+  const eventsRes = eraIds.length
+    ? await directusServiceRequest('/items/events', {
+        method: 'GET',
+        query: {
+          filter: {
+            era: { _in: eraIds }
+          },
+          sort: 'start_date,title',
+          limit: -1,
+          fields: 'id,title,slug,era,start_date,end_date,summary,body,visibility,status'
+        }
+      }).catch(() => ({ data: [] }))
+    : { data: [] }
+
   const timelineEvents = Array.isArray(eventsRes?.data) ? eventsRes.data : []
   const entityIds = entities.map((entity: any) => entity.id).filter(Boolean)
 
@@ -241,9 +255,9 @@ export default defineEventHandler(async (event) => {
     blocksByEntityId.get(entityId)!.push(block)
   }
 
-  const timelineById = new Map<string, any>()
-  for (const timeline of timelines) {
-    timelineById.set(String(timeline.id), timeline)
+  const eraById = new Map<string, any>()
+  for (const era of eras) {
+    eraById.set(String(era.id), era)
   }
 
   function findEntityForMention(mention: string) {
@@ -280,10 +294,10 @@ export default defineEventHandler(async (event) => {
     if (!wanted) return null
 
     return (
-      timelines.find((item: any) => normalizedKey(item?.title) === wanted) ||
-      timelines.find((item: any) => normalizedKey(item?.slug) === wanted) ||
-      timelines.find((item: any) => normalizedKey(String(item?.slug || '').replace(/-/g, ' ')) === wanted) ||
-      timelines.find((item: any) => normalizedKey(item?.title).includes(wanted)) ||
+      eras.find((item: any) => normalizedKey(item?.name) === wanted) ||
+      eras.find((item: any) => normalizedKey(item?.slug) === wanted) ||
+      eras.find((item: any) => normalizedKey(String(item?.slug || '').replace(prefix, '').replace(/-/g, ' ')) === wanted) ||
+      eras.find((item: any) => normalizedKey(item?.name).includes(wanted)) ||
       null
     )
   }
@@ -296,17 +310,16 @@ export default defineEventHandler(async (event) => {
     const timelineEvent = findTimelineEventForMention(mention)
 
     if (timelineEvent) {
-      const timeline = timelineById.get(String(timelineEvent.timeline_id)) || null
-      const timelineTitle = cleanText(timeline?.title || 'Timeline')
-      const timelineSlug = cleanText(timeline?.slug || timeline?.id || '')
+      const era = eraById.get(String(timelineEvent.era)) || null
+      const timelineTitle = cleanText(era?.name || 'Timeline')
+      const timelineSlug = cleanText(era?.slug || era?.id || '')
       const eventSlug = cleanText(timelineEvent.slug || timelineEvent.id)
       const dateRange = cleanText(
-        timelineEvent.date_label && timelineEvent.end_date_label
-          ? `${timelineEvent.date_label} - ${timelineEvent.end_date_label}`
-          : timelineEvent.date_label || timelineEvent.end_date_label || ''
+        timelineEvent.start_date && timelineEvent.end_date
+          ? `${timelineEvent.start_date} - ${timelineEvent.end_date}`
+          : timelineEvent.start_date || timelineEvent.end_date || ''
       )
-      const displayType = titleCase(timelineEvent.event_kind || 'Timeline Event') || 'Timeline Event'
-      const url = `/worlds/${worldId}/timelines/${timelineSlug || timelineEvent.timeline_id}#${eventSlug}`
+      const url = `/worlds/${worldId}/timelines/${timelineSlug || timelineEvent.era}#${eventSlug}`
 
       const target = {
         resolved: true,
@@ -316,10 +329,10 @@ export default defineEventHandler(async (event) => {
         slug: eventSlug,
         entityType: 'timeline_event',
         type: 'timeline_event',
-        displayType,
-        summary: shortText(timelineEvent.summary_markdown || ''),
+        displayType: 'Timeline Event',
+        summary: shortText(timelineEvent.body || timelineEvent.summary || ''),
         url,
-        tags: [displayType, timelineTitle, dateRange].filter(Boolean),
+        tags: ['Timeline Event', timelineTitle, dateRange].filter(Boolean),
         detailLines: [
           timelineTitle ? `Timeline: ${timelineTitle}` : '',
           dateRange ? `Date: ${dateRange}` : '',
@@ -335,23 +348,30 @@ export default defineEventHandler(async (event) => {
       continue
     }
 
-    const timeline = findTimelineForMention(mention)
+    const era = findTimelineForMention(mention)
 
-    if (timeline) {
+    if (era) {
+      const yearRange = cleanText(
+        era.start_year != null && era.end_year != null
+          ? `${era.start_year} - ${era.end_year}`
+          : era.start_year ?? era.end_year ?? ''
+      )
+
       const target = {
         resolved: true,
         label: mention,
-        id: timeline.id,
-        title: cleanText(timeline.title || mention),
-        slug: timeline.slug,
+        id: era.id,
+        title: cleanText(era.name || mention),
+        slug: era.slug,
         entityType: 'timeline',
         type: 'timeline',
         displayType: 'Timeline',
-        summary: shortText(timeline.description || ''),
-        url: `/worlds/${worldId}/timelines/${timeline.slug || timeline.id}`,
-        tags: ['Timeline'],
+        summary: shortText(era.description || ''),
+        url: `/worlds/${worldId}/timelines/${era.slug || era.id}`,
+        tags: ['Timeline', yearRange].filter(Boolean),
         detailLines: [
-          timeline.visibility ? `Visibility: ${titleCase(timeline.visibility)}` : ''
+          yearRange ? `Years: ${yearRange}` : '',
+          era.visibility ? `Visibility: ${titleCase(era.visibility)}` : ''
         ].filter(Boolean)
       }
 

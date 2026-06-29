@@ -12,11 +12,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing world or event id' })
   }
 
-  const res = await directusServiceRequest('/items/world_timeline_events', {
+  const res = await directusServiceRequest('/items/events', {
     method: 'GET',
     query: {
       filter: {
-        world_id: { _eq: worldId },
         id: { _eq: eventId }
       },
       limit: 1,
@@ -30,7 +29,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Timeline event not found' })
   }
 
-  await directusServiceRequest(`/items/world_timeline_events/${existing.id}`, {
+  await directusServiceRequest(`/items/events/${existing.id}`, {
     method: 'DELETE'
   })
 

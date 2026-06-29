@@ -332,7 +332,7 @@ onMounted(() => {
               {{ editingEventId ? 'Edit Timeline Entry' : 'Add Timeline Entry' }}
             </div>
             <p class="mt-1 text-sm text-[#d8ceb8]">
-              Use flexible lore dates. Mentions work in the body.
+              Use optional YYYY-MM-DD dates. Mentions work in the body.
             </p>
           </div>
 
@@ -367,13 +367,13 @@ onMounted(() => {
           <input
             v-model="eventForm.dateLabel"
             class="eldra-input rounded-none px-4 py-3 text-sm"
-            placeholder="Start/date label"
+            placeholder="Start date, YYYY-MM-DD"
           >
 
           <input
             v-model="eventForm.endDateLabel"
             class="eldra-input rounded-none px-4 py-3 text-sm"
-            placeholder="End date label"
+            placeholder="End date, YYYY-MM-DD"
           >
 
           <input

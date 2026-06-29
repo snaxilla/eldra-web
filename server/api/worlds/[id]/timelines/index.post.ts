@@ -10,20 +10,24 @@ function slugify(value: any) {
     .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 80)
+    .slice(0, 90)
 }
 
-function normalizeTimeline(row: any) {
+function worldSlugPrefix(worldId: number) {
+  return `w${worldId}-`
+}
+
+function normalizeTimeline(row: any, worldId: number) {
   return {
     id: String(row?.id || ''),
-    worldId: row?.world_id ?? null,
-    title: cleanText(row?.title || 'Untitled Timeline'),
+    worldId,
+    title: cleanText(row?.name || 'Untitled Timeline'),
     slug: cleanText(row?.slug || ''),
     description: String(row?.description || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),
-    sortOrder: Number(row?.sort_order || 0),
-    createdAt: row?.created_at || null,
-    updatedAt: row?.updated_at || null
+    sortOrder: Number(row?.sort || 0),
+    startYear: row?.start_year ?? null,
+    endYear: row?.end_year ?? null
   }
 }
 
@@ -41,21 +45,26 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Timeline title is required' })
   }
 
+  const prefix = worldSlugPrefix(worldId)
+  const rawSlug = slugify(body?.slug || title)
+  const slug = `${prefix}${rawSlug || 'timeline'}`
+
   const payload = {
-    world_id: worldId,
-    title,
-    slug: slugify(body?.slug || title),
+    name: title,
+    slug,
     description: String(body?.description || '').trim(),
     visibility: cleanText(body?.visibility || 'public') || 'public',
-    sort_order: Number(body?.sortOrder ?? body?.sort_order ?? 0) || 0
+    sort: Number(body?.sortOrder ?? body?.sort_order ?? 0) || 0,
+    start_year: Number.isFinite(Number(body?.startYear)) ? Number(body.startYear) : null,
+    end_year: Number.isFinite(Number(body?.endYear)) ? Number(body.endYear) : null
   }
 
-  const res = await directusServiceRequest('/items/world_timelines', {
+  const res = await directusServiceRequest('/items/eras', {
     method: 'POST',
     body: payload
   })
 
   return {
-    timeline: normalizeTimeline(res?.data)
+    timeline: normalizeTimeline(res?.data, worldId)
   }
 })

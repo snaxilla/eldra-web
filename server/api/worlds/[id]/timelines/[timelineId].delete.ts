@@ -4,19 +4,29 @@ function cleanText(value: any) {
   return String(value ?? '').replace(/\s+/g, ' ').trim()
 }
 
+function worldSlugPrefix(worldId: number) {
+  return `w${worldId}-`
+}
+
 async function findTimeline(worldId: number, timelineKey: string) {
-  const res = await directusServiceRequest('/items/world_timelines', {
+  const prefix = worldSlugPrefix(worldId)
+
+  const res = await directusServiceRequest('/items/eras', {
     method: 'GET',
     query: {
       filter: {
-        world_id: { _eq: worldId },
-        _or: [
-          { id: { _eq: timelineKey } },
-          { slug: { _eq: timelineKey } }
+        _and: [
+          { slug: { _starts_with: prefix } },
+          {
+            _or: [
+              { id: { _eq: timelineKey } },
+              { slug: { _eq: timelineKey } }
+            ]
+          }
         ]
       },
       limit: 1,
-      fields: 'id,world_id'
+      fields: 'id'
     }
   })
 
@@ -37,12 +47,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Timeline not found' })
   }
 
-  const eventsRes = await directusServiceRequest('/items/world_timeline_events', {
+  const eventsRes = await directusServiceRequest('/items/events', {
     method: 'GET',
     query: {
       filter: {
-        world_id: { _eq: worldId },
-        timeline_id: { _eq: timeline.id }
+        era: { _eq: timeline.id }
       },
       limit: -1,
       fields: 'id'
@@ -53,13 +62,13 @@ export default defineEventHandler(async (event) => {
 
   for (const item of events) {
     if (item?.id) {
-      await directusServiceRequest(`/items/world_timeline_events/${item.id}`, {
+      await directusServiceRequest(`/items/events/${item.id}`, {
         method: 'DELETE'
       })
     }
   }
 
-  await directusServiceRequest(`/items/world_timelines/${timeline.id}`, {
+  await directusServiceRequest(`/items/eras/${timeline.id}`, {
     method: 'DELETE'
   })
 

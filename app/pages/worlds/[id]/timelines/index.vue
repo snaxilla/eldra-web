@@ -243,7 +243,7 @@ async function deleteTimeline(timeline: any) {
           <article
             v-for="timeline in timelines"
             :key="timeline.id"
-            class="eldra-ornate-card eldra-frame-corners eldra-corner-runes rounded-none border p-5 backdrop-blur-xl"
+            class="eldra-ornate-panel eldra-frame-corners rounded-none border p-5 backdrop-blur-xl"
           >
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0">
@@ -255,7 +255,7 @@ async function deleteTimeline(timeline: any) {
                 </h2>
               </div>
 
-              <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+              <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.55)] px-3 py-1 text-xs text-[#d8ceb8]">
                 Sort {{ timeline.sortOrder || 0 }}
               </div>
             </div>

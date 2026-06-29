@@ -20,26 +20,41 @@ function worldSlugPrefix(worldId: number) {
 async function findTimeline(worldId: number, timelineKey: string) {
   const prefix = worldSlugPrefix(worldId)
 
-  const res = await directusServiceRequest('/items/eras', {
+  const byIdRes = await directusServiceRequest('/items/eras', {
     method: 'GET',
     query: {
       filter: {
-        _and: [
-          { slug: { _starts_with: prefix } },
-          {
-            _or: [
-              { id: { _eq: timelineKey } },
-              { slug: { _eq: timelineKey } }
-            ]
-          }
-        ]
+        id: { _eq: timelineKey }
       },
       limit: 1,
       fields: 'id,slug'
     }
-  })
+  }).catch(() => ({ data: [] }))
 
-  return Array.isArray(res?.data) ? res.data[0] : null
+  const byId = Array.isArray(byIdRes?.data) ? byIdRes.data[0] : null
+
+  if (byId && String(byId.slug || '').startsWith(prefix)) {
+    return byId
+  }
+
+  const bySlugRes = await directusServiceRequest('/items/eras', {
+    method: 'GET',
+    query: {
+      filter: {
+        slug: { _eq: timelineKey }
+      },
+      limit: 1,
+      fields: 'id,slug'
+    }
+  }).catch(() => ({ data: [] }))
+
+  const bySlug = Array.isArray(bySlugRes?.data) ? bySlugRes.data[0] : null
+
+  if (bySlug && String(bySlug.slug || '').startsWith(prefix)) {
+    return bySlug
+  }
+
+  return null
 }
 
 export default defineEventHandler(async (event) => {

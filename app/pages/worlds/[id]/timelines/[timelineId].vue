@@ -322,6 +322,15 @@ onMounted(() => {
         </template>
       </section>
 
+      <div v-if="timeline && mode === 'build'" class="mt-6">
+        <WorldPagePresentationPanel
+          :world-id="worldId"
+          page-key="timelines"
+          title="Timelines Page"
+          description="Controls the timelines page presentation mode and background."
+        />
+      </div>
+
       <section
         v-if="timeline && mode === 'build'"
         class="eldra-ornate-panel eldra-frame-corners mt-6 rounded-none border p-5 backdrop-blur-xl"

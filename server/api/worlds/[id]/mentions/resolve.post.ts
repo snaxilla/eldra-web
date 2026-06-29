@@ -38,6 +38,12 @@ function blockByKey(blocks: any[], key: string) {
   return blocks.find((block: any) => blockKey(block) === key) || null
 }
 
+function titleCase(value: any) {
+  return cleanText(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 function extractImageUrl(entity: any, blocks: any[] = []) {
   if (entity?.image) {
     if (typeof entity.image === 'string') return `/api/assets/${entity.image}`
@@ -99,7 +105,6 @@ function tagsFromEntity(entity: any, blocks: any[]) {
   const type = displayTypeFromBlocks(entity, blocks)
 
   if (type) tags.push(type)
-
   if (entity?.id) tags.push('Linked Article')
 
   return Array.from(new Set(tags.filter(Boolean)))
@@ -158,17 +163,13 @@ export default defineEventHandler(async (event) => {
   ))
 
   if (!mentions.length) {
-    return {
-      mentions: {}
-    }
+    return { mentions: {} }
   }
 
   const entitiesRes = await directusServiceRequest('/items/entities', {
     method: 'GET',
     query: {
-      filter: {
-        world_id: { _eq: worldId }
-      },
+      filter: { world_id: { _eq: worldId } },
       sort: 'title',
       limit: -1,
       fields: [
@@ -186,7 +187,29 @@ export default defineEventHandler(async (event) => {
     }
   })
 
+  const timelinesRes = await directusServiceRequest('/items/world_timelines', {
+    method: 'GET',
+    query: {
+      filter: { world_id: { _eq: worldId } },
+      sort: 'sort_order,title',
+      limit: -1,
+      fields: '*'
+    }
+  }).catch(() => ({ data: [] }))
+
+  const eventsRes = await directusServiceRequest('/items/world_timeline_events', {
+    method: 'GET',
+    query: {
+      filter: { world_id: { _eq: worldId } },
+      sort: 'sort_order,date_label,title',
+      limit: -1,
+      fields: '*'
+    }
+  }).catch(() => ({ data: [] }))
+
   const entities = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
+  const timelines = Array.isArray(timelinesRes?.data) ? timelinesRes.data : []
+  const timelineEvents = Array.isArray(eventsRes?.data) ? eventsRes.data : []
   const entityIds = entities.map((entity: any) => entity.id).filter(Boolean)
 
   let blocks: any[] = []
@@ -195,9 +218,7 @@ export default defineEventHandler(async (event) => {
     const blocksRes = await directusServiceRequest('/items/block_instances', {
       method: 'GET',
       query: {
-        filter: {
-          entity_id: { _in: entityIds }
-        },
+        filter: { entity_id: { _in: entityIds } },
         sort: 'entity_id,sort',
         limit: -1,
         fields: '*'
@@ -220,6 +241,11 @@ export default defineEventHandler(async (event) => {
     blocksByEntityId.get(entityId)!.push(block)
   }
 
+  const timelineById = new Map<string, any>()
+  for (const timeline of timelines) {
+    timelineById.set(String(timeline.id), timeline)
+  }
+
   function findEntityForMention(mention: string) {
     const wanted = normalizedKey(mention)
 
@@ -234,11 +260,110 @@ export default defineEventHandler(async (event) => {
     )
   }
 
+  function findTimelineEventForMention(mention: string) {
+    const wanted = normalizedKey(mention)
+
+    if (!wanted) return null
+
+    return (
+      timelineEvents.find((item: any) => normalizedKey(item?.title) === wanted) ||
+      timelineEvents.find((item: any) => normalizedKey(item?.slug) === wanted) ||
+      timelineEvents.find((item: any) => normalizedKey(String(item?.slug || '').replace(/-/g, ' ')) === wanted) ||
+      timelineEvents.find((item: any) => normalizedKey(item?.title).includes(wanted)) ||
+      null
+    )
+  }
+
+  function findTimelineForMention(mention: string) {
+    const wanted = normalizedKey(mention)
+
+    if (!wanted) return null
+
+    return (
+      timelines.find((item: any) => normalizedKey(item?.title) === wanted) ||
+      timelines.find((item: any) => normalizedKey(item?.slug) === wanted) ||
+      timelines.find((item: any) => normalizedKey(String(item?.slug || '').replace(/-/g, ' ')) === wanted) ||
+      timelines.find((item: any) => normalizedKey(item?.title).includes(wanted)) ||
+      null
+    )
+  }
+
   const out: Record<string, any> = {}
 
   for (const mention of mentions) {
-    const entity = findEntityForMention(mention)
     const key = normalizedKey(mention)
+
+    const timelineEvent = findTimelineEventForMention(mention)
+
+    if (timelineEvent) {
+      const timeline = timelineById.get(String(timelineEvent.timeline_id)) || null
+      const timelineTitle = cleanText(timeline?.title || 'Timeline')
+      const timelineSlug = cleanText(timeline?.slug || timeline?.id || '')
+      const eventSlug = cleanText(timelineEvent.slug || timelineEvent.id)
+      const dateRange = cleanText(
+        timelineEvent.date_label && timelineEvent.end_date_label
+          ? `${timelineEvent.date_label} - ${timelineEvent.end_date_label}`
+          : timelineEvent.date_label || timelineEvent.end_date_label || ''
+      )
+      const displayType = titleCase(timelineEvent.event_kind || 'Timeline Event') || 'Timeline Event'
+      const url = `/worlds/${worldId}/timelines/${timelineSlug || timelineEvent.timeline_id}#${eventSlug}`
+
+      const target = {
+        resolved: true,
+        label: mention,
+        id: timelineEvent.id,
+        title: cleanText(timelineEvent.title || mention),
+        slug: eventSlug,
+        entityType: 'timeline_event',
+        type: 'timeline_event',
+        displayType,
+        summary: shortText(timelineEvent.summary_markdown || ''),
+        url,
+        tags: [displayType, timelineTitle, dateRange].filter(Boolean),
+        detailLines: [
+          timelineTitle ? `Timeline: ${timelineTitle}` : '',
+          dateRange ? `Date: ${dateRange}` : '',
+          timelineEvent.visibility ? `Visibility: ${titleCase(timelineEvent.visibility)}` : ''
+        ].filter(Boolean)
+      }
+
+      out[key] = {
+        ...target,
+        markdown: mentionMarkdown(target)
+      }
+
+      continue
+    }
+
+    const timeline = findTimelineForMention(mention)
+
+    if (timeline) {
+      const target = {
+        resolved: true,
+        label: mention,
+        id: timeline.id,
+        title: cleanText(timeline.title || mention),
+        slug: timeline.slug,
+        entityType: 'timeline',
+        type: 'timeline',
+        displayType: 'Timeline',
+        summary: shortText(timeline.description || ''),
+        url: `/worlds/${worldId}/timelines/${timeline.slug || timeline.id}`,
+        tags: ['Timeline'],
+        detailLines: [
+          timeline.visibility ? `Visibility: ${titleCase(timeline.visibility)}` : ''
+        ].filter(Boolean)
+      }
+
+      out[key] = {
+        ...target,
+        markdown: mentionMarkdown(target)
+      }
+
+      continue
+    }
+
+    const entity = findEntityForMention(mention)
 
     if (!entity) {
       const unresolved = {
@@ -259,7 +384,6 @@ export default defineEventHandler(async (event) => {
     const entityType = String(entity.entity_type || 'entity')
     const url = `/worlds/${worldId}/entities/${entity.id}`
     const imageUrl = extractImageUrl(entity, entityBlocks)
-
     const displayType = displayTypeFromBlocks(entity, entityBlocks)
 
     const target = {

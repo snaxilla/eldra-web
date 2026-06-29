@@ -31,6 +31,7 @@ const navItems = computed(() => [
   { label: 'Classes', icon: 'i-lucide-shield', to: `/worlds/${worldId.value}/classes` },
     { label: 'Feats', icon: 'i-lucide-badge-plus', to: `/worlds/${worldId.value}/feats` },
   { label: 'Maps', icon: 'i-lucide-map', to: `/worlds/${worldId.value}/maps` },
+  { label: 'Timelines', icon: 'i-lucide-git-commit-horizontal', to: `/worlds/${worldId.value}/timelines` },
   { label: 'Media Gallery', icon: 'i-lucide-images', to: `/worlds/${worldId.value}/media` },
   { label: 'Other', icon: 'i-lucide-folder', to: `/worlds/${worldId.value}/other` },
   { label: 'Importer', icon: 'i-lucide-download', to: `/worlds/${worldId.value}/importer` },

@@ -30,6 +30,10 @@ function shortText(value: any, limit = 420) {
   return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
 }
 
+function cleanMetaString(value: any) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim()
+}
+
 function titleCase(value: any) {
   return cleanText(value)
     .replace(/[_-]+/g, ' ')
@@ -63,9 +67,9 @@ function parseEventMeta(body: any) {
       dateLabel: cleanText(parsed?.dateLabel || ''),
       endDateLabel: cleanText(parsed?.endDateLabel || ''),
       sortOrder: Number(parsed?.sortOrder || 0) || 0,
-      parentEventId: cleanText(parsed?.parentEventId || ''),
-      imageFileId: cleanText(parsed?.imageFileId || ''),
-      imageUrl: cleanText(parsed?.imageUrl || '')
+      parentEventId: cleanMetaString(parsed?.parentEventId || ''),
+      imageFileId: cleanMetaString(parsed?.imageFileId || ''),
+      imageUrl: cleanMetaString(parsed?.imageUrl || '')
     }
   } catch {
     return {

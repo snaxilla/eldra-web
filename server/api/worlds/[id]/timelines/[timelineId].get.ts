@@ -4,6 +4,10 @@ function cleanText(value: any) {
   return String(value ?? '').replace(/\s+/g, ' ').trim()
 }
 
+function cleanSlugPart(value: any) {
+  return String(value ?? '').trim()
+}
+
 function worldSlugPrefix(worldId: number) {
   return `w${worldId}-`
 }
@@ -13,7 +17,7 @@ function normalizeTimeline(row: any, worldId: number) {
     id: String(row?.id || ''),
     worldId,
     title: cleanText(row?.name || 'Untitled Timeline'),
-    slug: cleanText(row?.slug || ''),
+    slug: cleanSlugPart(row?.slug || ''),
     description: String(row?.description || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),
     sortOrder: Number(row?.sort || 0),
@@ -61,7 +65,7 @@ function stripEventMeta(body: any) {
 }
 
 function normalizeEvent(row: any, timeline: any) {
-  const slug = cleanText(row?.slug || '')
+  const slug = cleanSlugPart(row?.slug || '')
   const meta = parseEventMeta(row?.body)
   const body = stripEventMeta(row?.body)
   const fallbackStart = cleanText(row?.start_date || '')
@@ -84,7 +88,7 @@ function normalizeEvent(row: any, timeline: any) {
     summary: String(row?.summary || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),
     status: cleanText(row?.status || 'draft'),
-    url: `/worlds/${timeline.worldId}/timelines/${timeline.slug || timeline.id}#${slug || row?.id}`,
+    url: `/worlds/${timeline.worldId}/timelines/${cleanSlugPart(timeline.slug || timeline.id)}#${slug || row?.id}`,
     createdAt: row?.date_created || null,
     updatedAt: row?.date_updated || null
   }

@@ -34,6 +34,10 @@ function cleanMetaString(value: any) {
   return String(value ?? '').replace(/\s+/g, ' ').trim()
 }
 
+function cleanSlugPart(value: any) {
+  return String(value ?? '').trim()
+}
+
 function titleCase(value: any) {
   return cleanText(value)
     .replace(/[_-]+/g, ' ')
@@ -360,8 +364,8 @@ export default defineEventHandler(async (event) => {
     if (timelineEvent) {
       const era = eraById.get(String(timelineEvent.era)) || null
       const timelineTitle = cleanText(era?.name || 'Timeline')
-      const timelineSlug = cleanText(era?.slug || era?.id || '')
-      const eventSlug = cleanText(timelineEvent.slug || timelineEvent.id)
+      const timelineSlug = cleanSlugPart(era?.slug || era?.id || '')
+      const eventSlug = cleanSlugPart(timelineEvent.slug || timelineEvent.id)
       const meta = parseEventMeta(timelineEvent.body)
       const body = stripEventMeta(timelineEvent.body)
       const dateRange = cleanText(
@@ -415,12 +419,12 @@ export default defineEventHandler(async (event) => {
         label: mention,
         id: era.id,
         title: cleanText(era.name || mention),
-        slug: era.slug,
+        slug: cleanSlugPart(era.slug),
         entityType: 'timeline',
         type: 'timeline',
         displayType: 'Timeline',
         summary: shortText(era.description || ''),
-        url: `/worlds/${worldId}/timelines/${era.slug || era.id}`,
+        url: `/worlds/${worldId}/timelines/${cleanSlugPart(era.slug || era.id)}`,
         tags: ['Timeline', yearRange].filter(Boolean),
         detailLines: [
           yearRange ? `Years: ${yearRange}` : '',

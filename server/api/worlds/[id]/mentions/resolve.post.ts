@@ -49,7 +49,10 @@ function parseEventMeta(body: any) {
       eventKind: 'event',
       dateLabel: '',
       endDateLabel: '',
-      sortOrder: 0
+      sortOrder: 0,
+      parentEventId: '',
+      imageFileId: '',
+      imageUrl: ''
     }
   }
 
@@ -59,14 +62,20 @@ function parseEventMeta(body: any) {
       eventKind: cleanText(parsed?.eventKind || 'event') || 'event',
       dateLabel: cleanText(parsed?.dateLabel || ''),
       endDateLabel: cleanText(parsed?.endDateLabel || ''),
-      sortOrder: Number(parsed?.sortOrder || 0) || 0
+      sortOrder: Number(parsed?.sortOrder || 0) || 0,
+      parentEventId: cleanText(parsed?.parentEventId || ''),
+      imageFileId: cleanText(parsed?.imageFileId || ''),
+      imageUrl: cleanText(parsed?.imageUrl || '')
     }
   } catch {
     return {
       eventKind: 'event',
       dateLabel: '',
       endDateLabel: '',
-      sortOrder: 0
+      sortOrder: 0,
+      parentEventId: '',
+      imageFileId: '',
+      imageUrl: ''
     }
   }
 }

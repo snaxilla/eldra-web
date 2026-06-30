@@ -22,19 +22,6 @@ const emit = defineEmits<{
   openMention: [mention: any]
 }>()
 
-const drawerImageUrl = computed(() => {
-  const value: any = props.entity || {}
-
-  return String(
-    value.imageUrl ||
-    value.image_url ||
-    value.image ||
-    value.thumbnailUrl ||
-    value.thumbnail_url ||
-    ''
-  ).trim()
-})
-
 
 const nestedContextEntity = ref<any | null>(null)
 const contextHistory = ref<any[]>([])
@@ -315,21 +302,7 @@ function readMore() {
             </div>
           </div>
 
-                    <div
-            v-if="drawerImageUrl"
-            class="eldra-image-frame mb-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.28)] bg-black/25"
-          >
-            <img
-              :src="drawerImageUrl"
-              :alt="`${entity?.title || 'Timeline mention'} image`"
-              class="h-44 w-full object-cover"
-            >
-            <div class="border-t border-[rgba(201,164,90,0.18)] px-3 py-2 text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">
-              Timeline mention image
-            </div>
-          </div>
-
-<div class="eldra-codex-soft mt-5 rounded-none p-4">
+                    <div class="eldra-codex-soft mt-5 rounded-none p-4">
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
               Summary
             </div>

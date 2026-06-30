@@ -41,7 +41,8 @@ function parseEventMeta(body: any) {
       eventKind: cleanText(parsed?.eventKind || 'event') || 'event',
       dateLabel: cleanText(parsed?.dateLabel || ''),
       endDateLabel: cleanText(parsed?.endDateLabel || ''),
-      sortOrder: Number(parsed?.sortOrder || 0) || 0
+      sortOrder: Number(parsed?.sortOrder || 0) || 0,
+      parentEventId: cleanText(parsed?.parentEventId || '')
     }
   } catch {
     return {
@@ -74,6 +75,7 @@ function normalizeEvent(row: any, timeline: any) {
     dateLabel: meta.dateLabel || fallbackStart,
     endDateLabel: meta.endDateLabel || fallbackEnd,
     sortOrder: meta.sortOrder || 0,
+    parentEventId: meta.parentEventId || '',
     summaryMarkdown: body || String(row?.summary || '').trim(),
     summary: String(row?.summary || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),

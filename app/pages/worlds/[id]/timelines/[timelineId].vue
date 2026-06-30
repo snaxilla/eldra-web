@@ -36,6 +36,7 @@ const eventForm = reactive({
   dateLabel: '',
   endDateLabel: '',
   sortOrder: 0,
+  parentEventId: '',
   summaryMarkdown: '',
   visibility: 'public'
 })
@@ -51,6 +52,82 @@ const { data, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.v
 
 const timeline = computed(() => (data.value as any)?.timeline || null)
 const events = computed(() => Array.isArray((data.value as any)?.events) ? (data.value as any).events : [])
+
+function compareTimelineEvents(a: any, b: any) {
+  const sortDiff = Number(a?.sortOrder || 0) - Number(b?.sortOrder || 0)
+  if (sortDiff) return sortDiff
+
+  const dateDiff = String(a?.dateLabel || '').localeCompare(String(b?.dateLabel || ''))
+  if (dateDiff) return dateDiff
+
+  return String(a?.title || '').localeCompare(String(b?.title || ''))
+}
+
+const timelineRows = computed(() => {
+  const list = [...events.value].sort(compareTimelineEvents)
+  const byId = new Map<string, any>()
+  const childrenByParent = new Map<string, any[]>()
+  const roots: any[] = []
+
+  for (const item of list) {
+    byId.set(String(item.id), item)
+  }
+
+  for (const item of list) {
+    const parentId = String(item.parentEventId || '')
+
+    if (parentId && byId.has(parentId) && parentId !== String(item.id)) {
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, [])
+      childrenByParent.get(parentId)!.push(item)
+    } else {
+      roots.push(item)
+    }
+  }
+
+  for (const children of childrenByParent.values()) {
+    children.sort(compareTimelineEvents)
+  }
+
+  const rows: any[] = []
+  const seen = new Set<string>()
+
+  function walk(item: any, depth: number) {
+    const id = String(item.id || '')
+    if (!id || seen.has(id)) return
+
+    seen.add(id)
+    rows.push({
+      ...item,
+      depth
+    })
+
+    for (const child of childrenByParent.get(id) || []) {
+      walk(child, depth + 1)
+    }
+  }
+
+  for (const root of roots.sort(compareTimelineEvents)) {
+    walk(root, 0)
+  }
+
+  for (const item of list) {
+    const id = String(item.id || '')
+    if (id && !seen.has(id)) walk(item, 0)
+  }
+
+  return rows
+})
+
+const parentEventOptions = computed(() => {
+  const editingId = String(editingEventId.value || '')
+
+  return events.value
+    .filter((item: any) => String(item.id || '') !== editingId)
+    .map((item: any) => ({
+      id: String(item.id || ''),
+      label: `${'— '.repeat(Math.min(Number((timelineRows.value.find((row: any) => String(row.id) === String(item.id))?.depth || 0), 4)))}${item.title || 'Untitled Event'}`
+    }))
+})
 
 watch(
   () => timeline.value,
@@ -93,6 +170,7 @@ function resetEventForm() {
   eventForm.dateLabel = ''
   eventForm.endDateLabel = ''
   eventForm.sortOrder = events.value.length ? Math.max(...events.value.map((item: any) => Number(item.sortOrder || 0))) + 10 : 10
+  eventForm.parentEventId = ''
   eventForm.summaryMarkdown = ''
   eventForm.visibility = 'public'
 }
@@ -104,6 +182,7 @@ function editEvent(item: any) {
   eventForm.dateLabel = item.dateLabel || ''
   eventForm.endDateLabel = item.endDateLabel || ''
   eventForm.sortOrder = Number(item.sortOrder || 0)
+  eventForm.parentEventId = item.parentEventId || ''
   eventForm.summaryMarkdown = item.summaryMarkdown || ''
   eventForm.visibility = item.visibility || 'public'
 }
@@ -355,7 +434,7 @@ onMounted(() => {
           </button>
         </div>
 
-        <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_150px_170px_170px_110px_160px]">
+        <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_150px_170px_170px_130px_160px]">
           <input
             v-model="eventForm.title"
             class="eldra-input rounded-none px-4 py-3 text-sm"
@@ -389,7 +468,8 @@ onMounted(() => {
             v-model.number="eventForm.sortOrder"
             type="number"
             class="eldra-input rounded-none px-4 py-3 text-sm"
-            placeholder="Sort"
+            title="Timeline Order"
+            placeholder="Order"
           >
 
           <select
@@ -399,6 +479,27 @@ onMounted(() => {
             <option class="bg-[#090909]" value="public">Players</option>
             <option class="bg-[#090909]" value="gm">GM Only</option>
             <option class="bg-[#090909]" value="hidden">Hidden Draft</option>
+          </select>
+        </div>
+
+        <div class="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <label class="flex items-center rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)] px-4 py-3 text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+            Nest Under
+          </label>
+
+          <select
+            v-model="eventForm.parentEventId"
+            class="eldra-input rounded-none px-4 py-3 text-sm text-[#f5e7bd]"
+          >
+            <option class="bg-[#090909]" value="">None / Top Level</option>
+            <option
+              v-for="option in parentEventOptions"
+              :key="option.id"
+              class="bg-[#090909]"
+              :value="option.id"
+            >
+              {{ option.label }}
+            </option>
           </select>
         </div>
 
@@ -440,10 +541,11 @@ onMounted(() => {
           <div class="absolute bottom-0 left-[1.35rem] top-0 hidden w-px bg-[rgba(201,164,90,0.28)] md:block"></div>
 
           <article
-            v-for="item in events"
+            v-for="item in timelineRows"
             :id="eventAnchor(item)"
             :key="item.id"
             class="relative mb-5 scroll-mt-24 md:pl-14"
+            :style="{ marginLeft: item.depth ? `${Math.min(item.depth, 5) * 1.75}rem` : undefined }"
           >
             <div class="absolute left-[0.85rem] top-7 hidden h-3 w-3 -translate-x-1/2 border border-[rgba(201,164,90,0.65)] bg-[#15110a] shadow-[0_0_20px_rgba(201,164,90,0.18)] rotate-45 md:block"></div>
 
@@ -459,6 +561,12 @@ onMounted(() => {
                     </span>
                     <span class="rounded-none border border-[rgba(201,164,90,0.14)] px-3 py-1 text-xs text-[#9f9278]">
                       {{ item.visibility || 'public' }}
+                    </span>
+                    <span
+                      v-if="item.depth"
+                      class="rounded-none border border-[rgba(201,164,90,0.14)] px-3 py-1 text-xs text-[#9f9278]"
+                    >
+                      Nested {{ item.depth }}
                     </span>
                   </div>
 

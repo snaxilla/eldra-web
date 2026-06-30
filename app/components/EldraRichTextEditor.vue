@@ -158,8 +158,8 @@ async function loadMentionEntities() {
   loadingMentions.value = true
 
   try {
-    const response: any = await $fetch(`/api/worlds/${worldId}/entities`)
-    const list = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : []
+    const response: any = await $fetch(`/api/worlds/${worldId}/mentions/search`)
+    const list = Array.isArray(response?.mentions) ? response.mentions : []
 
     allMentionEntities.value = list
       .map((entity: any) => ({
@@ -738,7 +738,7 @@ function buttonClass(name?: string, attrs?: Record<string, any>) {
         class="absolute left-6 top-6 z-50 w-[360px] max-w-[calc(100%-3rem)] overflow-hidden rounded-none border border-[rgba(201,164,90,0.36)] bg-[linear-gradient(to_bottom,rgba(20,17,12,0.98),rgba(7,6,4,0.98))] shadow-2xl"
       >
         <div class="border-b border-[rgba(201,164,90,0.20)] px-3 py-2 text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">
-          Mention Entity
+          Mention World Thing
         </div>
 
         <button

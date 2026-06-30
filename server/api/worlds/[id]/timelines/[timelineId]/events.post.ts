@@ -22,6 +22,26 @@ function normalizeDate(value: any) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null
 }
 
+function normalizeEventKind(value: any) {
+  const key = cleanText(value).toLowerCase()
+  return ['event', 'era', 'period', 'session', 'note'].includes(key) ? key : 'event'
+}
+
+function eventBodyWithMeta(body: any, meta: any) {
+  const cleanBody = String(body || '')
+    .replace(/<!--eldra:event-meta\s+{[\s\S]*?}\s*-->\s*/g, '')
+    .trim()
+
+  const safeMeta = {
+    eventKind: normalizeEventKind(meta?.eventKind),
+    dateLabel: cleanText(meta?.dateLabel || ''),
+    endDateLabel: cleanText(meta?.endDateLabel || ''),
+    sortOrder: Number(meta?.sortOrder || 0) || 0
+  }
+
+  return `<!--eldra:event-meta ${JSON.stringify(safeMeta)}-->\n${cleanBody}`.trim()
+}
+
 async function findTimeline(worldId: number, timelineKey: string) {
   const prefix = worldSlugPrefix(worldId)
 
@@ -85,17 +105,25 @@ export default defineEventHandler(async (event) => {
 
   const prefix = worldSlugPrefix(worldId)
   const slug = `${prefix}${slugify(body?.slug || title) || 'event'}`
-
   const summaryMarkdown = String(body?.summaryMarkdown || body?.summary_markdown || '').trim()
+  const dateLabel = cleanText(body?.dateLabel || body?.date_label || '')
+  const endDateLabel = cleanText(body?.endDateLabel || body?.end_date_label || '')
+  const eventKind = normalizeEventKind(body?.eventKind || body?.event_kind || 'event')
+  const sortOrder = Number(body?.sortOrder ?? body?.sort_order ?? 0) || 0
 
   const payload = {
     title,
     slug,
     era: timeline.id,
-    start_date: normalizeDate(body?.dateLabel || body?.date_label),
-    end_date: normalizeDate(body?.endDateLabel || body?.end_date_label),
+    start_date: normalizeDate(dateLabel),
+    end_date: normalizeDate(endDateLabel),
     summary: cleanText(summaryMarkdown).slice(0, 500),
-    body: summaryMarkdown,
+    body: eventBodyWithMeta(summaryMarkdown, {
+      eventKind,
+      dateLabel,
+      endDateLabel,
+      sortOrder
+    }),
     visibility: cleanText(body?.visibility || 'public') || 'public',
     status: 'published'
   }

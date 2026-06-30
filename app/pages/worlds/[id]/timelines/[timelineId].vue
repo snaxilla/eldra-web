@@ -341,7 +341,7 @@ onMounted(() => {
               {{ editingEventId ? 'Edit Timeline Entry' : 'Add Timeline Entry' }}
             </div>
             <p class="mt-1 text-sm text-[#d8ceb8]">
-              Use optional YYYY-MM-DD dates. Mentions work in the body.
+              Use flexible lore dates like Year 2, Before Written History, or optional YYYY-MM-DD for sortable real dates. Mentions work in the body.
             </p>
           </div>
 
@@ -376,13 +376,13 @@ onMounted(() => {
           <input
             v-model="eventForm.dateLabel"
             class="eldra-input rounded-none px-4 py-3 text-sm"
-            placeholder="Start date, YYYY-MM-DD"
+            placeholder="Start label, e.g. Year 2"
           >
 
           <input
             v-model="eventForm.endDateLabel"
             class="eldra-input rounded-none px-4 py-3 text-sm"
-            placeholder="End date, YYYY-MM-DD"
+            placeholder="End label, optional"
           >
 
           <input
@@ -445,9 +445,9 @@ onMounted(() => {
             :key="item.id"
             class="relative mb-5 scroll-mt-24 md:pl-14"
           >
-            <div class="absolute left-[0.85rem] top-7 hidden h-4 w-4 -translate-x-1/2 rounded-full border border-[rgba(201,164,90,0.65)] bg-[#15110a] shadow-[0_0_20px_rgba(201,164,90,0.22)] md:block"></div>
+            <div class="absolute left-[0.85rem] top-7 hidden h-3 w-3 -translate-x-1/2 border border-[rgba(201,164,90,0.65)] bg-[#15110a] shadow-[0_0_20px_rgba(201,164,90,0.18)] rotate-45 md:block"></div>
 
-            <div class="eldra-ornate-card eldra-frame-corners rounded-none border p-5 backdrop-blur-xl">
+            <div class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[linear-gradient(to_bottom,rgba(20,17,12,0.82),rgba(7,6,4,0.82))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)] backdrop-blur-xl">
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div class="flex flex-wrap items-center gap-2">

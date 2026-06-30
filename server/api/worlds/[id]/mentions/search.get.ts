@@ -20,6 +20,41 @@ function worldSlugPrefix(worldId: number) {
   return `w${worldId}-`
 }
 
+function parseEventMeta(body: any) {
+  const raw = String(body || '')
+  const match = raw.match(/<!--eldra:event-meta\s+({[\s\S]*?})\s*-->/)
+
+  if (!match?.[1]) {
+    return {
+      eventKind: 'event',
+      dateLabel: '',
+      endDateLabel: '',
+      sortOrder: 0
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(match[1])
+    return {
+      eventKind: cleanText(parsed?.eventKind || 'event') || 'event',
+      dateLabel: cleanText(parsed?.dateLabel || ''),
+      endDateLabel: cleanText(parsed?.endDateLabel || ''),
+      sortOrder: Number(parsed?.sortOrder || 0) || 0
+    }
+  } catch {
+    return {
+      eventKind: 'event',
+      dateLabel: '',
+      endDateLabel: '',
+      sortOrder: 0
+    }
+  }
+}
+
+function stripEventMeta(body: any) {
+  return String(body || '').replace(/<!--eldra:event-meta\s+{[\s\S]*?}\s*-->\s*/g, '').trim()
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = Number(getRouterParam(event, 'id') || 0)
 
@@ -105,11 +140,14 @@ export default defineEventHandler(async (event) => {
     .map((item: any) => {
       const era = eraById.get(String(item.era)) || null
       const timelineTitle = cleanText(era?.name || 'Timeline')
+      const meta = parseEventMeta(item.body)
       const date = cleanText(
-        item.start_date && item.end_date
-          ? `${item.start_date} - ${item.end_date}`
-          : item.start_date || item.end_date || ''
+        meta.dateLabel && meta.endDateLabel
+          ? `${meta.dateLabel} - ${meta.endDateLabel}`
+          : meta.dateLabel || meta.endDateLabel || item.start_date || item.end_date || ''
       )
+      const body = stripEventMeta(item.body)
+      const kind = titleCase(meta.eventKind || 'event')
 
       return {
         id: `timeline_event:${item.id}`,
@@ -118,8 +156,8 @@ export default defineEventHandler(async (event) => {
         title: cleanText(item.title || ''),
         slug: cleanText(item.slug || ''),
         entity_type: 'timeline_event',
-        entityType: 'Timeline Event',
-        summary: shortText([timelineTitle, date, item.summary || item.body].filter(Boolean).join(' / ')),
+        entityType: kind || 'Timeline Event',
+        summary: shortText([timelineTitle, date, item.summary || body].filter(Boolean).join(' / ')),
         mentionType: 'timeline_event'
       }
     })

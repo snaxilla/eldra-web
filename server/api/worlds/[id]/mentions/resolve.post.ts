@@ -40,6 +40,41 @@ function worldSlugPrefix(worldId: number) {
   return `w${worldId}-`
 }
 
+function parseEventMeta(body: any) {
+  const raw = String(body || '')
+  const match = raw.match(/<!--eldra:event-meta\s+({[\s\S]*?})\s*-->/)
+
+  if (!match?.[1]) {
+    return {
+      eventKind: 'event',
+      dateLabel: '',
+      endDateLabel: '',
+      sortOrder: 0
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(match[1])
+    return {
+      eventKind: cleanText(parsed?.eventKind || 'event') || 'event',
+      dateLabel: cleanText(parsed?.dateLabel || ''),
+      endDateLabel: cleanText(parsed?.endDateLabel || ''),
+      sortOrder: Number(parsed?.sortOrder || 0) || 0
+    }
+  } catch {
+    return {
+      eventKind: 'event',
+      dateLabel: '',
+      endDateLabel: '',
+      sortOrder: 0
+    }
+  }
+}
+
+function stripEventMeta(body: any) {
+  return String(body || '').replace(/<!--eldra:event-meta\s+{[\s\S]*?}\s*-->\s*/g, '').trim()
+}
+
 function blockKey(block: any) {
   return String(block?.block_key || block?.blockKey || '')
 }
@@ -314,11 +349,14 @@ export default defineEventHandler(async (event) => {
       const timelineTitle = cleanText(era?.name || 'Timeline')
       const timelineSlug = cleanText(era?.slug || era?.id || '')
       const eventSlug = cleanText(timelineEvent.slug || timelineEvent.id)
+      const meta = parseEventMeta(timelineEvent.body)
+      const body = stripEventMeta(timelineEvent.body)
       const dateRange = cleanText(
-        timelineEvent.start_date && timelineEvent.end_date
-          ? `${timelineEvent.start_date} - ${timelineEvent.end_date}`
-          : timelineEvent.start_date || timelineEvent.end_date || ''
+        meta.dateLabel && meta.endDateLabel
+          ? `${meta.dateLabel} - ${meta.endDateLabel}`
+          : meta.dateLabel || meta.endDateLabel || timelineEvent.start_date || timelineEvent.end_date || ''
       )
+      const displayType = titleCase(meta.eventKind || 'event') || 'Timeline Event'
       const url = `/worlds/${worldId}/timelines/${timelineSlug || timelineEvent.era}#${eventSlug}`
 
       const target = {
@@ -329,10 +367,10 @@ export default defineEventHandler(async (event) => {
         slug: eventSlug,
         entityType: 'timeline_event',
         type: 'timeline_event',
-        displayType: 'Timeline Event',
-        summary: shortText(timelineEvent.body || timelineEvent.summary || ''),
+        displayType,
+        summary: shortText(body || timelineEvent.summary || ''),
         url,
-        tags: ['Timeline Event', timelineTitle, dateRange].filter(Boolean),
+        tags: [displayType, timelineTitle, dateRange].filter(Boolean),
         detailLines: [
           timelineTitle ? `Timeline: ${timelineTitle}` : '',
           dateRange ? `Date: ${dateRange}` : '',

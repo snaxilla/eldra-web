@@ -22,14 +22,47 @@ function normalizeTimeline(row: any, worldId: number) {
   }
 }
 
-function normalizeDate(value: any) {
-  return cleanText(value)
+function parseEventMeta(body: any) {
+  const raw = String(body || '')
+  const match = raw.match(/<!--eldra:event-meta\s+({[\s\S]*?})\s*-->/)
+
+  if (!match?.[1]) {
+    return {
+      eventKind: 'event',
+      dateLabel: '',
+      endDateLabel: '',
+      sortOrder: 0
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(match[1])
+    return {
+      eventKind: cleanText(parsed?.eventKind || 'event') || 'event',
+      dateLabel: cleanText(parsed?.dateLabel || ''),
+      endDateLabel: cleanText(parsed?.endDateLabel || ''),
+      sortOrder: Number(parsed?.sortOrder || 0) || 0
+    }
+  } catch {
+    return {
+      eventKind: 'event',
+      dateLabel: '',
+      endDateLabel: '',
+      sortOrder: 0
+    }
+  }
+}
+
+function stripEventMeta(body: any) {
+  return String(body || '').replace(/<!--eldra:event-meta\s+{[\s\S]*?}\s*-->\s*/g, '').trim()
 }
 
 function normalizeEvent(row: any, timeline: any) {
   const slug = cleanText(row?.slug || '')
-  const start = normalizeDate(row?.start_date)
-  const end = normalizeDate(row?.end_date)
+  const meta = parseEventMeta(row?.body)
+  const body = stripEventMeta(row?.body)
+  const fallbackStart = cleanText(row?.start_date || '')
+  const fallbackEnd = cleanText(row?.end_date || '')
 
   return {
     id: String(row?.id || ''),
@@ -37,11 +70,11 @@ function normalizeEvent(row: any, timeline: any) {
     timelineId: String(timeline.id || ''),
     title: cleanText(row?.title || 'Untitled Event'),
     slug,
-    eventKind: 'event',
-    dateLabel: start,
-    endDateLabel: end,
-    sortOrder: 0,
-    summaryMarkdown: String(row?.body || row?.summary || '').trim(),
+    eventKind: meta.eventKind || 'event',
+    dateLabel: meta.dateLabel || fallbackStart,
+    endDateLabel: meta.endDateLabel || fallbackEnd,
+    sortOrder: meta.sortOrder || 0,
+    summaryMarkdown: body || String(row?.summary || '').trim(),
     summary: String(row?.summary || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),
     status: cleanText(row?.status || 'draft'),
@@ -120,7 +153,17 @@ export default defineEventHandler(async (event) => {
   })
 
   const events = Array.isArray(eventsRes?.data)
-    ? eventsRes.data.map((row: any) => normalizeEvent(row, timeline))
+    ? eventsRes.data
+      .map((row: any) => normalizeEvent(row, timeline))
+      .sort((a: any, b: any) => {
+        const sortDiff = Number(a.sortOrder || 0) - Number(b.sortOrder || 0)
+        if (sortDiff) return sortDiff
+
+        const dateDiff = String(a.dateLabel || '').localeCompare(String(b.dateLabel || ''))
+        if (dateDiff) return dateDiff
+
+        return String(a.title || '').localeCompare(String(b.title || ''))
+      })
     : []
 
   return {

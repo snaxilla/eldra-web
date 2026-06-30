@@ -42,7 +42,9 @@ function parseEventMeta(body: any) {
       dateLabel: cleanText(parsed?.dateLabel || ''),
       endDateLabel: cleanText(parsed?.endDateLabel || ''),
       sortOrder: Number(parsed?.sortOrder || 0) || 0,
-      parentEventId: cleanText(parsed?.parentEventId || '')
+      parentEventId: cleanText(parsed?.parentEventId || ''),
+      imageFileId: cleanText(parsed?.imageFileId || ''),
+      imageUrl: cleanText(parsed?.imageUrl || '')
     }
   } catch {
     return {
@@ -76,6 +78,8 @@ function normalizeEvent(row: any, timeline: any) {
     endDateLabel: meta.endDateLabel || fallbackEnd,
     sortOrder: meta.sortOrder || 0,
     parentEventId: meta.parentEventId || '',
+    imageFileId: meta.imageFileId || '',
+    imageUrl: meta.imageUrl || (meta.imageFileId ? `/api/assets/${meta.imageFileId}` : ''),
     summaryMarkdown: body || String(row?.summary || '').trim(),
     summary: String(row?.summary || '').trim(),
     visibility: cleanText(row?.visibility || 'public'),

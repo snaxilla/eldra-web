@@ -6,6 +6,7 @@ definePageMeta({
 import WorldMentionText from '~/components/world/WorldMentionText.vue'
 import WorldMentionAutocompleteTextarea from '~/components/world/WorldMentionAutocompleteTextarea.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+import WorldMediaPicker from '~/components/world/WorldMediaPicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +16,7 @@ const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const editingTimeline = ref(false)
 const savingTimeline = ref(false)
+const eventImagePickerOpen = ref(false)
 const timelineError = ref('')
 const eventError = ref('')
 const deletingEventId = ref('')
@@ -37,6 +39,8 @@ const eventForm = reactive({
   endDateLabel: '',
   sortOrder: 0,
   parentEventId: '',
+  imageFileId: '',
+  imageUrl: '',
   summaryMarkdown: '',
   visibility: 'public'
 })
@@ -171,6 +175,8 @@ function resetEventForm() {
   eventForm.endDateLabel = ''
   eventForm.sortOrder = events.value.length ? Math.max(...events.value.map((item: any) => Number(item.sortOrder || 0))) + 10 : 10
   eventForm.parentEventId = ''
+  eventForm.imageFileId = ''
+  eventForm.imageUrl = ''
   eventForm.summaryMarkdown = ''
   eventForm.visibility = 'public'
 }
@@ -183,6 +189,8 @@ function editEvent(item: any) {
   eventForm.endDateLabel = item.endDateLabel || ''
   eventForm.sortOrder = Number(item.sortOrder || 0)
   eventForm.parentEventId = item.parentEventId || ''
+  eventForm.imageFileId = item.imageFileId || ''
+  eventForm.imageUrl = item.imageUrl || ''
   eventForm.summaryMarkdown = item.summaryMarkdown || ''
   eventForm.visibility = item.visibility || 'public'
 }
@@ -282,6 +290,21 @@ async function deleteEvent(item: any) {
   } finally {
     deletingEventId.value = ''
   }
+}
+
+function pickEventImage(file: any) {
+  eventForm.imageFileId = String(file?.id || file?.fileId || file?.directusFileId || '').trim()
+  eventForm.imageUrl = String(file?.url || file?.imageUrl || (eventForm.imageFileId ? `/api/assets/${eventForm.imageFileId}` : '')).trim()
+  eventImagePickerOpen.value = false
+}
+
+function clearEventImage() {
+  eventForm.imageFileId = ''
+  eventForm.imageUrl = ''
+}
+
+function eventImageUrl(item: any) {
+  return String(item?.imageUrl || (item?.imageFileId ? `/api/assets/${item.imageFileId}` : '') || '').trim()
 }
 
 function openMentionContext(mention: any) {
@@ -503,6 +526,48 @@ onMounted(() => {
           </select>
         </div>
 
+        <div class="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <label class="flex items-center rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.42)] px-4 py-3 text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+            Event Image
+          </label>
+
+          <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-black/20 p-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                class="eldra-button rounded-none px-4 py-2 text-sm"
+                @click="eventImagePickerOpen = true"
+              >
+                {{ eventForm.imageUrl ? 'Replace Image' : 'Choose Image' }}
+              </button>
+
+              <button
+                v-if="eventForm.imageUrl"
+                type="button"
+                class="rounded-none border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-200 transition hover:bg-red-500/20"
+                @click="clearEventImage"
+              >
+                Clear
+              </button>
+
+              <span class="text-xs text-[#9f9278]">
+                Optional thumbnail/banner for this timeline entry.
+              </span>
+            </div>
+
+            <div
+              v-if="eventForm.imageUrl"
+              class="mt-3 max-w-sm overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-black/30"
+            >
+              <img
+                :src="eventForm.imageUrl"
+                alt="Selected event image"
+                class="h-32 w-full object-cover"
+              >
+            </div>
+          </div>
+        </div>
+
         <WorldMentionAutocompleteTextarea
           v-model="eventForm.summaryMarkdown"
           :world-id="worldId"
@@ -598,6 +663,18 @@ onMounted(() => {
                 </div>
               </div>
 
+              <div
+                v-if="eventImageUrl(item)"
+                class="mt-4 overflow-hidden rounded-none border border-[rgba(201,164,90,0.24)] bg-black/25"
+              >
+                <img
+                  :src="eventImageUrl(item)"
+                  :alt="item.title || 'Timeline event image'"
+                  loading="lazy"
+                  class="max-h-72 w-full object-cover"
+                >
+              </div>
+
               <WorldMentionText
                 v-if="item.summaryMarkdown"
                 :world-id="worldId"
@@ -617,6 +694,13 @@ onMounted(() => {
         </div>
       </section>
     </div>
+
+    <WorldMediaPicker
+      :open="eventImagePickerOpen"
+      :world-id="worldId"
+      @close="eventImagePickerOpen = false"
+      @select="pickEventImage"
+    />
 
     <WorldEntityContextDrawer
       :open="contextDrawerOpen"

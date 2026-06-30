@@ -357,6 +357,7 @@ export default defineEventHandler(async (event) => {
           : meta.dateLabel || meta.endDateLabel || timelineEvent.start_date || timelineEvent.end_date || ''
       )
       const displayType = titleCase(meta.eventKind || 'event') || 'Timeline Event'
+      const imageUrl = meta.imageUrl || (meta.imageFileId ? `/api/assets/${meta.imageFileId}` : '')
       const url = `/worlds/${worldId}/timelines/${timelineSlug || timelineEvent.era}#${eventSlug}`
 
       const target = {
@@ -369,6 +370,7 @@ export default defineEventHandler(async (event) => {
         type: 'timeline_event',
         displayType,
         summary: shortText(body || timelineEvent.summary || ''),
+        imageUrl,
         url,
         tags: [displayType, timelineTitle, dateRange].filter(Boolean),
         detailLines: [

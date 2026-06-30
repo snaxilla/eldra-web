@@ -24,7 +24,9 @@ function eventBodyWithMeta(body: any, meta: any) {
     dateLabel: cleanText(meta?.dateLabel || ''),
     endDateLabel: cleanText(meta?.endDateLabel || ''),
     sortOrder: Number(meta?.sortOrder || 0) || 0,
-    parentEventId: cleanText(meta?.parentEventId || '')
+    parentEventId: cleanText(meta?.parentEventId || ''),
+    imageFileId: cleanText(meta?.imageFileId || ''),
+    imageUrl: cleanText(meta?.imageUrl || '')
   }
 
   return `<!--eldra:event-meta ${JSON.stringify(safeMeta)}-->\n${cleanBody}`.trim()
@@ -72,6 +74,8 @@ export default defineEventHandler(async (event) => {
   const eventKind = normalizeEventKind(body?.eventKind || body?.event_kind || 'event')
   const sortOrder = Number(body?.sortOrder ?? body?.sort_order ?? 0) || 0
   const parentEventId = cleanText(body?.parentEventId || body?.parent_event_id || '')
+  const imageFileId = cleanText(body?.imageFileId || body?.image_file_id || '')
+  const imageUrl = cleanText(body?.imageUrl || body?.image_url || '')
 
   const payload = {
     title,
@@ -84,7 +88,9 @@ export default defineEventHandler(async (event) => {
       dateLabel,
       endDateLabel,
       sortOrder,
-      parentEventId
+      parentEventId,
+      imageFileId,
+      imageUrl
     }),
     visibility: cleanText(body?.visibility || 'public') || 'public',
     status: 'published'

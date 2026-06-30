@@ -664,31 +664,38 @@ onMounted(() => {
               </div>
 
               <div
-                v-if="eventImageUrl(item)"
-                class="mt-4 overflow-hidden rounded-none border border-[rgba(201,164,90,0.24)] bg-black/25"
+                class="mt-4 grid gap-4"
+                :class="eventImageUrl(item) ? 'md:grid-cols-[220px_minmax(0,1fr)]' : ''"
               >
-                <img
-                  :src="eventImageUrl(item)"
-                  :alt="item.title || 'Timeline event image'"
-                  loading="lazy"
-                  class="max-h-72 w-full object-cover"
+                <div
+                  v-if="eventImageUrl(item)"
+                  class="overflow-hidden rounded-none border border-[rgba(201,164,90,0.24)] bg-black/25"
                 >
+                  <img
+                    :src="eventImageUrl(item)"
+                    :alt="item.title || 'Timeline event image'"
+                    loading="lazy"
+                    class="h-40 w-full object-cover md:h-full md:min-h-40"
+                  >
+                </div>
+
+                <div>
+                  <WorldMentionText
+                    v-if="item.summaryMarkdown"
+                    :world-id="worldId"
+                    :markdown="item.summaryMarkdown"
+                    class="text-sm leading-7 text-[#d8ceb8]"
+                    @open-mention="openMentionContext"
+                  />
+
+                  <p
+                    v-else
+                    class="text-sm leading-7 text-[#9f9278]"
+                  >
+                    No event summary yet.
+                  </p>
+                </div>
               </div>
-
-              <WorldMentionText
-                v-if="item.summaryMarkdown"
-                :world-id="worldId"
-                :markdown="item.summaryMarkdown"
-                class="mt-4 text-sm leading-7 text-[#d8ceb8]"
-                @open-mention="openMentionContext"
-              />
-
-              <p
-                v-else
-                class="mt-4 text-sm leading-7 text-[#9f9278]"
-              >
-                No event summary yet.
-              </p>
             </div>
           </article>
         </div>

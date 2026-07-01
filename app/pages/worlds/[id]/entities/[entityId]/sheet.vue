@@ -234,6 +234,14 @@ function normalizeSheetTab(value: any): SheetTab {
 }
 
 const activeSheetTab = computed<SheetTab>(() => normalizeSheetTab(route.query.tab))
+
+const sheetTabCounts = computed(() => ({
+  stats: levelUpPendingChoiceCards.value.length,
+  inventory: inventoryCount.value,
+  spells: selectedSpellCount.value,
+  features: featureCount.value
+}))
+
 const levelUpOpen = ref(false)
 const levelUpSaving = ref(false)
 const levelUpApplied = ref(false)
@@ -246,7 +254,7 @@ const levelUpSubclassDraft = ref('')
 const levelUpHpMode = ref<'fixed' | 'manual'>('fixed')
 const levelUpManualMaxHp = ref('')
 
-function setSheetTab(tab: SheetTab) {
+function setSheetTab(tab: SheetTab | string) {
   router.replace({
     path: route.path,
     query: {
@@ -6093,23 +6101,14 @@ async function saveSheet() {
                 </div>
               </div>
 
-              <nav class="mt-2 overflow-x-auto pb-1">
-                <div class="flex min-w-max gap-1.5">
-                  <button
-                    v-for="tab in mobileSheetTabs"
-                    :key="`mobile-${tab.key}`"
-                    type="button"
-                    class="inline-flex min-w-[68px] flex-col items-center justify-center gap-1 rounded-none border px-2 py-2 text-[11px] font-semibold transition"
-                    :class="activeSheetTab === tab.key
-                      ? 'border-[rgba(201,164,90,0.72)] bg-[rgba(201,164,90,0.18)] text-[#fff7df] shadow-[0_0_18px_rgba(201,164,90,0.10)]'
-                      : 'border-[rgba(65,82,103,0.72)] bg-[rgba(12,23,33,0.86)] text-[#cbd5e1]'"
-                    @click="setSheetTab(tab.key)"
-                  >
-                    <UIcon :name="tab.icon" class="h-4 w-4" />
-                    <span>{{ tab.label }}</span>
-                  </button>
-                </div>
-              </nav>
+              <CharactersSheetTabBar
+                class="mt-2"
+                :tabs="mobileSheetTabs"
+                :active-tab="activeSheetTab"
+                :counts="sheetTabCounts"
+                variant="mobile"
+                @select="setSheetTab"
+              />
 
               <!-- Mobile Limited Resource Strip -->
               <div
@@ -6182,26 +6181,14 @@ async function saveSheet() {
         </div>
       </div>
 
-        <div class="sheet-desktop-only mb-4 hidden overflow-x-auto md:block">
-          <div class="flex min-w-max gap-2">
-            <button
-              v-for="tab in SHEET_TABS"
-              :key="tab.key"
-              type="button"
-              class="rounded-none border px-4 py-2 text-sm font-semibold transition"
-              :class="activeSheetTab === tab.key
-                ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
-                : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
-              @click="setSheetTab(tab.key)"
-            >
-              <span>{{ tab.label }}</span>
-              <span v-if="tab.key === 'stats' && levelUpPendingChoiceCards.length" class="ml-1 text-[#9f9278]">({{ levelUpPendingChoiceCards.length }})</span>
-              <span v-if="tab.key === 'inventory'" class="ml-1 text-[#9f9278]">({{ inventoryCount }})</span>
-              <span v-if="tab.key === 'spells'" class="ml-1 text-[#9f9278]">({{ selectedSpellCount }})</span>
-              <span v-if="tab.key === 'features' && featureCount" class="ml-1 text-[#9f9278]">({{ featureCount }})</span>
-            </button>
-          </div>
-        </div>
+        <CharactersSheetTabBar
+          class="sheet-desktop-only mb-4 hidden md:block"
+          :tabs="SHEET_TABS"
+          :active-tab="activeSheetTab"
+          :counts="sheetTabCounts"
+          variant="desktop"
+          @select="setSheetTab"
+        />
 
       <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-3 shadow-xl md:p-5">
         <div v-if="pending" class="text-[#d8ceb8]">

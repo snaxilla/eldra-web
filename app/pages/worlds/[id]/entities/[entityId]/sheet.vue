@@ -6152,34 +6152,14 @@ async function saveSheet() {
           </div>
         </div>
 
-      <div class="sheet-desktop-only mb-4 hidden flex-wrap items-center justify-between gap-3 md:flex">
-        <NuxtLink
-          :to="`/worlds/${worldId}/entities/${entityId}`"
-          class="eldra-button rounded-none px-4 py-2 text-sm"
-        >
-          Back to Article
-        </NuxtLink>
-
-        <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="eldra-button rounded-none px-4 py-2 text-sm"
-            @click="refresh()"
-          >
-            Refresh Sheet
-          </button>
-
-          <button
-            v-if="mode === 'build'"
-            type="button"
-            class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
-            :disabled="sheetSaving"
-            @click="saveSheet"
-          >
-            {{ sheetSaving ? 'Saving...' : 'Save Sheet' }}
-          </button>
-        </div>
-      </div>
+      <CharactersSheetDesktopToolbar
+        :world-id="worldId"
+        :entity-id="entityId"
+        :mode="mode"
+        :saving="sheetSaving"
+        @refresh="refresh"
+        @save="saveSheet"
+      />
 
         <CharactersSheetTabBar
           class="sheet-desktop-only mb-4 hidden md:block"

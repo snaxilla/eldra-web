@@ -5812,7 +5812,7 @@ async function saveSheet() {
     </div>
     <div
         :class="(selectedSpellEntityId || selectedItemDetail || selectedFeatureDetail || noteDrawerOpen) ? 'md:pr-[460px]' : ''"
-        class="relative z-10 mx-auto w-full max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
+        class="relative z-10 mx-auto w-full max-w-[1600px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
 
 
@@ -6325,11 +6325,56 @@ async function saveSheet() {
               </div>
             </section>
 
-            <CharactersSheetDesktopPortraitFrame
+            <CharactersSheetDesktopOverviewDashboard
               v-if="activeSheetTab === 'overview'"
-              :image-url="entityImageUrl"
+              :mode="mode"
               :sheet="sheet"
               :entity="entity"
+              :image-url="entityImageUrl"
+              :subtitle="mobileSheetSubtitle"
+              :math="math"
+              :resolved-class="resolvedClass"
+              :resolved-species="resolvedSpecies"
+              :resolved-background="resolvedBackground"
+              :ability-list="abilityList"
+              :math-saves="mathSaves"
+              :math-skills="mathSkills"
+              :shown-stats="{
+                armorClass: shownCombatStat('armorClass'),
+                currentHp: shownCombatStat('currentHp'),
+                maxHp: shownCombatStat('maxHp'),
+                tempHp: shownCombatStat('tempHp'),
+                initiative: shownCombatStat('initiative'),
+                speed: shownCombatStat('speed'),
+                hitDice: shownCombatStat('hitDice')
+              }"
+              :inventory-count="inventoryCount"
+              :feature-count="featureCount"
+              :selected-spell-count="selectedSpellCount"
+              :equipped-weapon-actions="equippedWeaponActions"
+              :action-spell-cards="actionSpellCards"
+              :has-limited-resources="hasLimitedResources"
+              :limited-resource-label="limitedResourceLabel"
+              :spell-slot-rows="spellSlotRows"
+              :spell-saving="spellSaving"
+              :slot-gem-class="slotGemClass"
+              :slot-level-label="slotLevelLabel"
+              :toggle-spell-slot="toggleSpellSlot"
+              :roll-ability-check="rollAbilityCheck"
+              :roll-saving-throw="rollSavingThrow"
+              :roll-skill-check="rollSkillCheck"
+              :roll-weapon-attack="rollWeaponAttack"
+              :roll-weapon-damage="rollWeaponDamage"
+              :open-item-drawer="openItemDrawer"
+              :open-spell-drawer="openSpellDrawer"
+              :spell-option-level-label="spellOptionLevelLabel"
+              :spell-action-mechanic="spellActionMechanic"
+              :spell-uses-attack-roll="spellUsesAttackRoll"
+              :can-cast-spell="canCastSpell"
+              :roll-spell-attack-and-consume-slot="rollSpellAttackAndConsumeSlot"
+              :spell-consumes-slot="spellConsumesSlot"
+              :cast-spell="castSpell"
+              :short-text="shortText"
             />
 
           <CharactersSheetSaveStatus
@@ -6363,7 +6408,7 @@ async function saveSheet() {
           />
 
           <CharactersSheetDesktopOverviewCards
-            v-if="activeSheetTab === 'overview'"
+            v-if="activeSheetTab === 'overview' && mode === 'build'"
             :mode="mode"
             :sheet="sheet"
             :level-value="sheetForm.level"
@@ -6388,7 +6433,7 @@ async function saveSheet() {
           
 
                       <CharactersSheetAbilityGrid
-            v-if="activeSheetTab === 'overview'"
+            v-if="activeSheetTab === 'overview' && mode === 'build'"
             :mode="mode"
             :abilities="abilityList"
             :ability-scores="sheetForm.abilityScores"
@@ -6397,7 +6442,7 @@ async function saveSheet() {
           />
 
                       <CharactersSheetCombatPanel
-            v-if="activeSheetTab === 'overview'"
+            v-if="activeSheetTab === 'overview' && mode === 'build'"
             :mode="mode"
             :combat-stats="sheetForm.combatStats"
             :shown-stats="{

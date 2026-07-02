@@ -6325,16 +6325,12 @@ async function saveSheet() {
               </div>
             </section>
 
-            <div
-            v-if="activeSheetTab === 'overview' && entityImageUrl"
-            class="sheet-desktop-only eldra-image-frame mt-6 hidden overflow-hidden rounded-none border bg-black/20 md:block"
-          >
-            <img
-              :src="entityImageUrl"
-              :alt="sheet?.name || entity?.title || 'Character Portrait'"
-              class="max-h-[260px] w-full object-cover object-[center_15%] md:max-h-[420px]"
-            >
-          </div>
+            <CharactersSheetDesktopPortraitFrame
+              v-if="activeSheetTab === 'overview'"
+              :image-url="entityImageUrl"
+              :sheet="sheet"
+              :entity="entity"
+            />
 
           <div v-if="sheetSaveError" class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
             {{ sheetSaveError }}

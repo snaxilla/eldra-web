@@ -7945,118 +7945,21 @@ async function saveSheet() {
       </Transition>
 
       <!-- Note Detail Drawer -->
-      <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-        <div
-          v-if="noteDrawerOpen"
-          class="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
-          @click.self="closeNoteDrawer"
-        >
-          <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[440px]">
-            <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-              <div class="min-w-0">
-                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Note</div>
-                <h2 class="mt-2 truncate text-2xl font-semibold text-white">
-                  {{ noteDraft.title || selectedNoteDetail?.title || 'New Note' }}
-                </h2>
-                <div v-if="selectedNoteDetail?.updatedAt && noteDrawerMode === 'view'" class="mt-1 text-xs text-[#9f9278]">
-                  Updated {{ formatNoteDate(selectedNoteDetail.updatedAt) }}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
-                @click="closeNoteDrawer"
-              >
-                <UIcon name="i-lucide-x" class="h-4 w-4" />
-              </button>
-            </div>
-
-            <div class="flex-1 overflow-y-auto px-5 py-5">
-              <div v-if="noteDrawerMode === 'edit'" class="grid gap-4">
-                <label class="block">
-                  <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Title</span>
-                  <input
-                    v-model="noteDraft.title"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    placeholder="NPC, city, clue, quest..."
-                  >
-                </label>
-
-                <label class="block">
-                  <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Body</span>
-                  <textarea
-                    v-model="noteDraft.body"
-                    rows="12"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm leading-6 text-white"
-                    placeholder="Write the note..."
-                  />
-                </label>
-
-                <div v-if="noteSaveError" class="rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-                  {{ noteSaveError }}
-                </div>
-              </div>
-
-              <div v-else class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.48)] p-4">
-                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Body</div>
-                <p class="mt-3 whitespace-pre-line break-words text-sm leading-6 text-[#d8ceb8]">
-                  {{ selectedNoteDetail?.body || 'No note body yet.' }}
-                </p>
-              </div>
-            </div>
-
-            <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
-              <div v-if="noteDrawerMode === 'edit'" class="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium disabled:opacity-50"
-                  :disabled="noteSaving"
-                  @click="saveNoteCard"
-                >
-                  {{ noteSaving ? 'Saving...' : 'Save Note' }}
-                </button>
-
-                <button
-                  type="button"
-                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium"
-                  @click="closeNoteDrawer"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  v-if="noteDraft.id"
-                  type="button"
-                  class="col-span-2 rounded-none border border-red-500/24 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100 disabled:opacity-50"
-                  :disabled="noteSaving"
-                  @click="removeNoteCard({ id: noteDraft.id, title: noteDraft.title })"
-                >
-                  Delete Note
-                </button>
-              </div>
-
-              <div v-else class="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium"
-                  @click="editCurrentNote"
-                >
-                  Edit
-                </button>
-
-                <button
-                  type="button"
-                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium"
-                  @click="closeNoteDrawer"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </Transition>
+      <CharactersSheetNoteDetailDrawer
+        :open="noteDrawerOpen"
+        :mode="noteDrawerMode"
+        :note="selectedNoteDetail"
+        :draft="noteDraft"
+        :saving="noteSaving"
+        :save-error="noteSaveError"
+        :format-note-date="formatNoteDate"
+        @close="closeNoteDrawer"
+        @save="saveNoteCard"
+        @edit="editCurrentNote"
+        @delete-note="removeNoteCard"
+        @update-title="noteDraft.title = $event"
+        @update-body="noteDraft.body = $event"
+      />
 
       <!-- Feature Detail Drawer -->
       <CharactersSheetFeatureDetailDrawer

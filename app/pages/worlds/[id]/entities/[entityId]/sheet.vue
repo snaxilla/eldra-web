@@ -6332,13 +6332,13 @@ async function saveSheet() {
               :entity="entity"
             />
 
-          <div v-if="sheetSaveError" class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-            {{ sheetSaveError }}
-          </div>
-
-          <div v-if="sheetSaveSuccess" class="mt-4 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-            {{ sheetSaveSuccess }}
-          </div>
+          <CharactersSheetSaveStatus
+            :error="sheetSaveError"
+            :success="sheetSaveSuccess"
+            :timeout-ms="10000"
+            @clear-error="sheetSaveError = ''"
+            @clear-success="sheetSaveSuccess = ''"
+          />
 
           <CharactersSheetLevelManager
             v-if="activeSheetTab === 'overview' && mode === 'build'"

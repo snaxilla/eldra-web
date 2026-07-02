@@ -6410,204 +6410,34 @@ async function saveSheet() {
             }"
             @update-combat-stat="sheetForm.combatStats[$event.key] = $event.value"
           />
-            <section
+            <CharactersSheetStatsTab
               v-else-if="activeSheetTab === 'stats'"
-              class="mt-6 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]"
-            >
-              <div class="eldra-codex-soft rounded-none p-4">
-                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Stats Math</div>
-
-                <div class="mt-4 grid grid-cols-2 gap-3">
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Level</div>
-                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.level || sheet?.level || 1 }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Proficiency</div>
-                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.proficiencyBonusText || '+2' }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Initiative</div>
-                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.combat?.initiativeText || shownCombatStat('initiative') || '—' }}</div>
-                  </div>
-
-                  <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                    <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Speed</div>
-                    <div class="mt-1 text-2xl font-semibold text-white">{{ math?.combat?.speed || shownCombatStat('speed') || '—' }}</div>
-                  </div>
-                </div>
-
-                <div v-if="levelUpPendingChoiceCards.length" class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-3">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Pending Choices</div>
-
-                    <button
-                      v-if="mode === 'build'"
-                      type="button"
-                      class="eldra-button rounded-none px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                      :disabled="choiceSaving"
-                      @click="saveChoices"
-                    >
-                      {{ choiceSaving ? 'Saving...' : 'Save Choices' }}
-                    </button>
-                  </div>
-
-                  <div v-if="choiceSaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-                    {{ choiceSaveError }}
-                  </div>
-
-                  <div v-if="choiceSaveSuccess" class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                    {{ choiceSaveSuccess }}
-                  </div>
-
-                  <div class="mt-3 space-y-3 text-sm text-[#d8ceb8]">
-                    <div
-                      v-for="choice in levelUpPendingChoiceCards"
-                      :key="choice.sourceKey"
-                      class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.42)] p-3"
-                    >
-                      <div class="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <div class="font-medium text-white">{{ choice.label }}</div>
-                              <div v-if="spellRestrictionLabel(choice)" class="mt-1 text-xs text-[#9f9278]">
-                                {{ spellRestrictionLabel(choice) }}
-                              </div>
-                          <div v-if="choice.remaining" class="mt-1 text-xs text-[#9f9278]">
-                            {{ choice.remaining }} selection{{ choice.remaining === 1 ? '' : 's' }} remaining.
-                          </div>
-                          <div v-else class="mt-1 text-xs text-emerald-200">
-                            Complete.
-                          </div>
-                        </div>
-
-                        <div v-if="choice.complete" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">
-                          Chosen
-                        </div>
-                      </div>
-
-                      <div v-if="mode === 'build'" class="mt-3 grid gap-2">
-                        <label
-                          v-for="slot in choiceSlots(choice)"
-                          :key="`${choice.sourceKey}-${slot}`"
-                          class="block"
-                        >
-                          <span class="mb-1 block text-xs uppercase tracking-[0.18em] text-[#9f9278]">
-                            Pick {{ slot + 1 }}
-                          </span>
-
-                          <select
-                            v-if="choiceOptions(choice).length"
-                            v-model="choiceDrafts[choice.sourceKey][slot]"
-                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                          >
-                            <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose...</option>
-                            <option
-                              v-for="option in choiceOptions(choice)"
-                              :key="option"
-                              :value="option"
-                              :disabled="isChoiceOptionDisabled(choice, slot, option)"
-                              class="bg-[#090909] text-[#f5e7bd] disabled:text-[#756a57]"
-                            >
-                              {{ choiceOptionLabel(choice, slot, option) }}
-                            </option>
-                          </select>
-
-                          <input
-                            v-else
-                            v-model="choiceDrafts[choice.sourceKey][slot]"
-                            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                            :placeholder="choice.category ? `Choose from category ${choice.category}` : 'Type choice...'"
-                          >
-                        </label>
-                      </div>
-
-                      <div v-else class="mt-3 text-xs text-[#9f9278]">
-                        Selected:
-                        <span v-if="choice.selected?.length" class="text-[#d8ceb8]">
-                          {{ choice.selected.map(prettyChoiceValue).join(', ') }}
-                        </span>
-                        <span v-else>None yet.</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="grid gap-4">
-                <div class="eldra-codex-soft rounded-none p-4">
-                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Saving Throws</div>
-
-                  <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    <div
-                      v-for="save in mathSaves"
-                      role="button"
-                      tabindex="0"
-                      title="Roll saving throw"
-                      @click.stop="rollSavingThrow(save)"
-                      @keydown.enter.prevent="rollSavingThrow(save)"
-                      @keydown.space.prevent="rollSavingThrow(save)"
-                      :key="save.key"
-                      class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
-                    >
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">{{ save.shortLabel }}</div>
-                        <div v-if="save.proficient" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Prof</div>
-                      </div>
-                      <div class="mt-2 text-2xl font-semibold text-white">{{ save.totalText }}</div>
-                      <div class="mt-1 text-xs text-[#9f9278]">{{ save.label }}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="eldra-codex-soft rounded-none p-4">
-                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Skills</div>
-
-                  <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    <div
-                      v-for="skill in mathSkills"
-                      role="button"
-                      tabindex="0"
-                      title="Roll skill check"
-                      @click.stop="rollSkillCheck(skill)"
-                      @keydown.enter.prevent="rollSkillCheck(skill)"
-                      @keydown.space.prevent="rollSkillCheck(skill)"
-                      :key="skill.key"
-                      class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
-                    >
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="text-sm font-medium text-white">{{ skill.label }}</div>
-                        <div class="text-xs text-[#9f9278]">{{ skill.abilityLabel }}</div>
-                      </div>
-                      <div class="mt-2 flex items-center justify-between gap-3">
-                        <div class="text-xl font-semibold text-white">{{ skill.totalText }}</div>
-                        <div v-if="skill.proficient" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Prof</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="eldra-codex-soft rounded-none p-4">
-                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Armor Class Candidates</div>
-
-                  <div class="mt-4 grid gap-2 md:grid-cols-3">
-                    <div
-                      v-for="candidate in displayedArmorClassCandidates"
-                      :key="candidate.label"
-                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
-                    >
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="text-sm font-medium text-white">{{ candidate.label }}</div>
-                        <div v-if="candidate.active" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Active</div>
-                      </div>
-                      <div class="mt-2 text-2xl font-semibold text-white">{{ candidate.value }}</div>
-                      <div class="mt-1 text-xs leading-5 text-[#9f9278]">{{ candidate.note }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
+              :mode="mode"
+              :math="math"
+              :sheet="sheet"
+              :shown-stats="{
+                initiative: shownCombatStat('initiative'),
+                speed: shownCombatStat('speed')
+              }"
+              :pending-choices="levelUpPendingChoiceCards"
+              :choice-saving="choiceSaving"
+              :choice-save-error="choiceSaveError"
+              :choice-save-success="choiceSaveSuccess"
+              :choice-drafts="choiceDrafts"
+              :math-saves="mathSaves"
+              :math-skills="mathSkills"
+              :armor-class-candidates="displayedArmorClassCandidates"
+              :spell-restriction-label="spellRestrictionLabel"
+              :choice-slots="choiceSlots"
+              :choice-options="choiceOptions"
+              :is-choice-option-disabled="isChoiceOptionDisabled"
+              :choice-option-label="choiceOptionLabel"
+              :pretty-choice-value="prettyChoiceValue"
+              @save-choices="saveChoices"
+              @update-choice-draft="choiceDrafts[$event.sourceKey][$event.slot] = $event.value"
+              @roll-saving-throw="rollSavingThrow"
+              @roll-skill-check="rollSkillCheck"
+            />
 
 
 

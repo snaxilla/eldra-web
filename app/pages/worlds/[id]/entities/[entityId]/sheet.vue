@@ -6362,209 +6362,54 @@ async function saveSheet() {
             @saved="applyChildSheetPatchResult"
           />
 
-          <div v-if="activeSheetTab === 'overview'" class="mt-6 hidden gap-3 md:grid md:grid-cols-2 lg:grid-cols-4">
-            <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
-              <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Level</div>
-              <input
-                v-if="mode === 'build'"
-                v-model="sheetForm.level"
-                inputmode="numeric"
-                class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-2xl font-semibold text-white"
-              >
-              <div v-else class="mt-2 text-2xl font-semibold text-white">{{ sheet?.level || 1 }}</div>
-            </label>
-
-            <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
-              <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Class</div>
-              <select
-                v-if="mode === 'build'"
-                v-model="sheetForm.classEntityId"
-                class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-lg text-white"
-              >
-                <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked class</option>
-                <option
-                  v-for="option in classOptions"
-                  :key="option.id"
-                  :value="option.id"
-                  class="bg-[#090909] text-[#f5e7bd]"
-                >
-                  {{ option.title }}
-                </option>
-              </select>
-              <div v-else class="mt-2 text-lg font-semibold text-white">{{ sheet?.class_name || '—' }}</div>
-
-              <div v-if="resolvedClass" class="mt-4 space-y-1.5 border-t border-[rgba(201,164,90,0.16)] pt-3 text-xs leading-5 text-[#d8ceb8]">
-                <div v-if="resolvedClass.hitDie"><span class="text-[#9f9278]">Hit Die:</span> {{ resolvedClass.hitDie }}</div>
-                <div v-if="resolvedClass.savingThrows"><span class="text-[#9f9278]">Saves:</span> {{ resolvedClass.savingThrows }}</div>
-                <div v-if="resolvedClass.armorProficiencies"><span class="text-[#9f9278]">Armor:</span> {{ resolvedClass.armorProficiencies }}</div>
-                <div v-if="resolvedClass.weaponProficiencies"><span class="text-[#9f9278]">Weapons:</span> {{ resolvedClass.weaponProficiencies }}</div>
-              </div>
-            </label>
-
-            <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
-              <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Species</div>
-              <select
-                v-if="mode === 'build'"
-                v-model="sheetForm.speciesEntityId"
-                class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-lg text-white"
-              >
-                <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked species</option>
-                <option
-                  v-for="option in speciesOptions"
-                  :key="option.id"
-                  :value="option.id"
-                  class="bg-[#090909] text-[#f5e7bd]"
-                >
-                  {{ option.title }}
-                </option>
-              </select>
-              <div v-else class="mt-2 text-lg font-semibold text-white">{{ sheet?.species_name || '—' }}</div>
-
-              <div v-if="resolvedSpecies" class="mt-4 space-y-1.5 border-t border-[rgba(201,164,90,0.16)] pt-3 text-xs leading-5 text-[#d8ceb8]">
-                <div v-if="resolvedSpecies.size"><span class="text-[#9f9278]">Size:</span> {{ resolvedSpecies.size }}</div>
-                <div v-if="resolvedSpecies.speed"><span class="text-[#9f9278]">Speed:</span> {{ resolvedSpecies.speed }}</div>
-                <div v-if="resolvedSpecies.rawTraitCount"><span class="text-[#9f9278]">Traits:</span> {{ resolvedSpecies.rawTraitCount }}</div>
-              </div>
-            </label>
-
-            <label class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
-              <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Background</div>
-              <select
-                v-if="mode === 'build'"
-                v-model="sheetForm.backgroundEntityId"
-                class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-lg text-white"
-              >
-                <option value="" class="bg-[#090909] text-[#f5e7bd]">No linked background</option>
-                <option
-                  v-for="option in backgroundOptions"
-                  :key="option.id"
-                  :value="option.id"
-                  class="bg-[#090909] text-[#f5e7bd]"
-                >
-                  {{ option.title }}
-                </option>
-              </select>
-              <div v-else class="mt-2 text-lg font-semibold text-white">{{ sheet?.background_name || '—' }}</div>
-
-              <div v-if="resolvedBackground" class="mt-4 space-y-1.5 border-t border-[rgba(201,164,90,0.16)] pt-3 text-xs leading-5 text-[#d8ceb8]">
-                <div v-if="resolvedBackground.skillProficiencies"><span class="text-[#9f9278]">Skills:</span> {{ resolvedBackground.skillProficiencies }}</div>
-                <div v-if="resolvedBackground.toolProficiencies"><span class="text-[#9f9278]">Tools:</span> {{ resolvedBackground.toolProficiencies }}</div>
-                <div v-if="resolvedBackground.featureName"><span class="text-[#9f9278]">Feature:</span> {{ resolvedBackground.featureName }}</div>
-              </div>
-            </label>
-          </div>
+          <CharactersSheetDesktopOverviewCards
+            v-if="activeSheetTab === 'overview'"
+            :mode="mode"
+            :sheet="sheet"
+            :level-value="sheetForm.level"
+            :class-entity-id="sheetForm.classEntityId"
+            :species-entity-id="sheetForm.speciesEntityId"
+            :background-entity-id="sheetForm.backgroundEntityId"
+            :subclass-name="sheetForm.subclassName"
+            :class-options="classOptions"
+            :species-options="speciesOptions"
+            :background-options="backgroundOptions"
+            :resolved-class="resolvedClass"
+            :resolved-species="resolvedSpecies"
+            :resolved-background="resolvedBackground"
+            @update-level="sheetForm.level = $event"
+            @update-class-entity-id="sheetForm.classEntityId = $event"
+            @update-species-entity-id="sheetForm.speciesEntityId = $event"
+            @update-background-entity-id="sheetForm.backgroundEntityId = $event"
+            @update-subclass-name="sheetForm.subclassName = $event"
+          />
 
 
-          <div v-if="activeSheetTab === 'overview' && mode === 'build'" class="mt-3 hidden rounded-none md:block border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
-            <label class="block">
-              <span class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">Subclass</span>
-              <input
-                v-model="sheetForm.subclassName"
-                class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-sm text-white"
-                placeholder="Optional subclass"
-              >
-            </label>
-          </div>
+          
 
-            <section v-if="activeSheetTab === 'overview'" class="mt-6 hidden grid-cols-2 gap-3 md:grid sm:grid-cols-3">
-            <label
-              v-for="ability in abilityList"
-              role="button"
-              tabindex="0"
-              title="Roll ability check"
-              @click.stop="rollAbilityCheck(ability)"
-              @keydown.enter.prevent="rollAbilityCheck(ability)"
-              @keydown.space.prevent="rollAbilityCheck(ability)"
-              :key="ability.key"
-              class="cursor-pointer transition hover:border-[rgba(201,164,90,0.45)] hover:bg-[rgba(201,164,90,0.08)] rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4 text-center"
-            >
-              <div class="text-xs uppercase tracking-[0.25em] text-[#9f9278]">{{ ability.label }}</div>
+                      <CharactersSheetAbilityGrid
+            v-if="activeSheetTab === 'overview'"
+            :mode="mode"
+            :abilities="abilityList"
+            :ability-scores="sheetForm.abilityScores"
+            @roll-ability="rollAbilityCheck"
+            @update-ability="sheetForm.abilityScores[$event.key] = $event.value"
+          />
 
-              <input
-                v-if="mode === 'build'"
-                v-model="sheetForm.abilityScores[ability.key]"
-                inputmode="numeric"
-                class="eldra-input mx-auto mt-2 w-24 rounded-none px-3 py-2 text-center text-3xl font-semibold text-white"
-              >
-
-              <div v-else class="mt-2 text-3xl font-semibold text-white">{{ ability.value ?? 10 }}</div>
-              <div class="mt-1 text-sm text-[#d8ceb8]">{{ abilityMod(ability.value) }}</div>
-            </label>
-          </section>
-
-            <section v-if="activeSheetTab === 'overview'" class="mt-6 hidden gap-4 md:grid">
-            <div class="eldra-codex-soft rounded-none p-4">
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Combat</div>
-
-              <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <label class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                  <div class="text-[#9f9278]">Armor Class</div>
-                  <input
-                    v-if="mode === 'build'"
-                    v-model="sheetForm.combatStats.armorClass"
-                    inputmode="numeric"
-                    class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-xl text-white"
-                  >
-                  <div v-else class="mt-1 text-xl font-semibold text-white">{{ shownCombatStat('armorClass') || '—' }}</div>
-                </label>
-
-                <label class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                  <div class="text-[#9f9278]">Hit Points</div>
-                  <div v-if="mode === 'build'" class="mt-2 grid grid-cols-2 gap-2">
-                    <input
-                      v-model="sheetForm.combatStats.currentHp"
-                      inputmode="numeric"
-                      placeholder="Current"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    >
-                    <input
-                      v-model="sheetForm.combatStats.maxHp"
-                      inputmode="numeric"
-                      placeholder="Max"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    >
-                  </div>
-                  <div v-else class="mt-1 text-xl font-semibold text-white">
-                    {{ shownCombatStat('currentHp') || '—' }} / {{ shownCombatStat('maxHp') || '—' }}
-                  </div>
-                </label>
-
-                <label class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                  <div class="text-[#9f9278]">Initiative</div>
-                  <input
-                    v-if="mode === 'build'"
-                    v-model="sheetForm.combatStats.initiative"
-                    inputmode="numeric"
-                    class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-xl text-white"
-                  >
-                  <div v-else class="mt-1 text-xl font-semibold text-white">{{ shownCombatStat('initiative') || '—' }}</div>
-                </label>
-
-                <label class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                  <div class="text-[#9f9278]">Speed</div>
-                  <input
-                    v-if="mode === 'build'"
-                    v-model="sheetForm.combatStats.speed"
-                    class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-xl text-white"
-                    placeholder="30 ft"
-                  >
-                  <div v-else class="mt-1 text-xl font-semibold text-white">{{ shownCombatStat('speed') || '—' }}</div>
-                </label>
-
-                <label class="col-span-2 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3">
-                  <div class="text-[#9f9278]">Hit Dice</div>
-                  <input
-                    v-if="mode === 'build'"
-                    v-model="sheetForm.combatStats.hitDice"
-                    class="eldra-input mt-2 w-full rounded-none px-3 py-2 text-sm text-white"
-                    placeholder="e.g. 1d10"
-                  >
-                  <div v-else class="mt-1 text-xl font-semibold text-white">{{ shownCombatStat('hitDice') || '—' }}</div>
-                </label>
-              </div>
-            </div>
-
-          </section>
+                      <CharactersSheetCombatPanel
+            v-if="activeSheetTab === 'overview'"
+            :mode="mode"
+            :combat-stats="sheetForm.combatStats"
+            :shown-stats="{
+              armorClass: shownCombatStat('armorClass'),
+              currentHp: shownCombatStat('currentHp'),
+              maxHp: shownCombatStat('maxHp'),
+              initiative: shownCombatStat('initiative'),
+              speed: shownCombatStat('speed'),
+              hitDice: shownCombatStat('hitDice')
+            }"
+            @update-combat-stat="sheetForm.combatStats[$event.key] = $event.value"
+          />
             <section
               v-else-if="activeSheetTab === 'stats'"
               class="mt-6 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]"

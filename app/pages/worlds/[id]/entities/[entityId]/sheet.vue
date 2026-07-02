@@ -7464,187 +7464,31 @@ async function saveSheet() {
     </Transition>
 
       <!-- Spell Builder Drawer -->
-      <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-        <div
-          v-if="spellBuilderOpen"
-          class="fixed inset-0 z-[260] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
-          @click.self="closeSpellBuilder"
-        >
-          <aside class="eldra-ornate-panel fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[520px]">
-            <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-              <div class="min-w-0">
-                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build Mode</div>
-                <h2 class="mt-2 truncate text-2xl font-semibold text-white">Manage Spells</h2>
-                <div class="mt-1 text-xs text-[#9f9278]">
-                  Recommended by default. Advanced overrides are allowed but marked.
-                </div>
-              </div>
-
-              <button
-                type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
-                @click="closeSpellBuilder"
-              >
-                <UIcon name="i-lucide-x" class="h-4 w-4" />
-              </button>
-            </div>
-
-            <div class="flex-1 overflow-y-auto px-5 py-5">
-              <div class="grid gap-3">
-                <label class="block">
-                  <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Search Spells</span>
-                  <input
-                    v-model="spellBuilderSearch"
-                    type="text"
-                    class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    placeholder="Search Magic Missile, Shield, Fire Bolt..."
-                  >
-                </label>
-
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="option in spellBuilderLevelOptions"
-                    :key="option.key"
-                    type="button"
-                    class="rounded-none border px-3 py-1.5 text-xs font-semibold"
-                    :class="spellBuilderLevelFilter === option.key
-                      ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-                      : 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
-                    @click="spellBuilderLevelFilter = option.key"
-                  >
-                    {{ option.label }}
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  class="flex items-center justify-between gap-3 rounded-none border px-3 py-2 text-left text-xs"
-                  :class="spellBuilderAdvanced
-                    ? 'border-amber-300/40 bg-amber-400/10 text-amber-100'
-                    : 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
-                  @click="spellBuilderAdvanced = !spellBuilderAdvanced"
-                >
-                  <span>
-                    {{ spellBuilderAdvanced ? 'Advanced Override Mode Enabled' : 'Recommended Spells Only' }}
-                  </span>
-                  <span class="text-[#9f9278]">
-                    {{ spellBuilderAdvanced ? 'Showing all imported spells' : 'Tap to show off-list spells' }}
-                  </span>
-                </button>
-
-                <div
-                  v-if="spellBuilderAdvanced"
-                  class="rounded-none border border-amber-300/24 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100"
-                >
-                  Advanced mode lets this character learn or prepare spells outside normal class access. Use it for feats, boons, homebrew, weird plot nonsense, or DM-approved chaos.
-                </div>
-
-                <div v-if="spellSaveError" class="rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-                  {{ spellSaveError }}
-                </div>
-
-                <div v-if="spellSaveSuccess" class="rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                  {{ spellSaveSuccess }}
-                </div>
-              </div>
-
-              <div class="mt-4 grid gap-2">
-                <article
-                  v-for="spell in filteredSpellBuilderCards"
-                  :key="`spell-builder-${spellBuilderSpellId(spell)}`"
-                  class="min-w-0 overflow-hidden rounded-none border p-3"
-                  :class="spellBuilderIsRecommended(spell)
-                    ? 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)]'
-                    : 'border-amber-300/28 bg-amber-400/8'"
-                >
-                  <div class="flex items-start justify-between gap-3">
-                    <button
-                      type="button"
-                      class="min-w-0 flex-1 text-left"
-                      @click.stop="openSpellDrawer(spell)"
-                    >
-                      <div class="truncate font-semibold text-white">{{ spellBuilderTitle(spell) }}</div>
-                      <div class="mt-1 text-xs text-[#9f9278]">
-                        {{ spellBuilderLevelText(spell) }}
-                      </div>
-                    </button>
-
-                    <div class="flex shrink-0 flex-col items-end gap-1">
-                      <span
-                        class="rounded-none border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]"
-                        :class="spellBuilderIsRecommended(spell)
-                          ? 'border-[rgba(201,164,90,0.20)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]'
-                          : 'border-amber-300/30 bg-amber-400/10 text-amber-100'"
-                      >
-                        {{ spellBuilderIsRecommended(spell) ? 'Recommended' : 'Override' }}
-                      </span>
-
-                      <span v-if="spellBuilderIsKnown(spell)" class="text-[10px] text-emerald-200">Known</span>
-                      <span v-if="spellBuilderIsPrepared(spell)" class="text-[10px] text-[#c9a45a]">Prepared</span>
-                    </div>
-                  </div>
-
-                  <div class="mt-3 grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-2 text-xs font-semibold text-[#fff7df]"
-                      @click.stop="openSpellDrawer(spell)"
-                    >
-                      Details
-                    </button>
-
-                    <button
-                      type="button"
-                      class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-45"
-                      :disabled="spellBuilderIsKnown(spell)"
-                      @click.stop="addSpellFromBuilder(spell)"
-                    >
-                      {{ spellBuilderIsRecommended(spell) ? 'Add Known' : 'Add Override' }}
-                    </button>
-
-                    <button
-                      type="button"
-                      class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.14)] px-2 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-45"
-                      :disabled="spellBuilderIsPrepared(spell)"
-                      @click.stop="prepareSpellFromBuilder(spell)"
-                    >
-                      Prepare
-                    </button>
-                  </div>
-                </article>
-
-                <div
-                  v-if="!filteredSpellBuilderCards.length"
-                  class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]"
-                >
-                  No spells match that search/filter.
-                </div>
-              </div>
-            </div>
-
-            <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
-              <div class="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium"
-                  @click="closeSpellBuilder"
-                >
-                  Close
-                </button>
-
-                <button
-                  type="button"
-                  class="eldra-button rounded-none px-4 py-3 text-sm font-medium disabled:opacity-50"
-                  :disabled="spellSaving"
-                  @click="saveSpells"
-                >
-                  {{ spellSaving ? 'Saving...' : 'Save Spells' }}
-                </button>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </Transition>
+      <CharactersSheetSpellBuilderDrawer
+        :open="spellBuilderOpen"
+        :search="spellBuilderSearch"
+        :advanced="spellBuilderAdvanced"
+        :level-filter="spellBuilderLevelFilter"
+        :level-options="spellBuilderLevelOptions"
+        :cards="filteredSpellBuilderCards"
+        :saving="spellSaving"
+        :save-error="spellSaveError"
+        :save-success="spellSaveSuccess"
+        :spell-id-fn="spellBuilderSpellId"
+        :spell-title-fn="spellBuilderTitle"
+        :spell-level-text-fn="spellBuilderLevelText"
+        :is-recommended-fn="spellBuilderIsRecommended"
+        :is-known-fn="spellBuilderIsKnown"
+        :is-prepared-fn="spellBuilderIsPrepared"
+        @close="closeSpellBuilder"
+        @save="saveSpells"
+        @update-search="spellBuilderSearch = $event"
+        @update-level-filter="spellBuilderLevelFilter = $event"
+        @toggle-advanced="spellBuilderAdvanced = !spellBuilderAdvanced"
+        @open-spell="openSpellDrawer"
+        @add-spell="addSpellFromBuilder"
+        @prepare-spell="prepareSpellFromBuilder"
+      />
 
       <!-- Note Detail Drawer -->
       <CharactersSheetNoteDetailDrawer

@@ -5811,7 +5811,7 @@ async function saveSheet() {
       <div class="absolute inset-x-0 bottom-0 h-1/3 bg-[linear-gradient(to_top,rgba(3,6,10,0.48),transparent)]"></div>
     </div>
     <div
-        :class="(selectedSpellEntityId || selectedItemDetail) ? 'md:pr-[460px]' : ''"
+        :class="(selectedSpellEntityId || selectedItemDetail || selectedFeatureDetail || noteDrawerOpen) ? 'md:pr-[460px]' : ''"
         class="relative z-10 mx-auto w-full max-w-[1100px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
 

@@ -6976,209 +6976,31 @@ async function saveSheet() {
 
 
 
-            <section
+            <CharactersSheetInventoryTab
               v-else-if="activeSheetTab === 'inventory'"
-              class="mt-0 grid gap-3 md:mt-6"
-            >
-
-
-              <CharactersSheetCurrencyLedger :sheet="sheet" />
-
-              <div
-                v-if="mode === 'build'"
-                class="eldra-codex-soft rounded-none p-4"
-              >
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Add Inventory</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Add imported equipment or quick custom inventory rows.</div>
-                  </div>
-
-                  <button
-                    type="button"
-                    class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                    :disabled="inventorySaving"
-                    @click="addInventoryItem"
-                  >
-                    {{ inventorySaving ? 'Adding...' : 'Add Item' }}
-                  </button>
-                </div>
-
-                <div v-if="inventorySaveError" class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-                  {{ inventorySaveError }}
-                </div>
-
-                <div v-if="inventorySaveSuccess" class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-                  {{ inventorySaveSuccess }}
-                </div>
-
-                <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_120px]">
-                  <label class="block">
-                    <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Search Imported Items</span>
-                    <input
-                      v-model="inventoryItemSearch"
-                      class="eldra-input mb-2 w-full rounded-none px-3 py-2 text-sm text-white"
-                      placeholder="Search Longbow, Longsword, Backpack..."
-                    >
-
-                    <select
-                      v-model="inventoryAddForm.itemEntityId"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    >
-                      <option value="" class="bg-[#090909] text-[#f5e7bd]">No imported item selected</option>
-                      <option
-                        v-for="option in filteredInventoryItemOptions"
-                        :key="option.id"
-                        :value="option.id"
-                        class="bg-[#090909] text-[#f5e7bd]"
-                      >
-                        {{ option.title }}
-                      </option>
-                    </select>
-                  </label>
-
-                  <label class="block">
-                    <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Quantity</span>
-                    <input
-                      v-model="inventoryAddForm.quantity"
-                      inputmode="numeric"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                    >
-                  </label>
-
-                  <label class="block lg:col-span-2">
-                    <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Custom Item Name</span>
-                    <input
-                      v-model="inventoryAddForm.customName"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                      placeholder="Used when no imported item is selected"
-                    >
-                  </label>
-
-                  <label class="block lg:col-span-2">
-                    <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Notes</span>
-                    <textarea
-                      v-model="inventoryAddForm.notes"
-                      rows="2"
-                      class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                      placeholder="Optional notes..."
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div class="eldra-codex-soft rounded-none p-4">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Inventory</div>
-                    <div class="mt-1 text-sm text-[#d8ceb8]">Equipment, carried items, and attunement tracking.</div>
-                  </div>
-
-                  <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                    {{ inventoryCount }} Item{{ inventoryCount === 1 ? '' : 's' }}
-                  </div>
-                </div>
-
-                <div v-if="carriedInventory.length" class="mt-4 grid gap-2 md:grid-cols-2">
-                  <article
-                    v-for="item in carriedInventory"
-                    :key="item.id"
-                    class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3 text-sm text-[#d8ceb8]"
-                  >
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <div class="truncate font-semibold text-white">{{ item.name }}</div>
-                        <div class="mt-1 flex flex-wrap gap-2 text-xs text-[#9f9278]">
-                          <span>x{{ inventoryQuantity(item) }}</span>
-                          <span v-if="item.container">Container: {{ item.container }}</span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-2 py-1 text-xs text-[#f5e7bd]"
-                        @click.stop="openItemDrawer(inventoryItemDetail(item))"
-                      >
-                        Details
-                      </button>
-                    </div>
-
-                    <div class="mt-3 flex flex-wrap gap-2">
-                      <span v-if="item.equipped" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Equipped</span>
-                      <span v-if="item.attuned" class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">Attuned</span>
-                    </div>
-
-                    <div v-if="item.notes" class="mt-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] p-3 text-xs leading-5 text-[#9f9278]">
-                      {{ item.notes }}
-                    </div>
-
-                    <div
-                      v-if="mode === 'build'"
-                      class="mt-3 grid gap-2"
-                    >
-                      <div class="grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
-                          :disabled="inventorySaving"
-                          @click="changeInventoryQuantity(item, -1)"
-                        >
-                          - Qty
-                        </button>
-
-                        <button
-                          type="button"
-                          class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
-                          :disabled="inventorySaving"
-                          @click="changeInventoryQuantity(item, 1)"
-                        >
-                          + Qty
-                        </button>
-
-                        <button
-                          type="button"
-                          class="rounded-none border border-red-500/24 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100 disabled:opacity-50"
-                          :disabled="inventorySaving"
-                          @click="removeInventoryItem(item)"
-                        >
-                          Remove
-                        </button>
-                      </div>
-
-                      <div class="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          class="rounded-none border px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                          :class="item.equipped
-                            ? 'border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
-                            : 'border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
-                          :disabled="inventorySaving"
-                          @click="toggleInventoryEquipped(item)"
-                        >
-                          {{ item.equipped ? 'Unequip' : 'Equip' }}
-                        </button>
-
-                        <button
-                          type="button"
-                          class="rounded-none border px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                          :class="item.attuned
-                            ? 'border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
-                            : 'border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] text-[#d8ceb8]'"
-                          :disabled="inventorySaving"
-                          @click="toggleInventoryAttuned(item)"
-                        >
-                          {{ item.attuned ? 'Unattune' : 'Attune' }}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                </div>
-
-                <div v-else class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
-                  Inventory is empty. Switch to Build mode to add imported or custom items.
-                </div>
-              </div>
-            </section>
+              :mode="mode"
+              :sheet="sheet"
+              :inventory-saving="inventorySaving"
+              :inventory-save-error="inventorySaveError"
+              :inventory-save-success="inventorySaveSuccess"
+              :inventory-item-search="inventoryItemSearch"
+              :inventory-add-form="inventoryAddForm"
+              :filtered-inventory-item-options="filteredInventoryItemOptions"
+              :carried-inventory="carriedInventory"
+              :inventory-count="inventoryCount"
+              :inventory-quantity="inventoryQuantity"
+              @update-search="inventoryItemSearch = $event"
+              @update-item-entity-id="inventoryAddForm.itemEntityId = $event"
+              @update-custom-name="inventoryAddForm.customName = $event"
+              @update-quantity="inventoryAddForm.quantity = $event"
+              @update-notes="inventoryAddForm.notes = $event"
+              @add-item="addInventoryItem"
+              @open-item-detail="openItemDrawer(inventoryItemDetail($event))"
+              @change-quantity="changeInventoryQuantity($event.item, $event.delta)"
+              @remove-item="removeInventoryItem"
+              @toggle-equipped="toggleInventoryEquipped"
+              @toggle-attuned="toggleInventoryAttuned"
+            />
 
 
 

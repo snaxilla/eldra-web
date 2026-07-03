@@ -214,8 +214,8 @@ function canCast(spell: any) {
 
 <template>
   <section class="sheet-desktop-only mt-6 hidden md:block">
-    <div class="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_340px] 2xl:grid-cols-[280px_minmax(0,1fr)_380px]">
-      <aside class="grid gap-4">
+    <div class="grid items-start gap-4 xl:grid-cols-[260px_minmax(0,1fr)_340px] 2xl:grid-cols-[280px_minmax(0,1fr)_380px]">
+      <aside class="grid content-start gap-4">
         <div class="eldra-codex-soft rounded-none p-4">
           <div
             v-if="imageUrl"
@@ -278,12 +278,12 @@ function canCast(spell: any) {
         </div>
       </aside>
 
-      <main class="grid gap-4">
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <main class="grid content-start gap-4">
+        <div class="grid auto-rows-max items-start gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div
             v-for="stat in heroStats"
             :key="stat.key"
-            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-4"
+            class="min-h-[116px] rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-4"
           >
             <div class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">{{ stat.label }}</div>
             <div class="mt-2 text-3xl font-semibold leading-none text-white">{{ stat.value }}</div>

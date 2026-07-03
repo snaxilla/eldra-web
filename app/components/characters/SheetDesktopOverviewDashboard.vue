@@ -359,49 +359,9 @@ function canCast(spell: any) {
             </div>
           </div>
         </div>
-      </main>
 
-      <aside class="grid gap-4 content-start">
-        <div
-          v-if="hasLimitedResources && spellSlotRows.length"
-          class="eldra-codex-soft rounded-none p-4"
-        >
-          <div class="mb-3 flex items-center justify-between gap-3">
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-              {{ limitedResourceLabel || 'Resources' }}
-            </div>
-            <div v-if="spellSaving" class="text-xs text-[#9f9278]">Saving</div>
-          </div>
-
-          <div class="grid gap-2">
-            <div
-              v-for="row in spellSlotRows"
-              :key="`overview-slot-row-${row.level}`"
-              class="flex items-center justify-between gap-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] px-3 py-2"
-            >
-              <div class="text-xs font-semibold uppercase tracking-[0.18em] text-[#d8ceb8]">
-                {{ row.level }}
-              </div>
-
-              <div class="flex flex-wrap justify-end gap-1.5">
-                <button
-                  v-for="index in row.max"
-                  :key="`overview-slot-${row.level}-${index}`"
-                  type="button"
-                  class="h-4 w-4 rotate-45 border transition hover:scale-110 disabled:opacity-50"
-                  :class="slotClass(row, index - 1)"
-                  :title="`${slotLabel(row.level)} slot ${index}`"
-                  :disabled="spellSaving"
-                  @click="toggleSlot(row, index - 1)"
-                >
-                  <span class="sr-only">{{ slotLabel(row.level) }} slot {{ index }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="eldra-codex-soft rounded-none p-4">
+        <div class="grid items-start gap-4 2xl:grid-cols-2">
+<div class="eldra-codex-soft rounded-none p-4">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Primary Attacks</div>
             <div class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">
@@ -476,7 +436,7 @@ function canCast(spell: any) {
           </div>
         </div>
 
-        <div
+<div
           v-if="spellRows.length"
           class="eldra-codex-soft rounded-none p-4"
         >
@@ -541,6 +501,52 @@ function canCast(spell: any) {
             </article>
           </div>
         </div>
+        </div>
+      </main>
+
+      <aside class="grid content-start gap-4">
+        <div
+          v-if="hasLimitedResources && spellSlotRows.length"
+          class="eldra-codex-soft rounded-none p-4"
+        >
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              {{ limitedResourceLabel || 'Resources' }}
+            </div>
+            <div v-if="spellSaving" class="text-xs text-[#9f9278]">Saving</div>
+          </div>
+
+          <div class="grid gap-2">
+            <div
+              v-for="row in spellSlotRows"
+              :key="`overview-slot-row-${row.level}`"
+              class="flex items-center justify-between gap-3 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(9,17,26,0.42)] px-3 py-2"
+            >
+              <div class="text-xs font-semibold uppercase tracking-[0.18em] text-[#d8ceb8]">
+                {{ row.level }}
+              </div>
+
+              <div class="flex flex-wrap justify-end gap-1.5">
+                <button
+                  v-for="index in row.max"
+                  :key="`overview-slot-${row.level}-${index}`"
+                  type="button"
+                  class="h-4 w-4 rotate-45 border transition hover:scale-110 disabled:opacity-50"
+                  :class="slotClass(row, index - 1)"
+                  :title="`${slotLabel(row.level)} slot ${index}`"
+                  :disabled="spellSaving"
+                  @click="toggleSlot(row, index - 1)"
+                >
+                  <span class="sr-only">{{ slotLabel(row.level) }} slot {{ index }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        
+
+        
 
         <div class="eldra-codex-soft rounded-none p-4">
           <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Defenses / Conditions</div>

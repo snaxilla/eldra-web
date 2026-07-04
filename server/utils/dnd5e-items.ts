@@ -444,12 +444,14 @@ function resources(raw: any, description = '') {
 
   const text = cleanText(description).toLowerCase()
 
-  if (
-    text.includes("can't use this property again until you finish a long rest") ||
-    text.includes("can't use this property again until the next dawn") ||
-    text.includes("can't use it again until you finish a long rest") ||
-    text.includes("can't use it again until the next dawn")
-  ) {
+  const oncePerRechargePatterns = [
+    /can't use (?:this property|it|this item|this weapon|the weapon|the item|this ability|this feature|this effect)?\s*(?:this way)?\s*again until (?:you finish )?(?:a |the )?(long rest|next dawn)/i,
+    /can't be used (?:this way )?again until (?:you finish )?(?:a |the )?(long rest|next dawn)/i,
+    /once (?:this property|it|this item|this weapon|the weapon|the item|this ability|this feature|this effect) is used,? (?:it |the item |the weapon |this property )?can't be used again until (?:you finish )?(?:a |the )?(long rest|next dawn)/i,
+    /regains? (?:all )?(?:expended )?(?:charges|uses) (?:daily )?at dawn/i
+  ]
+
+  if (oncePerRechargePatterns.some((pattern) => pattern.test(text))) {
     return [{
       key: 'uses',
       label: 'Uses',

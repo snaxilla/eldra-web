@@ -979,7 +979,7 @@ const {
   }
 )
 
-const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/sheet-options`, {
   default: () => [],
   watch: [worldId]
 })

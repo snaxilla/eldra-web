@@ -14,11 +14,17 @@ const worldId = computed(() => String(route.params.id || ''))
 const search = ref('')
 const classImageCache = ref<Record<string, string>>({})
 
+const entitySummaryTypes = computed(() => {
+  const type = normalizeEntityType(props.entityType)
+  if (type === 'species') return 'species,race'
+  return type
+})
+
 const {
   data: entities,
   pending,
   refresh
-} = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
+} = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1&type=${encodeURIComponent(entitySummaryTypes.value)}`, {
   default: () => []
 })
 

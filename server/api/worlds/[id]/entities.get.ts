@@ -212,6 +212,16 @@ function shouldUseSummaryMode(query: Record<string, any>) {
   )
 }
 
+
+function normalizeTypeFilter(value: any) {
+  const raw = Array.isArray(value) ? value.join(',') : String(value || '')
+
+  return raw
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
   const query = getQuery(event) as Record<string, any>
@@ -224,12 +234,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const typeFilter = normalizeTypeFilter(query.type || query.types || query.entityType || query.entityTypes)
+
+  const entityFilter: Record<string, any> = {
+    world_id: { _eq: worldId }
+  }
+
+  if (typeFilter.length) {
+    entityFilter.entity_type = { _in: typeFilter }
+  }
+
   const entitiesRes = await directusServiceRequest('/items/entities', {
     method: 'GET',
     query: {
-      filter: {
-        world_id: { _eq: worldId }
-      },
+      filter: entityFilter,
       sort: 'title',
       limit: -1,
       fields: [

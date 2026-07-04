@@ -226,7 +226,7 @@ const { data: worldMaps } = await useFetch(() => `/api/worlds/${worldId.value}/m
   watch: [worldId]
 })
 
-const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
+const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1&type=location`, {
   default: () => [],
   watch: [worldId]
 })

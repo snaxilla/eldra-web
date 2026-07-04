@@ -19,6 +19,12 @@ const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
 const selectedEntityId = ref<string | null>(null)
+
+const entitySummaryTypes = computed(() => {
+  const type = normalizeEntityType(props.entityType)
+  if (type === 'species') return 'species,race'
+  return type
+})
 const deletingEntity = ref(false)
 const deleteError = ref('')
 
@@ -60,7 +66,7 @@ const newLocationForm = reactive({
 })
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
+const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1&type=${encodeURIComponent(entitySummaryTypes.value)}`, {
   default: () => []
 })
 

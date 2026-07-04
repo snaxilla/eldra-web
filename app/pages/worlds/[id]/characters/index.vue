@@ -51,7 +51,7 @@ const {
   data: entities,
   pending,
   refresh
-} = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
+} = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1&type=character,npc,npc_sheet,pc,player_character`, {
   default: () => []
 })
 

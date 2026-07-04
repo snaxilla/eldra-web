@@ -14,7 +14,7 @@ const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 const showPins = useState<boolean>('world-map-show-pins', () => true)
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
   default: () => []
 })
 

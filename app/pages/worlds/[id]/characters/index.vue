@@ -51,7 +51,7 @@ const {
   data: entities,
   pending,
   refresh
-} = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+} = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
   default: () => []
 })
 

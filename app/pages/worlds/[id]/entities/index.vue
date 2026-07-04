@@ -3,7 +3,7 @@ const route = useRoute()
 const worldId = route.params.id
 
 const { data: world } = await useFetch(`/api/worlds/${worldId}`)
-const { data: entities } = await useFetch(`/api/worlds/${worldId}/entities`)
+const { data: entities } = await useFetch(`/api/worlds/${worldId}/entities?summary=1`)
 
 const selectedType = ref(typeof route.query.type === 'string' ? route.query.type : 'all')
 

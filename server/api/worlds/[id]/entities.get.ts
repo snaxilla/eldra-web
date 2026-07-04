@@ -3,6 +3,17 @@ import path from 'node:path'
 import { directusServiceRequest } from '../../../utils/directus'
 
 const CLASS_DATA_DIR = '/opt/eldra/datasets/5etools-src/data/class'
+const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
+const SPELL_FLUFF_DIR = '/opt/eldra/datasets/5etools-src/data/spells'
+
+const SUMMARY_BLOCK_KEYS = [
+  'overview',
+  'item_core',
+  'spell_core',
+  'location_core',
+  'character_core',
+  'article_override'
+]
 
 function readJsonSafe(filePath: string) {
   try {
@@ -51,8 +62,6 @@ function classFluffImageUrl(row: any) {
   return imagePath ? `/api/5etools-img/${imagePath}` : null
 }
 
-const RACE_FLUFF_FILE = '/opt/eldra/datasets/5etools-src/data/fluff-races.json'
-
 function raceFluffImageUrl(row: any) {
   const type = String(row?.entity_type || '').toLowerCase()
   if (type !== 'species' && type !== 'race') return null
@@ -81,8 +90,6 @@ function raceFluffImageUrl(row: any) {
   return imagePath ? `/api/5etools-img/${imagePath}` : null
 }
 
-const SPELL_FLUFF_DIR = '/opt/eldra/datasets/5etools-src/data/spells'
-
 function spellFluffImageUrl(row: any) {
   if (String(row?.entity_type || '').toLowerCase() !== 'spell') return null
 
@@ -104,6 +111,22 @@ function spellFluffImageUrl(row: any) {
   return imagePath ? `/api/5etools-img/${imagePath}` : null
 }
 
+function entityImageUrl(row: any) {
+  const image = row?.image
+
+  if (!image) return null
+  if (typeof image === 'string' && image.trim()) return `/api/assets/${image}`
+  if (typeof image === 'number') return `/api/assets/${image}`
+
+  if (typeof image === 'object') {
+    if (image.image_url) return image.image_url
+    if (image.file_id) return `/api/assets/${image.file_id}`
+    if (image.id) return `/api/assets/${image.id}`
+  }
+
+  return null
+}
+
 function extractImageUrl(blocks: any[] = []) {
   for (const block of blocks) {
     const image = block?.data?.image
@@ -123,27 +146,76 @@ function extractImageUrl(blocks: any[] = []) {
   return null
 }
 
-function extractOverviewText(blocks: any[] = []) {
-  const overview = blocks.find((block: any) => {
-    const key = String(block?.block_key || block?.blockKey || '')
-    return key === 'overview'
-  })
+function cleanPreviewText(value: any, limit = 420) {
+  const text = String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 
-  return String(overview?.data?.text || '').trim() || null
+  return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
+}
+
+function blockKey(block: any) {
+  return String(block?.block_key || block?.blockKey || '')
+}
+
+function extractOverviewText(blocks: any[] = []) {
+  const overview = blocks.find((block: any) => blockKey(block) === 'overview')
+  return cleanPreviewText(overview?.data?.text || '')
 }
 
 function extractCoreText(blocks: any[] = []) {
-  const itemCore = blocks.find((block: any) => String(block?.block_key || '') === 'item_core')
-  if (itemCore?.data?.description) return String(itemCore.data.description).trim()
+  for (const key of ['item_core', 'spell_core', 'location_core', 'character_core']) {
+    const block = blocks.find((item: any) => blockKey(item) === key)
+    const data = block?.data || {}
 
-  const spellCore = blocks.find((block: any) => String(block?.block_key || '') === 'spell_core')
-  if (spellCore?.data?.description) return String(spellCore.data.description).trim()
+    const text =
+      data.summary ||
+      data.description ||
+      data.text ||
+      data.entry ||
+      ''
 
-  return null
+    const clean = cleanPreviewText(text)
+    if (clean) return clean
+  }
+
+  const articleOverride = blocks.find((item: any) => blockKey(item) === 'article_override')
+  const articleText = cleanPreviewText(articleOverride?.data?.article || articleOverride?.data?.body || '')
+  if (articleText) return articleText
+
+  return ''
+}
+
+function shouldUseSummaryMode(query: Record<string, any>) {
+  const mode = String(query.mode || '').trim().toLowerCase()
+  const summary = String(query.summary || '').trim().toLowerCase()
+  const includeBlocks = String(query.includeBlocks || '').trim().toLowerCase()
+
+  return (
+    mode === 'summary' ||
+    summary === '1' ||
+    summary === 'true' ||
+    includeBlocks === '0' ||
+    includeBlocks === 'false'
+  )
 }
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
+  const query = getQuery(event) as Record<string, any>
+  const summaryMode = shouldUseSummaryMode(query)
 
   if (!worldId) {
     throw createError({
@@ -182,15 +254,21 @@ export default defineEventHandler(async (event) => {
 
   let blocks: any[] = []
   if (entityIds.length) {
+    const filter: any = {
+      entity_id: { _in: entityIds }
+    }
+
+    if (summaryMode) {
+      filter.block_key = { _in: SUMMARY_BLOCK_KEYS }
+    }
+
     const blocksRes = await directusServiceRequest('/items/block_instances', {
       method: 'GET',
       query: {
-        filter: {
-          entity_id: { _in: entityIds }
-        },
+        filter,
         sort: 'entity_id,sort',
         limit: -1,
-        fields: '*'
+        fields: summaryMode ? 'entity_id,block_key,data' : '*'
       }
     })
 
@@ -209,9 +287,36 @@ export default defineEventHandler(async (event) => {
 
   return rows.map((row: any) => {
     const entityBlocks = blocksByEntityId.get(Number(row.id)) || []
-    const derivedImageUrl = row?.image ? `/api/assets/${row.image}` : extractImageUrl(entityBlocks) || classFluffImageUrl(row) || raceFluffImageUrl(row) || spellFluffImageUrl(row)
+    const derivedImageUrl =
+      entityImageUrl(row) ||
+      extractImageUrl(entityBlocks) ||
+      classFluffImageUrl(row) ||
+      raceFluffImageUrl(row) ||
+      spellFluffImageUrl(row)
+
     const overviewText = extractOverviewText(entityBlocks)
     const coreText = extractCoreText(entityBlocks)
+    const summary = cleanPreviewText(row?.summary || overviewText || coreText || '')
+
+    if (summaryMode) {
+      return {
+        id: row.id,
+        title: row.title,
+        slug: row.slug,
+        world_id: row.world_id,
+        system_key: row.system_key,
+        entity_type: row.entity_type,
+        entityType: row.entity_type,
+        status: row.status,
+        visibility: row.visibility,
+        summary,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        image: row.image,
+        imageUrl: derivedImageUrl,
+        image_url: derivedImageUrl
+      }
+    }
 
     return {
       ...row,

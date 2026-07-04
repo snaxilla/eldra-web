@@ -60,7 +60,7 @@ const newLocationForm = reactive({
 })
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
-const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities`, {
+const { data: entities, pending, refresh } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
   default: () => []
 })
 

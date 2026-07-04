@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../utils/directus'
+import { normalizeDnd5eItem } from '../../../utils/dnd5e-items'
 
 const SHEET_OPTION_TYPES = [
   'class',
@@ -28,11 +29,20 @@ function blockKey(value: any) {
   return String(value?.block_key || value?.blockKey || '').trim()
 }
 
-function shouldIncludeImportSource(rowType: string) {
-  // Keep item raw data because the current inventory code still uses it as
-  // a fallback for type/damage/weight/value details. Do not ship spell raw_json
-  // for every spell; selected spell details still fetch the full entity lazily.
-  return rowType === 'item'
+function imageUrlFor(row: any) {
+  if (!row?.image) return ''
+
+  if (typeof row.image === 'string' || typeof row.image === 'number') {
+    return `/api/assets/${row.image}`
+  }
+
+  if (typeof row.image === 'object') {
+    if (row.image.image_url) return row.image.image_url
+    if (row.image.file_id) return `/api/assets/${row.image.file_id}`
+    if (row.image.id) return `/api/assets/${row.image.id}`
+  }
+
+  return ''
 }
 
 export default defineEventHandler(async (event) => {
@@ -97,7 +107,7 @@ export default defineEventHandler(async (event) => {
     coreBlocks = Array.isArray(coreBlocksRes?.data) ? coreBlocksRes.data : []
 
     const itemIds = rows
-      .filter((row: any) => shouldIncludeImportSource(normalizeType(row.entity_type)))
+      .filter((row: any) => normalizeType(row.entity_type) === 'item')
       .map((row: any) => row.id)
       .filter(Boolean)
 
@@ -111,7 +121,7 @@ export default defineEventHandler(async (event) => {
           },
           sort: 'entity_id,sort',
           limit: -1,
-          fields: 'entity_id,block_key,label,sort,repeatable,data'
+          fields: 'entity_id,block_key,data'
         }
       })
 
@@ -119,24 +129,20 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const blocksByEntityId = new Map<string, any[]>()
+  const coreBlocksByEntityId = new Map<string, any[]>()
+  const itemSourceByEntityId = new Map<string, any>()
 
-  for (const block of [...coreBlocks, ...itemSourceBlocks]) {
+  for (const block of coreBlocks) {
     const entityId = String(block.entity_id || '')
     if (!entityId) continue
 
-    const rowType = typeById.get(entityId) || ''
     const key = blockKey(block)
 
-    if (key === 'import_source' && !shouldIncludeImportSource(rowType)) {
-      continue
+    if (!coreBlocksByEntityId.has(entityId)) {
+      coreBlocksByEntityId.set(entityId, [])
     }
 
-    if (!blocksByEntityId.has(entityId)) {
-      blocksByEntityId.set(entityId, [])
-    }
-
-    blocksByEntityId.get(entityId)!.push({
+    coreBlocksByEntityId.get(entityId)!.push({
       entity_id: block.entity_id,
       block_key: key,
       blockKey: key,
@@ -147,8 +153,25 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  for (const block of itemSourceBlocks) {
+    const entityId = String(block.entity_id || '')
+    if (!entityId) continue
+    itemSourceByEntityId.set(entityId, block?.data?.raw_json || {})
+  }
+
   return rows.map((row: any) => {
-    const blocks = blocksByEntityId.get(String(row.id)) || []
+    const id = String(row.id || '')
+    const rowType = typeById.get(id) || ''
+    const blocks = coreBlocksByEntityId.get(id) || []
+    const core = blocks.find((block: any) => blockKey(block) === `${rowType}_core` || blockKey(block) === 'item_core')?.data || {}
+    const raw = rowType === 'item' ? (itemSourceByEntityId.get(id) || {}) : null
+    const itemProfile = rowType === 'item'
+      ? normalizeDnd5eItem({
+          entity: row,
+          core,
+          raw
+        })
+      : null
 
     return {
       id: row.id,
@@ -162,9 +185,11 @@ export default defineEventHandler(async (event) => {
       visibility: row.visibility,
       summary: row.summary || '',
       image: row.image,
-      imageUrl: row.image ? `/api/assets/${row.image}` : '',
-      image_url: row.image ? `/api/assets/${row.image}` : '',
-      blocks
+      imageUrl: imageUrlFor(row),
+      image_url: imageUrlFor(row),
+      blocks,
+      itemProfile,
+      profile: itemProfile
     }
   })
 })

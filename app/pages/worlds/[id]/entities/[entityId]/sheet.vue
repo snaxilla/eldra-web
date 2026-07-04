@@ -1313,12 +1313,31 @@ function inventoryLinkedItemOption(item: any) {
   return itemOptions.value.find((option: any) => String(option.id) === String(linkedId)) || null
 }
 
+function inventoryItemProfile(item: any) {
+  const option = inventoryLinkedItemOption(item)
+  const entity = option?.entity || {}
+
+  return entity?.itemProfile || entity?.profile || entity?.normalizedItem || null
+}
+
+function inventoryProfileModifierValue(item: any, type: string) {
+  const profile = inventoryItemProfile(item)
+  const modifiers = Array.isArray(profile?.modifiers) ? profile.modifiers : []
+  const found = modifiers.find((modifier: any) => String(modifier?.type || '') === type)
+  const parsed = Number(found?.value)
+
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function inventoryItemCore(item: any) {
   const option = inventoryLinkedItemOption(item)
   return option ? optionCore(option, 'item_core') || {} : {}
 }
 
 function inventoryItemTypeCode(item: any) {
+  const profile = inventoryItemProfile(item)
+  if (profile?.typeCode) return String(profile.typeCode).trim().toUpperCase()
+
   const core = inventoryItemCore(item)
   const raw = inventoryItemRaw(item)
   const rawType = String(
@@ -1334,6 +1353,9 @@ function inventoryItemTypeCode(item: any) {
 }
 
 function inventoryItemTypeLabel(item: any) {
+  const profile = inventoryItemProfile(item)
+  if (profile?.displayType) return String(profile.displayType).trim()
+
   const core = inventoryItemCore(item)
   const raw = inventoryItemRaw(item)
   const rawType = String(
@@ -1360,6 +1382,15 @@ function inventoryItemTypeLabel(item: any) {
 }
 
 function inventoryItemDamage(item: any) {
+  const profile = inventoryItemProfile(item)
+
+  if (profile?.weapon?.damage || profile?.weapon?.damageType) {
+    return {
+      damage: String(profile.weapon.damage || '').trim(),
+      damageType: String(profile.weapon.damageType || '').trim()
+    }
+  }
+
   const core = inventoryItemCore(item)
 
   return {
@@ -1370,21 +1401,23 @@ function inventoryItemDamage(item: any) {
 
 function inventoryItemDetail(item: any) {
   const core = inventoryItemCore(item)
+  const profile = inventoryItemProfile(item)
   const damage = inventoryItemDamage(item)
   const linkedItemId = inventoryLinkedItemId(item)
 
   return {
     id: item?.id,
-    name: String(item?.name || core?.name || 'Item'),
-    itemType: inventoryItemTypeLabel(item) || 'Item',
+    name: String(item?.name || profile?.name || core?.name || 'Item'),
+    itemType: profile?.displayType || inventoryItemTypeLabel(item) || 'Item',
     damage: damage.damage,
     damageType: damageTypeLabel(damage.damageType),
     linkedItemId,
-    rarity: String(core?.rarity || item?.rarity || '').trim(),
-    weight: core?.weight ?? item?.weight ?? '',
-    value: core?.value ?? item?.value ?? '',
-    description: String(core?.description || item?.description || '').trim(),
-    notes: item?.notes || ''
+    rarity: String(profile?.rarity || core?.rarity || item?.rarity || '').trim(),
+    weight: profile?.weight ?? core?.weight ?? item?.weight ?? '',
+    value: profile?.value || core?.value || item?.value || '',
+    description: String(profile?.description || core?.description || item?.description || '').trim(),
+    notes: item?.notes || '',
+    profile
   }
 }
 
@@ -1428,6 +1461,14 @@ function weaponToken(value: any) {
 }
 
 function inventoryWeaponProperties(item: any) {
+  const profile = inventoryItemProfile(item)
+
+  if (Array.isArray(profile?.weapon?.propertyCodes) && profile.weapon.propertyCodes.length) {
+    return profile.weapon.propertyCodes
+      .map((value: any) => String(value || '').trim().toUpperCase())
+      .filter(Boolean)
+  }
+
   const raw = inventoryItemRaw(item)
   const core = inventoryItemCore(item)
   const values = [
@@ -1447,6 +1488,9 @@ function weaponHasProperty(item: any, property: string) {
 }
 
 function weaponCategoryForItem(item: any) {
+  const profile = inventoryItemProfile(item)
+  if (profile?.weapon?.category) return String(profile.weapon.category).trim().toLowerCase()
+
   const raw = inventoryItemRaw(item)
   const core = inventoryItemCore(item)
 
@@ -1523,6 +1567,13 @@ function weaponAttackAbilityKey(item: any) {
 }
 
 function weaponMagicAttackBonus(item: any) {
+  const profile = inventoryItemProfile(item)
+  const profileBonus = Number(profile?.weapon?.attackBonus ?? profile?.weapon?.magicBonus ?? 0)
+
+  if (Number.isFinite(profileBonus) && profileBonus !== 0) {
+    return profileBonus
+  }
+
   const raw = inventoryItemRaw(item)
   const values = [
     raw?.bonusWeapon,
@@ -1549,6 +1600,17 @@ function weaponMagicAttackBonus(item: any) {
   }
 
   return 0
+}
+
+function weaponMagicDamageBonus(item: any) {
+  const profile = inventoryItemProfile(item)
+  const profileBonus = Number(profile?.weapon?.damageBonus ?? profile?.weapon?.magicBonus ?? 0)
+
+  if (Number.isFinite(profileBonus) && profileBonus !== 0) {
+    return profileBonus
+  }
+
+  return weaponMagicAttackBonus(item)
 }
 
 function attackBonusForWeapon(item: any) {
@@ -1586,7 +1648,7 @@ function damageRollForWeapon(item: any, baseDamage: any) {
   const abilityKey = weaponAttackAbilityKey(item)
   const abilityLabel = abilityKey.toUpperCase()
   const abilityMod = abilityModifierNumberForKey(abilityKey)
-  const magicBonus = weaponMagicAttackBonus(item)
+  const magicBonus = weaponMagicDamageBonus(item)
   const totalBonus = abilityMod + magicBonus
 
   const formulaParts = [abilityLabel]
@@ -1816,6 +1878,10 @@ function damageTypeLabel(value: any) {
 }
 
 function isWeaponInventoryItem(item: any) {
+  const profile = inventoryItemProfile(item)
+
+  if (profile?.category === 'weapon' || profile?.weapon) return true
+
   const damage = inventoryItemDamage(item)
   if (damage.damage) return true
 
@@ -2775,6 +2841,22 @@ async function resetLimitedResourcesForLongRest() {
 
 
 function inventoryArmorClassValue(item: any) {
+  const profile = inventoryItemProfile(item)
+  const armor = profile?.armor || null
+
+  if (armor?.isShield) {
+    const shieldBonus = Number(armor.shieldBonus ?? armor.baseAc ?? 2)
+    return Number.isFinite(shieldBonus) && shieldBonus > 0 ? shieldBonus : 2
+  }
+
+  if (armor?.isArmor) {
+    const baseAc = Number(armor.baseAc || 0)
+    const bonusAc = Number(armor.bonusAc || 0)
+    const value = baseAc + (Number.isFinite(bonusAc) ? bonusAc : 0)
+
+    return Number.isFinite(value) && value > 0 ? value : 0
+  }
+
   const core = inventoryItemCore(item)
   const raw = inventoryItemRaw(item)
 
@@ -2785,15 +2867,9 @@ function inventoryArmorClassValue(item: any) {
     raw?.ac ??
     raw?.armorClass
 
-  if (Array.isArray(value) && value.length) {
-    const first = value[0]
-
-    if (typeof first === 'number') return first
-    if (first && typeof first === 'object' && typeof first.ac === 'number') return first.ac
-  }
-
   const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function equippedInventoryRows() {
@@ -2806,10 +2882,18 @@ function equippedInventoryRows() {
 }
 
 function isShieldInventoryItem(item: any) {
+  const profile = inventoryItemProfile(item)
+
+  if (profile?.category === 'shield' || profile?.armor?.isShield) return true
+
   return inventoryItemTypeCode(item) === 'S'
 }
 
 function isArmorInventoryItem(item: any) {
+  const profile = inventoryItemProfile(item)
+
+  if (profile?.category === 'armor' || profile?.armor?.isArmor) return true
+
   return ['LA', 'MA', 'HA'].includes(inventoryItemTypeCode(item))
 }
 

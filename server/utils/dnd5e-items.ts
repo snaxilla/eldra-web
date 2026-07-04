@@ -8,9 +8,11 @@ function asArray(value: any) {
 
 function cleanText(value: any): string {
   return String(value ?? '')
+    .replace(/\{#(?:itemEntry|itemSubEntry|entry)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
     .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature|optionalfeature|status|itemProperty)\s+([^|}]+)(?:\|[^}]*)?\}/gi, '$1')
     .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/gi, '$1')
     .replace(/\{@[^}]+\}/g, '')
+    .replace(/\{#[^}]+\}/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -84,6 +86,28 @@ function parseBonus(value: any) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function firstNumberFromText(value: any, patterns: RegExp[]) {
+  const text = cleanText(value)
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const parsed = Number(match?.[1] || 0)
+
+    if (Number.isFinite(parsed) && parsed !== 0) {
+      return parsed
+    }
+  }
+
+  return 0
+}
+
+function bonusFromRawOrText(rawValue: any, text: any, patterns: RegExp[]) {
+  const rawBonus = parseBonus(rawValue)
+  if (rawBonus) return rawBonus
+
+  return firstNumberFromText(text, patterns)
+}
+
 function valueCp(raw: any, core: any) {
   const rawValue = raw?.value ?? core?.value
   const parsed = numberOrNull(rawValue)
@@ -153,11 +177,14 @@ const DAMAGE_TYPE_LABELS: Record<string, string> = {
 
 const PROPERTY_LABELS: Record<string, string> = {
   A: 'Ammunition',
+  AF: 'Ammunition',
+  BF: 'Burst Fire',
   F: 'Finesse',
   H: 'Heavy',
   L: 'Light',
   LD: 'Loading',
   R: 'Reach',
+  RLD: 'Reload',
   S: 'Special',
   T: 'Thrown',
   V: 'Versatile',
@@ -270,14 +297,37 @@ function attunementText(raw: any) {
   return `Requires attunement ${cleanText(raw.reqAttune)}`
 }
 
-function weaponProfile(code: string, raw: any, core: any) {
+function weaponProfile(code: string, raw: any, core: any, description: string) {
   if (!(raw?.weapon === true || code === 'M' || code === 'R')) return null
 
   const damage = cleanText(core?.damage ?? raw?.dmg1 ?? raw?.damage ?? '')
   const versatileDamage = cleanText(raw?.dmg2 ?? raw?.versatileDamage ?? '')
   const damageType = damageTypeLabel(core?.damage_type ?? core?.damageType ?? raw?.dmgType ?? raw?.damageType ?? '')
   const properties = propertyLabels(raw, core)
-  const magicBonus = parseBonus(raw?.bonusWeapon ?? raw?.bonusWeaponAttack ?? raw?.bonusWeaponDamage ?? core?.bonusWeapon)
+  const magicBonus = bonusFromRawOrText(
+    raw?.bonusWeapon ?? core?.bonusWeapon,
+    description,
+    [
+      /\+(\d+)\s+bonus\s+to\s+attack\s+rolls\s+and\s+damage\s+rolls/i,
+      /bonus\s+to\s+attack\s+rolls\s+and\s+damage\s+rolls\s+.*?\+(\d+)/i
+    ]
+  )
+
+  const attackBonus = bonusFromRawOrText(
+    raw?.bonusWeaponAttack ?? raw?.bonusWeapon ?? core?.bonusWeaponAttack ?? core?.bonusWeapon,
+    description,
+    [
+      /\+(\d+)\s+bonus\s+to\s+attack\s+rolls/i
+    ]
+  ) || magicBonus
+
+  const damageBonus = bonusFromRawOrText(
+    raw?.bonusWeaponDamage ?? raw?.bonusWeapon ?? core?.bonusWeaponDamage ?? core?.bonusWeapon,
+    description,
+    [
+      /\+(\d+)\s+bonus\s+to\s+damage\s+rolls/i
+    ]
+  ) || magicBonus
 
   const category = cleanText(raw?.weaponCategory ?? raw?.weapon_category ?? '')
     .toLowerCase()
@@ -293,8 +343,8 @@ function weaponProfile(code: string, raw: any, core: any) {
     propertyCodes: properties.map((item) => item.code),
     mastery: cleanText(raw?.mastery ?? core?.mastery ?? ''),
     magicBonus,
-    attackBonus: parseBonus(raw?.bonusWeaponAttack ?? raw?.bonusWeapon),
-    damageBonus: parseBonus(raw?.bonusWeaponDamage ?? raw?.bonusWeapon)
+    attackBonus,
+    damageBonus
   }
 }
 
@@ -322,6 +372,7 @@ function armorProfile(code: string, raw: any, core: any) {
 
 function modifiers(raw: any, profile: any) {
   const out: any[] = []
+  const description = profile?.description || ''
 
   if (raw?.bonusAc !== undefined || profile?.armor?.bonusAc) {
     const value = parseBonus(raw?.bonusAc ?? profile?.armor?.bonusAc)
@@ -331,6 +382,39 @@ function modifiers(raw: any, profile: any) {
   if (raw?.bonusSavingThrow !== undefined) {
     const value = parseBonus(raw.bonusSavingThrow)
     if (value) out.push({ type: 'saving_throw_bonus', value, source: 'item' })
+  }
+
+  const spellAttackBonus = bonusFromRawOrText(
+    raw?.bonusSpellAttack,
+    description,
+    [
+      /\+(\d+)\s+bonus\s+to\s+spell\s+attack\s+rolls/i
+    ]
+  )
+
+  if (spellAttackBonus) {
+    out.push({ type: 'spell_attack_bonus', value: spellAttackBonus, source: 'item' })
+  }
+
+  const spellSaveDcBonus = bonusFromRawOrText(
+    raw?.bonusSpellSaveDc ?? raw?.bonusSpellSaveDC,
+    description,
+    [
+      /\+(\d+)\s+bonus\s+[^.]*saving\s+throw\s+dcs/i,
+      /\+(\d+)\s+bonus\s+[^.]*spell\s+save\s+dc/i
+    ]
+  )
+
+  if (spellSaveDcBonus) {
+    out.push({ type: 'spell_save_dc_bonus', value: spellSaveDcBonus, source: 'item' })
+  }
+
+  if (profile?.weapon?.attackBonus) {
+    out.push({ type: 'weapon_attack_bonus', value: profile.weapon.attackBonus, source: 'item' })
+  }
+
+  if (profile?.weapon?.damageBonus) {
+    out.push({ type: 'weapon_damage_bonus', value: profile.weapon.damageBonus, source: 'item' })
   }
 
   if (raw?.modifySpeed) {
@@ -345,20 +429,37 @@ function modifiers(raw: any, profile: any) {
   return out
 }
 
-function resources(raw: any) {
+function resources(raw: any, description = '') {
   const charges = numberOrNull(raw?.charges)
 
-  if (!charges && !raw?.recharge && !raw?.rechargeAmount) {
-    return []
+  if (charges || raw?.recharge || raw?.rechargeAmount) {
+    return [{
+      key: 'charges',
+      label: 'Charges',
+      max: charges,
+      recharge: cleanText(raw?.recharge ?? ''),
+      rechargeAmount: cleanText(raw?.rechargeAmount ?? '')
+    }]
   }
 
-  return [{
-    key: 'charges',
-    label: 'Charges',
-    max: charges,
-    recharge: cleanText(raw?.recharge ?? ''),
-    rechargeAmount: cleanText(raw?.rechargeAmount ?? '')
-  }]
+  const text = cleanText(description).toLowerCase()
+
+  if (
+    text.includes("can't use this property again until you finish a long rest") ||
+    text.includes("can't use this property again until the next dawn") ||
+    text.includes("can't use it again until you finish a long rest") ||
+    text.includes("can't use it again until the next dawn")
+  ) {
+    return [{
+      key: 'uses',
+      label: 'Uses',
+      max: 1,
+      recharge: text.includes('dawn') ? 'Dawn' : 'Long Rest',
+      rechargeAmount: '1'
+    }]
+  }
+
+  return []
 }
 
 function actionTiming(text: string) {
@@ -372,7 +473,7 @@ function actionTiming(text: string) {
   return ''
 }
 
-function grantedActions(raw: any, description: string) {
+function grantedActions(raw: any, description: string, itemResources: any[] = []) {
   const out: any[] = []
   const timing = actionTiming(description)
 
@@ -383,7 +484,7 @@ function grantedActions(raw: any, description: string) {
       timing,
       actionKind: timing,
       detail: description.slice(0, 700),
-      consumesResource: Boolean(raw?.charges)
+      consumesResource: Boolean(raw?.charges || itemResources.length)
     })
   }
 
@@ -398,7 +499,7 @@ function grantedActions(raw: any, description: string) {
       actionKind: 'Spell',
       detail: `Cast ${label} from this item.`,
       spell: label,
-      consumesResource: Boolean(raw?.charges)
+      consumesResource: Boolean(raw?.charges || itemResources.length)
     })
   }
 
@@ -437,8 +538,9 @@ export function normalizeDnd5eItem(input: {
   const description = cleanText(core?.description || entriesToText(raw?.entries))
   const category = itemCategory(code, raw, description)
   const slot = equipSlot(category, raw, description)
-  const weapon = weaponProfile(code, raw, core)
+  const weapon = weaponProfile(code, raw, core, description)
   const armor = armorProfile(code, raw, core)
+  const itemResources = resources(raw, description)
 
   const profile: any = {
     id: String(entity?.id || raw?.id || ''),
@@ -464,8 +566,8 @@ export function normalizeDnd5eItem(input: {
     containerCapacity: raw?.containerCapacity ?? null,
     weapon,
     armor,
-    resources: resources(raw),
-    grantedActions: grantedActions(raw, description),
+    resources: itemResources,
+    grantedActions: grantedActions(raw, description, itemResources),
     attachedSpells: asArray(raw?.attachedSpells).map(cleanText).filter(Boolean),
     modifiers: [] as any[],
     tags: [] as string[]

@@ -3,6 +3,7 @@ const props = withDefaults(defineProps<{
   worldId: string | number
   entityId: string | number
   sheet?: any
+  embedded?: boolean
   classResourceCards?: any[]
   mainSpeciesActionCards?: any[]
   itemActionCards?: any[]
@@ -59,6 +60,7 @@ const props = withDefaults(defineProps<{
   spellConsumesSlot?: (spell: any) => boolean
   castSpell?: (spell: any) => void
 }>(), {
+  embedded: false,
   classResourceCards: () => [],
   mainSpeciesActionCards: () => [],
   itemActionCards: () => [],
@@ -93,6 +95,130 @@ const hasSpellcastingMath = computed(() => props.hasSpellcastingMath === true)
 const worldId = computed(() => props.worldId)
 const entityId = computed(() => props.entityId)
 const sheet = computed(() => props.sheet)
+
+const ACTION_CENTER_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'attack', label: 'Attack' },
+  { key: 'action', label: 'Action' },
+  { key: 'bonus', label: 'Bonus Action' },
+  { key: 'reaction', label: 'Reaction' },
+  { key: 'other', label: 'Other' }
+]
+
+const activeActionCenterFilter = ref('all')
+
+function normalizeActionFilterKey(value: any) {
+  const key = String(value || 'all').trim().toLowerCase()
+  return ACTION_CENTER_FILTERS.some((filter) => filter.key === key) ? key : 'all'
+}
+
+function setActionCenterFilter(value: any) {
+  activeActionCenterFilter.value = normalizeActionFilterKey(value)
+}
+
+function actionTimingKeyFromValue(value: any) {
+  const text = String(value || '').trim().toLowerCase()
+
+  if (text.includes('attack')) return 'attack'
+  if (text.includes('bonus')) return 'bonus'
+  if (text.includes('reaction')) return 'reaction'
+  if (text.includes('magic')) return 'action'
+  if (text.includes('action')) return 'action'
+
+  return 'other'
+}
+
+function actionCardTimingKey(action: any) {
+  return String(action?.timingKey || actionTimingKeyFromValue(action?.timing || action?.actionKind || action?.actionType || '') || 'other')
+}
+
+function actionMatchesCurrentFilter(action: any) {
+  const filter = activeActionCenterFilter.value
+  if (filter === 'all') return true
+
+  return actionCardTimingKey(action) === filter
+}
+
+const visibleItemActionCards = computed(() =>
+  itemActionCards.value.filter(actionMatchesCurrentFilter)
+)
+
+const visibleCommonActionCards = computed(() =>
+  activeActionCenterFilter.value === 'all' || activeActionCenterFilter.value === 'action'
+    ? commonActionCards.value
+    : []
+)
+
+const visibleBonusActionCards = computed(() =>
+  activeActionCenterFilter.value === 'all' || activeActionCenterFilter.value === 'bonus'
+    ? displayedBonusActionCards.value
+    : []
+)
+
+const visibleReactionActionCards = computed(() =>
+  activeActionCenterFilter.value === 'all' || activeActionCenterFilter.value === 'reaction'
+    ? displayedReactionActionCards.value
+    : []
+)
+
+function sectionVisible(section: string) {
+  const filter = activeActionCenterFilter.value
+
+  if (filter === 'all') return true
+
+  if (section === 'resources') return filter === 'other'
+  if (section === 'species') return filter === 'action' || filter === 'attack'
+  if (section === 'weapons') return filter === 'attack'
+  if (section === 'spells') return filter === 'action'
+  if (section === 'item-actions') return visibleItemActionCards.value.length > 0
+  if (section === 'common') return filter === 'action'
+  if (section === 'bonus') return filter === 'bonus'
+  if (section === 'reactions') return filter === 'reaction'
+
+  return false
+}
+
+function actionFilterCount(key: string) {
+  if (key === 'all') {
+    return classResourceCards.value.length +
+      mainSpeciesActionCards.value.length +
+      itemActionCards.value.length +
+      equippedWeaponActions.value.length +
+      actionSpellCards.value.length +
+      commonActionCards.value.length +
+      displayedBonusActionCards.value.length +
+      displayedReactionActionCards.value.length
+  }
+
+  if (key === 'attack') return equippedWeaponActions.value.length
+  if (key === 'action') {
+    return mainSpeciesActionCards.value.length +
+      actionSpellCards.value.length +
+      commonActionCards.value.length +
+      itemActionCards.value.filter((action: any) => actionCardTimingKey(action) === 'action').length
+  }
+  if (key === 'bonus') {
+    return displayedBonusActionCards.value.length +
+      itemActionCards.value.filter((action: any) => actionCardTimingKey(action) === 'bonus').length
+  }
+  if (key === 'reaction') {
+    return displayedReactionActionCards.value.length +
+      itemActionCards.value.filter((action: any) => actionCardTimingKey(action) === 'reaction').length
+  }
+  if (key === 'other') {
+    return classResourceCards.value.length +
+      itemActionCards.value.filter((action: any) => actionCardTimingKey(action) === 'other').length
+  }
+
+  return 0
+}
+
+function actionFilterButtonClass(key: string) {
+  return activeActionCenterFilter.value === key
+    ? 'border-[rgba(201,164,90,0.66)] bg-[rgba(201,164,90,0.18)] text-[#fff7df] shadow-[0_0_18px_rgba(201,164,90,0.10)]'
+    : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.70)] text-[#d8ceb8] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'
+}
+
 
 function setActionSpellLevelFilter(value: any) {
   emit('update-action-spell-level-filter', String(value || 'all'))
@@ -276,8 +402,36 @@ function castSpell(spell: any) {
 
 <template>
 <section class="mt-0 flex flex-col gap-3 md:mt-6">
+  <div class="eldra-codex-soft rounded-none p-4">
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Action Center</div>
+        <div class="mt-1 text-sm text-[#d8ceb8]">
+          Attacks, spells, item actions, bonus actions, reactions, and common combat options in one place.
+        </div>
+      </div>
+
+      <div class="-mx-1 overflow-x-auto pb-1">
+        <div class="flex min-w-max gap-2 px-1">
+          <button
+            v-for="filter in ACTION_CENTER_FILTERS"
+            :key="filter.key"
+            type="button"
+            class="inline-flex items-center gap-2 rounded-none border px-3 py-2 text-xs font-semibold transition"
+            :class="actionFilterButtonClass(filter.key)"
+            @click="setActionCenterFilter(filter.key)"
+          >
+            <span>{{ filter.label }}</span>
+            <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]">
+              {{ actionFilterCount(filter.key) }}
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
                   <CharactersSheetClassResources
-                    v-if="classResourceCards.length"
+                    v-if="sectionVisible('resources') && classResourceCards.length"
                     class="order-[-50]"
                     :world-id="worldId"
                     :entity-id="entityId"
@@ -287,7 +441,7 @@ function castSpell(spell: any) {
                   />
 
                 <div
-                  v-if="mainSpeciesActionCards.length"
+                  v-if="sectionVisible('species') && mainSpeciesActionCards.length"
                   class="eldra-codex-soft order-[-60] rounded-none p-4"
                 >
                   <button
@@ -449,7 +603,7 @@ function castSpell(spell: any) {
                 </div>
 
                 <div
-                  v-if="equippedWeaponActions.length"
+                  v-if="sectionVisible('weapons') && equippedWeaponActions.length"
                   class="eldra-codex-soft order-[-70] rounded-none p-4"
                 >
                   <button
@@ -557,7 +711,7 @@ function castSpell(spell: any) {
                 </div>
 
                 <div
-                  v-if="actionSpellCards.length"
+                  v-if="sectionVisible('spells') && actionSpellCards.length"
                   class="eldra-codex-soft order-[-40] rounded-none p-4"
                 >
                   <button
@@ -686,7 +840,7 @@ function castSpell(spell: any) {
                 </div>
 
                 <div
-                  v-if="itemActionCards.length"
+                  v-if="sectionVisible('item-actions') && visibleItemActionCards.length"
                   class="eldra-codex-soft order-[-35] rounded-none p-4"
                 >
                   <button
@@ -701,7 +855,7 @@ function castSpell(spell: any) {
 
                     <div class="flex items-center gap-2">
                       <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-                        {{ itemActionCards.length }} Item
+                        {{ visibleItemActionCards.length }} Item
                       </div>
                       <UIcon :name="actionPanelChevron('item-actions')" class="h-4 w-4 text-[#9f9278]" />
                     </div>
@@ -712,7 +866,7 @@ function castSpell(spell: any) {
                     class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
                   >
                     <article
-                      v-for="action in itemActionCards"
+                      v-for="action in visibleItemActionCards"
                       :key="action.id || action.name"
                       class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                     >
@@ -799,7 +953,7 @@ function castSpell(spell: any) {
                   </div>
                 </div>
 
-                <div class="eldra-codex-soft order-5 rounded-none p-4">
+                <div v-if="sectionVisible('common') && visibleCommonActionCards.length" class="eldra-codex-soft order-5 rounded-none p-4">
                   <button
                     type="button"
                     class="mb-3 flex w-full items-center justify-between gap-3 text-left"
@@ -814,7 +968,7 @@ function castSpell(spell: any) {
                     class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
                   >
                     <article
-                      v-for="action in commonActionCards"
+                      v-for="action in visibleCommonActionCards"
                       :key="action.name"
                       class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                     >
@@ -836,7 +990,7 @@ function castSpell(spell: any) {
                 </div>
 
                 <div class="grid gap-3 lg:grid-cols-2">
-                  <div class="eldra-codex-soft order-6 rounded-none p-4">
+                  <div v-if="sectionVisible('bonus') && visibleBonusActionCards.length" class="eldra-codex-soft order-6 rounded-none p-4">
                     <button
                       type="button"
                       class="mb-3 flex w-full items-center justify-between gap-3 text-left"
@@ -857,7 +1011,7 @@ function castSpell(spell: any) {
                       class="space-y-2"
                     >
                       <article
-                        v-for="action in displayedBonusActionCards"
+                        v-for="action in visibleBonusActionCards"
                         :key="action.name"
                         class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                       >
@@ -875,7 +1029,7 @@ function castSpell(spell: any) {
                     </div>
                   </div>
 
-                  <div class="eldra-codex-soft order-7 rounded-none p-4">
+                  <div v-if="sectionVisible('reactions') && visibleReactionActionCards.length" class="eldra-codex-soft order-7 rounded-none p-4">
                     <button
                       type="button"
                       class="mb-3 flex w-full items-center justify-between gap-3 text-left"
@@ -896,7 +1050,7 @@ function castSpell(spell: any) {
                       class="space-y-2"
                     >
                       <article
-                        v-for="action in displayedReactionActionCards"
+                        v-for="action in visibleReactionActionCards"
                         :key="action.name"
                         class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
                       >

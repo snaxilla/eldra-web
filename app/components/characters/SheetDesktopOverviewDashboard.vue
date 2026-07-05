@@ -16,6 +16,7 @@ const props = withDefaults(defineProps<{
   inventoryCount?: number
   featureCount?: number
   selectedSpellCount?: number
+  showQuickActions?: boolean
   equippedWeaponActions?: any[]
   actionSpellCards?: any[]
   hasLimitedResources?: boolean
@@ -51,6 +52,7 @@ const props = withDefaults(defineProps<{
   inventoryCount: 0,
   featureCount: 0,
   selectedSpellCount: 0,
+  showQuickActions: true,
   equippedWeaponActions: () => [],
   actionSpellCards: () => [],
   hasLimitedResources: false,
@@ -361,7 +363,7 @@ function canCast(spell: any) {
         </div>
 
         <div class="grid items-start gap-4 2xl:grid-cols-2">
-<div class="eldra-codex-soft rounded-none p-4">
+<div v-if="showQuickActions" class="eldra-codex-soft rounded-none p-4">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Primary Attacks</div>
             <div class="eldra-gold-chip rounded-none border px-2 py-0.5 text-[10px]">
@@ -437,7 +439,7 @@ function canCast(spell: any) {
         </div>
 
 <div
-          v-if="spellRows.length"
+          v-if="showQuickActions && (spellRows.length)"
           class="eldra-codex-soft rounded-none p-4"
         >
           <div class="mb-3 flex flex-wrap items-center justify-between gap-3">

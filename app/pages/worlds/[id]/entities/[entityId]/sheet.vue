@@ -2629,6 +2629,45 @@ function undoItemActionResource(action: any) {
   void persistLimitedResourceUses()
 }
 
+
+const actionCenterInventoryItems = computed(() =>
+  carriedInventory.value
+    .map((item: any) => {
+      const detail = inventoryItemDetail(item)
+
+      return {
+        ...detail,
+        inventoryId: item?.id,
+        quantity: inventoryQuantity(item),
+        equipped: item?.equipped === true || item?.equipped === 'true' || item?.equipped === 1 || item?.equipped === '1',
+        attuned: item?.attuned === true || item?.attuned === 'true' || item?.attuned === 1 || item?.attuned === '1',
+        container: item?.container || '',
+        raw: item,
+        detail
+      }
+    })
+)
+
+const actionCenterFeatureCards = computed(() => {
+  const rows: any[] = []
+
+  if (Array.isArray(currentClassFeatureCards.value)) rows.push(...currentClassFeatureCards.value)
+  if (Array.isArray(speciesTraitCards.value)) rows.push(...speciesTraitCards.value)
+  if (backgroundFeatureCard.value) rows.push(backgroundFeatureCard.value)
+  if (Array.isArray(selectedFeats.value)) rows.push(...selectedFeats.value)
+
+  const seen = new Set<string>()
+
+  return rows
+    .filter(Boolean)
+    .filter((feature: any) => {
+      const key = String(feature?.id || feature?.title || feature?.name || '')
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+})
+
 const itemGrantedActionCards = computed(() =>
   activeInventoryEffectRows()
     .flatMap((item: any) => {
@@ -6814,6 +6853,8 @@ async function saveSheet() {
                   :undo-item-action-resource="undoItemActionResource"
                   :equipped-weapon-actions="equippedWeaponActions"
                   :action-spell-cards="actionSpellCards"
+                  :inventory-items="actionCenterInventoryItems"
+                  :feature-cards="actionCenterFeatureCards"
                   :common-action-cards="commonActionCards"
                   :displayed-bonus-action-cards="displayedBonusActionCards"
                   :displayed-reaction-action-cards="displayedReactionActionCards"

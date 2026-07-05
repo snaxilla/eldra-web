@@ -1226,7 +1226,36 @@ const featureCount = computed(() => {
 })
 const resolved = computed(() => data.value?.resolved || null)
 const math = computed(() => data.value?.math || null)
-const mathSaves = computed(() => Array.isArray(math.value?.saves) ? math.value.saves : [])
+function signedTextValue(value: any) {
+  const text = String(value ?? '').trim()
+  if (!text) return 0
+
+  const parsed = Number(text.replace(/^\+/, ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function signedTextWithBonus(value: any, bonus: any) {
+  const base = signedTextValue(value)
+  const parsedBonus = Number(bonus || 0)
+  return signedNumberText(base + (Number.isFinite(parsedBonus) ? parsedBonus : 0))
+}
+
+const itemSavingThrowBonus = computed(() => inventoryModifierTotal('saving_throw_bonus'))
+
+const mathSaves = computed(() => {
+  const list = Array.isArray(math.value?.saves) ? math.value.saves : []
+  const bonus = Number(itemSavingThrowBonus.value || 0)
+
+  if (!bonus) return list
+
+  return list.map((save: any) => ({
+    ...save,
+    itemBonus: bonus,
+    total: signedTextValue(save?.total ?? save?.totalText) + bonus,
+    totalText: signedTextWithBonus(save?.totalText ?? save?.total, bonus),
+    itemBonusText: signedNumberText(bonus)
+  }))
+})
 const mathSkills = computed(() => Array.isArray(math.value?.skills) ? math.value.skills : [])
 const mathArmorClassCandidates = computed(() => Array.isArray(math.value?.combat?.armorClass?.candidates) ? math.value.combat.armorClass.candidates : [])
 const mathPendingChoices = computed(() => Array.isArray(math.value?.pendingChoices) ? math.value.pendingChoices : [])
@@ -1320,7 +1349,70 @@ function inventoryItemProfile(item: any) {
   return entity?.itemProfile || entity?.profile || entity?.normalizedItem || null
 }
 
+function inventoryItemEquipped(item: any) {
+  return item?.equipped === true ||
+    item?.equipped === 'true' ||
+    item?.equipped === 1 ||
+    item?.equipped === '1'
+}
+
+function inventoryItemAttuned(item: any) {
+  return item?.attuned === true ||
+    item?.attuned === 'true' ||
+    item?.attuned === 1 ||
+    item?.attuned === '1'
+}
+
+function inventoryItemEffectsActive(item: any) {
+  const profile = inventoryItemProfile(item)
+
+  if (!profile) return false
+  if (!inventoryItemEquipped(item)) return false
+
+  if (profile?.requiresAttunement && !inventoryItemAttuned(item)) {
+    return false
+  }
+
+  return true
+}
+
+function inventoryItemMagicEffectsActive(item: any) {
+  const profile = inventoryItemProfile(item)
+
+  if (!profile) return true
+  if (profile?.requiresAttunement) return inventoryItemEffectsActive(item)
+  return inventoryItemEquipped(item)
+}
+
+function activeInventoryEffectRows() {
+  return inventory.value.filter((item: any) => inventoryItemEffectsActive(item))
+}
+
+function inventoryModifierTotal(type: string, options: any = {}) {
+  const rows = activeInventoryEffectRows()
+  const excludedCategories = new Set((options.excludeCategories || []).map((value: any) => String(value)))
+
+  return rows.reduce((total: number, item: any) => {
+    const profile = inventoryItemProfile(item)
+    const category = String(profile?.category || '')
+
+    if (excludedCategories.has(category)) return total
+
+    const modifiers = Array.isArray(profile?.modifiers) ? profile.modifiers : []
+    const amount = modifiers
+      .filter((modifier: any) => String(modifier?.type || '') === type)
+      .reduce((sum: number, modifier: any) => {
+        const parsed = Number(modifier?.value)
+        return sum + (Number.isFinite(parsed) ? parsed : 0)
+      }, 0)
+
+    return total + amount
+  }, 0)
+}
+
 function inventoryProfileModifierValue(item: any, type: string) {
+  if (!inventoryItemEffectsActive(item)) return 0
+
   const profile = inventoryItemProfile(item)
   const modifiers = Array.isArray(profile?.modifiers) ? profile.modifiers : []
   const found = modifiers.find((modifier: any) => String(modifier?.type || '') === type)
@@ -1568,6 +1660,11 @@ function weaponAttackAbilityKey(item: any) {
 
 function weaponMagicAttackBonus(item: any) {
   const profile = inventoryItemProfile(item)
+
+  if (profile && !inventoryItemMagicEffectsActive(item)) {
+    return 0
+  }
+
   const profileBonus = Number(profile?.weapon?.attackBonus ?? profile?.weapon?.magicBonus ?? 0)
 
   if (Number.isFinite(profileBonus) && profileBonus !== 0) {
@@ -1604,6 +1701,11 @@ function weaponMagicAttackBonus(item: any) {
 
 function weaponMagicDamageBonus(item: any) {
   const profile = inventoryItemProfile(item)
+
+  if (profile && !inventoryItemMagicEffectsActive(item)) {
+    return 0
+  }
+
   const profileBonus = Number(profile?.weapon?.damageBonus ?? profile?.weapon?.magicBonus ?? 0)
 
   if (Number.isFinite(profileBonus) && profileBonus !== 0) {
@@ -2384,6 +2486,54 @@ const speciesReactionActionCards = computed(() =>
   resolvedSpeciesActionCards.value.filter((action: any) => action.timingKey === 'reaction')
 )
 
+
+function itemActionTimingKey(value: any) {
+  const text = String(value || '').trim().toLowerCase()
+
+  if (text.includes('bonus')) return 'bonus'
+  if (text.includes('reaction')) return 'reaction'
+  if (text.includes('magic')) return 'action'
+  return 'action'
+}
+
+function itemActionIcon(timingKey: string) {
+  if (timingKey === 'bonus') return 'i-lucide-sparkles'
+  if (timingKey === 'reaction') return 'i-lucide-rotate-ccw'
+  return 'i-lucide-box'
+}
+
+const itemGrantedActionCards = computed(() =>
+  activeInventoryEffectRows()
+    .flatMap((item: any) => {
+      const profile = inventoryItemProfile(item)
+      const actions = Array.isArray(profile?.grantedActions) ? profile.grantedActions : []
+      const detail = inventoryItemDetail(item)
+
+      return actions.map((action: any, index: number) => {
+        const timing = String(action?.timing || action?.actionKind || 'Action')
+        const timingKey = itemActionTimingKey(timing)
+
+        return {
+          id: `item-action-${item.id || inventoryLinkedItemId(item)}-${action?.id || index}`,
+          name: String(action?.name || profile?.name || item?.name || 'Item Action'),
+          title: String(action?.name || profile?.name || item?.name || 'Item Action'),
+          timing,
+          timingKey,
+          actionKind: timing,
+          itemType: profile?.displayType || inventoryItemTypeLabel(item) || 'Item',
+          icon: itemActionIcon(timingKey),
+          detail: String(action?.detail || action?.description || profile?.description || '').trim(),
+          description: String(action?.detail || action?.description || profile?.description || '').trim(),
+          notes: action?.consumesResource ? 'Consumes item resource.' : '',
+          source: String(item?.name || profile?.name || 'Item'),
+          consumesResource: action?.consumesResource === true,
+          itemDetail: detail,
+          isItemAction: true
+        }
+      })
+    })
+)
+
 const displayedBonusActionCards = computed(() =>
   filterActionsForCurrentLevel([
     ...classBonusActionCards.value,
@@ -2843,6 +2993,7 @@ async function resetLimitedResourcesForLongRest() {
 function inventoryArmorClassValue(item: any) {
   const profile = inventoryItemProfile(item)
   const armor = profile?.armor || null
+  const magicActive = inventoryItemMagicEffectsActive(item)
 
   if (armor?.isShield) {
     const shieldBonus = Number(armor.shieldBonus ?? armor.baseAc ?? 2)
@@ -2851,7 +3002,7 @@ function inventoryArmorClassValue(item: any) {
 
   if (armor?.isArmor) {
     const baseAc = Number(armor.baseAc || 0)
-    const bonusAc = Number(armor.bonusAc || 0)
+    const bonusAc = magicActive ? Number(armor.bonusAc || 0) : 0
     const value = baseAc + (Number.isFinite(bonusAc) ? bonusAc : 0)
 
     return Number.isFinite(value) && value > 0 ? value : 0
@@ -2916,6 +3067,34 @@ function armorCandidateNote(baseAc: number, dexMod: number, shieldBonus: number,
   return `${baseAc}${shieldText}.`
 }
 
+function inventoryItemAcBonusRows() {
+  return activeInventoryEffectRows()
+    .filter((item: any) => {
+      const profile = inventoryItemProfile(item)
+      const category = String(profile?.category || '')
+      return category !== 'armor' && category !== 'shield'
+    })
+    .map((item: any) => ({
+      item,
+      bonus: inventoryProfileModifierValue(item, 'ac_bonus')
+    }))
+    .filter((row: any) => row.bonus)
+}
+
+function inventoryItemAcBonusTotal() {
+  return inventoryItemAcBonusRows().reduce((total: number, row: any) => total + Number(row.bonus || 0), 0)
+}
+
+function inventoryItemAcBonusNote() {
+  const rows = inventoryItemAcBonusRows()
+  if (!rows.length) return ''
+
+  const total = rows.reduce((sum: number, row: any) => sum + Number(row.bonus || 0), 0)
+  const names = rows.map((row: any) => String(row.item?.name || inventoryItemProfile(row.item)?.name || 'Item')).filter(Boolean)
+
+  return total ? ` + ${total} item bonus${names.length ? ` (${names.join(', ')})` : ''}` : ''
+}
+
 const equippedArmorClassCandidates = computed(() => {
   const dexMod = abilityModifierNumberForKey('dex')
   const equipped = equippedInventoryRows()
@@ -2925,13 +3104,15 @@ const equippedArmorClassCandidates = computed(() => {
     0
   )
   const shieldNames = shields.map((shield: any) => String(shield?.name || 'Shield')).filter(Boolean)
+  const itemAcBonus = inventoryItemAcBonusTotal()
+  const itemAcNote = inventoryItemAcBonusNote()
   const candidates: any[] = []
 
-  if (shieldBonus) {
+  if (shieldBonus || itemAcBonus) {
     candidates.push({
-      label: 'Unarmored + Shield',
-      value: 10 + dexMod + shieldBonus,
-      note: `10 + DEX modifier (${signedNumberText(dexMod)}) + ${shieldBonus} shield bonus${shieldNames.length ? ` (${shieldNames.join(', ')})` : ''}.`
+      label: shieldBonus ? 'Unarmored + Shield' : 'Unarmored + Items',
+      value: 10 + dexMod + shieldBonus + itemAcBonus,
+      note: `10 + DEX modifier (${signedNumberText(dexMod)})${shieldBonus ? ` + ${shieldBonus} shield bonus${shieldNames.length ? ` (${shieldNames.join(', ')})` : ''}` : ''}${itemAcNote}.`
     })
   }
 
@@ -2939,13 +3120,14 @@ const equippedArmorClassCandidates = computed(() => {
     const baseAc = inventoryArmorClassValue(armor)
     if (!baseAc) continue
 
-    const armorType = inventoryItemTypeCode(armor)
-    const value = armorCandidateValue(baseAc, dexMod, shieldBonus, armorType)
+    const profile = inventoryItemProfile(armor)
+    const armorType = String(profile?.armor?.armorType || inventoryItemTypeCode(armor)).toUpperCase()
+    const value = armorCandidateValue(baseAc, dexMod, shieldBonus, armorType) + itemAcBonus
 
     candidates.push({
       label: String(armor?.name || 'Armor'),
       value,
-      note: armorCandidateNote(baseAc, dexMod, shieldBonus, armorType, shieldNames)
+      note: `${armorCandidateNote(baseAc, dexMod, shieldBonus, armorType, shieldNames)}${itemAcNote ? `${itemAcNote}.` : ''}`
     })
   }
 
@@ -4655,12 +4837,15 @@ const spellcastingAbilityModifier = computed(() =>
   spellcastingAbilityKey.value ? abilityModifierNumberForKey(spellcastingAbilityKey.value) : 0
 )
 
+const activeSpellAttackItemBonus = computed(() => inventoryModifierTotal('spell_attack_bonus'))
+const activeSpellSaveDcItemBonus = computed(() => inventoryModifierTotal('spell_save_dc_bonus'))
+
 const spellSaveDc = computed(() =>
-  spellcastingAbilityKey.value ? 8 + proficiencyBonusNumber() + spellcastingAbilityModifier.value : null
+  8 + proficiencyBonusNumber() + spellcastingAbilityModifier.value + Number(activeSpellSaveDcItemBonus.value || 0)
 )
 
 const spellAttackBonus = computed(() =>
-  spellcastingAbilityKey.value ? proficiencyBonusNumber() + spellcastingAbilityModifier.value : null
+  proficiencyBonusNumber() + spellcastingAbilityModifier.value + Number(activeSpellAttackItemBonus.value || 0)
 )
 
 const hasSpellcastingMath = computed(() =>
@@ -6580,6 +6765,7 @@ async function saveSheet() {
               :sheet="sheet"
               :class-resource-cards="classResourceCards"
               :main-species-action-cards="mainSpeciesActionCards"
+              :item-action-cards="itemGrantedActionCards"
               :equipped-weapon-actions="equippedWeaponActions"
               :action-spell-cards="actionSpellCards"
               :filtered-action-spell-cards="filteredActionSpellCards"

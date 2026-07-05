@@ -5,6 +5,7 @@ const props = withDefaults(defineProps<{
   sheet?: any
   classResourceCards?: any[]
   mainSpeciesActionCards?: any[]
+  itemActionCards?: any[]
   equippedWeaponActions?: any[]
   actionSpellCards?: any[]
   filteredActionSpellCards?: any[]
@@ -50,6 +51,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   classResourceCards: () => [],
   mainSpeciesActionCards: () => [],
+  itemActionCards: () => [],
   equippedWeaponActions: () => [],
   actionSpellCards: () => [],
   filteredActionSpellCards: () => [],
@@ -67,6 +69,7 @@ const emit = defineEmits<{
 
 const classResourceCards = computed(() => props.classResourceCards || [])
 const mainSpeciesActionCards = computed(() => props.mainSpeciesActionCards || [])
+const itemActionCards = computed(() => props.itemActionCards || [])
 const equippedWeaponActions = computed(() => props.equippedWeaponActions || [])
 const actionSpellCards = computed(() => props.actionSpellCards || [])
 const filteredActionSpellCards = computed(() => props.filteredActionSpellCards || [])
@@ -629,6 +632,73 @@ function castSpell(spell: any) {
                     <div v-else class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]">
                       No spell actions match this filter.
                     </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="itemActionCards.length"
+                  class="eldra-codex-soft order-[-35] rounded-none p-4"
+                >
+                  <button
+                    type="button"
+                    class="mb-3 flex w-full items-center justify-between gap-3 text-left"
+                    @click="toggleActionPanel('item-actions')"
+                  >
+                    <div>
+                      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Item Actions</div>
+                      <div class="mt-1 text-sm text-[#d8ceb8]">Actions granted by equipped and attuned items.</div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+                        {{ itemActionCards.length }} Item
+                      </div>
+                      <UIcon :name="actionPanelChevron('item-actions')" class="h-4 w-4 text-[#9f9278]" />
+                    </div>
+                  </button>
+
+                  <div
+                    v-show="actionPanelOpen('item-actions')"
+                    class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  >
+                    <article
+                      v-for="action in itemActionCards"
+                      :key="action.id || action.name"
+                      class="rounded-none border border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] p-3"
+                    >
+                      <div class="flex items-start gap-3">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                          <UIcon :name="action.icon || 'i-lucide-box'" class="h-4 w-4" />
+                        </div>
+
+                        <div class="min-w-0 flex-1">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <div class="font-semibold text-white">{{ action.name }}</div>
+                            <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ action.timing }}</span>
+                          </div>
+
+                          <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ shortText(action.detail, 260) }}</p>
+
+                          <div class="mt-3 flex flex-wrap gap-2">
+                            <span
+                              v-if="action.consumesResource"
+                              class="rounded-none border border-amber-300/24 bg-amber-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100"
+                            >
+                              Resource
+                            </span>
+
+                            <button
+                              v-if="action.itemDetail"
+                              type="button"
+                              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+                              @click.stop="openItemDrawer(action.itemDetail)"
+                            >
+                              Item Details
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
                   </div>
                 </div>
 

@@ -45,6 +45,71 @@ function imageUrlFor(row: any) {
   return ''
 }
 
+
+function cleanLimitedText(value: any, limit = 700) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
+}
+
+function slimItemProfile(profile: any) {
+  if (!profile || typeof profile !== 'object') return null
+
+  return {
+    id: profile.id || '',
+    name: profile.name || '',
+    source: profile.source || '',
+    page: profile.page || '',
+    importKind: profile.importKind || '',
+    rawType: profile.rawType || '',
+    typeCode: profile.typeCode || '',
+    displayType: profile.displayType || 'Item',
+    category: profile.category || 'generic',
+    rarity: profile.rarity || '',
+    description: cleanLimitedText(profile.description, 900),
+    value: profile.value || '',
+    valueCp: profile.valueCp ?? null,
+    weight: profile.weight ?? 0,
+    requiresAttunement: profile.requiresAttunement === true,
+    attunementText: profile.attunementText || '',
+    equippable: profile.equippable === true,
+    equipSlot: profile.equipSlot || '',
+    consumable: profile.consumable === true,
+    container: profile.container === true,
+    containerCapacity: profile.containerCapacity ?? null,
+    weapon: profile.weapon || null,
+    armor: profile.armor || null,
+    resources: Array.isArray(profile.resources)
+      ? profile.resources.map((resource: any) => ({
+          key: resource?.key || '',
+          label: resource?.label || '',
+          max: resource?.max ?? null,
+          recharge: resource?.recharge || '',
+          rechargeAmount: resource?.rechargeAmount || ''
+        }))
+      : [],
+    grantedActions: Array.isArray(profile.grantedActions)
+      ? profile.grantedActions.map((action: any) => ({
+          id: action?.id || '',
+          name: action?.name || profile.name || 'Item Action',
+          timing: action?.timing || action?.actionKind || 'Action',
+          actionKind: action?.actionKind || action?.timing || 'Action',
+          detail: cleanLimitedText(action?.detail || action?.description || '', 900),
+          consumesResource: action?.consumesResource === true,
+          spell: action?.spell || ''
+        }))
+      : [],
+    attachedSpells: Array.isArray(profile.attachedSpells) ? profile.attachedSpells.slice(0, 20) : [],
+    modifiers: Array.isArray(profile.modifiers)
+      ? profile.modifiers.map((modifier: any) => ({
+          type: modifier?.type || '',
+          value: modifier?.value ?? 0,
+          source: modifier?.source || 'item'
+        }))
+      : [],
+    tags: Array.isArray(profile.tags) ? profile.tags.slice(0, 18) : []
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
 
@@ -165,13 +230,28 @@ export default defineEventHandler(async (event) => {
     const blocks = coreBlocksByEntityId.get(id) || []
     const core = blocks.find((block: any) => blockKey(block) === `${rowType}_core` || blockKey(block) === 'item_core')?.data || {}
     const raw = rowType === 'item' ? (itemSourceByEntityId.get(id) || {}) : null
-    const itemProfile = rowType === 'item'
+    const rawItemProfile = rowType === 'item'
       ? normalizeDnd5eItem({
           entity: row,
           core,
           raw
         })
       : null
+    const itemProfile = rawItemProfile ? slimItemProfile(rawItemProfile) : null
+    const optionBlocks = rowType === 'item'
+      ? blocks.map((block: any) => {
+          const key = blockKey(block)
+          if (key !== 'item_core') return block
+
+          return {
+            ...block,
+            data: {
+              ...(block.data || {}),
+              description: cleanLimitedText(block?.data?.description || '', 500)
+            }
+          }
+        })
+      : blocks
 
     return {
       id: row.id,
@@ -187,7 +267,7 @@ export default defineEventHandler(async (event) => {
       image: row.image,
       imageUrl: imageUrlFor(row),
       image_url: imageUrlFor(row),
-      blocks,
+      blocks: optionBlocks,
       itemProfile,
       profile: itemProfile
     }

@@ -979,9 +979,9 @@ const {
   }
 )
 
-const { data: worldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/sheet-options`, {
+const { data: worldEntities, refresh: refreshSheetOptions } = await useFetch(() => `/api/worlds/${worldId.value}/sheet-options?entityId=${entityId.value}`, {
   default: () => [],
-  watch: [worldId]
+  watch: [worldId, entityId]
 })
 
 const { data: spellOptionPayload } = await useFetch(() => `/api/worlds/${worldId.value}/spell-options`, {
@@ -3240,6 +3240,7 @@ async function updateInventoryItem(item: any, patch: Record<string, any>) {
     })
 
     await applyInventoryResult(result)
+    await refreshSheetOptions()
     inventorySaveSuccess.value = 'Inventory updated.'
   } catch (err: any) {
     inventorySaveError.value =
@@ -3284,6 +3285,7 @@ async function removeInventoryItem(item: any) {
     })
 
     await applyInventoryResult(result)
+    await refreshSheetOptions()
     inventorySaveSuccess.value = 'Item removed.'
   } catch (err: any) {
     inventorySaveError.value =
@@ -5621,18 +5623,16 @@ function spellBuilderIsPrepared(spell: any) {
   return Boolean(id && preparedSpellIds.value.includes(id))
 }
 
-const allImportedSpellCards = computed(() => {
-  const entities = Array.isArray(worldEntities.value) ? worldEntities.value : []
-
-  return entities
-    .filter((entity: any) => String(entity?.entity_type || entity?.entityType || '').toLowerCase() === 'spell')
-    .map((entity: any) => ({
-      id: entity.id,
-      title: entity.title,
-      entity
+const allImportedSpellCards = computed(() =>
+  spellOptions.value
+    .map((spell: any) => ({
+      ...spell,
+      id: String(spell?.id || ''),
+      title: String(spell?.title || 'Untitled Spell')
     }))
+    .filter((spell: any) => spell.id)
     .sort((a: any, b: any) => spellBuilderTitle(a).localeCompare(spellBuilderTitle(b)))
-})
+)
 
 const spellBuilderLevelOptions = computed(() => {
   const source = spellBuilderAdvanced.value ? allImportedSpellCards.value : availableSpellCards.value

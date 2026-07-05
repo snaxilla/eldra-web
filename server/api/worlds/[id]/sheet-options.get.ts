@@ -7,18 +7,7 @@ const SHEET_OPTION_TYPES = [
   'race',
   'background',
   'item',
-  'feat',
-  'spell'
-]
-
-const CORE_BLOCK_KEYS = [
-  'class_core',
-  'species_core',
-  'race_core',
-  'background_core',
-  'item_core',
-  'feat_core',
-  'spell_core'
+  'feat'
 ]
 
 function normalizeType(value: any) {
@@ -27,6 +16,10 @@ function normalizeType(value: any) {
 
 function blockKey(value: any) {
   return String(value?.block_key || value?.blockKey || '').trim()
+}
+
+function text(value: any) {
+  return String(value ?? '').trim()
 }
 
 function imageUrlFor(row: any) {
@@ -45,10 +38,21 @@ function imageUrlFor(row: any) {
   return ''
 }
 
+function cleanLimitedText(value: any, limit = 360) {
+  const cleaned = String(value || '').replace(/\s+/g, ' ').trim()
+  return cleaned.length > limit ? `${cleaned.slice(0, limit).trim()}...` : cleaned
+}
 
-function cleanLimitedText(value: any, limit = 700) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim()
-  return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
+function inventoryLinkedItemId(row: any) {
+  return text(
+    row?.item_entity_id ??
+    row?.itemEntityId ??
+    row?.entity_item_id ??
+    row?.item_id ??
+    row?.linked_item_entity_id ??
+    row?.item_entity ??
+    ''
+  )
 }
 
 function slimItemProfile(profile: any) {
@@ -65,7 +69,7 @@ function slimItemProfile(profile: any) {
     displayType: profile.displayType || 'Item',
     category: profile.category || 'generic',
     rarity: profile.rarity || '',
-    description: cleanLimitedText(profile.description, 900),
+    description: cleanLimitedText(profile.description, 520),
     value: profile.value || '',
     valueCp: profile.valueCp ?? null,
     weight: profile.weight ?? 0,
@@ -93,12 +97,12 @@ function slimItemProfile(profile: any) {
           name: action?.name || profile.name || 'Item Action',
           timing: action?.timing || action?.actionKind || 'Action',
           actionKind: action?.actionKind || action?.timing || 'Action',
-          detail: cleanLimitedText(action?.detail || action?.description || '', 900),
+          detail: cleanLimitedText(action?.detail || action?.description || '', 520),
           consumesResource: action?.consumesResource === true,
           spell: action?.spell || ''
         }))
       : [],
-    attachedSpells: Array.isArray(profile.attachedSpells) ? profile.attachedSpells.slice(0, 20) : [],
+    attachedSpells: Array.isArray(profile.attachedSpells) ? profile.attachedSpells.slice(0, 16) : [],
     modifiers: Array.isArray(profile.modifiers)
       ? profile.modifiers.map((modifier: any) => ({
           type: modifier?.type || '',
@@ -106,12 +110,56 @@ function slimItemProfile(profile: any) {
           source: modifier?.source || 'item'
         }))
       : [],
-    tags: Array.isArray(profile.tags) ? profile.tags.slice(0, 18) : []
+    tags: Array.isArray(profile.tags) ? profile.tags.slice(0, 12) : []
   }
+}
+
+async function activeSheetInventoryItemIds(worldId: string, entityId: string) {
+  if (!worldId || !entityId) return new Set<string>()
+
+  const sheetRes = await directusServiceRequest('/items/character_sheets', {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { world_id: { _eq: Number(worldId) } },
+          { entity_id: { _eq: Number(entityId) } },
+          { is_active: { _eq: true } }
+        ]
+      },
+      sort: '-id',
+      limit: 1,
+      fields: 'id'
+    }
+  }).catch(() => ({ data: [] }))
+
+  const sheet = Array.isArray(sheetRes?.data) ? sheetRes.data[0] : null
+  if (!sheet?.id) return new Set<string>()
+
+  const inventoryRes = await directusServiceRequest('/items/character_sheet_inventory', {
+    method: 'GET',
+    query: {
+      filter: {
+        sheet_id: { _eq: Number(sheet.id) }
+      },
+      sort: 'sort,id',
+      limit: -1,
+      fields: '*'
+    }
+  }).catch(() => ({ data: [] }))
+
+  const rows = Array.isArray(inventoryRes?.data) ? inventoryRes.data : []
+  const ids = rows
+    .map(inventoryLinkedItemId)
+    .filter(Boolean)
+
+  return new Set(ids)
 }
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
+  const query = getQuery(event)
+  const entityId = text(query.entityId || query.characterEntityId || '')
 
   if (!worldId) {
     throw createError({
@@ -119,6 +167,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id'
     })
   }
+
+  const profiledItemIds = await activeSheetInventoryItemIds(worldId, entityId)
 
   const entitiesRes = await directusServiceRequest('/items/entities', {
     method: 'GET',
@@ -145,23 +195,23 @@ export default defineEventHandler(async (event) => {
   })
 
   const rows = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
-  const entityIds = rows.map((row: any) => row.id).filter(Boolean)
-  const typeById = new Map<string, string>()
+  const profiledIds = rows
+    .filter((row: any) =>
+      normalizeType(row?.entity_type) === 'item' &&
+      profiledItemIds.has(String(row?.id || ''))
+    )
+    .map((row: any) => row.id)
+    .filter(Boolean)
 
-  for (const row of rows) {
-    typeById.set(String(row.id), normalizeType(row.entity_type))
-  }
+  let itemBlocks: any[] = []
 
-  let coreBlocks: any[] = []
-  let itemSourceBlocks: any[] = []
-
-  if (entityIds.length) {
-    const coreBlocksRes = await directusServiceRequest('/items/block_instances', {
+  if (profiledIds.length) {
+    const itemBlocksRes = await directusServiceRequest('/items/block_instances', {
       method: 'GET',
       query: {
         filter: {
-          entity_id: { _in: entityIds },
-          block_key: { _in: CORE_BLOCK_KEYS }
+          entity_id: { _in: profiledIds },
+          block_key: { _in: ['item_core', 'import_source'] }
         },
         sort: 'entity_id,sort',
         limit: -1,
@@ -169,89 +219,63 @@ export default defineEventHandler(async (event) => {
       }
     })
 
-    coreBlocks = Array.isArray(coreBlocksRes?.data) ? coreBlocksRes.data : []
-
-    const itemIds = rows
-      .filter((row: any) => normalizeType(row.entity_type) === 'item')
-      .map((row: any) => row.id)
-      .filter(Boolean)
-
-    if (itemIds.length) {
-      const itemSourceRes = await directusServiceRequest('/items/block_instances', {
-        method: 'GET',
-        query: {
-          filter: {
-            entity_id: { _in: itemIds },
-            block_key: { _eq: 'import_source' }
-          },
-          sort: 'entity_id,sort',
-          limit: -1,
-          fields: 'entity_id,block_key,data'
-        }
-      })
-
-      itemSourceBlocks = Array.isArray(itemSourceRes?.data) ? itemSourceRes.data : []
-    }
+    itemBlocks = Array.isArray(itemBlocksRes?.data) ? itemBlocksRes.data : []
   }
 
-  const coreBlocksByEntityId = new Map<string, any[]>()
-  const itemSourceByEntityId = new Map<string, any>()
+  const itemBlocksByEntityId = new Map<string, any[]>()
 
-  for (const block of coreBlocks) {
-    const entityId = String(block.entity_id || '')
+  for (const block of itemBlocks) {
+    const entityId = String(block?.entity_id || '')
     if (!entityId) continue
 
-    const key = blockKey(block)
-
-    if (!coreBlocksByEntityId.has(entityId)) {
-      coreBlocksByEntityId.set(entityId, [])
+    if (!itemBlocksByEntityId.has(entityId)) {
+      itemBlocksByEntityId.set(entityId, [])
     }
 
-    coreBlocksByEntityId.get(entityId)!.push({
-      entity_id: block.entity_id,
-      block_key: key,
-      blockKey: key,
-      label: block.label,
-      sort: block.sort,
-      repeatable: block.repeatable,
-      data: block.data || {}
-    })
-  }
-
-  for (const block of itemSourceBlocks) {
-    const entityId = String(block.entity_id || '')
-    if (!entityId) continue
-    itemSourceByEntityId.set(entityId, block?.data?.raw_json || {})
+    itemBlocksByEntityId.get(entityId)!.push(block)
   }
 
   return rows.map((row: any) => {
     const id = String(row.id || '')
-    const rowType = typeById.get(id) || ''
-    const blocks = coreBlocksByEntityId.get(id) || []
-    const core = blocks.find((block: any) => blockKey(block) === `${rowType}_core` || blockKey(block) === 'item_core')?.data || {}
-    const raw = rowType === 'item' ? (itemSourceByEntityId.get(id) || {}) : null
-    const rawItemProfile = rowType === 'item'
-      ? normalizeDnd5eItem({
-          entity: row,
-          core,
-          raw
-        })
-      : null
-    const itemProfile = rawItemProfile ? slimItemProfile(rawItemProfile) : null
-    const optionBlocks = rowType === 'item'
-      ? blocks.map((block: any) => {
-          const key = blockKey(block)
-          if (key !== 'item_core') return block
+    const rowType = normalizeType(row.entity_type)
+    const isProfiledItem = rowType === 'item' && profiledItemIds.has(id)
+    const rawBlocks = isProfiledItem ? (itemBlocksByEntityId.get(id) || []) : []
+    const itemCore = rawBlocks.find((block: any) => blockKey(block) === 'item_core')?.data || {}
+    const rawJson = rawBlocks.find((block: any) => blockKey(block) === 'import_source')?.data?.raw_json || null
 
-          return {
-            ...block,
+    const itemProfile = isProfiledItem
+      ? slimItemProfile(normalizeDnd5eItem({
+          entity: row,
+          core: itemCore,
+          raw: rawJson || {}
+        }))
+      : null
+
+    const blocks = isProfiledItem
+      ? rawBlocks
+          .filter((block: any) => blockKey(block) === 'item_core')
+          .map((block: any) => ({
+            entity_id: block.entity_id,
+            block_key: 'item_core',
+            blockKey: 'item_core',
+            label: block.label,
+            sort: block.sort,
+            repeatable: block.repeatable,
             data: {
-              ...(block.data || {}),
-              description: cleanLimitedText(block?.data?.description || '', 500)
+              name: itemCore.name || row.title,
+              import_kind: itemCore.import_kind || '',
+              item_type: itemCore.item_type || itemProfile?.rawType || '',
+              rarity: itemCore.rarity || itemProfile?.rarity || '',
+              weight: itemCore.weight ?? itemProfile?.weight ?? '',
+              value: itemCore.value ?? itemProfile?.value ?? '',
+              attunement: itemCore.attunement ?? itemProfile?.requiresAttunement ?? false,
+              damage: itemCore.damage || itemProfile?.weapon?.damage || '',
+              damage_type: itemCore.damage_type || itemProfile?.weapon?.damageType || '',
+              armor_class: itemCore.armor_class || itemProfile?.armor?.baseAc || '',
+              description: itemProfile?.description || ''
             }
-          }
-        })
-      : blocks
+          }))
+      : []
 
     return {
       id: row.id,
@@ -267,7 +291,7 @@ export default defineEventHandler(async (event) => {
       image: row.image,
       imageUrl: imageUrlFor(row),
       image_url: imageUrlFor(row),
-      blocks: optionBlocks,
+      blocks,
       itemProfile,
       profile: itemProfile
     }

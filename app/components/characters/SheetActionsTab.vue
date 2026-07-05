@@ -6,6 +6,16 @@ const props = withDefaults(defineProps<{
   classResourceCards?: any[]
   mainSpeciesActionCards?: any[]
   itemActionCards?: any[]
+  itemActionResourceState?: (action: any) => any
+  itemActionResourceStatusText?: (action: any) => string
+  itemActionResourcePipIndexes?: (action: any) => any[]
+  itemActionResourcePipTitle?: (action: any, index: any) => string
+  toggleItemActionResourcePip?: (action: any, index: any) => void
+  itemActionResourcePipClass?: (action: any, index: any) => string
+  canUseItemActionResource?: (action: any) => boolean
+  useItemActionResource?: (action: any) => void
+  canUndoItemActionResource?: (action: any) => boolean
+  undoItemActionResource?: (action: any) => void
   equippedWeaponActions?: any[]
   actionSpellCards?: any[]
   filteredActionSpellCards?: any[]
@@ -110,6 +120,46 @@ function actionPanelOpen(key: string) {
 
 function actionPanelChevron(key: string) {
   return props.actionPanelChevron?.(key) || (actionPanelOpen(key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down')
+}
+
+function itemActionResourceState(action: any) {
+  return props.itemActionResourceState?.(action) || null
+}
+
+function itemActionResourceStatusText(action: any) {
+  return props.itemActionResourceStatusText?.(action) || ''
+}
+
+function itemActionResourcePipIndexes(action: any) {
+  return props.itemActionResourcePipIndexes?.(action) || []
+}
+
+function itemActionResourcePipTitle(action: any, index: any) {
+  return props.itemActionResourcePipTitle?.(action, index) || ''
+}
+
+function toggleItemActionResourcePip(action: any, index: any) {
+  props.toggleItemActionResourcePip?.(action, index)
+}
+
+function itemActionResourcePipClass(action: any, index: any) {
+  return props.itemActionResourcePipClass?.(action, index) || ''
+}
+
+function canUseItemActionResource(action: any) {
+  return props.canUseItemActionResource?.(action) || false
+}
+
+function useItemActionResource(action: any) {
+  props.useItemActionResource?.(action)
+}
+
+function canUndoItemActionResource(action: any) {
+  return props.canUndoItemActionResource?.(action) || false
+}
+
+function undoItemActionResource(action: any) {
+  props.undoItemActionResource?.(action)
 }
 
 function resourceStateForSpeciesAction(action: any) {
@@ -679,6 +729,33 @@ function castSpell(spell: any) {
 
                           <p class="mt-1 text-xs leading-5 text-[#9f9278]">{{ shortText(action.detail, 260) }}</p>
 
+                          <div
+                            v-if="itemActionResourceState(action)"
+                            class="mt-3 rounded-none border border-amber-300/20 bg-amber-400/10 p-2"
+                          >
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                              <span class="text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                {{ itemActionResourceStatusText(action) }}
+                              </span>
+                              <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
+                                {{ itemActionResourceState(action)?.reset || 'Long Rest' }}
+                              </span>
+                            </div>
+
+                            <div class="mt-2 flex flex-wrap items-center gap-2">
+                              <button
+                                v-for="pipIndex in itemActionResourcePipIndexes(action)"
+                                :key="`item-action-resource-${action.id}-${pipIndex}`"
+                                type="button"
+                                class="p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-amber-200/50"
+                                :title="itemActionResourcePipTitle(action, pipIndex)"
+                                @click.stop="toggleItemActionResourcePip(action, pipIndex)"
+                              >
+                                <span :class="itemActionResourcePipClass(action, pipIndex)" />
+                              </button>
+                            </div>
+                          </div>
+
                           <div class="mt-3 flex flex-wrap gap-2">
                             <span
                               v-if="action.consumesResource"
@@ -686,6 +763,26 @@ function castSpell(spell: any) {
                             >
                               Resource
                             </span>
+
+                            <button
+                              v-if="itemActionResourceState(action)"
+                              type="button"
+                              class="rounded-none border border-amber-300/24 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-100 disabled:opacity-45"
+                              :disabled="!canUseItemActionResource(action)"
+                              @click.stop="useItemActionResource(action)"
+                            >
+                              Use
+                            </button>
+
+                            <button
+                              v-if="itemActionResourceState(action)"
+                              type="button"
+                              class="rounded-none border border-[rgba(148,163,184,0.24)] bg-[rgba(15,23,42,0.45)] px-3 py-2 text-xs font-semibold text-[#d8ceb8] disabled:opacity-45"
+                              :disabled="!canUndoItemActionResource(action)"
+                              @click.stop="undoItemActionResource(action)"
+                            >
+                              Undo
+                            </button>
 
                             <button
                               v-if="action.itemDetail"

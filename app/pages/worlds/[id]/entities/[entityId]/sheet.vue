@@ -2502,16 +2502,149 @@ function itemActionIcon(timingKey: string) {
   return 'i-lucide-box'
 }
 
+function itemActionResourceKey(item: any, action: any, index: number, resource: any) {
+  const inventoryId = String(item?.id || inventoryLinkedItemId(item) || 'item')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  const actionId = String(action?.id || action?.name || action?.title || `action-${index}`)
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  const resourceKey = String(resource?.key || 'uses')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return `item:${inventoryId}:${actionId}:${resourceKey}`
+}
+
+function itemActionResourceState(action: any) {
+  const resource = action?.resource || null
+  const key = String(resource?.key || action?.resourceKey || '').trim()
+
+  if (!key) return null
+
+  const max = Math.max(1, Math.floor(Number(resource?.max || action?.resourceMax || 1)))
+  const used = Math.max(0, Math.min(max, Math.floor(limitedResourceNumber(limitedResourceUsesDraft.value[key], 0))))
+  const remaining = Math.max(0, max - used)
+
+  return {
+    key,
+    label: String(resource?.label || action?.name || action?.title || 'Item Use'),
+    max,
+    used,
+    remaining,
+    reset: String(resource?.reset || resource?.recharge || action?.resourceReset || 'Long Rest')
+  }
+}
+
+function itemActionResourceStatusText(action: any) {
+  const state = itemActionResourceState(action)
+  if (!state) return ''
+
+  return `${state.remaining} / ${state.max} Remaining`
+}
+
+function itemActionResourcePipIndexes(action: any) {
+  const state = itemActionResourceState(action)
+  if (!state) return []
+
+  return Array.from({ length: state.max }, (_item, index) => index)
+}
+
+function itemActionResourcePipAvailable(action: any, index: number) {
+  const state = itemActionResourceState(action)
+  if (!state) return false
+
+  return Number(index) >= Number(state.used || 0)
+}
+
+function itemActionResourcePipClass(action: any, index: number) {
+  return itemActionResourcePipAvailable(action, index)
+    ? 'block h-3 w-3 rotate-45 border border-amber-200/80 bg-amber-300/80 shadow-[0_0_10px_rgba(252,211,77,0.24)]'
+    : 'block h-3 w-3 rotate-45 border border-[rgba(148,163,184,0.35)] bg-transparent opacity-50'
+}
+
+function itemActionResourcePipTitle(action: any, index: number) {
+  const state = itemActionResourceState(action)
+  if (!state) return ''
+
+  const number = Number(index) + 1
+  return itemActionResourcePipAvailable(action, index)
+    ? `Use ${state.label || 'item use'} ${number}`
+    : `Restore ${state.label || 'item use'} ${number}`
+}
+
+function toggleItemActionResourcePip(action: any, index: number) {
+  const state = itemActionResourceState(action)
+  if (!state || limitedResourceSaveState.saving) return
+
+  const nextUsed = itemActionResourcePipAvailable(action, index)
+    ? Math.min(state.max, state.used + 1)
+    : Math.max(0, state.used - 1)
+
+  limitedResourceUsesDraft.value = {
+    ...limitedResourceUsesDraft.value,
+    [state.key]: nextUsed
+  }
+
+  void persistLimitedResourceUses()
+}
+
+function canUseItemActionResource(action: any) {
+  const state = itemActionResourceState(action)
+  return Boolean(state && state.remaining > 0 && !limitedResourceSaveState.saving)
+}
+
+function canUndoItemActionResource(action: any) {
+  const state = itemActionResourceState(action)
+  return Boolean(state && state.used > 0 && !limitedResourceSaveState.saving)
+}
+
+function useItemActionResource(action: any) {
+  const state = itemActionResourceState(action)
+  if (!state || state.remaining <= 0 || limitedResourceSaveState.saving) return
+
+  limitedResourceUsesDraft.value = {
+    ...limitedResourceUsesDraft.value,
+    [state.key]: state.used + 1
+  }
+
+  void persistLimitedResourceUses()
+}
+
+function undoItemActionResource(action: any) {
+  const state = itemActionResourceState(action)
+  if (!state || state.used <= 0 || limitedResourceSaveState.saving) return
+
+  limitedResourceUsesDraft.value = {
+    ...limitedResourceUsesDraft.value,
+    [state.key]: Math.max(0, state.used - 1)
+  }
+
+  void persistLimitedResourceUses()
+}
+
 const itemGrantedActionCards = computed(() =>
   activeInventoryEffectRows()
     .flatMap((item: any) => {
       const profile = inventoryItemProfile(item)
       const actions = Array.isArray(profile?.grantedActions) ? profile.grantedActions : []
+      const resources = Array.isArray(profile?.resources) ? profile.resources : []
       const detail = inventoryItemDetail(item)
 
       return actions.map((action: any, index: number) => {
         const timing = String(action?.timing || action?.actionKind || 'Action')
         const timingKey = itemActionTimingKey(timing)
+        const resource = action?.consumesResource
+          ? (resources[0] || { key: 'uses', label: 'Uses', max: 1, recharge: 'Long Rest' })
+          : null
+
+        const resourceKey = resource
+          ? itemActionResourceKey(item, action, index, resource)
+          : ''
+
+        const resourceMax = Math.max(1, Math.floor(Number(resource?.max || 1)))
 
         return {
           id: `item-action-${item.id || inventoryLinkedItemId(item)}-${action?.id || index}`,
@@ -2524,9 +2657,21 @@ const itemGrantedActionCards = computed(() =>
           icon: itemActionIcon(timingKey),
           detail: String(action?.detail || action?.description || profile?.description || '').trim(),
           description: String(action?.detail || action?.description || profile?.description || '').trim(),
-          notes: action?.consumesResource ? 'Consumes item resource.' : '',
+          notes: action?.consumesResource ? `${resourceMax} use${resourceMax === 1 ? '' : 's'} / ${String(resource?.recharge || resource?.reset || 'Long Rest')}` : '',
           source: String(item?.name || profile?.name || 'Item'),
           consumesResource: action?.consumesResource === true,
+          resource: resource
+            ? {
+                key: resourceKey,
+                label: String(resource?.label || action?.name || profile?.name || 'Uses'),
+                max: resourceMax,
+                recharge: String(resource?.recharge || resource?.reset || 'Long Rest'),
+                reset: String(resource?.recharge || resource?.reset || 'Long Rest')
+              }
+            : null,
+          resourceKey,
+          resourceMax,
+          resourceReset: resource ? String(resource?.recharge || resource?.reset || 'Long Rest') : '',
           itemDetail: detail,
           isItemAction: true
         }
@@ -6766,6 +6911,16 @@ async function saveSheet() {
               :class-resource-cards="classResourceCards"
               :main-species-action-cards="mainSpeciesActionCards"
               :item-action-cards="itemGrantedActionCards"
+              :item-action-resource-state="itemActionResourceState"
+              :item-action-resource-status-text="itemActionResourceStatusText"
+              :item-action-resource-pip-indexes="itemActionResourcePipIndexes"
+              :item-action-resource-pip-title="itemActionResourcePipTitle"
+              :toggle-item-action-resource-pip="toggleItemActionResourcePip"
+              :item-action-resource-pip-class="itemActionResourcePipClass"
+              :can-use-item-action-resource="canUseItemActionResource"
+              :use-item-action-resource="useItemActionResource"
+              :can-undo-item-action-resource="canUndoItemActionResource"
+              :undo-item-action-resource="undoItemActionResource"
               :equipped-weapon-actions="equippedWeaponActions"
               :action-spell-cards="actionSpellCards"
               :filtered-action-spell-cards="filteredActionSpellCards"

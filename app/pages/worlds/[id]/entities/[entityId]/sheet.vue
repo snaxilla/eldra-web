@@ -130,7 +130,7 @@ const noteDraft = reactive({
 const choiceDrafts = ref<Record<string, string[]>>({})
 
 const SHEET_TABS = [
-  { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
+  { key: 'overview', label: 'Sheet', icon: 'i-lucide-layout-dashboard' },
   { key: 'stats', label: 'Stats', icon: 'i-lucide-activity' },
   { key: 'actions', label: 'Actions', icon: 'i-lucide-swords' },
   { key: 'inventory', label: 'Inventory', icon: 'i-lucide-backpack' },
@@ -221,6 +221,10 @@ const reactionActionCards = [
 ]
 
 type SheetTab = typeof SHEET_TABS[number]['key']
+
+const desktopSheetTabs = computed(() =>
+  SHEET_TABS.filter((tab) => tab.key !== 'actions')
+)
 
 const mobileSheetTabs = computed(() =>
   mode.value === 'build'
@@ -6577,7 +6581,7 @@ async function saveSheet() {
 
         <CharactersSheetTabBar
           class="sheet-desktop-only mb-4 hidden md:block"
-          :tabs="SHEET_TABS"
+          :tabs="desktopSheetTabs"
           :active-tab="activeSheetTab"
           :counts="sheetTabCounts"
           variant="desktop"
@@ -6790,73 +6794,62 @@ async function saveSheet() {
               :spell-consumes-slot="spellConsumesSlot"
               :cast-spell="castSpell"
               :short-text="shortText"
-            />
+            >
+              <template #actions>
+                <CharactersSheetActionCenter
+                  :world-id="worldId"
+                  :entity-id="entityId"
+                  :class-resource-cards="classResourceCards"
+                  :main-species-action-cards="mainSpeciesActionCards"
+                  :item-action-cards="itemGrantedActionCards"
+                  :item-action-resource-state="itemActionResourceState"
+                  :item-action-resource-status-text="itemActionResourceStatusText"
+                  :item-action-resource-pip-indexes="itemActionResourcePipIndexes"
+                  :item-action-resource-pip-title="itemActionResourcePipTitle"
+                  :toggle-item-action-resource-pip="toggleItemActionResourcePip"
+                  :item-action-resource-pip-class="itemActionResourcePipClass"
+                  :can-use-item-action-resource="canUseItemActionResource"
+                  :use-item-action-resource="useItemActionResource"
+                  :can-undo-item-action-resource="canUndoItemActionResource"
+                  :undo-item-action-resource="undoItemActionResource"
+                  :equipped-weapon-actions="equippedWeaponActions"
+                  :action-spell-cards="actionSpellCards"
+                  :common-action-cards="commonActionCards"
+                  :displayed-bonus-action-cards="displayedBonusActionCards"
+                  :displayed-reaction-action-cards="displayedReactionActionCards"
+                  :open-feature-drawer="openFeatureDrawer"
+                  :open-item-drawer="openItemDrawer"
+                  :open-spell-drawer="openSpellDrawer"
+                  :resource-state-for-species-action="resourceStateForSpeciesAction"
+                  :species-action-resource-status-text="speciesActionResourceStatusText"
+                  :species-action-resource-pip-indexes="speciesActionResourcePipIndexes"
+                  :species-action-resource-pip-title="speciesActionResourcePipTitle"
+                  :toggle-species-action-resource-pip="toggleSpeciesActionResourcePip"
+                  :species-action-resource-pip-class="speciesActionResourcePipClass"
+                  :species-action-can-attack="speciesActionCanAttack"
+                  :species-action-attack-bonus-text="speciesActionAttackBonusText"
+                  :species-action-attack-formula="speciesActionAttackFormula"
+                  :species-action-damage-text="speciesActionDamageText"
+                  :species-action-damage-formula-text="speciesActionDamageFormulaText"
+                  :can-use-species-action-resource="canUseSpeciesActionResource"
+                  :use-species-action-resource="useSpeciesActionResource"
+                  :roll-species-action-attack="rollSpeciesActionAttack"
+                  :roll-species-action-damage="rollSpeciesActionDamage"
+                  :short-text="shortText"
+                  :roll-weapon-attack="rollWeaponAttack"
+                  :roll-weapon-damage="rollWeaponDamage"
+                  :spell-option-level-label="spellOptionLevelLabel"
+                  :spell-action-mechanic="spellActionMechanic"
+                  :spell-uses-attack-roll="spellUsesAttackRoll"
+                  :can-cast-spell="canCastSpell"
+                  :roll-spell-attack-and-consume-slot="rollSpellAttackAndConsumeSlot"
+                  :spell-consumes-slot="spellConsumesSlot"
+                  :cast-spell="castSpell"
+                />
+              </template>
+            </CharactersSheetDesktopOverviewDashboard>
 
-            <div v-if="activeSheetTab === 'overview'" class="mt-4 hidden md:block">
-<CharactersSheetActionsTab
-                  embedded
-                  data-overview-action-center
-              :world-id="worldId"
-              :entity-id="entityId"
-              :sheet="sheet"
-              :class-resource-cards="classResourceCards"
-              :main-species-action-cards="mainSpeciesActionCards"
-              :item-action-cards="itemGrantedActionCards"
-              :item-action-resource-state="itemActionResourceState"
-              :item-action-resource-status-text="itemActionResourceStatusText"
-              :item-action-resource-pip-indexes="itemActionResourcePipIndexes"
-              :item-action-resource-pip-title="itemActionResourcePipTitle"
-              :toggle-item-action-resource-pip="toggleItemActionResourcePip"
-              :item-action-resource-pip-class="itemActionResourcePipClass"
-              :can-use-item-action-resource="canUseItemActionResource"
-              :use-item-action-resource="useItemActionResource"
-              :can-undo-item-action-resource="canUndoItemActionResource"
-              :undo-item-action-resource="undoItemActionResource"
-              :equipped-weapon-actions="equippedWeaponActions"
-              :action-spell-cards="actionSpellCards"
-              :filtered-action-spell-cards="filteredActionSpellCards"
-              :common-action-cards="commonActionCards"
-              :displayed-bonus-action-cards="displayedBonusActionCards"
-              :displayed-reaction-action-cards="displayedReactionActionCards"
-              :has-spellcasting-math="hasSpellcastingMath"
-              :spellcasting-stat-cards="spellcastingStatCards"
-              :action-spell-level-filters="actionSpellLevelFilters"
-              :action-spell-level-filter="actionSpellLevelFilter"
-              :open-feature-drawer="openFeatureDrawer"
-              :open-item-drawer="openItemDrawer"
-              :open-spell-drawer="openSpellDrawer"
-              :toggle-action-panel="toggleActionPanel"
-              :action-panel-open="actionPanelOpen"
-              :action-panel-chevron="actionPanelChevron"
-              :resource-state-for-species-action="resourceStateForSpeciesAction"
-              :species-action-resource-status-text="speciesActionResourceStatusText"
-              :species-action-resource-pip-indexes="speciesActionResourcePipIndexes"
-              :species-action-resource-pip-title="speciesActionResourcePipTitle"
-              :toggle-species-action-resource-pip="toggleSpeciesActionResourcePip"
-              :species-action-resource-pip-class="speciesActionResourcePipClass"
-              :species-action-can-attack="speciesActionCanAttack"
-              :species-action-attack-bonus-text="speciesActionAttackBonusText"
-              :species-action-attack-formula="speciesActionAttackFormula"
-              :species-action-damage-text="speciesActionDamageText"
-              :species-action-damage-formula-text="speciesActionDamageFormulaText"
-              :species-action-button-grid-class="speciesActionButtonGridClass"
-              :can-use-species-action-resource="canUseSpeciesActionResource"
-              :use-species-action-resource="useSpeciesActionResource"
-              :roll-species-action-attack="rollSpeciesActionAttack"
-              :roll-species-action-damage="rollSpeciesActionDamage"
-              :short-text="shortText"
-              :roll-weapon-attack="rollWeaponAttack"
-              :roll-weapon-damage="rollWeaponDamage"
-              :spell-option-level-label="spellOptionLevelLabel"
-              :spell-action-mechanic="spellActionMechanic"
-              :spell-uses-attack-roll="spellUsesAttackRoll"
-              :can-cast-spell="canCastSpell"
-              :roll-spell-attack-and-consume-slot="rollSpellAttackAndConsumeSlot"
-              :spell-consumes-slot="spellConsumesSlot"
-              :cast-spell="castSpell"
-              @update-action-spell-level-filter="actionSpellLevelFilter = $event"
-            />
-            </div>
+            
 
           <CharactersSheetSaveStatus
             :error="sheetSaveError"

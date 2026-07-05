@@ -216,7 +216,7 @@ function canCast(spell: any) {
 
 <template>
   <section class="sheet-desktop-only mt-6 hidden md:block">
-    <div class="grid items-start gap-4 xl:grid-cols-[260px_minmax(0,1fr)_340px] 2xl:grid-cols-[280px_minmax(0,1fr)_380px]">
+    <div class="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)_520px] 2xl:grid-cols-[300px_minmax(0,1fr)_620px]">
       <aside class="grid content-start gap-4">
         <div class="eldra-codex-soft rounded-none p-4">
           <div
@@ -565,6 +565,10 @@ function canCast(spell: any) {
               Conditions tracking coming with the combat polish pass.
             </div>
           </div>
+        </div>
+
+        <div v-if="$slots.actions">
+          <slot name="actions" />
         </div>
       </aside>
     </div>

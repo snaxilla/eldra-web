@@ -223,7 +223,7 @@ const reactionActionCards = [
 type SheetTab = typeof SHEET_TABS[number]['key']
 
 const desktopSheetTabs = computed(() =>
-  SHEET_TABS.filter((tab) => tab.key !== 'actions')
+  SHEET_TABS.filter((tab) => !['actions', 'notes'].includes(tab.key))
 )
 
 const mobileSheetTabs = computed(() =>
@@ -267,6 +267,23 @@ function setSheetTab(tab: SheetTab | string) {
     }
   })
 }
+
+
+function redirectLegacyDesktopSheetTabs() {
+  if (!import.meta.client) return
+  if (!sheetViewportWidth.value) return
+  if (useCompactSheetLayout.value) return
+
+  if (['actions', 'notes'].includes(activeSheetTab.value)) {
+    setSheetTab('overview')
+  }
+}
+
+watch(
+  [activeSheetTab, sheetViewportWidth, useCompactSheetLayout],
+  redirectLegacyDesktopSheetTabs,
+  { immediate: true }
+)
 
 function actionPanelOpen(key: string) {
   return actionPanelsOpen[key] !== false

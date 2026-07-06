@@ -69,6 +69,7 @@ const props = withDefaults(defineProps<{
 
 const activePanelTab = ref('actions')
 const activeActionFilter = ref('all')
+const notePanelSearch = ref('')
 
 const panelTabs = [
   { key: 'actions', label: 'Actions' },
@@ -355,6 +356,27 @@ const spellRows = computed(() => props.actionSpellCards || [])
 const inventoryRows = computed(() => props.inventoryItems || [])
 const featureRows = computed(() => props.featureCards || [])
 const noteRows = computed(() => props.noteCards || [])
+
+const filteredNoteRows = computed(() => {
+  const q = notePanelSearch.value.trim().toLowerCase()
+  const rows = noteRows.value || []
+
+  if (!q) return rows
+
+  return rows.filter((note: any) =>
+    [
+      note?.title,
+      note?.body,
+      note?.description,
+      note?.tags,
+      note?.category
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q)
+  )
+})
 
 function countForFilter(key: string) {
   if (key === 'all') return unifiedActions.value.length
@@ -890,12 +912,22 @@ function openNote(note: any) {
         </button>
       </div>
 
+      <label class="mb-4 block">
+        <span class="mb-2 block text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Search Notes</span>
+        <input
+          v-model="notePanelSearch"
+          type="search"
+          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+          placeholder="Search NPC, city, quest, clue..."
+        >
+      </label>
+
       <div
-        v-if="noteRows.length"
+        v-if="filteredNoteRows.length"
         class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
       >
         <article
-          v-for="note in noteRows"
+          v-for="note in filteredNoteRows"
           :key="`inner-note-${note.id || note.title}`"
           class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
         >
@@ -926,6 +958,13 @@ function openNote(note: any) {
             {{ short(note.body || note.description || '', 220) || 'No note body yet.' }}
           </p>
         </article>
+      </div>
+
+      <div
+        v-else-if="noteRows.length"
+        class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
+      >
+        No notes match that search.
       </div>
 
       <div

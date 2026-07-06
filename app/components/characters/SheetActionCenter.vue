@@ -24,10 +24,10 @@ const props = withDefaults(defineProps<{
   displayedBonusActionCards?: any[]
   displayedReactionActionCards?: any[]
   openFeatureDrawer?: (value: any) => void
-  openNoteDetail?: (note: any) => void
-  openAddNoteDrawer?: () => void
   openItemDrawer?: (value: any) => void
   openSpellDrawer?: (value: any) => void
+  openNoteDetail?: (note: any) => void
+  openAddNoteDrawer?: () => void
   resourceStateForSpeciesAction?: (action: any) => any
   speciesActionResourceStatusText?: (action: any) => string
   speciesActionResourcePipIndexes?: (action: any) => any[]
@@ -201,7 +201,7 @@ function speciesCanAttack(action: any) {
 
 function actionIcon(action: any) {
   if (action.kind === 'weapon') return 'i-lucide-swords'
-  if (action.kind === 'spell') return 'i-lucide-sparkles'
+  if (action.kind === 'spell-shortcut') return 'i-lucide-sparkles'
   if (action.kind === 'item') return 'i-lucide-box'
   if (action.filter === 'bonus') return 'i-lucide-flame'
   if (action.filter === 'reaction') return 'i-lucide-rotate-ccw'
@@ -209,7 +209,7 @@ function actionIcon(action: any) {
   return 'i-lucide-circle-dot'
 }
 
-const unifiedActions = computed(() => {
+const attackRows = computed(() => {
   const rows: any[] = []
 
   for (const weapon of props.equippedWeaponActions || []) {
@@ -220,6 +220,7 @@ const unifiedActions = computed(() => {
       title: weapon.name || 'Attack',
       subtitle: weapon.itemType || 'Weapon',
       badge: 'Attack',
+      range: weapon.range || weapon.reach || '—',
       hit: weapon.attackBonusText || '—',
       hitNote: weapon.attackFormula || '',
       damage: weapon.damage || '—',
@@ -230,57 +231,43 @@ const unifiedActions = computed(() => {
   }
 
   for (const action of props.mainSpeciesActionCards || []) {
-    const isAttack = speciesCanAttack(action)
+    if (!speciesCanAttack(action)) continue
 
     rows.push({
-      id: `species-${action.id || action.name}`,
+      id: `species-attack-${action.id || action.name}`,
       kind: 'species',
-      filter: isAttack ? 'attack' : timingFilter(action.timing || action.actionKind),
-      title: action.name || 'Species Action',
+      filter: 'attack',
+      title: action.name || 'Species Attack',
       subtitle: action.source || 'Species',
-      badge: action.timing || action.actionKind || 'Action',
-      hit: isAttack ? props.speciesActionAttackBonusText?.(action) || '—' : '',
-      hitNote: isAttack ? props.speciesActionAttackFormula?.(action) || '' : '',
-      damage: action.damage ? props.speciesActionDamageText?.(action) || action.damage : '',
+      badge: action.timing || action.actionKind || 'Attack',
+      range: action.range || '—',
+      hit: props.speciesActionAttackBonusText?.(action) || '—',
+      hitNote: props.speciesActionAttackFormula?.(action) || '',
+      damage: action.damage ? props.speciesActionDamageText?.(action) || action.damage : '—',
       damageNote: action.damage ? props.speciesActionDamageFormulaText?.(action) || '' : '',
       notes: action.detail || action.description || '',
       raw: action
     })
   }
 
-  for (const spell of props.actionSpellCards || []) {
-    const mechanic = spellMechanic(spell)
+  return rows
+})
 
+const actionRows = computed(() => {
+  const rows: any[] = []
+
+  if ((props.actionSpellCards || []).length) {
     rows.push({
-      id: `spell-${spell.id}`,
-      kind: 'spell',
+      id: 'spell-shortcut-cast-a-spell',
+      kind: 'spell-shortcut',
       filter: 'action',
-      title: spell.title || spell.name || 'Spell',
-      subtitle: spellLevel(spell),
-      badge: spell.actionKind || 'Spell',
-      hit: mechanic.value,
-      hitNote: `${mechanic.label}${mechanic.note ? `: ${mechanic.note}` : ''}`,
+      title: 'Cast a Spell',
+      subtitle: 'Spellcasting',
+      badge: 'Action',
+      hit: '',
       damage: '',
-      damageNote: '',
-      notes: spell.summary || spell.description || '',
-      raw: spell
-    })
-  }
-
-  for (const action of props.itemActionCards || []) {
-    rows.push({
-      id: `item-${action.id || action.name}`,
-      kind: 'item',
-      filter: action.timingKey || timingFilter(action.timing || action.actionKind),
-      title: action.name || 'Item Action',
-      subtitle: action.source || action.itemType || 'Item',
-      badge: action.timing || action.actionKind || 'Action',
-      hit: itemResourceState(action) ? itemResourceStatus(action) : '',
-      hitNote: itemResourceState(action)?.reset || '',
-      damage: '',
-      damageNote: '',
-      notes: action.detail || action.description || '',
-      raw: action
+      notes: 'Cast a prepared, known, cantrip, or feature-granted spell from the Spells panel.',
+      raw: null
     })
   }
 
@@ -288,7 +275,7 @@ const unifiedActions = computed(() => {
     rows.push({
       id: `common-${action.name}`,
       kind: 'common',
-      filter: timingFilter(action.timing || 'Action'),
+      filter: 'action',
       title: action.name || 'Action',
       subtitle: 'Actions in Combat',
       badge: action.timing || 'Action',
@@ -298,6 +285,52 @@ const unifiedActions = computed(() => {
       raw: action
     })
   }
+
+  for (const action of props.mainSpeciesActionCards || []) {
+    if (speciesCanAttack(action)) continue
+
+    const key = timingFilter(action.timing || action.actionKind)
+    if (key !== 'action') continue
+
+    rows.push({
+      id: `species-action-${action.id || action.name}`,
+      kind: 'species',
+      filter: 'action',
+      title: action.name || 'Species Action',
+      subtitle: action.source || 'Species',
+      badge: action.timing || action.actionKind || 'Action',
+      hit: '',
+      damage: action.damage ? props.speciesActionDamageText?.(action) || action.damage : '',
+      damageNote: action.damage ? props.speciesActionDamageFormulaText?.(action) || '' : '',
+      notes: action.detail || action.description || '',
+      raw: action
+    })
+  }
+
+  for (const action of props.itemActionCards || []) {
+    const key = action.timingKey || timingFilter(action.timing || action.actionKind)
+    if (key !== 'action') continue
+
+    rows.push({
+      id: `item-action-${action.id || action.name}`,
+      kind: 'item',
+      filter: 'action',
+      title: action.name || 'Item Action',
+      subtitle: action.source || action.itemType || 'Item',
+      badge: action.timing || action.actionKind || 'Action',
+      hit: itemResourceState(action) ? itemResourceStatus(action) : '',
+      hitNote: itemResourceState(action)?.reset || '',
+      damage: '',
+      notes: action.detail || action.description || '',
+      raw: action
+    })
+  }
+
+  return rows
+})
+
+const bonusRows = computed(() => {
+  const rows: any[] = []
 
   for (const action of props.displayedBonusActionCards || []) {
     rows.push({
@@ -314,6 +347,31 @@ const unifiedActions = computed(() => {
     })
   }
 
+  for (const action of props.itemActionCards || []) {
+    const key = action.timingKey || timingFilter(action.timing || action.actionKind)
+    if (key !== 'bonus') continue
+
+    rows.push({
+      id: `item-bonus-${action.id || action.name}`,
+      kind: 'item',
+      filter: 'bonus',
+      title: action.name || 'Item Action',
+      subtitle: action.source || action.itemType || 'Item',
+      badge: action.timing || action.actionKind || 'Bonus Action',
+      hit: itemResourceState(action) ? itemResourceStatus(action) : '',
+      hitNote: itemResourceState(action)?.reset || '',
+      damage: '',
+      notes: action.detail || action.description || '',
+      raw: action
+    })
+  }
+
+  return rows
+})
+
+const reactionRows = computed(() => {
+  const rows: any[] = []
+
   for (const action of props.displayedReactionActionCards || []) {
     rows.push({
       id: `reaction-${action.id || action.name}`,
@@ -328,6 +386,31 @@ const unifiedActions = computed(() => {
       raw: action
     })
   }
+
+  for (const action of props.itemActionCards || []) {
+    const key = action.timingKey || timingFilter(action.timing || action.actionKind)
+    if (key !== 'reaction') continue
+
+    rows.push({
+      id: `item-reaction-${action.id || action.name}`,
+      kind: 'item',
+      filter: 'reaction',
+      title: action.name || 'Item Reaction',
+      subtitle: action.source || action.itemType || 'Item',
+      badge: action.timing || action.actionKind || 'Reaction',
+      hit: itemResourceState(action) ? itemResourceStatus(action) : '',
+      hitNote: itemResourceState(action)?.reset || '',
+      damage: '',
+      notes: action.detail || action.description || '',
+      raw: action
+    })
+  }
+
+  return rows
+})
+
+const otherRows = computed(() => {
+  const rows: any[] = []
 
   for (const resource of props.classResourceCards || []) {
     rows.push({
@@ -344,13 +427,59 @@ const unifiedActions = computed(() => {
     })
   }
 
+  for (const action of props.itemActionCards || []) {
+    const key = action.timingKey || timingFilter(action.timing || action.actionKind)
+    if (['action', 'bonus', 'reaction'].includes(key)) continue
+
+    rows.push({
+      id: `item-other-${action.id || action.name}`,
+      kind: 'item',
+      filter: 'other',
+      title: action.name || 'Item',
+      subtitle: action.source || action.itemType || 'Item',
+      badge: action.timing || action.actionKind || 'Other',
+      hit: itemResourceState(action) ? itemResourceStatus(action) : '',
+      hitNote: itemResourceState(action)?.reset || '',
+      damage: '',
+      notes: action.detail || action.description || '',
+      raw: action
+    })
+  }
+
   return rows
 })
 
-const visibleActions = computed(() => {
-  if (activeActionFilter.value === 'all') return unifiedActions.value
-  return unifiedActions.value.filter((action) => action.filter === activeActionFilter.value)
-})
+const actionSectionMap = computed(() => ({
+  attack: attackRows.value,
+  action: actionRows.value,
+  bonus: bonusRows.value,
+  reaction: reactionRows.value,
+  other: otherRows.value
+}))
+
+const allActionRows = computed(() => [
+  ...attackRows.value,
+  ...actionRows.value,
+  ...bonusRows.value,
+  ...reactionRows.value,
+  ...otherRows.value
+])
+
+function countForFilter(key: string) {
+  if (key === 'all') return allActionRows.value.length
+  return (actionSectionMap.value as any)[key]?.length || 0
+}
+
+function shouldShowActionSection(key: string) {
+  if (activeActionFilter.value === 'all') return true
+  return activeActionFilter.value === key
+}
+
+function filterClass(key: string) {
+  return activeActionFilter.value === key
+    ? 'border-[rgba(201,164,90,0.68)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
+    : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.68)] text-[#d8ceb8] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'
+}
 
 const spellRows = computed(() => props.actionSpellCards || [])
 const inventoryRows = computed(() => props.inventoryItems || [])
@@ -378,24 +507,13 @@ const filteredNoteRows = computed(() => {
   )
 })
 
-function countForFilter(key: string) {
-  if (key === 'all') return unifiedActions.value.length
-  return unifiedActions.value.filter((action) => action.filter === key).length
-}
-
 function tabCount(key: string) {
-  if (key === 'actions') return unifiedActions.value.length
+  if (key === 'actions') return allActionRows.value.length
   if (key === 'spells') return spellRows.value.length
   if (key === 'inventory') return inventoryRows.value.length
   if (key === 'features') return featureRows.value.length
   if (key === 'notes') return noteRows.value.length
   return 0
-}
-
-function filterClass(key: string) {
-  return activeActionFilter.value === key
-    ? 'border-[rgba(201,164,90,0.68)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
-    : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.68)] text-[#d8ceb8] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'
 }
 
 function panelTabClass(key: string) {
@@ -437,7 +555,6 @@ function noteUpdatedLabel(note: any) {
 function openNote(note: any) {
   props.openNoteDetail?.(note)
 }
-
 </script>
 
 <template>
@@ -491,134 +608,178 @@ function openNote(note: any) {
       </div>
 
       <div class="max-h-[560px] overflow-y-auto pr-1">
-        <div class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]">
-          <div class="hidden grid-cols-[minmax(170px,1.4fr)_80px_92px_minmax(130px,1fr)_150px] gap-3 border-b border-[rgba(201,164,90,0.18)] bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
-            <div>Attack</div>
-            <div>Hit / DC</div>
-            <div>Damage</div>
-            <div>Notes</div>
-            <div class="text-right">Controls</div>
+        <!-- ATTACK SECTION -->
+        <section
+          v-if="shouldShowActionSection('attack') && attackRows.length"
+          class="border-b border-[rgba(201,164,90,0.16)] py-4 first:pt-0"
+        >
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <div class="text-xs font-semibold uppercase tracking-[0.18em] text-[#c9a45a]">
+              Attacks
+            </div>
+            <div class="text-[10px] uppercase tracking-[0.16em] text-[#9f9278]">
+              {{ attackRows.length }} attack{{ attackRows.length === 1 ? '' : 's' }}
+            </div>
           </div>
 
-          <article
-            v-for="action in visibleActions"
-            :key="action.id"
-            class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
-          >
-            <div class="grid gap-3 xl:grid-cols-[minmax(170px,1.4fr)_80px_92px_minmax(130px,1fr)_150px] xl:items-center">
-              <div class="min-w-0">
-                <div class="flex min-w-0 items-start gap-2">
-                  <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
-                    <UIcon :name="actionIcon(action)" class="h-4 w-4" />
+          <div class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]">
+            <div class="hidden grid-cols-[minmax(160px,1.3fr)_78px_78px_92px_minmax(120px,1fr)_150px] gap-3 border-b border-[rgba(201,164,90,0.18)] bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
+              <div>Attack</div>
+              <div>Range</div>
+              <div>Hit / DC</div>
+              <div>Damage</div>
+              <div>Notes</div>
+              <div class="text-right">Controls</div>
+            </div>
+
+            <article
+              v-for="action in attackRows"
+              :key="action.id"
+              class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
+            >
+              <div class="grid gap-3 xl:grid-cols-[minmax(160px,1.3fr)_78px_78px_92px_minmax(120px,1fr)_150px] xl:items-center">
+                <div class="min-w-0">
+                  <div class="flex min-w-0 items-start gap-2">
+                    <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                      <UIcon :name="actionIcon(action)" class="h-4 w-4" />
+                    </div>
+
+                    <div class="min-w-0">
+                      <div class="truncate text-sm font-semibold text-white">{{ action.title }}</div>
+                      <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
+                    </div>
                   </div>
+                </div>
 
-                  <div class="min-w-0">
-                    <div class="truncate text-sm font-semibold text-white">{{ action.title }}</div>
-                    <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
+                <div class="text-xs font-semibold text-white">
+                  <span class="xl:hidden text-[#9f9278]">Range: </span>{{ action.range || '—' }}
+                </div>
+
+                <div class="text-xs">
+                  <div class="font-semibold text-white">{{ action.hit || '—' }}</div>
+                  <div
+                    v-if="action.hitNote"
+                    class="mt-0.5 text-[10px] text-[#9f9278]"
+                  >
+                    {{ action.hitNote }}
                   </div>
                 </div>
-              </div>
 
-              <div class="rounded-none border border-[rgba(201,164,90,0.12)] bg-black/15 px-2 py-1.5 text-xs xl:border-0 xl:bg-transparent xl:p-0">
-                <div class="xl:hidden uppercase tracking-[0.16em] text-[#9f9278]">Hit / DC</div>
-                <div class="font-semibold text-white">{{ action.hit || '—' }}</div>
-                <div
-                  v-if="action.hitNote"
-                  class="mt-0.5 text-[10px] text-[#9f9278]"
-                >
-                  {{ action.hitNote }}
+                <div class="text-xs">
+                  <div class="font-semibold text-white">{{ action.damage || '—' }}</div>
+                  <div
+                    v-if="action.damageNote"
+                    class="mt-0.5 text-[10px] text-[#9f9278]"
+                  >
+                    {{ action.damageNote }}
+                  </div>
+                </div>
+
+                <div class="min-w-0 text-xs leading-5 text-[#9f9278]">
+                  {{ short(action.notes, 120) }}
+                </div>
+
+                <div class="flex flex-wrap justify-start gap-2 xl:justify-end">
+                  <button
+                    v-if="action.kind === 'weapon'"
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                    @click.stop="props.rollWeaponAttack?.(action.raw)"
+                  >
+                    Hit
+                  </button>
+
+                  <button
+                    v-if="action.kind === 'weapon'"
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                    @click.stop="props.rollWeaponDamage?.(action.raw)"
+                  >
+                    Damage
+                  </button>
+
+                  <button
+                    v-if="action.kind === 'weapon' && (action.raw?.linkedItemId || action.raw?.description || action.raw?.notes)"
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                    @click.stop="props.openItemDrawer?.(action.raw)"
+                  >
+                    Details
+                  </button>
+
+                  <button
+                    v-if="action.kind === 'species'"
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                    @click.stop="props.rollSpeciesActionAttack?.(action.raw)"
+                  >
+                    Hit
+                  </button>
+
+                  <button
+                    v-if="action.kind === 'species' && action.raw?.damage"
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                    @click.stop="props.rollSpeciesActionDamage?.(action.raw)"
+                  >
+                    Damage
+                  </button>
+
+                  <button
+                    v-if="action.kind === 'species'"
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                    @click.stop="props.openFeatureDrawer?.(action.raw)"
+                  >
+                    Details
+                  </button>
                 </div>
               </div>
+            </article>
+          </div>
+        </section>
 
-              <div class="rounded-none border border-[rgba(201,164,90,0.12)] bg-black/15 px-2 py-1.5 text-xs xl:border-0 xl:bg-transparent xl:p-0">
-                <div class="xl:hidden uppercase tracking-[0.16em] text-[#9f9278]">Damage</div>
-                <div class="font-semibold text-white">{{ action.damage || '—' }}</div>
-                <div
-                  v-if="action.damageNote"
-                  class="mt-0.5 text-[10px] text-[#9f9278]"
-                >
-                  {{ action.damageNote }}
+        <!-- ACTION SECTION -->
+        <section
+          v-if="shouldShowActionSection('action') && actionRows.length"
+          class="border-b border-[rgba(201,164,90,0.16)] py-4 first:pt-0"
+        >
+          <div class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#c9a45a]">
+            Actions
+          </div>
+
+          <div class="space-y-3">
+            <article
+              v-for="action in actionRows"
+              :key="action.id"
+              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold text-white">{{ action.title }}</div>
+                  <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
                 </div>
+
+                <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                  {{ action.badge }}
+                </span>
               </div>
 
-              <div class="min-w-0 text-xs leading-5 text-[#9f9278]">
-                <span class="xl:hidden uppercase tracking-[0.16em] text-[#9f9278]">Notes: </span>
-                {{ short(action.notes, 150) || action.badge }}
-              </div>
+              <p
+                v-if="action.notes"
+                class="mt-2 text-xs leading-5 text-[#d8ceb8]"
+              >
+                {{ short(action.notes, 260) }}
+              </p>
 
-              <div class="flex flex-wrap justify-start gap-2 xl:justify-end">
+              <div class="mt-3 flex flex-wrap gap-2">
                 <button
-                  v-if="action.kind === 'weapon'"
+                  v-if="action.kind === 'spell-shortcut'"
                   type="button"
                   class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
-                  @click.stop="props.rollWeaponAttack?.(action.raw)"
+                  @click="activePanelTab = 'spells'"
                 >
-                  Hit
-                </button>
-
-                <button
-                  v-if="action.kind === 'weapon'"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
-                  @click.stop="props.rollWeaponDamage?.(action.raw)"
-                >
-                  Damage
-                </button>
-
-                <button
-                  v-if="action.kind === 'weapon' && (action.raw?.linkedItemId || action.raw?.description || action.raw?.notes)"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
-                  @click.stop="props.openItemDrawer?.(action.raw)"
-                >
-                  Details
-                </button>
-
-                <button
-                  v-if="action.kind === 'spell'"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
-                  @click.stop="props.openSpellDrawer?.(action.raw)"
-                >
-                  Details
-                </button>
-
-                <button
-                  v-if="action.kind === 'spell' && spellUsesAttack(action.raw)"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df] disabled:opacity-45"
-                  :disabled="!spellCanCast(action.raw)"
-                  @click.stop="props.rollSpellAttackAndConsumeSlot?.(action.raw)"
-                >
-                  Roll
-                </button>
-
-                <button
-                  v-if="action.kind === 'spell' && spellConsumesSlot(action.raw)"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df] disabled:opacity-45"
-                  :disabled="!spellCanCast(action.raw)"
-                  @click.stop="props.castSpell?.(action.raw)"
-                >
-                  Cast
-                </button>
-
-                <button
-                  v-if="action.kind === 'species' && speciesCanAttack(action.raw)"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
-                  @click.stop="props.rollSpeciesActionAttack?.(action.raw)"
-                >
-                  Hit
-                </button>
-
-                <button
-                  v-if="action.kind === 'species' && action.raw?.damage"
-                  type="button"
-                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
-                  @click.stop="props.rollSpeciesActionDamage?.(action.raw)"
-                >
-                  Damage
+                  Open Spells
                 </button>
 
                 <button
@@ -659,62 +820,228 @@ function openNote(note: any) {
                   Details
                 </button>
               </div>
-            </div>
 
-            <div
-              v-if="action.kind === 'item' && itemResourceState(action.raw)"
-              class="mt-3 rounded-none border border-amber-300/20 bg-amber-400/10 p-2"
+              <div
+                v-if="action.kind === 'item' && itemResourceState(action.raw)"
+                class="mt-3 rounded-none border border-amber-300/20 bg-amber-400/10 p-2"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                    {{ itemResourceStatus(action.raw) }}
+                  </span>
+                  <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
+                    {{ itemResourceState(action.raw)?.reset || 'Long Rest' }}
+                  </span>
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    v-for="pipIndex in itemResourcePips(action.raw)"
+                    :key="`item-action-resource-${action.id}-${pipIndex}`"
+                    type="button"
+                    class="p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-amber-200/50"
+                    :title="itemResourcePipTitle(action.raw, pipIndex)"
+                    @click.stop="toggleItemPip(action.raw, pipIndex)"
+                  >
+                    <span :class="itemResourcePipClass(action.raw, pipIndex)" />
+                  </button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- BONUS SECTION -->
+        <section
+          v-if="shouldShowActionSection('bonus') && bonusRows.length"
+          class="border-b border-[rgba(201,164,90,0.16)] py-4 first:pt-0"
+        >
+          <div class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#c9a45a]">
+            Bonus Actions
+          </div>
+
+          <div class="space-y-3">
+            <article
+              v-for="action in bonusRows"
+              :key="action.id"
+              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
             >
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <span class="text-[10px] uppercase tracking-[0.18em] text-amber-100">
-                  {{ itemResourceStatus(action.raw) }}
-                </span>
-                <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
-                  {{ itemResourceState(action.raw)?.reset || 'Long Rest' }}
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="text-sm font-semibold text-white">{{ action.title }}</div>
+                  <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
+                </div>
+
+                <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                  {{ action.badge }}
                 </span>
               </div>
 
-              <div class="mt-2 flex flex-wrap items-center gap-2">
+              <p
+                v-if="action.notes"
+                class="mt-2 text-xs leading-5 text-[#d8ceb8]"
+              >
+                {{ short(action.notes, 260) }}
+              </p>
+
+              <div
+                v-if="action.kind === 'item' && itemResourceState(action.raw)"
+                class="mt-3 rounded-none border border-amber-300/20 bg-amber-400/10 p-2"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                    {{ itemResourceStatus(action.raw) }}
+                  </span>
+                  <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
+                    {{ itemResourceState(action.raw)?.reset || 'Long Rest' }}
+                  </span>
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    v-for="pipIndex in itemResourcePips(action.raw)"
+                    :key="`bonus-item-resource-${action.id}-${pipIndex}`"
+                    type="button"
+                    class="p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-amber-200/50"
+                    :title="itemResourcePipTitle(action.raw, pipIndex)"
+                    @click.stop="toggleItemPip(action.raw, pipIndex)"
+                  >
+                    <span :class="itemResourcePipClass(action.raw, pipIndex)" />
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-3 flex flex-wrap gap-2">
                 <button
-                  v-for="pipIndex in itemResourcePips(action.raw)"
-                  :key="`item-action-resource-${action.id}-${pipIndex}`"
+                  v-if="action.kind === 'item' && itemResourceState(action.raw)"
                   type="button"
-                  class="p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-amber-200/50"
-                  :title="itemResourcePipTitle(action.raw, pipIndex)"
-                  @click.stop="toggleItemPip(action.raw, pipIndex)"
+                  class="rounded-none border border-amber-300/24 bg-amber-400/10 px-2 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-45"
+                  :disabled="!itemCanUse(action.raw)"
+                  @click.stop="props.useItemActionResource?.(action.raw)"
                 >
-                  <span :class="itemResourcePipClass(action.raw, pipIndex)" />
+                  Use
+                </button>
+
+                <button
+                  v-if="action.kind === 'item' && itemResourceState(action.raw)"
+                  type="button"
+                  class="rounded-none border border-[rgba(148,163,184,0.24)] bg-[rgba(15,23,42,0.45)] px-2 py-1.5 text-xs font-semibold text-[#d8ceb8] disabled:opacity-45"
+                  :disabled="!itemCanUndo(action.raw)"
+                  @click.stop="props.undoItemActionResource?.(action.raw)"
+                >
+                  Undo
+                </button>
+
+                <button
+                  v-if="action.kind === 'item' && action.raw?.itemDetail"
+                  type="button"
+                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                  @click.stop="props.openItemDrawer?.(action.raw.itemDetail)"
+                >
+                  Details
+                </button>
+
+                <button
+                  v-if="action.kind === 'feature'"
+                  type="button"
+                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                  @click.stop="props.openFeatureDrawer?.(action.raw)"
+                >
+                  Details
                 </button>
               </div>
-            </div>
-
-            <div
-              v-if="action.kind === 'species' && speciesResourceState(action.raw)"
-              class="mt-3 flex flex-wrap items-center gap-2"
-            >
-              <span class="rounded-none border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-100">
-                {{ speciesResourceStatus(action.raw) }}
-              </span>
-
-              <button
-                v-for="pipIndex in speciesResourcePips(action.raw)"
-                :key="`species-action-resource-${action.id}-${pipIndex}`"
-                type="button"
-                class="rounded-full p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-emerald-200/50"
-                :title="speciesResourcePipTitle(action.raw, pipIndex)"
-                @click.stop="toggleSpeciesPip(action.raw, pipIndex)"
-              >
-                <span :class="speciesResourcePipClass(action.raw, pipIndex)" />
-              </button>
-            </div>
-          </article>
-
-          <div
-            v-if="!visibleActions.length"
-            class="p-5 text-sm text-[#9f9278]"
-          >
-            No actions match this filter.
+            </article>
           </div>
+        </section>
+
+        <!-- REACTION SECTION -->
+        <section
+          v-if="shouldShowActionSection('reaction') && reactionRows.length"
+          class="border-b border-[rgba(201,164,90,0.16)] py-4 first:pt-0"
+        >
+          <div class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#c9a45a]">
+            Reactions
+          </div>
+
+          <div class="space-y-3">
+            <article
+              v-for="action in reactionRows"
+              :key="action.id"
+              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="text-sm font-semibold text-white">{{ action.title }}</div>
+                  <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
+                </div>
+
+                <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                  {{ action.badge }}
+                </span>
+              </div>
+
+              <p
+                v-if="action.notes"
+                class="mt-2 text-xs leading-5 text-[#d8ceb8]"
+              >
+                {{ short(action.notes, 260) }}
+              </p>
+
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                  v-if="action.kind === 'item' && action.raw?.itemDetail"
+                  type="button"
+                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                  @click.stop="props.openItemDrawer?.(action.raw.itemDetail)"
+                >
+                  Details
+                </button>
+
+                <button
+                  v-if="action.kind === 'feature'"
+                  type="button"
+                  class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                  @click.stop="props.openFeatureDrawer?.(action.raw)"
+                >
+                  Details
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- OTHER SECTION -->
+        <section
+          v-if="shouldShowActionSection('other') && otherRows.length"
+          class="py-4 first:pt-0"
+        >
+          <div class="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#c9a45a]">
+            Other
+          </div>
+
+          <div class="space-y-3">
+            <article
+              v-for="action in otherRows"
+              :key="action.id"
+              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
+            >
+              <div class="text-sm font-semibold text-white">{{ action.title }}</div>
+              <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
+              <p
+                v-if="action.notes"
+                class="mt-2 text-xs leading-5 text-[#d8ceb8]"
+              >
+                {{ short(action.notes, 260) }}
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <div
+          v-if="!countForFilter(activeActionFilter)"
+          class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
+        >
+          No actions match this filter.
         </div>
       </div>
     </div>

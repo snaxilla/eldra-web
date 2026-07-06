@@ -2668,6 +2668,11 @@ const actionCenterFeatureCards = computed(() => {
     })
 })
 
+
+const actionCenterNoteCards = computed(() =>
+  Array.isArray(sheetNoteCards.value) ? sheetNoteCards.value : []
+)
+
 const itemGrantedActionCards = computed(() =>
   activeInventoryEffectRows()
     .flatMap((item: any) => {
@@ -6855,10 +6860,13 @@ async function saveSheet() {
                   :action-spell-cards="actionSpellCards"
                   :inventory-items="actionCenterInventoryItems"
                   :feature-cards="actionCenterFeatureCards"
+                  :note-cards="actionCenterNoteCards"
                   :common-action-cards="commonActionCards"
                   :displayed-bonus-action-cards="displayedBonusActionCards"
                   :displayed-reaction-action-cards="displayedReactionActionCards"
                   :open-feature-drawer="openFeatureDrawer"
+                  :open-note-detail="openNoteDetail"
+                  :open-add-note-drawer="openAddNoteDrawer"
                   :open-item-drawer="openItemDrawer"
                   :open-spell-drawer="openSpellDrawer"
                   :resource-state-for-species-action="resourceStateForSpeciesAction"

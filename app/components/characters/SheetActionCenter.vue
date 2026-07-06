@@ -24,6 +24,8 @@ const props = withDefaults(defineProps<{
   displayedBonusActionCards?: any[]
   displayedReactionActionCards?: any[]
   openFeatureDrawer?: (value: any) => void
+  openNoteDetail?: (note: any) => void
+  openAddNoteDrawer?: () => void
   openItemDrawer?: (value: any) => void
   openSpellDrawer?: (value: any) => void
   resourceStateForSpeciesAction?: (action: any) => any
@@ -395,6 +397,25 @@ function openInventoryItem(item: any) {
 function openFeature(item: any) {
   props.openFeatureDrawer?.(item?.raw || item)
 }
+
+function noteUpdatedLabel(note: any) {
+  const raw = note?.updatedAt || note?.updated_at || note?.date_updated || note?.modifiedAt || note?.createdAt || note?.created_at
+  if (!raw) return ''
+
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+}
+
+function openNote(note: any) {
+  props.openNoteDetail?.(note)
+}
+
 </script>
 
 <template>
@@ -854,6 +875,21 @@ function openFeature(item: any) {
       v-else-if="activePanelTab === 'notes'"
       class="max-h-[620px] overflow-y-auto p-4 pr-5"
     >
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Notes</div>
+          <div class="mt-1 text-sm text-[#d8ceb8]">Searchable table notes, clues, reminders, and NPC details.</div>
+        </div>
+
+        <button
+          type="button"
+          class="eldra-button rounded-none px-3 py-2 text-xs font-semibold"
+          @click="props.openAddNoteDrawer?.()"
+        >
+          Add Note +
+        </button>
+      </div>
+
       <div
         v-if="noteRows.length"
         class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
@@ -863,8 +899,32 @@ function openFeature(item: any) {
           :key="`inner-note-${note.id || note.title}`"
           class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
         >
-          <div class="text-sm font-semibold text-white">{{ note.title || 'Note' }}</div>
-          <p class="mt-2 text-xs leading-5 text-[#9f9278]">{{ short(note.body || note.description || '', 220) }}</p>
+          <div class="flex min-w-0 items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="truncate text-sm font-semibold text-white">
+                {{ note.title || 'Untitled Note' }}
+              </div>
+
+              <div
+                v-if="noteUpdatedLabel(note)"
+                class="mt-0.5 text-xs text-[#9f9278]"
+              >
+                Updated {{ noteUpdatedLabel(note) }}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+              @click.stop="openNote(note)"
+            >
+              Details
+            </button>
+          </div>
+
+          <p class="mt-2 break-words text-xs leading-5 text-[#9f9278]">
+            {{ short(note.body || note.description || '', 220) || 'No note body yet.' }}
+          </p>
         </article>
       </div>
 
@@ -872,7 +932,7 @@ function openFeature(item: any) {
         v-else
         class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
       >
-        Notes are still managed in the Notes tab. We can wire inline notes here next.
+        No notes yet. Add one for an NPC, city, clue, quest, or table reminder.
       </div>
     </div>
   </section>

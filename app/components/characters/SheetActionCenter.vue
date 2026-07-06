@@ -199,6 +199,16 @@ function speciesCanAttack(action: any) {
   return props.speciesActionCanAttack?.(action) || false
 }
 
+
+function speciesCanUseResource(action: any) {
+  return props.canUseSpeciesActionResource?.(action) ?? true
+}
+
+function speciesCanUndoResource(action: any) {
+  const state = speciesResourceState(action)
+  return Boolean(state && Number(state.used || 0) > 0)
+}
+
 function actionIcon(action: any) {
   if (action.kind === 'weapon') return 'i-lucide-swords'
   if (action.kind === 'spell-shortcut') return 'i-lucide-sparkles'
@@ -623,13 +633,12 @@ function openNote(note: any) {
           </div>
 
           <div class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]">
-            <div class="hidden grid-cols-[minmax(160px,1.3fr)_78px_78px_92px_minmax(120px,1fr)_150px] gap-3 border-b border-[rgba(201,164,90,0.18)] bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
+            <div class="hidden grid-cols-[minmax(170px,1.35fr)_72px_78px_92px_minmax(130px,1fr)] gap-3 border-b border-[rgba(201,164,90,0.18)] bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
               <div>Attack</div>
               <div>Range</div>
               <div>Hit / DC</div>
               <div>Damage</div>
               <div>Notes</div>
-              <div class="text-right">Controls</div>
             </div>
 
             <article
@@ -637,7 +646,7 @@ function openNote(note: any) {
               :key="action.id"
               class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
             >
-              <div class="grid gap-3 xl:grid-cols-[minmax(160px,1.3fr)_78px_78px_92px_minmax(120px,1fr)_150px] xl:items-center">
+              <div class="grid gap-3 xl:grid-cols-[minmax(170px,1.35fr)_72px_78px_92px_minmax(130px,1fr)] xl:items-center">
                 <div class="min-w-0">
                   <div class="flex min-w-0 items-start gap-2">
                     <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
@@ -679,7 +688,7 @@ function openNote(note: any) {
                   {{ short(action.notes, 120) }}
                 </div>
 
-                <div class="flex flex-wrap justify-start gap-2 xl:justify-end">
+                <div class="flex flex-wrap justify-start gap-2 xl:col-span-5 xl:justify-end">
                   <button
                     v-if="action.kind === 'weapon'"
                     type="button"
@@ -719,7 +728,8 @@ function openNote(note: any) {
                   <button
                     v-if="action.kind === 'species' && action.raw?.damage"
                     type="button"
-                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df] disabled:opacity-45"
+                    :disabled="speciesResourceState(action.raw) && !speciesCanUseResource(action.raw)"
                     @click.stop="props.rollSpeciesActionDamage?.(action.raw)"
                   >
                     Damage
@@ -732,6 +742,34 @@ function openNote(note: any) {
                     @click.stop="props.openFeatureDrawer?.(action.raw)"
                   >
                     Details
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-if="action.kind === 'species' && speciesResourceState(action.raw)"
+                data-species-attack-resource-pips
+                class="mt-3 rounded-none border border-emerald-400/20 bg-emerald-400/10 p-2"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-[10px] uppercase tracking-[0.18em] text-emerald-100">
+                    {{ speciesResourceStatus(action.raw) }}
+                  </span>
+                  <span class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
+                    {{ speciesResourceState(action.raw)?.reset || 'Long Rest' }}
+                  </span>
+                </div>
+
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    v-for="pipIndex in speciesResourcePips(action.raw)"
+                    :key="`attack-species-resource-${action.id}-${pipIndex}`"
+                    type="button"
+                    class="rounded-full p-0.5 transition hover:scale-110 focus:outline-none focus:ring-1 focus:ring-emerald-200/50"
+                    :title="speciesResourcePipTitle(action.raw, pipIndex)"
+                    @click.stop="toggleSpeciesPip(action.raw, pipIndex)"
+                  >
+                    <span :class="speciesResourcePipClass(action.raw, pipIndex)" />
                   </button>
                 </div>
               </div>

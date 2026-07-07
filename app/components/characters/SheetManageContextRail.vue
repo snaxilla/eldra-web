@@ -60,7 +60,7 @@ function tabClass(key: string) {
 <template>
   <aside
     data-sheet-manage-context-rail
-    class="sheet-desktop-only fixed right-0 top-[72px] z-[78] hidden h-[calc(100vh-72px)] w-[460px] overflow-y-auto border-l border-[rgba(201,164,90,0.32)] bg-[linear-gradient(to_bottom,rgba(12,15,20,0.98),rgba(5,8,13,0.98))] shadow-[-24px_0_70px_rgba(0,0,0,0.42)] md:block"
+    class="sheet-desktop-only eldra-ornate-panel eldra-frame-corners eldra-corner-runes fixed right-0 top-0 z-[78] hidden h-screen w-[460px] overflow-y-auto border-l border-[rgba(201,164,90,0.32)] bg-[linear-gradient(to_bottom,rgba(12,15,20,0.98),rgba(5,8,13,0.98))] shadow-[-24px_0_70px_rgba(0,0,0,0.42)] md:block"
   >
     <header class="sticky top-0 z-10 border-b border-[rgba(201,164,90,0.20)] bg-[rgba(8,10,12,0.96)] p-4 backdrop-blur">
       <div class="flex items-start justify-between gap-4">

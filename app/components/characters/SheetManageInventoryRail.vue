@@ -50,6 +50,68 @@ function inputValue(event: Event) {
   return String((event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)?.value || '')
 }
 
+
+const selectedImportedItem = computed(() =>
+  props.filteredInventoryItemOptions.find((option: any) =>
+    String(option?.id || '') === String(props.inventoryAddForm?.itemEntityId || '')
+  ) || null
+)
+
+const visibleInventoryItemOptions = computed(() =>
+  props.filteredInventoryItemOptions.slice(0, 18)
+)
+
+function optionProfile(option: any) {
+  const entity = option?.entity || option || {}
+
+  return (
+    entity?.itemProfile ||
+    entity?.profile ||
+    entity?.normalizedItem ||
+    entity?.normalized_item ||
+    null
+  )
+}
+
+function optionCoreSummary(option: any) {
+  const entity = option?.entity || option || {}
+  const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
+  const core = blocks.find((block: any) =>
+    String(block?.block_key || block?.blockKey || '') === 'item_core'
+  )?.data || {}
+
+  return core
+}
+
+function optionMetaLine(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+
+  return [
+    profile?.displayType || core?.item_type || core?.itemType || 'Item',
+    profile?.rarity || core?.rarity || '',
+    profile?.source || ''
+  ]
+    .filter(Boolean)
+    .join(' / ')
+}
+
+function optionDescription(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+  const text = String(profile?.description || core?.description || option?.summary || '').replace(/\s+/g, ' ').trim()
+
+  return text.length > 120 ? `${text.slice(0, 120).trim()}...` : text
+}
+
+function chooseImportedItem(option: any) {
+  emit('update-item-entity-id', String(option?.id || ''))
+}
+
+function clearImportedItem() {
+  emit('update-item-entity-id', '')
+}
+
 function quantityFor(item: any) {
   const fromParent = props.inventoryQuantity?.(item)
   if (typeof fromParent === 'number' && Number.isFinite(fromParent)) return fromParent
@@ -114,24 +176,73 @@ function itemMetaLine(item: any) {
         >
       </label>
 
-      <label class="mt-3 block">
-        <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Imported Item</span>
-        <select
-          :value="inventoryAddForm?.itemEntityId || ''"
-          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-          @change="emit('update-item-entity-id', inputValue($event))"
-        >
-          <option value="" class="bg-[#090909] text-[#f5e7bd]">No imported item selected</option>
-          <option
-            v-for="option in filteredInventoryItemOptions"
-            :key="option.id"
-            :value="option.id"
-            class="bg-[#090909] text-[#f5e7bd]"
+      <div class="mt-3">
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <span class="block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Matching Items</span>
+
+          <button
+            v-if="selectedImportedItem"
+            type="button"
+            class="rounded-none border border-[rgba(148,163,184,0.24)] bg-[rgba(15,23,42,0.45)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d8ceb8]"
+            @click="clearImportedItem"
           >
-            {{ option.title }}
-          </option>
-        </select>
-      </label>
+            Clear
+          </button>
+        </div>
+
+        <div
+          v-if="selectedImportedItem"
+          class="mb-3 rounded-none border border-emerald-300/24 bg-emerald-400/10 p-3"
+        >
+          <div class="text-xs uppercase tracking-[0.18em] text-emerald-100">Selected</div>
+          <div class="mt-1 text-sm font-semibold text-white">{{ selectedImportedItem.title }}</div>
+          <div class="mt-1 text-xs text-[#d8ceb8]">{{ optionMetaLine(selectedImportedItem) }}</div>
+        </div>
+
+        <div
+          v-if="visibleInventoryItemOptions.length"
+          class="max-h-[320px] space-y-2 overflow-y-auto pr-1"
+        >
+          <button
+            v-for="option in visibleInventoryItemOptions"
+            :key="`item-result-${option.id}`"
+            type="button"
+            class="block w-full rounded-none border p-3 text-left transition"
+            :class="String(option.id) === String(inventoryAddForm?.itemEntityId || '')
+              ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
+              : 'border-[rgba(65,82,103,0.62)] bg-[rgba(8,17,27,0.68)] hover:border-[rgba(201,164,90,0.36)] hover:bg-[rgba(201,164,90,0.08)]'"
+            @click="chooseImportedItem(option)"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold text-white">{{ option.title }}</div>
+                <div class="mt-1 text-xs text-[#9f9278]">{{ optionMetaLine(option) }}</div>
+              </div>
+
+              <span
+                v-if="String(option.id) === String(inventoryAddForm?.itemEntityId || '')"
+                class="shrink-0 rounded-none border border-emerald-300/24 bg-emerald-400/10 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-emerald-100"
+              >
+                Picked
+              </span>
+            </div>
+
+            <p
+              v-if="optionDescription(option)"
+              class="mt-2 text-xs leading-5 text-[#9f9278]"
+            >
+              {{ optionDescription(option) }}
+            </p>
+          </button>
+        </div>
+
+        <div
+          v-else
+          class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-4 text-sm text-[#9f9278]"
+        >
+          No imported items match that search.
+        </div>
+      </div>
 
       <div class="mt-3 grid grid-cols-[110px_minmax(0,1fr)] gap-3">
         <label class="block">

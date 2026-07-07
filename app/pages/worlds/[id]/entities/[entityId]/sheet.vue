@@ -1405,15 +1405,100 @@ const speciesOptions = computed(() => entityOptionsForTypes(['species', 'race'])
 const backgroundOptions = computed(() => entityOptionsForTypes(['background']))
 const itemOptions = computed(() => entityOptionsForTypes(['item']))
 
+function inventoryOptionProfile(option: any) {
+  const entity = option?.entity || option || {}
+
+  return (
+    entity?.itemProfile ||
+    entity?.profile ||
+    entity?.normalizedItem ||
+    entity?.normalized_item ||
+    null
+  )
+}
+
+function inventoryOptionSearchText(option: any) {
+  const entity = option?.entity || option || {}
+  const profile = inventoryOptionProfile(option) || {}
+  const core = optionCore(option, 'item_core') || {}
+  const raw = optionRawJson(option) || {}
+
+  return [
+    option?.title,
+    option?.id,
+    entity?.title,
+    entity?.slug,
+    entity?.summary,
+    profile?.name,
+    profile?.displayType,
+    profile?.category,
+    profile?.rarity,
+    profile?.source,
+    profile?.rawType,
+    profile?.typeCode,
+    profile?.description,
+    Array.isArray(profile?.tags) ? profile.tags.join(' ') : '',
+    profile?.weapon?.category,
+    profile?.weapon?.kind,
+    profile?.weapon?.damage,
+    profile?.weapon?.damageType,
+    Array.isArray(profile?.weapon?.propertyCodes) ? profile.weapon.propertyCodes.join(' ') : '',
+    profile?.armor?.armorType,
+    core?.name,
+    core?.item_type,
+    core?.itemType,
+    core?.rarity,
+    core?.damage,
+    core?.damage_type,
+    core?.damageType,
+    core?.description,
+    raw?.name,
+    raw?.source,
+    raw?.type,
+    raw?.rarity,
+    raw?.weaponCategory,
+    raw?.dmg1,
+    raw?.dmgType,
+    Array.isArray(raw?.property) ? raw.property.join(' ') : '',
+    Array.isArray(raw?.properties) ? raw.properties.join(' ') : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function inventoryOptionMatchScore(option: any, query: string) {
+  const q = query.trim().toLowerCase()
+  if (!q) return 0
+
+  const title = String(option?.title || '').trim().toLowerCase()
+  const haystack = inventoryOptionSearchText(option)
+  const tokens = q.split(/\s+/).filter(Boolean)
+
+  if (!tokens.every((token) => haystack.includes(token))) return 9999
+
+  if (title === q) return 0
+  if (title.startsWith(q)) return 1
+  if (title.includes(q)) return 2
+
+  return 3
+}
+
 const filteredInventoryItemOptions = computed(() => {
   const q = inventoryItemSearch.value.trim().toLowerCase()
   const options = itemOptions.value || []
 
   return options
-    .filter((option: any) => {
-      if (!q) return true
-      return String(option.title || '').toLowerCase().includes(q)
+    .map((option: any) => ({
+      option,
+      score: inventoryOptionMatchScore(option, q)
+    }))
+    .filter((entry: any) => entry.score < 9999)
+    .sort((a: any, b: any) => {
+      if (a.score !== b.score) return a.score - b.score
+      return String(a.option?.title || '').localeCompare(String(b.option?.title || ''))
     })
+    .map((entry: any) => entry.option)
     .slice(0, 150)
 })
 

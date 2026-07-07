@@ -7437,77 +7437,199 @@ async function saveSheet() {
             @clear-success="sheetSaveSuccess = ''"
           />
 
-          <CharactersSheetLevelManager
+                    <CharactersSheetBuildWorkbench
             v-if="activeSheetTab === 'overview' && mode === 'build'"
-            data-sheet-level-manager-desktop
-            class="mt-4"
-            :level="currentLevelNumber"
-            :class-name="resolvedClass?.title || sheet?.class_name || '—'"
+            data-sheet-build-workbench
             :choice-count="levelSetupChoiceCount"
-            :saving="sheetSaving"
-            @save-level="saveCharacterLevelFromManager"
-            @level-up="levelUpOnceFromManager"
-          />
+            :inventory-count="inventoryCount"
+            :spell-count="selectedSpellCount"
+            :feature-count="featureCount"
+            :saving="sheetSaving || inventorySaving || spellSaving || choiceSaving"
+          >
+            <template #setup>
+              <CharactersSheetLevelManager
+                :level="currentLevelNumber"
+                :class-name="resolvedClass?.title || sheet?.class_name || '—'"
+                :choice-count="levelSetupChoiceCount"
+                :saving="sheetSaving"
+                @save-level="saveCharacterLevelFromManager"
+                @level-up="levelUpOnceFromManager"
+              />
 
-          <CharactersSheetLevelSetupChoices
-            v-if="mode === 'build'"
-            class="mt-3"
-            :world-id="worldId"
-            :entity-id="entityId"
-            :sheet="sheet"
-            :level="currentLevelNumber"
-            @saved="applyChildSheetPatchResult"
-          />
+              <CharactersSheetDesktopOverviewCards
+                :mode="mode"
+                :sheet="sheet"
+                :level-value="sheetForm.level"
+                :class-entity-id="sheetForm.classEntityId"
+                :species-entity-id="sheetForm.speciesEntityId"
+                :background-entity-id="sheetForm.backgroundEntityId"
+                :subclass-name="sheetForm.subclassName"
+                :class-options="classOptions"
+                :species-options="speciesOptions"
+                :background-options="backgroundOptions"
+                :resolved-class="resolvedClass"
+                :resolved-species="resolvedSpecies"
+                :resolved-background="resolvedBackground"
+                @update-level="sheetForm.level = $event"
+                @update-class-entity-id="sheetForm.classEntityId = $event"
+                @update-species-entity-id="sheetForm.speciesEntityId = $event"
+                @update-background-entity-id="sheetForm.backgroundEntityId = $event"
+                @update-subclass-name="sheetForm.subclassName = $event"
+              />
 
-          <CharactersSheetDesktopOverviewCards
-            v-if="activeSheetTab === 'overview' && mode === 'build'"
-            :mode="mode"
-            :sheet="sheet"
-            :level-value="sheetForm.level"
-            :class-entity-id="sheetForm.classEntityId"
-            :species-entity-id="sheetForm.speciesEntityId"
-            :background-entity-id="sheetForm.backgroundEntityId"
-            :subclass-name="sheetForm.subclassName"
-            :class-options="classOptions"
-            :species-options="speciesOptions"
-            :background-options="backgroundOptions"
-            :resolved-class="resolvedClass"
-            :resolved-species="resolvedSpecies"
-            :resolved-background="resolvedBackground"
-            @update-level="sheetForm.level = $event"
-            @update-class-entity-id="sheetForm.classEntityId = $event"
-            @update-species-entity-id="sheetForm.speciesEntityId = $event"
-            @update-background-entity-id="sheetForm.backgroundEntityId = $event"
-            @update-subclass-name="sheetForm.subclassName = $event"
-          />
+              <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+                <CharactersSheetAbilityGrid
+                  :mode="mode"
+                  :abilities="abilityList"
+                  :ability-scores="sheetForm.abilityScores"
+                  @roll-ability="rollAbilityCheck"
+                  @update-ability="sheetForm.abilityScores[$event.key] = $event.value"
+                />
 
+                <CharactersSheetCombatPanel
+                  :mode="mode"
+                  :combat-stats="sheetForm.combatStats"
+                  :shown-stats="{
+                    armorClass: shownCombatStat('armorClass'),
+                    currentHp: shownCombatStat('currentHp'),
+                    maxHp: shownCombatStat('maxHp'),
+                    initiative: shownCombatStat('initiative'),
+                    speed: shownCombatStat('speed'),
+                    hitDice: shownCombatStat('hitDice')
+                  }"
+                  @update-combat-stat="sheetForm.combatStats[$event.key] = $event.value"
+                />
+              </div>
+            </template>
 
-          
+            <template #choices>
+              <CharactersSheetLevelSetupChoices
+                :world-id="worldId"
+                :entity-id="entityId"
+                :sheet="sheet"
+                :level="currentLevelNumber"
+                @saved="applyChildSheetPatchResult"
+              />
 
-                      <CharactersSheetAbilityGrid
-            v-if="activeSheetTab === 'overview' && mode === 'build'"
-            :mode="mode"
-            :abilities="abilityList"
-            :ability-scores="sheetForm.abilityScores"
-            @roll-ability="rollAbilityCheck"
-            @update-ability="sheetForm.abilityScores[$event.key] = $event.value"
-          />
+              <CharactersSheetStatsTab
+                :mode="mode"
+                :math="math"
+                :sheet="sheet"
+                :shown-stats="{
+                  initiative: shownCombatStat('initiative'),
+                  speed: shownCombatStat('speed')
+                }"
+                :pending-choices="levelUpPendingChoiceCards"
+                :choice-saving="choiceSaving"
+                :choice-save-error="choiceSaveError"
+                :choice-save-success="choiceSaveSuccess"
+                :choice-drafts="choiceDrafts"
+                :math-saves="mathSaves"
+                :math-skills="mathSkills"
+                :armor-class-candidates="displayedArmorClassCandidates"
+                :spell-restriction-label="spellRestrictionLabel"
+                :choice-slots="choiceSlots"
+                :choice-options="choiceOptions"
+                :is-choice-option-disabled="isChoiceOptionDisabled"
+                :choice-option-label="choiceOptionLabel"
+                :pretty-choice-value="prettyChoiceValue"
+                @save-choices="saveChoices"
+                @update-choice-draft="choiceDrafts[$event.sourceKey][$event.slot] = $event.value"
+                @roll-saving-throw="rollSavingThrow"
+                @roll-skill-check="rollSkillCheck"
+              />
+            </template>
 
-                      <CharactersSheetCombatPanel
-            v-if="activeSheetTab === 'overview' && mode === 'build'"
-            :mode="mode"
-            :combat-stats="sheetForm.combatStats"
-            :shown-stats="{
-              armorClass: shownCombatStat('armorClass'),
-              currentHp: shownCombatStat('currentHp'),
-              maxHp: shownCombatStat('maxHp'),
-              initiative: shownCombatStat('initiative'),
-              speed: shownCombatStat('speed'),
-              hitDice: shownCombatStat('hitDice')
-            }"
-            @update-combat-stat="sheetForm.combatStats[$event.key] = $event.value"
-          />
-            <CharactersSheetStatsTab
+            <template #inventory>
+              <CharactersSheetInventoryTab
+                :mode="mode"
+                :sheet="sheet"
+                :inventory-saving="inventorySaving"
+                :inventory-save-error="inventorySaveError"
+                :inventory-save-success="inventorySaveSuccess"
+                :inventory-item-search="inventoryItemSearch"
+                :inventory-add-form="inventoryAddForm"
+                :filtered-inventory-item-options="filteredInventoryItemOptions"
+                :carried-inventory="carriedInventory"
+                :inventory-count="inventoryCount"
+                :inventory-quantity="inventoryQuantity"
+                @update-search="inventoryItemSearch = $event"
+                @update-item-entity-id="inventoryAddForm.itemEntityId = $event"
+                @update-custom-name="inventoryAddForm.customName = $event"
+                @update-quantity="inventoryAddForm.quantity = $event"
+                @update-notes="inventoryAddForm.notes = $event"
+                @add-item="addInventoryItem"
+                @open-item-detail="openItemDrawer(inventoryItemDetail($event))"
+                @change-quantity="changeInventoryQuantity($event.item, $event.delta)"
+                @remove-item="removeInventoryItem"
+                @toggle-equipped="toggleInventoryEquipped"
+                @toggle-attuned="toggleInventoryAttuned"
+              />
+            </template>
+
+            <template #spells>
+              <CharactersSheetSpellsTab
+                :mode="mode"
+                :has-spellcasting-math="hasSpellcastingMath"
+                :spellcasting-ability-label="spellcastingAbilityLabel"
+                :spellcasting-stat-cards="spellcastingStatCards"
+                :shown-known-spells="shownKnownSpells"
+                :shown-prepared-spells="shownPreparedSpells"
+                :available-spell-cards="availableSpellCards"
+                :spell-search="spellSearch"
+                :spell-saving="spellSaving"
+                :spell-save-error="spellSaveError"
+                :spell-save-success="spellSaveSuccess"
+                :prepared-spell-cards="preparedSpellCards"
+                :known-spell-cards="knownSpellCards"
+                :species-granted-spell-cards="speciesGrantedSpellCards"
+                :feat-choice-spells="featChoiceSpells"
+                :feat-choice-spell-cards="featChoiceSpellCards"
+                :spell-panel-open="spellPanelOpen"
+                :spell-panel-chevron="spellPanelChevron"
+                :spell-option-level-label="spellOptionLevelLabel"
+                :is-prepared-spell="isPreparedSpell"
+                @open-builder="openSpellBuilder"
+                @save-spells="saveSpells"
+                @update-search="spellSearch = $event"
+                @open-spell="openSpellDrawer"
+                @add-known="addKnownSpell($event.id)"
+                @prepare-spell="prepareSpell($event.id)"
+                @remove-prepared="removePreparedSpell($event.id)"
+                @remove-known="removeKnownSpell($event.id)"
+                @toggle-spell-panel="toggleSpellPanel"
+              />
+            </template>
+
+            <template #features>
+              <CharactersSheetFeaturesTab
+                :world-id="worldId"
+                :sheet="sheet"
+                :resolved-class="resolvedClass"
+                :current-class-feature-cards="currentClassFeatureCards"
+                :upcoming-class-feature-cards="upcomingClassFeatureCards"
+                :resolved-subclass-name="resolvedSubclassName"
+                :resolved-subclass-option="resolvedSubclassOption"
+                :resolved-subclass-description="resolvedSubclassDescription"
+                :resolved-subclass-feature-cards="resolvedSubclassFeatureCards"
+                :current-level-number="currentLevelNumber"
+                :resolved-species="resolvedSpecies"
+                :species-trait-cards="speciesTraitCards"
+                :resolved-background="resolvedBackground"
+                :background-feature-card="backgroundFeatureCard"
+                :feature-panel-open="featurePanelOpen"
+                :feature-panel-chevron="featurePanelChevron"
+                :subclass-feature-card-open="subclassFeatureCardOpen"
+                :subclass-feature-card-chevron="subclassFeatureCardChevron"
+                :short-text="shortText"
+                @toggle-feature-panel="toggleFeaturePanel"
+                @toggle-subclass-feature-card="toggleSubclassFeatureCard($event.scope, $event.feature, $event.index)"
+                @open-feature="openFeatureDrawer"
+              />
+            </template>
+          </CharactersSheetBuildWorkbench>
+
+          <CharactersSheetStatsTab
               v-else-if="activeSheetTab === 'stats'"
               :mode="mode"
               :math="math"

@@ -6,7 +6,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     // PRIVATE (server only)
-    directusToken: process.env.DIRECTUS_TOKEN || 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh',
+    directusToken: process.env.DIRECTUS_TOKEN || '',
 
     public: {
       directusUrl:

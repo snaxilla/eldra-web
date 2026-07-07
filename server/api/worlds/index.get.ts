@@ -1,30 +1,29 @@
-export default defineEventHandler(async () => {
-  const baseUrl = 'https://directus.theledouxs.com'
-  const token = 'g5xg68le7V-Ra5u2Dae_fmoSI3eO-weh'
+import { directusServiceRequest } from '../../utils/directus'
 
-  const res = await fetch(
-    `${baseUrl}/items/worlds?fields=*&sort=name`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }
-  )
-
-  const json = await res.json()
-
-  if (!res.ok) {
-    throw createError({
-      statusCode: res.status,
-      statusMessage: json?.errors?.[0]?.message || json?.message || 'Failed to load worlds'
-    })
+function normalizeWorld(row: any) {
+  return {
+    id: row.id,
+    name: row.name || 'Untitled World',
+    slug: row.slug || '',
+    system_key: row.system_key || row.systemKey || '',
+    systemKey: row.system_key || row.systemKey || '',
+    description: row.description || '',
+    visibility: row.visibility || 'private',
+    owner_id: row.owner_id ?? null,
+    banner_image_url: null,
+    sidebar_image_url: null
   }
+}
 
-  const worlds = Array.isArray(json.data) ? json.data : []
+export default defineEventHandler(async () => {
+  const res = await directusServiceRequest('/items/worlds', {
+    method: 'GET',
+    query: {
+      sort: 'name',
+      limit: -1,
+      fields: 'id,name,slug,system_key,description,visibility,owner_id'
+    }
+  })
 
-  return worlds.map((world: any) => ({
-    ...world,
-    banner_image_url: world?.banner_image ? `/api/assets/${world.banner_image}` : null,
-    sidebar_image_url: world?.sidebar_image ? `/api/assets/${world.sidebar_image}` : null
-  }))
+  return (Array.isArray(res?.data) ? res.data : []).map(normalizeWorld)
 })

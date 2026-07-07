@@ -53,6 +53,34 @@ function inventoryQuantity(row: any) {
 }
 
 
+function normalizeTransferEntityType(value: any) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isTransferCharacterEntity(entity: any) {
+  if (!entity?.id) return false
+
+  const status = String(entity?.status || '').trim().toLowerCase()
+  if (['deleted', 'archived', 'trash', 'trashed'].includes(status)) return false
+
+  const entityType = normalizeTransferEntityType(entity?.entity_type || entity?.entityType)
+  const characterType = normalizeTransferEntityType(entity?.character_type || entity?.characterType)
+
+  return [
+    'character',
+    'npc',
+    'npc_sheet',
+    'pc',
+    'player_character'
+  ].includes(entityType) || [
+    'npc',
+    'npc_sheet',
+    'pc',
+    'player_character'
+  ].includes(characterType)
+}
+
+
 function currencyKeyForName(value: any) {
   const name = text(value).toLowerCase()
 
@@ -141,7 +169,45 @@ async function activeSheetsForWorld(worldId: string | number) {
     }
   })
 
-  return Array.isArray(res?.data) ? res.data : []
+  const sheets = Array.isArray(res?.data) ? res.data : []
+  const entityIds = sheets
+    .map((sheet: any) => intOrNull(sheet?.entity_id))
+    .filter(Boolean)
+
+  if (!entityIds.length) return []
+
+  const entitiesRes = await directusServiceRequest('/items/entities', {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { world_id: { _eq: Number(worldId) } },
+          { id: { _in: entityIds } }
+        ]
+      },
+      limit: -1,
+      fields: 'id,title,entity_type,character_type,status,visibility,world_id'
+    }
+  })
+
+  const entities = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
+  const entitiesById = new Map<string, any>(
+    entities
+      .filter(isTransferCharacterEntity)
+      .map((entity: any) => [String(entity.id), entity])
+  )
+
+  return sheets
+    .filter((sheet: any) => entitiesById.has(String(sheet?.entity_id || '')))
+    .map((sheet: any) => {
+      const entity = entitiesById.get(String(sheet?.entity_id || ''))
+
+      return {
+        ...sheet,
+        name: sheet?.name || entity?.title || 'Character',
+        entity
+      }
+    })
 }
 
 async function loadInventoryRowBySheet(sheetId: any, inventoryId: any) {

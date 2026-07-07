@@ -2709,6 +2709,84 @@ const outgoingInventoryTransfers = computed(() =>
     : []
 )
 
+
+function transferStatusKey(transfer: any) {
+  return String(transfer?.status || '').trim().toLowerCase()
+}
+
+function transferListHasPendingOffer(list: any[]) {
+  return Array.isArray(list) && list.some((transfer: any) => transferStatusKey(transfer) === 'offered')
+}
+
+const hasPendingInventoryTransfers = computed(() =>
+  transferListHasPendingOffer(incomingInventoryTransfers.value) ||
+  transferListHasPendingOffer(outgoingInventoryTransfers.value)
+)
+
+let inventoryTransferPollTimer: ReturnType<typeof setInterval> | null = null
+let inventoryTransferPollBusy = false
+
+async function pollInventoryTransferState() {
+  if (inventoryTransferPollBusy) return
+
+  inventoryTransferPollBusy = true
+
+  try {
+    await refreshInventoryTransfers()
+
+    // If another browser accepted/cancelled/declined a pending offer, this sheet's
+    // local inventory can be stale. Refreshing the sheet keeps the giver side in sync.
+    await refresh()
+  } catch (error) {
+    console.warn('[character-sheet] inventory transfer poll failed', error)
+  } finally {
+    inventoryTransferPollBusy = false
+  }
+}
+
+function stopInventoryTransferPolling() {
+  if (!inventoryTransferPollTimer) return
+
+  clearInterval(inventoryTransferPollTimer)
+  inventoryTransferPollTimer = null
+}
+
+function startInventoryTransferPolling() {
+  if (!import.meta.client || inventoryTransferPollTimer) return
+
+  inventoryTransferPollTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return
+    if (!hasPendingInventoryTransfers.value) return
+
+    void pollInventoryTransferState()
+  }, 5000)
+}
+
+watch(
+  hasPendingInventoryTransfers,
+  (enabled) => {
+    if (enabled) {
+      startInventoryTransferPolling()
+      return
+    }
+
+    stopInventoryTransferPolling()
+  },
+  { immediate: true }
+)
+
+if (import.meta.client) {
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && hasPendingInventoryTransfers.value) {
+      void pollInventoryTransferState()
+    }
+  })
+}
+
+onUnmounted(() => {
+  stopInventoryTransferPolling()
+})
+
 const transferSelectedQuantityMax = computed(() => {
   const item = transferSelectedItem.value?.raw || transferSelectedItem.value
   return Math.max(1, inventoryQuantity(item || {}))

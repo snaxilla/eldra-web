@@ -2726,23 +2726,73 @@ const hasPendingInventoryTransfers = computed(() =>
 let inventoryTransferPollTimer: ReturnType<typeof setInterval> | null = null
 let inventoryTransferPollBusy = false
 
+
+function inventoryTransferRowsFromPayload(payload: any = inventoryTransferPayload.value) {
+  return Array.isArray((payload as any)?.transfers)
+    ? (payload as any).transfers
+    : []
+}
+
+function inventoryTransferStatusSnapshot(payload: any = inventoryTransferPayload.value) {
+  const snapshot: Record<string, string> = {}
+
+  for (const transfer of inventoryTransferRowsFromPayload(payload)) {
+    const id = String(transfer?.id || '').trim()
+    if (!id) continue
+
+    snapshot[id] = transferStatusKey(transfer)
+  }
+
+  return snapshot
+}
+
+function pendingInventoryTransferResolved(before: Record<string, string>, after: Record<string, string>) {
+  return Object.entries(before).some(([id, status]) =>
+    status === 'offered' &&
+    Boolean(after[id]) &&
+    after[id] !== 'offered'
+  )
+}
+
+async function refreshInventoryRowsOnly() {
+  const result = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory`)
+  const rows = Array.isArray(result?.inventory)
+    ? result.inventory
+    : Array.isArray(result)
+      ? result
+      : []
+
+  await applyInventoryResult({ inventory: rows })
+}
+
 async function pollInventoryTransferState() {
-  if (inventoryTransferPollBusy) return
+  if (inventoryTransferPollBusy || !hasPendingInventoryTransfers.value) return
 
   inventoryTransferPollBusy = true
 
   try {
-    await refreshInventoryTransfers()
+    const before = inventoryTransferStatusSnapshot()
 
-    // If another browser accepted/cancelled/declined a pending offer, this sheet's
-    // local inventory can be stale. Refreshing the sheet keeps the giver side in sync.
-    await refresh()
+    const nextTransferPayload = await $fetch<any>(
+      `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`
+    )
+
+    const after = inventoryTransferStatusSnapshot(nextTransferPayload)
+
+    inventoryTransferPayload.value = nextTransferPayload as any
+
+    // If another browser accepted/declined/cancelled one of this character's
+    // pending offers, only refresh inventory rows. Do not refresh the whole sheet.
+    if (pendingInventoryTransferResolved(before, after)) {
+      await refreshInventoryRowsOnly()
+    }
   } catch (error) {
     console.warn('[character-sheet] inventory transfer poll failed', error)
   } finally {
     inventoryTransferPollBusy = false
   }
 }
+
 
 function stopInventoryTransferPolling() {
   if (!inventoryTransferPollTimer) return
@@ -2759,7 +2809,7 @@ function startInventoryTransferPolling() {
     if (!hasPendingInventoryTransfers.value) return
 
     void pollInventoryTransferState()
-  }, 5000)
+  }, 8000)
 }
 
 watch(

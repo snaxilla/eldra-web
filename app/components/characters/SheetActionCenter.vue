@@ -676,9 +676,17 @@ function transferStatusClass(transfer: any) {
   return 'border-[rgba(201,164,90,0.20)] bg-black/20 text-[#f5e7bd]'
 }
 
+function transferLockedReason(item: any) {
+  if (item?.equipped === true || item?.equipped === 'true' || item?.equipped === 1 || item?.equipped === '1') {
+    return 'Unequip before giving.'
+  }
+
+  return ''
+}
+
 function canGiveItem(item: any) {
   const qty = Number(item?.quantity || 1)
-  return Number.isFinite(qty) && qty > 0
+  return Number.isFinite(qty) && qty > 0 && !transferLockedReason(item)
 }
 
 function tabCount(key: string) {
@@ -1529,13 +1537,14 @@ function openNote(note: any) {
 
           <div class="mt-3 flex flex-wrap justify-end gap-2">
             <button
-              v-if="canGiveItem(item)"
+              v-if="canGiveItem(item) || transferLockedReason(item)"
               type="button"
               class="rounded-none border border-emerald-300/24 bg-emerald-400/10 px-2 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50"
-              :disabled="transferSaving"
+              :disabled="transferSaving || Boolean(transferLockedReason(item))"
+              :title="transferLockedReason(item) || 'Give this item to another character'"
               @click.stop="props.openTransferDrawer?.(item)"
             >
-              Give
+              {{ transferLockedReason(item) ? 'Equipped' : 'Give' }}
             </button>
 
             <button

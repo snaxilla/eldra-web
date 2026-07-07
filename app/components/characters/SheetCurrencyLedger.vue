@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   sheet?: any
+  currencyRows?: any[]
 }>()
 
 function asObject(value: any) {
@@ -12,7 +13,53 @@ function coinNumber(value: any) {
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
 }
 
+function rowCurrencyKey(row: any) {
+  const name = String(row?.name || '').trim().toLowerCase()
+  const container = String(row?.container || '').trim().toLowerCase()
+  const notes = String(row?.notes || '').trim().toLowerCase()
+
+  if (!name.startsWith('currency:') && container !== 'currency' && notes !== 'currency') {
+    return ''
+  }
+
+  if (name.includes('platinum')) return 'pp'
+  if (name.includes('gold')) return 'gp'
+  if (name.includes('silver')) return 'sp'
+  if (name.includes('copper')) return 'cp'
+
+  return ''
+}
+
+function rowQuantity(row: any) {
+  return coinNumber(row?.quantity)
+}
+
+const inventoryCurrency = computed(() => {
+  const totals = {
+    pp: 0,
+    gp: 0,
+    sp: 0,
+    cp: 0
+  }
+
+  for (const row of props.currencyRows || []) {
+    const key = rowCurrencyKey(row)
+    if (!key) continue
+    totals[key as keyof typeof totals] += rowQuantity(row)
+  }
+
+  return totals
+})
+
+const hasInventoryCurrency = computed(() =>
+  Object.values(inventoryCurrency.value).some((value) => Number(value || 0) > 0)
+)
+
 const currency = computed(() => {
+  if (hasInventoryCurrency.value) {
+    return inventoryCurrency.value
+  }
+
   const resources = asObject(props.sheet?.resources)
   const nested = asObject(resources.currency || resources.coins || resources.coinage)
 

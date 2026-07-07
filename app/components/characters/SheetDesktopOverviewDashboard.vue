@@ -12,6 +12,7 @@ const props = withDefaults(defineProps<{
   abilityList?: any[]
   mathSaves?: any[]
   mathSkills?: any[]
+  currencyRows?: any[]
   shownStats?: Record<string, any>
   inventoryCount?: number
   featureCount?: number
@@ -53,6 +54,7 @@ const props = withDefaults(defineProps<{
   abilityList: () => [],
   mathSaves: () => [],
   mathSkills: () => [],
+  currencyRows: () => [],
   shownStats: () => ({}),
   inventoryCount: 0,
   featureCount: 0,
@@ -429,7 +431,12 @@ function proficienciesText(value: any, fallback = 'None listed') {
 
       <!-- Right rail: DDB-style integrated sheet panel -->
       <aside class="grid content-start gap-4">
-        <section class="eldra-codex-soft rounded-none p-4">
+                <CharactersSheetCurrencyLedger
+          :sheet="sheet"
+          :currency-rows="currencyRows"
+        />
+
+<section class="eldra-codex-soft rounded-none p-4">
           <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Defenses / Conditions</div>
 
           <div class="mt-3 grid gap-2 text-sm">

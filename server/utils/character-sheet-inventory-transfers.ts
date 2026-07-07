@@ -52,6 +52,23 @@ function inventoryQuantity(row: any) {
   return positiveInt(row?.quantity, 1)
 }
 
+
+function currencyKeyForName(value: any) {
+  const name = text(value).toLowerCase()
+
+  if (!name.startsWith('currency:')) return ''
+  if (name.includes('platinum')) return 'pp'
+  if (name.includes('gold')) return 'gp'
+  if (name.includes('silver')) return 'sp'
+  if (name.includes('copper')) return 'cp'
+
+  return ''
+}
+
+function isCurrencyName(value: any) {
+  return Boolean(currencyKeyForName(value))
+}
+
 function transferVisibleForActor(transfer: any) {
   if (transfer.direction === 'incoming') return !transfer.targetClearedAt
   if (transfer.direction === 'outgoing') return !transfer.sourceClearedAt
@@ -228,21 +245,51 @@ async function reduceSourceInventoryQuantity(sourceRow: any, quantity: number) {
 async function createTargetInventoryItem(targetSheet: any, transfer: any) {
   const snapshot = asObject(transfer?.item_snapshot)
   const sourceData = asObject(snapshot?.data)
+  const itemName = text(transfer.item_name) || 'Item'
+  const quantity = inventoryQuantity(transfer)
+  const isCurrency = isCurrencyName(itemName) || text(snapshot.container).toLowerCase() === 'currency'
+  const timestamp = nowIso()
+
+  if (isCurrency) {
+    const existingRows = await loadInventoryRows(targetSheet.id)
+    const wantedCurrencyKey = currencyKeyForName(itemName)
+
+    const existingCurrencyRow = existingRows.find((row: any) =>
+      currencyKeyForName(row?.name) === wantedCurrencyKey
+    )
+
+    if (existingCurrencyRow?.id) {
+      const current = inventoryQuantity(existingCurrencyRow)
+      const updated = await directusServiceRequest(`/items/character_sheet_inventory/${existingCurrencyRow.id}`, {
+        method: 'PATCH',
+        body: {
+          quantity: current + quantity,
+          container: 'currency',
+          notes: 'Currency',
+          updated_at: timestamp
+        }
+      })
+
+      return updated?.data || null
+    }
+  }
 
   const res = await directusServiceRequest('/items/character_sheet_inventory', {
     method: 'POST',
     body: {
       sheet_id: Number(targetSheet.id),
       item_entity_id: intOrNull(transfer.item_entity_id),
-      name: text(transfer.item_name) || 'Item',
-      quantity: inventoryQuantity(transfer),
+      name: itemName,
+      quantity,
       equipped: false,
       attuned: false,
-      container: null,
-      notes: transfer.message
-        ? `Received from ${snapshot.sourceName || 'another character'}: ${transfer.message}`
-        : `Received from ${snapshot.sourceName || 'another character'}.`,
-      sort: 100,
+      container: isCurrency ? 'currency' : null,
+      notes: isCurrency
+        ? 'Currency'
+        : transfer.message
+          ? `Received from ${snapshot.sourceName || 'another character'}: ${transfer.message}`
+          : `Received from ${snapshot.sourceName || 'another character'}.`,
+      sort: isCurrency ? 50 : 100,
       data: {
         ...sourceData,
         received_via_transfer: {
@@ -250,11 +297,11 @@ async function createTargetInventoryItem(targetSheet: any, transfer: any) {
           sourceSheetId: transfer.source_sheet_id,
           sourceEntityId: transfer.source_entity_id,
           sourceName: snapshot.sourceName || '',
-          acceptedAt: nowIso()
+          acceptedAt: timestamp
         }
       },
-      created_at: nowIso(),
-      updated_at: nowIso()
+      created_at: timestamp,
+      updated_at: timestamp
     }
   })
 
@@ -343,6 +390,13 @@ export async function offerInventoryTransfer(worldId: string, sourceEntityId: st
     sourceSheet.id,
     body?.inventoryId || body?.inventory_id || body?.sourceInventoryId
   )
+
+  if (boolValue(sourceRow.equipped)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Unequip this item before offering it.'
+    })
+  }
 
   const quantity = positiveInt(body?.quantity, 1)
   const available = inventoryQuantity(sourceRow)

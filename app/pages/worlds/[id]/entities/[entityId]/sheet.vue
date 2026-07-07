@@ -1096,6 +1096,13 @@ const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
 const CURRENCY_DENOMINATIONS = [
   {
+    key: 'pp',
+    label: 'Platinum',
+    short: 'PP',
+    rowName: 'Currency: Platinum',
+    icon: 'i-lucide-gem'
+  },
+  {
     key: 'gp',
     label: 'Gold',
     short: 'GP',
@@ -1131,7 +1138,10 @@ const currencyDrafts = reactive<Record<string, string>>({
 
 function isCurrencyInventoryItem(item: any) {
   const name = String(item?.name || '').trim().toLowerCase()
-  return name.startsWith('currency:')
+  const container = String(item?.container || '').trim().toLowerCase()
+  const notes = String(item?.notes || '').trim().toLowerCase()
+
+  return name.startsWith('currency:') || container === 'currency' || notes === 'currency'
 }
 
 const currencyInventoryRows = computed(() =>
@@ -2954,8 +2964,60 @@ async function clearInventoryTransferHistory() {
 }
 
 
-const actionCenterInventoryItems = computed(() =>
-  carriedInventory.value
+function currencyDisplayForRow(item: any) {
+  const name = String(item?.name || '').trim().toLowerCase()
+  const denom = CURRENCY_DENOMINATIONS.find((row: any) =>
+    name === String(row.rowName || '').trim().toLowerCase()
+  )
+
+  const quantity = inventoryQuantity(item)
+
+  return {
+    key: denom?.key || '',
+    short: denom?.short || 'COIN',
+    label: denom?.label || 'Currency',
+    quantity,
+    display: `${quantity} ${denom?.short || 'Coin'}`
+  }
+}
+
+const actionCenterCurrencyItems = computed(() =>
+  currencyInventoryRows.value
+    .filter((item: any) => inventoryQuantity(item) > 0)
+    .map((item: any) => {
+      const currency = currencyDisplayForRow(item)
+
+      const detail = {
+        id: item?.id,
+        name: String(item?.name || currency.label || 'Currency'),
+        itemType: 'Currency',
+        damage: '',
+        damageType: '',
+        linkedItemId: '',
+        rarity: '',
+        weight: '',
+        value: currency.display,
+        description: currency.display,
+        notes: item?.notes || 'Currency'
+      }
+
+      return {
+        ...detail,
+        inventoryId: item?.id,
+        quantity: inventoryQuantity(item),
+        equipped: false,
+        attuned: false,
+        container: 'currency',
+        raw: item,
+        detail,
+        isCurrency: true
+      }
+    })
+)
+
+const actionCenterInventoryItems = computed(() => [
+  ...actionCenterCurrencyItems.value,
+  ...carriedInventory.value
     .map((item: any) => {
       const detail = inventoryItemDetail(item)
 
@@ -2970,8 +3032,7 @@ const actionCenterInventoryItems = computed(() =>
         detail
       }
     })
-)
-
+])
 const actionCenterFeatureCards = computed(() => {
   const rows: any[] = []
 
@@ -7125,6 +7186,7 @@ async function saveSheet() {
               :ability-list="abilityList"
               :math-saves="mathSaves"
               :math-skills="mathSkills"
+              :currency-rows="currencyInventoryRows"
               :shown-stats="{
                 armorClass: shownCombatStat('armorClass'),
                 currentHp: shownCombatStat('currentHp'),

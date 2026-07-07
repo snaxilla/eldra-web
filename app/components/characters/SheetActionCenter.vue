@@ -69,6 +69,9 @@ const props = withDefaults(defineProps<{
 
 const activePanelTab = ref('actions')
 const activeActionFilter = ref('all')
+const spellPanelSearch = ref('')
+const inventoryPanelSearch = ref('')
+const featurePanelSearch = ref('')
 const notePanelSearch = ref('')
 
 const panelTabs = [
@@ -113,6 +116,33 @@ function short(value: any, limit = 150) {
 
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   return text.length > limit ? `${text.slice(0, limit).trim()}...` : text
+}
+
+
+function panelSearchText(value: any): string {
+  if (value === null || value === undefined) return ''
+  if (Array.isArray(value)) return value.map(panelSearchText).join(' ')
+
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ''
+    }
+  }
+
+  return String(value)
+}
+
+function panelSearchMatches(values: any[], query: string) {
+  const q = String(query || '').trim().toLowerCase()
+  if (!q) return true
+
+  return values
+    .map(panelSearchText)
+    .join(' ')
+    .toLowerCase()
+    .includes(q)
 }
 
 function spellLevel(spell: any) {
@@ -492,8 +522,62 @@ function filterClass(key: string) {
 }
 
 const spellRows = computed(() => props.actionSpellCards || [])
+
+const filteredSpellRows = computed(() =>
+  spellRows.value.filter((spell: any) =>
+    panelSearchMatches([
+      spell?.title,
+      spell?.name,
+      spell?.summary,
+      spell?.description,
+      spell?.actionKind,
+      spellLevel(spell),
+      spellMechanic(spell)?.label,
+      spellMechanic(spell)?.value,
+      spellMechanic(spell)?.note
+    ], spellPanelSearch.value)
+  )
+)
+
 const inventoryRows = computed(() => props.inventoryItems || [])
+
+const filteredInventoryRows = computed(() =>
+  inventoryRows.value.filter((item: any) =>
+    panelSearchMatches([
+      item?.name,
+      item?.itemType,
+      item?.rarity,
+      item?.description,
+      item?.notes,
+      item?.quantity ? `quantity ${item.quantity}` : '',
+      item?.equipped ? 'equipped' : '',
+      item?.attuned ? 'attuned' : '',
+      item?.container,
+      item?.profile,
+      item?.detail
+    ], inventoryPanelSearch.value)
+  )
+)
+
 const featureRows = computed(() => props.featureCards || [])
+
+const filteredFeatureRows = computed(() =>
+  featureRows.value.filter((feature: any) =>
+    panelSearchMatches([
+      feature?.title,
+      feature?.name,
+      feature?.type,
+      feature?.source,
+      feature?.itemType,
+      feature?.description,
+      feature?.detail,
+      feature?.summary,
+      feature?.level,
+      feature?.raw
+    ], featurePanelSearch.value)
+  )
+)
+
 const noteRows = computed(() => props.noteCards || [])
 
 const filteredNoteRows = computed(() => {
@@ -1089,12 +1173,22 @@ function openNote(note: any) {
       v-else-if="activePanelTab === 'spells'"
       class="max-h-[620px] overflow-y-auto p-4 pr-5"
     >
+      <label class="mb-4 block">
+        <span class="mb-2 block text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Search Spells</span>
+        <input
+          v-model="spellPanelSearch"
+          type="search"
+          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+          placeholder="Search spell name, level, save, attack, damage..."
+        >
+      </label>
+
       <div
-        v-if="spellRows.length"
+        v-if="filteredSpellRows.length"
         class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
       >
         <article
-          v-for="spell in spellRows"
+          v-for="spell in filteredSpellRows"
           :key="`inner-spell-${spell.id}`"
           class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
         >
@@ -1150,6 +1244,13 @@ function openNote(note: any) {
       </div>
 
       <div
+        v-else-if="spellRows.length"
+        class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
+      >
+        No spells match that search.
+      </div>
+
+      <div
         v-else
         class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
       >
@@ -1162,12 +1263,22 @@ function openNote(note: any) {
       v-else-if="activePanelTab === 'inventory'"
       class="max-h-[620px] overflow-y-auto p-4 pr-5"
     >
+      <label class="mb-4 block">
+        <span class="mb-2 block text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Search Inventory</span>
+        <input
+          v-model="inventoryPanelSearch"
+          type="search"
+          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+          placeholder="Search item name, type, notes, equipped, attuned..."
+        >
+      </label>
+
       <div
-        v-if="inventoryRows.length"
+        v-if="filteredInventoryRows.length"
         class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
       >
         <article
-          v-for="item in inventoryRows"
+          v-for="item in filteredInventoryRows"
           :key="`inner-inventory-${item.inventoryId || item.id || item.name}`"
           class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
         >
@@ -1202,6 +1313,13 @@ function openNote(note: any) {
       </div>
 
       <div
+        v-else-if="inventoryRows.length"
+        class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
+      >
+        No inventory items match that search.
+      </div>
+
+      <div
         v-else
         class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
       >
@@ -1214,12 +1332,22 @@ function openNote(note: any) {
       v-else-if="activePanelTab === 'features'"
       class="max-h-[620px] overflow-y-auto p-4 pr-5"
     >
+      <label class="mb-4 block">
+        <span class="mb-2 block text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Search Features</span>
+        <input
+          v-model="featurePanelSearch"
+          type="search"
+          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+          placeholder="Search feature, trait, feat, level, source..."
+        >
+      </label>
+
       <div
-        v-if="featureRows.length"
+        v-if="filteredFeatureRows.length"
         class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
       >
         <article
-          v-for="feature in featureRows"
+          v-for="feature in filteredFeatureRows"
           :key="`inner-feature-${feature.id || feature.title || feature.name}`"
           class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
         >
@@ -1247,6 +1375,13 @@ function openNote(note: any) {
             {{ short(feature.description || feature.detail, 190) }}
           </p>
         </article>
+      </div>
+
+      <div
+        v-else-if="featureRows.length"
+        class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm text-[#9f9278]"
+      >
+        No features or traits match that search.
       </div>
 
       <div

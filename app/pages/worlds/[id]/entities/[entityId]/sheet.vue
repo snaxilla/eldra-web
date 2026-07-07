@@ -129,6 +129,40 @@ const noteDraft = reactive({
 })
 const choiceDrafts = ref<Record<string, string[]>>({})
 
+type SheetManagePanelKey = 'inventory' | 'spells'
+
+const sheetManagePanel = ref<SheetManagePanelKey | ''>('')
+
+const detailContextOpen = computed(() =>
+  Boolean(selectedSpellEntityId.value || selectedItemDetail.value || selectedFeatureDetail.value || noteDrawerOpen.value)
+)
+
+const manageContextOpen = computed(() =>
+  Boolean(sheetManagePanel.value) && !detailContextOpen.value
+)
+
+const sheetContextRailOpen = computed(() =>
+  detailContextOpen.value || Boolean(sheetManagePanel.value)
+)
+
+function normalizeSheetManagePanel(value: any): SheetManagePanelKey {
+  return String(value || '') === 'spells' ? 'spells' : 'inventory'
+}
+
+function setSheetManagePanel(value: any) {
+  sheetManagePanel.value = normalizeSheetManagePanel(value)
+}
+
+function openSheetManagePanel(value: any) {
+  sheetManagePanel.value = normalizeSheetManagePanel(value)
+}
+
+function closeSheetManagePanel() {
+  sheetManagePanel.value = ''
+}
+
+
+
 const transferDrawerOpen = ref(false)
 const transferSelectedItem = ref<any | null>(null)
 const transferTargetEntityId = ref('')
@@ -6786,7 +6820,7 @@ async function saveSheet() {
       <div class="absolute inset-x-0 bottom-0 h-1/3 bg-[linear-gradient(to_top,rgba(3,6,10,0.48),transparent)]"></div>
     </div>
     <div
-        :class="(selectedSpellEntityId || selectedItemDetail || selectedFeatureDetail || noteDrawerOpen) ? 'md:pr-[460px]' : ''"
+        :class="sheetContextRailOpen ? 'md:pr-[460px]' : ''"
         class="relative z-10 mx-auto w-full max-w-[1600px] p-3 pb-28 transition-all duration-200 md:p-6"
       >
 
@@ -7398,6 +7432,7 @@ async function saveSheet() {
                   :open-add-note-drawer="openAddNoteDrawer"
                   :open-item-drawer="openItemDrawer"
                   :open-spell-drawer="openSpellDrawer"
+                  :open-manage-panel="openSheetManagePanel"
                   :resource-state-for-species-action="resourceStateForSpeciesAction"
                   :species-action-resource-status-text="speciesActionResourceStatusText"
                   :species-action-resource-pip-indexes="speciesActionResourcePipIndexes"
@@ -7940,6 +7975,66 @@ async function saveSheet() {
     />
 
     <!-- Spell Detail Drawer -->
+
+    <CharactersSheetManageContextRail
+      v-if="manageContextOpen"
+      data-sheet-manage-context-rail
+      :active-panel="sheetManagePanel"
+      :inventory-count="inventoryCount"
+      :spell-count="selectedSpellCount"
+      :saving="inventorySaving || spellSaving"
+      @update-panel="setSheetManagePanel"
+      @close="closeSheetManagePanel"
+    >
+      <template #inventory>
+        <CharactersSheetManageInventoryRail
+          :inventory-saving="inventorySaving"
+          :inventory-save-error="inventorySaveError"
+          :inventory-save-success="inventorySaveSuccess"
+          :inventory-item-search="inventoryItemSearch"
+          :inventory-add-form="inventoryAddForm"
+          :filtered-inventory-item-options="filteredInventoryItemOptions"
+          :carried-inventory="carriedInventory"
+          :inventory-count="inventoryCount"
+          :inventory-quantity="inventoryQuantity"
+          @update-search="inventoryItemSearch = $event"
+          @update-item-entity-id="inventoryAddForm.itemEntityId = $event"
+          @update-custom-name="inventoryAddForm.customName = $event"
+          @update-quantity="inventoryAddForm.quantity = $event"
+          @update-notes="inventoryAddForm.notes = $event"
+          @add-item="addInventoryItem"
+          @open-item-detail="openItemDrawer(inventoryItemDetail($event))"
+          @change-quantity="changeInventoryQuantity($event.item, $event.delta)"
+          @remove-item="removeInventoryItem"
+          @toggle-equipped="toggleInventoryEquipped"
+          @toggle-attuned="toggleInventoryAttuned"
+        />
+      </template>
+
+      <template #spells>
+        <CharactersSheetManageSpellsRail
+          :spell-search="spellSearch"
+          :spell-saving="spellSaving"
+          :spell-save-error="spellSaveError"
+          :spell-save-success="spellSaveSuccess"
+          :available-spell-cards="availableSpellCards"
+          :known-spell-cards="knownSpellCards"
+          :prepared-spell-cards="preparedSpellCards"
+          :species-granted-spell-cards="speciesGrantedSpellCards"
+          :feat-choice-spell-cards="featChoiceSpellCards"
+          :spell-option-level-label="spellOptionLevelLabel"
+          :is-prepared-spell="isPreparedSpell"
+          @update-search="spellSearch = $event"
+          @save-spells="saveSpells"
+          @open-spell="openSpellDrawer"
+          @add-known="addKnownSpell($event.id)"
+          @prepare-spell="prepareSpell($event.id)"
+          @remove-known="removeKnownSpell($event.id)"
+          @remove-prepared="removePreparedSpell($event.id)"
+        />
+      </template>
+    </CharactersSheetManageContextRail>
+
     <CharactersSheetSpellDetailDrawer
       :spell-id="selectedSpellEntityId"
       :title="selectedSpellTitle"

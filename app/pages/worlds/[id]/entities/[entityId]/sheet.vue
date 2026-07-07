@@ -1096,13 +1096,6 @@ const sheet = computed(() => data.value?.sheet || null)
 const inventory = computed(() => Array.isArray(data.value?.inventory) ? data.value.inventory : [])
 const CURRENCY_DENOMINATIONS = [
   {
-    key: 'pp',
-    label: 'Platinum',
-    short: 'PP',
-    rowName: 'Currency: Platinum',
-    icon: 'i-lucide-gem'
-  },
-  {
     key: 'gp',
     label: 'Gold',
     short: 'GP',
@@ -2966,11 +2959,16 @@ async function clearInventoryTransferHistory() {
 
 function currencyDisplayForRow(item: any) {
   const name = String(item?.name || '').trim().toLowerCase()
-  const denom = CURRENCY_DENOMINATIONS.find((row: any) =>
-    name === String(row.rowName || '').trim().toLowerCase()
-  )
+  const isLegacyPlatinum = name.includes('platinum')
+  const denom = isLegacyPlatinum
+    ? CURRENCY_DENOMINATIONS.find((row: any) => row.key === 'gp')
+    : CURRENCY_DENOMINATIONS.find((row: any) =>
+        name === String(row.rowName || '').trim().toLowerCase()
+      )
 
-  const quantity = inventoryQuantity(item)
+  const quantity = isLegacyPlatinum
+    ? inventoryQuantity(item) * 10
+    : inventoryQuantity(item)
 
   return {
     key: denom?.key || '',

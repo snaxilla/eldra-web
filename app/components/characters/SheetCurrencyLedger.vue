@@ -22,7 +22,8 @@ function rowCurrencyKey(row: any) {
     return ''
   }
 
-  if (name.includes('platinum')) return 'pp'
+  // Legacy platinum rows are folded into gold. Eldra only tracks GP/SP/CP.
+  if (name.includes('platinum')) return 'gp'
   if (name.includes('gold')) return 'gp'
   if (name.includes('silver')) return 'sp'
   if (name.includes('copper')) return 'cp'
@@ -31,12 +32,14 @@ function rowCurrencyKey(row: any) {
 }
 
 function rowQuantity(row: any) {
-  return coinNumber(row?.quantity)
+  const name = String(row?.name || '').trim().toLowerCase()
+  const quantity = coinNumber(row?.quantity)
+
+  return name.includes('platinum') ? quantity * 10 : quantity
 }
 
 const inventoryCurrency = computed(() => {
   const totals = {
-    pp: 0,
     gp: 0,
     sp: 0,
     cp: 0
@@ -62,30 +65,22 @@ const currency = computed(() => {
 
   const resources = asObject(props.sheet?.resources)
   const nested = asObject(resources.currency || resources.coins || resources.coinage)
+  const legacyPp = coinNumber(nested.pp ?? resources.pp)
 
   return {
-    pp: coinNumber(nested.pp ?? resources.pp),
-    gp: coinNumber(nested.gp ?? resources.gp),
+    gp: coinNumber(nested.gp ?? resources.gp) + legacyPp * 10,
     sp: coinNumber(nested.sp ?? resources.sp),
     cp: coinNumber(nested.cp ?? resources.cp)
   }
 })
 
 const totalCoins = computed(() =>
-  currency.value.pp +
   currency.value.gp +
   currency.value.sp +
   currency.value.cp
 )
 
 const coinRows = computed(() => [
-  {
-    key: 'pp',
-    label: 'PP',
-    name: 'Platinum',
-    value: currency.value.pp,
-    icon: 'i-lucide-gem'
-  },
   {
     key: 'gp',
     label: 'GP',
@@ -122,7 +117,7 @@ const currencySummary = computed(() =>
         <div class="mt-1 text-sm text-[#d8ceb8]">{{ currencySummary }}</div>
       </div>
 
-      <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+      <div class="grid grid-cols-3 gap-2">
         <div
           v-for="coin in coinRows"
           :key="coin.key"
@@ -141,7 +136,7 @@ const currencySummary = computed(() =>
 
     <div
       v-if="totalCoins"
-      class="mt-3 grid gap-2 rounded-none border border-[rgba(65,82,103,0.46)] bg-[rgba(8,17,27,0.42)] p-3 text-xs sm:grid-cols-4"
+      class="mt-3 grid gap-2 rounded-none border border-[rgba(65,82,103,0.46)] bg-[rgba(8,17,27,0.42)] p-3 text-xs sm:grid-cols-3"
     >
       <div
         v-for="coin in coinRows"

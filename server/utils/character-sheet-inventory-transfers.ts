@@ -57,12 +57,19 @@ function currencyKeyForName(value: any) {
   const name = text(value).toLowerCase()
 
   if (!name.startsWith('currency:')) return ''
-  if (name.includes('platinum')) return 'pp'
+
+  // Legacy platinum rows are folded into gold. Eldra only tracks GP/SP/CP.
+  if (name.includes('platinum')) return 'gp'
   if (name.includes('gold')) return 'gp'
   if (name.includes('silver')) return 'sp'
   if (name.includes('copper')) return 'cp'
 
   return ''
+}
+
+function currencyQuantityMultiplierForName(value: any) {
+  const name = text(value).toLowerCase()
+  return name.includes('platinum') ? 10 : 1
 }
 
 function isCurrencyName(value: any) {
@@ -246,7 +253,7 @@ async function createTargetInventoryItem(targetSheet: any, transfer: any) {
   const snapshot = asObject(transfer?.item_snapshot)
   const sourceData = asObject(snapshot?.data)
   const itemName = text(transfer.item_name) || 'Item'
-  const quantity = inventoryQuantity(transfer)
+  const quantity = inventoryQuantity(transfer) * currencyQuantityMultiplierForName(itemName)
   const isCurrency = isCurrencyName(itemName) || text(snapshot.container).toLowerCase() === 'currency'
   const timestamp = nowIso()
 
@@ -279,7 +286,7 @@ async function createTargetInventoryItem(targetSheet: any, transfer: any) {
     body: {
       sheet_id: Number(targetSheet.id),
       item_entity_id: intOrNull(transfer.item_entity_id),
-      name: itemName,
+      name: isCurrency && currencyKeyForName(itemName) === 'gp' ? 'Currency: Gold' : itemName,
       quantity,
       equipped: false,
       attuned: false,

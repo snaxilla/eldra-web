@@ -8,6 +8,15 @@ const props = withDefaults(defineProps<{
   inventoryItems?: any[]
   featureCards?: any[]
   noteCards?: any[]
+  incomingTransfers?: any[]
+  outgoingTransfers?: any[]
+  transferSaving?: boolean
+  transferError?: string
+  transferSuccess?: string
+  openTransferDrawer?: (item: any) => void
+  acceptTransfer?: (transfer: any) => void
+  declineTransfer?: (transfer: any) => void
+  cancelTransfer?: (transfer: any) => void
   itemActionResourceState?: (action: any) => any
   itemActionResourceStatusText?: (action: any) => string
   itemActionResourcePipIndexes?: (action: any) => any[]
@@ -60,6 +69,11 @@ const props = withDefaults(defineProps<{
   inventoryItems: () => [],
   featureCards: () => [],
   noteCards: () => [],
+  incomingTransfers: () => [],
+  outgoingTransfers: () => [],
+  transferSaving: false,
+  transferError: '',
+  transferSuccess: '',
   equippedWeaponActions: () => [],
   actionSpellCards: () => [],
   commonActionCards: () => [],
@@ -600,6 +614,71 @@ const filteredNoteRows = computed(() => {
       .includes(q)
   )
 })
+
+
+function normalizedTransferStatus(transfer: any) {
+  return String(transfer?.status || '').trim().toLowerCase()
+}
+
+const pendingIncomingTransfers = computed(() =>
+  (props.incomingTransfers || []).filter((transfer: any) => normalizedTransferStatus(transfer) === 'offered')
+)
+
+const pendingOutgoingTransfers = computed(() =>
+  (props.outgoingTransfers || []).filter((transfer: any) => normalizedTransferStatus(transfer) === 'offered')
+)
+
+const recentTransfers = computed(() =>
+  [...(props.incomingTransfers || []), ...(props.outgoingTransfers || [])]
+    .filter((transfer: any) => normalizedTransferStatus(transfer) !== 'offered')
+    .sort((a: any, b: any) =>
+      String(b.completedAt || b.cancelledAt || b.declinedAt || b.updatedAt || b.createdAt || '')
+        .localeCompare(String(a.completedAt || a.cancelledAt || a.declinedAt || a.updatedAt || a.createdAt || ''))
+    )
+    .slice(0, 6)
+)
+
+function transferQuantityLabel(transfer: any) {
+  const qty = Number(transfer?.quantity || 1)
+  return Number.isFinite(qty) && qty > 1 ? ` x${Math.floor(qty)}` : ''
+}
+
+function transferPartyLine(transfer: any) {
+  if (transfer?.direction === 'incoming') {
+    return `From ${transfer?.sourceName || 'another character'}`
+  }
+
+  if (transfer?.direction === 'outgoing') {
+    return `To ${transfer?.targetName || 'another character'}`
+  }
+
+  return transfer?.targetName || transfer?.sourceName || ''
+}
+
+function transferStatusLabel(transfer: any) {
+  const status = normalizedTransferStatus(transfer)
+  if (status === 'offered') return 'Pending'
+  if (status === 'completed') return 'Completed'
+  if (status === 'declined') return 'Declined'
+  if (status === 'cancelled') return 'Cancelled'
+  if (status === 'granted') return 'Granted'
+  return status || 'Transfer'
+}
+
+function transferStatusClass(transfer: any) {
+  const status = normalizedTransferStatus(transfer)
+
+  if (status === 'offered') return 'border-amber-300/25 bg-amber-400/10 text-amber-100'
+  if (status === 'completed' || status === 'granted') return 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100'
+  if (status === 'declined' || status === 'cancelled') return 'border-slate-300/20 bg-slate-400/10 text-slate-200'
+
+  return 'border-[rgba(201,164,90,0.20)] bg-black/20 text-[#f5e7bd]'
+}
+
+function canGiveItem(item: any) {
+  const qty = Number(item?.quantity || 1)
+  return Number.isFinite(qty) && qty > 0
+}
 
 function tabCount(key: string) {
   if (key === 'actions') return allActionRows.value.length
@@ -1274,6 +1353,142 @@ function openNote(note: any) {
       </label>
 
       <div
+        v-if="transferError"
+        class="mb-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200"
+      >
+        {{ transferError }}
+      </div>
+
+      <div
+        v-if="transferSuccess"
+        class="mb-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200"
+      >
+        {{ transferSuccess }}
+      </div>
+
+      <section
+        v-if="pendingIncomingTransfers.length"
+        class="mb-4 rounded-none border border-emerald-300/20 bg-emerald-400/10 p-3"
+      >
+        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-100">
+          Incoming Offers
+        </div>
+
+        <article
+          v-for="transfer in pendingIncomingTransfers"
+          :key="`incoming-transfer-${transfer.id}`"
+          class="border-t border-emerald-300/14 py-3 first:border-t-0 first:pt-0 last:pb-0"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-white">
+                {{ transfer.itemName }}{{ transferQuantityLabel(transfer) }}
+              </div>
+              <div class="mt-0.5 text-xs text-[#d8ceb8]">
+                {{ transferPartyLine(transfer) }}
+              </div>
+              <p
+                v-if="transfer.message"
+                class="mt-1 text-xs leading-5 text-[#9f9278]"
+              >
+                {{ short(transfer.message, 160) }}
+              </p>
+            </div>
+
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                class="rounded-none border border-emerald-300/24 bg-emerald-400/10 px-2 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50"
+                :disabled="transferSaving"
+                @click.stop="props.acceptTransfer?.(transfer)"
+              >
+                Accept
+              </button>
+
+              <button
+                type="button"
+                class="rounded-none border border-slate-300/20 bg-slate-400/10 px-2 py-1.5 text-xs font-semibold text-slate-100 disabled:opacity-50"
+                :disabled="transferSaving"
+                @click.stop="props.declineTransfer?.(transfer)"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section
+        v-if="pendingOutgoingTransfers.length"
+        class="mb-4 rounded-none border border-amber-300/20 bg-amber-400/10 p-3"
+      >
+        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-amber-100">
+          Outgoing Offers
+        </div>
+
+        <article
+          v-for="transfer in pendingOutgoingTransfers"
+          :key="`outgoing-transfer-${transfer.id}`"
+          class="border-t border-amber-300/14 py-3 first:border-t-0 first:pt-0 last:pb-0"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold text-white">
+                {{ transfer.itemName }}{{ transferQuantityLabel(transfer) }}
+              </div>
+              <div class="mt-0.5 text-xs text-[#d8ceb8]">
+                {{ transferPartyLine(transfer) }}
+              </div>
+              <p
+                v-if="transfer.message"
+                class="mt-1 text-xs leading-5 text-[#9f9278]"
+              >
+                {{ short(transfer.message, 160) }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="shrink-0 rounded-none border border-amber-300/24 bg-amber-400/10 px-2 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50"
+              :disabled="transferSaving"
+              @click.stop="props.cancelTransfer?.(transfer)"
+            >
+              Cancel
+            </button>
+          </div>
+        </article>
+      </section>
+
+      <section
+        v-if="recentTransfers.length"
+        class="mb-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.34)] p-3"
+      >
+        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#9f9278]">
+          Recent Transfers
+        </div>
+
+        <div class="grid gap-2">
+          <div
+            v-for="transfer in recentTransfers"
+            :key="`recent-transfer-${transfer.id}`"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-none border border-[rgba(201,164,90,0.10)] bg-black/15 px-3 py-2 text-xs"
+          >
+            <div class="min-w-0">
+              <span class="font-semibold text-white">{{ transfer.itemName }}{{ transferQuantityLabel(transfer) }}</span>
+              <span class="ml-1 text-[#9f9278]">{{ transferPartyLine(transfer) }}</span>
+            </div>
+
+            <span
+              class="rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+              :class="transferStatusClass(transfer)"
+            >
+              {{ transferStatusLabel(transfer) }}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div
         v-if="filteredInventoryRows.length"
         class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
       >
@@ -1301,6 +1516,16 @@ function openNote(note: any) {
           </p>
 
           <div class="mt-3 flex flex-wrap justify-end gap-2">
+            <button
+              v-if="canGiveItem(item)"
+              type="button"
+              class="rounded-none border border-emerald-300/24 bg-emerald-400/10 px-2 py-1.5 text-xs font-semibold text-emerald-100 disabled:opacity-50"
+              :disabled="transferSaving"
+              @click.stop="props.openTransferDrawer?.(item)"
+            >
+              Give
+            </button>
+
             <button
               type="button"
               class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"

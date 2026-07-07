@@ -129,6 +129,16 @@ const noteDraft = reactive({
 })
 const choiceDrafts = ref<Record<string, string[]>>({})
 
+const transferDrawerOpen = ref(false)
+const transferSelectedItem = ref<any | null>(null)
+const transferTargetEntityId = ref('')
+const transferQuantityDraft = ref('1')
+const transferMessageDraft = ref('')
+const transferSaving = ref(false)
+const transferError = ref('')
+const transferSuccess = ref('')
+
+
 const SHEET_TABS = [
   { key: 'overview', label: 'Sheet', icon: 'i-lucide-layout-dashboard' },
   { key: 'stats', label: 'Stats', icon: 'i-lucide-activity' },
@@ -1025,6 +1035,36 @@ const subclassOptions = computed(() =>
     ? (subclassOptionPayload.value as any).subclasses
     : []
 )
+const {
+  data: inventoryTransferPayload,
+  refresh: refreshInventoryTransfers
+} = await useFetch(
+  () => `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`,
+  {
+    default: () => ({
+      sheetId: null,
+      incoming: [],
+      outgoing: [],
+      transfers: []
+    }),
+    watch: [worldId, entityId]
+  }
+)
+
+const {
+  data: inventoryTransferTargetsPayload,
+  refresh: refreshInventoryTransferTargets
+} = await useFetch(
+  () => `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers?targets=1`,
+  {
+    default: () => ({
+      sheetId: null,
+      targets: []
+    }),
+    watch: [worldId, entityId]
+  }
+)
+
 const { data: selectedSpellDetail, pending: selectedSpellPending } = await useFetch(
   () => selectedSpellEntityId.value ? `/api/worlds/${worldId.value}/entities/${selectedSpellEntityId.value}` : null,
   {
@@ -2644,6 +2684,238 @@ function undoItemActionResource(action: any) {
   }
 
   void persistLimitedResourceUses()
+}
+
+
+
+const inventoryTransferTargets = computed(() =>
+  Array.isArray((inventoryTransferTargetsPayload.value as any)?.targets)
+    ? (inventoryTransferTargetsPayload.value as any).targets
+    : []
+)
+
+const incomingInventoryTransfers = computed(() =>
+  Array.isArray((inventoryTransferPayload.value as any)?.incoming)
+    ? (inventoryTransferPayload.value as any).incoming
+    : []
+)
+
+const outgoingInventoryTransfers = computed(() =>
+  Array.isArray((inventoryTransferPayload.value as any)?.outgoing)
+    ? (inventoryTransferPayload.value as any).outgoing
+    : []
+)
+
+const transferSelectedQuantityMax = computed(() => {
+  const item = transferSelectedItem.value?.raw || transferSelectedItem.value
+  return Math.max(1, inventoryQuantity(item || {}))
+})
+
+const transferSelectedName = computed(() =>
+  String(transferSelectedItem.value?.name || transferSelectedItem.value?.raw?.name || 'Item')
+)
+
+const transferTargetOptions = computed(() =>
+  inventoryTransferTargets.value
+    .map((target: any) => ({
+      entityId: String(target?.entityId || target?.entity_id || ''),
+      name: String(target?.name || 'Character'),
+      description: [
+        target?.className,
+        target?.speciesName,
+        target?.level ? `Level ${target.level}` : ''
+      ].filter(Boolean).join(' / ')
+    }))
+    .filter((target: any) => target.entityId)
+)
+
+function transferInventoryRowFromPanelItem(item: any) {
+  return item?.raw || item || null
+}
+
+function openInventoryTransferDrawer(item: any) {
+  const row = transferInventoryRowFromPanelItem(item)
+  if (!row?.id && !item?.inventoryId) return
+
+  transferSelectedItem.value = {
+    ...item,
+    raw: row,
+    inventoryId: item?.inventoryId || row?.id
+  }
+
+  transferTargetEntityId.value = ''
+  transferQuantityDraft.value = '1'
+  transferMessageDraft.value = ''
+  transferError.value = ''
+  transferSuccess.value = ''
+  transferDrawerOpen.value = true
+
+  void refreshInventoryTransferTargets()
+}
+
+function closeInventoryTransferDrawer() {
+  if (transferSaving.value) return
+
+  transferDrawerOpen.value = false
+  transferSelectedItem.value = null
+  transferTargetEntityId.value = ''
+  transferQuantityDraft.value = '1'
+  transferMessageDraft.value = ''
+}
+
+function normalizedTransferQuantity() {
+  const parsed = Number(transferQuantityDraft.value || 1)
+  const max = transferSelectedQuantityMax.value
+
+  if (!Number.isFinite(parsed) || parsed < 1) return 1
+  return Math.min(Math.floor(parsed), max)
+}
+
+async function afterInventoryTransferMutation(result: any = {}) {
+  if (result?.targetInventory) {
+    await applyInventoryResult({ inventory: result.targetInventory })
+  } else if (result?.sourceInventory) {
+    await applyInventoryResult({ inventory: result.sourceInventory })
+  }
+
+  await refreshInventoryTransfers()
+  await refreshInventoryTransferTargets()
+}
+
+async function offerInventoryTransfer() {
+  const row = transferSelectedItem.value?.raw || transferSelectedItem.value
+  const inventoryId = transferSelectedItem.value?.inventoryId || row?.id
+
+  if (!inventoryId) {
+    transferError.value = 'No inventory item selected.'
+    return
+  }
+
+  if (!transferTargetEntityId.value) {
+    transferError.value = 'Choose who receives this item.'
+    return
+  }
+
+  transferSaving.value = true
+  transferError.value = ''
+  transferSuccess.value = ''
+
+  try {
+    const result = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`, {
+      method: 'POST',
+      body: {
+        action: 'offer',
+        inventoryId,
+        targetEntityId: transferTargetEntityId.value,
+        quantity: normalizedTransferQuantity(),
+        message: transferMessageDraft.value
+      }
+    })
+
+    await afterInventoryTransferMutation(result)
+    transferSuccess.value = `${transferSelectedName.value} offered.`
+    transferDrawerOpen.value = false
+    transferSelectedItem.value = null
+  } catch (error: any) {
+    transferError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.statusMessage ||
+      error?.message ||
+      'Failed to offer item.'
+  } finally {
+    transferSaving.value = false
+  }
+}
+
+async function acceptInventoryTransfer(transfer: any) {
+  if (!transfer?.id) return
+
+  transferSaving.value = true
+  transferError.value = ''
+  transferSuccess.value = ''
+
+  try {
+    const result = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`, {
+      method: 'POST',
+      body: {
+        action: 'accept',
+        transferId: transfer.id
+      }
+    })
+
+    await afterInventoryTransferMutation(result)
+    transferSuccess.value = `${transfer.itemName || 'Item'} received.`
+  } catch (error: any) {
+    transferError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.statusMessage ||
+      error?.message ||
+      'Failed to accept transfer.'
+  } finally {
+    transferSaving.value = false
+  }
+}
+
+async function declineInventoryTransfer(transfer: any) {
+  if (!transfer?.id) return
+
+  transferSaving.value = true
+  transferError.value = ''
+  transferSuccess.value = ''
+
+  try {
+    const result = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`, {
+      method: 'POST',
+      body: {
+        action: 'decline',
+        transferId: transfer.id
+      }
+    })
+
+    await afterInventoryTransferMutation(result)
+    transferSuccess.value = `${transfer.itemName || 'Item'} declined.`
+  } catch (error: any) {
+    transferError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.statusMessage ||
+      error?.message ||
+      'Failed to decline transfer.'
+  } finally {
+    transferSaving.value = false
+  }
+}
+
+async function cancelInventoryTransfer(transfer: any) {
+  if (!transfer?.id) return
+
+  transferSaving.value = true
+  transferError.value = ''
+  transferSuccess.value = ''
+
+  try {
+    const result = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`, {
+      method: 'POST',
+      body: {
+        action: 'cancel',
+        transferId: transfer.id
+      }
+    })
+
+    await afterInventoryTransferMutation(result)
+    transferSuccess.value = `${transfer.itemName || 'Item'} offer cancelled.`
+  } catch (error: any) {
+    transferError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.statusMessage ||
+      error?.message ||
+      'Failed to cancel transfer.'
+  } finally {
+    transferSaving.value = false
+  }
 }
 
 
@@ -6883,6 +7155,15 @@ async function saveSheet() {
                   :inventory-items="actionCenterInventoryItems"
                   :feature-cards="actionCenterFeatureCards"
                   :note-cards="actionCenterNoteCards"
+                  :incoming-transfers="incomingInventoryTransfers"
+                  :outgoing-transfers="outgoingInventoryTransfers"
+                  :transfer-saving="transferSaving"
+                  :transfer-error="transferError"
+                  :transfer-success="transferSuccess"
+                  :open-transfer-drawer="openInventoryTransferDrawer"
+                  :accept-transfer="acceptInventoryTransfer"
+                  :decline-transfer="declineInventoryTransfer"
+                  :cancel-transfer="cancelInventoryTransfer"
                   :common-action-cards="commonActionCards"
                   :displayed-bonus-action-cards="displayedBonusActionCards"
                   :displayed-reaction-action-cards="displayedReactionActionCards"
@@ -7322,6 +7603,111 @@ async function saveSheet() {
       @close="closeSpellDrawer"
     />
   </div>
+
+    <div
+      v-if="transferDrawerOpen"
+      data-inventory-transfer-drawer
+      class="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      @click.self="closeInventoryTransferDrawer"
+    >
+      <section class="w-full max-w-xl rounded-none border border-[rgba(201,164,90,0.32)] bg-[linear-gradient(to_bottom,rgba(13,17,23,0.98),rgba(5,8,13,0.98))] shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+        <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.20)] px-5 py-4">
+          <div>
+            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Give Item</div>
+            <h2 class="mt-1 text-2xl font-semibold text-white">
+              {{ transferSelectedName }}
+            </h2>
+            <p class="mt-1 text-sm text-[#d8ceb8]">
+              Offer this item to another character. They can accept or decline it.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            class="rounded-none border border-[rgba(201,164,90,0.20)] px-3 py-2 text-sm text-[#d8ceb8] transition hover:bg-white/5 hover:text-white"
+            :disabled="transferSaving"
+            @click="closeInventoryTransferDrawer"
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="space-y-4 px-5 py-5">
+          <div
+            v-if="transferError"
+            class="rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200"
+          >
+            {{ transferError }}
+          </div>
+
+          <label class="block">
+            <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Recipient</span>
+            <select
+              v-model="transferTargetEntityId"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+              :disabled="transferSaving"
+            >
+              <option value="" class="bg-[#090909] text-[#f5e7bd]">Choose character...</option>
+              <option
+                v-for="target in transferTargetOptions"
+                :key="target.entityId"
+                :value="target.entityId"
+                class="bg-[#090909] text-[#f5e7bd]"
+              >
+                {{ target.name }}{{ target.description ? ` — ${target.description}` : '' }}
+              </option>
+            </select>
+          </label>
+
+          <label class="block">
+            <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Quantity</span>
+            <input
+              v-model="transferQuantityDraft"
+              type="number"
+              min="1"
+              :max="transferSelectedQuantityMax"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+              :disabled="transferSaving"
+            >
+            <span class="mt-1 block text-xs text-[#9f9278]">
+              Available: {{ transferSelectedQuantityMax }}
+            </span>
+          </label>
+
+          <label class="block">
+            <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Message</span>
+            <textarea
+              v-model="transferMessageDraft"
+              rows="4"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+              placeholder="Here, take this. You probably need it more than I do."
+              :disabled="transferSaving"
+            />
+          </label>
+        </div>
+
+        <div class="flex flex-wrap justify-end gap-3 border-t border-[rgba(201,164,90,0.20)] px-5 py-4">
+          <button
+            type="button"
+            class="rounded-none border border-[rgba(148,163,184,0.24)] bg-[rgba(15,23,42,0.45)] px-4 py-2 text-sm font-semibold text-[#d8ceb8] disabled:opacity-50"
+            :disabled="transferSaving"
+            @click="closeInventoryTransferDrawer"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            :disabled="transferSaving || !transferTargetEntityId"
+            @click="offerInventoryTransfer"
+          >
+            {{ transferSaving ? 'Offering...' : 'Offer Item' }}
+          </button>
+        </div>
+      </section>
+    </div>
+
 </template>
 
 <style scoped>

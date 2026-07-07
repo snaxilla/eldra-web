@@ -36,6 +36,7 @@ const props = withDefaults(defineProps<{
   openFeatureDrawer?: (value: any) => void
   openItemDrawer?: (value: any) => void
   openSpellDrawer?: (value: any) => void
+  openBuildPanel?: (panel: string) => void
   openNoteDetail?: (note: any) => void
   openAddNoteDrawer?: () => void
   resourceStateForSpeciesAction?: (action: any) => any
@@ -712,6 +713,10 @@ function itemStatus(item: any) {
   return bits.join(' / ') || 'Carried'
 }
 
+function openBuildPanel(panel: string) {
+  props.openBuildPanel?.(panel)
+}
+
 function openInventoryItem(item: any) {
   props.openItemDrawer?.(item?.detail || item)
 }
@@ -1261,6 +1266,21 @@ function openNote(note: any) {
       v-else-if="activePanelTab === 'spells'"
       class="max-h-[620px] overflow-y-auto p-4 pr-5"
     >
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spells</div>
+          <div class="mt-1 text-sm text-[#d8ceb8]">Prepared, known, granted, and castable spells.</div>
+        </div>
+
+        <button
+          type="button"
+          class="eldra-button rounded-none px-3 py-2 text-xs font-semibold"
+          @click="openBuildPanel('spells')"
+        >
+          Manage Spells
+        </button>
+      </div>
+
       <label class="mb-4 block">
         <span class="mb-2 block text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Search Spells</span>
         <input
@@ -1351,6 +1371,21 @@ function openNote(note: any) {
       v-else-if="activePanelTab === 'inventory'"
       class="max-h-[620px] overflow-y-auto p-4 pr-5"
     >
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Inventory</div>
+          <div class="mt-1 text-sm text-[#d8ceb8]">Carried gear, currency, equipment, and transfers.</div>
+        </div>
+
+        <button
+          type="button"
+          class="eldra-button rounded-none px-3 py-2 text-xs font-semibold"
+          @click="openBuildPanel('inventory')"
+        >
+          Manage Inventory
+        </button>
+      </div>
+
       <label class="mb-4 block">
         <span class="mb-2 block text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Search Inventory</span>
         <input
@@ -1578,6 +1613,21 @@ function openNote(note: any) {
       v-else-if="activePanelTab === 'features'"
       class="max-h-[620px] overflow-y-auto p-4 pr-5"
     >
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Features & Traits</div>
+          <div class="mt-1 text-sm text-[#d8ceb8]">Class, species, background, subclass, and feat details.</div>
+        </div>
+
+        <button
+          type="button"
+          class="eldra-button rounded-none px-3 py-2 text-xs font-semibold"
+          @click="openBuildPanel('features')"
+        >
+          Manage Features
+        </button>
+      </div>
+
       <label class="mb-4 block">
         <span class="mb-2 block text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Search Features</span>
         <input

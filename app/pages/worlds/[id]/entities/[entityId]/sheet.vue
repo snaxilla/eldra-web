@@ -2710,6 +2710,7 @@ const outgoingInventoryTransfers = computed(() =>
 )
 
 
+
 function transferStatusKey(transfer: any) {
   return String(transfer?.status || '').trim().toLowerCase()
 }
@@ -2723,36 +2724,11 @@ const hasPendingInventoryTransfers = computed(() =>
   transferListHasPendingOffer(outgoingInventoryTransfers.value)
 )
 
-let inventoryTransferPollTimer: ReturnType<typeof setInterval> | null = null
-let inventoryTransferPollBusy = false
-
-
-function inventoryTransferRowsFromPayload(payload: any = inventoryTransferPayload.value) {
-  return Array.isArray((payload as any)?.transfers)
-    ? (payload as any).transfers
-    : []
-}
-
-function inventoryTransferStatusSnapshot(payload: any = inventoryTransferPayload.value) {
-  const snapshot: Record<string, string> = {}
-
-  for (const transfer of inventoryTransferRowsFromPayload(payload)) {
-    const id = String(transfer?.id || '').trim()
-    if (!id) continue
-
-    snapshot[id] = transferStatusKey(transfer)
-  }
-
-  return snapshot
-}
-
-function pendingInventoryTransferResolved(before: Record<string, string>, after: Record<string, string>) {
-  return Object.entries(before).some(([id, status]) =>
-    status === 'offered' &&
-    Boolean(after[id]) &&
-    after[id] !== 'offered'
-  )
-}
+let inventoryTransferRealtimeSource: EventSource | null = null
+let inventoryTransferRealtimeRefreshBusy = false
+let inventoryTransferRealtimeRefreshQueued = false
+let inventoryTransferRealtimeReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let inventoryTransferRealtimeReconnectDelay = 1000
 
 async function refreshInventoryRowsOnly() {
   const result = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory`)
@@ -2765,76 +2741,104 @@ async function refreshInventoryRowsOnly() {
   await applyInventoryResult({ inventory: rows })
 }
 
-async function pollInventoryTransferState() {
-  if (inventoryTransferPollBusy || !hasPendingInventoryTransfers.value) return
+async function refreshInventoryTransferStateFromRealtime() {
+  if (inventoryTransferRealtimeRefreshBusy) {
+    inventoryTransferRealtimeRefreshQueued = true
+    return
+  }
 
-  inventoryTransferPollBusy = true
+  inventoryTransferRealtimeRefreshBusy = true
+  inventoryTransferRealtimeRefreshQueued = false
 
   try {
-    const before = inventoryTransferStatusSnapshot()
-
-    const nextTransferPayload = await $fetch<any>(
-      `/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`
-    )
-
-    const after = inventoryTransferStatusSnapshot(nextTransferPayload)
-
-    inventoryTransferPayload.value = nextTransferPayload as any
-
-    // If another browser accepted/declined/cancelled one of this character's
-    // pending offers, only refresh inventory rows. Do not refresh the whole sheet.
-    if (pendingInventoryTransferResolved(before, after)) {
-      await refreshInventoryRowsOnly()
-    }
+    await refreshInventoryTransfers()
+    await refreshInventoryRowsOnly()
   } catch (error) {
-    console.warn('[character-sheet] inventory transfer poll failed', error)
+    console.warn('[character-sheet] realtime transfer refresh failed', error)
   } finally {
-    inventoryTransferPollBusy = false
+    inventoryTransferRealtimeRefreshBusy = false
+
+    if (inventoryTransferRealtimeRefreshQueued) {
+      inventoryTransferRealtimeRefreshQueued = false
+      void refreshInventoryTransferStateFromRealtime()
+    }
   }
 }
 
+function stopInventoryTransferRealtime() {
+  if (inventoryTransferRealtimeReconnectTimer) {
+    clearTimeout(inventoryTransferRealtimeReconnectTimer)
+    inventoryTransferRealtimeReconnectTimer = null
+  }
 
-function stopInventoryTransferPolling() {
-  if (!inventoryTransferPollTimer) return
+  if (!inventoryTransferRealtimeSource) return
 
-  clearInterval(inventoryTransferPollTimer)
-  inventoryTransferPollTimer = null
+  inventoryTransferRealtimeSource.close()
+  inventoryTransferRealtimeSource = null
 }
 
-function startInventoryTransferPolling() {
-  if (!import.meta.client || inventoryTransferPollTimer) return
+function scheduleInventoryTransferRealtimeReconnect() {
+  if (!import.meta.client) return
+  if (inventoryTransferRealtimeReconnectTimer) return
 
-  inventoryTransferPollTimer = setInterval(() => {
-    if (document.visibilityState !== 'visible') return
-    if (!hasPendingInventoryTransfers.value) return
+  const delay = Math.min(inventoryTransferRealtimeReconnectDelay, 30000)
 
-    void pollInventoryTransferState()
-  }, 8000)
+  inventoryTransferRealtimeReconnectTimer = setTimeout(() => {
+    inventoryTransferRealtimeReconnectTimer = null
+    inventoryTransferRealtimeReconnectDelay = Math.min(inventoryTransferRealtimeReconnectDelay * 2, 30000)
+    startInventoryTransferRealtime()
+  }, delay)
 }
 
-watch(
-  hasPendingInventoryTransfers,
-  (enabled) => {
-    if (enabled) {
-      startInventoryTransferPolling()
-      return
+function startInventoryTransferRealtime() {
+  if (!import.meta.client) return
+  if (inventoryTransferRealtimeSource) return
+
+  const source = new EventSource(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/realtime/transfer-events`)
+  inventoryTransferRealtimeSource = source
+
+  source.addEventListener('ready', () => {
+    inventoryTransferRealtimeReconnectDelay = 1000
+  })
+
+  source.addEventListener('inventory-transfer', () => {
+    inventoryTransferRealtimeReconnectDelay = 1000
+    void refreshInventoryTransferStateFromRealtime()
+  })
+
+  source.onerror = () => {
+    stopInventoryTransferRealtime()
+
+    if (document.visibilityState === 'visible') {
+      scheduleInventoryTransferRealtimeReconnect()
     }
-
-    stopInventoryTransferPolling()
-  },
-  { immediate: true }
-)
+  }
+}
 
 if (import.meta.client) {
+  watch(
+    [worldId, entityId],
+    () => {
+      stopInventoryTransferRealtime()
+      inventoryTransferRealtimeReconnectDelay = 1000
+      startInventoryTransferRealtime()
+    },
+    { immediate: true }
+  )
+
   window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && hasPendingInventoryTransfers.value) {
-      void pollInventoryTransferState()
+    if (document.visibilityState === 'visible') {
+      if (!inventoryTransferRealtimeSource) {
+        startInventoryTransferRealtime()
+      }
+
+      void refreshInventoryTransferStateFromRealtime()
     }
   })
 }
 
 onUnmounted(() => {
-  stopInventoryTransferPolling()
+  stopInventoryTransferRealtime()
 })
 
 const transferSelectedQuantityMax = computed(() => {
@@ -3886,8 +3890,6 @@ async function applyInventoryResult(result: any) {
     ...(data.value as any || {}),
     inventory: Array.isArray(result?.inventory) ? result.inventory : inventory.value
   } as any
-
-  await refresh()
 }
 
 async function addInventoryItem() {

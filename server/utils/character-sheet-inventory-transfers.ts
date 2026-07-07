@@ -1,4 +1,5 @@
 import { directusServiceRequest } from './directus'
+import { broadcastInventoryTransferRealtimeEvent } from './inventory-transfer-realtime-bridge'
 import {
   loadActiveCharacterSheet,
   loadInventoryRows
@@ -302,7 +303,13 @@ async function patchTransfer(transferId: any, body: Record<string, any>) {
     }
   })
 
-  return res?.data || null
+  const row = res?.data || null
+
+  if (row) {
+    broadcastInventoryTransferRealtimeEvent(row, 'update')
+  }
+
+  return row
 }
 
 async function reduceSourceInventoryQuantity(sourceRow: any, quantity: number) {
@@ -528,8 +535,14 @@ export async function offerInventoryTransfer(worldId: string, sourceEntityId: st
     }
   })
 
+  const transferRow = created?.data || null
+
+  if (transferRow) {
+    broadcastInventoryTransferRealtimeEvent(transferRow, 'create')
+  }
+
   return {
-    transfer: created?.data || null,
+    transfer: transferRow,
     sourceInventory: await loadInventoryRows(sourceSheet.id),
     transfers: await listInventoryTransfersForSheet(worldId, sourceEntityId)
   }

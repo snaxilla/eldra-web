@@ -52,6 +52,12 @@ function inventoryQuantity(row: any) {
   return positiveInt(row?.quantity, 1)
 }
 
+function transferVisibleForActor(transfer: any) {
+  if (transfer.direction === 'incoming') return !transfer.targetClearedAt
+  if (transfer.direction === 'outgoing') return !transfer.sourceClearedAt
+  return true
+}
+
 function normalizeTransfer(row: any, actorSheet: any, sheetsById = new Map<string, any>()) {
   const actorSheetId = String(actorSheet?.id || '')
   const sourceSheetId = String(row?.source_sheet_id || '')
@@ -89,6 +95,8 @@ function normalizeTransfer(row: any, actorSheet: any, sheetsById = new Map<strin
     declinedAt: row.declined_at || null,
     cancelledAt: row.cancelled_at || null,
     completedAt: row.completed_at || null,
+    sourceClearedAt: row.source_cleared_at || null,
+    targetClearedAt: row.target_cleared_at || null,
     direction
   }
 }
@@ -300,7 +308,9 @@ export async function listInventoryTransfersForSheet(worldId: string, entityId: 
   })
 
   const rows = Array.isArray(res?.data) ? res.data : []
-  const transfers = rows.map((row: any) => normalizeTransfer(row, actorSheet, sheetsById))
+  const transfers = rows
+    .map((row: any) => normalizeTransfer(row, actorSheet, sheetsById))
+    .filter(transferVisibleForActor)
 
   return {
     sheetId: actorSheet.id,
@@ -502,6 +512,57 @@ export async function cancelInventoryTransfer(worldId: string, sourceEntityId: s
   }
 }
 
+export async function clearInventoryTransferHistory(worldId: string, entityId: string) {
+  const actorSheet = await loadActiveCharacterSheet(worldId, entityId)
+
+  const res = await directusServiceRequest(`/items/${COLLECTION}`, {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { world_id: { _eq: Number(worldId) } },
+          { status: { _neq: 'offered' } },
+          {
+            _or: [
+              { source_sheet_id: { _eq: Number(actorSheet.id) } },
+              { target_sheet_id: { _eq: Number(actorSheet.id) } }
+            ]
+          }
+        ]
+      },
+      sort: '-created_at,-id',
+      limit: -1,
+      fields: '*'
+    }
+  })
+
+  const rows = Array.isArray(res?.data) ? res.data : []
+  const timestamp = nowIso()
+  let cleared = 0
+
+  for (const row of rows) {
+    const patch: Record<string, any> = {}
+
+    if (String(row.source_sheet_id || '') === String(actorSheet.id || '') && !row.source_cleared_at) {
+      patch.source_cleared_at = timestamp
+    }
+
+    if (String(row.target_sheet_id || '') === String(actorSheet.id || '') && !row.target_cleared_at) {
+      patch.target_cleared_at = timestamp
+    }
+
+    if (Object.keys(patch).length) {
+      await patchTransfer(row.id, patch)
+      cleared += 1
+    }
+  }
+
+  return {
+    cleared,
+    transfers: await listInventoryTransfersForSheet(worldId, entityId)
+  }
+}
+
 export async function handleInventoryTransferAction(worldId: string, entityId: string, body: any = {}) {
   const action = text(body?.action || 'offer').toLowerCase()
 
@@ -523,6 +584,10 @@ export async function handleInventoryTransferAction(worldId: string, entityId: s
 
   if (action === 'cancel') {
     return await cancelInventoryTransfer(worldId, entityId, body?.transferId || body?.transfer_id)
+  }
+
+  if (action === 'clearhistory' || action === 'clear_history') {
+    return await clearInventoryTransferHistory(worldId, entityId)
   }
 
   throw createError({

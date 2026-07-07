@@ -287,6 +287,12 @@ async function createSchema() {
   await ensureField(COLLECTION, timestampField(COLLECTION, 'declined_at'))
   await ensureField(COLLECTION, timestampField(COLLECTION, 'cancelled_at'))
   await ensureField(COLLECTION, timestampField(COLLECTION, 'completed_at'))
+  await ensureField(COLLECTION, timestampField(COLLECTION, 'source_cleared_at', {
+    note: 'When the source character cleared this transfer from their history.'
+  }))
+  await ensureField(COLLECTION, timestampField(COLLECTION, 'target_cleared_at', {
+    note: 'When the target character cleared this transfer from their history.'
+  }))
 
   console.log('Inventory transfer schema is ready.')
 }

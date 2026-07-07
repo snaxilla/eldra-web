@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<{
   acceptTransfer?: (transfer: any) => void
   declineTransfer?: (transfer: any) => void
   cancelTransfer?: (transfer: any) => void
+  clearTransferHistory?: () => void
   itemActionResourceState?: (action: any) => any
   itemActionResourceStatusText?: (action: any) => string
   itemActionResourcePipIndexes?: (action: any) => any[]
@@ -1463,8 +1464,19 @@ function openNote(note: any) {
         v-if="recentTransfers.length"
         class="mb-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.34)] p-3"
       >
-        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#9f9278]">
-          Recent Transfers
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+          <div class="text-xs font-semibold uppercase tracking-[0.22em] text-[#9f9278]">
+            Recent Transfers
+          </div>
+
+          <button
+            type="button"
+            class="rounded-none border border-[rgba(148,163,184,0.24)] bg-[rgba(15,23,42,0.45)] px-2 py-1.5 text-xs font-semibold text-[#d8ceb8] disabled:opacity-50"
+            :disabled="transferSaving"
+            @click.stop="props.clearTransferHistory?.()"
+          >
+            Clear History
+          </button>
         </div>
 
         <div class="grid gap-2">

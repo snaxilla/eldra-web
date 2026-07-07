@@ -2919,6 +2919,41 @@ async function cancelInventoryTransfer(transfer: any) {
 }
 
 
+async function clearInventoryTransferHistory() {
+  if (import.meta.client && !window.confirm('Clear completed, cancelled, and declined transfer history for this character?')) {
+    return
+  }
+
+  transferSaving.value = true
+  transferError.value = ''
+  transferSuccess.value = ''
+
+  try {
+    const result = await $fetch<any>(`/api/worlds/${worldId.value}/entities/${entityId.value}/sheet/inventory-transfers`, {
+      method: 'POST',
+      body: {
+        action: 'clearHistory'
+      }
+    })
+
+    await afterInventoryTransferMutation(result)
+    const cleared = Number(result?.cleared || 0)
+    transferSuccess.value = cleared
+      ? `Cleared ${cleared} transfer${cleared === 1 ? '' : 's'} from history.`
+      : 'No transfer history to clear.'
+  } catch (error: any) {
+    transferError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.statusMessage ||
+      error?.message ||
+      'Failed to clear transfer history.'
+  } finally {
+    transferSaving.value = false
+  }
+}
+
+
 const actionCenterInventoryItems = computed(() =>
   carriedInventory.value
     .map((item: any) => {
@@ -7164,6 +7199,7 @@ async function saveSheet() {
                   :accept-transfer="acceptInventoryTransfer"
                   :decline-transfer="declineInventoryTransfer"
                   :cancel-transfer="cancelInventoryTransfer"
+                  :clear-transfer-history="clearInventoryTransferHistory"
                   :common-action-cards="commonActionCards"
                   :displayed-bonus-action-cards="displayedBonusActionCards"
                   :displayed-reaction-action-cards="displayedReactionActionCards"

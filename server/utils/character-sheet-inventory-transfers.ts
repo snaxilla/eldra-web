@@ -170,32 +170,42 @@ async function activeSheetsForWorld(worldId: string | number) {
   })
 
   const sheets = Array.isArray(res?.data) ? res.data : []
-  const entityIds = sheets
-    .map((sheet: any) => intOrNull(sheet?.entity_id))
-    .filter(Boolean)
+  const entityIds = Array.from(new Set(
+    sheets
+      .map((sheet: any) => intOrNull(sheet?.entity_id))
+      .filter(Boolean)
+  ))
 
   if (!entityIds.length) return []
 
-  const entitiesRes = await directusServiceRequest('/items/entities', {
-    method: 'GET',
-    query: {
-      filter: {
-        _and: [
-          { world_id: { _eq: Number(worldId) } },
-          { id: { _in: entityIds } }
-        ]
-      },
-      limit: -1,
-      fields: 'id,title,entity_type,character_type,status,visibility,world_id'
-    }
-  })
+  const entitiesById = new Map<string, any>()
+  const chunkSize = 75
 
-  const entities = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
-  const entitiesById = new Map<string, any>(
-    entities
-      .filter(isTransferCharacterEntity)
-      .map((entity: any) => [String(entity.id), entity])
-  )
+  for (let index = 0; index < entityIds.length; index += chunkSize) {
+    const chunk = entityIds.slice(index, index + chunkSize)
+    const params = new URLSearchParams()
+
+    params.set('filter[world_id][_eq]', String(worldId))
+    params.set('filter[id][_in]', chunk.join(','))
+    params.set('limit', '-1')
+    params.set('fields', 'id,title,status,visibility,world_id')
+
+    const entitiesRes = await directusServiceRequest(`/items/entities?${params.toString()}`, {
+      method: 'GET'
+    })
+
+    const entities = Array.isArray(entitiesRes?.data) ? entitiesRes.data : []
+
+    for (const entity of entities) {
+      const status = String(entity?.status || '').trim().toLowerCase()
+
+      if (['deleted', 'archived', 'trash', 'trashed'].includes(status)) {
+        continue
+      }
+
+      entitiesById.set(String(entity.id), entity)
+    }
+  }
 
   return sheets
     .filter((sheet: any) => entitiesById.has(String(sheet?.entity_id || '')))
@@ -209,6 +219,7 @@ async function activeSheetsForWorld(worldId: string | number) {
       }
     })
 }
+
 
 async function loadInventoryRowBySheet(sheetId: any, inventoryId: any) {
   const rowId = intOrNull(inventoryId)

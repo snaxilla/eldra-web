@@ -1,4 +1,5 @@
 import { directusServiceRequest } from './directus'
+import { normalizeDnd5eItemFromEntity } from './dnd5e-items'
 
 let inventoryFieldCache: Set<string> | null = null
 
@@ -56,7 +57,8 @@ async function inventoryFields() {
     'attuned',
     'container',
     'notes',
-    'sort'
+    'sort',
+    'data'
   ])
 
   return inventoryFieldCache
@@ -70,6 +72,27 @@ function itemLinkField(fields: Set<string>) {
     'inventory_item_entity',
     'linked_item_entity_id'
   ].find((field) => fields.has(field)) || null
+}
+
+
+function asPlainObject(value: any) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function normalizedItemDataForLinkedItem(linkedItem: any, previousData: any = null) {
+  const base = { ...asPlainObject(previousData) }
+  const profile = linkedItem?.itemProfile || linkedItem?.profile || linkedItem?.normalizedItem || null
+
+  if (!profile) return base
+
+  return {
+    ...base,
+    itemProfile: profile,
+    normalizedItem: profile,
+    profile,
+    itemEntityId: linkedItem?.id || profile?.id || null,
+    item_entity_id: linkedItem?.id || profile?.id || null
+  }
 }
 
 function pickSupported(fields: Set<string>, payload: Record<string, any>) {
@@ -144,11 +167,43 @@ async function loadWorldItemEntity(worldId: string | number, itemEntityId: any) 
         ]
       },
       limit: 1,
-      fields: 'id,title,slug,entity_type,world_id'
+      fields: 'id,title,slug,entity_type,world_id,system_key,summary,image'
     }
   })
 
-  return Array.isArray(res?.data) ? (res.data[0] || null) : null
+  const entity = Array.isArray(res?.data) ? (res.data[0] || null) : null
+  if (!entity?.id) return null
+
+  const blocksRes = await directusServiceRequest('/items/block_instances', {
+    method: 'GET',
+    query: {
+      filter: {
+        entity_id: { _eq: parsedId }
+      },
+      sort: 'sort,id',
+      limit: -1,
+      fields: '*'
+    }
+  })
+
+  const blocks = Array.isArray(blocksRes?.data) ? blocksRes.data : []
+  const entityWithBlocks = {
+    ...entity,
+    blocks
+  }
+
+  let itemProfile: any = null
+
+  try {
+    itemProfile = normalizeDnd5eItemFromEntity(entityWithBlocks)
+  } catch {}
+
+  return {
+    ...entityWithBlocks,
+    itemProfile,
+    normalizedItem: itemProfile,
+    profile: itemProfile
+  }
 }
 
 async function loadInventoryRow(sheetId: any, inventoryId: any) {
@@ -207,6 +262,11 @@ export async function createInventoryItemForSheet(worldId: string, entityId: str
     payload[linkField] = Number(linkedItem.id)
   }
 
+  const inventoryDataPayload = normalizedItemDataForLinkedItem(linkedItem, body?.data)
+  if (fields.has('data') && Object.keys(inventoryDataPayload).length) {
+    payload.data = inventoryDataPayload
+  }
+
   const created = await directusServiceRequest('/items/character_sheet_inventory', {
     method: 'POST',
     body: pickSupported(fields, payload)
@@ -237,6 +297,11 @@ export async function updateInventoryItemForSheet(worldId: string, entityId: str
 
   if (linkedItem?.id && linkField) {
     patch[linkField] = Number(linkedItem.id)
+
+    const linkedItemDataPayload = normalizedItemDataForLinkedItem(linkedItem, row?.data)
+    if (fields.has('data') && Object.keys(linkedItemDataPayload).length) {
+      patch.data = linkedItemDataPayload
+    }
   }
 
   const updated = await directusServiceRequest(`/items/character_sheet_inventory/${row.id}`, {

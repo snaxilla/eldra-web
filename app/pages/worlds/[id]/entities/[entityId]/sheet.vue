@@ -1502,6 +1502,13 @@ const filteredInventoryItemOptions = computed(() => {
     .slice(0, 150)
 })
 
+
+function inventoryRowData(item: any) {
+  return item?.data && typeof item.data === 'object' && !Array.isArray(item.data)
+    ? item.data
+    : {}
+}
+
 function inventoryLinkedItemId(item: any) {
   return String(
     item?.item_entity_id ??
@@ -1526,6 +1533,17 @@ function inventoryLinkedItemOption(item: any) {
 }
 
 function inventoryItemProfile(item: any) {
+  const rowData = inventoryRowData(item)
+  const directProfile =
+    rowData?.normalizedItem ||
+    rowData?.itemProfile ||
+    rowData?.profile ||
+    null
+
+  if (directProfile && typeof directProfile === 'object') {
+    return directProfile
+  }
+
   const option = inventoryLinkedItemOption(item)
   const entity = option?.entity || {}
 
@@ -7776,7 +7794,7 @@ async function saveSheet() {
                 @update-quantity="inventoryAddForm.quantity = $event"
                 @update-notes="inventoryAddForm.notes = $event"
                 @add-item="addInventoryItem"
-                @open-item-detail="openItemDrawer(inventoryItemDetail($event))"
+                @open-item-detail="openItemDrawer($event?.detail || inventoryItemDetail($event))"
                 @change-quantity="changeInventoryQuantity($event.item, $event.delta)"
                 @remove-item="removeInventoryItem"
                 @toggle-equipped="toggleInventoryEquipped"
@@ -7964,7 +7982,7 @@ async function saveSheet() {
               @update-quantity="inventoryAddForm.quantity = $event"
               @update-notes="inventoryAddForm.notes = $event"
               @add-item="addInventoryItem"
-              @open-item-detail="openItemDrawer(inventoryItemDetail($event))"
+              @open-item-detail="openItemDrawer($event?.detail || inventoryItemDetail($event))"
               @change-quantity="changeInventoryQuantity($event.item, $event.delta)"
               @remove-item="removeInventoryItem"
               @toggle-equipped="toggleInventoryEquipped"
@@ -8185,7 +8203,7 @@ async function saveSheet() {
           @update-quantity="inventoryAddForm.quantity = $event"
           @update-notes="inventoryAddForm.notes = $event"
           @add-item="addInventoryItem"
-          @open-item-detail="openItemDrawer(inventoryItemDetail($event))"
+          @open-item-detail="openItemDrawer($event?.detail || inventoryItemDetail($event))"
           @change-quantity="changeInventoryQuantity($event.item, $event.delta)"
           @remove-item="removeInventoryItem"
           @toggle-equipped="toggleInventoryEquipped"

@@ -1784,23 +1784,86 @@ function inventoryItemDamage(item: any) {
   }
 }
 
+
+function cleanItemDetailText(value: any) {
+  const text = String(value || '')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature|itemProperty)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@(?:i|b|dice|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text) return ''
+  if (text.startsWith('[') || text.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(text)
+      return cleanItemDetailText(Array.isArray(parsed) ? parsed.map((entry: any) => {
+        if (typeof entry === 'string') return entry
+        if (entry?.entries) return Array.isArray(entry.entries) ? entry.entries.join(' ') : entry.entries
+        if (entry?.entry) return entry.entry
+        return ''
+      }).join(' ') : '')
+    } catch {}
+  }
+
+  return text
+}
+
+function inventoryItemArmorClassForDetail(item: any) {
+  const profile = inventoryItemProfile(item)
+  const armor = profile?.armor || null
+
+  if (armor?.isShield) {
+    const value = Number(armor.shieldBonus ?? armor.baseAc ?? 2)
+    return Number.isFinite(value) && value > 0 ? value : 2
+  }
+
+  if (armor?.isArmor) {
+    const base = Number(armor.baseAc || 0)
+    const bonus = Number(armor.bonusAc || 0)
+    const total = base + (Number.isFinite(bonus) ? bonus : 0)
+    return Number.isFinite(total) && total > 0 ? total : ''
+  }
+
+  const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
+  const value = item?.armor_class ?? item?.armorClass ?? core?.armor_class ?? core?.armorClass ?? raw?.ac ?? raw?.armorClass
+  const parsed = Number(value)
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : ''
+}
+
+function inventoryItemRequiresAttunementForDetail(item: any) {
+  const profile = inventoryItemProfile(item)
+  if (profile?.requiresAttunement !== undefined) return profile.requiresAttunement === true
+
+  const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
+
+  return Boolean(item?.requiresAttunement || item?.attunement || core?.attunement || raw?.reqAttune)
+}
+
 function inventoryItemDetail(item: any) {
   const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
   const profile = inventoryItemProfile(item)
   const damage = inventoryItemDamage(item)
   const linkedItemId = inventoryLinkedItemId(item)
 
   return {
     id: item?.id,
-    name: String(item?.name || profile?.name || core?.name || 'Item'),
+    name: String(item?.name || profile?.name || core?.name || raw?.name || 'Item'),
     itemType: profile?.displayType || inventoryItemTypeLabel(item) || 'Item',
     damage: damage.damage,
     damageType: damageTypeLabel(damage.damageType),
+    armorClass: inventoryItemArmorClassForDetail(item),
+    requiresAttunement: inventoryItemRequiresAttunementForDetail(item),
     linkedItemId,
-    rarity: String(profile?.rarity || core?.rarity || item?.rarity || '').trim(),
-    weight: profile?.weight ?? core?.weight ?? item?.weight ?? '',
-    value: profile?.value || core?.value || item?.value || '',
-    description: String(profile?.description || core?.description || item?.description || '').trim(),
+    rarity: String(profile?.rarity || core?.rarity || raw?.rarity || item?.rarity || '').trim(),
+    weight: profile?.weight ?? core?.weight ?? raw?.weight ?? item?.weight ?? '',
+    value: profile?.value || core?.value || raw?.value || item?.value || '',
+    source: String(profile?.source || raw?.source || '').trim(),
+    description: cleanItemDetailText(profile?.description || core?.description || raw?.entriesPreview || item?.description || ''),
     notes: item?.notes || '',
     profile
   }

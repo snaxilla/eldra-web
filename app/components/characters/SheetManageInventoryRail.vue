@@ -48,12 +48,20 @@ const emit = defineEmits<{
   (event: 'toggle-attuned', item: any): void
 }>()
 
+const route = useRoute()
+const detailLoadingId = ref('')
+const detailError = ref('')
+const fullEntityCache = reactive<Record<string, any>>({})
+
+const effectiveWorldId = computed(() =>
+  String(props.worldId || route.params.id || '').trim()
+)
+
 const normalizedSearchUrl = computed(() => {
-  const worldId = String(props.worldId || '').trim()
+  const worldId = effectiveWorldId.value
   if (!worldId) return null
 
   const q = encodeURIComponent(String(props.inventoryItemSearch || '').trim())
-
   return `/api/worlds/${worldId}/items/normalized?q=${q}&limit=35`
 })
 
@@ -136,8 +144,40 @@ function itemMetaLine(item: any) {
     .join(' / ')
 }
 
+function optionEntity(option: any) {
+  return option?.entity || option || {}
+}
+
+function optionBlocks(option: any) {
+  const entity = optionEntity(option)
+  return Array.isArray(entity?.blocks)
+    ? entity.blocks
+    : Array.isArray(option?.blocks)
+      ? option.blocks
+      : []
+}
+
+function optionBlockByKey(option: any, key: string) {
+  return optionBlocks(option).find((block: any) =>
+    String(block?.block_key || block?.blockKey || '') === key
+  ) || null
+}
+
+function optionCoreSummary(option: any) {
+  const entity = optionEntity(option)
+  return entity?.itemCore || entity?.core || optionBlockByKey(option, 'item_core')?.data || {}
+}
+
+function optionRawJson(option: any) {
+  const entity = optionEntity(option)
+  return entity?.raw ||
+    entity?.importSource?.raw_json ||
+    optionBlockByKey(option, 'import_source')?.data?.raw_json ||
+    {}
+}
+
 function optionProfile(option: any) {
-  const entity = option?.entity || option || {}
+  const entity = optionEntity(option)
 
   return (
     option?.profile ||
@@ -149,25 +189,6 @@ function optionProfile(option: any) {
     entity?.normalized_item ||
     null
   )
-}
-
-function optionBlockByKey(option: any, key: string) {
-  const blocks = Array.isArray(option?.entity?.blocks) ? option.entity.blocks : []
-
-  return blocks.find((block: any) =>
-    String(block?.block_key || block?.blockKey || '') === key
-  ) || null
-}
-
-function optionCoreSummary(option: any) {
-  const entity = option?.entity || option || {}
-  const core = optionBlockByKey(option, 'item_core')?.data || {}
-
-  return entity?.itemCore || entity?.core || core || {}
-}
-
-function optionRawJson(option: any) {
-  return optionBlockByKey(option, 'import_source')?.data?.raw_json || {}
 }
 
 function optionTypeLabelForCode(value: any) {
@@ -233,20 +254,88 @@ function optionMetaLine(option: any) {
     .join(' / ')
 }
 
+function textifyItemEntry(value: any): string {
+  if (value == null) return ''
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(textifyItemEntry).filter(Boolean).join(' ')
+  }
+
+  if (typeof value === 'object') {
+    const parts: string[] = []
+
+    if (value.name) parts.push(String(value.name))
+    if (value.entry) parts.push(textifyItemEntry(value.entry))
+    if (value.entries) parts.push(textifyItemEntry(value.entries))
+    if (value.items) parts.push(textifyItemEntry(value.items))
+
+    return parts.join(' ')
+  }
+
+  return ''
+}
+
+function cleanItemText(value: any) {
+  let text = ''
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        text = textifyItemEntry(JSON.parse(trimmed))
+      } catch {
+        text = trimmed
+      }
+    } else {
+      text = trimmed
+    }
+  } else {
+    text = textifyItemEntry(value)
+  }
+
+  return String(text || '')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat|classFeature|subclassFeature|itemProperty)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@(?:i|b|dice|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function optionDescription(option: any) {
   const profile = optionProfile(option) || {}
   const core = optionCoreSummary(option) || {}
   const raw = optionRawJson(option) || {}
 
-  const text = String(
+  const text = cleanItemText(
     profile?.description ||
     core?.description ||
     raw?.entriesPreview ||
+    raw?.entries ||
     option?.summary ||
     ''
-  ).replace(/\s+/g, ' ').trim()
+  )
 
   return text.length > 120 ? `${text.slice(0, 120).trim()}...` : text
+}
+
+function fullOptionDescription(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+  const raw = optionRawJson(option) || {}
+
+  return cleanItemText(
+    profile?.description ||
+    core?.description ||
+    raw?.entriesPreview ||
+    raw?.entries ||
+    option?.summary ||
+    ''
+  )
 }
 
 function damageTypeLabel(value: any) {
@@ -271,22 +360,59 @@ function damageTypeLabel(value: any) {
   return labels[code] || String(value || '').trim()
 }
 
+function optionArmorClass(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+  const raw = optionRawJson(option) || {}
+  const armor = profile?.armor || null
+
+  if (armor?.isShield) {
+    const value = Number(armor.shieldBonus ?? armor.baseAc ?? 2)
+    return Number.isFinite(value) && value > 0 ? value : 2
+  }
+
+  if (armor?.isArmor) {
+    const base = Number(armor.baseAc || 0)
+    const bonus = Number(armor.bonusAc || 0)
+    const total = base + (Number.isFinite(bonus) ? bonus : 0)
+    return Number.isFinite(total) && total > 0 ? total : ''
+  }
+
+  const value = core?.armor_class ?? core?.armorClass ?? raw?.ac ?? raw?.armorClass
+  const parsed = Number(value)
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : ''
+}
+
+function optionRequiresAttunement(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+  const raw = optionRawJson(option) || {}
+
+  if (profile?.requiresAttunement !== undefined) return profile.requiresAttunement === true
+
+  return Boolean(core?.attunement || raw?.reqAttune || raw?.attunement)
+}
+
 function optionItemDetail(option: any) {
   const profile = optionProfile(option) || {}
   const core = optionCoreSummary(option) || {}
   const raw = optionRawJson(option) || {}
 
   return {
-    id: option?.id,
-    name: String(profile?.name || option?.title || core?.name || raw?.name || 'Item'),
+    id: option?.id || optionEntity(option)?.id,
+    name: String(profile?.name || option?.title || optionEntity(option)?.title || core?.name || raw?.name || 'Item'),
     itemType: optionDisplayType(option),
     damage: String(profile?.weapon?.damage || core?.damage || raw?.dmg1 || '').trim(),
     damageType: damageTypeLabel(profile?.weapon?.damageType || core?.damage_type || raw?.dmgType || ''),
-    linkedItemId: String(option?.id || profile?.id || ''),
+    armorClass: optionArmorClass(option),
+    requiresAttunement: optionRequiresAttunement(option),
+    linkedItemId: String(option?.id || optionEntity(option)?.id || profile?.id || ''),
     rarity: String(profile?.rarity || core?.rarity || raw?.rarity || '').trim(),
     weight: profile?.weight ?? core?.weight ?? raw?.weight ?? '',
     value: profile?.value || core?.value || raw?.value || '',
-    description: String(profile?.description || core?.description || raw?.entriesPreview || option?.summary || '').trim(),
+    source: String(profile?.source || raw?.source || '').trim(),
+    description: fullOptionDescription(option),
     notes: '',
     profile
   }
@@ -300,10 +426,62 @@ function clearImportedItem() {
   emit('update-item-entity-id', '')
 }
 
-function openOptionDetail(option: any) {
-  emit('open-item-detail', {
-    detail: optionItemDetail(option)
-  })
+async function fullEntityForOption(option: any) {
+  const id = String(option?.id || '').trim()
+  const worldId = effectiveWorldId.value
+
+  if (!id || !worldId) return option
+
+  if (fullEntityCache[id]) {
+    return {
+      ...option,
+      entity: fullEntityCache[id],
+      title: fullEntityCache[id]?.title || option?.title
+    }
+  }
+
+  const entity = await $fetch<any>(`/api/worlds/${worldId}/entities/${id}`)
+  fullEntityCache[id] = entity
+
+  return {
+    ...option,
+    entity,
+    title: entity?.title || option?.title
+  }
+}
+
+async function openOptionDetail(option: any) {
+  const id = String(option?.id || '').trim()
+  detailError.value = ''
+
+  if (!id) {
+    emit('open-item-detail', {
+      detail: optionItemDetail(option)
+    })
+    return
+  }
+
+  detailLoadingId.value = id
+
+  try {
+    const fullOption = await fullEntityForOption(option)
+
+    emit('open-item-detail', {
+      detail: optionItemDetail(fullOption)
+    })
+  } catch (error: any) {
+    detailError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to load full item details.'
+
+    emit('open-item-detail', {
+      detail: optionItemDetail(option)
+    })
+  } finally {
+    detailLoadingId.value = ''
+  }
 }
 </script>
 
@@ -321,6 +499,13 @@ function openOptionDetail(option: any) {
       class="rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-200"
     >
       {{ inventorySaveSuccess }}
+    </div>
+
+    <div
+      v-if="detailError"
+      class="rounded-none border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100"
+    >
+      {{ detailError }}
     </div>
 
     <section class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.58)] p-4">
@@ -421,10 +606,11 @@ function openOptionDetail(option: any) {
 
               <button
                 type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-2 text-xs font-semibold text-[#fff7df]"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
+                :disabled="detailLoadingId === String(option.id)"
                 @click="openOptionDetail(option)"
               >
-                Details
+                {{ detailLoadingId === String(option.id) ? 'Loading...' : 'Details' }}
               </button>
             </div>
           </article>

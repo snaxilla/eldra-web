@@ -86,6 +86,46 @@ const emit = defineEmits<{
           </div>
 
           <div class="mt-5 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.48)] p-4">
+            <section
+              v-if="item && (
+                (item.armorClass !== '' && item.armorClass !== null && item.armorClass !== undefined) ||
+                item.requiresAttunement ||
+                item.source
+              )"
+              class="border-b border-[rgba(201,164,90,0.18)] px-5 py-4"
+            >
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+                Item Properties
+              </div>
+
+              <div class="mt-3 grid gap-2 text-sm">
+                <div
+                  v-if="item.armorClass !== '' && item.armorClass !== null && item.armorClass !== undefined"
+                  class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                >
+                  <span class="text-[#9f9278]">Armor Class:</span>
+                  <span class="text-[#fff7df]">{{ item.armorClass }}</span>
+                </div>
+
+                <div
+                  v-if="item.requiresAttunement"
+                  class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                >
+                  <span class="text-[#9f9278]">Attunement:</span>
+                  <span class="text-[#fff7df]">Required</span>
+                </div>
+
+                <div
+                  v-if="item.source"
+                  class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] p-3"
+                >
+                  <span class="text-[#9f9278]">Source:</span>
+                  <span class="text-[#fff7df]">{{ item.source }}</span>
+                </div>
+              </div>
+            </section>
+
+
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Description</div>
             <p class="mt-3 whitespace-pre-line text-sm leading-6 text-[#d8ceb8]">
               {{ item.description || item.notes || 'No item description has been imported for this item yet.' }}

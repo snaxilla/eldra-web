@@ -7092,8 +7092,12 @@ async function saveSheet() {
       <div class="absolute inset-x-0 bottom-0 h-1/3 bg-[linear-gradient(to_top,rgba(3,6,10,0.48),transparent)]"></div>
     </div>
     <div
-        :class="sheetContextRailOpen ? 'md:pr-[460px]' : ''"
-        class="relative z-10 mx-auto w-full max-w-[1600px] p-3 pb-28 transition-all duration-200 md:p-6"
+        data-sheet-page-shell
+        :class="[
+          sheetContextRailOpen ? 'md:pr-[456px] xl:pr-[468px]' : '',
+          sheetContextRailOpen ? 'md:mx-0 md:max-w-none' : 'md:mx-auto md:max-w-[1680px]'
+        ]"
+        class="relative z-10 w-full p-3 pb-28 transition-all duration-200 md:px-4 md:py-5 xl:px-6"
       >
 
 

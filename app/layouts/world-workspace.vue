@@ -14,7 +14,28 @@ watch(showPins, (value) => {
   showPinsCookie.value = value ? 'true' : 'false'
 })
 
-const leftCollapsed = useState<boolean>('world-workspace-left-collapsed', () => false)
+function shouldCollapseWorkspaceSidebar(path: any) {
+  return /^\/worlds\/[^/]+\/entities\/[^/]+\/sheet(?:\/|$)/.test(String(path || ''))
+}
+
+const leftCollapsed = useState<boolean>('world-workspace-left-collapsed', () => shouldCollapseWorkspaceSidebar(route.path))
+
+
+watch(
+  () => route.path,
+  (path) => {
+    if (shouldCollapseWorkspaceSidebar(path)) {
+      leftCollapsed.value = true
+    }
+  },
+  { immediate: true }
+)
+
+function toggleWorkspaceSidebar() {
+  leftCollapsed.value = !leftCollapsed.value
+}
+
+
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
@@ -105,7 +126,7 @@ const backgroundImageUrl = computed(() => {
         :world="world"
         :collapsed="leftCollapsed"
         :mode="mode"
-        @toggle-collapse="leftCollapsed = !leftCollapsed"
+        @toggle-collapse="toggleWorkspaceSidebar"
         @set-mode="mode = $event"
       />
 

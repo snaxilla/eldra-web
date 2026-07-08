@@ -73,6 +73,140 @@ function optionProfile(option: any) {
   )
 }
 
+
+function optionBlockByKey(option: any, key: string) {
+  const blocks = Array.isArray(option?.entity?.blocks) ? option.entity.blocks : []
+
+  return blocks.find((block: any) =>
+    String(block?.block_key || block?.blockKey || '') === key
+  ) || null
+}
+
+function optionRawJson(option: any) {
+  return optionBlockByKey(option, 'import_source')?.data?.raw_json || {}
+}
+
+function optionTypeCodeFromText(value: any) {
+  const text = String(value || '').toLowerCase()
+
+  if (text.includes('longsword')) return 'M'
+  if (text.includes('shortsword') || text.includes('short sword')) return 'M'
+  if (text.includes('greatsword')) return 'M'
+  if (text.includes('sword of answering')) return 'M'
+  if (text.includes('sword of kas')) return 'M'
+  if (text.includes('vorpal sword')) return 'M'
+  if (text.includes('flame tongue')) return 'M'
+  if (text.includes('frost brand')) return 'M'
+  if (text.includes('holy avenger')) return 'M'
+  if (text.includes('scimitar')) return 'M'
+  if (text.includes('rapier')) return 'M'
+  if (text.includes('dagger')) return 'M'
+  if (text.includes('club')) return 'M'
+  if (text.includes('mace')) return 'M'
+  if (text.includes('spear')) return 'M'
+  if (text.includes('quarterstaff')) return 'M'
+  if (text.includes('staff')) return 'M'
+
+  if (text.includes('longbow')) return 'R'
+  if (text.includes('shortbow')) return 'R'
+  if (text.includes('crossbow')) return 'R'
+  if (text.includes('rifle')) return 'R'
+  if (text.includes('pistol')) return 'R'
+  if (text.includes('dart')) return 'R'
+  if (text.includes('sling')) return 'R'
+
+  return ''
+}
+
+function optionTypeLabelForCode(value: any) {
+  const code = String(value || '').split('|')[0].trim().toUpperCase()
+
+  const labels: Record<string, string> = {
+    M: 'Melee Weapon',
+    R: 'Ranged Weapon',
+    A: 'Ammunition',
+    LA: 'Light Armor',
+    MA: 'Medium Armor',
+    HA: 'Heavy Armor',
+    S: 'Shield',
+    RD: 'Rod',
+    WD: 'Wand',
+    RG: 'Ring',
+    SC: 'Scroll',
+    SCF: 'Spellcasting Focus',
+    G: 'Gear',
+    P: 'Potion'
+  }
+
+  return labels[code] || ''
+}
+
+function optionTypeCode(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+  const raw = optionRawJson(option) || {}
+
+  const rawType = String(
+    profile?.typeCode ||
+    profile?.rawType ||
+    core?.item_type ||
+    core?.itemType ||
+    raw?.type ||
+    ''
+  ).trim()
+
+  const code = rawType.split('|')[0].trim().toUpperCase()
+  if (code) return code
+
+  if (profile?.weapon || profile?.category === 'weapon' || raw?.weapon === true) {
+    return optionTypeCodeFromText([
+      option?.title,
+      profile?.name,
+      core?.name,
+      raw?.name,
+      raw?.baseItem
+    ].filter(Boolean).join(' ')) || 'M'
+  }
+
+  return optionTypeCodeFromText([
+    option?.title,
+    profile?.name,
+    core?.name,
+    raw?.name,
+    raw?.baseItem
+  ].filter(Boolean).join(' '))
+}
+
+function optionDisplayType(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+  const raw = optionRawJson(option) || {}
+
+  return String(
+    profile?.displayType ||
+    optionTypeLabelForCode(optionTypeCode(option)) ||
+    core?.item_type ||
+    core?.itemType ||
+    raw?.type ||
+    'Item'
+  ).trim()
+}
+
+function optionRarity(option: any) {
+  const profile = optionProfile(option) || {}
+  const core = optionCoreSummary(option) || {}
+  const raw = optionRawJson(option) || {}
+
+  return String(profile?.rarity || core?.rarity || raw?.rarity || '').trim()
+}
+
+function optionSource(option: any) {
+  const profile = optionProfile(option) || {}
+  const raw = optionRawJson(option) || {}
+
+  return String(profile?.source || raw?.source || '').trim()
+}
+
 function optionCoreSummary(option: any) {
   const entity = option?.entity || option || {}
   const blocks = Array.isArray(entity?.blocks) ? entity.blocks : []
@@ -84,13 +218,10 @@ function optionCoreSummary(option: any) {
 }
 
 function optionMetaLine(option: any) {
-  const profile = optionProfile(option) || {}
-  const core = optionCoreSummary(option) || {}
-
   return [
-    profile?.displayType || core?.item_type || core?.itemType || 'Item',
-    profile?.rarity || core?.rarity || '',
-    profile?.source || ''
+    optionDisplayType(option),
+    optionRarity(option),
+    optionSource(option)
   ]
     .filter(Boolean)
     .join(' / ')
@@ -99,7 +230,15 @@ function optionMetaLine(option: any) {
 function optionDescription(option: any) {
   const profile = optionProfile(option) || {}
   const core = optionCoreSummary(option) || {}
-  const text = String(profile?.description || core?.description || option?.summary || '').replace(/\s+/g, ' ').trim()
+  const raw = optionRawJson(option) || {}
+
+  const text = String(
+    profile?.description ||
+    core?.description ||
+    raw?.entriesPreview ||
+    option?.summary ||
+    ''
+  ).replace(/\s+/g, ' ').trim()
 
   return text.length > 120 ? `${text.slice(0, 120).trim()}...` : text
 }

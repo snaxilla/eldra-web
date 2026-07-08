@@ -60,7 +60,7 @@ function tabClass(key: string) {
 <template>
   <aside
     data-sheet-manage-context-rail
-    class="sheet-desktop-only eldra-ornate-panel eldra-frame-corners eldra-corner-runes fixed right-0 top-0 z-[78] hidden h-screen w-[460px] overflow-y-auto border-l border-[rgba(201,164,90,0.32)] bg-[linear-gradient(to_bottom,rgba(12,15,20,0.98),rgba(5,8,13,0.98))] shadow-[-24px_0_70px_rgba(0,0,0,0.42)] md:block"
+    class="sheet-desktop-only eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 z-[78] hidden h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:flex md:w-[440px]"
   >
     <header class="sticky top-0 z-10 border-b border-[rgba(201,164,90,0.20)] bg-[rgba(8,10,12,0.96)] p-4 backdrop-blur">
       <div class="flex items-start justify-between gap-4">
@@ -122,7 +122,7 @@ function tabClass(key: string) {
       </div>
     </header>
 
-    <main class="p-4">
+    <main class="min-h-0 flex-1 overflow-y-auto p-4">
       <div v-if="activePanelKey === 'inventory'">
         <slot name="inventory" />
       </div>

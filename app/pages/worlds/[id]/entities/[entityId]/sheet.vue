@@ -1609,6 +1609,60 @@ function inventoryItemCore(item: any) {
   return option ? optionCore(option, 'item_core') || {} : {}
 }
 
+
+function inferredInventoryWeaponText(item: any) {
+  const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
+  const profile = inventoryItemProfile(item) || {}
+
+  return [
+    item?.name,
+    profile?.name,
+    core?.name,
+    raw?.name,
+    raw?.baseItem,
+    raw?.baseitem,
+    raw?.base_item,
+    raw?.type,
+    core?.item_type,
+    core?.itemType
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function inferredInventoryWeaponData(item: any) {
+  const text = inferredInventoryWeaponText(item)
+
+  const entries = [
+    { patterns: ['greatsword'], typeCode: 'M', damage: '2d6', damageType: 'S', category: 'martial' },
+    { patterns: ['shortsword', 'short sword'], typeCode: 'M', damage: '1d6', damageType: 'P', category: 'martial' },
+    { patterns: ['sword of answering', 'sword of kas', 'vorpal sword', 'flame tongue', 'frost brand', 'holy avenger', 'defender', 'sun blade', 'luck blade', 'longsword'], typeCode: 'M', damage: '1d8', damageType: 'S', category: 'martial' },
+    { patterns: ['scimitar'], typeCode: 'M', damage: '1d6', damageType: 'S', category: 'martial' },
+    { patterns: ['rapier'], typeCode: 'M', damage: '1d8', damageType: 'P', category: 'martial' },
+    { patterns: ['dagger'], typeCode: 'M', damage: '1d4', damageType: 'P', category: 'simple' },
+    { patterns: ['club'], typeCode: 'M', damage: '1d4', damageType: 'B', category: 'simple' },
+    { patterns: ['mace'], typeCode: 'M', damage: '1d6', damageType: 'B', category: 'simple' },
+    { patterns: ['spear'], typeCode: 'M', damage: '1d6', damageType: 'P', category: 'simple' },
+    { patterns: ['quarterstaff', 'staff'], typeCode: 'M', damage: '1d6', damageType: 'B', category: 'simple' },
+    { patterns: ['longbow'], typeCode: 'R', damage: '1d8', damageType: 'P', category: 'martial' },
+    { patterns: ['shortbow'], typeCode: 'R', damage: '1d6', damageType: 'P', category: 'simple' },
+    { patterns: ['hand crossbow'], typeCode: 'R', damage: '1d6', damageType: 'P', category: 'martial' },
+    { patterns: ['light crossbow'], typeCode: 'R', damage: '1d8', damageType: 'P', category: 'simple' },
+    { patterns: ['heavy crossbow'], typeCode: 'R', damage: '1d10', damageType: 'P', category: 'martial' },
+    { patterns: ['automatic rifle'], typeCode: 'R', damage: '2d8', damageType: 'P', category: 'martial' },
+    { patterns: ['antimatter rifle'], typeCode: 'R', damage: '6d8', damageType: 'N', category: 'martial' },
+    { patterns: ['rifle', 'pistol'], typeCode: 'R', damage: '', damageType: 'P', category: 'martial' },
+    { patterns: ['dart'], typeCode: 'R', damage: '1d4', damageType: 'P', category: 'simple' },
+    { patterns: ['sling'], typeCode: 'R', damage: '1d4', damageType: 'B', category: 'simple' }
+  ]
+
+  return entries.find((entry) =>
+    entry.patterns.some((pattern) => text.includes(pattern))
+  ) || null
+}
+
 function inventoryItemTypeCode(item: any) {
   const profile = inventoryItemProfile(item)
   if (profile?.typeCode) return String(profile.typeCode).trim().toUpperCase()
@@ -1624,7 +1678,17 @@ function inventoryItemTypeCode(item: any) {
     ''
   ).trim()
 
-  return rawType.split('|')[0].trim().toUpperCase()
+  const code = rawType.split('|')[0].trim().toUpperCase()
+  if (code) return code
+
+  const inferred = inferredInventoryWeaponData(item)
+  if (inferred?.typeCode) return inferred.typeCode
+
+  if (profile?.weapon || profile?.category === 'weapon' || raw?.weapon === true) {
+    return inferred?.typeCode || 'M'
+  }
+
+  return ''
 }
 
 function inventoryItemTypeLabel(item: any) {
@@ -1667,10 +1731,38 @@ function inventoryItemDamage(item: any) {
   }
 
   const core = inventoryItemCore(item)
+  const raw = inventoryItemRaw(item)
+
+  const damage = String(
+    item?.damage ??
+    core?.damage ??
+    raw?.dmg1 ??
+    raw?.damage ??
+    ''
+  ).trim()
+
+  const damageType = String(
+    item?.damage_type ??
+    item?.damageType ??
+    core?.damage_type ??
+    core?.damageType ??
+    raw?.dmgType ??
+    raw?.damageType ??
+    ''
+  ).trim()
+
+  if (damage || damageType) {
+    return {
+      damage,
+      damageType
+    }
+  }
+
+  const inferred = inferredInventoryWeaponData(item)
 
   return {
-    damage: String(item?.damage ?? core?.damage ?? '').trim(),
-    damageType: String(item?.damage_type ?? item?.damageType ?? core?.damage_type ?? core?.damageType ?? '').trim()
+    damage: String(inferred?.damage || '').trim(),
+    damageType: String(inferred?.damageType || '').trim()
   }
 }
 
@@ -1769,7 +1861,7 @@ function weaponCategoryForItem(item: any) {
   const raw = inventoryItemRaw(item)
   const core = inventoryItemCore(item)
 
-  return String(
+  const category = String(
     item?.weapon_category ??
     item?.weaponCategory ??
     core?.weapon_category ??
@@ -1781,6 +1873,11 @@ function weaponCategoryForItem(item: any) {
     .split('|')[0]
     .trim()
     .toLowerCase()
+
+  if (category) return category
+
+  const inferred = inferredInventoryWeaponData(item)
+  return String(inferred?.category || '').trim().toLowerCase()
 }
 
 function characterWeaponProficiencyText() {

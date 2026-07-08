@@ -188,9 +188,7 @@ const SHEET_TABS = [
   { key: 'actions', label: 'Actions', icon: 'i-lucide-swords' },
   { key: 'inventory', label: 'Inventory', icon: 'i-lucide-backpack' },
   { key: 'spells', label: 'Spells', icon: 'i-lucide-sparkles' },
-  { key: 'features', label: 'Features', icon: 'i-lucide-badge-plus' },
-  { key: 'notes', label: 'Notes', icon: 'i-lucide-scroll-text' }
-] as const
+  { key: 'features', label: 'Features', icon: 'i-lucide-badge-plus' },] as const
 
 const standardActionCards = [
   {
@@ -276,7 +274,7 @@ const reactionActionCards = [
 type SheetTab = typeof SHEET_TABS[number]['key']
 
 const desktopSheetTabs = computed(() =>
-  SHEET_TABS.filter((tab) => !['actions', 'notes'].includes(tab.key))
+  SHEET_TABS.filter((tab) => !['actions'].includes(tab.key))
 )
 
 const mobileSheetTabs = computed(() =>
@@ -327,7 +325,7 @@ function redirectLegacyDesktopSheetTabs() {
   if (!sheetViewportWidth.value) return
   if (useCompactSheetLayout.value) return
 
-  if (['actions', 'notes'].includes(activeSheetTab.value)) {
+  if (['actions'].includes(activeSheetTab.value)) {
     setSheetTab('overview')
   }
 }
@@ -7442,8 +7440,13 @@ async function saveSheet() {
         :entity-id="entityId"
         :mode="mode"
         :saving="sheetSaving"
+        :rest-saving="restSaving"
+        :rest-save-error="restSaveError"
+        :rest-save-success="restSaveSuccess"
         @refresh="refresh"
         @save="saveSheet"
+        @short-rest="takeShortRest"
+        @long-rest="takeLongRest"
       />
 
         <CharactersSheetTabBar
@@ -8128,19 +8131,7 @@ async function saveSheet() {
             />
 
 
-            <CharactersSheetNotesTab
-              v-else
-              :note-search="noteSearch"
-              :notes="filteredNoteCards"
-              :note-count="sheetNoteCards.length"
-              :note-save-error="noteSaveError"
-              :note-save-success="noteSaveSuccess"
-              :format-note-date="formatNoteDate"
-              :short-text="shortText"
-              @update-search="noteSearch = $event"
-              @add-note="openAddNoteDrawer"
-              @open-note="openNoteDetail"
-            />
+            
         </template>
       </section>
     </div>

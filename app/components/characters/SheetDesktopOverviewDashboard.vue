@@ -473,50 +473,7 @@ function openManageCharacter() {
           </div>
         </section>
 
-        <section
-          data-desktop-rest-controls
-          class="eldra-codex-soft rounded-none p-4"
-        >
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Rest</div>
-              <div class="mt-1 text-sm text-[#d8ceb8]">Recover hit points, spell slots, and limited resources.</div>
-            </div>
-
-            <div
-              v-if="restSaving"
-              class="text-xs uppercase tracking-[0.18em] text-[#9f9278]"
-            >
-              Saving
-            </div>
-          </div>
-
-          <div class="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(65,82,103,0.64)] bg-[rgba(8,17,27,0.62)] px-3 py-2 text-xs font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df] disabled:opacity-50"
-              :disabled="restSaving"
-              @click="doShortRest"
-            >
-              Short Rest
-            </button>
-
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df] transition hover:border-[rgba(245,231,189,0.62)] disabled:opacity-50"
-              :disabled="restSaving"
-              @click="doLongRest"
-            >
-              {{ restSaving ? 'Resting...' : 'Long Rest' }}
-            </button>
-          </div>
-
-          <div class="mt-2 min-h-[1.25rem] text-xs">
-            <span v-if="restSaveError" class="text-red-200">{{ restSaveError }}</span>
-            <span v-else-if="restSaveSuccess" class="text-emerald-200">{{ restSaveSuccess }}</span>
-            <span v-else class="text-[#756a57]">Long Rest resets spell slots and long-rest resources.</span>
-          </div>
-        </section>
+        
 
         <slot name="actions">
           <section class="eldra-codex-soft rounded-none p-5 text-sm text-[#9f9278]">

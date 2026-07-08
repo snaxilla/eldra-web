@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const props = withDefaults(defineProps<{
+  openManageCharacter?: () => void
   mode?: string
   sheet?: any
   entity?: any
@@ -203,6 +204,11 @@ function proficienciesText(value: any, fallback = 'None listed') {
   const text = String(value || '').trim()
   return text || fallback
 }
+
+function openManageCharacter() {
+  props.openManageCharacter?.()
+}
+
 </script>
 
 <template>
@@ -238,6 +244,17 @@ function proficienciesText(value: any, fallback = 'None listed') {
             <div class="mt-2 text-sm leading-6 text-[#d8ceb8]">
               {{ subtitleText || 'No class/species details yet.' }}
             </div>
+
+            <button
+              type="button"
+              data-manage-character-button
+              class="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.52)] hover:bg-[rgba(201,164,90,0.18)]"
+              @click.stop="openManageCharacter"
+            >
+              <UIcon name="i-lucide-settings" class="h-4 w-4" />
+              <span>Manage Character</span>
+            </button>
+
           </div>
         </section>
 

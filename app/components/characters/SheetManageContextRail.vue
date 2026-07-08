@@ -1,13 +1,15 @@
 <script setup lang="ts">
-type ManagePanelKey = 'inventory' | 'spells'
+type ManagePanelKey = 'character' | 'inventory' | 'spells'
 
 const props = withDefaults(defineProps<{
   activePanel?: ManagePanelKey | string
+  choiceCount?: number
   inventoryCount?: number
   spellCount?: number
   saving?: boolean
 }>(), {
-  activePanel: 'inventory',
+  activePanel: 'character',
+  choiceCount: 0,
   inventoryCount: 0,
   spellCount: 0,
   saving: false
@@ -19,6 +21,13 @@ const emit = defineEmits<{
 }>()
 
 const tabs = computed(() => [
+  {
+    key: 'character',
+    label: 'Character',
+    icon: 'i-lucide-settings',
+    count: props.choiceCount,
+    description: 'Level, class, species, background, ability scores, combat basics, and pending choices.'
+  },
   {
     key: 'inventory',
     label: 'Inventory',
@@ -36,10 +45,10 @@ const tabs = computed(() => [
 ] as const)
 
 const activePanelKey = computed<ManagePanelKey>(() => {
-  const key = String(props.activePanel || 'inventory')
+  const key = String(props.activePanel || 'character')
   return tabs.value.some((tab) => tab.key === key)
     ? key as ManagePanelKey
-    : 'inventory'
+    : 'character'
 })
 
 const activeTab = computed(() =>
@@ -123,7 +132,11 @@ function tabClass(key: string) {
     </header>
 
     <main class="min-h-0 flex-1 overflow-y-auto p-4">
-      <div v-if="activePanelKey === 'inventory'">
+      <div v-if="activePanelKey === 'character'">
+        <slot name="character" />
+      </div>
+
+      <div v-else-if="activePanelKey === 'inventory'">
         <slot name="inventory" />
       </div>
 

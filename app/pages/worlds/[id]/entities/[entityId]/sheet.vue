@@ -129,7 +129,7 @@ const noteDraft = reactive({
 })
 const choiceDrafts = ref<Record<string, string[]>>({})
 
-type SheetManagePanelKey = 'inventory' | 'spells'
+type SheetManagePanelKey = 'character' | 'inventory' | 'spells'
 
 const sheetManagePanel = ref<SheetManagePanelKey | ''>('')
 
@@ -146,7 +146,10 @@ const sheetContextRailOpen = computed(() =>
 )
 
 function normalizeSheetManagePanel(value: any): SheetManagePanelKey {
-  return String(value || '') === 'spells' ? 'spells' : 'inventory'
+  const key = String(value || '').trim()
+  if (key === 'inventory') return 'inventory'
+  if (key === 'spells') return 'spells'
+  return 'character'
 }
 
 function setSheetManagePanel(value: any) {
@@ -155,11 +158,17 @@ function setSheetManagePanel(value: any) {
 
 function openSheetManagePanel(value: any) {
   sheetManagePanel.value = normalizeSheetManagePanel(value)
+  mode.value = 'build'
 }
 
 function closeSheetManagePanel() {
   sheetManagePanel.value = ''
 }
+
+function openCharacterManagePanel() {
+  openSheetManagePanel('character')
+}
+
 
 
 
@@ -7646,6 +7655,7 @@ async function saveSheet() {
               :roll-weapon-damage="rollWeaponDamage"
               :open-item-drawer="openItemDrawer"
               :open-spell-drawer="openSpellDrawer"
+              :open-manage-character="openCharacterManagePanel"
               :spell-option-level-label="spellOptionLevelLabel"
               :spell-action-mechanic="spellActionMechanic"
               :spell-uses-attack-roll="spellUsesAttackRoll"
@@ -7928,7 +7938,7 @@ async function saveSheet() {
           </CharactersSheetBuildWorkbench>
 
           <CharactersSheetStatsTab
-              v-else-if="activeSheetTab === 'stats'"
+              v-if="activeSheetTab === 'stats'"
               :mode="mode"
               :math="math"
               :sheet="sheet"
@@ -7962,7 +7972,7 @@ async function saveSheet() {
 
 
               <CharactersSheetActionsTab
-              v-else-if="activeSheetTab === 'actions'"
+              v-if="activeSheetTab === 'actions'"
               :world-id="worldId"
               :entity-id="entityId"
               :sheet="sheet"
@@ -8027,7 +8037,7 @@ async function saveSheet() {
 
 
             <CharactersSheetInventoryTab
-              v-else-if="activeSheetTab === 'inventory'"
+              v-if="activeSheetTab === 'inventory'"
               :mode="mode"
               :sheet="sheet"
               :inventory-saving="inventorySaving"
@@ -8055,7 +8065,7 @@ async function saveSheet() {
 
 
             <CharactersSheetSpellsTab
-              v-else-if="activeSheetTab === 'spells'"
+              v-if="activeSheetTab === 'spells'"
               :mode="mode"
               :has-spellcasting-math="hasSpellcastingMath"
               :spellcasting-ability-label="spellcastingAbilityLabel"
@@ -8088,7 +8098,7 @@ async function saveSheet() {
             />
 
             <CharactersSheetFeaturesTab
-              v-else-if="activeSheetTab === 'features'"
+              v-if="activeSheetTab === 'features'"
               :world-id="worldId"
               :sheet="sheet"
               :resolved-class="resolvedClass"
@@ -8243,12 +8253,58 @@ async function saveSheet() {
       v-if="manageContextOpen"
       data-sheet-manage-context-rail
       :active-panel="sheetManagePanel"
+      :choice-count="levelSetupChoiceCount"
       :inventory-count="inventoryCount"
       :spell-count="selectedSpellCount"
       :saving="inventorySaving || spellSaving"
       @update-panel="setSheetManagePanel"
       @close="closeSheetManagePanel"
     >
+      <template #character>
+        <CharactersSheetManageCharacterRail
+          :world-id="worldId"
+          :entity-id="entityId"
+          :sheet="sheet"
+          :level="currentLevelNumber"
+          :class-name="resolvedClass?.title || sheet?.class_name || '—'"
+          :choice-count="levelSetupChoiceCount"
+          :saving="sheetSaving || choiceSaving"
+          :level-value="sheetForm.level"
+          :class-entity-id="sheetForm.classEntityId"
+          :species-entity-id="sheetForm.speciesEntityId"
+          :background-entity-id="sheetForm.backgroundEntityId"
+          :subclass-name="sheetForm.subclassName"
+          :class-options="classOptions"
+          :species-options="speciesOptions"
+          :background-options="backgroundOptions"
+          :resolved-class="resolvedClass"
+          :resolved-species="resolvedSpecies"
+          :resolved-background="resolvedBackground"
+          :ability-list="abilityList"
+          :ability-scores="sheetForm.abilityScores"
+          :combat-stats="sheetForm.combatStats"
+          :shown-stats="{
+            armorClass: shownCombatStat('armorClass'),
+            currentHp: shownCombatStat('currentHp'),
+            maxHp: shownCombatStat('maxHp'),
+            initiative: shownCombatStat('initiative'),
+            speed: shownCombatStat('speed'),
+            hitDice: shownCombatStat('hitDice')
+          }"
+          @update-level="sheetForm.level = $event"
+          @update-class-entity-id="sheetForm.classEntityId = $event"
+          @update-species-entity-id="sheetForm.speciesEntityId = $event"
+          @update-background-entity-id="sheetForm.backgroundEntityId = $event"
+          @update-subclass-name="sheetForm.subclassName = $event"
+          @update-ability="sheetForm.abilityScores[$event.key] = $event.value"
+          @update-combat-stat="sheetForm.combatStats[$event.key] = $event.value"
+          @save-level="saveCharacterLevelFromManager"
+          @level-up="levelUpOnceFromManager"
+          @saved-choices="applyChildSheetPatchResult"
+          @save-sheet="saveSheet"
+        />
+      </template>
+
       <template #inventory>
         <CharactersSheetManageInventoryRail
           :inventory-saving="inventorySaving"

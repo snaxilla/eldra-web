@@ -533,8 +533,8 @@ function shouldShowActionSection(key: string) {
 
 function filterClass(key: string) {
   return activeActionFilter.value === key
-    ? 'border-[rgba(201,164,90,0.68)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
-    : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.68)] text-[#d8ceb8] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'
+    ? 'sheet-action-filter-button is-active'
+    : 'sheet-action-filter-button'
 }
 
 const spellRows = computed(() => props.actionSpellCards || [])
@@ -701,8 +701,8 @@ function tabCount(key: string) {
 
 function panelTabClass(key: string) {
   return activePanelTab.value === key
-    ? 'border-[#c9a45a] text-[#fff7df]'
-    : 'border-transparent text-[#9f9278] hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]'
+    ? 'sheet-action-panel-tab is-active'
+    : 'sheet-action-panel-tab'
 }
 
 function itemStatus(item: any) {
@@ -821,12 +821,12 @@ function openNote(note: any) {
             <article
               v-for="action in attackRows"
               :key="action.id"
-              class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
+              class="sheet-action-row border-b px-3 py-3 last:border-b-0"
             >
               <div class="grid gap-3 xl:grid-cols-[minmax(170px,1.35fr)_72px_78px_92px_minmax(130px,1fr)] xl:items-center">
                 <div class="min-w-0">
                   <div class="flex min-w-0 items-start gap-2">
-                    <div class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] text-[#f5e7bd]">
+                    <div class="sheet-action-icon mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-none border">
                       <UIcon :name="actionIcon(action)" class="h-4 w-4" />
                     </div>
 
@@ -967,7 +967,7 @@ function openNote(note: any) {
             <article
               v-for="action in actionRows"
               :key="action.id"
-              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
+              class="sheet-action-row border-l px-3 py-2"
             >
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="min-w-0">
@@ -1079,7 +1079,7 @@ function openNote(note: any) {
             <article
               v-for="action in bonusRows"
               :key="action.id"
-              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
+              class="sheet-action-row border-l px-3 py-2"
             >
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1182,7 +1182,7 @@ function openNote(note: any) {
             <article
               v-for="action in reactionRows"
               :key="action.id"
-              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
+              class="sheet-action-row border-l px-3 py-2"
             >
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1238,7 +1238,7 @@ function openNote(note: any) {
             <article
               v-for="action in otherRows"
               :key="action.id"
-              class="border-l border-[rgba(201,164,90,0.26)] bg-[rgba(8,17,27,0.28)] px-3 py-2"
+              class="sheet-action-row border-l px-3 py-2"
             >
               <div class="text-sm font-semibold text-white">{{ action.title }}</div>
               <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
@@ -1298,7 +1298,7 @@ function openNote(note: any) {
         <article
           v-for="spell in filteredSpellRows"
           :key="`inner-spell-${spell.id}`"
-          class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
+          class="sheet-action-row border-b px-3 py-3 last:border-b-0"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
@@ -1550,7 +1550,7 @@ function openNote(note: any) {
         <article
           v-for="item in filteredInventoryRows"
           :key="`inner-inventory-${item.inventoryId || item.id || item.name}`"
-          class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
+          class="sheet-action-row border-b px-3 py-3 last:border-b-0"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
@@ -1630,7 +1630,7 @@ function openNote(note: any) {
         <article
           v-for="feature in filteredFeatureRows"
           :key="`inner-feature-${feature.id || feature.title || feature.name}`"
-          class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
+          class="sheet-action-row border-b px-3 py-3 last:border-b-0"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
@@ -1710,7 +1710,7 @@ function openNote(note: any) {
         <article
           v-for="note in filteredNoteRows"
           :key="`inner-note-${note.id || note.title}`"
-          class="border-b border-[rgba(201,164,90,0.10)] px-3 py-3 last:border-b-0 hover:bg-[rgba(201,164,90,0.06)]"
+          class="sheet-action-row border-b px-3 py-3 last:border-b-0"
         >
           <div class="flex min-w-0 items-start justify-between gap-3">
             <div class="min-w-0">

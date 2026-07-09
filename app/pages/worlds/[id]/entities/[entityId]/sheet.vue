@@ -136,17 +136,17 @@ type SheetBackgroundMode = 'image' | 'solid'
 function defaultSheetThemePreference() {
   return {
     tone: 'paper' as SheetSurfaceTone,
-    backgroundMode: 'image' as SheetBackgroundMode,
+    backgroundMode: 'solid' as SheetBackgroundMode,
     backgroundUrl: '/assets/themes/sheet-paper-default.webp',
-    backgroundTitle: 'Classic Paper',
+    backgroundTitle: 'Solid #131428',
     backgroundFileId: '',
-    solidColor: '#cfc0a0',
+    solidColor: '#131428',
     repeat: true,
     tileSize: 520,
     fit: 'cover' as SheetBackgroundFit,
-    dim: 18,
-    boxTheme: 'ivory',
-    titleFrame: 'simple'
+    dim: 16,
+    boxTheme: 'midnight',
+    titleFrame: 'floral'
   }
 }
 

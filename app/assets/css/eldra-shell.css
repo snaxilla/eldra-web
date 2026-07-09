@@ -933,3 +933,120 @@
     0 2px 16px rgba(0, 0, 0, 0.88),
     0 0 18px rgba(201, 164, 90, 0.16) !important;
 }
+
+/* ------------------------------------------------------------------
+   Character Sheet Theme v4: targeted action center/readability fix
+   Scout confirmed the old-looking slab is SheetActionCenter.vue,
+   especially the sticky filter bar and attack table header.
+------------------------------------------------------------------- */
+
+.sheet-theme-surface .sheet-action-center {
+  color: var(--sheet-card-text, #d8ceb8) !important;
+  background: var(--sheet-card-bg, linear-gradient(180deg, rgba(8,14,20,0.96), rgba(4,8,13,0.98))) !important;
+  border-color: var(--sheet-card-border, rgba(94,121,145,0.48)) !important;
+}
+
+.sheet-theme-surface .sheet-action-filterbar,
+.sheet-theme-surface [data-sheet-action-filterbar] {
+  background: var(--sheet-card-bg-soft, linear-gradient(180deg, rgba(10,18,26,0.88), rgba(5,10,16,0.92))) !important;
+  border-color: var(--sheet-card-border-soft, rgba(94,121,145,0.34)) !important;
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+  backdrop-filter: none !important;
+}
+
+.sheet-theme-surface .sheet-action-table,
+.sheet-theme-surface [data-sheet-action-table],
+.sheet-theme-surface .sheet-action-table-header,
+.sheet-theme-surface [data-sheet-action-table-header] {
+  color: var(--sheet-card-text, #d8ceb8) !important;
+  background: var(--sheet-card-bg-soft, linear-gradient(180deg, rgba(10,18,26,0.88), rgba(5,10,16,0.92))) !important;
+  border-color: var(--sheet-card-border-soft, rgba(94,121,145,0.34)) !important;
+}
+
+.sheet-theme-surface .sheet-action-center article {
+  color: var(--sheet-card-text, #d8ceb8) !important;
+  border-color: var(--sheet-card-border-soft, rgba(94,121,145,0.34)) !important;
+}
+
+.sheet-theme-surface .sheet-action-center article:hover {
+  background: color-mix(in srgb, var(--sheet-card-bg-soft, rgba(10,18,26,0.88)) 82%, rgba(201,164,90,0.16)) !important;
+}
+
+/* Light card themes: force readable foregrounds inside cards/action center.
+   This is intentionally more direct than the earlier broad arbitrary-class
+   selectors, because Tailwind arbitrary classes were fighting the theme. */
+.sheet-theme-surface[data-sheet-card-tone="light"] .eldra-codex-soft,
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] {
+  color: var(--sheet-card-text, #3f3528) !important;
+  background: var(--sheet-card-bg, linear-gradient(180deg, rgba(255,250,236,0.96), rgba(233,219,190,0.98))) !important;
+  border-color: var(--sheet-card-border, rgba(130,98,49,0.36)) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .eldra-codex-soft *,
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center *,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] * {
+  color: var(--sheet-card-text, #3f3528) !important;
+  text-shadow: none !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .eldra-codex-soft :is(h1,h2,h3,h4,.font-semibold,.text-2xl,.text-3xl,.text-4xl),
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center :is(h1,h2,h3,h4,.font-semibold,.text-2xl,.text-3xl,.text-4xl),
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] :is(h1,h2,h3,h4,.font-semibold,.text-2xl,.text-3xl,.text-4xl) {
+  color: var(--sheet-card-title, #1f1a13) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .eldra-codex-soft [class*="tracking-"],
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center [class*="tracking-"],
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="tracking-"] {
+  color: var(--sheet-card-label, #7d642d) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-filterbar,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-filterbar],
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-table,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-table],
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-table-header,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-table-header] {
+  color: var(--sheet-card-text, #3f3528) !important;
+  background: var(--sheet-card-bg-soft, linear-gradient(180deg, rgba(255,252,242,0.78), rgba(235,222,196,0.86))) !important;
+  border-color: var(--sheet-card-border-soft, rgba(130,98,49,0.24)) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center button:not(.eldra-button),
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] button:not(.eldra-button) {
+  color: var(--sheet-card-title, #1f1a13) !important;
+  background: var(--sheet-card-bg-soft, rgba(255,252,242,0.78)) !important;
+  border-color: var(--sheet-card-border-soft, rgba(130,98,49,0.24)) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center button:not(.eldra-button) *,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] button:not(.eldra-button) * {
+  color: var(--sheet-card-title, #1f1a13) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center [class*="bg-[rgba(201,164,90"],
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="bg-[rgba(201,164,90"] {
+  color: #2b2112 !important;
+  background: rgba(201, 164, 90, 0.30) !important;
+  border-color: rgba(130, 98, 49, 0.42) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-action-center [class*="bg-[rgba(201,164,90"] *,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="bg-[rgba(201,164,90"] * {
+  color: #2b2112 !important;
+}
+
+/* Keep title plate readable separately from card theme. */
+.sheet-theme-surface .sheet-title-frame h1,
+.sheet-theme-surface .sheet-title-frame input,
+.sheet-theme-surface .sheet-title-frame p,
+.sheet-theme-surface .sheet-title-frame [class*="text-[#d8ceb8"],
+.sheet-theme-surface .sheet-title-frame [class*="text-[#9f9278"] {
+  color: #fffdf4 !important;
+  text-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.88),
+    0 0 18px rgba(201, 164, 90, 0.16) !important;
+}

@@ -381,7 +381,7 @@ function sheetTitleFrameVariables(value: any) {
     '--sheet-title-frame-bg': 'linear-gradient(90deg, rgba(5, 8, 12, 0.76), rgba(5, 8, 12, 0.42), rgba(5, 8, 12, 0.16))',
     '--sheet-title-frame-border': 'rgba(201, 164, 90, 0.12)',
     '--sheet-title-frame-shadow': '0 16px 38px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 236, 188, 0.08)',
-    '--sheet-title-frame-image': "url('/assets/themes/sheet-title-frame-ornate.svg')",
+    '--sheet-title-frame-image': 'none',
     '--sheet-title-flourish-opacity': '1',
     '--sheet-title-frame-padding-y': '24px',
     '--sheet-title-frame-padding-x': '44px'

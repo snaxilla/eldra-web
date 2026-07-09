@@ -745,7 +745,7 @@ function openNote(note: any) {
 </script>
 
 <template>
-  <section data-sheet-action-center class="eldra-codex-soft overflow-hidden rounded-none p-0">
+  <section data-sheet-action-center class="sheet-action-center eldra-codex-soft overflow-hidden rounded-none p-0">
     <div class="border-b border-[rgba(201,164,90,0.18)] px-4 pt-4">
       <div class="-mx-1 overflow-x-auto pb-1">
         <div class="flex min-w-max items-center gap-4 px-1 text-xs font-semibold uppercase tracking-[0.16em]">
@@ -774,7 +774,7 @@ function openNote(note: any) {
       v-if="activePanelTab === 'actions'"
       class="p-4"
     >
-      <div class="sticky top-0 z-10 -mx-4 -mt-4 border-b border-[rgba(201,164,90,0.12)] bg-[rgba(8,10,12,0.94)] px-4 py-3 backdrop-blur">
+      <div data-sheet-action-filterbar class="sheet-action-filterbar sticky top-0 z-10 -mx-4 -mt-4 border-b border-[rgba(201,164,90,0.12)] px-4 py-3">
         <div class="-mx-1 overflow-x-auto pb-1">
           <div class="flex min-w-max gap-2 px-1">
             <button
@@ -809,8 +809,8 @@ function openNote(note: any) {
             </div>
           </div>
 
-          <div class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]">
-            <div class="hidden grid-cols-[minmax(170px,1.35fr)_72px_78px_92px_minmax(130px,1fr)] gap-3 border-b border-[rgba(201,164,90,0.18)] bg-black/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
+          <div data-sheet-action-table class="sheet-action-table overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]">
+            <div data-sheet-action-table-header class="sheet-action-table-header hidden grid-cols-[minmax(170px,1.35fr)_72px_78px_92px_minmax(130px,1fr)] gap-3 border-b border-[rgba(201,164,90,0.18)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] xl:grid">
               <div>Attack</div>
               <div>Range</div>
               <div>Hit / DC</div>

@@ -680,3 +680,256 @@
   background: var(--sheet-card-input-bg) !important;
   border-color: var(--sheet-card-border-soft) !important;
 }
+
+/* ------------------------------------------------------------------
+   Character Sheet Theme Rescue: readability + real framed title
+   The previous light-card pass made light backgrounds without forcing
+   text into dark tokens everywhere. This block intentionally comes last.
+------------------------------------------------------------------- */
+
+/* Stop using the fake floral SVG treatment. A frame frames the outside. */
+.sheet-theme-surface .sheet-title-frame {
+  position: relative !important;
+  margin-bottom: 1rem !important;
+  padding:
+    var(--sheet-title-frame-padding-y, 20px)
+    var(--sheet-title-frame-padding-x, 24px) !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  background:
+    linear-gradient(90deg, rgba(5, 8, 12, 0.78), rgba(5, 8, 12, 0.48), rgba(5, 8, 12, 0.20)) !important;
+  background-image:
+    linear-gradient(90deg, rgba(5, 8, 12, 0.78), rgba(5, 8, 12, 0.48), rgba(5, 8, 12, 0.20)) !important;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 236, 188, 0.08) !important;
+}
+
+/* Outer frame. */
+.sheet-theme-surface .sheet-title-frame::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background: none !important;
+  background-image: none !important;
+  border: 2px solid rgba(201, 164, 90, 0.56) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 236, 188, 0.18),
+    inset 0 0 24px rgba(201, 164, 90, 0.08) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+/* Inner frame. */
+.sheet-theme-surface .sheet-title-frame::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 10px !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background: none !important;
+  background-image: none !important;
+  border: 1px solid rgba(201, 164, 90, 0.36) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(12, 8, 4, 0.34),
+    0 0 22px rgba(201, 164, 90, 0.08) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+.sheet-theme-surface .sheet-title-frame > * {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.sheet-theme-surface[data-sheet-title-frame="simple"] .sheet-title-frame::after,
+.sheet-theme-surface[data-sheet-title-frame="none"] .sheet-title-frame::before,
+.sheet-theme-surface[data-sheet-title-frame="none"] .sheet-title-frame::after {
+  opacity: 0 !important;
+}
+
+.sheet-theme-surface[data-sheet-title-frame="none"] .sheet-title-frame {
+  padding: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Readability tokens. Dark themes already use light tokens; light themes
+   set these variables dark. Apply them universally to themed cards. */
+.sheet-theme-surface :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center],
+  [class*="bg-[rgba(8,17,27"],
+  [class*="bg-[rgba(9,17,26"],
+  [class*="bg-[rgba(10,20,29"],
+  [class*="bg-[rgba(12,23,33"],
+  [class*="bg-[rgba(20,17,12"]
+) {
+  color: var(--sheet-card-text, #d8ceb8) !important;
+}
+
+/* Titles / big numeric values. */
+.sheet-theme-surface :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center],
+  [class*="bg-[rgba(8,17,27"],
+  [class*="bg-[rgba(9,17,26"],
+  [class*="bg-[rgba(10,20,29"],
+  [class*="bg-[rgba(12,23,33"],
+  [class*="bg-[rgba(20,17,12"]
+) :where(
+  .text-white,
+  [class*="text-white"],
+  [class*="text-[#fff"],
+  [class*="text-[#ffffff"]
+) {
+  color: var(--sheet-card-title, #ffffff) !important;
+}
+
+/* Body text. */
+.sheet-theme-surface :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center],
+  [class*="bg-[rgba(8,17,27"],
+  [class*="bg-[rgba(9,17,26"],
+  [class*="bg-[rgba(10,20,29"],
+  [class*="bg-[rgba(12,23,33"],
+  [class*="bg-[rgba(20,17,12"]
+) :where(
+  [class*="text-[#d8ceb8"],
+  [class*="text-[#f5e7bd"]
+) {
+  color: var(--sheet-card-text, #d8ceb8) !important;
+}
+
+/* Labels / eyebrow text. */
+.sheet-theme-surface :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center],
+  [class*="bg-[rgba(8,17,27"],
+  [class*="bg-[rgba(9,17,26"],
+  [class*="bg-[rgba(10,20,29"],
+  [class*="bg-[rgba(12,23,33"],
+  [class*="bg-[rgba(20,17,12"]
+) :where(
+  [class*="text-[#9f9278"],
+  [class*="text-[#756a57"]
+) {
+  color: var(--sheet-card-label, #b8a982) !important;
+}
+
+/* Card surfaces. This keeps dark cards dark and light cards actually readable. */
+.sheet-theme-surface :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center]
+) {
+  background: var(--sheet-card-bg, linear-gradient(180deg, rgba(8,14,20,0.96), rgba(4,8,13,0.98))) !important;
+  border-color: var(--sheet-card-border, rgba(94,121,145,0.48)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset 0 -18px 38px rgba(0, 0, 0, 0.12),
+    0 10px 28px rgba(0, 0, 0, 0.18),
+    0 0 32px var(--sheet-card-glow, rgba(56,189,248,0.08)) !important;
+}
+
+/* Inner rows, action rows, search rows, and the stubborn action-center slab. */
+.sheet-theme-surface :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center]
+) :where(
+  article,
+  label,
+  [class*="bg-black"],
+  [class*="bg-[#0"],
+  [class*="bg-[#090909"],
+  [class*="bg-[rgba(0,0,0"],
+  [class*="bg-[rgba(5,8,12"],
+  [class*="bg-[rgba(8,17,27"],
+  [class*="bg-[rgba(9,17,26"],
+  [class*="bg-[rgba(10,20,29"],
+  [class*="bg-[rgba(12,23,33"],
+  [class*="bg-[rgba(20,17,12"]
+) {
+  background: var(--sheet-card-bg-soft, linear-gradient(180deg, rgba(10,18,26,0.88), rgba(5,10,16,0.92))) !important;
+  border-color: var(--sheet-card-border-soft, rgba(94,121,145,0.34)) !important;
+  color: var(--sheet-card-text, #d8ceb8) !important;
+}
+
+/* Light themes specifically: remove white glow wash and force normal contrast. */
+.sheet-theme-surface[data-sheet-card-tone="light"] :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center]
+),
+.sheet-theme-surface[data-sheet-card-tone="light"] :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center]
+) * {
+  text-shadow: none !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center]
+) :where(.text-white, [class*="text-white"], [class*="text-[#fff"]) {
+  color: var(--sheet-card-title, #1f1a13) !important;
+}
+
+/* Native controls. */
+.sheet-theme-surface :where(
+  .eldra-codex-soft,
+  .sheet-action-center,
+  [data-sheet-action-center]
+) :where(input, textarea, select) {
+  color: var(--sheet-card-input-text, #ffffff) !important;
+  background: var(--sheet-card-input-bg, rgba(5,8,12,0.88)) !important;
+  border-color: var(--sheet-card-border-soft, rgba(94,121,145,0.34)) !important;
+}
+
+/* Buttons/tabs inside the action center need to follow the chosen theme,
+   but active gold controls should stay visually distinct. */
+.sheet-theme-surface [data-sheet-action-center] button:not(.eldra-button) {
+  color: var(--sheet-card-title, #ffffff) !important;
+  border-color: var(--sheet-card-border-soft, rgba(94,121,145,0.34)) !important;
+  background: var(--sheet-card-bg-soft, rgba(8,17,27,0.68)) !important;
+}
+
+.sheet-theme-surface [data-sheet-action-center] button:not(.eldra-button):hover {
+  border-color: var(--sheet-card-border, rgba(94,121,145,0.48)) !important;
+}
+
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[rgba(201,164,90"] {
+  color: #fff7df !important;
+  background: rgba(201, 164, 90, 0.22) !important;
+  border-color: rgba(201, 164, 90, 0.46) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="bg-[rgba(201,164,90"] {
+  color: #2b2112 !important;
+  background: rgba(201, 164, 90, 0.28) !important;
+  border-color: rgba(130, 98, 49, 0.42) !important;
+}
+
+/* The actual title should remain readable regardless of card theme. */
+.sheet-theme-surface .sheet-title-frame h1,
+.sheet-theme-surface .sheet-title-frame input {
+  color: #fffdf4 !important;
+  text-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.88),
+    0 0 18px rgba(201, 164, 90, 0.16) !important;
+}

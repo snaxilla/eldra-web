@@ -529,7 +529,7 @@ function shownCombatValue(key: string) {
             class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
             @change="updateSheetTheme({ titleFrame: inputValue($event) })"
           >
-            <option value="floral" class="bg-[#090909] text-[#f5e7bd]">Ornate Floral Frame</option>
+            <option value="floral" class="bg-[#090909] text-[#f5e7bd]">Gold Title Frame</option>
             <option value="simple" class="bg-[#090909] text-[#f5e7bd]">Simple Plate</option>
             <option value="none" class="bg-[#090909] text-[#f5e7bd]">No Frame</option>
           </select>

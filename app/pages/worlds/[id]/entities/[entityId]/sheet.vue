@@ -114,6 +114,8 @@ const hpTempDraft = ref('0')
 const selectedSpellEntityId = ref<string | null>(null)
 const selectedItemDetail = ref<any | null>(null)
 const selectedFeatureDetail = ref<any | null>(null)
+const mentionContextDrawerOpen = ref(false)
+const mentionContextEntity = ref<any | null>(null)
 const diceBoxRef = ref<any | null>(null)
 const noteSearch = ref('')
 const noteSaving = ref(false)
@@ -570,7 +572,7 @@ type SheetManagePanelKey = 'character' | 'inventory' | 'spells'
 const sheetManagePanel = ref<SheetManagePanelKey | ''>('')
 
 const detailContextOpen = computed(() =>
-  Boolean(selectedSpellEntityId.value || selectedItemDetail.value || selectedFeatureDetail.value || noteDrawerOpen.value)
+  Boolean(selectedSpellEntityId.value || selectedItemDetail.value || selectedFeatureDetail.value || noteDrawerOpen.value || mentionContextDrawerOpen.value)
 )
 
 const manageContextOpen = computed(() =>
@@ -851,6 +853,9 @@ function subclassFeatureCardChevron(scope: string, feature: any, index: any) {
 }
 
 function openFeatureDrawer(feature: any) {
+  mentionContextDrawerOpen.value = false
+  mentionContextEntity.value = null
+
   selectedFeatureDetail.value = feature || null
 }
 
@@ -4915,6 +4920,9 @@ const selectedSpellMetaLines = computed(() => {
 })
 
 function openSpellDrawer(spell: any) {
+  mentionContextDrawerOpen.value = false
+  mentionContextEntity.value = null
+
   const id = String(spell?.id || '').trim()
   if (!id) return
   selectedSpellEntityId.value = id
@@ -4925,6 +4933,9 @@ function closeSpellDrawer() {
 }
 
 function openItemDrawer(item: any) {
+  mentionContextDrawerOpen.value = false
+  mentionContextEntity.value = null
+
   selectedItemDetail.value = item || null
 }
 
@@ -5487,6 +5498,9 @@ function fillNoteDraft(note: any) {
 }
 
 function openAddNoteDrawer() {
+  mentionContextDrawerOpen.value = false
+  mentionContextEntity.value = null
+
   selectedNoteDetail.value = null
   resetNoteDraft()
   noteDrawerMode.value = 'edit'
@@ -5496,6 +5510,9 @@ function openAddNoteDrawer() {
 }
 
 function openNoteDetail(note: any) {
+  mentionContextDrawerOpen.value = false
+  mentionContextEntity.value = null
+
   selectedNoteDetail.value = note
   fillNoteDraft(note)
   noteDrawerMode.value = 'view'
@@ -5523,11 +5540,23 @@ function sheetMentionTargetId(mention: any) {
 }
 
 function openSheetMention(mention: any) {
-  const targetId = sheetMentionTargetId(mention)
-  if (!targetId) return
+  if (!mention) return
 
-  router.push(`/worlds/${worldId.value}/entities/${targetId}`)
+  selectedSpellEntityId.value = null
+  selectedItemDetail.value = null
+  selectedFeatureDetail.value = null
+  noteDrawerOpen.value = false
+  selectedNoteDetail.value = null
+
+  mentionContextEntity.value = mention
+  mentionContextDrawerOpen.value = true
 }
+
+function closeMentionContextDrawer() {
+  mentionContextDrawerOpen.value = false
+  mentionContextEntity.value = null
+}
+
 
 function closeNoteDrawer() {
   noteDrawerOpen.value = false
@@ -8494,6 +8523,18 @@ async function saveSheet() {
         @update-body="noteDraft.body = $event"
         @open-mention="openSheetMention"
       />
+
+    <WorldEntityContextDrawer
+      :open="mentionContextDrawerOpen"
+      :entity="mentionContextEntity"
+      :world-id="worldId"
+      :mode="mode"
+      :allow-build-actions="false"
+      read-more-label="Open Full Article"
+      @close="closeMentionContextDrawer"
+      @open-mention="openSheetMention"
+    />
+
 
       <!-- Feature Detail Drawer -->
       <CharactersSheetFeatureDetailDrawer

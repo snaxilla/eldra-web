@@ -91,11 +91,11 @@ function deleteCurrentNote() {
   >
     <div
       v-if="open"
-      class="pointer-events-none fixed inset-y-0 right-0 z-[88] flex justify-end"
+      class="pointer-events-none fixed inset-y-0 right-0 z-[88] flex w-full max-w-[456px] justify-end xl:max-w-[468px]"
     >
       <aside
         data-sheet-note-detail-drawer
-        class="pointer-events-auto eldra-ornate-panel eldra-frame-corners flex h-full w-full max-w-[430px] flex-col border-l border-[rgba(201,164,90,0.30)] bg-[rgba(7,10,13,0.96)] shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+        class="pointer-events-auto eldra-ornate-panel eldra-frame-corners flex h-full w-full flex-col border-l border-[rgba(201,164,90,0.30)] bg-[rgba(7,10,13,0.96)] shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl"
       >
         <header class="border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
           <div class="flex items-start justify-between gap-3">

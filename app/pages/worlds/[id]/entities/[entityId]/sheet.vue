@@ -141,7 +141,9 @@ function defaultSheetThemePreference() {
     repeat: true,
     tileSize: 520,
     fit: 'cover' as SheetBackgroundFit,
-    dim: 22
+    dim: 22,
+    boxTheme: 'midnight',
+    titleFrame: 'floral'
   }
 }
 
@@ -157,6 +159,8 @@ function normalizeSheetThemePreference(value: any = {}) {
   const defaults = defaultSheetThemePreference()
   const tone = String(value?.tone || defaults.tone) === 'dark' ? 'dark' : 'paper'
   const fit = String(value?.fit || defaults.fit) === 'contain' ? 'contain' : 'cover'
+  const boxTheme = ['midnight', 'obsidian', 'blueSteel', 'smokedWalnut'].includes(String(value?.boxTheme || '')) ? String(value.boxTheme) : defaults.boxTheme
+  const titleFrame = ['floral', 'simple', 'none'].includes(String(value?.titleFrame || '')) ? String(value.titleFrame) : defaults.titleFrame
   const tileSize = Number(value?.tileSize ?? defaults.tileSize)
   const dim = Number(value?.dim ?? defaults.dim)
 
@@ -170,7 +174,9 @@ function normalizeSheetThemePreference(value: any = {}) {
     backgroundFileId: String(value?.backgroundFileId || ''),
     repeat: value?.repeat !== false,
     tileSize: Number.isFinite(tileSize) ? Math.max(180, Math.min(1400, Math.floor(tileSize))) : defaults.tileSize,
-    dim: Number.isFinite(dim) ? Math.max(0, Math.min(70, Math.floor(dim))) : defaults.dim
+    dim: Number.isFinite(dim) ? Math.max(0, Math.min(70, Math.floor(dim))) : defaults.dim,
+    boxTheme,
+    titleFrame
   }
 }
 
@@ -222,6 +228,79 @@ function safeSheetThemeCssUrl(value: any) {
   return `url("${url || '/assets/themes/sheet-paper-default.webp'}")`
 }
 
+
+function sheetCardThemeVariables(value: any) {
+  const key = String(value || 'midnight')
+
+  const themes: Record<string, Record<string, string>> = {
+    midnight: {
+      '--sheet-card-bg': 'radial-gradient(circle at 12% 0%, rgba(55, 75, 90, 0.16), transparent 34%), linear-gradient(180deg, rgba(8, 14, 20, 0.96), rgba(4, 8, 13, 0.98))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(10, 18, 26, 0.88), rgba(5, 10, 16, 0.92))',
+      '--sheet-card-border': 'rgba(94, 121, 145, 0.48)',
+      '--sheet-card-border-soft': 'rgba(94, 121, 145, 0.34)',
+      '--sheet-card-glow': 'rgba(56, 189, 248, 0.10)'
+    },
+    obsidian: {
+      '--sheet-card-bg': 'radial-gradient(circle at 16% 0%, rgba(201, 164, 90, 0.08), transparent 36%), linear-gradient(180deg, rgba(9, 9, 9, 0.97), rgba(2, 3, 5, 0.99))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(13, 12, 10, 0.91), rgba(5, 5, 5, 0.94))',
+      '--sheet-card-border': 'rgba(201, 164, 90, 0.34)',
+      '--sheet-card-border-soft': 'rgba(201, 164, 90, 0.22)',
+      '--sheet-card-glow': 'rgba(201, 164, 90, 0.10)'
+    },
+    blueSteel: {
+      '--sheet-card-bg': 'radial-gradient(circle at 18% 0%, rgba(125, 183, 218, 0.18), transparent 38%), linear-gradient(180deg, rgba(13, 24, 34, 0.96), rgba(6, 12, 19, 0.98))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(15, 28, 40, 0.88), rgba(7, 14, 22, 0.94))',
+      '--sheet-card-border': 'rgba(120, 154, 180, 0.52)',
+      '--sheet-card-border-soft': 'rgba(120, 154, 180, 0.34)',
+      '--sheet-card-glow': 'rgba(125, 183, 218, 0.12)'
+    },
+    smokedWalnut: {
+      '--sheet-card-bg': 'radial-gradient(circle at 18% 0%, rgba(201, 164, 90, 0.14), transparent 36%), linear-gradient(180deg, rgba(24, 18, 12, 0.96), rgba(9, 7, 5, 0.98))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(31, 23, 15, 0.88), rgba(12, 9, 6, 0.94))',
+      '--sheet-card-border': 'rgba(201, 164, 90, 0.46)',
+      '--sheet-card-border-soft': 'rgba(201, 164, 90, 0.30)',
+      '--sheet-card-glow': 'rgba(201, 164, 90, 0.13)'
+    }
+  }
+
+  return themes[key] || themes.midnight
+}
+
+function sheetTitleFrameVariables(value: any) {
+  const key = String(value || 'floral')
+
+  if (key === 'none') {
+    return {
+      '--sheet-title-frame-bg': 'transparent',
+      '--sheet-title-frame-border': 'transparent',
+      '--sheet-title-frame-shadow': 'none',
+      '--sheet-title-flourish-opacity': '0',
+      '--sheet-title-frame-padding-y': '0px',
+      '--sheet-title-frame-padding-x': '0px'
+    }
+  }
+
+  if (key === 'simple') {
+    return {
+      '--sheet-title-frame-bg': 'linear-gradient(90deg, rgba(5, 8, 12, 0.68), rgba(5, 8, 12, 0.36), rgba(5, 8, 12, 0.12))',
+      '--sheet-title-frame-border': 'rgba(201, 164, 90, 0.28)',
+      '--sheet-title-frame-shadow': '0 10px 28px rgba(0, 0, 0, 0.18)',
+      '--sheet-title-flourish-opacity': '0',
+      '--sheet-title-frame-padding-y': '14px',
+      '--sheet-title-frame-padding-x': '18px'
+    }
+  }
+
+  return {
+    '--sheet-title-frame-bg': 'linear-gradient(90deg, rgba(5, 8, 12, 0.76), rgba(5, 8, 12, 0.40), rgba(5, 8, 12, 0.14))',
+    '--sheet-title-frame-border': 'rgba(201, 164, 90, 0.42)',
+    '--sheet-title-frame-shadow': '0 14px 34px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 236, 188, 0.08)',
+    '--sheet-title-flourish-opacity': '1',
+    '--sheet-title-frame-padding-y': '16px',
+    '--sheet-title-frame-padding-x': '22px'
+  }
+}
+
 const sheetThemeStyle = computed(() => {
   const theme = normalizeSheetThemePreference(sheetTheme)
   const dimAlpha = Math.max(0, Math.min(0.70, Number(theme.dim || 0) / 100))
@@ -235,7 +314,9 @@ const sheetThemeStyle = computed(() => {
     '--sheet-surface-repeat': theme.repeat ? 'repeat' : 'no-repeat',
     '--sheet-surface-size': theme.repeat ? `${theme.tileSize}px ${theme.tileSize}px` : theme.fit,
     '--sheet-surface-position': 'center center',
-    '--sheet-surface-overlay': overlay
+    '--sheet-surface-overlay': overlay,
+    ...sheetCardThemeVariables(theme.boxTheme),
+    ...sheetTitleFrameVariables(theme.titleFrame)
   }
 })
 

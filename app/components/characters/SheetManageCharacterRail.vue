@@ -496,6 +496,33 @@ function shownCombatValue(key: string) {
           </select>
         </label>
 
+        <label class="block">
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Box Theme</span>
+          <select
+            :value="activeSheetTheme.boxTheme || 'midnight'"
+            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            @change="updateSheetTheme({ boxTheme: inputValue($event) })"
+          >
+            <option value="midnight" class="bg-[#090909] text-[#f5e7bd]">Midnight Ink</option>
+            <option value="obsidian" class="bg-[#090909] text-[#f5e7bd]">Obsidian Gold</option>
+            <option value="blueSteel" class="bg-[#090909] text-[#f5e7bd]">Blue Steel</option>
+            <option value="smokedWalnut" class="bg-[#090909] text-[#f5e7bd]">Smoked Walnut</option>
+          </select>
+        </label>
+
+        <label class="block">
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Title Frame</span>
+          <select
+            :value="activeSheetTheme.titleFrame || 'floral'"
+            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            @change="updateSheetTheme({ titleFrame: inputValue($event) })"
+          >
+            <option value="floral" class="bg-[#090909] text-[#f5e7bd]">Floral Frame</option>
+            <option value="simple" class="bg-[#090909] text-[#f5e7bd]">Simple Plate</option>
+            <option value="none" class="bg-[#090909] text-[#f5e7bd]">No Frame</option>
+          </select>
+        </label>
+
         <label class="flex items-center justify-between gap-3 rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3">
           <span>
             <span class="block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Repeat Image</span>

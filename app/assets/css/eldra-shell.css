@@ -188,3 +188,119 @@
 .eldra-detail-drawer {
   color-scheme: dark;
 }
+
+/* ------------------------------------------------------------------
+   Character Sheet: themed card boxes and title frame
+   This sits on top of the customizable sheet surface. The paper can
+   change independently from the dark boxes/cards.
+------------------------------------------------------------------- */
+
+.sheet-theme-surface {
+  --sheet-card-bg: radial-gradient(circle at 12% 0%, rgba(55, 75, 90, 0.16), transparent 34%), linear-gradient(180deg, rgba(8, 14, 20, 0.96), rgba(4, 8, 13, 0.98));
+  --sheet-card-bg-soft: linear-gradient(180deg, rgba(10, 18, 26, 0.88), rgba(5, 10, 16, 0.92));
+  --sheet-card-border: rgba(94, 121, 145, 0.48);
+  --sheet-card-border-soft: rgba(94, 121, 145, 0.34);
+  --sheet-card-glow: rgba(56, 189, 248, 0.10);
+  --sheet-title-frame-bg: linear-gradient(90deg, rgba(5, 8, 12, 0.76), rgba(5, 8, 12, 0.40), rgba(5, 8, 12, 0.14));
+  --sheet-title-frame-border: rgba(201, 164, 90, 0.42);
+  --sheet-title-frame-shadow: 0 14px 34px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 236, 188, 0.08);
+  --sheet-title-flourish-opacity: 1;
+  --sheet-title-frame-padding-y: 16px;
+  --sheet-title-frame-padding-x: 22px;
+}
+
+/* Most sheet boxes currently use Tailwind arbitrary rgba backgrounds.
+   These selectors retheme those dark boxes without requiring a component
+   rewrite of every stat/action/card row. */
+.sheet-theme-surface .eldra-codex-soft,
+.sheet-theme-surface [class*="bg-[rgba(8,17,27"],
+.sheet-theme-surface [class*="bg-[rgba(9,17,26"],
+.sheet-theme-surface [class*="bg-[rgba(10,20,29"],
+.sheet-theme-surface [class*="bg-[rgba(12,23,33"],
+.sheet-theme-surface [class*="bg-[rgba(20,17,12"] {
+  background: var(--sheet-card-bg) !important;
+  border-color: var(--sheet-card-border) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset 0 -18px 38px rgba(0, 0, 0, 0.18),
+    0 10px 28px rgba(0, 0, 0, 0.22),
+    0 0 32px var(--sheet-card-glow);
+}
+
+/* Smaller inner rows should read as a softer layer inside the card. */
+.sheet-theme-surface .eldra-codex-soft [class*="bg-[rgba(8,17,27"],
+.sheet-theme-surface .eldra-codex-soft [class*="bg-[rgba(9,17,26"],
+.sheet-theme-surface .eldra-codex-soft [class*="bg-[rgba(20,17,12"] {
+  background: var(--sheet-card-bg-soft) !important;
+  border-color: var(--sheet-card-border-soft) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 4px 16px rgba(0, 0, 0, 0.14);
+}
+
+/* Preserve active/gold controls so selected tabs and buttons do not get
+   flattened into the generic card theme. */
+.sheet-theme-surface [class*="bg-[rgba(201,164,90"],
+.sheet-theme-surface .eldra-button,
+.sheet-theme-surface .eldra-gold-chip {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+/* Title presentation */
+.sheet-title-frame {
+  position: relative;
+  margin-bottom: 1rem;
+  padding:
+    var(--sheet-title-frame-padding-y, 16px)
+    var(--sheet-title-frame-padding-x, 22px);
+  border: 1px solid var(--sheet-title-frame-border);
+  background: var(--sheet-title-frame-bg);
+  box-shadow: var(--sheet-title-frame-shadow);
+  overflow: hidden;
+}
+
+.sheet-title-frame::before,
+.sheet-title-frame::after {
+  content: "❦";
+  position: absolute;
+  top: 50%;
+  z-index: 0;
+  color: rgba(201, 164, 90, 0.44);
+  font-size: 2.25rem;
+  line-height: 1;
+  opacity: var(--sheet-title-flourish-opacity, 1);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.sheet-title-frame::before {
+  left: 0.7rem;
+}
+
+.sheet-title-frame::after {
+  right: 0.7rem;
+  transform: translateY(-50%) scaleX(-1);
+}
+
+.sheet-title-frame > * {
+  position: relative;
+  z-index: 1;
+}
+
+.sheet-title-frame h1,
+.sheet-title-frame input {
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 2px 18px rgba(0, 0, 0, 0.80),
+    0 0 18px rgba(201, 164, 90, 0.08);
+}
+
+.sheet-title-frame h1 {
+  font-weight: 750;
+}
+
+.sheet-title-frame::selection {
+  background: rgba(201, 164, 90, 0.35);
+}

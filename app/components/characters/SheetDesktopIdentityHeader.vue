@@ -17,7 +17,7 @@ function updateName(event: Event) {
 </script>
 
 <template>
-  <div class="sheet-desktop-only hidden flex-col gap-4 md:flex md:flex-row md:items-end md:justify-between">
+  <div class="sheet-title-frame sheet-desktop-only hidden flex-col gap-4 md:flex md:flex-row md:items-end md:justify-between">
     <div class="min-w-0 flex-1">
       <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Character Sheet</div>
 

@@ -745,7 +745,7 @@ function openNote(note: any) {
 </script>
 
 <template>
-  <section class="eldra-codex-soft overflow-hidden rounded-none p-0">
+  <section data-sheet-action-center class="eldra-codex-soft overflow-hidden rounded-none p-0">
     <div class="border-b border-[rgba(201,164,90,0.18)] px-4 pt-4">
       <div class="-mx-1 overflow-x-auto pb-1">
         <div class="flex min-w-max items-center gap-4 px-1 text-xs font-semibold uppercase tracking-[0.16em]">

@@ -476,3 +476,207 @@
 .sheet-theme-surface[data-sheet-title-frame="simple"] .sheet-title-frame::before {
   opacity: 0 !important;
 }
+
+/* ------------------------------------------------------------------
+   Character Sheet Theme v3: sane title frame + action center theming
+   Kills the previous ornamental title image. The frame is now actually
+   around the title plate, not inside the middle of it.
+------------------------------------------------------------------- */
+
+/* Proper title frame: outside border, inner border, no center ornament. */
+.sheet-theme-surface .sheet-title-frame {
+  position: relative !important;
+  margin-bottom: 1rem !important;
+  padding:
+    var(--sheet-title-frame-padding-y, 20px)
+    var(--sheet-title-frame-padding-x, 24px) !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  background:
+    linear-gradient(90deg, rgba(5, 8, 12, 0.78), rgba(5, 8, 12, 0.48), rgba(5, 8, 12, 0.20)) !important;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 236, 188, 0.08) !important;
+}
+
+/* Outer actual frame. */
+.sheet-theme-surface .sheet-title-frame::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background: none !important;
+  background-image: none !important;
+  border: 2px solid rgba(201, 164, 90, 0.56) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 236, 188, 0.18),
+    inset 0 0 24px rgba(201, 164, 90, 0.08) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+/* Inner actual frame. */
+.sheet-theme-surface .sheet-title-frame::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 10px !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background: none !important;
+  background-image: none !important;
+  border: 1px solid rgba(201, 164, 90, 0.36) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(12, 8, 4, 0.34),
+    0 0 22px rgba(201, 164, 90, 0.08) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+/* Corner emphasis only. Not fake flowers. */
+.sheet-theme-surface .sheet-title-frame {
+  background-image:
+    linear-gradient(90deg, rgba(5, 8, 12, 0.78), rgba(5, 8, 12, 0.48), rgba(5, 8, 12, 0.20)),
+    linear-gradient(135deg, rgba(201,164,90,0.62), rgba(201,164,90,0)) ,
+    linear-gradient(225deg, rgba(201,164,90,0.62), rgba(201,164,90,0)) ,
+    linear-gradient(45deg, rgba(201,164,90,0.42), rgba(201,164,90,0)) ,
+    linear-gradient(315deg, rgba(201,164,90,0.42), rgba(201,164,90,0)) !important;
+  background-repeat: no-repeat !important;
+  background-size:
+    100% 100%,
+    90px 2px,
+    90px 2px,
+    90px 2px,
+    90px 2px !important;
+  background-position:
+    center,
+    left top,
+    right top,
+    left bottom,
+    right bottom !important;
+}
+
+.sheet-theme-surface .sheet-title-frame > * {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.sheet-theme-surface[data-sheet-title-frame="simple"] .sheet-title-frame::before {
+  border-color: rgba(201, 164, 90, 0.36) !important;
+}
+
+.sheet-theme-surface[data-sheet-title-frame="simple"] .sheet-title-frame::after {
+  opacity: 0 !important;
+}
+
+.sheet-theme-surface[data-sheet-title-frame="none"] .sheet-title-frame {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.sheet-theme-surface[data-sheet-title-frame="none"] .sheet-title-frame::before,
+.sheet-theme-surface[data-sheet-title-frame="none"] .sheet-title-frame::after {
+  opacity: 0 !important;
+}
+
+/* Light title frame variation. */
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-title-frame {
+  background:
+    linear-gradient(90deg, rgba(26, 20, 12, 0.64), rgba(66, 47, 23, 0.28), rgba(255, 248, 230, 0.10)) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-title-frame h1,
+.sheet-theme-surface[data-sheet-card-tone="light"] .sheet-title-frame input {
+  color: #fffdf4 !important;
+  text-shadow:
+    0 2px 16px rgba(0, 0, 0, 0.88),
+    0 0 18px rgba(201, 164, 90, 0.18) !important;
+}
+
+/* ------------------------------------------------------------------
+   Action center theming
+   The center tabs/list area had its own hard-coded dark surfaces. These
+   rules make it obey the card theme instead.
+------------------------------------------------------------------- */
+
+.sheet-theme-surface [data-sheet-action-center] {
+  color: var(--sheet-card-text) !important;
+  background: var(--sheet-card-bg) !important;
+  border-color: var(--sheet-card-border) !important;
+}
+
+.sheet-theme-surface [data-sheet-action-center] :where(
+  section,
+  article,
+  div
+)[class*="bg-black"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[#090909"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[#050"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[#071"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[rgba(0,0,0"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[rgba(5,8,12"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[rgba(8,17,27"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[rgba(9,17,26"],
+.sheet-theme-surface [data-sheet-action-center] [class*="bg-[rgba(20,17,12"] {
+  background: var(--sheet-card-bg-soft) !important;
+  border-color: var(--sheet-card-border-soft) !important;
+  color: var(--sheet-card-text) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] {
+  color: var(--sheet-card-text) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] .text-white,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="text-white"],
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="text-[#fff"],
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="text-[#f5e7bd"],
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="text-[#d8ceb8"] {
+  color: var(--sheet-card-title) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="text-[#9f9278"],
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="text-[#756a57"] {
+  color: var(--sheet-card-label) !important;
+}
+
+/* Action center buttons/tabs on light themes. */
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] button:not(.eldra-button) {
+  color: var(--sheet-card-title) !important;
+  border-color: var(--sheet-card-border-soft) !important;
+  background-color: rgba(255, 252, 244, 0.54) !important;
+}
+
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] button:not(.eldra-button):hover {
+  background-color: rgba(255, 252, 244, 0.78) !important;
+}
+
+/* Preserve active gold accents even on light cards. */
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [class*="bg-[rgba(201,164,90"] {
+  color: #2b2112 !important;
+  background-color: rgba(201, 164, 90, 0.24) !important;
+  border-color: rgba(130, 98, 49, 0.40) !important;
+}
+
+/* Details/action buttons need enough contrast in light mode. */
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] .eldra-button,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] a,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] [role="button"] {
+  color: var(--sheet-card-title) !important;
+}
+
+/* Native controls inside themed cards. */
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] input,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] textarea,
+.sheet-theme-surface[data-sheet-card-tone="light"] [data-sheet-action-center] select {
+  color: var(--sheet-card-input-text) !important;
+  background: var(--sheet-card-input-bg) !important;
+  border-color: var(--sheet-card-border-soft) !important;
+}

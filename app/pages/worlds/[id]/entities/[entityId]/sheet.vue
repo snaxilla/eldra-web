@@ -131,13 +131,16 @@ const choiceDrafts = ref<Record<string, string[]>>({})
 
 type SheetSurfaceTone = 'paper' | 'dark'
 type SheetBackgroundFit = 'cover' | 'contain'
+type SheetBackgroundMode = 'image' | 'solid'
 
 function defaultSheetThemePreference() {
   return {
     tone: 'paper' as SheetSurfaceTone,
+    backgroundMode: 'image' as SheetBackgroundMode,
     backgroundUrl: '/assets/themes/sheet-paper-default.webp',
     backgroundTitle: 'Default Paper',
     backgroundFileId: '',
+    solidColor: '#cfc0a0',
     repeat: true,
     tileSize: 520,
     fit: 'cover' as SheetBackgroundFit,
@@ -155,26 +158,71 @@ const sheetThemeStorageKey = computed(() =>
 
 let restoringSheetTheme = false
 
+function normalizeSheetSolidColor(value: any, fallback = '#cfc0a0') {
+  const raw = String(value || '').trim()
+
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase()
+  if (/^[0-9a-fA-F]{6}$/.test(raw)) return `#${raw.toLowerCase()}`
+
+  return fallback
+}
+
 function normalizeSheetThemePreference(value: any = {}) {
   const defaults = defaultSheetThemePreference()
-  const tone = String(value?.tone || defaults.tone) === 'dark' ? 'dark' : 'paper'
-  const fit = String(value?.fit || defaults.fit) === 'contain' ? 'contain' : 'cover'
-  const boxTheme = ['midnight', 'obsidian', 'blueSteel', 'smokedWalnut', 'ivory', 'vellum', 'rose', 'lavender'].includes(String(value?.boxTheme || '')) ? String(value.boxTheme) : defaults.boxTheme
-  const titleFrame = ['floral', 'simple', 'none'].includes(String(value?.titleFrame || '')) ? String(value.titleFrame) : defaults.titleFrame
+
+  const tone: SheetSurfaceTone = String(value?.tone || defaults.tone) === 'dark'
+    ? 'dark'
+    : 'paper'
+
+  const backgroundMode: SheetBackgroundMode =
+    String(value?.backgroundMode || value?.background_mode || defaults.backgroundMode) === 'solid'
+      ? 'solid'
+      : 'image'
+
+  const fit: SheetBackgroundFit = String(value?.fit || defaults.fit) === 'contain'
+    ? 'contain'
+    : 'cover'
+
   const tileSize = Number(value?.tileSize ?? defaults.tileSize)
   const dim = Number(value?.dim ?? defaults.dim)
+
+  const boxTheme = [
+    'midnight',
+    'obsidian',
+    'blueSteel',
+    'smokedWalnut',
+    'ivory',
+    'vellum',
+    'rose',
+    'lavender'
+  ].includes(String(value?.boxTheme || ''))
+    ? String(value.boxTheme)
+    : defaults.boxTheme
+
+  const titleFrame = ['floral', 'simple', 'none'].includes(String(value?.titleFrame || ''))
+    ? String(value.titleFrame)
+    : defaults.titleFrame
 
   return {
     ...defaults,
     ...value,
     tone,
+    backgroundMode,
     fit,
     backgroundUrl: String(value?.backgroundUrl || defaults.backgroundUrl),
     backgroundTitle: String(value?.backgroundTitle || defaults.backgroundTitle),
     backgroundFileId: String(value?.backgroundFileId || ''),
+    solidColor: normalizeSheetSolidColor(
+      value?.solidColor || value?.solid_color || defaults.solidColor,
+      defaults.solidColor
+    ),
     repeat: value?.repeat !== false,
-    tileSize: Number.isFinite(tileSize) ? Math.max(180, Math.min(1400, Math.floor(tileSize))) : defaults.tileSize,
-    dim: Number.isFinite(dim) ? Math.max(0, Math.min(70, Math.floor(dim))) : defaults.dim,
+    tileSize: Number.isFinite(tileSize)
+      ? Math.max(180, Math.min(1400, Math.floor(tileSize)))
+      : defaults.tileSize,
+    dim: Number.isFinite(dim)
+      ? Math.max(0, Math.min(70, Math.floor(dim)))
+      : defaults.dim,
     boxTheme,
     titleFrame
   }
@@ -219,6 +267,91 @@ function updateSheetThemePreference(patch: Record<string, any>) {
 function resetSheetThemePreference() {
   applySheetThemePreference(defaultSheetThemePreference())
 }
+
+const sheetThemePresetName = ref('')
+const sheetThemePresets = ref<any[]>([])
+const sheetThemePresetStorageKey = 'eldra:sheet-theme-presets:v1'
+
+function normalizeSheetThemePreset(value: any) {
+  const theme = normalizeSheetThemePreference(value?.theme || value)
+  const name = String(value?.name || theme.backgroundTitle || 'Sheet Theme').trim() || 'Sheet Theme'
+  const id = String(value?.id || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `preset-${Date.now()}`)
+
+  return {
+    id,
+    name,
+    theme,
+    updatedAt: String(value?.updatedAt || new Date().toISOString())
+  }
+}
+
+function loadSheetThemePresets() {
+  if (!import.meta.client) return
+
+  try {
+    const raw = window.localStorage.getItem(sheetThemePresetStorageKey)
+    const parsed = raw ? JSON.parse(raw) : []
+    const list = Array.isArray(parsed) ? parsed : []
+
+    sheetThemePresets.value = list
+      .map((preset: any) => normalizeSheetThemePreset(preset))
+      .filter((preset: any) => preset.id && preset.name)
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+  } catch {
+    sheetThemePresets.value = []
+  }
+}
+
+function persistSheetThemePresets() {
+  if (!import.meta.client) return
+  window.localStorage.setItem(sheetThemePresetStorageKey, JSON.stringify(sheetThemePresets.value))
+}
+
+function currentSheetThemePresetSnapshot() {
+  return JSON.parse(JSON.stringify(normalizeSheetThemePreference(sheetTheme)))
+}
+
+function saveSheetThemePreset() {
+  const name = String(sheetThemePresetName.value || '').trim()
+  if (!name) return
+
+  const id = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `preset-${Date.now()}`
+
+  const nextPreset = {
+    id,
+    name,
+    theme: currentSheetThemePresetSnapshot(),
+    updatedAt: new Date().toISOString()
+  }
+
+  const next = sheetThemePresets.value.filter((preset: any) => String(preset.id) !== id)
+  next.push(nextPreset)
+
+  sheetThemePresets.value = next.sort((a: any, b: any) => a.name.localeCompare(b.name))
+  sheetThemePresetName.value = ''
+  persistSheetThemePresets()
+}
+
+function applySheetThemePreset(preset: any) {
+  const normalized = normalizeSheetThemePreset(preset)
+  applySheetThemePreference(normalized.theme)
+}
+
+function deleteSheetThemePreset(preset: any) {
+  const id = String(preset?.id || '').trim()
+  if (!id) return
+
+  sheetThemePresets.value = sheetThemePresets.value.filter((item: any) => String(item.id) !== id)
+  persistSheetThemePresets()
+}
+
+onMounted(() => {
+  loadSheetThemePresets()
+})
+
 
 function safeSheetThemeCssUrl(value: any) {
   const url = String(value || '/assets/themes/sheet-paper-default.webp')
@@ -393,15 +526,24 @@ const sheetCardTone = computed(() => String(sheetCardThemeVariables(sheetTheme.b
 const sheetThemeStyle = computed(() => {
   const theme = normalizeSheetThemePreference(sheetTheme)
   const dimAlpha = Math.max(0, Math.min(0.70, Number(theme.dim || 0) / 100))
+  const backgroundMode = theme.backgroundMode === 'solid' ? 'solid' : 'image'
+  const solidColor = normalizeSheetSolidColor(theme.solidColor)
+
+  const surfaceColor = backgroundMode === 'solid'
+    ? solidColor
+    : theme.tone === 'dark'
+      ? '#101316'
+      : '#cfc0a0'
+
   const overlay = theme.tone === 'dark'
     ? `linear-gradient(180deg, rgba(4, 7, 10, ${Math.max(0.56, dimAlpha)}), rgba(6, 8, 11, ${Math.max(0.66, dimAlpha + 0.08)}))`
     : `linear-gradient(180deg, rgba(57, 42, 22, ${dimAlpha}), rgba(36, 25, 12, ${Math.min(0.78, dimAlpha + 0.11)}))`
 
   return {
-    '--sheet-surface-color': theme.tone === 'dark' ? '#101316' : '#cfc0a0',
-    '--sheet-surface-image': safeSheetThemeCssUrl(theme.backgroundUrl),
-    '--sheet-surface-repeat': theme.repeat ? 'repeat' : 'no-repeat',
-    '--sheet-surface-size': theme.repeat ? `${theme.tileSize}px ${theme.tileSize}px` : theme.fit,
+    '--sheet-surface-color': surfaceColor,
+    '--sheet-surface-image': backgroundMode === 'solid' ? 'none' : safeSheetThemeCssUrl(theme.backgroundUrl),
+    '--sheet-surface-repeat': backgroundMode === 'solid' ? 'no-repeat' : theme.repeat ? 'repeat' : 'no-repeat',
+    '--sheet-surface-size': backgroundMode === 'solid' ? 'auto' : theme.repeat ? `${theme.tileSize}px ${theme.tileSize}px` : theme.fit,
     '--sheet-surface-position': 'center center',
     '--sheet-surface-overlay': overlay,
     ...sheetCardThemeVariables(theme.boxTheme),
@@ -8557,6 +8699,8 @@ async function saveSheet() {
           @reset-sheet-theme="resetSheetThemePreference"
           @update-sheet-theme="updateSheetThemePreference"
           :sheet-theme="sheetTheme"
+          :sheet-theme-presets="sheetThemePresets"
+          :sheet-theme-preset-name="sheetThemePresetName"
           :level="currentLevelNumber"
           :class-name="resolvedClass?.title || sheet?.class_name || '—'"
           :choice-count="levelSetupChoiceCount"
@@ -8594,7 +8738,11 @@ async function saveSheet() {
           @level-up="levelUpOnceFromManager"
           @saved-choices="applyChildSheetPatchResult"
           @save-sheet="saveSheet"
-        />
+        
+          @update-sheet-theme-preset-name="sheetThemePresetName = $event"
+          @save-sheet-theme-preset="saveSheetThemePreset"
+          @apply-sheet-theme-preset="applySheetThemePreset"
+          @delete-sheet-theme-preset="deleteSheetThemePreset"/>
       </template>
 
       <template #inventory>

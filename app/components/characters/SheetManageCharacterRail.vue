@@ -27,6 +27,8 @@ const props = withDefaults(defineProps<{
   combatStats?: Record<string, any>
   shownStats?: Record<string, any>
   sheetTheme?: any
+  sheetThemePresetName?: string
+  sheetThemePresets?: any[]
 }>(), {
   worldId: '',
   entityId: '',
@@ -62,16 +64,84 @@ const emit = defineEmits<{
   (event: 'save-sheet'): void
   (event: 'update-sheet-theme', patch: Record<string, any>): void
   (event: 'reset-sheet-theme'): void
+  (event: 'update-sheet-theme-preset-name', value: string): void
+  (event: 'save-sheet-theme-preset'): void
+  (event: 'apply-sheet-theme-preset', preset: any): void
+  (event: 'delete-sheet-theme-preset', preset: any): void
 }>()
 
 
 const appearanceMediaPickerOpen = ref(false)
+
+
+const sheetThemePresetList = computed(() =>
+  Array.isArray(props.sheetThemePresets) ? props.sheetThemePresets : []
+)
+
+function sheetThemePresetUpdatedLabel(value: any) {
+  const raw = String(value?.updatedAt || '').trim()
+  if (!raw) return ''
+
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+}
 
 const activeSheetTheme = computed(() =>
   props.sheetTheme && typeof props.sheetTheme === 'object'
     ? props.sheetTheme
     : {}
 )
+
+
+function safeAppearanceCssUrl(value: any) {
+  const url = String(value || '/assets/themes/sheet-paper-default.webp')
+    .replace(/["\\\n\r]/g, '')
+    .trim()
+
+  return `url("${url || '/assets/themes/sheet-paper-default.webp'}")`
+}
+
+function normalizeAppearanceColor(value: any, fallback = '#cfc0a0') {
+  const text = String(value || '').trim()
+
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) return text.toLowerCase()
+  if (/^[0-9a-fA-F]{6}$/.test(text)) return `#${text.toLowerCase()}`
+
+  return fallback
+}
+
+const appearancePreviewStyle = computed(() => {
+  const theme: any = activeSheetTheme.value || {}
+  const tone = theme.tone === 'dark' ? 'dark' : 'paper'
+  const mode = theme.backgroundMode === 'solid' ? 'solid' : 'image'
+  const dim = Math.max(0, Math.min(0.70, Number(theme.dim ?? 22) / 100))
+  const overlay = tone === 'dark'
+    ? `linear-gradient(180deg, rgba(4,7,10,${Math.max(0.56, dim)}), rgba(4,7,10,${Math.max(0.66, dim + 0.08)}))`
+    : `linear-gradient(180deg, rgba(57,42,22,${dim}), rgba(36,25,12,${Math.min(0.78, dim + 0.11)}))`
+
+  if (mode === 'solid') {
+    return {
+      backgroundColor: normalizeAppearanceColor(theme.solidColor),
+      backgroundImage: overlay,
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: '100% 100%'
+    }
+  }
+
+  return {
+    backgroundColor: tone === 'dark' ? '#101316' : '#cfc0a0',
+    backgroundImage: `${overlay}, ${safeAppearanceCssUrl(theme.backgroundUrl)}`,
+    backgroundRepeat: `no-repeat, ${theme.repeat === false ? 'no-repeat' : 'repeat'}`,
+    backgroundSize: `100% 100%, ${theme.repeat === false ? (theme.fit || 'cover') : `${theme.tileSize || 520}px ${theme.tileSize || 520}px`}`,
+    backgroundPosition: 'center center'
+  }
+})
 
 function checkedValue(event: Event) {
   return Boolean((event.target as HTMLInputElement)?.checked)
@@ -443,18 +513,121 @@ function shownCombatValue(key: string) {
 
       <div
         class="mb-3 h-24 rounded-none border border-[rgba(201,164,90,0.26)] bg-cover bg-center"
-        :style="{
-          backgroundColor: activeSheetTheme.tone === 'dark' ? '#101316' : '#cfc0a0',
-          backgroundImage: `${activeSheetTheme.tone === 'dark'
-            ? 'linear-gradient(180deg, rgba(4,7,10,0.58), rgba(4,7,10,0.72))'
-            : 'linear-gradient(180deg, rgba(57,42,22,0.16), rgba(36,25,12,0.28))'}, url(${activeSheetTheme.backgroundUrl || '/assets/themes/sheet-paper-default.webp'})`,
-          backgroundRepeat: `no-repeat, ${activeSheetTheme.repeat === false ? 'no-repeat' : 'repeat'}`,
-          backgroundSize: `100% 100%, ${activeSheetTheme.repeat === false ? (activeSheetTheme.fit || 'cover') : `${activeSheetTheme.tileSize || 520}px ${activeSheetTheme.tileSize || 520}px`}`
-        }"
+        :style="appearancePreviewStyle"
       />
 
+      <div class="mb-3 rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3">
+        <div class="mb-2 text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Saved Presets</div>
+
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <input
+            :value="sheetThemePresetName || ''"
+            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            placeholder="Preset name..."
+            @input="emit('update-sheet-theme-preset-name', inputValue($event))"
+          >
+
+          <button
+            type="button"
+            class="eldra-button rounded-none px-3 py-2 text-xs font-semibold disabled:opacity-50"
+            :disabled="!String(sheetThemePresetName || '').trim()"
+            @click="emit('save-sheet-theme-preset')"
+          >
+            Save
+          </button>
+        </div>
+
+        <div
+          v-if="sheetThemePresetList.length"
+          class="mt-3 grid gap-2"
+        >
+          <div
+            v-for="preset in sheetThemePresetList"
+            :key="preset.id"
+            class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.48)] p-2"
+          >
+            <button
+              type="button"
+              class="min-w-0 text-left"
+              @click="emit('apply-sheet-theme-preset', preset)"
+            >
+              <span class="block truncate text-sm font-semibold text-white">{{ preset.name }}</span>
+              <span
+                v-if="sheetThemePresetUpdatedLabel(preset)"
+                class="mt-0.5 block text-[10px] uppercase tracking-[0.14em] text-[#9f9278]"
+              >
+                {{ sheetThemePresetUpdatedLabel(preset) }}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#fff7df]"
+              @click="emit('apply-sheet-theme-preset', preset)"
+            >
+              Apply
+            </button>
+
+            <button
+              type="button"
+              class="rounded-none border border-red-400/24 bg-red-500/10 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-100"
+              @click="emit('delete-sheet-theme-preset', preset)"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-else
+          class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.18)] p-3 text-xs leading-5 text-[#9f9278]"
+        >
+          No saved presets yet.
+        </div>
+      </div>
+
       <div class="grid gap-3">
-        <div class="rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3">
+        <label class="block">
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Background Type</span>
+          <select
+            :value="activeSheetTheme.backgroundMode || 'image'"
+            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            @change="updateSheetTheme({ backgroundMode: inputValue($event) })"
+          >
+            <option value="image" class="bg-[#090909] text-[#f5e7bd]">Image / Texture</option>
+            <option value="solid" class="bg-[#090909] text-[#f5e7bd]">Solid Color</option>
+          </select>
+        </label>
+
+        <div
+          v-if="activeSheetTheme.backgroundMode === 'solid'"
+          class="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3"
+        >
+          <label class="block">
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Color</span>
+            <input
+              type="color"
+              :value="activeSheetTheme.solidColor || '#cfc0a0'"
+              class="h-10 w-full cursor-pointer rounded-none border border-[rgba(201,164,90,0.24)] bg-transparent p-1"
+              @input="updateSheetTheme({ solidColor: inputValue($event) })"
+            >
+          </label>
+
+          <label class="block">
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Hex</span>
+            <input
+              :value="activeSheetTheme.solidColor || '#cfc0a0'"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+              placeholder="#cfc0a0"
+              @input="updateSheetTheme({ solidColor: inputValue($event) })"
+            >
+          </label>
+        </div>
+
+        <div
+          v-if="activeSheetTheme.backgroundMode !== 'solid'"
+          class="rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3"
+        >
           <div class="mb-2 text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Background Image</div>
 
           <div class="text-sm font-semibold text-white">
@@ -535,7 +708,10 @@ function shownCombatValue(key: string) {
           </select>
         </label>
 
-        <label class="flex items-center justify-between gap-3 rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3">
+        <label
+          v-if="activeSheetTheme.backgroundMode !== 'solid'"
+          class="flex items-center justify-between gap-3 rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3"
+        >
           <span>
             <span class="block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Repeat Image</span>
             <span class="mt-1 block text-xs text-[#d8ceb8]">Best for seamless paper or texture tiles.</span>
@@ -550,7 +726,7 @@ function shownCombatValue(key: string) {
         </label>
 
         <label
-          v-if="activeSheetTheme.repeat !== false"
+          v-if="activeSheetTheme.backgroundMode !== 'solid' && activeSheetTheme.repeat !== false"
           class="block"
         >
           <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">
@@ -569,7 +745,7 @@ function shownCombatValue(key: string) {
         </label>
 
         <label
-          v-else
+          v-else-if="activeSheetTheme.backgroundMode !== 'solid'"
           class="block"
         >
           <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Image Fit</span>

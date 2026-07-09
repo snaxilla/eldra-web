@@ -1235,3 +1235,20 @@
   outline: 1px solid rgba(201, 164, 90, 0.28);
   outline-offset: -1px;
 }
+
+/* Character sheet note drawer must match the standard right-side rail width. */
+[data-sheet-note-drawer-shell] {
+  width: 456px !important;
+  max-width: calc(100vw - 1rem) !important;
+}
+
+@media (min-width: 1280px) {
+  [data-sheet-note-drawer-shell] {
+    width: 468px !important;
+  }
+}
+
+[data-sheet-note-detail-drawer] {
+  width: 100% !important;
+  max-width: none !important;
+}

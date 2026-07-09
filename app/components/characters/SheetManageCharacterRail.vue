@@ -26,6 +26,7 @@ const props = withDefaults(defineProps<{
   abilityScores?: Record<string, any>
   combatStats?: Record<string, any>
   shownStats?: Record<string, any>
+  sheetTheme?: any
 }>(), {
   worldId: '',
   entityId: '',
@@ -59,7 +60,44 @@ const emit = defineEmits<{
   (event: 'level-up', value: any): void
   (event: 'saved-choices', value: any): void
   (event: 'save-sheet'): void
+  (event: 'update-sheet-theme', patch: Record<string, any>): void
+  (event: 'reset-sheet-theme'): void
 }>()
+
+
+const appearanceMediaPickerOpen = ref(false)
+
+const activeSheetTheme = computed(() =>
+  props.sheetTheme && typeof props.sheetTheme === 'object'
+    ? props.sheetTheme
+    : {}
+)
+
+function checkedValue(event: Event) {
+  return Boolean((event.target as HTMLInputElement)?.checked)
+}
+
+function numericInputValue(event: Event, fallback = 520) {
+  const parsed = Number((event.target as HTMLInputElement)?.value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function updateSheetTheme(patch: Record<string, any>) {
+  emit('update-sheet-theme', patch)
+}
+
+function selectSheetThemeMedia(file: any) {
+  const url = String(file?.url || file?.imageUrl || file?.image_url || '').trim()
+  if (!url) return
+
+  updateSheetTheme({
+    backgroundUrl: url,
+    backgroundFileId: String(file?.id || ''),
+    backgroundTitle: String(file?.title || file?.filename || 'Gallery Image')
+  })
+
+  appearanceMediaPickerOpen.value = false
+}
 
 function inputValue(event: Event) {
   return String((event.target as HTMLInputElement | HTMLSelectElement)?.value || '')
@@ -384,5 +422,153 @@ function shownCombatValue(key: string) {
         </label>
       </div>
     </section>
-  </section>
+  
+    <section class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.42)] p-4">
+      <div class="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Sheet Appearance</div>
+          <div class="mt-1 text-sm leading-6 text-[#d8ceb8]">
+            Personal sheet surface theme for this browser.
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+          @click="emit('reset-sheet-theme')"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div
+        class="mb-3 h-24 rounded-none border border-[rgba(201,164,90,0.26)] bg-cover bg-center"
+        :style="{
+          backgroundColor: activeSheetTheme.tone === 'dark' ? '#101316' : '#cfc0a0',
+          backgroundImage: `${activeSheetTheme.tone === 'dark'
+            ? 'linear-gradient(180deg, rgba(4,7,10,0.58), rgba(4,7,10,0.72))'
+            : 'linear-gradient(180deg, rgba(57,42,22,0.16), rgba(36,25,12,0.28))'}, url(${activeSheetTheme.backgroundUrl || '/assets/themes/sheet-paper-default.webp'})`,
+          backgroundRepeat: `no-repeat, ${activeSheetTheme.repeat === false ? 'no-repeat' : 'repeat'}`,
+          backgroundSize: `100% 100%, ${activeSheetTheme.repeat === false ? (activeSheetTheme.fit || 'cover') : `${activeSheetTheme.tileSize || 520}px ${activeSheetTheme.tileSize || 520}px`}`
+        }"
+      />
+
+      <div class="grid gap-3">
+        <div class="rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3">
+          <div class="mb-2 text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Background Image</div>
+
+          <div class="text-sm font-semibold text-white">
+            {{ activeSheetTheme.backgroundTitle || 'Default Paper' }}
+          </div>
+
+          <div class="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="eldra-button rounded-none px-3 py-2 text-xs font-semibold"
+              @click="appearanceMediaPickerOpen = true"
+            >
+              Gallery
+            </button>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+              @click="updateSheetTheme({
+                backgroundUrl: '/assets/themes/sheet-paper-default.webp',
+                backgroundTitle: 'Default Paper',
+                backgroundFileId: ''
+              })"
+            >
+              Default
+            </button>
+          </div>
+        </div>
+
+        <label class="block">
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Tone</span>
+          <select
+            :value="activeSheetTheme.tone || 'paper'"
+            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            @change="updateSheetTheme({ tone: inputValue($event) })"
+          >
+            <option value="paper" class="bg-[#090909] text-[#f5e7bd]">Paper / Vellum</option>
+            <option value="dark" class="bg-[#090909] text-[#f5e7bd]">Dark Slate</option>
+          </select>
+        </label>
+
+        <label class="flex items-center justify-between gap-3 rounded-none border border-[rgba(65,82,103,0.52)] bg-[rgba(8,17,27,0.54)] p-3">
+          <span>
+            <span class="block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Repeat Image</span>
+            <span class="mt-1 block text-xs text-[#d8ceb8]">Best for seamless paper or texture tiles.</span>
+          </span>
+
+          <input
+            type="checkbox"
+            class="h-5 w-5 accent-[#c9a45a]"
+            :checked="activeSheetTheme.repeat !== false"
+            @change="updateSheetTheme({ repeat: checkedValue($event) })"
+          >
+        </label>
+
+        <label
+          v-if="activeSheetTheme.repeat !== false"
+          class="block"
+        >
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">
+            Tile Size: {{ activeSheetTheme.tileSize || 520 }}px
+          </span>
+
+          <input
+            type="range"
+            min="220"
+            max="1200"
+            step="20"
+            :value="activeSheetTheme.tileSize || 520"
+            class="w-full accent-[#c9a45a]"
+            @input="updateSheetTheme({ tileSize: numericInputValue($event, 520) })"
+          >
+        </label>
+
+        <label
+          v-else
+          class="block"
+        >
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Image Fit</span>
+          <select
+            :value="activeSheetTheme.fit || 'cover'"
+            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            @change="updateSheetTheme({ fit: inputValue($event) })"
+          >
+            <option value="cover" class="bg-[#090909] text-[#f5e7bd]">Cover</option>
+            <option value="contain" class="bg-[#090909] text-[#f5e7bd]">Contain</option>
+          </select>
+        </label>
+
+        <label class="block">
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">
+            Shade: {{ activeSheetTheme.dim ?? 22 }}%
+          </span>
+
+          <input
+            type="range"
+            min="0"
+            max="60"
+            step="1"
+            :value="activeSheetTheme.dim ?? 22"
+            class="w-full accent-[#c9a45a]"
+            @input="updateSheetTheme({ dim: numericInputValue($event, 22) })"
+          >
+        </label>
+      </div>
+
+      <WorldMediaPicker
+        v-model:open="appearanceMediaPickerOpen"
+        :world-id="worldId"
+        title="Choose Sheet Background"
+        select-label="Use Background"
+        @select="selectSheetThemeMedia"
+      />
+    </section>
+
+</section>
 </template>

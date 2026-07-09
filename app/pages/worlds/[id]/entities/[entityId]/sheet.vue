@@ -129,6 +129,130 @@ const noteDraft = reactive({
 })
 const choiceDrafts = ref<Record<string, string[]>>({})
 
+type SheetSurfaceTone = 'paper' | 'dark'
+type SheetBackgroundFit = 'cover' | 'contain'
+
+function defaultSheetThemePreference() {
+  return {
+    tone: 'paper' as SheetSurfaceTone,
+    backgroundUrl: '/assets/themes/sheet-paper-default.webp',
+    backgroundTitle: 'Default Paper',
+    backgroundFileId: '',
+    repeat: true,
+    tileSize: 520,
+    fit: 'cover' as SheetBackgroundFit,
+    dim: 22
+  }
+}
+
+const sheetTheme = reactive(defaultSheetThemePreference())
+
+const sheetThemeStorageKey = computed(() =>
+  `eldra:sheet-theme:${worldId.value}:${entityId.value}`
+)
+
+let restoringSheetTheme = false
+
+function normalizeSheetThemePreference(value: any = {}) {
+  const defaults = defaultSheetThemePreference()
+  const tone = String(value?.tone || defaults.tone) === 'dark' ? 'dark' : 'paper'
+  const fit = String(value?.fit || defaults.fit) === 'contain' ? 'contain' : 'cover'
+  const tileSize = Number(value?.tileSize ?? defaults.tileSize)
+  const dim = Number(value?.dim ?? defaults.dim)
+
+  return {
+    ...defaults,
+    ...value,
+    tone,
+    fit,
+    backgroundUrl: String(value?.backgroundUrl || defaults.backgroundUrl),
+    backgroundTitle: String(value?.backgroundTitle || defaults.backgroundTitle),
+    backgroundFileId: String(value?.backgroundFileId || ''),
+    repeat: value?.repeat !== false,
+    tileSize: Number.isFinite(tileSize) ? Math.max(180, Math.min(1400, Math.floor(tileSize))) : defaults.tileSize,
+    dim: Number.isFinite(dim) ? Math.max(0, Math.min(70, Math.floor(dim))) : defaults.dim
+  }
+}
+
+function applySheetThemePreference(value: any = {}) {
+  const next = normalizeSheetThemePreference(value)
+
+  Object.assign(sheetTheme, next)
+}
+
+function loadSheetThemePreference() {
+  if (!import.meta.client) return
+
+  restoringSheetTheme = true
+
+  try {
+    const raw = window.localStorage.getItem(sheetThemeStorageKey.value)
+    applySheetThemePreference(raw ? JSON.parse(raw) : defaultSheetThemePreference())
+  } catch {
+    applySheetThemePreference(defaultSheetThemePreference())
+  } finally {
+    window.setTimeout(() => {
+      restoringSheetTheme = false
+    }, 0)
+  }
+}
+
+function persistSheetThemePreference() {
+  if (!import.meta.client || restoringSheetTheme) return
+
+  window.localStorage.setItem(sheetThemeStorageKey.value, JSON.stringify({ ...sheetTheme }))
+}
+
+function updateSheetThemePreference(patch: Record<string, any>) {
+  applySheetThemePreference({
+    ...sheetTheme,
+    ...patch
+  })
+}
+
+function resetSheetThemePreference() {
+  applySheetThemePreference(defaultSheetThemePreference())
+}
+
+function safeSheetThemeCssUrl(value: any) {
+  const url = String(value || '/assets/themes/sheet-paper-default.webp')
+    .replace(/["\\\n\r]/g, '')
+    .trim()
+
+  return `url("${url || '/assets/themes/sheet-paper-default.webp'}")`
+}
+
+const sheetThemeStyle = computed(() => {
+  const theme = normalizeSheetThemePreference(sheetTheme)
+  const dimAlpha = Math.max(0, Math.min(0.70, Number(theme.dim || 0) / 100))
+  const overlay = theme.tone === 'dark'
+    ? `linear-gradient(180deg, rgba(4, 7, 10, ${Math.max(0.56, dimAlpha)}), rgba(6, 8, 11, ${Math.max(0.66, dimAlpha + 0.08)}))`
+    : `linear-gradient(180deg, rgba(57, 42, 22, ${dimAlpha}), rgba(36, 25, 12, ${Math.min(0.78, dimAlpha + 0.11)}))`
+
+  return {
+    '--sheet-surface-color': theme.tone === 'dark' ? '#101316' : '#cfc0a0',
+    '--sheet-surface-image': safeSheetThemeCssUrl(theme.backgroundUrl),
+    '--sheet-surface-repeat': theme.repeat ? 'repeat' : 'no-repeat',
+    '--sheet-surface-size': theme.repeat ? `${theme.tileSize}px ${theme.tileSize}px` : theme.fit,
+    '--sheet-surface-position': 'center center',
+    '--sheet-surface-overlay': overlay
+  }
+})
+
+watch(
+  [worldId, entityId],
+  () => loadSheetThemePreference(),
+  { immediate: true }
+)
+
+watch(
+  sheetTheme,
+  () => persistSheetThemePreference(),
+  { deep: true }
+)
+
+
+
 type SheetManagePanelKey = 'character' | 'inventory' | 'spells'
 
 const sheetManagePanel = ref<SheetManagePanelKey | ''>('')
@@ -7458,7 +7582,7 @@ async function saveSheet() {
           @select="setSheetTab"
         />
 
-      <section data-sheet-surface="parchment" class="sheet-parchment-surface eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-3 shadow-xl md:p-5">
+      <section :style="sheetThemeStyle" data-sheet-surface="custom" class="sheet-theme-surface eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-3 shadow-xl md:p-5">
         <div v-if="pending" class="text-[#d8ceb8]">
           Loading character sheet...
         </div>
@@ -8260,6 +8384,9 @@ async function saveSheet() {
           :world-id="worldId"
           :entity-id="entityId"
           :sheet="sheet"
+          @reset-sheet-theme="resetSheetThemePreference"
+          @update-sheet-theme="updateSheetThemePreference"
+          :sheet-theme="sheetTheme"
           :level="currentLevelNumber"
           :class-name="resolvedClass?.title || sheet?.class_name || '—'"
           :choice-count="levelSetupChoiceCount"

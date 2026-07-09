@@ -497,16 +497,28 @@ function shownCombatValue(key: string) {
         </label>
 
         <label class="block">
-          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Box Theme</span>
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Cards / Boxes Theme</span>
           <select
             :value="activeSheetTheme.boxTheme || 'midnight'"
             class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
             @change="updateSheetTheme({ boxTheme: inputValue($event) })"
           >
-            <option value="midnight" class="bg-[#090909] text-[#f5e7bd]">Midnight Ink</option>
-            <option value="obsidian" class="bg-[#090909] text-[#f5e7bd]">Obsidian Gold</option>
-            <option value="blueSteel" class="bg-[#090909] text-[#f5e7bd]">Blue Steel</option>
-            <option value="smokedWalnut" class="bg-[#090909] text-[#f5e7bd]">Smoked Walnut</option>
+            <optgroup label="Dark Neutrals" class="bg-[#090909] text-[#f5e7bd]">
+              <option value="midnight" class="bg-[#090909] text-[#f5e7bd]">Midnight Ink</option>
+              <option value="obsidian" class="bg-[#090909] text-[#f5e7bd]">Obsidian Gold</option>
+              <option value="blueSteel" class="bg-[#090909] text-[#f5e7bd]">Blue Steel</option>
+              <option value="smokedWalnut" class="bg-[#090909] text-[#f5e7bd]">Smoked Walnut</option>
+            </optgroup>
+
+            <optgroup label="Light Neutrals" class="bg-[#090909] text-[#f5e7bd]">
+              <option value="ivory" class="bg-[#090909] text-[#f5e7bd]">Ivory Paper</option>
+              <option value="vellum" class="bg-[#090909] text-[#f5e7bd]">Warm Vellum</option>
+            </optgroup>
+
+            <optgroup label="Soft Color" class="bg-[#090909] text-[#f5e7bd]">
+              <option value="rose" class="bg-[#090909] text-[#f5e7bd]">Blush Rose</option>
+              <option value="lavender" class="bg-[#090909] text-[#f5e7bd]">Lavender Mist</option>
+            </optgroup>
           </select>
         </label>
 
@@ -517,7 +529,7 @@ function shownCombatValue(key: string) {
             class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
             @change="updateSheetTheme({ titleFrame: inputValue($event) })"
           >
-            <option value="floral" class="bg-[#090909] text-[#f5e7bd]">Floral Frame</option>
+            <option value="floral" class="bg-[#090909] text-[#f5e7bd]">Ornate Floral Frame</option>
             <option value="simple" class="bg-[#090909] text-[#f5e7bd]">Simple Plate</option>
             <option value="none" class="bg-[#090909] text-[#f5e7bd]">No Frame</option>
           </select>

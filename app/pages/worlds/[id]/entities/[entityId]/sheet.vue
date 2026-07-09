@@ -159,7 +159,7 @@ function normalizeSheetThemePreference(value: any = {}) {
   const defaults = defaultSheetThemePreference()
   const tone = String(value?.tone || defaults.tone) === 'dark' ? 'dark' : 'paper'
   const fit = String(value?.fit || defaults.fit) === 'contain' ? 'contain' : 'cover'
-  const boxTheme = ['midnight', 'obsidian', 'blueSteel', 'smokedWalnut'].includes(String(value?.boxTheme || '')) ? String(value.boxTheme) : defaults.boxTheme
+  const boxTheme = ['midnight', 'obsidian', 'blueSteel', 'smokedWalnut', 'ivory', 'vellum', 'rose', 'lavender'].includes(String(value?.boxTheme || '')) ? String(value.boxTheme) : defaults.boxTheme
   const titleFrame = ['floral', 'simple', 'none'].includes(String(value?.titleFrame || '')) ? String(value.titleFrame) : defaults.titleFrame
   const tileSize = Number(value?.tileSize ?? defaults.tileSize)
   const dim = Number(value?.dim ?? defaults.dim)
@@ -234,32 +234,116 @@ function sheetCardThemeVariables(value: any) {
 
   const themes: Record<string, Record<string, string>> = {
     midnight: {
+      '--sheet-card-tone': 'dark',
       '--sheet-card-bg': 'radial-gradient(circle at 12% 0%, rgba(55, 75, 90, 0.16), transparent 34%), linear-gradient(180deg, rgba(8, 14, 20, 0.96), rgba(4, 8, 13, 0.98))',
       '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(10, 18, 26, 0.88), rgba(5, 10, 16, 0.92))',
       '--sheet-card-border': 'rgba(94, 121, 145, 0.48)',
       '--sheet-card-border-soft': 'rgba(94, 121, 145, 0.34)',
-      '--sheet-card-glow': 'rgba(56, 189, 248, 0.10)'
+      '--sheet-card-glow': 'rgba(56, 189, 248, 0.10)',
+      '--sheet-card-title': '#ffffff',
+      '--sheet-card-text': '#d8ceb8',
+      '--sheet-card-label': '#b8a982',
+      '--sheet-card-muted': '#8f8269',
+      '--sheet-card-input-bg': 'rgba(5, 8, 12, 0.88)',
+      '--sheet-card-input-text': '#ffffff'
     },
     obsidian: {
+      '--sheet-card-tone': 'dark',
       '--sheet-card-bg': 'radial-gradient(circle at 16% 0%, rgba(201, 164, 90, 0.08), transparent 36%), linear-gradient(180deg, rgba(9, 9, 9, 0.97), rgba(2, 3, 5, 0.99))',
       '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(13, 12, 10, 0.91), rgba(5, 5, 5, 0.94))',
       '--sheet-card-border': 'rgba(201, 164, 90, 0.34)',
       '--sheet-card-border-soft': 'rgba(201, 164, 90, 0.22)',
-      '--sheet-card-glow': 'rgba(201, 164, 90, 0.10)'
+      '--sheet-card-glow': 'rgba(201, 164, 90, 0.10)',
+      '--sheet-card-title': '#ffffff',
+      '--sheet-card-text': '#d8ceb8',
+      '--sheet-card-label': '#c7ad71',
+      '--sheet-card-muted': '#8f8269',
+      '--sheet-card-input-bg': 'rgba(5, 5, 5, 0.88)',
+      '--sheet-card-input-text': '#ffffff'
     },
     blueSteel: {
+      '--sheet-card-tone': 'dark',
       '--sheet-card-bg': 'radial-gradient(circle at 18% 0%, rgba(125, 183, 218, 0.18), transparent 38%), linear-gradient(180deg, rgba(13, 24, 34, 0.96), rgba(6, 12, 19, 0.98))',
       '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(15, 28, 40, 0.88), rgba(7, 14, 22, 0.94))',
       '--sheet-card-border': 'rgba(120, 154, 180, 0.52)',
       '--sheet-card-border-soft': 'rgba(120, 154, 180, 0.34)',
-      '--sheet-card-glow': 'rgba(125, 183, 218, 0.12)'
+      '--sheet-card-glow': 'rgba(125, 183, 218, 0.12)',
+      '--sheet-card-title': '#ffffff',
+      '--sheet-card-text': '#d8ceb8',
+      '--sheet-card-label': '#b8cce0',
+      '--sheet-card-muted': '#8799a9',
+      '--sheet-card-input-bg': 'rgba(5, 12, 18, 0.88)',
+      '--sheet-card-input-text': '#ffffff'
     },
     smokedWalnut: {
+      '--sheet-card-tone': 'dark',
       '--sheet-card-bg': 'radial-gradient(circle at 18% 0%, rgba(201, 164, 90, 0.14), transparent 36%), linear-gradient(180deg, rgba(24, 18, 12, 0.96), rgba(9, 7, 5, 0.98))',
       '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(31, 23, 15, 0.88), rgba(12, 9, 6, 0.94))',
       '--sheet-card-border': 'rgba(201, 164, 90, 0.46)',
       '--sheet-card-border-soft': 'rgba(201, 164, 90, 0.30)',
-      '--sheet-card-glow': 'rgba(201, 164, 90, 0.13)'
+      '--sheet-card-glow': 'rgba(201, 164, 90, 0.13)',
+      '--sheet-card-title': '#ffffff',
+      '--sheet-card-text': '#d8ceb8',
+      '--sheet-card-label': '#c8ae78',
+      '--sheet-card-muted': '#9a896b',
+      '--sheet-card-input-bg': 'rgba(12, 9, 6, 0.88)',
+      '--sheet-card-input-text': '#ffffff'
+    },
+    ivory: {
+      '--sheet-card-tone': 'light',
+      '--sheet-card-bg': 'radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.58), transparent 38%), linear-gradient(180deg, rgba(255, 250, 236, 0.96), rgba(233, 219, 190, 0.98))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(255, 252, 242, 0.78), rgba(235, 222, 196, 0.86))',
+      '--sheet-card-border': 'rgba(130, 98, 49, 0.36)',
+      '--sheet-card-border-soft': 'rgba(130, 98, 49, 0.24)',
+      '--sheet-card-glow': 'rgba(130, 98, 49, 0.09)',
+      '--sheet-card-title': '#1f1a13',
+      '--sheet-card-text': '#3f3528',
+      '--sheet-card-label': '#7d642d',
+      '--sheet-card-muted': '#7b715e',
+      '--sheet-card-input-bg': 'rgba(255, 252, 244, 0.88)',
+      '--sheet-card-input-text': '#1f1a13'
+    },
+    vellum: {
+      '--sheet-card-tone': 'light',
+      '--sheet-card-bg': 'radial-gradient(circle at 18% 0%, rgba(255, 244, 208, 0.54), transparent 38%), linear-gradient(180deg, rgba(241, 225, 187, 0.96), rgba(210, 184, 132, 0.98))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(255, 242, 212, 0.70), rgba(220, 196, 150, 0.82))',
+      '--sheet-card-border': 'rgba(117, 83, 34, 0.42)',
+      '--sheet-card-border-soft': 'rgba(117, 83, 34, 0.28)',
+      '--sheet-card-glow': 'rgba(117, 83, 34, 0.10)',
+      '--sheet-card-title': '#24190e',
+      '--sheet-card-text': '#43321d',
+      '--sheet-card-label': '#7a531a',
+      '--sheet-card-muted': '#78684c',
+      '--sheet-card-input-bg': 'rgba(255, 243, 214, 0.86)',
+      '--sheet-card-input-text': '#24190e'
+    },
+    rose: {
+      '--sheet-card-tone': 'light',
+      '--sheet-card-bg': 'radial-gradient(circle at 15% 0%, rgba(255, 255, 255, 0.55), transparent 36%), linear-gradient(180deg, rgba(255, 239, 247, 0.97), rgba(235, 202, 216, 0.98))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(255, 247, 251, 0.78), rgba(239, 211, 222, 0.88))',
+      '--sheet-card-border': 'rgba(175, 94, 128, 0.42)',
+      '--sheet-card-border-soft': 'rgba(175, 94, 128, 0.28)',
+      '--sheet-card-glow': 'rgba(224, 102, 157, 0.14)',
+      '--sheet-card-title': '#2a1620',
+      '--sheet-card-text': '#4d2c39',
+      '--sheet-card-label': '#9a466b',
+      '--sheet-card-muted': '#80616d',
+      '--sheet-card-input-bg': 'rgba(255, 248, 252, 0.88)',
+      '--sheet-card-input-text': '#2a1620'
+    },
+    lavender: {
+      '--sheet-card-tone': 'light',
+      '--sheet-card-bg': 'radial-gradient(circle at 15% 0%, rgba(255, 255, 255, 0.54), transparent 36%), linear-gradient(180deg, rgba(246, 239, 255, 0.97), rgba(218, 205, 235, 0.98))',
+      '--sheet-card-bg-soft': 'linear-gradient(180deg, rgba(251, 247, 255, 0.78), rgba(225, 214, 240, 0.88))',
+      '--sheet-card-border': 'rgba(121, 92, 166, 0.40)',
+      '--sheet-card-border-soft': 'rgba(121, 92, 166, 0.26)',
+      '--sheet-card-glow': 'rgba(151, 116, 210, 0.14)',
+      '--sheet-card-title': '#1f1828',
+      '--sheet-card-text': '#3e324d',
+      '--sheet-card-label': '#7655a0',
+      '--sheet-card-muted': '#71647f',
+      '--sheet-card-input-bg': 'rgba(252, 248, 255, 0.88)',
+      '--sheet-card-input-text': '#1f1828'
     }
   }
 
@@ -274,6 +358,7 @@ function sheetTitleFrameVariables(value: any) {
       '--sheet-title-frame-bg': 'transparent',
       '--sheet-title-frame-border': 'transparent',
       '--sheet-title-frame-shadow': 'none',
+      '--sheet-title-frame-image': 'none',
       '--sheet-title-flourish-opacity': '0',
       '--sheet-title-frame-padding-y': '0px',
       '--sheet-title-frame-padding-x': '0px'
@@ -282,9 +367,10 @@ function sheetTitleFrameVariables(value: any) {
 
   if (key === 'simple') {
     return {
-      '--sheet-title-frame-bg': 'linear-gradient(90deg, rgba(5, 8, 12, 0.68), rgba(5, 8, 12, 0.36), rgba(5, 8, 12, 0.12))',
-      '--sheet-title-frame-border': 'rgba(201, 164, 90, 0.28)',
+      '--sheet-title-frame-bg': 'linear-gradient(90deg, rgba(5, 8, 12, 0.72), rgba(5, 8, 12, 0.38), rgba(5, 8, 12, 0.12))',
+      '--sheet-title-frame-border': 'rgba(201, 164, 90, 0.30)',
       '--sheet-title-frame-shadow': '0 10px 28px rgba(0, 0, 0, 0.18)',
+      '--sheet-title-frame-image': 'none',
       '--sheet-title-flourish-opacity': '0',
       '--sheet-title-frame-padding-y': '14px',
       '--sheet-title-frame-padding-x': '18px'
@@ -292,14 +378,17 @@ function sheetTitleFrameVariables(value: any) {
   }
 
   return {
-    '--sheet-title-frame-bg': 'linear-gradient(90deg, rgba(5, 8, 12, 0.76), rgba(5, 8, 12, 0.40), rgba(5, 8, 12, 0.14))',
-    '--sheet-title-frame-border': 'rgba(201, 164, 90, 0.42)',
-    '--sheet-title-frame-shadow': '0 14px 34px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 236, 188, 0.08)',
+    '--sheet-title-frame-bg': 'linear-gradient(90deg, rgba(5, 8, 12, 0.76), rgba(5, 8, 12, 0.42), rgba(5, 8, 12, 0.16))',
+    '--sheet-title-frame-border': 'rgba(201, 164, 90, 0.12)',
+    '--sheet-title-frame-shadow': '0 16px 38px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 236, 188, 0.08)',
+    '--sheet-title-frame-image': "url('/assets/themes/sheet-title-frame-ornate.svg')",
     '--sheet-title-flourish-opacity': '1',
-    '--sheet-title-frame-padding-y': '16px',
-    '--sheet-title-frame-padding-x': '22px'
+    '--sheet-title-frame-padding-y': '24px',
+    '--sheet-title-frame-padding-x': '44px'
   }
 }
+
+const sheetCardTone = computed(() => String(sheetCardThemeVariables(sheetTheme.boxTheme)['--sheet-card-tone'] || 'dark'))
 
 const sheetThemeStyle = computed(() => {
   const theme = normalizeSheetThemePreference(sheetTheme)
@@ -7663,7 +7752,7 @@ async function saveSheet() {
           @select="setSheetTab"
         />
 
-      <section :style="sheetThemeStyle" data-sheet-surface="custom" class="sheet-theme-surface eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-3 shadow-xl md:p-5">
+      <section :data-sheet-title-frame="sheetTheme.titleFrame || 'floral'" :data-sheet-card-tone="sheetCardTone" :style="sheetThemeStyle" data-sheet-surface="custom" class="sheet-theme-surface eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border px-3 pb-3 pt-3 shadow-xl md:p-5">
         <div v-if="pending" class="text-[#d8ceb8]">
           Loading character sheet...
         </div>

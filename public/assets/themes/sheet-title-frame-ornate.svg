@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 220" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8f6b2f"/>
+      <stop offset="0.18" stop-color="#d8b76a"/>
+      <stop offset="0.5" stop-color="#f0d58b"/>
+      <stop offset="0.82" stop-color="#d8b76a"/>
+      <stop offset="1" stop-color="#8f6b2f"/>
+    </linearGradient>
+
+    <filter id="softGlow" x="-8%" y="-30%" width="116%" height="160%">
+      <feGaussianBlur stdDeviation="2.2" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="
+        1 0 0 0 0.78
+        0 1 0 0 0.55
+        0 0 1 0 0.18
+        0 0 0 0.55 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <g id="cornerFlourish">
+      <path d="M72 108 C42 82, 40 48, 70 28 C93 13, 121 18, 132 38 C144 60, 122 80, 101 69 C82 59, 87 38, 105 35" fill="none" stroke="url(#gold)" stroke-width="5" stroke-linecap="round"/>
+      <path d="M64 116 C112 104, 150 76, 178 37" fill="none" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+      <path d="M95 104 C105 82, 126 71, 151 72" fill="none" stroke="url(#gold)" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M124 92 C128 74, 143 61, 164 56" fill="none" stroke="url(#gold)" stroke-width="3.2" stroke-linecap="round"/>
+
+      <ellipse cx="78" cy="122" rx="15" ry="7" transform="rotate(-31 78 122)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+      <ellipse cx="111" cy="107" rx="18" ry="7" transform="rotate(-36 111 107)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+      <ellipse cx="145" cy="82" rx="17" ry="7" transform="rotate(-38 145 82)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+
+      <path d="M46 148 C89 158, 135 145, 168 118" fill="none" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+      <ellipse cx="78" cy="151" rx="17" ry="7" transform="rotate(12 78 151)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+      <ellipse cx="119" cy="143" rx="18" ry="7" transform="rotate(-14 119 143)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+      <ellipse cx="155" cy="124" rx="16" ry="7" transform="rotate(-32 155 124)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+    </g>
+
+    <g id="centerFiligree">
+      <path d="M-128 0 C-88 -24,-47 -19,-25 3 C-8 21,-12 43,-31 50 C-51 57,-64 40,-55 24 C-45 8,-23 13,-9 27" fill="none" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+      <path d="M128 0 C88 -24,47 -19,25 3 C8 21,12 43,31 50 C51 57,64 40,55 24 C45 8,23 13,9 27" fill="none" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+      <ellipse cx="-72" cy="-12" rx="20" ry="7" transform="rotate(-15 -72 -12)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+      <ellipse cx="72" cy="-12" rx="20" ry="7" transform="rotate(15 72 -12)" fill="none" stroke="url(#gold)" stroke-width="3"/>
+      <circle cx="0" cy="0" r="8" fill="#d8b76a" opacity="0.85"/>
+      <circle cx="0" cy="0" r="18" fill="none" stroke="url(#gold)" stroke-width="3"/>
+    </g>
+  </defs>
+
+  <g opacity="0.98" filter="url(#softGlow)">
+    <rect x="25" y="22" width="1550" height="176" rx="0" ry="0" fill="none" stroke="url(#gold)" stroke-width="3"/>
+    <rect x="42" y="38" width="1516" height="144" rx="0" ry="0" fill="none" stroke="url(#gold)" stroke-width="1.5" opacity="0.72"/>
+
+    <path d="M210 52 H700" stroke="url(#gold)" stroke-width="3" stroke-linecap="round" opacity="0.88"/>
+    <path d="M900 52 H1390" stroke="url(#gold)" stroke-width="3" stroke-linecap="round" opacity="0.88"/>
+    <path d="M210 168 H700" stroke="url(#gold)" stroke-width="3" stroke-linecap="round" opacity="0.68"/>
+    <path d="M900 168 H1390" stroke="url(#gold)" stroke-width="3" stroke-linecap="round" opacity="0.68"/>
+
+    <use href="#cornerFlourish" x="22" y="8"/>
+    <use href="#cornerFlourish" x="1578" y="8" transform="scale(-1 1) translate(-1600 0)"/>
+    <use href="#cornerFlourish" x="22" y="212" transform="scale(1 -1) translate(0 -220)"/>
+    <use href="#cornerFlourish" x="1578" y="212" transform="scale(-1 -1) translate(-1600 -220)"/>
+
+    <g transform="translate(800 52)">
+      <use href="#centerFiligree"/>
+    </g>
+
+    <g transform="translate(800 168) scale(1 -1)">
+      <use href="#centerFiligree"/>
+    </g>
+
+    <circle cx="54" cy="54" r="5" fill="#d8b76a"/>
+    <circle cx="1546" cy="54" r="5" fill="#d8b76a"/>
+    <circle cx="54" cy="166" r="5" fill="#d8b76a"/>
+    <circle cx="1546" cy="166" r="5" fill="#d8b76a"/>
+  </g>
+</svg>

@@ -44,3 +44,82 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
+
+/* ------------------------------------------------------------------
+   Character Sheet: parchment surface pass
+   Keeps the world/page dark, but gives the actual sheet a lighter
+   paper-like plane so dark cards and controls stop blending together.
+------------------------------------------------------------------- */
+
+.sheet-parchment-surface {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(255, 246, 216, 0.28), transparent 34%),
+    radial-gradient(circle at 86% 12%, rgba(255, 232, 181, 0.16), transparent 30%),
+    radial-gradient(circle at 50% 118%, rgba(82, 52, 24, 0.30), transparent 46%),
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 255, 255, 0.030) 0,
+      rgba(255, 255, 255, 0.030) 1px,
+      transparent 1px,
+      transparent 9px
+    ),
+    linear-gradient(
+      135deg,
+      rgba(214, 191, 146, 0.78) 0%,
+      rgba(163, 130, 77, 0.58) 42%,
+      rgba(91, 66, 34, 0.50) 100%
+    ) !important;
+  border-color: rgba(201, 164, 90, 0.58) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 244, 212, 0.10),
+    inset 0 18px 80px rgba(255, 235, 184, 0.08),
+    inset 0 -28px 90px rgba(44, 29, 15, 0.34),
+    0 22px 70px rgba(0, 0, 0, 0.34) !important;
+}
+
+/* Darken card blocks on top of the parchment so sections read clearly. */
+.sheet-parchment-surface .eldra-codex-soft,
+.sheet-parchment-surface [class*="bg-[rgba(8,17,27"],
+.sheet-parchment-surface [class*="bg-[rgba(9,17,26"],
+.sheet-parchment-surface [class*="bg-[rgba(10,20,29"],
+.sheet-parchment-surface [class*="bg-[rgba(12,23,33"],
+.sheet-parchment-surface [class*="bg-[rgba(20,17,12"] {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(57, 83, 103, 0.16), transparent 38%),
+    linear-gradient(180deg, rgba(10, 16, 22, 0.91), rgba(6, 9, 14, 0.94)) !important;
+  border-color: rgba(94, 121, 145, 0.44) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 10px 28px rgba(0, 0, 0, 0.20);
+}
+
+/* Keep gold accents readable against the warmer paper plane. */
+.sheet-parchment-surface .eldra-gold-chip {
+  background: rgba(42, 30, 14, 0.72) !important;
+  border-color: rgba(201, 164, 90, 0.46) !important;
+}
+
+/* Inputs/search bars should remain obvious but less muddy. */
+.sheet-parchment-surface .eldra-input,
+.sheet-parchment-surface input,
+.sheet-parchment-surface textarea,
+.sheet-parchment-surface select {
+  background-color: rgba(5, 8, 12, 0.84) !important;
+  border-color: rgba(201, 164, 90, 0.28) !important;
+}
+
+/* The internal action-center tabs need a little stronger separation. */
+.sheet-parchment-surface [data-sheet-action-center],
+.sheet-parchment-surface [data-sheet-action-center] > * {
+  border-color: rgba(201, 164, 90, 0.30);
+}
+
+/* Parchment mode should not affect the fixed right-side drawers/rails. */
+[data-sheet-manage-context-rail],
+[data-sheet-build-context-rail],
+.sheet-detail-drawer,
+.eldra-detail-drawer {
+  color-scheme: dark;
+}

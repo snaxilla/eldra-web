@@ -5509,6 +5509,26 @@ function editCurrentNote() {
   noteDrawerMode.value = 'edit'
 }
 
+
+function sheetMentionTargetId(mention: any) {
+  const raw = String(
+    mention?.targetId ??
+    mention?.entityId ??
+    mention?.entity_id ??
+    mention?.id ??
+    ''
+  ).trim()
+
+  return raw.replace(/^entity:/i, '')
+}
+
+function openSheetMention(mention: any) {
+  const targetId = sheetMentionTargetId(mention)
+  if (!targetId) return
+
+  router.push(`/worlds/${worldId.value}/entities/${targetId}`)
+}
+
 function closeNoteDrawer() {
   noteDrawerOpen.value = false
   selectedNoteDetail.value = null
@@ -8462,6 +8482,7 @@ async function saveSheet() {
         :mode="noteDrawerMode"
         :note="selectedNoteDetail"
         :draft="noteDraft"
+        :world-id="worldId"
         :saving="noteSaving"
         :save-error="noteSaveError"
         :format-note-date="formatNoteDate"
@@ -8471,6 +8492,7 @@ async function saveSheet() {
         @delete-note="removeNoteCard"
         @update-title="noteDraft.title = $event"
         @update-body="noteDraft.body = $event"
+        @open-mention="openSheetMention"
       />
 
       <!-- Feature Detail Drawer -->

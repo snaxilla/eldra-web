@@ -255,6 +255,50 @@ function speciesCanUndoResource(action: any) {
   return Boolean(state && Number(state.used || 0) > 0)
 }
 
+
+function actionHasDetail(action: any) {
+  if (!action) return false
+
+  if (action.kind === 'weapon') {
+    return Boolean(action.raw?.linkedItemId || action.raw?.description || action.raw?.notes)
+  }
+
+  if (action.kind === 'item') {
+    return Boolean(action.raw?.itemDetail || action.raw?.description || action.raw?.detail || action.raw)
+  }
+
+  if (action.kind === 'species' || action.kind === 'feature' || action.kind === 'resource' || action.kind === 'common') {
+    return Boolean(action.raw || action.notes)
+  }
+
+  return Boolean(action.raw || action.notes)
+}
+
+function openActionDetail(action: any) {
+  if (!actionHasDetail(action)) return
+
+  if (action.kind === 'weapon') {
+    props.openItemDrawer?.(action.raw)
+    return
+  }
+
+  if (action.kind === 'item') {
+    props.openItemDrawer?.(action.raw?.itemDetail || action.raw)
+    return
+  }
+
+  if (action.kind === 'species' || action.kind === 'feature' || action.kind === 'resource' || action.kind === 'common') {
+    props.openFeatureDrawer?.(action.raw || action)
+    return
+  }
+}
+
+function actionRowClass(action: any) {
+  return actionHasDetail(action)
+    ? 'sheet-action-clickable cursor-pointer'
+    : ''
+}
+
 function actionIcon(action: any) {
   if (action.kind === 'weapon') return 'i-lucide-swords'
   if (action.kind === 'spell-shortcut') return 'i-lucide-sparkles'
@@ -822,7 +866,10 @@ function openNote(note: any) {
               v-for="action in attackRows"
               :key="action.id"
               class="sheet-action-row border-b px-3 py-3 last:border-b-0"
-            >
+            
+              :class="actionRowClass(action)"
+              @click.stop="openActionDetail(action)"
+              :title="actionHasDetail(action) ? 'Open details' : undefined">
               <div class="grid gap-3 xl:grid-cols-[minmax(170px,1.35fr)_72px_78px_92px_minmax(130px,1fr)] xl:items-center">
                 <div class="min-w-0">
                   <div class="flex min-w-0 items-start gap-2">
@@ -968,7 +1015,10 @@ function openNote(note: any) {
               v-for="action in actionRows"
               :key="action.id"
               class="sheet-action-row border-l px-3 py-2"
-            >
+            
+              :class="actionRowClass(action)"
+              @click.stop="openActionDetail(action)"
+              :title="actionHasDetail(action) ? 'Open details' : undefined">
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="text-sm font-semibold text-white">{{ action.title }}</div>
@@ -1080,7 +1130,10 @@ function openNote(note: any) {
               v-for="action in bonusRows"
               :key="action.id"
               class="sheet-action-row border-l px-3 py-2"
-            >
+            
+              :class="actionRowClass(action)"
+              @click.stop="openActionDetail(action)"
+              :title="actionHasDetail(action) ? 'Open details' : undefined">
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div class="text-sm font-semibold text-white">{{ action.title }}</div>
@@ -1183,7 +1236,10 @@ function openNote(note: any) {
               v-for="action in reactionRows"
               :key="action.id"
               class="sheet-action-row border-l px-3 py-2"
-            >
+            
+              :class="actionRowClass(action)"
+              @click.stop="openActionDetail(action)"
+              :title="actionHasDetail(action) ? 'Open details' : undefined">
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div class="text-sm font-semibold text-white">{{ action.title }}</div>
@@ -1239,7 +1295,10 @@ function openNote(note: any) {
               v-for="action in otherRows"
               :key="action.id"
               class="sheet-action-row border-l px-3 py-2"
-            >
+            
+              :class="actionRowClass(action)"
+              @click.stop="openActionDetail(action)"
+              :title="actionHasDetail(action) ? 'Open details' : undefined">
               <div class="text-sm font-semibold text-white">{{ action.title }}</div>
               <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
               <p
@@ -1299,7 +1358,10 @@ function openNote(note: any) {
           v-for="spell in filteredSpellRows"
           :key="`inner-spell-${spell.id}`"
           class="sheet-action-row border-b px-3 py-3 last:border-b-0"
-        >
+        
+              :class="'sheet-action-clickable cursor-pointer'"
+              @click.stop="props.openSpellDrawer?.(spell)"
+              title="Open details">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="truncate text-sm font-semibold text-white">{{ spell.title }}</div>
@@ -1551,7 +1613,10 @@ function openNote(note: any) {
           v-for="item in filteredInventoryRows"
           :key="`inner-inventory-${item.inventoryId || item.id || item.name}`"
           class="sheet-action-row border-b px-3 py-3 last:border-b-0"
-        >
+        
+              :class="'sheet-action-clickable cursor-pointer'"
+              @click.stop="openInventoryItem(item)"
+              title="Open details">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="truncate text-sm font-semibold text-white">{{ item.name }}</div>
@@ -1631,7 +1696,9 @@ function openNote(note: any) {
           v-for="feature in filteredFeatureRows"
           :key="`inner-feature-${feature.id || feature.title || feature.name}`"
           class="sheet-action-row border-b px-3 py-3 last:border-b-0"
-        >
+        
+              :class="'sheet-action-clickable cursor-pointer'"
+              @click.stop="openFeature(feature)">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="truncate text-sm font-semibold text-white">{{ feature.title || feature.name }}</div>
@@ -1711,7 +1778,9 @@ function openNote(note: any) {
           v-for="note in filteredNoteRows"
           :key="`inner-note-${note.id || note.title}`"
           class="sheet-action-row border-b px-3 py-3 last:border-b-0"
-        >
+        
+              :class="'sheet-action-clickable cursor-pointer'"
+              @click.stop="openNote(note)">
           <div class="flex min-w-0 items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="truncate text-sm font-semibold text-white">

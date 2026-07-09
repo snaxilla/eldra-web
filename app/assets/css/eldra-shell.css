@@ -1225,3 +1225,13 @@
   background: rgba(255,252,244,0.52) !important;
   border-color: var(--sheet-card-border-soft, rgba(130,98,49,0.24)) !important;
 }
+
+/* Character sheet: rows with details are clickable, while the right rail still compresses the sheet. */
+.sheet-theme-surface .sheet-action-clickable {
+  cursor: pointer;
+}
+
+.sheet-theme-surface .sheet-action-clickable:hover {
+  outline: 1px solid rgba(201, 164, 90, 0.28);
+  outline-offset: -1px;
+}

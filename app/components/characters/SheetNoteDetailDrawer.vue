@@ -1,44 +1,83 @@
 <script setup lang="ts">
 const props = withDefaults(defineProps<{
   open?: boolean
-  mode?: 'view' | 'edit' | string
+  mode?: 'view' | 'edit'
   note?: any | null
   draft?: any
   saving?: boolean
   saveError?: string
+  worldId?: string | number
   formatNoteDate?: (value: any) => string
 }>(), {
   open: false,
   mode: 'view',
-  draft: () => ({})
+  note: null,
+  draft: () => ({
+    id: '',
+    title: '',
+    body: ''
+  }),
+  saving: false,
+  saveError: '',
+  worldId: ''
 })
 
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'save'): void
   (event: 'edit'): void
-  (event: 'delete-note', payload: any): void
+  (event: 'delete-note', note: any): void
   (event: 'update-title', value: string): void
   (event: 'update-body', value: string): void
+  (event: 'open-mention', mention: any): void
 }>()
 
-function inputValue(event: Event) {
-  const target = event.target as HTMLInputElement | HTMLTextAreaElement | null
-  return target?.value || ''
-}
+const draftTitle = computed({
+  get: () => String(props.draft?.title || ''),
+  set: (value: string) => emit('update-title', value)
+})
 
-function noteDate(value: any) {
-  return props.formatNoteDate?.(value) || ''
-}
+const draftBody = computed({
+  get: () => String(props.draft?.body || ''),
+  set: (value: string) => emit('update-body', value)
+})
 
-const drawerTitle = computed(() =>
-  props.draft?.title || props.note?.title || 'New Note'
+const shownTitle = computed(() =>
+  String(props.note?.title || props.draft?.title || 'Note').trim() || 'Note'
 )
+
+const shownBody = computed(() =>
+  String(props.note?.body || props.note?.summary || props.note?.description || '').trim()
+)
+
+const updatedLabel = computed(() => {
+  const raw =
+    props.note?.updatedAt ||
+    props.note?.updated_at ||
+    props.note?.date_updated ||
+    props.note?.createdAt ||
+    props.note?.created_at
+
+  if (!raw) return ''
+
+  if (props.formatNoteDate) {
+    return props.formatNoteDate(raw)
+  }
+
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return String(raw)
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+})
 
 function deleteCurrentNote() {
   emit('delete-note', {
-    id: props.draft?.id,
-    title: props.draft?.title
+    id: props.draft?.id || props.note?.id,
+    title: props.draft?.title || props.note?.title || shownTitle.value
   })
 }
 </script>
@@ -52,57 +91,74 @@ function deleteCurrentNote() {
   >
     <div
       v-if="open"
-      class="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm md:pointer-events-none md:bg-transparent md:backdrop-blur-none"
-      @click.self="emit('close')"
+      class="pointer-events-none fixed inset-y-0 right-0 z-[88] flex justify-end"
     >
-      <aside class="eldra-ornate-panel eldra-frame-corners fixed bottom-0 right-0 top-0 flex h-full w-full flex-col border-l backdrop-blur-xl md:pointer-events-auto md:w-[440px]">
-        <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-          <div class="min-w-0">
-            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Note</div>
-            <h2 class="mt-2 truncate text-2xl font-semibold text-white">
-              {{ drawerTitle }}
-            </h2>
-            <div
-              v-if="note?.updatedAt && mode === 'view' && noteDate(note.updatedAt)"
-              class="mt-1 text-xs text-[#9f9278]"
-            >
-              Updated {{ noteDate(note.updatedAt) }}
+      <aside
+        data-sheet-note-detail-drawer
+        class="pointer-events-auto eldra-ornate-panel eldra-frame-corners flex h-full w-full max-w-[430px] flex-col border-l border-[rgba(201,164,90,0.30)] bg-[rgba(7,10,13,0.96)] shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+      >
+        <header class="border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+                {{ mode === 'edit' ? 'Edit Note' : 'Note Details' }}
+              </div>
+
+              <h2 class="mt-2 truncate text-2xl font-semibold text-white">
+                {{ shownTitle }}
+              </h2>
+
+              <div
+                v-if="updatedLabel"
+                class="mt-1 text-xs text-[#9f9278]"
+              >
+                Updated {{ updatedLabel }}
+              </div>
             </div>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+              @click="emit('close')"
+            >
+              <UIcon name="i-lucide-x" class="h-4 w-4" />
+            </button>
           </div>
+        </header>
 
-          <button
-            type="button"
-            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
-            @click="emit('close')"
-          >
-            <UIcon name="i-lucide-x" class="h-4 w-4" />
-          </button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto px-5 py-5">
+        <main class="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           <div
             v-if="mode === 'edit'"
             class="grid gap-4"
           >
             <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Title</span>
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+                Title
+              </span>
+
               <input
-                :value="draft?.title || ''"
+                v-model="draftTitle"
                 class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-                placeholder="NPC, city, clue, quest..."
-                @input="emit('update-title', inputValue($event))"
+                placeholder="NPC, city, clue, quest."
               >
             </label>
 
             <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Body</span>
-              <textarea
-                :value="draft?.body || ''"
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+                Body
+              </span>
+
+              <WorldMentionAutocompleteTextarea
+                v-model="draftBody"
+                :world-id="worldId"
                 rows="12"
-                class="eldra-input w-full rounded-none px-3 py-2 text-sm leading-6 text-white"
-                placeholder="Write the note..."
-                @input="emit('update-body', inputValue($event))"
+                placeholder="Write the note. Type @ to mention an NPC, location, item, spell, or article."
+                textarea-class="eldra-input w-full rounded-none px-3 py-2 text-sm leading-6 text-white"
               />
+
+              <span class="mt-2 block text-xs leading-5 text-[#9f9278]">
+                Type <span class="font-semibold text-[#f5e7bd]">@</span> to mention world articles.
+              </span>
             </label>
 
             <div
@@ -117,14 +173,28 @@ function deleteCurrentNote() {
             v-else
             class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.48)] p-4"
           >
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Body</div>
-            <p class="mt-3 whitespace-pre-line break-words text-sm leading-6 text-[#d8ceb8]">
-              {{ note?.body || 'No note body yet.' }}
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Body
+            </div>
+
+            <WorldMentionText
+              v-if="shownBody"
+              :world-id="worldId"
+              :markdown="shownBody"
+              class="eldra-rich-content mt-3 text-sm leading-6 text-[#d8ceb8]"
+              @open-mention="emit('open-mention', $event)"
+            />
+
+            <p
+              v-else
+              class="mt-3 text-sm leading-6 text-[#9f9278]"
+            >
+              No note body yet.
             </p>
           </div>
-        </div>
+        </main>
 
-        <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
+        <footer class="border-t border-[rgba(201,164,90,0.22)] p-5">
           <div
             v-if="mode === 'edit'"
             class="grid grid-cols-2 gap-3"
@@ -177,7 +247,7 @@ function deleteCurrentNote() {
               Close
             </button>
           </div>
-        </div>
+        </footer>
       </aside>
     </div>
   </Transition>

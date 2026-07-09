@@ -760,7 +760,7 @@ function openNote(note: any) {
             {{ tab.label }}
             <span
               v-if="tabCount(tab.key)"
-              class="ml-1 rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]"
+              class="sheet-action-count-badge ml-1 rounded-none border px-1.5 py-0.5 text-[10px]"
             >
               {{ tabCount(tab.key) }}
             </span>
@@ -786,7 +786,7 @@ function openNote(note: any) {
               @click="activeActionFilter = filter.key"
             >
               <span>{{ filter.label }}</span>
-              <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-1.5 py-0.5 text-[10px] text-[#9f9278]">
+              <span class="sheet-action-count-badge rounded-none border px-1.5 py-0.5 text-[10px]">
                 {{ countForFilter(filter.key) }}
               </span>
             </button>
@@ -809,7 +809,7 @@ function openNote(note: any) {
             </div>
           </div>
 
-          <div data-sheet-action-table class="sheet-action-table overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]">
+          <div data-sheet-action-table class="sheet-action-table sheet-action-list-shell overflow-hidden border">
             <div data-sheet-action-table-header class="sheet-action-table-header hidden grid-cols-[minmax(170px,1.35fr)_72px_78px_92px_minmax(130px,1fr)] gap-3 border-b border-[rgba(201,164,90,0.18)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] xl:grid">
               <div>Attack</div>
               <div>Range</div>
@@ -975,7 +975,7 @@ function openNote(note: any) {
                   <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
                 </div>
 
-                <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                <span class="sheet-action-badge rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
                   {{ action.badge }}
                 </span>
               </div>
@@ -1087,7 +1087,7 @@ function openNote(note: any) {
                   <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
                 </div>
 
-                <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                <span class="sheet-action-badge rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
                   {{ action.badge }}
                 </span>
               </div>
@@ -1190,7 +1190,7 @@ function openNote(note: any) {
                   <div class="mt-0.5 text-xs text-[#9f9278]">{{ action.subtitle }}</div>
                 </div>
 
-                <span class="rounded-none border border-[rgba(201,164,90,0.20)] bg-black/20 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+                <span class="sheet-action-badge rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
                   {{ action.badge }}
                 </span>
               </div>
@@ -1293,7 +1293,7 @@ function openNote(note: any) {
 
       <div
         v-if="filteredSpellRows.length"
-        class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
+        class="sheet-action-list-shell overflow-hidden border"
       >
         <article
           v-for="spell in filteredSpellRows"
@@ -1306,13 +1306,13 @@ function openNote(note: any) {
               <div class="mt-0.5 text-xs text-[#9f9278]">{{ spellLevel(spell) }}</div>
             </div>
 
-            <span class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+            <span class="sheet-action-badge rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
               {{ spell.actionKind || 'Spell' }}
             </span>
           </div>
 
           <div class="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-            <div class="rounded-none border border-[rgba(201,164,90,0.12)] bg-black/15 px-2 py-1.5 text-xs">
+            <div class="sheet-action-mechanic-card rounded-none border px-2 py-1.5 text-xs">
               <div class="uppercase tracking-[0.16em] text-[#9f9278]">{{ spellMechanic(spell).label }}</div>
               <div class="mt-1 font-semibold text-white">{{ spellMechanic(spell).value }}</div>
               <div class="mt-0.5 text-[10px] text-[#9f9278]">{{ spellMechanic(spell).note }}</div>
@@ -1526,7 +1526,7 @@ function openNote(note: any) {
           <div
             v-for="transfer in recentTransfers"
             :key="`recent-transfer-${transfer.id}`"
-            class="flex flex-wrap items-center justify-between gap-2 rounded-none border border-[rgba(201,164,90,0.10)] bg-black/15 px-3 py-2 text-xs"
+            class="sheet-action-transfer-row flex flex-wrap items-center justify-between gap-2 rounded-none border px-3 py-2 text-xs"
           >
             <div class="min-w-0">
               <span class="font-semibold text-white">{{ transfer.itemName }}{{ transferQuantityLabel(transfer) }}</span>
@@ -1545,7 +1545,7 @@ function openNote(note: any) {
 
       <div
         v-if="filteredInventoryRows.length"
-        class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
+        class="sheet-action-list-shell overflow-hidden border"
       >
         <article
           v-for="item in filteredInventoryRows"
@@ -1558,7 +1558,7 @@ function openNote(note: any) {
               <div class="mt-0.5 text-xs text-[#9f9278]">{{ item.itemType || 'Item' }}</div>
             </div>
 
-            <span class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[#f5e7bd]">
+            <span class="sheet-action-badge rounded-none border px-2 py-1 text-[10px] uppercase tracking-[0.16em]">
               {{ itemStatus(item) }}
             </span>
           </div>
@@ -1625,7 +1625,7 @@ function openNote(note: any) {
 
       <div
         v-if="filteredFeatureRows.length"
-        class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
+        class="sheet-action-list-shell overflow-hidden border"
       >
         <article
           v-for="feature in filteredFeatureRows"
@@ -1705,7 +1705,7 @@ function openNote(note: any) {
 
       <div
         v-if="filteredNoteRows.length"
-        class="overflow-hidden border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.44)]"
+        class="sheet-action-list-shell overflow-hidden border"
       >
         <article
           v-for="note in filteredNoteRows"

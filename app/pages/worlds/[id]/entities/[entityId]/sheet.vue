@@ -138,15 +138,15 @@ function defaultSheetThemePreference() {
     tone: 'paper' as SheetSurfaceTone,
     backgroundMode: 'image' as SheetBackgroundMode,
     backgroundUrl: '/assets/themes/sheet-paper-default.webp',
-    backgroundTitle: 'Default Paper',
+    backgroundTitle: 'Classic Paper',
     backgroundFileId: '',
     solidColor: '#cfc0a0',
     repeat: true,
     tileSize: 520,
     fit: 'cover' as SheetBackgroundFit,
-    dim: 22,
-    boxTheme: 'midnight',
-    titleFrame: 'floral'
+    dim: 18,
+    boxTheme: 'ivory',
+    titleFrame: 'simple'
   }
 }
 

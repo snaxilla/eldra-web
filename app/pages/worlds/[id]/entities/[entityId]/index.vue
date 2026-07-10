@@ -1795,8 +1795,8 @@ async function onImageSelected(event: Event) {
       leave-active-class="transition duration-200"
     >
       <aside
- data-eldra-context-rail-panel        v-if="buildDrawerOpen"
-        class="eldra-context-rail-fixed eldra-context-rail-panel fixed right-0 top-0 z-40 h-full border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,14,14,0.94),rgba(5,5,5,0.90))] backdrop-blur-xl"
+        v-if="buildDrawerOpen"
+        class="fixed right-0 top-0 z-40 h-full w-[420px] border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,14,14,0.94),rgba(5,5,5,0.90))] backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">

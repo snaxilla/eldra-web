@@ -714,8 +714,8 @@ function openSelectedPinContextMap() {
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div
- data-eldra-context-rail-panel        v-if="showPinEditor && editingPin"
-        class="eldra-context-rail-fixed eldra-context-rail-panel eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full border-l backdrop-blur"
+        v-if="showPinEditor && editingPin"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">

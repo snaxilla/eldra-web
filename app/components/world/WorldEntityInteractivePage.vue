@@ -833,8 +833,8 @@ async function createLocationArticle() {
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
- data-eldra-context-rail-panel        v-if="mode === 'build' && !selectedEntity"
-        class="eldra-context-rail-fixed eldra-context-rail-panel eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full border-l backdrop-blur-xl"
+        v-if="mode === 'build' && !selectedEntity"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div class="space-y-5 p-5">
             <div
@@ -968,8 +968,8 @@ async function createLocationArticle() {
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
- data-eldra-context-rail-panel        v-if="selectedEntity"
-        class="eldra-context-rail-fixed eldra-context-rail-panel eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full border-l backdrop-blur-xl"
+        v-if="selectedEntity"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">

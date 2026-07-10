@@ -1252,3 +1252,61 @@
   width: 100% !important;
   max-width: none !important;
 }
+
+/* ------------------------------------------------------------------
+   Sheet right rail standard, v2
+   Targeted only at known sheet/detail rails.
+   Matches the sheet reservation / Character Manager footprint:
+   md 456px, xl 468px.
+------------------------------------------------------------------- */
+
+:root {
+  --eldra-sheet-context-rail-md: 456px;
+  --eldra-sheet-context-rail-xl: 468px;
+}
+
+/* The manager rail already uses data-sheet-manage-context-rail.
+   Detail rails get data-sheet-standard-context-rail. */
+[data-sheet-manage-context-rail],
+[data-sheet-standard-context-rail],
+[data-sheet-note-drawer-shell] {
+  width: var(--eldra-sheet-context-rail-md) !important;
+  max-width: calc(100vw - 1rem) !important;
+}
+
+@media (min-width: 1280px) {
+  [data-sheet-manage-context-rail],
+  [data-sheet-standard-context-rail],
+  [data-sheet-note-drawer-shell] {
+    width: var(--eldra-sheet-context-rail-xl) !important;
+  }
+}
+
+/* Direct fixed rail panels. */
+[data-sheet-standard-context-rail] {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 100% !important;
+  pointer-events: auto !important;
+}
+
+/* Note drawer uses an outer shell and inner aside. Keep inner full-width. */
+[data-sheet-note-detail-drawer] {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Do not let legacy component width classes win. */
+[data-sheet-standard-context-rail].w-full,
+[data-sheet-standard-context-rail][class*="w-full"] {
+  width: var(--eldra-sheet-context-rail-md) !important;
+}
+
+@media (min-width: 1280px) {
+  [data-sheet-standard-context-rail].w-full,
+  [data-sheet-standard-context-rail][class*="w-full"] {
+    width: var(--eldra-sheet-context-rail-xl) !important;
+  }
+}

@@ -92,7 +92,7 @@ function deleteCurrentNote() {
     <div
       v-if="open"
       data-sheet-note-drawer-shell
-      class="pointer-events-none fixed inset-y-0 right-0 z-[88] flex w-[456px] max-w-[calc(100vw-1rem)] justify-end xl:w-[468px]"
+      class="pointer-events-none fixed inset-y-0 right-0 z-[88] flex max-w-[calc(100vw-1rem)] justify-end w-[440px]"
     >
       <aside
         data-sheet-note-detail-drawer

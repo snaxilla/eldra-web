@@ -1310,3 +1310,29 @@
     width: var(--eldra-sheet-context-rail-xl) !important;
   }
 }
+
+/* ------------------------------------------------------------------
+   Sheet right rail width correction
+   The sheet reserves 456/468px. The visible rail is 440px, leaving
+   breathing room between the sheet and the panel.
+------------------------------------------------------------------- */
+
+:root {
+  --eldra-sheet-visible-rail-width: 440px;
+}
+
+[data-sheet-manage-context-rail],
+[data-sheet-standard-context-rail],
+[data-sheet-note-drawer-shell] {
+  width: var(--eldra-sheet-visible-rail-width) !important;
+  max-width: calc(100vw - 1rem) !important;
+}
+
+[data-sheet-standard-context-rail] {
+  right: 0 !important;
+}
+
+[data-sheet-note-detail-drawer] {
+  width: 100% !important;
+  max-width: none !important;
+}

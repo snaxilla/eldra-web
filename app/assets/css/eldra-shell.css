@@ -1236,35 +1236,6 @@
   outline-offset: -1px;
 }
 
-/* Character sheet note drawer must match the standard right-side rail width. */
-[data-sheet-note-drawer-shell] {
-  width: 456px !important;
-  max-width: calc(100vw - 1rem) !important;
-}
-
-@media (min-width: 1280px) {
-  [data-sheet-note-drawer-shell] {
-    width: 468px !important;
-  }
-}
-
-[data-sheet-note-detail-drawer] {
-  width: 100% !important;
-  max-width: none !important;
-}
-
-/* ------------------------------------------------------------------
-   Sheet right rail standard, v2
-   Targeted only at known sheet/detail rails.
-   Matches the sheet reservation / Character Manager footprint:
-   md 456px, xl 468px.
-------------------------------------------------------------------- */
-
-:root {
-  --eldra-sheet-context-rail-md: 456px;
-  --eldra-sheet-context-rail-xl: 468px;
-}
-
 /* The manager rail already uses data-sheet-manage-context-rail.
    Detail rails get data-sheet-standard-context-rail. */
 [data-sheet-manage-context-rail],
@@ -1312,9 +1283,9 @@
 }
 
 /* ------------------------------------------------------------------
-   Sheet right rail width correction
-   The sheet reserves 456/468px. The visible rail is 440px, leaving
-   breathing room between the sheet and the panel.
+   Sheet right rail canonical width
+   The page reserves 456/468px. The visible rail is 440px so there is
+   still a gutter between the sheet and the right-side panel.
 ------------------------------------------------------------------- */
 
 :root {
@@ -1322,17 +1293,24 @@
 }
 
 [data-sheet-manage-context-rail],
-[data-sheet-standard-context-rail],
+[data-sheet-detail-rail],
 [data-sheet-note-drawer-shell] {
-  width: var(--eldra-sheet-visible-rail-width) !important;
-  max-width: calc(100vw - 1rem) !important;
+  width: min(var(--eldra-sheet-visible-rail-width), 100vw) !important;
+  max-width: var(--eldra-sheet-visible-rail-width) !important;
 }
 
-[data-sheet-standard-context-rail] {
+[data-sheet-detail-rail],
+[data-sheet-note-drawer-shell] {
+  position: fixed !important;
+  top: 0 !important;
   right: 0 !important;
+  bottom: 0 !important;
+  height: 100% !important;
+  pointer-events: auto !important;
 }
 
 [data-sheet-note-detail-drawer] {
   width: 100% !important;
   max-width: none !important;
 }
+

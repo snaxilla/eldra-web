@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import WorldMentionText from '~/components/world/WorldMentionText.vue'
+import WorldEntityRelationshipsPanel from '~/components/world/WorldEntityRelationshipsPanel.vue'
 const props = withDefaults(defineProps<{
   open: boolean
   entity: any | null
@@ -375,7 +376,17 @@ function readMore() {
             </div>
           </div>
 
-          <div
+          
+          <WorldEntityRelationshipsPanel
+            v-if="activeEntity?.id && drawerWorldId"
+            :world-id="drawerWorldId"
+            :entity="activeEntity"
+            :mode="mode"
+            :allow-edit="allowBuildActions && mode === 'build'"
+            @open-entity="openNestedMention"
+          />
+
+<div
             v-if="allowBuildActions && mode === 'build'"
             class="eldra-codex-soft mt-5 rounded-none p-4"
           >

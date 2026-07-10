@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
     "directus:create-character-sheets": "node scripts/directus/create-character-sheet-schema.mjs",
-    "directus:create-inventory-transfers": "node scripts/directus/create-inventory-transfer-schema.mjs"
+    "directus:create-inventory-transfers": "node scripts/directus/create-inventory-transfer-schema.mjs",
+    "directus:create-entity-relationships": "node scripts/directus/create-entity-relationship-schema.mjs"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",

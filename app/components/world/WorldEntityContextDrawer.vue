@@ -230,8 +230,8 @@ function readMore() {
     leave-active-class="transition duration-200"
   >
     <div
-      v-if="open"
-      class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] border-l backdrop-blur"
+ data-eldra-context-rail-shell      v-if="open"
+      class="eldra-context-rail-shell eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full border-l backdrop-blur"
     >
       <div class="flex h-full flex-col">
         <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">

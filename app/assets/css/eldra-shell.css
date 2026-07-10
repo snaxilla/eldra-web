@@ -1283,9 +1283,9 @@
 }
 
 /* ------------------------------------------------------------------
-   Sheet right rail canonical width
-   The page reserves 456/468px. The visible rail is 440px so there is
-   still a gutter between the sheet and the right-side panel.
+   Sheet-only right rail standard
+   Workspace/article/timeline drawers must not inherit this.
+   Sheet reserves 456/468px. Visible sheet rail is 440px.
 ------------------------------------------------------------------- */
 
 :root {
@@ -1295,7 +1295,7 @@
 [data-sheet-manage-context-rail],
 [data-sheet-detail-rail],
 [data-sheet-note-drawer-shell] {
-  width: min(var(--eldra-sheet-visible-rail-width), 100vw) !important;
+  width: min(var(--eldra-sheet-visible-rail-width), calc(100vw - 1rem)) !important;
   max-width: var(--eldra-sheet-visible-rail-width) !important;
 }
 
@@ -1312,5 +1312,12 @@
 [data-sheet-note-detail-drawer] {
   width: 100% !important;
   max-width: none !important;
+}
+
+/* Shared world/entity context drawer defaults back to workspace sizing unless
+   the sheet explicitly passes rail-variant="sheet". */
+[data-world-context-rail] {
+  width: 380px !important;
+  max-width: calc(100vw - 1rem) !important;
 }
 

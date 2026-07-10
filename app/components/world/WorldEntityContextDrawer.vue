@@ -7,13 +7,27 @@ const props = withDefaults(defineProps<{
   mode?: 'play' | 'build'
   allowBuildActions?: boolean
   readMoreLabel?: string
+  railVariant?: 'workspace' | 'sheet'
 }>(), {
   mode: 'play',
   allowBuildActions: false,
-  readMoreLabel: 'Read More'
+  readMoreLabel: 'Read More',
+  railVariant: 'workspace'
 })
 
 const route = useRoute()
+
+
+const contextRailVariant = computed(() =>
+  props.railVariant === 'sheet' ? 'sheet' : 'workspace'
+)
+
+const contextRailClass = computed(() => [
+  'eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full border-l backdrop-blur',
+  contextRailVariant.value === 'sheet'
+    ? 'w-full max-w-[440px]'
+    : 'w-[380px] max-w-[calc(100vw-1rem)]'
+])
 
 const emit = defineEmits<{
   close: []
@@ -230,8 +244,10 @@ function readMore() {
     leave-active-class="transition duration-200"
   >
     <div
- data-sheet-detail-rail      v-if="open"
-      class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full border-l backdrop-blur w-full max-w-[440px]"
+      v-if="open"
+      :data-sheet-detail-rail="contextRailVariant === 'sheet' ? 'true' : undefined"
+      :data-world-context-rail="contextRailVariant === 'workspace' ? 'true' : undefined"
+      :class="contextRailClass"
     >
       <div class="flex h-full flex-col">
         <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">

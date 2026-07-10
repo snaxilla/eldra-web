@@ -8537,6 +8537,7 @@ async function saveSheet() {
       :world-id="worldId"
       :mode="mode"
       :allow-build-actions="false"
+      rail-variant="sheet"
       read-more-label="Open Full Article"
       @close="closeMentionContextDrawer"
       @open-mention="openSheetMention"

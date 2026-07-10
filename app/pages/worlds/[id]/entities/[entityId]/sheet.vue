@@ -572,7 +572,7 @@ type SheetManagePanelKey = 'character' | 'inventory' | 'spells'
 const sheetManagePanel = ref<SheetManagePanelKey | ''>('')
 
 const detailContextOpen = computed(() =>
-  Boolean(selectedSpellEntityId.value || selectedItemDetail.value || selectedFeatureDetail.value || noteDrawerOpen.value || mentionContextDrawerOpen.value)
+  Boolean(selectedSpellEntityId.value || selectedItemDetail.value || selectedFeatureDetail.value || noteDrawerOpen.value || mentionContextDrawerOpen.value || spellBuilderOpen.value)
 )
 
 const manageContextOpen = computed(() =>
@@ -594,9 +594,28 @@ function setSheetManagePanel(value: any) {
   sheetManagePanel.value = normalizeSheetManagePanel(value)
 }
 
+
+function closeAllSheetRightRails(options: { keepManage?: boolean } = {}) {
+  selectedSpellEntityId.value = null
+  selectedItemDetail.value = null
+  selectedFeatureDetail.value = null
+
+  mentionContextDrawerOpen.value = false
+  mentionContextEntity.value = null
+
+  noteDrawerOpen.value = false
+  selectedNoteDetail.value = null
+
+  spellBuilderOpen.value = false
+
+  if (!options.keepManage) {
+    sheetManagePanel.value = ''
+  }
+}
+
 function openSheetManagePanel(value: any) {
+  closeAllSheetRightRails({ keepManage: true })
   sheetManagePanel.value = normalizeSheetManagePanel(value)
-  mode.value = 'build'
 }
 
 function closeSheetManagePanel() {
@@ -853,9 +872,7 @@ function subclassFeatureCardChevron(scope: string, feature: any, index: any) {
 }
 
 function openFeatureDrawer(feature: any) {
-  mentionContextDrawerOpen.value = false
-  mentionContextEntity.value = null
-
+  closeAllSheetRightRails()
   selectedFeatureDetail.value = feature || null
 }
 
@@ -4920,11 +4937,10 @@ const selectedSpellMetaLines = computed(() => {
 })
 
 function openSpellDrawer(spell: any) {
-  mentionContextDrawerOpen.value = false
-  mentionContextEntity.value = null
-
-  const id = String(spell?.id || '').trim()
+  const id = String(spell?.id || spell?.entityId || spell?.entity_id || '').trim()
   if (!id) return
+
+  closeAllSheetRightRails()
   selectedSpellEntityId.value = id
 }
 
@@ -4933,9 +4949,7 @@ function closeSpellDrawer() {
 }
 
 function openItemDrawer(item: any) {
-  mentionContextDrawerOpen.value = false
-  mentionContextEntity.value = null
-
+  closeAllSheetRightRails()
   selectedItemDetail.value = item || null
 }
 
@@ -5498,27 +5512,27 @@ function fillNoteDraft(note: any) {
 }
 
 function openAddNoteDrawer() {
-  mentionContextDrawerOpen.value = false
-  mentionContextEntity.value = null
+  closeAllSheetRightRails()
 
-  selectedNoteDetail.value = null
-  resetNoteDraft()
   noteDrawerMode.value = 'edit'
-  noteDrawerOpen.value = true
+  selectedNoteDetail.value = null
+  noteDraft.id = ''
+  noteDraft.title = ''
+  noteDraft.body = ''
   noteSaveError.value = ''
   noteSaveSuccess.value = ''
+  noteDrawerOpen.value = true
 }
 
 function openNoteDetail(note: any) {
-  mentionContextDrawerOpen.value = false
-  mentionContextEntity.value = null
+  closeAllSheetRightRails()
 
   selectedNoteDetail.value = note
   fillNoteDraft(note)
   noteDrawerMode.value = 'view'
-  noteDrawerOpen.value = true
   noteSaveError.value = ''
   noteSaveSuccess.value = ''
+  noteDrawerOpen.value = true
 }
 
 function editCurrentNote() {
@@ -5542,11 +5556,7 @@ function sheetMentionTargetId(mention: any) {
 function openSheetMention(mention: any) {
   if (!mention) return
 
-  selectedSpellEntityId.value = null
-  selectedItemDetail.value = null
-  selectedFeatureDetail.value = null
-  noteDrawerOpen.value = false
-  selectedNoteDetail.value = null
+  closeAllSheetRightRails()
 
   mentionContextEntity.value = mention
   mentionContextDrawerOpen.value = true
@@ -7051,13 +7061,10 @@ const availableSpellCards = computed(() => {
 })
 
 function openSpellBuilder() {
+  closeAllSheetRightRails()
+  spellKnownDraft.value = [...knownSpellIds.value]
+  spellPreparedDraft.value = [...displayedPreparedSpellIds.value]
   spellBuilderOpen.value = true
-  spellSaveError.value = ''
-  spellSaveSuccess.value = ''
-
-  // The legacy desktop builder uses spellSearch. Keep the mobile drawer independent,
-  // but clear the legacy filter so Recommended spells are not accidentally hidden.
-  spellSearch.value = ''
 }
 
 function closeSpellBuilder() {

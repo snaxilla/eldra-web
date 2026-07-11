@@ -2432,4 +2432,63 @@ async function onImageSelected(event: Event) {
   }
 }
 
+
+/* Article body layout correction.
+   Article text is the main content. Optional article detail cards can sit
+   beside it, but the body should never be pushed into a right/bottom grid cell.
+*/
+.article-theme-layout {
+  align-items: start !important;
+}
+
+.article-theme-layout-single {
+  display: block !important;
+}
+
+.article-theme-layout-single .article-theme-main {
+  display: block !important;
+  width: 100% !important;
+  max-width: 96ch !important;
+  margin: 0 !important;
+  justify-self: stretch !important;
+  align-self: start !important;
+  text-align: left !important;
+}
+
+.article-theme-layout-with-sidebar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px) !important;
+  gap: 1.25rem !important;
+  align-items: start !important;
+}
+
+.article-theme-layout-with-sidebar .article-theme-main {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  justify-self: stretch !important;
+  align-self: start !important;
+  text-align: left !important;
+}
+
+.article-theme-layout-with-sidebar .article-detail-sidebar {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+@media (max-width: 1023px) {
+  .article-theme-layout-with-sidebar {
+    display: block !important;
+  }
+
+  .article-theme-layout-with-sidebar .article-detail-sidebar {
+    margin-bottom: 1rem !important;
+  }
+}
+
 </style>

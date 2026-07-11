@@ -287,21 +287,19 @@ async function searchTargetsNow() {
   }
 
   try {
-    const res: any = await $fetch(`/api/worlds/${props.worldId}/mentions/search`, {
-      query: { q }
+    const res: any = await $fetch(`/api/worlds/${props.worldId}/relationships/targets`, {
+      query: {
+        q,
+        excludeEntityId: entityId.value,
+        limit: 16
+      }
     })
 
-    const list = Array.isArray(res)
-      ? res
-      : Array.isArray(res?.mentions)
-        ? res.mentions
-        : Array.isArray(res?.items)
-          ? res.items
-          : Array.isArray(res?.results)
-            ? res.results
-            : Array.isArray(res?.data)
-              ? res.data
-              : []
+    const list = Array.isArray(res?.targets)
+      ? res.targets
+      : Array.isArray(res)
+        ? res
+        : []
 
     const currentId = entityId.value
 
@@ -313,11 +311,11 @@ async function searchTargetsNow() {
           ...item,
           id,
           title: String(item?.title || item?.name || item?.label || 'Untitled'),
-          entityType: String(item?.entityType || item?.entity_type || item?.type || 'entity')
+          entityType: String(item?.entityType || item?.entity_type || item?.type || 'Entity')
         }
       })
       .filter((item: any) => item.id && String(item.id) !== String(currentId))
-      .slice(0, 10)
+      .slice(0, 16)
   } catch {
     targetSuggestions.value = []
   }

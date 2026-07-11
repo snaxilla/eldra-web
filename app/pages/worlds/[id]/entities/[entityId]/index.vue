@@ -1826,7 +1826,44 @@ async function onImageSelected(event: Event) {
       </aside>
     </Transition>
 
-    <WorldEntityContextDrawer
+    
+    <section
+      v-if="entity?.id"
+      class="mx-auto max-w-[1500px] px-6 pb-10"
+      :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
+    >
+      <details class="group rounded-none border border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,rgba(18,16,12,0.58),rgba(7,7,6,0.46))] backdrop-blur-xl" open>
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
+          <div>
+            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+              Article Systems
+            </div>
+            <h2 class="mt-1 text-xl font-semibold text-white">
+              Relationships
+            </h2>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-[#9f9278]">
+            <span>Collapse</span>
+            <UIcon name="i-lucide-chevron-down" class="h-4 w-4 transition group-open:rotate-180" />
+          </div>
+        </summary>
+
+        <div class="border-t border-[rgba(201,164,90,0.16)] p-5">
+          <WorldEntityRelationshipsPanel
+            variant="article"
+            :show-graph="true"
+            :world-id="worldId"
+            :entity="entity"
+            :mode="mode"
+            :allow-edit="mode === 'build'"
+            @open-entity="openMentionContext"
+          />
+        </div>
+      </details>
+    </section>
+
+<WorldEntityContextDrawer
       :open="contextDrawerOpen"
       :entity="contextDrawerEntity"
       :world-id="worldId"

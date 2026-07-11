@@ -378,11 +378,13 @@ function readMore() {
 
           
           <WorldEntityRelationshipsPanel
+            variant="drawer"
             v-if="activeEntity?.id && drawerWorldId"
             :world-id="drawerWorldId"
             :entity="activeEntity"
+            :show-graph="false"
             :mode="mode"
-            :allow-edit="allowBuildActions && mode === 'build'"
+            :allow-edit="false"
             @open-entity="openNestedMention"
           />
 

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+definePageMeta({
+  layout: 'world-workspace'
+})
+
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 
 const route = useRoute()

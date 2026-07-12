@@ -22,6 +22,7 @@ const isMapPage = computed(() => {
 const navItems = computed(() => [
   { label: 'World Map', icon: 'i-lucide-map', to: `/worlds/${worldId.value}` },
   { label: 'Overview', icon: 'i-lucide-file-text', to: `/worlds/${worldId.value}/overview` },
+  { label: 'Game Admin', icon: 'i-lucide-crown', to: `/worlds/${worldId.value}/admin` },
   { label: 'Characters', icon: 'i-lucide-users', to: `/worlds/${worldId.value}/characters` },
   { label: 'Locations', icon: 'i-lucide-map-pin', to: `/worlds/${worldId.value}/locations` },
   { label: 'Spells', icon: 'i-lucide-sparkles', to: `/worlds/${worldId.value}/spells` },

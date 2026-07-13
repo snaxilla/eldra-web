@@ -2,6 +2,13 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { ThpaceGL } from 'thpace'
 
+const thpaceBackdropProps = withDefaults(defineProps<{
+  fixed?: boolean
+}>(), {
+  fixed: true
+})
+
+
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
 let thpaceInstance: any = null
@@ -51,7 +58,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+  <div :class="['pointer-events-none z-0 overflow-hidden', thpaceBackdropProps.fixed ? 'fixed inset-0' : 'absolute inset-0']">
     <canvas ref="canvasRef" class="absolute inset-0 h-full w-full" />
     <div class="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,17,0.18)_0%,rgba(2,6,17,0.10)_42%,rgba(2,6,17,0.34)_100%)]" />
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_35%)]" />

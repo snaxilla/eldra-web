@@ -438,7 +438,7 @@ async function refreshAdmin() {
 
 <template>
   <div class="game-admin-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
-    <WorldChooserThpace />
+    <WorldChooserThpace :fixed="false" />
     <div
       class="relative z-10 mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
       :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"

@@ -8,18 +8,73 @@ const props = withDefaults(defineProps<{
   description: 'Build-mode page controls live here for this page view.'
 })
 
-const presentationState = useState<{
+type PresentationState = {
   worldKey: string
   pageKey: string
   presentationMode: string
   backgroundFileId: string | null
   backgroundImageUrl: string | null
-}>('world-page-presentation')
+}
+
+const sharedPresentationState = useState<PresentationState>('world-page-presentation')
+const localPresentationState = ref<PresentationState | null>(null)
+
+const presentationState = computed<PresentationState | null>({
+  get() {
+    return props.isolated ? localPresentationState.value : sharedPresentationState.value
+  },
+  set(value) {
+    if (props.isolated) {
+      localPresentationState.value = value
+    } else {
+      sharedPresentationState.value = value
+    }
+  }
+})
 
 const presentationRefreshNonce = useState<number>('world-page-presentation-refresh-nonce', () => 0)
 const presentationBusy = ref(false)
 const presentationMessage = ref('')
 const hiddenBgInput = ref<HTMLInputElement | null>(null)
+
+const loadingPresentation = ref(false)
+
+async function loadPresentationState() {
+  if (!props.worldId || !props.pageKey) return
+
+  loadingPresentation.value = true
+
+  try {
+    const loaded = await $fetch<PresentationState>(`/api/worlds/${props.worldId}/presentation/${props.pageKey}`)
+
+    presentationState.value = {
+      worldKey: String(loaded?.worldKey || props.worldId || ''),
+      pageKey: String(loaded?.pageKey || props.pageKey || ''),
+      presentationMode: String(loaded?.presentationMode || 'neutral'),
+      backgroundFileId: loaded?.backgroundFileId || null,
+      backgroundImageUrl: loaded?.backgroundImageUrl || null
+    }
+  } catch {
+    presentationState.value = {
+      worldKey: String(props.worldId || ''),
+      pageKey: String(props.pageKey || ''),
+      presentationMode: 'neutral',
+      backgroundFileId: null,
+      backgroundImageUrl: null
+    }
+  } finally {
+    loadingPresentation.value = false
+  }
+}
+
+watch(
+  () => [props.worldId, props.pageKey],
+  () => {
+    void loadPresentationState()
+  },
+  { immediate: true }
+)
+
 
 const currentMode = computed(() => String(presentationState.value?.presentationMode || 'neutral'))
 const previewImageUrl = computed(() => {

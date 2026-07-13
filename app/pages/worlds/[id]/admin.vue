@@ -11,7 +11,7 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
-const activePanel = ref<'overview' | 'party' | 'grants' | 'transfers' | 'relationships'>('overview')
+const activePanel = ref<'overview' | 'party' | 'grants' | 'setup' | 'transfers' | 'relationships'>('overview')
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
@@ -187,9 +187,80 @@ const panels = [
   { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
   { key: 'party', label: 'Party / Cast', icon: 'i-lucide-users' },
   { key: 'grants', label: 'Grants', icon: 'i-lucide-gift' },
+  { key: 'setup', label: 'Page Setup', icon: 'i-lucide-sliders-horizontal' },
   { key: 'transfers', label: 'Transfers', icon: 'i-lucide-arrow-left-right' },
   { key: 'relationships', label: 'Relationships', icon: 'i-lucide-share-2' }
 ] as const
+
+const pageSetupSections = [
+  {
+    key: 'characters',
+    title: 'Characters',
+    description: 'Controls the characters and cast browsing page presentation.'
+  },
+  {
+    key: 'locations',
+    title: 'Locations',
+    description: 'Controls the locations page presentation and background.'
+  },
+  {
+    key: 'items',
+    title: 'Items',
+    description: 'Controls the item catalog page presentation and background.'
+  },
+  {
+    key: 'spells',
+    title: 'Spells',
+    description: 'Controls the spell catalog page presentation and background.'
+  },
+  {
+    key: 'species',
+    title: 'Species',
+    description: 'Controls the species page presentation and background.'
+  },
+  {
+    key: 'classes',
+    title: 'Classes',
+    description: 'Controls the classes page presentation and background.'
+  },
+  {
+    key: 'feats',
+    title: 'Feats',
+    description: 'Controls the feats page presentation and background.'
+  },
+  {
+    key: 'enemies',
+    title: 'Enemies',
+    description: 'Controls the enemies page presentation and background.'
+  },
+  {
+    key: 'maps',
+    title: 'Maps',
+    description: 'Controls the maps and world-map presentation background.'
+  },
+  {
+    key: 'timelines',
+    title: 'Timelines',
+    description: 'Controls timeline list and timeline detail presentation.'
+  },
+  {
+    key: 'entity-article',
+    title: 'Entity Articles',
+    description: 'Controls the full article page presentation and background.'
+  },
+  {
+    key: 'game-admin',
+    title: 'Game Admin',
+    description: 'Reserved for Game Admin presentation controls and command-deck polish.'
+  }
+] as const
+
+const selectedPageSetupKey = ref('characters')
+
+const selectedPageSetup = computed(() =>
+  pageSetupSections.find((section) => section.key === selectedPageSetupKey.value) || pageSetupSections[0]
+)
+
 
 watch(
   grantTargets,
@@ -995,6 +1066,115 @@ async function refreshAdmin() {
               {{ grantSaving ? 'Granting...' : 'Grant Currency' }}
             </button>
           </div>
+        </div>
+      </section>
+
+
+      <section
+        v-else-if="activePanel === 'setup'"
+        class="mt-6 grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]"
+      >
+        <aside class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Page Setup
+          </div>
+
+          <h2 class="mt-2 text-2xl font-semibold text-white">
+            Presentation Targets
+          </h2>
+
+          <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+            Choose a world page, then set its presentation mode and background from one cockpit.
+          </p>
+
+          <div class="mt-5 grid gap-2">
+            <button
+              v-for="section in pageSetupSections"
+              :key="section.key"
+              type="button"
+              class="rounded-none border px-3 py-3 text-left transition"
+              :class="selectedPageSetupKey === section.key
+                ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#d8ceb8] hover:border-[rgba(201,164,90,0.34)] hover:text-[#fff7df]'"
+              @click="selectedPageSetupKey = section.key"
+            >
+              <span class="block text-sm font-semibold">
+                {{ section.title }}
+              </span>
+
+              <span class="mt-1 block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
+                {{ section.key }}
+              </span>
+            </button>
+          </div>
+        </aside>
+
+        <div class="grid gap-6">
+          <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                  Selected Page
+                </div>
+
+                <h2 class="mt-2 text-2xl font-semibold text-white">
+                  {{ selectedPageSetup.title }}
+                </h2>
+
+                <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                  {{ selectedPageSetup.description }}
+                </p>
+              </div>
+
+              <div class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#f5e7bd]">
+                {{ selectedPageSetup.key }}
+              </div>
+            </div>
+          </section>
+
+          <WorldPagePresentationPanel
+            isolated
+            :world-id="worldId"
+            :page-key="selectedPageSetup.key"
+            :title="`${selectedPageSetup.title} Presentation`"
+            :description="selectedPageSetup.description"
+          />
+
+          <section class="rounded-none border border-dashed border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.34)] p-5">
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Coming Later
+            </div>
+
+            <div class="mt-3 grid gap-3 md:grid-cols-2">
+              <div class="rounded-none border border-[rgba(201,164,90,0.12)] bg-[rgba(20,17,12,0.44)] p-3">
+                <div class="text-sm font-semibold text-white">Page Visibility</div>
+                <p class="mt-1 text-xs leading-5 text-[#9f9278]">
+                  Player-visible, GM-only, hidden draft, and public presentation rules.
+                </p>
+              </div>
+
+              <div class="rounded-none border border-[rgba(201,164,90,0.12)] bg-[rgba(20,17,12,0.44)] p-3">
+                <div class="text-sm font-semibold text-white">Default View</div>
+                <p class="mt-1 text-xs leading-5 text-[#9f9278]">
+                  Card/list/grid defaults, pinned filters, and page-specific layout preferences.
+                </p>
+              </div>
+
+              <div class="rounded-none border border-[rgba(201,164,90,0.12)] bg-[rgba(20,17,12,0.44)] p-3">
+                <div class="text-sm font-semibold text-white">Section Toggles</div>
+                <p class="mt-1 text-xs leading-5 text-[#9f9278]">
+                  Show, hide, reorder, or rename world navigation sections.
+                </p>
+              </div>
+
+              <div class="rounded-none border border-[rgba(201,164,90,0.12)] bg-[rgba(20,17,12,0.44)] p-3">
+                <div class="text-sm font-semibold text-white">Theme Presets</div>
+                <p class="mt-1 text-xs leading-5 text-[#9f9278]">
+                  Named page themes and reusable background/presentation presets.
+                </p>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
 

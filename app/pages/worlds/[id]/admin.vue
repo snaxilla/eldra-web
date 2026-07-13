@@ -438,9 +438,9 @@ async function refreshAdmin() {
 
 <template>
   <div class="game-admin-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
-    <WorldChooserThpace :fixed="false" />
+    <WorldChooserThpace mode="sticky" />
     <div
-      class="relative z-10 mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
+      class="relative z-10 -mt-[100dvh] mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
       :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
     >
       <section class="eldra-filigree rounded-none border border-[rgba(201,164,90,0.30)] bg-[linear-gradient(to_bottom,rgba(18,16,12,0.74),rgba(7,7,6,0.54))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.22)] backdrop-blur-xl">

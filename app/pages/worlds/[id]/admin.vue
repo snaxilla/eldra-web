@@ -437,7 +437,7 @@ async function refreshAdmin() {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
+  <div class="game-admin-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
     <div
       class="mx-auto max-w-[1700px] p-6 transition-[margin,max-width] duration-200"
       :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
@@ -1176,3 +1176,65 @@ async function refreshAdmin() {
     />
   </div>
 </template>
+
+
+<style scoped>
+.game-admin-space {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 32% 9%, rgba(255, 255, 255, 0.42) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 71% 13%, rgba(255, 255, 255, 0.60) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 86% 42%, rgba(255, 255, 255, 0.38) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 28% 74%, rgba(255, 255, 255, 0.44) 0 1px, transparent 1.4px),
+    linear-gradient(180deg, #020712 0%, #050811 46%, #03040a 100%);
+}
+
+.game-admin-space::before,
+.game-admin-space::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+.game-admin-space::before {
+  opacity: 0.42;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(58, 142, 255, 0.18), transparent 24%),
+    radial-gradient(circle at 78% 68%, rgba(201, 164, 90, 0.10), transparent 28%),
+    radial-gradient(circle at 52% 48%, rgba(112, 86, 255, 0.09), transparent 32%);
+  filter: blur(0.2px);
+}
+
+.game-admin-space::after {
+  opacity: 0.52;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.4px),
+    radial-gradient(circle, rgba(201, 214, 255, 0.42) 0 1px, transparent 1.2px);
+  background-size: 240px 240px, 380px 380px;
+  background-position: 32px 18px, 144px 96px;
+}
+
+.game-admin-space > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .game-admin-space::after {
+    animation: game-admin-star-drift 80s linear infinite;
+  }
+}
+
+@keyframes game-admin-star-drift {
+  from {
+    background-position: 32px 18px, 144px 96px;
+  }
+
+  to {
+    background-position: 272px 258px, 524px 476px;
+  }
+}
+</style>
+

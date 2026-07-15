@@ -25,8 +25,10 @@ const collectionRailOpen = computed(() =>
 )
 
 const collectionShellClass = computed(() => [
-  collectionRailOpen.value ? 'xl:mr-[404px] xl:max-w-none' : 'mx-auto max-w-[1700px]',
-  'p-6 transition-[margin,max-width] duration-200'
+  'w-full p-6 transition-[margin,max-width] duration-200',
+  collectionRailOpen.value
+    ? 'mx-0 max-w-none xl:mr-[404px]'
+    : 'mx-auto max-w-[1700px]'
 ])
 
 
@@ -1232,5 +1234,33 @@ async function createLocationArticle() {
   border: 0;
   background: transparent;
   padding: 0;
+}
+
+.eldra-collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.eldra-collection-card {
+  width: 100%;
+}
+
+@media (min-width: 1536px) {
+  .eldra-collection-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .eldra-collection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eldra-collection-card {
+    grid-template-columns: 112px minmax(0, 1fr);
+    min-height: 200px;
+  }
 }
 </style>

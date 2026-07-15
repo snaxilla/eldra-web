@@ -189,14 +189,14 @@ watch(
           Results <span class="text-[#b5a88d]">({{ countLabel }})</span>
         </div>
 
-        <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <div class="eldra-collection-grid">
           <NuxtLink
             v-for="entity in filteredEntities"
             :key="entity.id"
             :to="`/worlds/${worldId}/entities/${entity.id}`"
             class="overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)] bg-[linear-gradient(to_right,rgba(13,18,22,0.82),rgba(8,10,12,0.72))] transition hover:border-[rgba(201,164,90,0.42)] hover:bg-[linear-gradient(to_right,rgba(20,17,12,0.92),rgba(8,17,27,0.76))]"
           >
-            <div class="grid min-h-[220px] grid-cols-[120px_minmax(0,1fr)]">
+            <div class="eldra-collection-card grid min-h-[240px] grid-cols-[minmax(132px,168px)_minmax(0,1fr)]">
               <div class="overflow-hidden border-r border-[rgba(201,164,90,0.18)] bg-[linear-gradient(to_bottom,rgba(20,17,12,0.72),rgba(8,17,27,0.52))]">
                 <img
                   v-if="imageUrlForEntity(entity)"
@@ -250,3 +250,35 @@ watch(
 </template>
 
 // force rebuild 2026-05-09T00:24:23Z
+
+
+<style scoped>
+.eldra-collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.eldra-collection-card {
+  width: 100%;
+}
+
+@media (min-width: 1536px) {
+  .eldra-collection-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .eldra-collection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eldra-collection-card {
+    grid-template-columns: 112px minmax(0, 1fr);
+    min-height: 200px;
+  }
+}
+</style>
+

@@ -202,7 +202,7 @@ watch(
                   v-if="imageUrlForEntity(entity)"
                   :src="imageUrlForEntity(entity)"
                   :alt="entity.title"
-                  class="h-full w-full object-cover object-top"
+                  class="eldra-card-image-fill h-full w-full object-cover object-top"
                 >
                 <div
                   v-else

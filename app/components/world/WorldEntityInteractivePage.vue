@@ -757,7 +757,7 @@ async function createLocationArticle() {
 
         <section
           v-else
-          class="mt-6 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
+          class="eldra-collection-grid mt-6"
         >
           <div
             v-for="entity in filteredEntities"
@@ -768,13 +768,13 @@ async function createLocationArticle() {
               : 'opacity-95'"
             @click="selectEntity(entity)"
           >
-            <div class="grid min-h-[300px] grid-cols-[112px_minmax(0,1fr)]">
-              <div class="eldra-image-frame border-r border-[rgba(201,164,90,0.22)] bg-black/20">
+            <div class="eldra-collection-card-body grid min-h-[280px] grid-cols-[minmax(128px,160px)_minmax(0,1fr)]">
+              <div class="eldra-card-image-well eldra-image-frame border-r border-[rgba(201,164,90,0.22)] bg-black/20">
                 <img
                   v-if="imageUrlForEntity(entity)"
                   :src="imageUrlForEntity(entity)"
                   :alt="entity.title"
-                  class="h-full w-full object-cover object-[center_18%]"
+                  class="eldra-card-image-fill h-full w-full object-cover object-[center_18%]"
                 >
                 <div
                   v-else

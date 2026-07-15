@@ -634,9 +634,9 @@ onBeforeUnmount(() => {
               : 'opacity-95'"
             @click="selectCharacter(character)"
           >
-            <div class="grid min-h-[220px] grid-cols-[112px_minmax(0,1fr)]">
+            <div class="eldra-collection-card-body grid min-h-[280px] grid-cols-[minmax(128px,160px)_minmax(0,1fr)]">
               <div class="eldra-image-frame border-r border-[rgba(201,164,90,0.24)] bg-black/20">
-                <img v-if="character.imageUrl" :src="character.imageUrl" :alt="character.displayTitle" class="h-full w-full object-cover object-[center_15%]">
+                <img v-if="character.imageUrl" :src="character.imageUrl" :alt="character.displayTitle" class="eldra-card-image-fill h-full w-full object-cover object-[center_15%]">
                 <div v-else class="flex h-full w-full items-center justify-center bg-[rgba(20,17,12,0.72)] text-2xl font-semibold text-[#d8ceb8]">
                   {{ initialsFor(character.displayTitle) }}
                 </div>

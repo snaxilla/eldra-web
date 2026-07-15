@@ -1321,3 +1321,69 @@
   max-width: calc(100vw - 1rem) !important;
 }
 
+/* ------------------------------------------------------------------
+   Eldra collection card image wells
+   Keeps collection/card portraits glued to the full left rail instead
+   of floating at the top or leaving dead space in the lower-left corner.
+------------------------------------------------------------------- */
+
+.eldra-collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.eldra-collection-card-body {
+  height: 100%;
+  align-items: stretch;
+}
+
+.eldra-card-image-well {
+  position: relative !important;
+  align-self: stretch !important;
+  min-height: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.eldra-card-image-well > img,
+.eldra-card-image-well > div {
+  position: absolute !important;
+  inset: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
+.eldra-card-image-well > img {
+  display: block !important;
+  object-fit: cover !important;
+}
+
+.eldra-ornate-card :where(a, button, div):has(> img.eldra-card-image-fill) {
+  position: relative !important;
+  align-self: stretch !important;
+  min-height: 100% !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+.eldra-ornate-card img.eldra-card-image-fill {
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  height: 100% !important;
+  width: 100% !important;
+  object-fit: cover !important;
+}
+
+@media (max-width: 640px) {
+  .eldra-collection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eldra-collection-card-body {
+    grid-template-columns: 112px minmax(0, 1fr);
+    min-height: 220px;
+  }
+}

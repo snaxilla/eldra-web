@@ -18,6 +18,40 @@ const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
+
+const collectionViewOptions = [
+  { key: 'grid', label: 'Grid', icon: 'i-lucide-layout-grid' },
+  { key: 'list', label: 'List', icon: 'i-lucide-list' }
+] as const
+
+type CollectionView = typeof collectionViewOptions[number]['key']
+
+function defaultCollectionViewForPage(): CollectionView {
+  const type = normalizeEntityType(props.entityType)
+  const page = normalizeEntityType(props.pageKey)
+
+  return ['item', 'items', 'spell', 'spells'].includes(type) ||
+    ['item', 'items', 'spell', 'spells'].includes(page)
+    ? 'list'
+    : 'grid'
+}
+
+const collectionView = ref<CollectionView>(defaultCollectionViewForPage())
+
+const collectionResultsClass = computed(() => [
+  'eldra-collection-results mt-6',
+  collectionView.value === 'list'
+    ? 'eldra-collection-list'
+    : 'eldra-collection-grid'
+])
+
+watch(
+  () => [props.entityType, props.pageKey],
+  () => {
+    collectionView.value = defaultCollectionViewForPage()
+  }
+)
+
 const selectedEntityId = ref<string | null>(null)
 
 const collectionRailOpen = computed(() =>
@@ -736,6 +770,33 @@ async function createLocationArticle() {
               class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
             >
           </div>
+
+          <div
+            data-collection-view-toggle
+            class="mt-4 flex flex-wrap items-center justify-between gap-3"
+          >
+            <div class="text-xs uppercase tracking-[0.24em] text-[#9f9278]">
+              Results
+              <span class="text-[#d8ceb8]">({{ filteredEntities.length }})</span>
+            </div>
+
+            <div class="inline-flex overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.42)]">
+              <button
+                v-for="option in collectionViewOptions"
+                :key="option.key"
+                type="button"
+                class="inline-flex items-center gap-2 border-r border-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] last:border-r-0 transition"
+                :class="collectionView === option.key
+                  ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                  : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
+                @click="collectionView = option.key"
+              >
+                <UIcon :name="option.icon" class="h-4 w-4" />
+                <span>{{ option.label }}</span>
+              </button>
+            </div>
+          </div>
+
         </section>
 
         <section
@@ -757,7 +818,7 @@ async function createLocationArticle() {
 
         <section
           v-else
-          class="eldra-collection-grid mt-6"
+          :class="collectionResultsClass"
         >
           <div
             v-for="entity in filteredEntities"
@@ -1263,4 +1324,44 @@ async function createLocationArticle() {
     min-height: 200px;
   }
 }
+
+.eldra-collection-results.eldra-collection-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.eldra-collection-results.eldra-collection-list :deep(.eldra-ornate-card) {
+  width: 100%;
+}
+
+.eldra-collection-results.eldra-collection-list :deep(.eldra-collection-card-body) {
+  min-height: 150px;
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
+.eldra-collection-results.eldra-collection-list :deep(.eldra-collection-card-body > .flex),
+.eldra-collection-results.eldra-collection-list :deep(.eldra-collection-card-body > div:last-child) {
+  padding: 1rem;
+}
+
+.eldra-collection-results.eldra-collection-list :deep(.line-clamp-5) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.eldra-collection-results.eldra-collection-list :deep(.mt-6.text-sm),
+.eldra-collection-results.eldra-collection-list :deep(.mt-6) {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .eldra-collection-results.eldra-collection-list :deep(.eldra-collection-card-body) {
+    grid-template-columns: 88px minmax(0, 1fr);
+    min-height: 140px;
+  }
+}
+
 </style>

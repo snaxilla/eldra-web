@@ -591,6 +591,8 @@ function collectionLocationMetaLines(entity: any) {
 }
 
 function collectionMetaLines(entity: any) {
+  const serverLines = collectionServerMetaLines(entity)
+  if (serverLines.length) return serverLines
   const type = normalizeEntityType(props.entityType)
   const page = normalizeEntityType(props.pageKey)
 
@@ -606,6 +608,8 @@ function collectionMetaLines(entity: any) {
 }
 
 function collectionFacetValue(entity: any) {
+  const serverFacet = collectionServerFacet(entity)
+  if (serverFacet) return serverFacet
   const type = normalizeEntityType(props.entityType)
   const page = normalizeEntityType(props.pageKey)
 
@@ -735,6 +739,43 @@ watch(
 )
 
 
+
+function collectionServerTitleCase(value: any) {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function collectionServerMetaLines(entity: any) {
+  const raw =
+    entity?.collectionMetaLines ??
+    entity?.collection_meta_lines ??
+    entity?.metaLines ??
+    entity?.meta_lines ??
+    []
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((line: any) => String(line || '').trim())
+      .filter(Boolean)
+  }
+
+  return []
+}
+
+function collectionServerFacet(entity: any) {
+  return String(
+    entity?.collectionFacet ??
+    entity?.collection_facet ??
+    entity?.facet ??
+    ''
+  ).trim()
+}
+
+
 function summaryForEntity(entity: any) {
   const direct = String(entity?.summary || '').trim()
   if (direct) return direct
@@ -849,6 +890,7 @@ const filteredEntities = computed(() => {
     .filter((entity: any) => matchesCollectionType(entity))
     .filter((entity: any) => facet === 'all' || collectionFacetValue(entity) === facet)
     .filter((entity: any) => !q || collectionSearchHaystack(entity).includes(q))
+    .sort((a: any, b: any) => String(a?.title || '').localeCompare(String(b?.title || '')))
 })
 
 const selectedEntity = computed(() => {
@@ -1032,7 +1074,7 @@ async function createLocationArticle() {
 
 
           <div
-            v-if="collectionFacetOptions.length > 2"
+            v-if="collectionFacetOptions.length > 1"
             data-collection-facet-chips
             class="mt-4 flex flex-wrap gap-2"
           >

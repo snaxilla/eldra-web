@@ -489,6 +489,252 @@ function formatPrimaryAbility(value: any): string {
   return String(value)
 }
 
+
+function collectionCleanText(value: any) {
+  return String(value ?? '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\{@(?:filter|spell|item|creature|class|race|variantrule|condition|skill|action|sense|damage|book|hazard|reward|feat)\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@(?:i|b|dice|damage|hit|dc|scaledice|scaledamage)\s+([^}]+)\}/g, '$1')
+    .replace(/\{@[^}]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function collectionTitleCase(value: any) {
+  return collectionCleanText(value)
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function collectionCompactSource(value: any) {
+  return collectionCleanText(value)
+    .replace(/\|/g, ' / ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function collectionItemProfile(entity: any) {
+  return entity?.itemProfile || entity?.profile || entity?.normalizedItem || null
+}
+
+function collectionLocationCore(entity: any) {
+  return blockByKey(entity, 'location_core')?.data || null
+}
+
+function collectionItemMetaLines(entity: any) {
+  const profile = collectionItemProfile(entity)
+
+  if (profile) {
+    const weapon = profile.weapon || {}
+    const armor = profile.armor || {}
+    const damageLine = weapon.damage
+      ? `Damage: ${weapon.damage}${weapon.damageType ? ` ${collectionTitleCase(weapon.damageType)}` : ''}`
+      : ''
+    const armorLine = armor.baseAc
+      ? `AC: ${armor.baseAc}${armor.bonusAc ? ` + ${armor.bonusAc}` : ''}`
+      : armor.isShield
+        ? `Shield: +${armor.shieldBonus || 2} AC`
+        : ''
+
+    return [
+      profile.displayType ? `Type: ${profile.displayType}` : '',
+      profile.rarity ? `Rarity: ${collectionTitleCase(profile.rarity)}` : '',
+      damageLine,
+      armorLine,
+      profile.weight ? `Weight: ${profile.weight}` : '',
+      profile.requiresAttunement ? 'Requires Attunement' : '',
+      profile.source ? `Source: ${profile.source}` : ''
+    ].filter(Boolean)
+  }
+
+  return itemMetaLines(entity).map(collectionCompactSource)
+}
+
+function collectionSpellMetaLines(entity: any) {
+  const core = spellCore(entity)
+  if (!core) return spellMetaLines(entity)
+
+  const rawLevel = core.level ?? core.spell_level ?? core.spellLevel
+  const level = Number(rawLevel)
+  const levelLabel = Number.isFinite(level)
+    ? (level <= 0 ? 'Cantrip' : `Level ${level}`)
+    : rawLevel
+      ? collectionTitleCase(rawLevel)
+      : ''
+
+  return [
+    levelLabel ? `Level: ${levelLabel}` : '',
+    core.school ? `School: ${collectionTitleCase(core.school)}` : '',
+    core.casting_time || core.castingTime ? `Casting: ${collectionCleanText(core.casting_time || core.castingTime)}` : '',
+    core.range ? `Range: ${collectionCleanText(core.range)}` : '',
+    core.duration ? `Duration: ${collectionCleanText(core.duration)}` : '',
+    core.components ? `Components: ${collectionCleanText(core.components)}` : '',
+    core.ritual ? 'Ritual' : '',
+    core.concentration ? 'Concentration' : ''
+  ].filter(Boolean)
+}
+
+function collectionLocationMetaLines(entity: any) {
+  const core = collectionLocationCore(entity)
+
+  return [
+    core?.location_type || core?.locationType || core?.type ? `Type: ${collectionTitleCase(core?.location_type || core?.locationType || core?.type)}` : '',
+    core?.population ? `Population: ${collectionCleanText(core.population)}` : '',
+    core?.parentLocationId || core?.parent_location_id ? 'Has Parent Location' : '',
+    core?.linkedMapId || core?.linked_map_id ? 'Linked Map' : ''
+  ].filter(Boolean)
+}
+
+function collectionMetaLines(entity: any) {
+  const type = normalizeEntityType(props.entityType)
+  const page = normalizeEntityType(props.pageKey)
+
+  if (type === 'item' || page === 'items') return collectionItemMetaLines(entity)
+  if (type === 'spell' || page === 'spells') return collectionSpellMetaLines(entity)
+  if (type === 'location' || page === 'locations') return collectionLocationMetaLines(entity)
+  if (type === 'species' || page === 'species' || page === 'races') return speciesMetaLines(entity).map(collectionCompactSource)
+  if (type === 'class' || page === 'classes') return classMetaLines(entity).map(collectionCompactSource)
+  if (type === 'feat' || page === 'feats') return featMetaLines(entity).map(collectionCompactSource)
+  if (type === 'background' || page === 'backgrounds') return backgroundMetaLines(entity).map(collectionCompactSource)
+
+  return []
+}
+
+function collectionFacetValue(entity: any) {
+  const type = normalizeEntityType(props.entityType)
+  const page = normalizeEntityType(props.pageKey)
+
+  if (type === 'item' || page === 'items') {
+    const profile = collectionItemProfile(entity)
+    const core = itemCore(entity)
+
+    return collectionTitleCase(
+      profile?.category ||
+      profile?.displayType ||
+      core?.category ||
+      core?.item_type ||
+      core?.itemType ||
+      'Item'
+    )
+  }
+
+  if (type === 'spell' || page === 'spells') {
+    const core = spellCore(entity)
+    const rawLevel = core?.level ?? core?.spell_level ?? core?.spellLevel
+    const level = Number(rawLevel)
+
+    if (Number.isFinite(level)) return level <= 0 ? 'Cantrip' : `Level ${level}`
+    return rawLevel ? collectionTitleCase(rawLevel) : 'Unknown Level'
+  }
+
+  if (type === 'location' || page === 'locations') {
+    const core = collectionLocationCore(entity)
+    return collectionTitleCase(core?.location_type || core?.locationType || core?.type || 'Location')
+  }
+
+  if (type === 'species' || page === 'species' || page === 'races') {
+    const core = speciesCore(entity)
+    const size = formatSize(core?.size ?? core?.size_json ?? core?.race_size)
+    return size ? `Size ${size}` : 'Species'
+  }
+
+  if (type === 'class' || page === 'classes') {
+    const core = classCore(entity)
+    const hitDie = core?.hit_die ?? core?.hitDie ?? core?.hd
+    return hitDie ? `Hit Die ${formatSimpleValue(hitDie)}` : 'Class'
+  }
+
+  if (type === 'feat' || page === 'feats') {
+    const core = featCore(entity)
+    return collectionTitleCase(core?.category || 'Feat')
+  }
+
+  if (type === 'background' || page === 'backgrounds') {
+    const core = backgroundCore(entity)
+    return core?.feature ? 'Has Feature' : 'Background'
+  }
+
+  return 'All'
+}
+
+function collectionWantedTypes() {
+  const type = normalizeEntityType(props.entityType)
+
+  if (type === 'species') return new Set(['species', 'race'])
+  return new Set([type])
+}
+
+function collectionEntityType(entity: any) {
+  return normalizeEntityType(entity?.entity_type || entity?.entityType)
+}
+
+function matchesCollectionType(entity: any) {
+  return collectionWantedTypes().has(collectionEntityType(entity))
+}
+
+function collectionSearchHaystack(entity: any) {
+  return [
+    entity?.title,
+    entity?.slug,
+    entity?.summary,
+    summaryForEntity(entity),
+    ...collectionMetaLines(entity)
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+const activeCollectionFacet = ref('all')
+
+const collectionFacetOptions = computed(() => {
+  const counts = new Map<string, number>()
+
+  for (const entity of entities.value || []) {
+    if (!matchesCollectionType(entity)) continue
+
+    const value = collectionFacetValue(entity)
+    if (!value) continue
+
+    counts.set(value, (counts.get(value) || 0) + 1)
+  }
+
+  const options = Array.from(counts.entries())
+    .map(([label, count]) => ({
+      key: label,
+      label,
+      count
+    }))
+    .sort((a, b) => {
+      const levelA = Number(String(a.label).match(/^Level\s+(\d+)/i)?.[1] ?? Number.NaN)
+      const levelB = Number(String(b.label).match(/^Level\s+(\d+)/i)?.[1] ?? Number.NaN)
+
+      if (a.label === 'Cantrip') return -1
+      if (b.label === 'Cantrip') return 1
+      if (Number.isFinite(levelA) && Number.isFinite(levelB)) return levelA - levelB
+
+      return a.label.localeCompare(b.label)
+    })
+
+  return [
+    { key: 'all', label: 'All', count: (entities.value || []).filter(matchesCollectionType).length },
+    ...options
+  ]
+})
+
+watch(
+  () => [props.entityType, props.pageKey],
+  () => {
+    activeCollectionFacet.value = 'all'
+  }
+)
+
+
 function summaryForEntity(entity: any) {
   const direct = String(entity?.summary || '').trim()
   if (direct) return direct
@@ -597,25 +843,12 @@ function backgroundMetaLines(entity: any) {
 
 const filteredEntities = computed(() => {
   const q = search.value.trim().toLowerCase()
+  const facet = activeCollectionFacet.value
 
   return (entities.value || [])
-    .filter((entity: any) => normalizeEntityType(entity?.entity_type || entity?.entityType) === normalizeEntityType(props.entityType))
-    .filter((entity: any) => {
-      if (!q) return true
-
-      return [
-        entity?.title,
-        entity?.slug,
-        summaryForEntity(entity),
-        ...itemMetaLines(entity),
-        ...spellMetaLines(entity),
-        ...speciesMetaLines(entity),
-        ...classMetaLines(entity),
-        ...backgroundMetaLines(entity)
-      ]
-        .filter(Boolean)
-        .some((value: any) => String(value).toLowerCase().includes(q))
-    })
+    .filter((entity: any) => matchesCollectionType(entity))
+    .filter((entity: any) => facet === 'all' || collectionFacetValue(entity) === facet)
+    .filter((entity: any) => !q || collectionSearchHaystack(entity).includes(q))
 })
 
 const selectedEntity = computed(() => {
@@ -797,6 +1030,27 @@ async function createLocationArticle() {
             </div>
           </div>
 
+
+          <div
+            v-if="collectionFacetOptions.length > 2"
+            data-collection-facet-chips
+            class="mt-4 flex flex-wrap gap-2"
+          >
+            <button
+              v-for="facet in collectionFacetOptions"
+              :key="facet.key"
+              type="button"
+              class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
+              :class="activeCollectionFacet === facet.key
+                ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+              @click="activeCollectionFacet = facet.key"
+            >
+              <span>{{ facet.label }}</span>
+              <span class="ml-1 opacity-70">{{ facet.count }}</span>
+            </button>
+          </div>
+
         </section>
 
         <section
@@ -880,7 +1134,21 @@ async function createLocationArticle() {
                   </template>
 
                   <template v-else>
-                    <WorldMentionText
+                                        <div
+                      v-if="collectionMetaLines(entity).length"
+                      data-collection-smart-meta
+                      class="mt-3 flex flex-wrap gap-1.5"
+                    >
+                      <span
+                        v-for="line in collectionMetaLines(entity).slice(0, collectionView === 'list' ? 5 : 3)"
+                        :key="line"
+                        class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d8ceb8]"
+                      >
+                        {{ line }}
+                      </span>
+                    </div>
+
+<WorldMentionText
                       v-if="summaryForEntity(entity)"
                       :world-id="worldId"
                       :markdown="summaryForEntity(entity)"
@@ -1362,6 +1630,27 @@ async function createLocationArticle() {
     grid-template-columns: 88px minmax(0, 1fr);
     min-height: 140px;
   }
+}
+
+
+.eldra-collection-results.eldra-collection-list :deep([data-collection-smart-meta]) {
+  margin-top: 0.65rem;
+}
+
+.eldra-collection-results.eldra-collection-list :deep([data-collection-smart-meta] span) {
+  font-size: 0.625rem;
+  padding: 0.2rem 0.45rem;
+}
+
+.eldra-collection-results.eldra-collection-list :deep(.line-clamp-5),
+.eldra-collection-results.eldra-collection-list :deep(.leading-7) {
+  line-height: 1.55rem;
+}
+
+.eldra-collection-results.eldra-collection-list :deep(.text-\[1\.55rem\]),
+.eldra-collection-results.eldra-collection-list :deep(.text-2xl) {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
 }
 
 </style>

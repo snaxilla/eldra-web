@@ -659,8 +659,34 @@ onBeforeUnmount(() => {
                   {{ character.displaySummary || 'No summary yet.' }}
                 </p>
 
-                <div class="eldra-arcane-link mt-auto pt-5 text-sm font-medium transition">
-                  Select Character →
+                
+                <div
+                  data-character-card-actions
+                  class="mt-auto flex flex-wrap gap-2 pt-5"
+                >
+                  <button
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.56)] hover:bg-[rgba(201,164,90,0.18)]"
+                    @click.stop="selectedCharacterId = String(character.id)"
+                  >
+                    Details
+                  </button>
+
+                  <NuxtLink
+                    :to="`/worlds/${worldId}/entities/${character.id}`"
+                    class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.52)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
+                    @click.stop
+                  >
+                    Open Article
+                  </NuxtLink>
+
+                  <NuxtLink
+                    :to="`/worlds/${worldId}/entities/${character.id}/sheet`"
+                    class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.48)]"
+                    @click.stop
+                  >
+                    Open Sheet
+                  </NuxtLink>
                 </div>
               </div>
             </div>

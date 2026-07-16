@@ -776,6 +776,44 @@ function collectionServerFacet(entity: any) {
 }
 
 
+
+const collectionEntitySingularLabel = computed(() => {
+  const title = String(props.title || props.entityType || 'Entity').trim()
+
+  if (!title) return 'Entity'
+  if (/ies$/i.test(title)) return title.replace(/ies$/i, 'y')
+
+  return title.replace(/s$/i, '') || 'Entity'
+})
+
+function collectionEntityId(entity: any) {
+  return String(
+    entity?.id ??
+    entity?.entityId ??
+    entity?.entity_id ??
+    ''
+  ).trim()
+}
+
+function isSelectedEntity(entity: any) {
+  return String(selectedEntityId.value || '') === collectionEntityId(entity)
+}
+
+function openEntityContext(entity: any) {
+  const id = collectionEntityId(entity)
+  if (!id) return
+
+  selectedEntityId.value = id
+}
+
+function openEntityArticle(entity: any) {
+  const id = collectionEntityId(entity)
+  if (!id) return
+
+  router.push(`/worlds/${worldId.value}/entities/${id}`)
+}
+
+
 function summaryForEntity(entity: any) {
   const direct = String(entity?.summary || '').trim()
   if (direct) return direct
@@ -1117,13 +1155,20 @@ async function createLocationArticle() {
           :class="collectionResultsClass"
         >
           <div
+              data-collection-entity-card
+              role="button"
+              tabindex="0"
+              :data-selected="isSelectedEntity(entity) ? 'true' : 'false'"
+              @click="openEntityContext(entity)"
+              @keydown.enter.prevent="openEntityContext(entity)"
+              @keydown.space.prevent="openEntityContext(entity)"
+
             v-for="entity in filteredEntities"
             :key="entity.id"
             class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
             :class="selectedEntityId === String(entity.id)
               ? 'eldra-selected-glow scale-[1.025]'
               : 'opacity-95'"
-            @click="selectEntity(entity)"
           >
             <div class="eldra-collection-card-body grid min-h-[280px] grid-cols-[minmax(128px,160px)_minmax(0,1fr)]">
               <div class="eldra-card-image-well eldra-image-frame border-r border-[rgba(201,164,90,0.22)] bg-black/20">
@@ -1204,8 +1249,26 @@ async function createLocationArticle() {
                   </template>
                 </div>
 
-                <div class="mt-auto pt-5 text-sm font-medium text-[#f5e7bd] transition group-hover:text-[#fff7df]">
-                  Select {{ title.replace(/s$/i, '') }} →
+                
+                <div
+                  data-collection-card-actions
+                  class="mt-auto flex flex-wrap gap-2 pt-5"
+                >
+                  <button
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.56)] hover:bg-[rgba(201,164,90,0.18)]"
+                    @click.stop="openEntityContext(entity)"
+                  >
+                    Details
+                  </button>
+
+                  <button
+                    type="button"
+                    class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.52)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
+                    @click.stop="openEntityArticle(entity)"
+                  >
+                    Open Article
+                  </button>
                 </div>
               </div>
             </div>
@@ -1693,6 +1756,30 @@ async function createLocationArticle() {
 .eldra-collection-results.eldra-collection-list :deep(.text-2xl) {
   font-size: 1.25rem;
   line-height: 1.75rem;
+}
+
+
+[data-collection-entity-card] {
+  cursor: pointer;
+  outline: none;
+}
+
+[data-collection-entity-card][data-selected="true"] {
+  border-color: rgba(201, 164, 90, 0.72) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 164, 90, 0.20),
+    0 0 0 1px rgba(201, 164, 90, 0.10),
+    0 18px 44px rgba(0, 0, 0, 0.30);
+}
+
+[data-collection-entity-card]:focus-visible {
+  outline: 2px solid rgba(201, 164, 90, 0.58);
+  outline-offset: 3px;
+}
+
+[data-collection-card-actions] {
+  position: relative;
+  z-index: 5;
 }
 
 </style>

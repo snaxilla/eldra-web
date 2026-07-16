@@ -350,8 +350,26 @@ async function deleteEnemy() {
                   <div><span class="text-[#b5a88d]">HP:</span> {{ enemy.statblock?.hit_points_average ?? '—' }}</div>
                 </div>
 
-                <div class="mt-auto pt-5 text-sm font-medium text-[#f5e7bd] transition group-hover:text-[#fff7df]">
-                  Select Enemy →
+                
+                <div
+                  data-enemy-card-actions
+                  class="mt-auto flex flex-wrap gap-2 pt-5"
+                >
+                  <button
+                    type="button"
+                    class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.56)] hover:bg-[rgba(201,164,90,0.18)]"
+                    @click.stop="selectedEnemyId = String(enemy.id)"
+                  >
+                    Details
+                  </button>
+
+                  <NuxtLink
+                    :to="`/worlds/${worldId}/entities/${enemy.entityId || enemy.entity_id || enemy.id}`"
+                    class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.52)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.38)] hover:text-[#fff7df]"
+                    @click.stop
+                  >
+                    Open Article
+                  </NuxtLink>
                 </div>
               </div>
             </div>

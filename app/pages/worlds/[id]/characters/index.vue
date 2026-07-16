@@ -228,6 +228,23 @@ const selectedCharacterContextEntity = computed(() => {
   }
 })
 
+
+const characterDetailRailOpen = computed(() =>
+  Boolean(
+    selectedCharacterContextEntity.value ||
+    showCreatePanel.value ||
+    showEditPanel.value ||
+    (mode.value === 'build' && !selectedCharacter.value)
+  )
+)
+
+const characterPageShellClass = computed(() => [
+  'w-full min-w-0 p-6 transition-[margin,max-width] duration-200',
+  characterDetailRailOpen.value
+    ? 'mx-0 max-w-none xl:mr-[404px]'
+    : 'mx-auto max-w-[1700px]'
+])
+
 function openCharacterContextArticle(entity: any = selectedCharacterContextEntity.value) {
   const id = String(entity?.id || entity?.entityId || entity?.entity_id || selectedCharacter.value?.id || '').trim()
 
@@ -612,10 +629,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <div
-      class="p-6 transition-[margin,max-width] duration-200"
-      :class="selectedCharacter ? 'xl:mr-[404px] xl:max-w-none' : 'mx-auto max-w-[1700px]'"
-    >
+    <div data-character-page-shell :class="characterPageShellClass">
       <div :class="selectedCharacter || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
         <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl shadow-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -681,8 +695,12 @@ onBeforeUnmount(() => {
           </p>
         </section>
 
-        <section v-else class="mt-6 grid auto-rows-fr gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          <div
+        <section
+        v-else
+        data-character-roster-grid
+        class="characters-roster-grid mt-6"
+      >
+          <div data-character-card
             v-for="character in filteredCharacters"
             :key="character.id"
             class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group h-full cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
@@ -1113,3 +1131,42 @@ onBeforeUnmount(() => {
     </Transition>
   </div>
 </template>
+
+<style scoped>
+
+[data-character-page-shell] {
+  min-width: 0;
+}
+
+[data-character-page-shell] > * {
+  min-width: 0;
+}
+
+.characters-roster-grid {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.characters-roster-grid > * {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+
+@media (min-width: 1536px) {
+  .characters-roster-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .characters-roster-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+</style>

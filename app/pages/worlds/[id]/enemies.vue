@@ -165,6 +165,21 @@ function getEnemySummary(enemy: any) {
   return storedSummary
 }
 
+
+const enemyDetailRailOpen = computed(() =>
+  Boolean(
+    selectedEnemy.value ||
+    (mode.value === 'build' && !selectedEnemy.value)
+  )
+)
+
+const enemyPageShellClass = computed(() => [
+  'w-full min-w-0 p-6 transition-[margin,max-width] duration-200',
+  enemyDetailRailOpen.value
+    ? 'mx-0 max-w-none xl:mr-[404px]'
+    : 'mx-auto max-w-[1700px]'
+])
+
 const filteredEnemies = computed(() => {
   const q = search.value.trim().toLowerCase()
 
@@ -253,8 +268,8 @@ async function deleteEnemy() {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <div class="mx-auto max-w-[1900px] p-6">
-      <div :class="selectedEnemy || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
+    <div data-enemies-page-shell :class="enemyPageShellClass">
+      <div class="min-w-0">
         <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -302,10 +317,11 @@ async function deleteEnemy() {
         </section>
 
         <section
-          v-else
-          class="eldra-collection-grid mt-6"
-        >
-          <div
+        v-else
+        data-enemies-roster-grid
+        class="enemies-roster-grid mt-6"
+      >
+          <div data-enemy-card
             v-for="enemy in filteredEnemies"
             :key="enemy.id"
             class="eldra-ornate-card eldra-frame-corners eldra-frame-medallion eldra-corner-runes eldra-card-glyph group cursor-pointer overflow-hidden rounded-none border backdrop-blur-xl transition hover:border-[rgba(201,164,90,0.62)]"
@@ -381,7 +397,7 @@ async function deleteEnemy() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="mode === 'build' && !selectedEnemy"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[360px] border-l backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] border-l backdrop-blur-xl"
       >
         <div class="p-5">
           <WorldPagePresentationPanel
@@ -397,7 +413,7 @@ async function deleteEnemy() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="selectedEnemy"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[360px] border-l backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] max-w-[calc(100vw-1rem)] border-l backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
@@ -678,5 +694,41 @@ async function deleteEnemy() {
   background: transparent;
   padding: 0;
 }
+
+[data-enemies-page-shell] {
+  min-width: 0;
+}
+
+[data-enemies-page-shell] > * {
+  min-width: 0;
+}
+
+.enemies-roster-grid {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.enemies-roster-grid > * {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+
+@media (min-width: 1536px) {
+  .enemies-roster-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .enemies-roster-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 </style>
 

@@ -11,6 +11,17 @@ const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
 const search = ref('')
+const enemyViewOptions = [
+  { key: 'grid', label: 'Grid', icon: 'i-lucide-layout-grid' },
+  { key: 'list', label: 'List', icon: 'i-lucide-list' }
+] as const
+
+type EnemyView = typeof enemyViewOptions[number]['key']
+
+const enemyView = ref<EnemyView>('grid')
+const enemyTypeFilter = ref('all')
+const enemyCrFilter = ref('all')
+
 const selectedEnemyId = ref<string | null>(null)
 const confirmDelete = ref(false)
 const deleting = ref(false)
@@ -166,6 +177,7 @@ function getEnemySummary(enemy: any) {
 }
 
 
+
 const enemyDetailRailOpen = computed(() =>
   Boolean(
     selectedEnemy.value ||
@@ -174,28 +186,165 @@ const enemyDetailRailOpen = computed(() =>
 )
 
 const enemyPageShellClass = computed(() => [
-  'w-full min-w-0 p-6 transition-[margin,max-width] duration-200',
+  'min-w-0 p-6 transition-[margin,max-width] duration-200',
   enemyDetailRailOpen.value
     ? 'mx-0 max-w-none xl:mr-[404px]'
     : 'mx-auto max-w-[1700px]'
 ])
 
+function enemyTitleCase(value: any) {
+  return String(value ?? '')
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function parseJsonish(value: any) {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  if (!trimmed) return value
+
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return value
+    }
+  }
+
+  return value
+}
+
+function enemyChallengeValue(enemy: any) {
+  const raw = parseJsonish(enemy?.statblock?.challenge_rating)
+
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return String(raw.cr ?? raw.challenge_rating ?? raw.challengeRating ?? raw.value ?? '').trim()
+  }
+
+  return String(raw ?? '').replace(/^CR\s*/i, '').trim()
+}
+
+function enemyChallengeLabel(enemy: any) {
+  return enemyChallengeValue(enemy) || '—'
+}
+
+function enemyCrSortValue(label: any) {
+  const clean = String(label || '').replace(/^CR\s*/i, '').trim()
+
+  if (!clean || clean === '—') return 9999
+
+  const fraction = clean.match(/^(\d+)\s*\/\s*(\d+)$/)
+  if (fraction) {
+    const numerator = Number(fraction[1])
+    const denominator = Number(fraction[2])
+    if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator) {
+      return numerator / denominator
+    }
+  }
+
+  const parsed = Number(clean)
+  return Number.isFinite(parsed) ? parsed : 9998
+}
+
+function enemyCreatureTypeLabel(enemy: any) {
+  const formatted = formatCreatureType(enemy?.statblock?.creature_type)
+  return enemyTitleCase(formatted === '—' ? '' : formatted) || 'Unknown Type'
+}
+
+function enemySearchHaystack(enemy: any) {
+  return [
+    enemy?.title,
+    enemy?.summary,
+    getEnemySummary(enemy),
+    enemyCreatureTypeLabel(enemy),
+    enemyChallengeLabel(enemy),
+    formatSize(enemy?.statblock?.size_json),
+    enemy?.statblock?.armor_class,
+    enemy?.statblock?.hit_points_average
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function optionCounts(list: any[], labelFor: (item: any) => string) {
+  const counts = new Map<string, number>()
+
+  for (const item of list) {
+    const label = labelFor(item)
+    if (!label) continue
+    counts.set(label, (counts.get(label) || 0) + 1)
+  }
+
+  return counts
+}
+
+const enemyTypeOptions = computed(() => {
+  const list = Array.isArray(enemies.value) ? enemies.value : []
+  const counts = optionCounts(list, enemyCreatureTypeLabel)
+
+  return [
+    { key: 'all', label: 'All Types', count: list.length },
+    ...Array.from(counts.entries())
+      .map(([label, count]) => ({ key: label, label, count }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  ]
+})
+
+const enemyCrOptions = computed(() => {
+  const list = (Array.isArray(enemies.value) ? enemies.value : [])
+    .filter((enemy: any) =>
+      enemyTypeFilter.value === 'all' ||
+      enemyCreatureTypeLabel(enemy) === enemyTypeFilter.value
+    )
+
+  const counts = optionCounts(list, enemyChallengeLabel)
+
+  return [
+    { key: 'all', label: 'All CR', count: list.length },
+    ...Array.from(counts.entries())
+      .map(([label, count]) => ({ key: label, label: `CR ${label}`, count }))
+      .sort((a, b) => enemyCrSortValue(a.key) - enemyCrSortValue(b.key))
+  ]
+})
+
+const enemyResultsClass = computed(() => [
+  'mt-6',
+  enemyView.value === 'list'
+    ? 'enemies-roster-list'
+    : 'enemies-roster-grid'
+])
+
 const filteredEnemies = computed(() => {
   const q = search.value.trim().toLowerCase()
 
-  return (enemies.value || []).filter((enemy: any) => {
-    if (!q) return true
-
-    return [
-      enemy?.title,
-      enemy?.summary,
-      enemy?.statblock?.creature_type,
-      enemy?.statblock?.challenge_rating
-    ]
-      .filter(Boolean)
-      .some((value: any) => String(value).toLowerCase().includes(q))
-  })
+  return (Array.isArray(enemies.value) ? enemies.value : [])
+    .filter((enemy: any) =>
+      enemyTypeFilter.value === 'all' ||
+      enemyCreatureTypeLabel(enemy) === enemyTypeFilter.value
+    )
+    .filter((enemy: any) =>
+      enemyCrFilter.value === 'all' ||
+      enemyChallengeLabel(enemy) === enemyCrFilter.value
+    )
+    .filter((enemy: any) => !q || enemySearchHaystack(enemy).includes(q))
+    .sort((a: any, b: any) => String(a?.title || '').localeCompare(String(b?.title || '')))
 })
+
+watch(enemyTypeFilter, () => {
+  if (enemyCrFilter.value === 'all') return
+
+  const valid = enemyCrOptions.value.some((option) => option.key === enemyCrFilter.value)
+  if (!valid) enemyCrFilter.value = 'all'
+})
+
 
 const selectedEnemy = computed(() => {
   if (!selectedEnemyId.value) return null
@@ -267,8 +416,8 @@ async function deleteEnemy() {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
-    <div data-enemies-page-shell :class="enemyPageShellClass">
+  <div class="h-full overflow-y-auto overflow-x-hidden bg-transparent">
+    <div data-enemies-page-shell :data-enemy-rail-open="enemyDetailRailOpen ? 'true' : 'false'" :class="enemyPageShellClass">
       <div class="min-w-0">
         <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -297,6 +446,66 @@ async function deleteEnemy() {
               class="w-full rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-white placeholder-slate-400 outline-none transition focus:border-sky-400/30 focus:bg-white/[0.06]"
             >
           </div>
+
+          <div
+            data-enemy-browse-controls
+            class="mt-4 space-y-3"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="text-xs uppercase tracking-[0.28em] text-[#9f9278]">
+                Results
+                <span class="text-[#d8ceb8]">({{ filteredEnemies.length }})</span>
+              </div>
+
+              <div class="inline-flex overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.42)]">
+                <button
+                  v-for="option in enemyViewOptions"
+                  :key="option.key"
+                  type="button"
+                  class="inline-flex items-center gap-2 border-r border-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] last:border-r-0 transition"
+                  :class="enemyView === option.key
+                    ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                    : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
+                  @click="enemyView = option.key"
+                >
+                  <UIcon :name="option.icon" class="h-4 w-4" />
+                  <span>{{ option.label }}</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="option in enemyTypeOptions"
+                :key="option.key"
+                type="button"
+                class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
+                :class="enemyTypeFilter === option.key
+                  ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                  : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+                @click="enemyTypeFilter = option.key"
+              >
+                <span>{{ option.label }}</span>
+                <span class="ml-1 opacity-70">{{ option.count }}</span>
+              </button>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="option in enemyCrOptions"
+                :key="option.key"
+                type="button"
+                class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
+                :class="enemyCrFilter === option.key
+                  ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                  : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+                @click="enemyCrFilter = option.key"
+              >
+                <span>{{ option.label }}</span>
+                <span class="ml-1 opacity-70">{{ option.count }}</span>
+              </button>
+            </div>
+          </div>
         </section>
 
         <section
@@ -317,10 +526,10 @@ async function deleteEnemy() {
         </section>
 
         <section
-        v-else
-        data-enemies-roster-grid
-        class="enemies-roster-grid mt-6"
-      >
+          v-else
+          data-enemies-roster-grid
+          :class="enemyResultsClass"
+        >
           <div data-enemy-card
             v-for="enemy in filteredEnemies"
             :key="enemy.id"
@@ -330,7 +539,12 @@ async function deleteEnemy() {
               : 'opacity-95'"
             @click="selectEnemy(enemy)"
           >
-            <div class="eldra-collection-card-body grid min-h-[280px] grid-cols-[minmax(128px,160px)_minmax(0,1fr)]">
+            <div :class="[
+                'eldra-collection-card-body grid',
+                enemyView === 'list'
+                  ? 'min-h-[156px] grid-cols-[112px_minmax(0,1fr)]'
+                  : 'min-h-[280px] grid-cols-[minmax(128px,160px)_minmax(0,1fr)]'
+              ]">
               <div class="eldra-card-image-well eldra-image-frame border-r border-[rgba(201,164,90,0.22)] bg-black/20">
                 <img
                   v-if="imageUrlForEnemy(enemy)"
@@ -355,12 +569,12 @@ async function deleteEnemy() {
                   </div>
 
                   <span class="eldra-gold-chip eldra-rune-label shrink-0 rounded-none border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em]">
-                    CR {{ enemy.statblock?.challenge_rating || '—' }}
+                    CR {{ enemyChallengeLabel(enemy) }}
                   </span>
                 </div>
 
                 <div class="mt-4 space-y-1.5 text-sm text-slate-200">
-                  <div><span class="text-[#b5a88d]">Type:</span> {{ formatCreatureType(enemy.statblock?.creature_type) }}</div>
+                  <div><span class="text-[#b5a88d]">Type:</span> {{ enemyCreatureTypeLabel(enemy) }}</div>
                   <div><span class="text-[#b5a88d]">Size:</span> {{ formatSize(enemy.statblock?.size_json) }}</div>
                   <div><span class="text-[#b5a88d]">AC:</span> {{ enemy.statblock?.armor_class ?? '—' }}</div>
                   <div><span class="text-[#b5a88d]">HP:</span> {{ enemy.statblock?.hit_points_average ?? '—' }}</div>
@@ -449,10 +663,10 @@ async function deleteEnemy() {
 
             <div class="eldra-corner-runes rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-4">
               <div class="grid grid-cols-2 gap-3 text-sm">
-                <div><span class="text-[#b5a88d]">CR:</span> <span class="text-white">{{ selectedEnemy.statblock?.challenge_rating || '—' }}</span></div>
+                <div><span class="text-[#b5a88d]">CR:</span> <span class="text-white">{{ enemyChallengeLabel(selectedEnemy) }}</span></div>
                 <div><span class="text-[#b5a88d]">AC:</span> <span class="text-white">{{ selectedEnemy.statblock?.armor_class ?? '—' }}</span></div>
                 <div><span class="text-[#b5a88d]">HP:</span> <span class="text-white">{{ selectedEnemy.statblock?.hit_points_average ?? '—' }}</span></div>
-                <div><span class="text-[#b5a88d]">Type:</span> <span class="text-white">{{ formatCreatureType(selectedEnemy.statblock?.creature_type) }}</span></div>
+                <div><span class="text-[#b5a88d]">Type:</span> <span class="text-white">{{ enemyCreatureTypeLabel(selectedEnemy) }}</span></div>
                 <div><span class="text-[#b5a88d]">Size:</span> <span class="text-white">{{ formatSize(selectedEnemy.statblock?.size_json) }}</span></div>
                 <div><span class="text-[#b5a88d]">Align:</span> <span class="text-white">{{ formatAlignment(selectedEnemy.statblock?.alignment_json) }}</span></div>
               </div>
@@ -727,6 +941,70 @@ async function deleteEnemy() {
 @media (max-width: 640px) {
   .enemies-roster-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+
+[data-enemies-page-shell][data-enemy-rail-open="true"] {
+  width: auto;
+}
+
+.enemies-roster-grid {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.enemies-roster-grid > *,
+.enemies-roster-list > * {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.enemies-roster-list {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.enemies-roster-list [data-enemy-card] {
+  width: 100%;
+}
+
+.enemies-roster-list .eldra-card-image-well {
+  min-height: 156px !important;
+}
+
+.enemies-roster-list [data-enemy-card-actions] {
+  padding-top: 0.75rem;
+}
+
+.enemies-roster-list .text-\[1\.55rem\] {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+@media (min-width: 1536px) {
+  .enemies-roster-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .enemies-roster-grid,
+  .enemies-roster-list {
+    grid-template-columns: 1fr;
+  }
+
+  .enemies-roster-list .eldra-collection-card-body {
+    grid-template-columns: 96px minmax(0, 1fr);
   }
 }
 

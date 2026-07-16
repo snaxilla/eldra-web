@@ -121,6 +121,40 @@ const entityUrl = computed(() =>
   String(activeEntity.value?.url || activeEntity.value?.articleUrl || activeEntity.value?.article_url || '').trim()
 )
 
+const activeEntityId = computed(() =>
+  String(
+    activeEntity.value?.id ||
+    activeEntity.value?.entityId ||
+    activeEntity.value?.entity_id ||
+    ''
+  ).replace(/^entity:/i, '').trim()
+)
+
+const isSheetCharacterLike = computed(() => {
+  const type = String(rawEntityType.value || '').toLowerCase()
+  const display = String(displayType.value || '').toLowerCase()
+  const hasSheet = activeEntity.value?.hasSheet === true ||
+    activeEntity.value?.has_sheet === true ||
+    activeEntity.value?.has_sheet === 1 ||
+    activeEntity.value?.hasSheet === 1
+
+  return hasSheet ||
+    ['pc', 'player_character', 'npc_sheet'].includes(type) ||
+    display === 'pc' ||
+    display === 'npc+' ||
+    display.includes('player character') ||
+    display.includes('npc sheet')
+})
+
+const entitySheetUrl = computed(() => {
+  const explicit = String(activeEntity.value?.sheetUrl || activeEntity.value?.sheet_url || '').trim()
+  if (explicit) return explicit
+
+  if (!isSheetCharacterLike.value || !drawerWorldId.value || !activeEntityId.value) return ''
+
+  return `/worlds/${drawerWorldId.value}/entities/${activeEntityId.value}/sheet`
+})
+
 const entityTags = computed(() => {
   const raw = activeEntity.value?.tags || activeEntity.value?.keywords || []
   if (Array.isArray(raw)) return raw.map((tag: any) => String(tag || '').trim()).filter(Boolean)
@@ -439,7 +473,17 @@ function readMore() {
             >
               Open Map
             </button>
-          </div>
+          
+
+            <NuxtLink
+              v-if="entitySheetUrl"
+              data-context-open-sheet
+              :to="entitySheetUrl"
+              class="eldra-button flex-1 rounded-none px-4 py-3 text-center text-sm font-medium"
+            >
+              Open Sheet
+            </NuxtLink>
+</div>
         </div>
       </div>
     </div>

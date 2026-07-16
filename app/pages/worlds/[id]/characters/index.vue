@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+
 definePageMeta({
   layout: 'world-workspace'
 })
 
 const route = useRoute()
+const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
@@ -181,6 +184,57 @@ const selectedCharacter = computed(() => {
   if (!selectedCharacterId.value) return null
   return characterEntities.value.find((c: any) => String(c.stringId) === String(selectedCharacterId.value)) || null
 })
+
+const selectedCharacterContextEntity = computed(() => {
+  const character: any = selectedCharacter.value
+  if (!character) return null
+
+  const id = String(character?.id || character?.stringId || '').trim()
+  const normalizedType = normalizeCharacterType(character)
+  const title = String(character?.displayTitle || character?.title || character?.name || 'Character')
+  const summary = String(character?.displaySummary || character?.summary || '').trim()
+  const imageUrl = String(character?.imageUrl || imageUrlFor(character) || '').trim()
+  const articleUrl = id ? `/worlds/${worldId.value}/entities/${id}` : ''
+  const sheetUrl = id ? `/worlds/${worldId.value}/entities/${id}/sheet` : ''
+
+  return {
+    ...character,
+    id,
+    entityId: id,
+    entity_id: id,
+    title,
+    name: title,
+    label: title,
+    summary,
+    description: summary,
+    imageUrl,
+    image_url: imageUrl,
+    entityType: character?.entityType || character?.entity_type || normalizedType || 'character',
+    entity_type: character?.entity_type || character?.entityType || normalizedType || 'character',
+    displayType: typeLabel(normalizedType),
+    display_type: typeLabel(normalizedType),
+    tags: Array.from(new Set([
+      typeLabel(normalizedType),
+      character?.entity_type,
+      character?.character_type
+    ].filter(Boolean))),
+    url: articleUrl,
+    articleUrl,
+    article_url: articleUrl,
+    sheetUrl,
+    sheet_url: sheetUrl,
+    hasSheet: normalizedType === 'pc' || normalizedType === 'npc_sheet' || character?.has_sheet === true || character?.has_sheet === 1,
+    has_sheet: normalizedType === 'pc' || normalizedType === 'npc_sheet' || character?.has_sheet === true || character?.has_sheet === 1
+  }
+})
+
+function openCharacterContextArticle(entity: any = selectedCharacterContextEntity.value) {
+  const id = String(entity?.id || entity?.entityId || entity?.entity_id || selectedCharacter.value?.id || '').trim()
+
+  if (!id) return
+
+  router.push(`/worlds/${worldId.value}/entities/${id}`)
+}
 
 watch(
   filteredCharacters,
@@ -558,7 +612,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <div class="mx-auto max-w-[1900px] p-6">
+    <div
+      class="p-6 transition-[margin,max-width] duration-200"
+      :class="selectedCharacter ? 'xl:mr-[404px] xl:max-w-none' : 'mx-auto max-w-[1700px]'"
+    >
       <div :class="selectedCharacter || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
         <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl shadow-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -697,7 +754,7 @@ onBeforeUnmount(() => {
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
-        v-if="selectedCharacter || mode === 'build'"
+        v-if="mode === 'build' && !selectedCharacter"
         class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[360px] border-l backdrop-blur-xl"
       >
         <div v-if="selectedCharacter" class="flex h-full flex-col">
@@ -893,6 +950,18 @@ onBeforeUnmount(() => {
         </div>
       </aside>
     </Transition>
+
+    <WorldEntityContextDrawer
+      :open="Boolean(selectedCharacterContextEntity)"
+      :entity="selectedCharacterContextEntity"
+      :world-id="worldId"
+      :mode="mode"
+      :allow-build-actions="false"
+      read-more-label="Read More"
+      @close="clearSelectedCharacter"
+      @read-more="openCharacterContextArticle"
+    />
+
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div

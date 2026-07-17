@@ -274,6 +274,24 @@ function enemySearchHaystack(enemy: any) {
     .toLowerCase()
 }
 
+function enemyMetaLines(enemy: any) {
+  const statblock = enemy?.statblock || {}
+
+  const lines = [
+    `Type: ${enemyCreatureTypeLabel(enemy)}`,
+    `CR: ${enemyChallengeLabel(enemy)}`,
+    statblock?.armor_class || statblock?.armorClass ? `AC: ${statblock.armor_class || statblock.armorClass}` : '',
+    statblock?.hit_points_average || statblock?.hitPointsAverage ? `HP: ${statblock.hit_points_average || statblock.hitPointsAverage}` : '',
+    formatSize(statblock?.size_json || statblock?.size) !== '—' ? `Size: ${formatSize(statblock?.size_json || statblock?.size)}` : '',
+    formatAlignment(statblock?.alignment_json || statblock?.alignment) !== '—' ? `Align: ${formatAlignment(statblock?.alignment_json || statblock?.alignment)}` : ''
+  ]
+
+  return lines
+    .map((line) => String(line || '').trim())
+    .filter(Boolean)
+}
+
+
 function optionCounts(list: any[], labelFor: (item: any) => string) {
   const counts = new Map<string, number>()
 
@@ -573,11 +591,31 @@ async function deleteEnemy() {
                   </span>
                 </div>
 
-                <div class="mt-4 space-y-1.5 text-sm text-slate-200">
-                  <div><span class="text-[#b5a88d]">Type:</span> {{ enemyCreatureTypeLabel(enemy) }}</div>
-                  <div><span class="text-[#b5a88d]">Size:</span> {{ formatSize(enemy.statblock?.size_json) }}</div>
-                  <div><span class="text-[#b5a88d]">AC:</span> {{ enemy.statblock?.armor_class ?? '—' }}</div>
-                  <div><span class="text-[#b5a88d]">HP:</span> {{ enemy.statblock?.hit_points_average ?? '—' }}</div>
+                                <div
+                  data-enemy-card-main
+                  class="mt-4 min-w-0"
+                >
+                  <div
+                    v-if="enemyMetaLines(enemy).length"
+                    data-enemy-smart-meta
+                    class="flex flex-wrap gap-1.5"
+                  >
+                    <span
+                      v-for="line in enemyMetaLines(enemy).slice(0, enemyView === 'list' ? 6 : 4)"
+                      :key="line"
+                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d8ceb8]"
+                    >
+                      {{ line }}
+                    </span>
+                  </div>
+
+                  <p
+                    v-if="getEnemySummary(enemy)"
+                    data-enemy-card-summary
+                    class="mt-3 line-clamp-3 text-sm leading-7 text-[#d8ceb8]"
+                  >
+                    {{ getEnemySummary(enemy) }}
+                  </p>
                 </div>
 
                 
@@ -1009,5 +1047,32 @@ async function deleteEnemy() {
   }
 }
 
+
+.enemies-roster-list [data-enemy-card-main] {
+  margin-top: 0.5rem;
+}
+
+.enemies-roster-list [data-enemy-smart-meta] {
+  gap: 0.35rem;
+}
+
+.enemies-roster-list [data-enemy-smart-meta] span {
+  font-size: 0.62rem;
+  padding: 0.18rem 0.45rem;
+  letter-spacing: 0.11em;
+}
+
+.enemies-roster-list [data-enemy-card-summary] {
+  margin-top: 0.55rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.45rem;
+}
+
+.enemies-roster-list [data-enemy-card-actions] {
+  padding-top: 0.75rem;
+}
 </style>
 

@@ -1199,54 +1199,40 @@ async function createLocationArticle() {
                   </span>
                 </div>
 
-                <div class="mt-4 space-y-1 text-sm text-slate-200">
-                  <template v-if="entityType === 'item'">
-                    <div v-for="line in itemMetaLines(entity).slice(0, 3)" :key="line">{{ line }}</div>
-                  </template>
-
-                  <template v-else-if="entityType === 'spell'">
-                    <div v-for="line in spellMetaLines(entity).slice(0, 4)" :key="line">{{ line }}</div>
-                  </template>
-
-                  <template v-else-if="entityType === 'species'">
-                    <div v-for="line in speciesMetaLines(entity).slice(0, 3)" :key="line">{{ line }}</div>
-                  </template>
-
-                  <template v-else-if="entityType === 'class'">
-                    <div v-for="line in classMetaLines(entity).slice(0, 3)" :key="line">{{ line }}</div>
-                  </template>
-
-                  <template v-else-if="entityType === 'background'">
-                    <div v-for="line in backgroundMetaLines(entity).slice(0, 2)" :key="line">{{ line }}</div>
-                  </template>
-
-                  <template v-else>
-                                        <div
-                      v-if="collectionMetaLines(entity).length"
-                      data-collection-smart-meta
-                      class="mt-3 flex flex-wrap gap-1.5"
+                                <div
+                  data-collection-card-main
+                  class="mt-4 min-w-0"
+                >
+                  <div
+                    v-if="collectionMetaLines(entity).length"
+                    data-collection-smart-meta
+                    class="flex flex-wrap gap-1.5"
+                  >
+                    <span
+                      v-for="line in collectionMetaLines(entity).slice(0, collectionView === 'list' ? 7 : 4)"
+                      :key="line"
+                      class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d8ceb8]"
                     >
-                      <span
-                        v-for="line in collectionMetaLines(entity).slice(0, collectionView === 'list' ? 5 : 3)"
-                        :key="line"
-                        class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d8ceb8]"
-                      >
-                        {{ line }}
-                      </span>
-                    </div>
+                      {{ line }}
+                    </span>
+                  </div>
 
-<WorldMentionText
-                      v-if="summaryForEntity(entity)"
-                      :world-id="worldId"
-                      :markdown="summaryForEntity(entity)"
-                      :interactive="false"
-                      class="line-clamp-5 leading-7"
-                    />
+                  <WorldMentionText
+                    v-if="summaryForEntity(entity)"
+                    data-collection-card-summary
+                    :world-id="worldId"
+                    :markdown="summaryForEntity(entity)"
+                    :interactive="false"
+                    class="mt-3 line-clamp-4 text-sm leading-7 text-[#d8ceb8]"
+                  />
 
-                    <div v-else class="line-clamp-5 leading-7">
-                      Select to preview →
-                    </div>
-                  </template>
+                  <div
+                    v-else
+                    data-collection-card-summary
+                    class="mt-3 line-clamp-3 text-sm leading-7 text-[#9f9278]"
+                  >
+                    Details available in the context rail.
+                  </div>
                 </div>
 
                 
@@ -1783,4 +1769,31 @@ async function createLocationArticle() {
   z-index: 5;
 }
 
+
+.eldra-collection-results.eldra-collection-list :deep([data-collection-card-main]) {
+  margin-top: 0.5rem;
+}
+
+.eldra-collection-results.eldra-collection-list :deep([data-collection-smart-meta]) {
+  gap: 0.35rem;
+}
+
+.eldra-collection-results.eldra-collection-list :deep([data-collection-smart-meta] span) {
+  font-size: 0.62rem;
+  padding: 0.18rem 0.45rem;
+  letter-spacing: 0.11em;
+}
+
+.eldra-collection-results.eldra-collection-list :deep([data-collection-card-summary]) {
+  margin-top: 0.55rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.45rem;
+}
+
+.eldra-collection-results.eldra-collection-list :deep([data-collection-card-actions]) {
+  padding-top: 0.75rem;
+}
 </style>

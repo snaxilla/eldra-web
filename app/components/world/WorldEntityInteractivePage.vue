@@ -59,7 +59,7 @@ const collectionRailOpen = computed(() =>
 )
 
 const collectionShellClass = computed(() => [
-  'w-full p-6 transition-[margin,max-width] duration-200',
+  'min-w-0 p-6 transition-[margin,max-width] duration-200',
   collectionRailOpen.value
     ? 'mx-0 max-w-none xl:mr-[404px]'
     : 'mx-auto max-w-[1700px]'
@@ -1053,9 +1053,9 @@ async function createLocationArticle() {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
+  <div class="h-full overflow-y-auto overflow-x-hidden bg-transparent">
     <div :class="collectionShellClass">
-      <div :class="selectedEntity || mode === 'build' ? 'pr-[380px]' : ''" class="transition-all duration-200">
+      <div class="min-w-0 transition-all duration-200">
         <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes rounded-none border p-6 backdrop-blur-xl">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -1280,7 +1280,7 @@ async function createLocationArticle() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="mode === 'build' && !selectedEntity"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] border-l backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-20 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
       >
         <div class="space-y-5 p-5">
             <div
@@ -1415,7 +1415,7 @@ async function createLocationArticle() {
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <aside
         v-if="selectedEntity"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] max-w-[calc(100vw-1rem)] border-l backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
           <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">

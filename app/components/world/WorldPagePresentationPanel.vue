@@ -245,7 +245,7 @@ function closeBackgroundLightbox() {
 </script>
 
 <template>
-  <div class="eldra-ornate-panel eldra-frame-corners p-5 shadow-xl">
+  <div data-world-page-presentation-panel class="eldra-ornate-panel eldra-frame-corners p-5 shadow-xl min-w-0 overflow-hidden">
     <input
       ref="hiddenBgInput"
       type="file"
@@ -272,8 +272,8 @@ function closeBackgroundLightbox() {
       </div>
     </div>
 
-    <div class="mt-5 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-      <div>
+    <div data-page-presentation-body class="mt-5 grid gap-5">
+      <div data-page-presentation-preview-column class="min-w-0">
         <button
           type="button"
           class="group block aspect-square w-full overflow-hidden rounded-none border border-[rgba(201,164,90,0.30)] bg-[rgba(8,17,27,0.54)] text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-[rgba(201,164,90,0.58)]"
@@ -310,7 +310,7 @@ function closeBackgroundLightbox() {
       </div>
 
       <div class="min-w-0">
-        <div class="flex flex-wrap gap-2">
+        <div data-page-presentation-actions class="flex flex-wrap gap-2">
           <button
             type="button"
             class="rounded-none border px-4 py-2 text-sm transition"
@@ -348,7 +348,7 @@ function closeBackgroundLightbox() {
           </button>
         </div>
 
-        <div class="mt-4 flex flex-wrap gap-2">
+        <div data-page-presentation-actions class="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             class="eldra-button rounded-none px-4 py-2 text-sm disabled:opacity-50"
@@ -435,3 +435,47 @@ function closeBackgroundLightbox() {
     </Teleport>
   </div>
 </template>
+
+
+<style scoped>
+[data-world-page-presentation-panel] {
+  container-type: inline-size;
+}
+
+[data-page-presentation-body] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+[data-page-presentation-preview-column] {
+  width: 100%;
+  max-width: 260px;
+}
+
+@container (min-width: 720px) {
+  [data-page-presentation-body] {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  [data-page-presentation-preview-column] {
+    max-width: none;
+  }
+}
+
+@container (max-width: 520px) {
+  [data-page-presentation-preview-column] {
+    max-width: 220px;
+  }
+
+  [data-page-presentation-actions] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-page-presentation-actions] > * {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+}
+</style>
+

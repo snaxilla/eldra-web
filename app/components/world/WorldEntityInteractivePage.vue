@@ -740,14 +740,163 @@ watch(
 
 
 
+function collectionClientReadableText(value: any): string {
+  if (value === null || value === undefined) return ''
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === '[object Object]') return ''
+
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return collectionClientReadableText(JSON.parse(trimmed))
+      } catch {}
+    }
+
+    return trimmed
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(collectionClientReadableText)
+      .map((item) => item.trim())
+      .filter((item) => item && item !== '[object Object]')
+      .filter((item, index, list) => list.indexOf(item) === index)
+      .join(' / ')
+  }
+
+  if (typeof value === 'object') {
+    const type = collectionClientReadableText(value.type || value.creature_type || value.creatureType || '')
+    const tags = Array.isArray(value.tags)
+      ? value.tags.map(collectionClientReadableText).filter(Boolean)
+      : []
+
+    if (type && tags.length) return `${type} (${tags.join(', ')})`
+    if (type) return type
+
+    for (const key of [
+      'label',
+      'name',
+      'title',
+      'value',
+      'amount',
+      'cr',
+      'challenge_rating',
+      'challengeRating',
+      'item_type',
+      'itemType',
+      'category',
+      'rarity',
+      'school',
+      'entry'
+    ]) {
+      const found = collectionClientReadableText(value[key])
+      if (found) return found
+    }
+
+    if (Array.isArray(value.from)) return collectionClientReadableText(value.from)
+    if (value.choose) return collectionClientReadableText(value.choose)
+    if (Array.isArray(value.entries)) return collectionClientReadableText(value.entries)
+    if (Array.isArray(value.items)) return collectionClientReadableText(value.items)
+
+    return Object.values(value)
+      .map(collectionClientReadableText)
+      .map((item) => item.trim())
+      .filter((item) => item && item !== '[object Object]')
+      .slice(0, 3)
+      .join(' / ')
+  }
+
+  return ''
+}
+
+function collectionClientFirstCode(value: any) {
+  const readable = collectionClientReadableText(value)
+  const first = readable.split(/[|,/]/)[0] || readable
+  return first.trim().toUpperCase()
+}
+
+function collectionClientItemCodeLabel(value: any) {
+  const code = collectionClientFirstCode(value)
+
+  const labels: Record<string, string> = {
+    A: 'Ammunition',
+    AF: 'Ammunition',
+    AIR: 'Air Vehicle',
+    AT: "Artisan's Tools",
+    EXP: 'Explosive',
+    FD: 'Food and Drink',
+    G: 'Adventuring Gear',
+    GS: 'Gaming Set',
+    HA: 'Heavy Armor',
+    INS: 'Instrument',
+    LA: 'Light Armor',
+    M: 'Melee Weapon',
+    MA: 'Medium Armor',
+    MNT: 'Mount',
+    P: 'Potion',
+    R: 'Ranged Weapon',
+    RD: 'Rod',
+    RG: 'Ring',
+    S: 'Shield',
+    SC: 'Scroll',
+    SCF: 'Spellcasting Focus',
+    SHP: 'Ship',
+    ST: 'Staff',
+    T: 'Tool',
+    TAH: 'Tack and Harness',
+    TB: 'Trade Bar',
+    TG: 'Trade Good',
+    VEH: 'Vehicle',
+    WD: 'Wand',
+    '$A': 'Art Object',
+    '$G': 'Treasure',
+    UNKNOWN: 'Wondrous Item'
+  }
+
+  if (labels[code]) return labels[code]
+
+  const clean = collectionClientReadableText(value)
+  if (!clean || clean === '[object Object]') return 'Item'
+
+  return collectionServerTitleCase(clean.split('|')[0] || clean)
+}
+
+function collectionNormalizeServerMetaLine(line: any) {
+  const text = collectionClientReadableText(line)
+    .replace(/\[object Object\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text) return ''
+
+  const type = normalizeEntityType(props.entityType)
+  const page = normalizeEntityType(props.pageKey)
+  const typeMatch = text.match(/^Type:\s*(.+)$/i)
+
+  if (typeMatch && (type === 'item' || page === 'items')) {
+    return `Type: ${collectionClientItemCodeLabel(typeMatch[1])}`
+  }
+
+  return text
+}
+
 function collectionServerTitleCase(value: any) {
-  return String(value || '')
+  return collectionClientReadableText(value)
     .replace(/_/g, ' ')
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
+
 
 function collectionServerMetaLines(entity: any) {
   const raw =
@@ -759,21 +908,34 @@ function collectionServerMetaLines(entity: any) {
 
   if (Array.isArray(raw)) {
     return raw
-      .map((line: any) => String(line || '').trim())
+      .map(collectionNormalizeServerMetaLine)
       .filter(Boolean)
   }
 
   return []
 }
 
+
 function collectionServerFacet(entity: any) {
-  return String(
+  const raw = collectionClientReadableText(
     entity?.collectionFacet ??
     entity?.collection_facet ??
     entity?.facet ??
     ''
   ).trim()
+
+  if (!raw) return ''
+
+  const type = normalizeEntityType(props.entityType)
+  const page = normalizeEntityType(props.pageKey)
+
+  if (type === 'item' || page === 'items') {
+    return collectionClientItemCodeLabel(raw)
+  }
+
+  return raw
 }
+
 
 
 

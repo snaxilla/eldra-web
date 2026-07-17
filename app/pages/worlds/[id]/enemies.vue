@@ -60,50 +60,96 @@ function initialsFor(name: string) {
   return words.map(w => w[0]?.toUpperCase() || '').join('')
 }
 
-function formatSize(value: any) {
-  if (!value) return '—'
-  if (Array.isArray(value)) return value.join(' / ')
-  return String(value)
-}
+function enemyReadableText(value: any): string {
+  if (value === null || value === undefined) return ''
 
-function formatAlignment(value: any) {
-  if (!value) return '—'
-  if (Array.isArray(value)) return value.join(' / ')
-  return String(value)
-}
-
-function formatLanguages(value: any) {
-  if (!value) return '—'
-  if (Array.isArray(value)) return value.join(', ')
-  return String(value)
-}
-
-function formatCreatureType(value: any) {
-  if (!value) return '—'
-
-  if (typeof value === 'string' && value.trim().startsWith('{')) {
-    try {
-      value = JSON.parse(value)
-    } catch {}
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
   }
 
-  if (typeof value === 'string') return value
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === '[object Object]') return ''
 
-  if (typeof value === 'object') {
-    const baseType = String(value.type || '').trim()
-    const tags = Array.isArray(value.tags)
-      ? value.tags.filter(Boolean).map((t: any) => String(t))
-      : []
-
-    if (baseType && tags.length) {
-      return `${baseType} (${tags.join(', ')})`
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return enemyReadableText(JSON.parse(trimmed))
+      } catch {}
     }
 
-    if (baseType) return baseType
+    return trimmed
   }
 
-  return String(value)
+  if (Array.isArray(value)) {
+    return value
+      .map(enemyReadableText)
+      .map((item) => item.trim())
+      .filter((item) => item && item !== '[object Object]')
+      .filter((item, index, list) => list.indexOf(item) === index)
+      .join(' / ')
+  }
+
+  if (typeof value === 'object') {
+    const type = enemyReadableText(value.type || value.creature_type || value.creatureType || '')
+    const tags = Array.isArray(value.tags)
+      ? value.tags.map(enemyReadableText).filter(Boolean)
+      : []
+
+    if (type && tags.length) return `${type} (${tags.join(', ')})`
+    if (type) return type
+
+    for (const key of [
+      'label',
+      'name',
+      'title',
+      'value',
+      'cr',
+      'challenge_rating',
+      'challengeRating',
+      'alignment',
+      'size'
+    ]) {
+      const found = enemyReadableText(value[key])
+      if (found) return found
+    }
+
+    return Object.values(value)
+      .map(enemyReadableText)
+      .map((item) => item.trim())
+      .filter((item) => item && item !== '[object Object]')
+      .slice(0, 3)
+      .join(' / ')
+  }
+
+  return ''
 }
+
+function formatSize(value: any) {
+  const clean = enemyReadableText(value)
+  return clean || '-'
+}
+
+
+function formatAlignment(value: any) {
+  const clean = enemyReadableText(value)
+  return clean || '-'
+}
+
+
+function formatLanguages(value: any) {
+  const clean = enemyReadableText(value)
+  return clean || '-'
+}
+
+
+function formatCreatureType(value: any) {
+  const clean = enemyReadableText(value)
+  return clean || '-'
+}
+
 
 function scoreMod(score: number | null | undefined) {
   if (typeof score !== 'number') return ''
@@ -193,13 +239,14 @@ const enemyPageShellClass = computed(() => [
 ])
 
 function enemyTitleCase(value: any) {
-  return String(value ?? '')
+  return enemyReadableText(value)
     .replace(/_/g, ' ')
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
+
 
 function parseJsonish(value: any) {
   if (typeof value !== 'string') return value
@@ -255,8 +302,13 @@ function enemyCrSortValue(label: any) {
 
 function enemyCreatureTypeLabel(enemy: any) {
   const formatted = formatCreatureType(enemy?.statblock?.creature_type)
-  return enemyTitleCase(formatted === '—' ? '' : formatted) || 'Unknown Type'
+  const label = enemyTitleCase(formatted === '-' ? '' : formatted)
+
+  if (!label || label === '[Object Object]') return 'Unknown Type'
+
+  return label
 }
+
 
 function enemySearchHaystack(enemy: any) {
   return [

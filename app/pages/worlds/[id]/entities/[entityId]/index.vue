@@ -1816,6 +1816,7 @@ async function onImageSelected(event: Event) {
 
           <div class="flex-1 overflow-y-auto p-5">
             <WorldPagePresentationPanel
+        embedded
               :world-id="worldId"
               page-key="entity-article"
               title="Entity Article"

@@ -615,6 +615,7 @@ async function deleteEnemy() {
       >
         <div class="p-5">
           <WorldPagePresentationPanel
+        embedded
             :world-id="worldId"
             page-key="enemies"
             title="Enemies"

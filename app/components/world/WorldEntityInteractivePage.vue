@@ -1403,6 +1403,7 @@ async function createLocationArticle() {
               </form>
             </div>
           <WorldPagePresentationPanel
+        embedded
             :world-id="worldId"
             :page-key="pageKey"
             :title="title"

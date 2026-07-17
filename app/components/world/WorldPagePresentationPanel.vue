@@ -5,9 +5,11 @@ const props = withDefaults(defineProps<{
   title: string
   description?: string
   isolated?: boolean
+  embedded?: boolean
 }>(), {
   description: 'Build-mode page controls live here for this page view.',
-  isolated: false
+  isolated: false,
+  embedded: false
 })
 
 type PresentationState = {
@@ -53,6 +55,14 @@ const presentationMessage = ref('')
 const hiddenBgInput = ref<HTMLInputElement | null>(null)
 const loadingPresentation = ref(false)
 const backgroundLightboxOpen = ref(false)
+
+const worldPagePresentationPanelClass = computed(() => [
+  'min-w-0 overflow-hidden',
+  props.embedded
+    ? 'p-0 rounded-none bg-transparent shadow-none'
+    : 'eldra-ornate-panel eldra-frame-corners p-5 shadow-xl'
+])
+
 
 const currentMode = computed(() => String(presentationState.value?.presentationMode || 'neutral'))
 
@@ -245,7 +255,7 @@ function closeBackgroundLightbox() {
 </script>
 
 <template>
-  <div data-world-page-presentation-panel class="eldra-ornate-panel eldra-frame-corners p-5 shadow-xl min-w-0 overflow-hidden">
+  <div data-world-page-presentation-panel :class="worldPagePresentationPanelClass">
     <input
       ref="hiddenBgInput"
       type="file"

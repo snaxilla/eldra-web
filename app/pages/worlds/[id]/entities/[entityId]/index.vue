@@ -498,7 +498,7 @@ watch(
 )
 
 async function saveEntityMetadata() {
-  if (!entity.value || metaSaving.value) return
+  if (!entity.value || metaSaving.value || !headerDirty.value) return
 
   metaSaving.value = true
   metaSaveError.value = ''
@@ -741,7 +741,7 @@ watch(
 )
 
 async function saveArticleOverride() {
-  if (!entity.value || articleSaving.value) return
+  if (!entity.value || articleSaving.value || !articleDirty.value) return
 
   articleSaving.value = true
   articleSaveError.value = ''
@@ -1115,14 +1115,63 @@ const buildDrawerOpen = ref(false)
 const contextDrawerOpen = ref(false)
 const contextDrawerEntity = ref<any | null>(null)
 
+const articleRightRailOpen = computed(() =>
+  Boolean(contextDrawerOpen.value || buildDrawerOpen.value)
+)
+
+const articleBaselineMarkdown = computed(() =>
+  String(articleOverrideMarkdown.value || generatedArticleMarkdown.value || '').trim()
+)
+
+const articleSidebarDraftJson = computed(() =>
+  JSON.stringify(normalizeArticleSidebarItems(articleSidebarItemsDraft.value))
+)
+
+const articleSidebarSavedJson = computed(() =>
+  JSON.stringify(articleOverrideSidebarItems.value)
+)
+
+const articleDirty = computed(() =>
+  String(articleDraft.value || '').trim() !== articleBaselineMarkdown.value ||
+  normalizedArticleTheme(articleThemeDraft.value) !== articleOverrideTheme.value ||
+  Boolean(articleSidebarEnabledDraft.value) !== Boolean(articleOverrideSidebarEnabled.value) ||
+  articleSidebarDraftJson.value !== articleSidebarSavedJson.value
+)
+
+const headerDirty = computed(() =>
+  String(metaTitle.value || '').trim() !== String(entity.value?.title || '').trim() ||
+  String(metaSlug.value || '').trim() !== String(entity.value?.slug || '').trim() ||
+  String(metaSummary.value || '').trim() !== String(entity.value?.summary || '').trim() ||
+  (
+    isLocationEntity.value &&
+    (
+      String(locationTypeDraft.value || '') !== String(locationCore.value?.locationType ?? locationCore.value?.location_type ?? locationCore.value?.type ?? 'location') ||
+      String(locationPopulationDraft.value || '').replace(/,/g, '').trim() !== String(locationCore.value?.population ?? '').replace(/,/g, '').trim() ||
+      String(locationLinkedMapIdDraft.value || '') !== String(locationCore.value?.linkedMapId ?? locationCore.value?.linked_map_id ?? '') ||
+      String(locationParentLocationIdDraft.value || '') !== String(locationCore.value?.parentLocationId ?? locationCore.value?.parent_location_id ?? '')
+    )
+  )
+)
+
+function openArticleBuildDrawer() {
+  closeContextDrawer()
+  buildDrawerOpen.value = true
+}
+
+function closeArticleBuildDrawer() {
+  buildDrawerOpen.value = false
+}
+
+
 const pageContentClass = computed(() => [
-  'p-6 transition-[padding,max-width,margin] duration-200 ease-out',
-  contextDrawerOpen.value
-    ? 'xl:mr-[404px] xl:max-w-none'
+  'min-w-0 p-6 transition-[margin,max-width] duration-200 ease-out',
+  articleRightRailOpen.value
+    ? 'mx-0 max-w-none xl:mr-[404px]'
     : 'mx-auto max-w-[1500px]'
 ])
 
 function openMentionContext(mention: any) {
+  buildDrawerOpen.value = false
   contextDrawerEntity.value = mention || null
   contextDrawerOpen.value = true
 }
@@ -1131,6 +1180,12 @@ function closeContextDrawer() {
   contextDrawerOpen.value = false
   contextDrawerEntity.value = null
 }
+
+watch(mode, (nextMode) => {
+  if (nextMode !== 'build') {
+    closeArticleBuildDrawer()
+  }
+})
 
 
 async function onImageSelected(event: Event) {
@@ -1172,8 +1227,8 @@ async function onImageSelected(event: Event) {
     <button
       v-if="mode === 'build'"
       type="button"
-      class="fixed right-6 top-24 z-30 rounded-none border border-yellow-700/40 bg-[#111]/90 px-4 py-2 text-sm font-semibold text-amber-100 shadow-[0_12px_34px_rgba(0,0,0,0.45)] backdrop-blur hover:bg-yellow-900/30"
-      @click="buildDrawerOpen = true"
+      class="fixed right-6 top-24 z-30 rounded-none border border-[rgba(201,164,90,0.36)] bg-[rgba(20,17,12,0.92)] px-4 py-2 text-sm font-semibold text-[#fff7df] shadow-[0_12px_34px_rgba(0,0,0,0.45)] backdrop-blur transition hover:border-[rgba(201,164,90,0.58)] hover:bg-[rgba(201,164,90,0.14)]"
+      @click="openArticleBuildDrawer"
     >
       Page Builder
     </button>
@@ -1232,7 +1287,16 @@ async function onImageSelected(event: Event) {
               v-if="mode === 'build'"
               class="mt-5 border border-stone-500/20 bg-[#111]/80 p-4"
             >
-              <div class="mb-3 text-xs uppercase tracking-[0.3em] text-zinc-500">Header Editor</div>
+              <div class="mb-3 flex flex-wrap items-center gap-2">
+                <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Header Editor</span>
+                <span
+                  v-if="headerDirty"
+                  data-article-dirty-indicator
+                  class="rounded-none border border-amber-300/25 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100"
+                >
+                  Unsaved
+                </span>
+              </div>
 
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="block">
@@ -1319,10 +1383,10 @@ async function onImageSelected(event: Event) {
                 <button
                   type="button"
                   class="rounded-none border border-yellow-700/40 bg-yellow-900/25 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-yellow-900/40 disabled:opacity-50"
-                  :disabled="metaSaving"
+                  :disabled="metaSaving || !headerDirty"
                   @click="saveEntityMetadata"
                 >
-                  {{ metaSaving ? 'Saving...' : 'Save Header' }}
+                  {{ metaSaving ? 'Saving...' : headerDirty ? 'Save Header' : 'Header Saved' }}
                 </button>
 
                 <span v-if="metaSaveError" class="text-sm text-red-300">{{ metaSaveError }}</span>
@@ -1499,7 +1563,16 @@ async function onImageSelected(event: Event) {
           <div v-else-if="mode === 'build'" class="mt-6">
             <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Article Editor</div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Article Editor</span>
+                  <span
+                    v-if="articleDirty"
+                    data-article-editor-dirty-indicator
+                    class="rounded-none border border-amber-300/25 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100"
+                  >
+                    Unsaved
+                  </span>
+                </div>
                 <div class="mt-1 text-sm text-[#d8ceb8]">Use the editor below to write and format this article.</div>
               </div>
 
@@ -1515,10 +1588,10 @@ async function onImageSelected(event: Event) {
                 <button
                   type="button"
                   class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                  :disabled="articleSaving"
+                  :disabled="articleSaving || !articleDirty"
                   @click="saveArticleOverride"
                 >
-                  {{ articleSaving ? 'Saving...' : 'Save Article' }}
+                  {{ articleSaving ? 'Saving...' : articleDirty ? 'Save Article' : 'Article Saved' }}
                 </button>
               </div>
             </div>
@@ -1796,19 +1869,19 @@ async function onImageSelected(event: Event) {
     >
       <aside
         v-if="buildDrawerOpen"
-        class="fixed right-0 top-0 z-40 h-full w-[420px] border-l border-stone-500/20 bg-[linear-gradient(to_bottom,rgba(14,14,14,0.94),rgba(5,5,5,0.90))] backdrop-blur-xl"
+        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[380px] max-w-[calc(100vw-1rem)] overflow-y-auto overflow-x-hidden border-l backdrop-blur-xl"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-start justify-between gap-4 border-b border-stone-500/20 px-5 py-5">
+          <div class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.22)] px-5 py-5">
             <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-zinc-500">Build</div>
-              <h2 class="mt-3 text-2xl font-semibold text-white">Page Builder</h2>
+              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Page Build</div>
+              <h2 class="mt-3 text-2xl font-semibold text-white">Article Setup</h2>
             </div>
 
             <button
               type="button"
-              class="rounded-none border border-stone-500/20 bg-[#151515]/70 p-2 text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
-              @click="buildDrawerOpen = false"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-2 text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+              @click="closeArticleBuildDrawer"
             >
               <UIcon name="i-lucide-x" class="h-5 w-5" />
             </button>

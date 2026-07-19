@@ -1170,6 +1170,14 @@ const pageContentClass = computed(() => [
     : 'mx-auto max-w-[1500px]'
 ])
 
+const articleSystemsClass = computed(() => [
+  'min-w-0 px-6 pb-10 transition-[margin,max-width] duration-200 ease-out',
+  articleRightRailOpen.value
+    ? 'mx-0 max-w-none xl:mr-[404px]'
+    : 'mx-auto max-w-[1500px]'
+])
+
+
 function openMentionContext(mention: any) {
   buildDrawerOpen.value = false
   contextDrawerEntity.value = mention || null
@@ -1903,8 +1911,8 @@ async function onImageSelected(event: Event) {
     
     <section
       v-if="entity?.id"
-      class="mx-auto max-w-[1500px] px-6 pb-10"
-      :class="contextDrawerOpen ? 'xl:mr-[404px] xl:max-w-none' : ''"
+      data-article-systems-section
+      :class="articleSystemsClass"
     >
       <details class="group rounded-none border border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,rgba(18,16,12,0.58),rgba(7,7,6,0.46))] backdrop-blur-xl" open>
         <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
@@ -2565,4 +2573,13 @@ async function onImageSelected(event: Event) {
   }
 }
 
+
+[data-article-systems-section] {
+  min-width: 0;
+}
+
+[data-article-systems-section] :deep(.overflow-x-auto),
+[data-article-systems-section] :deep(table) {
+  max-width: 100%;
+}
 </style>

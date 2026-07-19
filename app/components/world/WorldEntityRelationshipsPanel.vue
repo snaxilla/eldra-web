@@ -20,17 +20,17 @@ const emit = defineEmits<{
 }>()
 
 const RELATIONSHIP_TYPES = [
-  { value: 'friend', label: 'Friend', color: '#3fb950' },
-  { value: 'ally', label: 'Ally', color: '#3fb950' },
-  { value: 'rival', label: 'Rival', color: '#f85149' },
-  { value: 'enemy', label: 'Enemy', color: '#f85149' },
-  { value: 'family', label: 'Family', color: '#a371f7' },
-  { value: 'mentor', label: 'Mentor', color: '#a371f7' },
-  { value: 'location', label: 'Location', color: '#58a6ff' },
-  { value: 'faction', label: 'Faction', color: '#58a6ff' },
+  { value: 'friend', label: 'Friend', color: '#10b981' },
+  { value: 'ally', label: 'Ally', color: '#22c55e' },
+  { value: 'rival', label: 'Rival', color: '#f59e0b' },
+  { value: 'enemy', label: 'Enemy', color: '#ef4444' },
+  { value: 'family', label: 'Family', color: '#a78bfa' },
+  { value: 'mentor', label: 'Mentor', color: '#c084fc' },
+  { value: 'location', label: 'Location', color: '#38bdf8' },
+  { value: 'faction', label: 'Faction', color: '#60a5fa' },
   { value: 'possession', label: 'Possession', color: '#c9a45a' },
-  { value: 'quest', label: 'Quest', color: '#c9a45a' },
-  { value: 'lore', label: 'Lore', color: '#c9a45a' },
+  { value: 'quest', label: 'Quest', color: '#facc15' },
+  { value: 'lore', label: 'Lore', color: '#eab308' },
   { value: 'related', label: 'Related', color: '#9f9278' }
 ]
 
@@ -71,6 +71,12 @@ const targetSearch = ref('')
 const targetSuggestions = ref<any[]>([])
 const selectedTarget = ref<any | null>(null)
 let targetSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+const relationshipFilter = ref('all')
+const attitudeFilter = ref('all')
+const directionFilter = ref('all')
+const visibilityFilter = ref('all')
+const relationshipSearch = ref('')
 
 const form = reactive({
   relationshipType: 'related',
@@ -124,15 +130,65 @@ const sortedRelationships = computed(() =>
     const sortB = Number(b?.sort || 100)
     if (sortA !== sortB) return sortA - sortB
 
-    return String(a?.other?.title || '').localeCompare(String(b?.other?.title || ''))
+    return relationshipOtherTitle(a).localeCompare(relationshipOtherTitle(b))
   })
 )
 
-const drawerRelationships = computed(() => sortedRelationships.value.slice(0, 6))
 const hasRelationships = computed(() => sortedRelationships.value.length > 0)
 
+const filteredRelationships = computed(() => {
+  const q = relationshipSearch.value.trim().toLowerCase()
+
+  return sortedRelationships.value
+    .filter((relationship: any) =>
+      relationshipFilter.value === 'all' ||
+      String(relationship?.relationshipType || 'related').toLowerCase() === relationshipFilter.value
+    )
+    .filter((relationship: any) =>
+      directionFilter.value === 'all' ||
+      String(relationship?.direction || '').toLowerCase() === directionFilter.value
+    )
+    .filter((relationship: any) =>
+      visibilityFilter.value === 'all' ||
+      String(relationship?.visibility || 'world').toLowerCase() === visibilityFilter.value
+    )
+    .filter((relationship: any) => {
+      if (attitudeFilter.value === 'all') return true
+      if (attitudeFilter.value === 'positive') return Number(relationship?.strength || 0) > 0
+      if (attitudeFilter.value === 'neutral') return Number(relationship?.strength || 0) === 0
+      if (attitudeFilter.value === 'negative') return Number(relationship?.strength || 0) < 0
+      return true
+    })
+    .filter((relationship: any) => {
+      if (!q) return true
+
+      return [
+        relationshipOtherTitle(relationship),
+        relationshipOtherType(relationship),
+        relationship?.relationshipType,
+        relationship?.label,
+        relationship?.inverseLabel,
+        relationship?.displayLabel,
+        relationship?.summary,
+        relationship?.notes,
+        relationship?.visibility,
+        relationship?.direction,
+        attitudeLabel(relationship)
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+    })
+})
+
+const drawerRelationships = computed(() => filteredRelationships.value.slice(0, 6))
+const displayedRelationships = computed(() =>
+  isDrawerVariant.value ? drawerRelationships.value : filteredRelationships.value
+)
+
 const graphRelationships = computed(() =>
-  sortedRelationships.value.filter((relationship: any) => relationship?.other)
+  filteredRelationships.value.filter((relationship: any) => relationship?.other)
 )
 
 const graphNodes = computed(() => {
@@ -151,6 +207,75 @@ const graphNodes = computed(() => {
       y: centerY + Math.sin(angle) * radiusY
     }
   })
+})
+
+const relationshipTypeOptions = computed(() => {
+  const counts = new Map<string, number>()
+
+  for (const relationship of sortedRelationships.value) {
+    const key = String(relationship?.relationshipType || 'related').toLowerCase()
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+
+  return [
+    { key: 'all', label: 'All', count: sortedRelationships.value.length },
+    ...RELATIONSHIP_TYPES
+      .filter((type) => counts.has(type.value))
+      .map((type) => ({
+        key: type.value,
+        label: type.label,
+        count: counts.get(type.value) || 0
+      }))
+  ]
+})
+
+const directionOptions = computed(() => {
+  const counts = new Map<string, number>()
+
+  for (const relationship of sortedRelationships.value) {
+    const key = String(relationship?.direction || 'neutral').toLowerCase()
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+
+  return [
+    { key: 'all', label: 'Any Direction', count: sortedRelationships.value.length },
+    { key: 'outgoing', label: 'Outgoing', count: counts.get('outgoing') || 0 },
+    { key: 'incoming', label: 'Incoming', count: counts.get('incoming') || 0 },
+    { key: 'neutral', label: 'Neutral', count: counts.get('neutral') || 0 }
+  ].filter((option) => option.key === 'all' || option.count > 0)
+})
+
+const attitudeOptions = computed(() => {
+  const positive = sortedRelationships.value.filter((relationship: any) => Number(relationship?.strength || 0) > 0).length
+  const neutral = sortedRelationships.value.filter((relationship: any) => Number(relationship?.strength || 0) === 0).length
+  const negative = sortedRelationships.value.filter((relationship: any) => Number(relationship?.strength || 0) < 0).length
+
+  return [
+    { key: 'all', label: 'Any Attitude', count: sortedRelationships.value.length },
+    { key: 'positive', label: 'Positive', count: positive },
+    { key: 'neutral', label: 'Neutral', count: neutral },
+    { key: 'negative', label: 'Negative', count: negative }
+  ].filter((option) => option.key === 'all' || option.count > 0)
+})
+
+const visibilityOptions = computed(() => {
+  const counts = new Map<string, number>()
+
+  for (const relationship of sortedRelationships.value) {
+    const key = String(relationship?.visibility || 'world').toLowerCase()
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+
+  return [
+    { key: 'all', label: 'Any Visibility', count: sortedRelationships.value.length },
+    ...VISIBILITY_OPTIONS
+      .filter((option) => counts.has(option.value))
+      .map((option) => ({
+        key: option.value,
+        label: option.label,
+        count: counts.get(option.value) || 0
+      }))
+  ]
 })
 
 function numericEntityId(value: any) {
@@ -186,13 +311,26 @@ function typeMeta(value: any) {
   return RELATIONSHIP_TYPES.find((item) => item.value === key) || RELATIONSHIP_TYPES[RELATIONSHIP_TYPES.length - 1]
 }
 
+function typeLabel(value: any) {
+  return typeMeta(value).label
+}
+
+function typeColor(value: any) {
+  return typeMeta(value).color
+}
+
+function visibilityLabel(value: any) {
+  const key = String(value || 'world').trim().toLowerCase()
+  return VISIBILITY_OPTIONS.find((item) => item.value === key)?.label || 'World'
+}
+
 function relationshipColor(relationship: any) {
   const strength = Number(relationship?.strength || 0)
 
-  if (strength > 0) return '#3fb950'
-  if (strength < 0) return '#f85149'
+  if (strength > 0) return '#10b981'
+  if (strength < 0) return '#ef4444'
 
-  return typeMeta(relationship?.relationshipType).color
+  return typeColor(relationship?.relationshipType)
 }
 
 function attitudeLabel(relationship: any) {
@@ -222,6 +360,8 @@ function relationshipOtherTitle(relationship: any) {
 
 function relationshipOtherType(relationship: any) {
   return String(relationship?.other?.entityType || relationship?.other?.entity_type || 'entity')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function initialsFor(value: any) {
@@ -237,7 +377,55 @@ function initialsFor(value: any) {
 }
 
 function relationshipDisplayLine(relationship: any) {
-  return `${relationship.displayLabel || relationship.label || 'related to'} ${relationshipOtherTitle(relationship)}`
+  return `${relationship.displayLabel || relationship.label || 'related to'} → ${relationshipOtherTitle(relationship)}`
+}
+
+function resetFilters() {
+  relationshipFilter.value = 'all'
+  directionFilter.value = 'all'
+  attitudeFilter.value = 'all'
+  visibilityFilter.value = 'all'
+  relationshipSearch.value = ''
+}
+
+function presetRelationship(type: string) {
+  const key = String(type || 'related').toLowerCase()
+  form.relationshipType = key
+
+  const presets: Record<string, any> = {
+    friend: { label: 'friend of', inverseLabel: 'friend of', strength: 2 },
+    ally: { label: 'ally of', inverseLabel: 'ally of', strength: 2 },
+    rival: { label: 'rival of', inverseLabel: 'rival of', strength: -2 },
+    enemy: { label: 'enemy of', inverseLabel: 'enemy of', strength: -3 },
+    family: { label: 'family of', inverseLabel: 'family of', strength: 2 },
+    mentor: { label: 'mentor of', inverseLabel: 'student of', strength: 2 },
+    location: { label: 'lives in', inverseLabel: 'resident', strength: 0 },
+    faction: { label: 'member of', inverseLabel: 'has member', strength: 1 },
+    possession: { label: 'owns', inverseLabel: 'owned by', strength: 0 },
+    quest: { label: 'connected to', inverseLabel: 'connected to', strength: 0 },
+    lore: { label: 'linked to', inverseLabel: 'linked to', strength: 0 },
+    related: { label: 'related to', inverseLabel: 'related to', strength: 0 }
+  }
+
+  const preset = presets[key] || presets.related
+  form.label = preset.label
+  form.inverseLabel = preset.inverseLabel
+  form.strength = preset.strength
+}
+
+function beginEdit(relationship: any) {
+  editingId.value = String(relationship?.id || '')
+  editForm.relationshipType = String(relationship?.relationshipType || 'related')
+  editForm.label = String(relationship?.label || 'related to')
+  editForm.inverseLabel = String(relationship?.inverseLabel || '')
+  editForm.strength = Number(relationship?.strength || 0)
+  editForm.visibility = String(relationship?.visibility || 'world')
+  editForm.status = String(relationship?.status || 'active')
+  editForm.summary = String(relationship?.summary || '')
+}
+
+function cancelEdit() {
+  editingId.value = ''
 }
 
 async function loadRelationships() {
@@ -335,31 +523,6 @@ function selectTarget(target: any) {
   targetSuggestions.value = []
 }
 
-function presetRelationship(type: string) {
-  const key = String(type || 'related').toLowerCase()
-  form.relationshipType = key
-
-  const presets: Record<string, any> = {
-    friend: { label: 'friend of', inverseLabel: 'friend of', strength: 2 },
-    ally: { label: 'ally of', inverseLabel: 'ally of', strength: 2 },
-    rival: { label: 'rival of', inverseLabel: 'rival of', strength: -2 },
-    enemy: { label: 'enemy of', inverseLabel: 'enemy of', strength: -3 },
-    family: { label: 'family of', inverseLabel: 'family of', strength: 2 },
-    mentor: { label: 'mentor of', inverseLabel: 'student of', strength: 2 },
-    location: { label: 'lives in', inverseLabel: 'resident', strength: 0 },
-    faction: { label: 'member of', inverseLabel: 'has member', strength: 1 },
-    possession: { label: 'owns', inverseLabel: 'owned by', strength: 0 },
-    quest: { label: 'connected to', inverseLabel: 'connected to', strength: 0 },
-    lore: { label: 'linked to', inverseLabel: 'linked to', strength: 0 },
-    related: { label: 'related to', inverseLabel: 'related to', strength: 0 }
-  }
-
-  const preset = presets[key] || presets.related
-  form.label = preset.label
-  form.inverseLabel = preset.inverseLabel
-  form.strength = preset.strength
-}
-
 async function createRelationship() {
   if (!canEdit.value || !entityId.value || !selectedTarget.value) return
 
@@ -396,21 +559,6 @@ async function createRelationship() {
   } finally {
     saving.value = false
   }
-}
-
-function beginEdit(relationship: any) {
-  editingId.value = String(relationship?.id || '')
-  editForm.relationshipType = String(relationship?.relationshipType || 'related')
-  editForm.label = String(relationship?.label || 'related to')
-  editForm.inverseLabel = String(relationship?.inverseLabel || '')
-  editForm.strength = Number(relationship?.strength || 0)
-  editForm.visibility = String(relationship?.visibility || 'world')
-  editForm.status = String(relationship?.status || 'active')
-  editForm.summary = String(relationship?.summary || '')
-}
-
-function cancelEdit() {
-  editingId.value = ''
 }
 
 async function saveEdit(relationship: any) {
@@ -490,6 +638,12 @@ watch(
 
 watch(targetSearch, queueTargetSearch)
 
+watch(relationships, () => {
+  if (!relationships.value.length) {
+    resetFilters()
+  }
+})
+
 onBeforeUnmount(() => {
   if (targetSearchTimer) clearTimeout(targetSearchTimer)
 })
@@ -497,11 +651,10 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    :class="[
-      variant === 'drawer'
-        ? 'mt-5 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.38)] p-4'
-        : 'eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.26)] bg-[linear-gradient(to_bottom,rgba(18,16,12,0.72),rgba(7,7,6,0.58))] p-5 backdrop-blur-xl'
-    ]"
+    class="relationship-panel rounded-none"
+    :class="isArticleVariant
+      ? 'eldra-ornate-panel eldra-frame-corners border p-5'
+      : 'eldra-codex-soft mt-5 p-4'"
   >
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -509,581 +662,662 @@ onBeforeUnmount(() => {
           Relationships
         </div>
 
-        <h2
+        <h3
           v-if="isArticleVariant"
           class="mt-2 text-2xl font-semibold text-white"
         >
           Relationship Web
-        </h2>
+        </h3>
 
         <p class="mt-1 text-sm leading-6 text-[#d8ceb8]">
-          {{ isArticleVariant
-            ? 'Manage direct relations, attitude, visibility, and the entity web.'
-            : 'People, places, factions, items, and story links.' }}
+          People, places, factions, items, and story links.
+          <span v-if="hasRelationships" class="text-[#9f9278]">
+            {{ filteredRelationships.length }} shown / {{ sortedRelationships.length }} total.
+          </span>
         </p>
       </div>
 
-      <div
-        v-if="isArticleVariant"
-        class="flex flex-wrap gap-2"
-      >
-        <button
-          type="button"
-          class="rounded-none border px-3 py-2 text-xs font-semibold"
-          :class="activeView === 'list'
-            ? 'border-[rgba(201,164,90,0.64)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.50)] text-[#d8ceb8]'"
-          @click="activeView = 'list'"
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <div
+          v-if="isArticleVariant && showGraph"
+          class="inline-flex overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.42)]"
         >
-          List
-        </button>
+          <button
+            type="button"
+            class="px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition"
+            :class="activeView === 'list'
+              ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+              : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
+            @click="activeView = 'list'"
+          >
+            List
+          </button>
 
-        <button
-          v-if="showGraph"
-          type="button"
-          class="rounded-none border px-3 py-2 text-xs font-semibold"
-          :class="activeView === 'web'
-            ? 'border-[rgba(201,164,90,0.64)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.50)] text-[#d8ceb8]'"
-          @click="activeView = 'web'"
-        >
-          Web
-        </button>
+          <button
+            type="button"
+            class="border-l border-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition"
+            :class="activeView === 'web'
+              ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+              : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
+            @click="activeView = 'web'"
+          >
+            Web
+          </button>
+        </div>
 
         <button
           v-if="canEdit && !payload?.schemaMissing"
           type="button"
-          class="rounded-none border border-[rgba(201,164,90,0.34)] bg-[rgba(201,164,90,0.12)] px-3 py-2 text-xs font-semibold text-[#fff7df]"
+          class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.54)] hover:bg-[rgba(201,164,90,0.16)]"
           @click="addOpen = !addOpen"
         >
-          {{ addOpen ? 'Cancel Add' : '+ Add Relation' }}
+          {{ addOpen ? 'Cancel Add' : 'Add Relationship' }}
         </button>
       </div>
     </div>
 
     <div
       v-if="payload?.schemaMissing"
-      class="mt-3 rounded-none border border-amber-400/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100"
+      class="mt-4 rounded-none border border-amber-400/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100"
     >
       Relationship schema is not installed yet.
     </div>
 
     <div
       v-if="error"
-      class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-200"
+      class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-200"
     >
       {{ error }}
     </div>
 
     <div
       v-if="success"
-      class="mt-3 rounded-none border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-100"
+      class="mt-4 rounded-none border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-5 text-emerald-100"
     >
       {{ success }}
     </div>
 
     <div
       v-if="addOpen && canEdit && !payload?.schemaMissing"
-      class="mt-4 grid gap-4 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.42)] p-4"
+      class="mt-5 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.38)] p-4"
     >
       <div class="flex flex-wrap gap-2">
         <button
           v-for="type in RELATIONSHIP_TYPES"
           :key="type.value"
           type="button"
-          class="rounded-none border px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em]"
+          class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
           :class="form.relationshipType === type.value
-            ? 'border-[rgba(201,164,90,0.64)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.60)] bg-[rgba(8,17,27,0.48)] text-[#d8ceb8]'"
+            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
           @click="presetRelationship(type.value)"
         >
           {{ type.label }}
         </button>
       </div>
 
-      <label class="block">
-        <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">
-          Target Entity
-        </span>
-
-        <input
-          v-model="targetSearch"
-          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-          placeholder="Search NPC, location, item, faction..."
-        >
-
-        <div
-          v-if="targetSuggestions.length"
-          class="mt-2 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)]"
-        >
-          <button
-            v-for="target in targetSuggestions"
-            :key="target.id"
-            type="button"
-            class="block w-full border-b border-[rgba(201,164,90,0.10)] bg-[rgba(8,17,27,0.72)] px-3 py-2 text-left last:border-b-0 hover:bg-[rgba(201,164,90,0.10)]"
-            @click="selectTarget(target)"
-          >
-            <span class="block text-sm font-semibold text-white">{{ target.title }}</span>
-            <span class="mt-0.5 block text-[10px] uppercase tracking-[0.16em] text-[#9f9278]">
-              {{ target.entityType }}
-            </span>
-          </button>
-        </div>
-
-        <div
-          v-if="selectedTarget"
-          class="mt-2 rounded-none border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100"
-        >
-          Selected: {{ selectedTarget.title }}
-        </div>
-      </label>
-
-      <div class="grid gap-3 md:grid-cols-2">
+      <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <label class="block">
-          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Label</span>
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">
+            Target Entity
+          </span>
+
           <input
-            v-model="form.label"
+            v-model="targetSearch"
             class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-            placeholder="lives in, owns, allied with..."
+            placeholder="Search NPC, location, item, faction..."
           >
-        </label>
 
-        <label class="block">
-          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Reverse Label</span>
-          <input
-            v-model="form.inverseLabel"
-            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-            placeholder="resident, owned by, ally of..."
+          <div
+            v-if="targetSuggestions.length"
+            class="mt-2 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(5,8,12,0.96)]"
           >
-        </label>
-
-        <label class="block">
-          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Attitude</span>
-          <select
-            v-model.number="form.strength"
-            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-          >
-            <option
-              v-for="option in ATTITUDE_OPTIONS"
-              :key="option.value"
-              :value="option.value"
-              class="bg-[#090909] text-[#f5e7bd]"
+            <button
+              v-for="target in targetSuggestions"
+              :key="target.id"
+              type="button"
+              class="flex w-full items-center justify-between gap-3 border-b border-[rgba(201,164,90,0.10)] px-3 py-2 text-left last:border-b-0 hover:bg-[rgba(201,164,90,0.08)]"
+              @click="selectTarget(target)"
             >
-              {{ option.label }}
-            </option>
-          </select>
+              <span>
+                <span class="block text-sm font-semibold text-white">{{ target.title }}</span>
+                <span class="block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ target.entityType }}</span>
+              </span>
+            </button>
+          </div>
+
+          <div
+            v-if="selectedTarget"
+            class="mt-2 rounded-none border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100"
+          >
+            Selected: {{ selectedTarget.title }}
+          </div>
         </label>
 
-        <label class="block">
-          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Visibility</span>
-          <select
-            v-model="form.visibility"
-            class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-          >
-            <option
-              v-for="option in VISIBILITY_OPTIONS"
-              :key="option.value"
-              :value="option.value"
-              class="bg-[#090909] text-[#f5e7bd]"
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Attitude</span>
+            <select
+              v-model.number="form.strength"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
             >
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
+              <option
+                v-for="option in ATTITUDE_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+                class="bg-[#090909] text-[#f5e7bd]"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Visibility</span>
+            <select
+              v-model="form.visibility"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+            >
+              <option
+                v-for="option in VISIBILITY_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+                class="bg-[#090909] text-[#f5e7bd]"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Label</span>
+            <input
+              v-model="form.label"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+              placeholder="friend of, lives in, owns..."
+            >
+          </label>
+
+          <label>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Reverse Label</span>
+            <input
+              v-model="form.inverseLabel"
+              class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+              placeholder="friend of, resident, owned by..."
+            >
+          </label>
+        </div>
       </div>
 
-      <label class="block">
+      <label class="mt-4 block">
         <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Summary</span>
         <textarea
           v-model="form.summary"
           rows="3"
-          class="eldra-input w-full rounded-none px-3 py-2 text-sm leading-6 text-white"
-          placeholder="Optional relationship note..."
+          class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+          placeholder="Why does this relationship matter?"
         />
       </label>
 
-      <button
-        type="button"
-        class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-        :disabled="saving || !selectedTarget"
-        @click="createRelationship"
-      >
-        {{ saving ? 'Saving...' : 'Save Relationship' }}
-      </button>
+      <div class="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-4 py-2 text-sm font-semibold text-[#d8ceb8]"
+          @click="resetForm"
+        >
+          Reset
+        </button>
+
+        <button
+          type="button"
+          class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          :disabled="saving || !selectedTarget"
+          @click="createRelationship"
+        >
+          {{ saving ? 'Saving...' : 'Create Relationship' }}
+        </button>
+      </div>
+    </div>
+
+    <div
+      v-if="isArticleVariant && hasRelationships"
+      class="mt-5 space-y-3"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <input
+          v-model="relationshipSearch"
+          type="text"
+          class="eldra-input min-w-[240px] flex-1 rounded-none px-3 py-2 text-sm text-white"
+          placeholder="Search relationships..."
+        >
+
+        <button
+          type="button"
+          class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]"
+          @click="resetFilters"
+        >
+          Clear Filters
+        </button>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="option in relationshipTypeOptions"
+          :key="option.key"
+          type="button"
+          class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
+          :class="relationshipFilter === option.key
+            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+          @click="relationshipFilter = option.key"
+        >
+          {{ option.label }}
+          <span class="ml-1 opacity-70">{{ option.count }}</span>
+        </button>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="option in attitudeOptions"
+          :key="option.key"
+          type="button"
+          class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
+          :class="attitudeFilter === option.key
+            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+          @click="attitudeFilter = option.key"
+        >
+          {{ option.label }}
+          <span class="ml-1 opacity-70">{{ option.count }}</span>
+        </button>
+
+        <button
+          v-for="option in directionOptions"
+          :key="`direction-${option.key}`"
+          type="button"
+          class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
+          :class="directionFilter === option.key
+            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+          @click="directionFilter = option.key"
+        >
+          {{ option.label }}
+          <span class="ml-1 opacity-70">{{ option.count }}</span>
+        </button>
+
+        <button
+          v-for="option in visibilityOptions"
+          :key="`visibility-${option.key}`"
+          type="button"
+          class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
+          :class="visibilityFilter === option.key
+            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+          @click="visibilityFilter = option.key"
+        >
+          {{ option.label }}
+          <span class="ml-1 opacity-70">{{ option.count }}</span>
+        </button>
+      </div>
     </div>
 
     <div
       v-if="loading"
-      class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.18)] p-4 text-sm text-[#9f9278]"
+      class="mt-5 rounded-none border border-[rgba(201,164,90,0.14)] p-4 text-sm text-[#9f9278]"
     >
       Loading relationships...
     </div>
 
-    <div
-      v-else-if="!hasRelationships && !payload?.schemaMissing"
-      class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.18)] p-4 text-sm leading-6 text-[#9f9278]"
-    >
-      No relationships recorded yet.
-    </div>
-
-    <!-- DRAWER: compact read-only list -->
-    <div
-      v-else-if="isDrawerVariant"
-      class="mt-4 grid gap-2"
-    >
-      <button
-        v-for="relationship in drawerRelationships"
-        :key="relationship.id"
-        type="button"
-        class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.42)] p-3 text-left transition hover:border-[rgba(201,164,90,0.36)] hover:bg-[rgba(201,164,90,0.08)]"
-        @click="openRelationshipEntity(relationship)"
+    <template v-else>
+      <div
+        v-if="!hasRelationships && !payload?.schemaMissing"
+        class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm leading-7 text-[#9f9278]"
       >
-        <span class="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
-          <span :class="['h-2.5 w-2.5 rounded-full', attitudeDotClass(relationship)]" />
-          {{ relationship.relationshipType }}
-        </span>
-
-        <span class="mt-1 block text-sm leading-5 text-[#d8ceb8]">
-          <span class="font-semibold text-[#fff7df]">{{ relationship.displayLabel }}</span>
-          <span class="mx-1 text-[#9f9278]">→</span>
-          <span class="font-semibold text-white">{{ relationshipOtherTitle(relationship) }}</span>
-        </span>
-
-        <span
-          v-if="relationship.summary"
-          class="mt-1 line-clamp-2 block text-xs leading-5 text-[#9f9278]"
-        >
-          {{ relationship.summary }}
-        </span>
-      </button>
+        No relationships yet.
+        <span v-if="canEdit">Add one to start building this entity's web.</span>
+      </div>
 
       <div
-        v-if="sortedRelationships.length > drawerRelationships.length"
-        class="text-xs text-[#9f9278]"
+        v-else-if="activeView === 'web' && isArticleVariant && showGraph"
+        class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.28)]"
       >
-        +{{ sortedRelationships.length - drawerRelationships.length }} more on the full article.
-      </div>
-    </div>
-
-    <!-- ARTICLE: graph view -->
-    <div
-      v-else-if="activeView === 'web' && showGraph"
-      class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,12,18,0.55)]"
-    >
-      <svg
-        viewBox="0 0 680 500"
-        role="img"
-        class="h-[420px] w-full"
-      >
-        <defs>
-          <filter
-            id="relationshipNodeGlow"
-            x="-30%"
-            y="-30%"
-            width="160%"
-            height="160%"
+        <div class="relative h-[520px] min-w-[680px]">
+          <svg
+            viewBox="0 0 680 500"
+            class="h-full w-full"
+            role="img"
+            :aria-label="`Relationship web for ${entityTitle}`"
           >
-            <feDropShadow
-              dx="0"
-              dy="0"
-              stdDeviation="5"
-              flood-color="#c9a45a"
-              flood-opacity="0.28"
+            <line
+              v-for="node in graphNodes"
+              :key="`line-${node.relationship.id}`"
+              :x1="340"
+              :y1="250"
+              :x2="node.x"
+              :y2="node.y"
+              :stroke="relationshipColor(node.relationship)"
+              stroke-width="3"
+              stroke-opacity="0.72"
             />
-          </filter>
-        </defs>
 
-        <line
-          v-for="node in graphNodes"
-          :key="`line-${node.relationship.id}`"
-          x1="340"
-          y1="250"
-          :x2="node.x"
-          :y2="node.y"
-          :stroke="relationshipColor(node.relationship)"
-          stroke-width="3"
-          stroke-opacity="0.82"
-        />
+            <circle
+              cx="340"
+              cy="250"
+              r="54"
+              fill="rgba(20,17,12,0.92)"
+              stroke="rgba(201,164,90,0.72)"
+              stroke-width="2"
+            />
 
-        <g filter="url(#relationshipNodeGlow)">
-          <circle
-            cx="340"
-            cy="250"
-            r="54"
-            fill="rgba(20,17,12,0.96)"
-            stroke="#c9a45a"
-            stroke-width="2"
-          />
-          <text
-            x="340"
-            y="244"
-            text-anchor="middle"
-            fill="#fff7df"
-            font-size="18"
-            font-weight="700"
-          >
-            {{ initialsFor(entityTitle) }}
-          </text>
-          <text
-            x="340"
-            y="266"
-            text-anchor="middle"
-            fill="#9f9278"
-            font-size="10"
-            letter-spacing="2"
-          >
-            CURRENT
-          </text>
-        </g>
+            <text
+              x="340"
+              y="245"
+              text-anchor="middle"
+              class="fill-white text-sm font-semibold"
+            >
+              {{ entityTitle.slice(0, 22) }}
+            </text>
 
-        <g
-          v-for="node in graphNodes"
-          :key="`node-${node.relationship.id}`"
-          class="cursor-pointer"
-          @click="openRelationshipEntity(node.relationship)"
-        >
-          <circle
-            :cx="node.x"
-            :cy="node.y"
-            r="42"
-            fill="rgba(8,17,27,0.96)"
-            :stroke="relationshipColor(node.relationship)"
-            stroke-width="2"
-          />
-          <text
-            :x="node.x"
-            :y="node.y + 5"
-            text-anchor="middle"
-            fill="#fff7df"
-            font-size="16"
-            font-weight="700"
-          >
-            {{ initialsFor(relationshipOtherTitle(node.relationship)) }}
-          </text>
+            <text
+              x="340"
+              y="266"
+              text-anchor="middle"
+              class="fill-[#9f9278] text-[10px] uppercase tracking-[0.18em]"
+            >
+              Current
+            </text>
 
-          <text
-            :x="node.x"
-            :y="node.y + 62"
-            text-anchor="middle"
-            fill="#d8ceb8"
-            font-size="12"
-            font-weight="600"
-          >
-            {{ relationshipOtherTitle(node.relationship).slice(0, 22) }}
-          </text>
+            <g
+              v-for="node in graphNodes"
+              :key="`node-${node.relationship.id}`"
+              class="cursor-pointer"
+              @click="openRelationshipEntity(node.relationship)"
+            >
+              <circle
+                :cx="node.x"
+                :cy="node.y"
+                r="42"
+                fill="rgba(8,17,27,0.92)"
+                :stroke="relationshipColor(node.relationship)"
+                stroke-width="2"
+              />
 
-          <text
-            :x="node.x"
-            :y="node.y + 78"
-            text-anchor="middle"
-            :fill="relationshipColor(node.relationship)"
-            font-size="10"
-            letter-spacing="1.5"
-          >
-            {{ node.relationship.displayLabel || node.relationship.label }}
-          </text>
-        </g>
-      </svg>
-    </div>
+              <text
+                :x="node.x"
+                :y="node.y + 4"
+                text-anchor="middle"
+                class="fill-white text-sm font-semibold"
+              >
+                {{ initialsFor(relationshipOtherTitle(node.relationship)) }}
+              </text>
 
-    <!-- ARTICLE: list/editor -->
-    <div
-      v-else
-      class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)]"
-    >
-      <div class="hidden grid-cols-[1.15fr_1.25fr_120px_120px_120px] gap-3 border-b border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.58)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9f9278] xl:grid">
-        <div>Relation</div>
-        <div>Name</div>
-        <div>Attitude</div>
-        <div>Visibility</div>
-        <div>Actions</div>
+              <text
+                :x="node.x"
+                :y="node.y + 62"
+                text-anchor="middle"
+                class="fill-[#d8ceb8] text-xs font-semibold"
+              >
+                {{ relationshipOtherTitle(node.relationship).slice(0, 24) }}
+              </text>
+
+              <text
+                :x="node.x"
+                :y="node.y + 78"
+                text-anchor="middle"
+                class="fill-[#9f9278] text-[10px] uppercase tracking-[0.16em]"
+              >
+                {{ typeLabel(node.relationship.relationshipType) }}
+              </text>
+            </g>
+          </svg>
+        </div>
       </div>
 
-      <article
-        v-for="relationship in sortedRelationships"
-        :key="relationship.id"
-        class="border-b border-[rgba(201,164,90,0.10)] bg-[rgba(8,17,27,0.34)] p-3 last:border-b-0"
+      <div
+        v-else
+        class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)]"
+        :class="isDrawerVariant ? 'divide-y divide-[rgba(201,164,90,0.10)]' : ''"
       >
         <div
-          v-if="editingId !== String(relationship.id)"
-          class="grid gap-3 xl:grid-cols-[1.15fr_1.25fr_120px_120px_120px] xl:items-center"
+          v-if="!displayedRelationships.length"
+          class="p-5 text-sm text-[#9f9278]"
         >
-          <div>
-            <div class="text-xs uppercase tracking-[0.16em] text-[#9f9278]">
-              {{ relationshipDirectionLabel(relationship) }} · {{ relationship.relationshipType }}
-            </div>
-            <div class="mt-1 text-sm font-semibold text-[#fff7df]">
-              {{ relationship.displayLabel || relationship.label }}
-            </div>
-            <div
-              v-if="relationship.inverseLabel"
-              class="mt-1 text-xs text-[#9f9278]"
-            >
-              Reverse: {{ relationship.inverseLabel }}
-            </div>
-          </div>
+          No relationships match the current filters.
+        </div>
 
-          <button
-            type="button"
-            class="text-left"
-            @click="openRelationshipEntity(relationship)"
+        <article
+          v-for="relationship in displayedRelationships"
+          :key="relationship.id"
+          class="relationship-row border-b border-[rgba(201,164,90,0.10)] bg-[rgba(8,17,27,0.28)] p-4 last:border-b-0"
+        >
+          <div
+            v-if="String(editingId) !== String(relationship.id)"
+            class="grid gap-4"
+            :class="isArticleVariant ? 'lg:grid-cols-[minmax(180px,0.65fr)_minmax(0,1.35fr)_160px_160px]' : ''"
           >
-            <span class="block text-sm font-semibold text-white">
-              {{ relationshipOtherTitle(relationship) }}
-            </span>
-            <span class="mt-1 block text-xs uppercase tracking-[0.16em] text-[#9f9278]">
-              {{ relationshipOtherType(relationship) }}
-            </span>
-            <span
-              v-if="relationship.summary"
-              class="mt-2 block text-xs leading-5 text-[#d8ceb8]"
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span
+                  class="inline-block h-2.5 w-2.5 rounded-full"
+                  :style="{ backgroundColor: relationshipColor(relationship) }"
+                />
+
+                <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#9f9278]">
+                  {{ relationshipDirectionLabel(relationship) }} · {{ typeLabel(relationship.relationshipType) }}
+                </span>
+              </div>
+
+              <div class="mt-2 text-sm font-semibold text-white">
+                {{ relationship.displayLabel || relationship.label || 'related to' }}
+              </div>
+
+              <div class="mt-1 text-xs text-[#9f9278]">
+                Reverse: {{ relationship.inverseLabel || relationship.label || 'related to' }}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="min-w-0 text-left"
+              @click="openRelationshipEntity(relationship)"
             >
-              {{ relationship.summary }}
-            </span>
-          </button>
+              <div class="text-base font-semibold text-white">
+                {{ relationshipOtherTitle(relationship) }}
+              </div>
 
-          <div class="flex items-center gap-2 text-xs text-[#d8ceb8]">
-            <span :class="['h-3 w-3 rounded-full', attitudeDotClass(relationship)]" />
-            {{ attitudeLabel(relationship) }}
-          </div>
+              <div class="mt-1 text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">
+                {{ relationshipOtherType(relationship) }}
+              </div>
 
-          <div class="text-xs uppercase tracking-[0.16em] text-[#9f9278]">
-            {{ relationship.visibility || 'world' }}
+              <p
+                v-if="relationship.summary"
+                class="mt-2 text-sm leading-6 text-[#d8ceb8]"
+              >
+                {{ relationship.summary }}
+              </p>
+            </button>
+
+            <div class="flex items-center gap-2">
+              <span
+                class="h-3 w-3 rounded-full"
+                :class="attitudeDotClass(relationship)"
+              />
+              <span class="text-sm text-[#d8ceb8]">{{ attitudeLabel(relationship) }}</span>
+            </div>
+
+            <div class="flex flex-wrap items-start gap-2">
+              <span class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d8ceb8]">
+                {{ visibilityLabel(relationship.visibility) }}
+              </span>
+
+              <button
+                v-if="isArticleVariant"
+                type="button"
+                class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-2 py-1.5 text-xs font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]"
+                @click="openRelationshipEntity(relationship)"
+              >
+                Details
+              </button>
+
+              <button
+                v-if="canEdit"
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                @click="beginEdit(relationship)"
+              >
+                Edit
+              </button>
+
+              <button
+                v-if="canEdit"
+                type="button"
+                class="rounded-none border border-red-400/24 bg-red-500/10 px-2 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50"
+                :disabled="saving"
+                @click="deleteRelationship(relationship)"
+              >
+                Delete
+              </button>
+            </div>
           </div>
 
           <div
-            v-if="canEdit"
-            class="flex flex-wrap gap-2"
+            v-else
+            class="grid gap-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(4,8,14,0.48)] p-4"
           >
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
-              @click="beginEdit(relationship)"
-            >
-              Edit
-            </button>
-
-            <button
-              type="button"
-              class="rounded-none border border-red-400/24 bg-red-500/10 px-2 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50"
-              :disabled="saving"
-              @click="deleteRelationship(relationship)"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-else
-          class="grid gap-3"
-        >
-          <div class="grid gap-3 md:grid-cols-2">
-            <label>
-              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Type</span>
-              <select
-                v-model="editForm.relationshipType"
-                class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-              >
-                <option
-                  v-for="type in RELATIONSHIP_TYPES"
-                  :key="type.value"
-                  :value="type.value"
-                  class="bg-[#090909] text-[#f5e7bd]"
+            <div class="grid gap-3 md:grid-cols-2">
+              <label>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Type</span>
+                <select
+                  v-model="editForm.relationshipType"
+                  class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
                 >
-                  {{ type.label }}
-                </option>
-              </select>
-            </label>
+                  <option
+                    v-for="type in RELATIONSHIP_TYPES"
+                    :key="type.value"
+                    :value="type.value"
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    {{ type.label }}
+                  </option>
+                </select>
+              </label>
 
-            <label>
-              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Visibility</span>
-              <select
-                v-model="editForm.visibility"
-                class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-              >
-                <option
-                  v-for="option in VISIBILITY_OPTIONS"
-                  :key="option.value"
-                  :value="option.value"
-                  class="bg-[#090909] text-[#f5e7bd]"
+              <label>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Visibility</span>
+                <select
+                  v-model="editForm.visibility"
+                  class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
                 >
-                  {{ option.label }}
-                </option>
-              </select>
-            </label>
+                  <option
+                    v-for="option in VISIBILITY_OPTIONS"
+                    :key="option.value"
+                    :value="option.value"
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
 
-            <label>
-              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Label</span>
-              <input
-                v-model="editForm.label"
-                class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-              >
-            </label>
-
-            <label>
-              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Reverse Label</span>
-              <input
-                v-model="editForm.inverseLabel"
-                class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-              >
-            </label>
-
-            <label>
-              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Attitude</span>
-              <select
-                v-model.number="editForm.strength"
-                class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-              >
-                <option
-                  v-for="option in ATTITUDE_OPTIONS"
-                  :key="option.value"
-                  :value="option.value"
-                  class="bg-[#090909] text-[#f5e7bd]"
+              <label>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Label</span>
+                <input
+                  v-model="editForm.label"
+                  class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
                 >
-                  {{ option.label }}
-                </option>
-              </select>
-            </label>
+              </label>
+
+              <label>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Reverse Label</span>
+                <input
+                  v-model="editForm.inverseLabel"
+                  class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                >
+              </label>
+
+              <label>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Attitude</span>
+                <select
+                  v-model.number="editForm.strength"
+                  class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                >
+                  <option
+                    v-for="option in ATTITUDE_OPTIONS"
+                    :key="option.value"
+                    :value="option.value"
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+
+              <label>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Status</span>
+                <input
+                  v-model="editForm.status"
+                  class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                >
+              </label>
+            </div>
 
             <label>
-              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Status</span>
-              <input
-                v-model="editForm.status"
+              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Summary</span>
+              <textarea
+                v-model="editForm.summary"
+                rows="3"
                 class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
-              >
+              />
             </label>
+
+            <div class="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-3 py-2 text-sm font-semibold text-[#d8ceb8]"
+                @click="cancelEdit"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                class="eldra-button rounded-none px-3 py-2 text-sm font-semibold disabled:opacity-50"
+                :disabled="saving"
+                @click="saveEdit(relationship)"
+              >
+                {{ saving ? 'Saving...' : 'Save Relationship' }}
+              </button>
+            </div>
           </div>
+        </article>
+      </div>
 
-          <label>
-            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Summary</span>
-            <textarea
-              v-model="editForm.summary"
-              rows="3"
-              class="eldra-input w-full rounded-none px-3 py-2 text-sm leading-6 text-white"
-            />
-          </label>
-
-          <div class="flex flex-wrap gap-2">
-            <button
-              type="button"
-              class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              :disabled="saving"
-              @click="saveEdit(relationship)"
-            >
-              Save
-            </button>
-
-            <button
-              type="button"
-              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-2 text-sm font-semibold text-[#fff7df]"
-              @click="cancelEdit"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </article>
-    </div>
+      <div
+        v-if="isDrawerVariant && filteredRelationships.length > drawerRelationships.length"
+        class="mt-3 text-xs leading-5 text-[#9f9278]"
+      >
+        Showing {{ drawerRelationships.length }} of {{ filteredRelationships.length }} links. Open the full article to manage the full web.
+      </div>
+    </template>
   </section>
 </template>
+
+<style scoped>
+.relationship-panel {
+  min-width: 0;
+}
+
+.relationship-row {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.relationship-row:hover {
+  background-color: rgba(201, 164, 90, 0.045);
+}
+
+.relationship-panel svg text {
+  font-family: inherit;
+}
+</style>

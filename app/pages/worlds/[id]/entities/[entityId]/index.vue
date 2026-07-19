@@ -1163,6 +1163,27 @@ function closeArticleBuildDrawer() {
 }
 
 
+const articleBuildSections = computed(() => [
+  { id: 'article-build-header', label: 'Header', icon: 'i-lucide-heading-1' },
+  ...(isLocationEntity.value
+    ? [{ id: 'article-build-location', label: 'Location', icon: 'i-lucide-map-pin' }]
+    : []),
+  { id: 'article-build-body', label: 'Body', icon: 'i-lucide-file-text' },
+  { id: 'article-build-sidebar', label: 'Sidebar Notes', icon: 'i-lucide-panel-right' }
+])
+
+function scrollToArticleBuildSection(id: string) {
+  if (typeof document === 'undefined') return
+
+  document
+    .getElementById(id)
+    ?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+}
+
+
 const pageContentClass = computed(() => [
   'min-w-0 p-6 transition-[margin,max-width] duration-200 ease-out',
   articleRightRailOpen.value
@@ -1242,6 +1263,29 @@ async function onImageSelected(event: Event) {
     </button>
 
     <div :class="pageContentClass">
+      <nav
+        v-if="mode === 'build'"
+        data-article-build-nav
+        class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.66)] p-3 shadow-[0_14px_38px_rgba(0,0,0,0.22)] backdrop-blur-xl"
+      >
+        <div>
+          <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">Build Editor</div>
+          <div class="mt-1 text-sm text-[#d8ceb8]">Edit article metadata, body content, and player-facing sidebar notes.</div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="section in articleBuildSections"
+            :key="section.id"
+            type="button"
+            class="inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(8,17,27,0.42)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.48)] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+            @click="scrollToArticleBuildSection(section.id)"
+          >
+            <UIcon :name="section.icon" class="h-4 w-4" />
+            <span>{{ section.label }}</span>
+          </button>
+        </div>
+      </nav>
       <section class="eldra-ornate-panel eldra-frame-corners eldra-corner-runes overflow-hidden rounded-none border backdrop-blur-xl">
         <div class="grid gap-0 lg:grid-cols-[460px_minmax(0,1fr)]">
           <div class="border-b border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.42)] p-5 lg:border-b-0 lg:border-r">
@@ -1293,7 +1337,9 @@ async function onImageSelected(event: Event) {
 
             <div
               v-if="mode === 'build'"
-              class="mt-5 border border-stone-500/20 bg-[#111]/80 p-4"
+              id="article-build-header"
+              data-article-build-section
+              class="article-build-section mt-5 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.70)] p-4 shadow-[0_14px_38px_rgba(0,0,0,0.22)]"
             >
               <div class="mb-3 flex flex-wrap items-center gap-2">
                 <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Header Editor</span>
@@ -1330,9 +1376,16 @@ async function onImageSelected(event: Event) {
               </label>
 
               <div
+                id="article-build-location"
+                data-article-location-details
                 v-if="isLocationEntity"
-                class="mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-4"
+                class="article-build-location-grid mt-4 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.52)] p-4"
               >
+                  <div class="article-build-section-heading md:col-span-2">
+                    <div class="text-[10px] uppercase tracking-[0.28em] text-[#9f9278]">Location Details</div>
+                    <div class="mt-1 text-xs leading-5 text-[#b5a88d]">Controls the location-specific facts used by cards, pins, and article context.</div>
+                  </div>
+
                 <div class="mb-3 text-xs uppercase tracking-[0.28em] text-[#9f9278]">Location Details</div>
 
                 <div class="grid gap-3 md:grid-cols-2">
@@ -1568,11 +1621,16 @@ async function onImageSelected(event: Event) {
           </article>
         </div>
 
-          <div v-else-if="mode === 'build'" class="mt-6">
+          <div
+              v-else-if="mode === 'build'"
+              id="article-build-body"
+              data-article-build-section
+              class="article-build-section mt-6 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.70)] p-4 shadow-[0_14px_38px_rgba(0,0,0,0.22)]"
+            >
             <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <div class="flex flex-wrap items-center gap-2">
-                  <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Article Editor</span>
+                  <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Article Body</span>
                   <span
                     v-if="articleDirty"
                     data-article-editor-dirty-indicator
@@ -1581,7 +1639,7 @@ async function onImageSelected(event: Event) {
                     Unsaved
                   </span>
                 </div>
-                <div class="mt-1 text-sm text-[#d8ceb8]">Use the editor below to write and format this article.</div>
+                <div class="mt-1 text-sm text-[#d8ceb8]">Write the main article body. Sidebar notes live below the editor.</div>
               </div>
 
               <div class="flex gap-2">
@@ -1604,14 +1662,26 @@ async function onImageSelected(event: Event) {
               </div>
             </div>
 
-            <section class="article-sidebar-editor mt-5 rounded-none border p-4">
+            
+
+            <div class="mt-5">
+              <EldraRichTextEditor
+                v-model="articleDraft"
+                :world-id="worldId"
+                :article-theme="normalizedArticleTheme(articleThemeDraft)"
+              />
+
+<section
+              id="article-build-sidebar"
+              data-article-build-section
+              data-article-sidebar-notes class="article-build-section article-sidebar-editor mt-5 rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.58)] p-4">
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div class="text-xs uppercase tracking-[0.28em] text-[#9f9278]">
-                    Article Sidebar
+                    Sidebar Notes
                   </div>
                   <p class="mt-1 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
-                    Optional right-side details card for important people, places, secrets, and notes.
+                    Optional article-side details for people, places, secrets, and notes. Public entries show in Play mode.
                   </p>
                 </div>
 
@@ -1759,12 +1829,6 @@ async function onImageSelected(event: Event) {
               </div>
             </section>
 
-            <div class="mt-5">
-              <EldraRichTextEditor
-                v-model="articleDraft"
-                :world-id="worldId"
-                :article-theme="normalizedArticleTheme(articleThemeDraft)"
-              />
             </div>
 
 
@@ -2581,5 +2645,65 @@ async function onImageSelected(event: Event) {
 [data-article-systems-section] :deep(.overflow-x-auto),
 [data-article-systems-section] :deep(table) {
   max-width: 100%;
+}
+
+[data-article-build-nav] {
+  scroll-margin-top: 1rem;
+}
+
+[data-article-build-section] {
+  scroll-margin-top: 1rem;
+}
+
+.article-build-section {
+  position: relative;
+}
+
+.article-build-section::before {
+  content: '';
+  position: absolute;
+  left: 0.75rem;
+  top: 0.55rem;
+  width: 2.4rem;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201,164,90,0.62), transparent);
+  pointer-events: none;
+}
+
+.article-build-section-heading {
+  border-bottom: 1px solid rgba(201, 164, 90, 0.14);
+  padding-bottom: 0.75rem;
+}
+
+.article-build-location-grid {
+  border-top: 1px solid rgba(201, 164, 90, 0.14);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+[data-article-sidebar-notes] {
+  background:
+    radial-gradient(circle at top left, rgba(201,164,90,0.08), transparent 34%),
+    rgba(20, 17, 12, 0.58);
+}
+
+[data-article-sidebar-notes] .eldra-input,
+[data-article-build-section] .eldra-input {
+  background-color: rgba(7, 6, 4, 0.82);
+}
+
+@media (max-width: 768px) {
+  [data-article-build-nav] {
+    align-items: stretch;
+  }
+
+  [data-article-build-nav] > div:last-child {
+    width: 100%;
+  }
+
+  [data-article-build-nav] button {
+    flex: 1 1 calc(50% - 0.5rem);
+    justify-content: center;
+  }
 }
 </style>

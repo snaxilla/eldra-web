@@ -715,6 +715,8 @@ onMounted(async () => {
 
 <template>
   <div data-world-importer-page class="h-full overflow-y-auto bg-transparent">
+    <WorldChooserThpace />
+
     <div class="mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div class="space-y-6">
@@ -1146,23 +1148,34 @@ onMounted(async () => {
         </div>
 
         <aside class="space-y-6">
-          <section class="eldra-panel rounded-[24px] p-5 shadow-xl">
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-xs uppercase tracking-[0.35em] text-slate-500">Preview Result</div>
+                    <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.66)] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Preview Result</div>
+                <h2 class="mt-2 text-2xl font-semibold text-white">Import Preview</h2>
+                <p class="mt-1 text-sm leading-6 text-[#d8ceb8]">
+                  Review what Eldra will create before committing it to the world.
+                </p>
+              </div>
 
-              <div class="inline-flex rounded-xl border border-white/10 bg-white/[0.04] p-1">
+              <div class="inline-flex overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.42)]">
                 <button
                   type="button"
-                  class="rounded-lg px-3 py-1.5 text-xs font-medium transition"
-                  :class="previewTab === 'preview' ? 'bg-sky-400/20 text-sky-100' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition"
+                  :class="previewTab === 'preview'
+                    ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                    : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
                   @click="previewTab = 'preview'"
                 >
                   Preview
                 </button>
+
                 <button
                   type="button"
-                  class="rounded-lg px-3 py-1.5 text-xs font-medium transition"
-                  :class="previewTab === 'raw' ? 'bg-sky-400/20 text-sky-100' : 'text-slate-400 hover:text-slate-200'"
+                  class="border-l border-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition"
+                  :class="previewTab === 'raw'
+                    ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                    : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
                   @click="previewTab = 'raw'"
                 >
                   Raw JSON
@@ -1179,20 +1192,22 @@ onMounted(async () => {
                 :item="previewMonsterItem"
               />
 
-              <pre
+              <ImporterEntityPreviewPanel
                 v-else
-                class="max-h-[420px] overflow-auto rounded-2xl border border-white/10 bg-[#07101a]/90 p-4 text-xs text-slate-200"
-              >{{ JSON.stringify(previewResult, null, 2) }}</pre>
+                :result="previewResult"
+                :import-type="importType"
+                :source-display="selectedSourceDisplay"
+              />
             </div>
 
             <pre
               v-else-if="previewResult && previewTab === 'raw'"
-              class="mt-4 max-h-[420px] overflow-auto rounded-2xl border border-white/10 bg-[#07101a]/90 p-4 text-xs text-slate-200"
+              class="mt-4 max-h-[520px] overflow-auto rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(2,6,10,0.92)] p-4 text-xs leading-5 text-[#f5e7bd]"
             >{{ JSON.stringify(previewResult, null, 2) }}</pre>
 
             <div
               v-else
-              class="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-300"
+              class="mt-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.38)] p-4 text-sm text-[#9f9278]"
             >
               No preview loaded yet.
             </div>
@@ -1407,5 +1422,37 @@ onMounted(async () => {
 [data-world-importer-page] :deep(section),
 [data-world-importer-page] :deep(aside) {
   position: relative;
+}
+
+/* Eldra Importer Thpace Background v1 */
+[data-world-importer-page] {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.10), transparent 34%),
+    radial-gradient(circle at 80% 18%, rgba(91, 33, 182, 0.18), transparent 34%),
+    #05080d;
+}
+
+[data-world-importer-page] > canvas {
+  z-index: 0;
+  opacity: 0.92;
+}
+
+[data-world-importer-page]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(5, 8, 13, 0.78), rgba(5, 8, 13, 0.24) 32%, rgba(5, 8, 13, 0.70)),
+    radial-gradient(circle at 52% 12%, rgba(201, 164, 90, 0.08), transparent 34%);
+}
+
+[data-world-importer-page] > :not(canvas) {
+  position: relative;
+  z-index: 1;
 }
 </style>

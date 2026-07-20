@@ -715,8 +715,9 @@ onMounted(async () => {
 
 <template>
   <div data-world-importer-page class="h-full overflow-y-auto bg-transparent">
-    <WorldChooserThpace />
-
+    <div data-importer-thpace-layer aria-hidden="true">
+      <WorldChooserThpace />
+    </div>
     <div class="mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div class="space-y-6">
@@ -1428,7 +1429,8 @@ onMounted(async () => {
 [data-world-importer-page] {
   position: relative;
   min-height: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background:
     radial-gradient(circle at top left, rgba(56, 189, 248, 0.10), transparent 34%),
     radial-gradient(circle at 80% 18%, rgba(91, 33, 182, 0.18), transparent 34%),
@@ -1452,6 +1454,56 @@ onMounted(async () => {
 }
 
 [data-world-importer-page] > :not(canvas) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Eldra Importer Thpace Scroll Fix v2 */
+[data-world-importer-page] {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.10), transparent 34%),
+    radial-gradient(circle at 80% 18%, rgba(91, 33, 182, 0.18), transparent 34%),
+    #05080d;
+}
+
+[data-world-importer-page] > [data-importer-thpace-layer] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+}
+
+[data-importer-thpace-layer],
+[data-importer-thpace-layer] :deep(*),
+[data-importer-thpace-layer] :deep(canvas) {
+  pointer-events: none !important;
+}
+
+[data-importer-thpace-layer] :deep(canvas) {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  opacity: 0.95;
+}
+
+[data-world-importer-page]::after {
+  content: '';
+  position: fixed !important;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(5, 8, 13, 0.78), rgba(5, 8, 13, 0.24) 32%, rgba(5, 8, 13, 0.70)),
+    radial-gradient(circle at 52% 12%, rgba(201, 164, 90, 0.08), transparent 34%);
+}
+
+[data-world-importer-page] > :not([data-importer-thpace-layer]) {
   position: relative;
   z-index: 1;
 }

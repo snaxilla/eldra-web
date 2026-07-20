@@ -714,7 +714,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
+  <div data-world-importer-page class="h-full overflow-y-auto bg-transparent">
     <div class="mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div class="space-y-6">
@@ -1227,5 +1227,185 @@ onMounted(async () => {
 :deep(select option) {
   background-color: #11161d;
   color: #f1f5f9;
+}
+
+/* Eldra Importer Theme v1 */
+[data-world-importer-page] {
+  color: #efe2bd;
+}
+
+[data-world-importer-page] :deep(section),
+[data-world-importer-page] :deep(aside),
+[data-world-importer-page] :deep(article) {
+  border-color: rgba(201, 164, 90, 0.24) !important;
+  background:
+    radial-gradient(circle at top left, rgba(201, 164, 90, 0.075), transparent 34%),
+    linear-gradient(135deg, rgba(20, 17, 12, 0.82), rgba(4, 8, 14, 0.82)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 18px 54px rgba(0, 0, 0, 0.24) !important;
+  backdrop-filter: blur(14px);
+}
+
+[data-world-importer-page] :deep([class*="rounded"]) {
+  border-radius: 0 !important;
+}
+
+[data-world-importer-page] :deep([class*="border-slate"]),
+[data-world-importer-page] :deep([class*="border-zinc"]),
+[data-world-importer-page] :deep([class*="border-gray"]),
+[data-world-importer-page] :deep([class*="border-neutral"]),
+[data-world-importer-page] :deep([class*="border-sky"]),
+[data-world-importer-page] :deep([class*="border-cyan"]),
+[data-world-importer-page] :deep([class*="border-blue"]),
+[data-world-importer-page] :deep([class*="border-indigo"]) {
+  border-color: rgba(201, 164, 90, 0.24) !important;
+}
+
+[data-world-importer-page] :deep([class*="bg-slate"]),
+[data-world-importer-page] :deep([class*="bg-zinc"]),
+[data-world-importer-page] :deep([class*="bg-gray"]),
+[data-world-importer-page] :deep([class*="bg-neutral"]),
+[data-world-importer-page] :deep([class*="bg-blue"]),
+[data-world-importer-page] :deep([class*="bg-indigo"]) {
+  background:
+    linear-gradient(135deg, rgba(8, 17, 27, 0.58), rgba(6, 6, 5, 0.78)) !important;
+}
+
+[data-world-importer-page] :deep([class*="bg-sky"]),
+[data-world-importer-page] :deep([class*="bg-cyan"]) {
+  background: rgba(201, 164, 90, 0.14) !important;
+}
+
+[data-world-importer-page] :deep([class*="text-slate"]),
+[data-world-importer-page] :deep([class*="text-zinc"]),
+[data-world-importer-page] :deep([class*="text-gray"]),
+[data-world-importer-page] :deep([class*="text-neutral"]) {
+  color: #d8ceb8 !important;
+}
+
+[data-world-importer-page] :deep([class*="text-sky"]),
+[data-world-importer-page] :deep([class*="text-cyan"]),
+[data-world-importer-page] :deep([class*="text-blue"]),
+[data-world-importer-page] :deep([class*="text-indigo"]) {
+  color: #c9a45a !important;
+}
+
+[data-world-importer-page] :deep(h1),
+[data-world-importer-page] :deep(h2),
+[data-world-importer-page] :deep(h3),
+[data-world-importer-page] :deep(h4),
+[data-world-importer-page] :deep(.text-white) {
+  color: #fff7df !important;
+}
+
+[data-world-importer-page] :deep(label),
+[data-world-importer-page] :deep([class*="uppercase"][class*="tracking"]) {
+  color: #9f9278 !important;
+}
+
+[data-world-importer-page] :deep(input),
+[data-world-importer-page] :deep(select),
+[data-world-importer-page] :deep(textarea) {
+  border-color: rgba(201, 164, 90, 0.22) !important;
+  background: rgba(4, 8, 14, 0.86) !important;
+  color: #fff7df !important;
+  border-radius: 0 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+}
+
+[data-world-importer-page] :deep(input:focus),
+[data-world-importer-page] :deep(select:focus),
+[data-world-importer-page] :deep(textarea:focus) {
+  outline: none !important;
+  border-color: rgba(201, 164, 90, 0.58) !important;
+  box-shadow:
+    0 0 0 1px rgba(201, 164, 90, 0.20),
+    0 0 28px rgba(201, 164, 90, 0.08) !important;
+}
+
+[data-world-importer-page] :deep(select option) {
+  background: #090806 !important;
+  color: #f5e7bd !important;
+}
+
+[data-world-importer-page] :deep(button) {
+  border-radius: 0 !important;
+}
+
+[data-world-importer-page] :deep(button:not(:disabled)) {
+  border-color: rgba(201, 164, 90, 0.28);
+}
+
+[data-world-importer-page] :deep(button:not(:disabled):hover) {
+  border-color: rgba(201, 164, 90, 0.58) !important;
+  background: rgba(201, 164, 90, 0.14) !important;
+  color: #fff7df !important;
+}
+
+[data-world-importer-page] :deep(pre),
+[data-world-importer-page] :deep(code) {
+  border-color: rgba(201, 164, 90, 0.16) !important;
+  background: rgba(2, 6, 10, 0.92) !important;
+  color: #f5e7bd !important;
+  border-radius: 0 !important;
+}
+
+[data-world-importer-page] :deep(img) {
+  border-radius: 0 !important;
+}
+
+[data-world-importer-page] :deep(.overflow-auto),
+[data-world-importer-page] :deep(.overflow-y-auto) {
+  scrollbar-color: rgba(201, 164, 90, 0.44) rgba(4, 8, 14, 0.64);
+}
+
+[data-world-importer-page] :deep([data-import-source-guide]),
+[data-world-importer-page] :deep([data-dataset-tools]),
+[data-world-importer-page] :deep([data-dataset-maintenance-key]) {
+  border-color: rgba(201, 164, 90, 0.20) !important;
+  background:
+    radial-gradient(circle at top left, rgba(201, 164, 90, 0.08), transparent 32%),
+    rgba(8, 17, 27, 0.42) !important;
+}
+
+[data-world-importer-page] :deep([data-import-source-guide] button) {
+  background: rgba(4, 8, 14, 0.52) !important;
+}
+
+[data-world-importer-page] :deep([data-import-source-guide] button:hover) {
+  background: rgba(201, 164, 90, 0.10) !important;
+}
+
+[data-world-importer-page] :deep(.ring-1),
+[data-world-importer-page] :deep([class*="ring-sky"]),
+[data-world-importer-page] :deep([class*="ring-cyan"]),
+[data-world-importer-page] :deep([class*="ring-blue"]) {
+  --tw-ring-color: rgba(201, 164, 90, 0.38) !important;
+}
+
+[data-world-importer-page] :deep(.shadow),
+[data-world-importer-page] :deep(.shadow-lg),
+[data-world-importer-page] :deep(.shadow-xl),
+[data-world-importer-page] :deep(.shadow-2xl) {
+  --tw-shadow-color: rgba(0, 0, 0, 0.52) !important;
+}
+
+[data-world-importer-page] :deep(section)::before,
+[data-world-importer-page] :deep(aside)::before {
+  content: '';
+  position: absolute;
+  left: 0.85rem;
+  top: 0.65rem;
+  z-index: 1;
+  width: 2.65rem;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201, 164, 90, 0.72), transparent);
+  pointer-events: none;
+}
+
+[data-world-importer-page] :deep(section),
+[data-world-importer-page] :deep(aside) {
+  position: relative;
 }
 </style>

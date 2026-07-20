@@ -29,6 +29,117 @@ const sourceResults = ref<any[]>([])
 const sourceTotalCount = ref(0)
 const selectedSourceKey = ref<string>('')
 
+type DatasetUpdateTarget = 'src' | 'img' | 'both'
+
+const datasetTargetOptions: Array<{ key: DatasetUpdateTarget; label: string; description: string }> = [
+  {
+    key: 'src',
+    label: 'Update Data',
+    description: 'Pull latest 5e.tools JSON/source data.'
+  },
+  {
+    key: 'img',
+    label: 'Update Images',
+    description: 'Pull latest local 5e.tools image mirror.'
+  },
+  {
+    key: 'both',
+    label: 'Update Both',
+    description: 'Pull data first, then images.'
+  }
+]
+
+const datasetStatusBusy = ref(false)
+const datasetUpdateBusy = ref(false)
+const datasetUpdateTarget = ref<DatasetUpdateTarget | ''>('')
+const datasetStatus = ref<any>(null)
+const datasetUpdateResult = ref<any>(null)
+const datasetMessage = ref('')
+const datasetError = ref('')
+
+const datasetRows = computed(() =>
+  Array.isArray(datasetStatus.value?.datasets) ? datasetStatus.value.datasets : []
+)
+
+function datasetStateText(dataset: any) {
+  if (!dataset?.exists) return 'Missing'
+  if (!dataset?.isGitRepo) return 'Not Git'
+  if (dataset?.dirty) return 'Dirty'
+  if (Number(dataset?.behind || 0) > 0) return `${dataset.behind} Behind`
+  return 'Clean'
+}
+
+function datasetStateClass(dataset: any) {
+  if (!dataset?.exists || !dataset?.isGitRepo || dataset?.dirty) {
+    return 'border-red-400/30 bg-red-500/10 text-red-100'
+  }
+
+  if (Number(dataset?.behind || 0) > 0) {
+    return 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+  }
+
+  return 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+}
+
+async function loadDatasetStatus() {
+  datasetStatusBusy.value = true
+  datasetError.value = ''
+  datasetMessage.value = ''
+
+  try {
+    datasetStatus.value = await $fetch('/api/import/datasets/status')
+  } catch (error: any) {
+    datasetError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to load dataset status.'
+  } finally {
+    datasetStatusBusy.value = false
+  }
+}
+
+async function updateDatasetTarget(target: DatasetUpdateTarget) {
+  datasetUpdateBusy.value = true
+  datasetUpdateTarget.value = target
+  datasetError.value = ''
+  datasetMessage.value = ''
+  datasetUpdateResult.value = null
+
+  try {
+    const result: any = await $fetch('/api/import/datasets/update', {
+      method: 'POST',
+      body: {
+        target
+      }
+    })
+
+    datasetUpdateResult.value = result
+    datasetStatus.value = {
+      ok: true,
+      checkedAt: result?.updatedAt || new Date().toISOString(),
+      datasets: result?.datasets || []
+    }
+    datasetMessage.value = result?.ok
+      ? 'Dataset update complete.'
+      : 'Dataset update finished with errors.'
+  } catch (error: any) {
+    datasetError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Dataset update failed.'
+  } finally {
+    datasetUpdateBusy.value = false
+    datasetUpdateTarget.value = ''
+  }
+}
+
+onMounted(() => {
+  void loadDatasetStatus()
+})
+
+
 const endpointMap: Record<string, { preview: string; save: string }> = {
   monsters: {
     preview: '/api/import/preview/5etools/monsters',
@@ -661,6 +772,114 @@ onMounted(async () => {
               {{ resultMessage }}
             </div>
           </section>
+
+      <section
+        data-dataset-tools
+        class="mb-6 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.66)] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Dataset Tools</div>
+            <h2 class="mt-2 text-2xl font-semibold text-white">5e.tools Dataset Updates</h2>
+            <p class="mt-2 max-w-3xl text-sm leading-6 text-[#d8ceb8]">
+              Pull the mounted 5e.tools data and image repositories from GitHub without SSHing into the VPS.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-4 py-2 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df] disabled:opacity-50"
+            :disabled="datasetStatusBusy || datasetUpdateBusy"
+            @click="loadDatasetStatus"
+          >
+            {{ datasetStatusBusy ? 'Checking...' : 'Check Status' }}
+          </button>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button
+            v-for="target in datasetTargetOptions"
+            :key="target.key"
+            type="button"
+            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-4 py-2 text-sm font-semibold text-[#fff7df] transition hover:border-[rgba(201,164,90,0.52)] hover:bg-[rgba(201,164,90,0.16)] disabled:opacity-50"
+            :disabled="datasetUpdateBusy"
+            :title="target.description"
+            @click="updateDatasetTarget(target.key)"
+          >
+            {{ datasetUpdateBusy && datasetUpdateTarget === target.key ? 'Updating...' : target.label }}
+          </button>
+        </div>
+
+        <div
+          v-if="datasetError"
+          class="mt-4 rounded-none border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-100"
+        >
+          {{ datasetError }}
+        </div>
+
+        <div
+          v-if="datasetMessage"
+          class="mt-4 rounded-none border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm leading-6 text-emerald-100"
+        >
+          {{ datasetMessage }}
+        </div>
+
+        <div
+          v-if="datasetRows.length"
+          class="mt-5 grid gap-3 lg:grid-cols-2"
+        >
+          <article
+            v-for="dataset in datasetRows"
+            :key="dataset.key"
+            class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.38)] p-4"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-white">{{ dataset.label }}</div>
+                <div class="mt-1 text-xs leading-5 text-[#9f9278]">{{ dataset.description }}</div>
+              </div>
+
+              <span
+                class="rounded-none border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                :class="datasetStateClass(dataset)"
+              >
+                {{ datasetStateText(dataset) }}
+              </span>
+            </div>
+
+            <div class="mt-3 grid gap-2 text-xs leading-5 text-[#d8ceb8]">
+              <div>
+                <span class="text-[#9f9278]">Branch:</span>
+                <span class="ml-1">{{ dataset.branch || '-' }}</span>
+              </div>
+              <div>
+                <span class="text-[#9f9278]">Commit:</span>
+                <span class="ml-1">{{ dataset.lastCommit || dataset.shortHash || '-' }}</span>
+              </div>
+              <div class="break-all">
+                <span class="text-[#9f9278]">Remote:</span>
+                <span class="ml-1">{{ dataset.remote || '-' }}</span>
+              </div>
+              <div class="break-all">
+                <span class="text-[#9f9278]">Path:</span>
+                <span class="ml-1">{{ dataset.path }}</span>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <details
+          v-if="datasetUpdateResult"
+          class="mt-4 rounded-none border border-[rgba(201,164,90,0.14)] bg-[rgba(4,8,14,0.44)] p-3"
+        >
+          <summary class="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-[#d8ceb8]">
+            Update Log
+          </summary>
+
+          <pre class="mt-3 max-h-[360px] overflow-auto whitespace-pre-wrap rounded-none border border-[rgba(201,164,90,0.12)] bg-black/30 p-3 text-xs leading-5 text-[#d8ceb8]">{{ JSON.stringify(datasetUpdateResult, null, 2) }}</pre>
+        </details>
+      </section>
+
         </div>
 
         <aside class="space-y-6">

@@ -29,6 +29,92 @@ const sourceResults = ref<any[]>([])
 const sourceTotalCount = ref(0)
 const selectedSourceKey = ref<string>('')
 
+const sourceLabelsBusy = ref(false)
+const sourceLabels = ref<Record<string, string>>({})
+
+function sourceCodeLabel(value: any) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function sourceFullName(value: any) {
+  const code = sourceCodeLabel(value)
+  return sourceLabels.value[code] || ''
+}
+
+function sourceDisplayLabel(value: any) {
+  const code = sourceCodeLabel(value)
+  if (!code) return ''
+
+  if (code === 'ALL') return 'ALL SOURCES'
+
+  const fullName = sourceFullName(code)
+  return fullName ? `${code} - ${fullName}` : code
+}
+
+function sourceShortLabel(value: any) {
+  const code = sourceCodeLabel(value)
+  return code || '-'
+}
+
+const sourceGuideOptions = computed(() =>
+  (Array.isArray(sourceOptions.value) ? sourceOptions.value : [])
+    .map((option: any) => ({
+      ...option,
+      source: String(option?.source || '').trim()
+    }))
+    .filter((option: any) => option.source)
+    .sort((a: any, b: any) => sourceDisplayLabel(a.source).localeCompare(sourceDisplayLabel(b.source)))
+)
+
+const selectedSourceDisplay = computed(() =>
+  sourceSelection.value === 'all'
+    ? 'ALL SOURCES'
+    : sourceDisplayLabel(sourceSelection.value)
+)
+
+async function loadSourceLabels(force = false) {
+  sourceLabelsBusy.value = true
+
+  try {
+    const res: any = await $fetch('/api/import/source/labels', {
+      query: force ? { _t: Date.now(), refresh: 1 } : {}
+    })
+
+    sourceLabels.value = res?.labels && typeof res.labels === 'object'
+      ? res.labels
+      : {}
+  } catch {
+    sourceLabels.value = {}
+  } finally {
+    sourceLabelsBusy.value = false
+  }
+}
+
+async function refreshSourcePickerAfterDatasetUpdate() {
+  await loadSourceLabels(true)
+
+  sourceOptions.value = []
+  sourceResults.value = []
+  sourceTotalCount.value = 0
+  selectedSourceKey.value = ''
+
+  await loadSourceOptions()
+
+  if (sourceSelection.value !== 'all') {
+    const selectedStillExists = sourceOptions.value.some((option: any) =>
+      String(option?.source || '').toLowerCase() === String(sourceSelection.value || '').toLowerCase()
+    )
+
+    if (!selectedStillExists) {
+      sourceSelection.value = 'all'
+    }
+  }
+
+  await searchSourceResults()
+}
+
+
+
 
 type DatasetUpdateTarget = 'src' | 'img' | 'both'
 
@@ -204,6 +290,8 @@ async function updateDatasetTarget(target: DatasetUpdateTarget) {
     datasetMessage.value = result?.ok
       ? 'Dataset update complete.'
       : 'Dataset update finished with errors.'
+
+    await refreshSourcePickerAfterDatasetUpdate()
   } catch (error: any) {
     datasetError.value =
       error?.data?.statusMessage ||
@@ -217,6 +305,7 @@ async function updateDatasetTarget(target: DatasetUpdateTarget) {
 }
 
 onMounted(() => {
+  void loadSourceLabels()
   loadSavedDatasetToken()
 
   if (datasetHasToken.value) {
@@ -320,7 +409,7 @@ function selectedSourceItem() {
 const selectedSourceLabel = computed(() => {
   const item = selectedSourceItem()
   if (!item) return ''
-  return `${String(item?.name || '')}${item?.source ? ` (${String(item.source).toUpperCase()})` : ''}`
+  return `${String(item?.name || '')}${item?.source ? ` (${sourceDisplayLabel(item.source)})` : ''}`
 })
 
 function buildPayloadForType(type: ImportType, itemOrItems: any | any[]) {
@@ -682,9 +771,46 @@ onMounted(async () => {
                 >
                   <option value="all">ALL SOURCES</option>
                   <option v-for="src in sourceOptions" :key="src.source" :value="src.source">
-                    {{ src.source.toUpperCase() }}
+                    {{ sourceDisplayLabel(src.source) }}
                   </option>
                 </select>
+
+                <div
+                  data-import-source-guide
+                  class="mt-3 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.38)] p-3"
+                >
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div class="text-[10px] uppercase tracking-[0.24em] text-[#9f9278]">Source Guide</div>
+                      <div class="mt-1 text-sm font-semibold text-white">{{ selectedSourceDisplay }}</div>
+                    </div>
+
+                    <div class="text-xs text-[#9f9278]">
+                      {{ sourceLabelsBusy ? 'Loading names...' : `${sourceGuideOptions.length} sources` }}
+                    </div>
+                  </div>
+
+                  <p class="mt-2 text-xs leading-5 text-[#d8ceb8]">
+                    Source codes come from the mounted local 5e.tools dataset. New books appear here after Dataset Update refreshes the source picker.
+                  </p>
+
+                  <div
+                    v-if="sourceGuideOptions.length"
+                    class="mt-3 max-h-[180px] overflow-auto rounded-none border border-[rgba(201,164,90,0.10)] bg-black/20"
+                  >
+                    <button
+                      v-for="option in sourceGuideOptions.slice(0, 120)"
+                      :key="`source-guide-${option.source}`"
+                      type="button"
+                      class="grid w-full grid-cols-[90px_minmax(0,1fr)] gap-3 border-b border-[rgba(201,164,90,0.08)] px-3 py-2 text-left text-xs last:border-b-0 hover:bg-[rgba(201,164,90,0.08)]"
+                      @click="sourceSelection = option.source; searchSourceResults()"
+                    >
+                      <span class="font-semibold uppercase tracking-[0.16em] text-[#fff7df]">{{ sourceShortLabel(option.source) }}</span>
+                      <span class="truncate text-[#d8ceb8]">{{ sourceFullName(option.source) || 'Name not found in local source map yet' }}</span>
+                    </button>
+                  </div>
+                </div>
+
               </div>
             </div>
 

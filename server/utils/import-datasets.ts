@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { access } from 'node:fs/promises'
-import { createError, getCookie } from 'h3'
+import { createError, getHeader } from 'h3'
 
 export type DatasetKey = 'src' | 'img'
 export type DatasetUpdateTarget = DatasetKey | 'both'
@@ -27,52 +27,65 @@ function truncate(value: string, limit = 12000) {
   return text.length > limit ? `${text.slice(0, limit)}\n...[truncated]` : text
 }
 
-function directusBaseUrl() {
+
+
+function configuredDatasetToken() {
   return String(
-    process.env.NUXT_PUBLIC_DIRECTUS_URL ||
-    process.env.DIRECTUS_URL ||
-    'https://directus.theledouxs.com'
-  ).replace(/\/$/, '')
+    process.env.ELDRA_DATASET_UPDATE_TOKEN ||
+    process.env.DATASET_UPDATE_TOKEN ||
+    process.env.IMPORT_DATASET_TOKEN ||
+    ''
+  ).trim()
+}
+
+function datasetTokenFromEvent(event: any) {
+  const direct = String(getHeader(event, 'x-eldra-dataset-token') || '').trim()
+  if (direct) return direct
+
+  const auth = String(getHeader(event, 'authorization') || '').trim()
+  if (/^bearer\s+/i.test(auth)) {
+    return auth.replace(/^bearer\s+/i, '').trim()
+  }
+
+  return ''
+}
+
+function safeTokenEquals(actual: string, expected: string) {
+  if (!actual || !expected || actual.length !== expected.length) return false
+
+  let result = 0
+  for (let i = 0; i < actual.length; i++) {
+    result |= actual.charCodeAt(i) ^ expected.charCodeAt(i)
+  }
+
+  return result === 0
 }
 
 export async function assertDatasetAdmin(event: any) {
-  const token = getCookie(event, 'eldra_session')
+  const expected = configuredDatasetToken()
 
-  if (!token) {
+  if (!expected) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Dataset update token is not configured on the server.'
+    })
+  }
+
+  const actual = datasetTokenFromEvent(event)
+
+  if (!safeTokenEquals(actual, expected)) {
     throw createError({
       statusCode: 401,
-      statusMessage: 'Login required'
+      statusMessage: 'Dataset maintenance key required.'
     })
   }
 
-  const res = await fetch(`${directusBaseUrl()}/users/me?fields=id,email,first_name,last_name,role.*`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  })
-
-  const json = await res.json().catch(() => ({}))
-
-  if (!res.ok) {
-    throw createError({
-      statusCode: res.status,
-      statusMessage: json?.errors?.[0]?.message || json?.message || 'Failed to verify admin access'
-    })
+  return {
+    authenticated: true,
+    method: 'dataset-maintenance-key'
   }
-
-  const user = json?.data || null
-  const role = user?.role || {}
-  const isAdmin = !!role?.admin_access || role?.name === 'Administrator'
-
-  if (!isAdmin) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Admin access required'
-    })
-  }
-
-  return user
 }
+
 
 function run(command: string, args: string[], options: { timeoutMs?: number } = {}) {
   const startedAt = Date.now()

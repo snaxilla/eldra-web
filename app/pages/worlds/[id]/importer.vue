@@ -29,6 +29,7 @@ const sourceResults = ref<any[]>([])
 const sourceTotalCount = ref(0)
 const selectedSourceKey = ref<string>('')
 
+
 type DatasetUpdateTarget = 'src' | 'img' | 'both'
 
 const datasetTargetOptions: Array<{ key: DatasetUpdateTarget; label: string; description: string }> = [
@@ -57,9 +58,70 @@ const datasetUpdateResult = ref<any>(null)
 const datasetMessage = ref('')
 const datasetError = ref('')
 
+const datasetToken = ref('')
+const datasetTokenRemember = ref(true)
+const datasetTokenLoaded = ref(false)
+
 const datasetRows = computed(() =>
   Array.isArray(datasetStatus.value?.datasets) ? datasetStatus.value.datasets : []
 )
+
+const datasetHasToken = computed(() =>
+  datasetToken.value.trim().length > 0
+)
+
+const datasetTokenStorageKey = computed(() =>
+  `eldra:dataset-update-token:${worldId.value || 'global'}`
+)
+
+function datasetAuthHeaders() {
+  const token = datasetToken.value.trim()
+
+  return token
+    ? {
+        'x-eldra-dataset-token': token
+      }
+    : {}
+}
+
+function loadSavedDatasetToken() {
+  if (typeof window === 'undefined') return
+
+  datasetToken.value =
+    window.localStorage.getItem(datasetTokenStorageKey.value) ||
+    window.localStorage.getItem('eldra:dataset-update-token') ||
+    ''
+
+  datasetTokenLoaded.value = true
+}
+
+function persistDatasetToken() {
+  if (typeof window === 'undefined') return
+
+  const token = datasetToken.value.trim()
+
+  window.localStorage.removeItem('eldra:dataset-update-token')
+
+  if (!datasetTokenRemember.value || !token) {
+    window.localStorage.removeItem(datasetTokenStorageKey.value)
+    return
+  }
+
+  window.localStorage.setItem(datasetTokenStorageKey.value, token)
+}
+
+function clearDatasetToken() {
+  datasetToken.value = ''
+  datasetStatus.value = null
+  datasetUpdateResult.value = null
+  datasetMessage.value = ''
+  datasetError.value = ''
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(datasetTokenStorageKey.value)
+    window.localStorage.removeItem('eldra:dataset-update-token')
+  }
+}
 
 function datasetStateText(dataset: any) {
   if (!dataset?.exists) return 'Missing'
@@ -82,12 +144,22 @@ function datasetStateClass(dataset: any) {
 }
 
 async function loadDatasetStatus() {
+  if (!datasetHasToken.value) {
+    datasetError.value = 'Enter the dataset maintenance key first.'
+    datasetMessage.value = ''
+    return
+  }
+
   datasetStatusBusy.value = true
   datasetError.value = ''
   datasetMessage.value = ''
 
   try {
-    datasetStatus.value = await $fetch('/api/import/datasets/status')
+    persistDatasetToken()
+
+    datasetStatus.value = await $fetch('/api/import/datasets/status', {
+      headers: datasetAuthHeaders()
+    })
   } catch (error: any) {
     datasetError.value =
       error?.data?.statusMessage ||
@@ -100,6 +172,12 @@ async function loadDatasetStatus() {
 }
 
 async function updateDatasetTarget(target: DatasetUpdateTarget) {
+  if (!datasetHasToken.value) {
+    datasetError.value = 'Enter the dataset maintenance key first.'
+    datasetMessage.value = ''
+    return
+  }
+
   datasetUpdateBusy.value = true
   datasetUpdateTarget.value = target
   datasetError.value = ''
@@ -107,8 +185,11 @@ async function updateDatasetTarget(target: DatasetUpdateTarget) {
   datasetUpdateResult.value = null
 
   try {
+    persistDatasetToken()
+
     const result: any = await $fetch('/api/import/datasets/update', {
       method: 'POST',
+      headers: datasetAuthHeaders(),
       body: {
         target
       }
@@ -136,7 +217,11 @@ async function updateDatasetTarget(target: DatasetUpdateTarget) {
 }
 
 onMounted(() => {
-  void loadDatasetStatus()
+  loadSavedDatasetToken()
+
+  if (datasetHasToken.value) {
+    void loadDatasetStatus()
+  }
 })
 
 
@@ -773,7 +858,7 @@ onMounted(async () => {
             </div>
           </section>
 
-      <section
+            <section
         data-dataset-tools
         class="mb-6 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.66)] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-xl"
       >
@@ -789,11 +874,63 @@ onMounted(async () => {
           <button
             type="button"
             class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-4 py-2 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df] disabled:opacity-50"
-            :disabled="datasetStatusBusy || datasetUpdateBusy"
+            :disabled="datasetStatusBusy || datasetUpdateBusy || !datasetHasToken"
             @click="loadDatasetStatus"
           >
             {{ datasetStatusBusy ? 'Checking...' : 'Check Status' }}
           </button>
+        </div>
+
+        <div
+          data-dataset-maintenance-key
+          class="mt-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.38)] p-4"
+        >
+          <div class="flex flex-wrap items-end gap-3">
+            <label class="min-w-[260px] flex-1">
+              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">
+                Dataset Maintenance Key
+              </span>
+              <input
+                v-model="datasetToken"
+                type="password"
+                autocomplete="off"
+                class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
+                placeholder="Enter the server maintenance key..."
+                @keyup.enter="loadDatasetStatus"
+              >
+            </label>
+
+            <label class="inline-flex items-center gap-2 pb-2 text-xs text-[#d8ceb8]">
+              <input
+                v-model="datasetTokenRemember"
+                type="checkbox"
+                class="accent-[#c9a45a]"
+              >
+              Remember on this browser
+            </label>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-4 py-2 text-sm font-semibold text-[#fff7df] transition hover:border-[rgba(201,164,90,0.54)] hover:bg-[rgba(201,164,90,0.16)] disabled:opacity-50"
+              :disabled="!datasetHasToken || datasetStatusBusy || datasetUpdateBusy"
+              @click="loadDatasetStatus"
+            >
+              Unlock Tools
+            </button>
+
+            <button
+              type="button"
+              class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-4 py-2 text-sm font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]"
+              @click="clearDatasetToken"
+            >
+              Clear Key
+            </button>
+          </div>
+
+          <p class="mt-3 text-xs leading-5 text-[#9f9278]">
+            Temporary admin bridge until Eldra permissions/user accounts are wired. The key is checked server-side against
+            <code class="text-[#d8ceb8]">ELDRA_DATASET_UPDATE_TOKEN</code>.
+          </p>
         </div>
 
         <div class="mt-4 flex flex-wrap gap-2">
@@ -802,7 +939,7 @@ onMounted(async () => {
             :key="target.key"
             type="button"
             class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-4 py-2 text-sm font-semibold text-[#fff7df] transition hover:border-[rgba(201,164,90,0.52)] hover:bg-[rgba(201,164,90,0.16)] disabled:opacity-50"
-            :disabled="datasetUpdateBusy"
+            :disabled="datasetUpdateBusy || !datasetHasToken"
             :title="target.description"
             @click="updateDatasetTarget(target.key)"
           >

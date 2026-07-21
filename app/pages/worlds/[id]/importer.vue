@@ -715,6 +715,8 @@ onMounted(async () => {
 
 <template>
   <div data-world-importer-page class="h-full overflow-y-auto bg-transparent">
+    <ImporterThpace />
+
 <div class="mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div class="space-y-6">
@@ -1578,5 +1580,48 @@ onMounted(async () => {
   to {
     background-position: 272px 258px, 524px 476px;
   }
+}
+
+/* Eldra Importer Real Scoped Thpace v4 */
+[data-world-importer-page] {
+  position: relative !important;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  color: #efe2bd;
+  background:
+    linear-gradient(180deg, #030711 0%, #05080d 52%, #04050a 100%) !important;
+}
+
+[data-world-importer-page]::before,
+[data-world-importer-page]::after {
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+  background: none !important;
+}
+
+[data-world-importer-page] > [data-importer-real-thpace] {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+}
+
+[data-world-importer-page] > [data-importer-thpace-layer] {
+  display: none !important;
+}
+
+[data-world-importer-page] > :not([data-importer-real-thpace]):not([data-importer-thpace-layer]) {
+  position: relative;
+  z-index: 1;
+}
+
+[data-world-importer-page] :deep(section),
+[data-world-importer-page] :deep(aside),
+[data-world-importer-page] :deep(article) {
+  backdrop-filter: blur(14px);
 }
 </style>

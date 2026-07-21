@@ -11,7 +11,7 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
-const activePanel = ref<'overview' | 'party' | 'grants' | 'setup' | 'transfers' | 'relationships'>('overview')
+const activePanel = ref<'overview' | 'party' | 'grants' | 'homebrew' | 'setup' | 'transfers' | 'relationships'>('overview')
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
@@ -183,10 +183,218 @@ const healthCards = computed(() => [
   }
 ])
 
+
+type HomebrewForgeType = 'spell' | 'item' | 'enemy' | 'species' | 'class' | 'feat' | 'background'
+
+const homebrewTypes: Array<{
+  key: HomebrewForgeType
+  label: string
+  description: string
+  icon: string
+}> = [
+  {
+    key: 'spell',
+    label: 'Spell',
+    description: 'Level, school, casting, range, components, duration, and combat delivery.',
+    icon: 'i-lucide-sparkles'
+  },
+  {
+    key: 'item',
+    label: 'Item',
+    description: 'Equipment, weapons, armor, resources, modifiers, and granted actions.',
+    icon: 'i-lucide-package'
+  },
+  {
+    key: 'enemy',
+    label: 'Enemy',
+    description: 'Statblock-ready creatures with CR, abilities, defenses, traits, and actions.',
+    icon: 'i-lucide-skull'
+  },
+  {
+    key: 'species',
+    label: 'Species',
+    description: 'Size, speed, traits, proficiencies, senses, and granted features.',
+    icon: 'i-lucide-dna'
+  },
+  {
+    key: 'class',
+    label: 'Class',
+    description: 'Hit die, proficiencies, saves, spellcasting hooks, and level features.',
+    icon: 'i-lucide-shield'
+  },
+  {
+    key: 'feat',
+    label: 'Feat',
+    description: 'Prerequisites, benefits, granted spells, actions, and mechanical choices.',
+    icon: 'i-lucide-badge-plus'
+  },
+  {
+    key: 'background',
+    label: 'Background',
+    description: 'ASI, skills, tools, languages, feat hooks, and starting flavor.',
+    icon: 'i-lucide-scroll-text'
+  }
+]
+
+const homebrewType = ref<HomebrewForgeType>('spell')
+const homebrewTemplateSearch = ref('')
+const homebrewTemplates = ref<any[]>([])
+const homebrewTemplatesPending = ref(false)
+const homebrewSelectedTemplateId = ref('')
+const homebrewTitle = ref('')
+const homebrewCreating = ref(false)
+const homebrewError = ref('')
+const homebrewSuccess = ref('')
+const homebrewCreatedEntity = ref<any | null>(null)
+
+const selectedHomebrewType = computed(() =>
+  homebrewTypes.find((type) => type.key === homebrewType.value) || homebrewTypes[0]
+)
+
+const homebrewFilteredTemplates = computed(() => {
+  const q = homebrewTemplateSearch.value.trim().toLowerCase()
+
+  return homebrewTemplates.value
+    .filter((template: any) => {
+      if (!q) return true
+
+      return [
+        template.title,
+        template.summary,
+        template.sourceBook,
+        template.metaLine,
+        template.entityType
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+    })
+    .slice(0, 80)
+})
+
+const selectedHomebrewTemplate = computed(() =>
+  homebrewTemplates.value.find((template: any) =>
+    String(template.id) === String(homebrewSelectedTemplateId.value)
+  ) || null
+)
+
+function defaultHomebrewTitle(template: any) {
+  const title = String(template?.title || selectedHomebrewType.value?.label || 'Homebrew').trim()
+  return title.startsWith('Homebrew:')
+    ? title
+    : `Homebrew: ${title}`
+}
+
+function homebrewTemplateSubtitle(template: any) {
+  return [
+    template?.sourceBook,
+    template?.sourcePage ? `p.${template.sourcePage}` : '',
+    template?.entityType,
+    template?.blockCount ? `${template.blockCount} blocks` : ''
+  ].filter(Boolean).join(' · ')
+}
+
+function selectHomebrewTemplate(template: any) {
+  homebrewSelectedTemplateId.value = String(template?.id || '')
+  homebrewSuccess.value = ''
+  homebrewError.value = ''
+
+  if (!homebrewTitle.value.trim()) {
+    homebrewTitle.value = defaultHomebrewTitle(template)
+  }
+}
+
+async function loadHomebrewTemplates() {
+  if (!worldId.value) return
+
+  homebrewTemplatesPending.value = true
+  homebrewError.value = ''
+
+  try {
+    const res: any = await $fetch(`/api/worlds/${worldId.value}/homebrew/templates`, {
+      query: {
+        type: homebrewType.value
+      }
+    })
+
+    homebrewTemplates.value = Array.isArray(res?.templates) ? res.templates : []
+
+    if (
+      homebrewSelectedTemplateId.value &&
+      !homebrewTemplates.value.some((template: any) => String(template.id) === String(homebrewSelectedTemplateId.value))
+    ) {
+      homebrewSelectedTemplateId.value = ''
+    }
+  } catch (error: any) {
+    homebrewError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to load homebrew templates.'
+    homebrewTemplates.value = []
+  } finally {
+    homebrewTemplatesPending.value = false
+  }
+}
+
+async function createHomebrewDraft() {
+  if (!selectedHomebrewTemplate.value) {
+    homebrewError.value = 'Choose a template first.'
+    return
+  }
+
+  homebrewCreating.value = true
+  homebrewError.value = ''
+  homebrewSuccess.value = ''
+  homebrewCreatedEntity.value = null
+
+  try {
+    const res: any = await $fetch(`/api/worlds/${worldId.value}/homebrew/create`, {
+      method: 'POST',
+      body: {
+        type: homebrewType.value,
+        templateEntityId: homebrewSelectedTemplateId.value,
+        title: homebrewTitle.value || defaultHomebrewTitle(selectedHomebrewTemplate.value)
+      }
+    })
+
+    homebrewCreatedEntity.value = res?.entity || null
+    homebrewSuccess.value = `Created ${res?.entity?.title || 'homebrew draft'}.`
+
+    if (res?.entity?.id) {
+      router.push(`/worlds/${worldId.value}/entities/${res.entity.id}`)
+    }
+  } catch (error: any) {
+    homebrewError.value =
+      error?.data?.statusMessage ||
+      error?.data?.message ||
+      error?.message ||
+      'Failed to create homebrew draft.'
+  } finally {
+    homebrewCreating.value = false
+  }
+}
+
+watch(
+  () => [worldId.value, homebrewType.value],
+  () => {
+    homebrewSelectedTemplateId.value = ''
+    homebrewTitle.value = ''
+    homebrewTemplateSearch.value = ''
+    homebrewCreatedEntity.value = null
+    homebrewSuccess.value = ''
+    void loadHomebrewTemplates()
+  },
+  { immediate: true }
+)
+
+
 const panels = [
   { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
   { key: 'party', label: 'Party / Cast', icon: 'i-lucide-users' },
   { key: 'grants', label: 'Grants', icon: 'i-lucide-gift' },
+  { key: 'homebrew', label: 'Homebrew', icon: 'i-lucide-flask-conical' },
   { key: 'setup', label: 'Page Setup', icon: 'i-lucide-sliders-horizontal' },
   { key: 'transfers', label: 'Transfers', icon: 'i-lucide-arrow-left-right' },
   { key: 'relationships', label: 'Relationships', icon: 'i-lucide-share-2' }
@@ -753,6 +961,205 @@ async function refreshAdmin() {
                   {{ relationshipTitle(relationship) }}
                 </div>
               </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        v-else-if="activePanel === 'homebrew'"
+        class="mt-6 grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]"
+      >
+        <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Homebrew Forge
+          </div>
+          <h2 class="mt-2 text-2xl font-semibold text-white">
+            New Homebrew
+          </h2>
+          <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+            Create a draft entity from an existing imported or homebrew template. Eldra clones the structured mechanics so this can become Foundry-ready later.
+          </p>
+
+          <div class="mt-5 grid gap-3">
+            <button
+              v-for="type in homebrewTypes"
+              :key="type.key"
+              type="button"
+              class="rounded-none border p-3 text-left transition"
+              :class="homebrewType === type.key
+                ? 'border-[rgba(201,164,90,0.60)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
+                : 'border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.42)] text-[#d8ceb8] hover:border-[rgba(201,164,90,0.36)] hover:bg-[rgba(201,164,90,0.08)]'"
+              @click="homebrewType = type.key"
+            >
+              <div class="flex items-start gap-3">
+                <UIcon :name="type.icon" class="mt-0.5 h-4 w-4 shrink-0 text-[#c9a45a]" />
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold text-white">{{ type.label }}</div>
+                  <div class="mt-1 text-xs leading-5 text-[#9f9278]">{{ type.description }}</div>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid gap-6">
+          <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                  Template Library
+                </div>
+                <h2 class="mt-2 text-2xl font-semibold text-white">
+                  {{ selectedHomebrewType.label }} Templates
+                </h2>
+                <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                  Pick an existing {{ selectedHomebrewType.label.toLowerCase() }} as the starting mechanical shape.
+                </p>
+              </div>
+
+              <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#d8ceb8]">
+                {{ homebrewTemplates.length }} templates
+              </div>
+            </div>
+
+            <input
+              v-model="homebrewTemplateSearch"
+              class="eldra-input mt-5 w-full rounded-none px-3 py-3 text-sm text-white"
+              :placeholder="`Search ${selectedHomebrewType.label.toLowerCase()} templates...`"
+            >
+
+            <div
+              v-if="homebrewTemplatesPending"
+              class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-5 text-sm text-[#9f9278]"
+            >
+              Loading templates...
+            </div>
+
+            <div
+              v-else-if="!homebrewFilteredTemplates.length"
+              class="mt-4 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-5 text-sm text-[#9f9278]"
+            >
+              No templates found for this type.
+            </div>
+
+            <div
+              v-else
+              class="mt-4 grid max-h-[520px] gap-3 overflow-y-auto pr-1"
+            >
+              <button
+                v-for="template in homebrewFilteredTemplates"
+                :key="template.id"
+                type="button"
+                class="rounded-none border p-4 text-left transition"
+                :class="String(homebrewSelectedTemplateId) === String(template.id)
+                  ? 'border-[rgba(201,164,90,0.60)] bg-[rgba(201,164,90,0.16)]'
+                  : 'border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.42)] hover:border-[rgba(201,164,90,0.36)] hover:bg-[rgba(201,164,90,0.08)]'"
+                @click="selectHomebrewTemplate(template)"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="text-lg font-semibold text-white">
+                      {{ template.title }}
+                    </div>
+                    <div class="mt-1 text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
+                      {{ homebrewTemplateSubtitle(template) || selectedHomebrewType.label }}
+                    </div>
+                  </div>
+
+                  <span class="shrink-0 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[#d8ceb8]">
+                    {{ template.blockCount || 0 }} blocks
+                  </span>
+                </div>
+
+                <p
+                  v-if="template.summary"
+                  class="mt-3 line-clamp-2 text-sm leading-6 text-[#d8ceb8]"
+                >
+                  {{ template.summary }}
+                </p>
+
+                <div
+                  v-if="template.coreBlockKeys?.length"
+                  class="mt-3 flex flex-wrap gap-2"
+                >
+                  <span
+                    v-for="key in template.coreBlockKeys.slice(0, 5)"
+                    :key="`${template.id}-${key}`"
+                    class="rounded-none border border-[rgba(65,82,103,0.58)] bg-[rgba(8,17,27,0.58)] px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-[#9f9278]"
+                  >
+                    {{ key }}
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Draft Setup
+            </div>
+            <h2 class="mt-2 text-2xl font-semibold text-white">
+              Create {{ selectedHomebrewType.label }} Draft
+            </h2>
+
+            <div
+              v-if="selectedHomebrewTemplate"
+              class="mt-4 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.42)] p-4"
+            >
+              <div class="text-sm font-semibold text-white">
+                Template: {{ selectedHomebrewTemplate.title }}
+              </div>
+              <div class="mt-1 text-xs text-[#9f9278]">
+                {{ homebrewTemplateSubtitle(selectedHomebrewTemplate) || 'Structured template selected.' }}
+              </div>
+            </div>
+
+            <label class="mt-5 block">
+              <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Draft Title</span>
+              <input
+                v-model="homebrewTitle"
+                class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                :placeholder="selectedHomebrewTemplate ? defaultHomebrewTitle(selectedHomebrewTemplate) : 'Choose a template first...'"
+              >
+            </label>
+
+            <div
+              v-if="homebrewError"
+              class="mt-4 rounded-none border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-100"
+            >
+              {{ homebrewError }}
+            </div>
+
+            <div
+              v-if="homebrewSuccess"
+              class="mt-4 rounded-none border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm leading-6 text-emerald-100"
+            >
+              {{ homebrewSuccess }}
+            </div>
+
+            <div class="mt-5 flex flex-wrap gap-3">
+              <button
+                type="button"
+                class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
+                :disabled="homebrewCreating || !selectedHomebrewTemplate"
+                @click="createHomebrewDraft"
+              >
+                {{ homebrewCreating ? 'Creating Draft...' : 'Create Draft & Open Article' }}
+              </button>
+
+              <button
+                v-if="homebrewCreatedEntity?.id"
+                type="button"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm font-semibold text-[#fff7df]"
+                @click="router.push(`/worlds/${worldId}/entities/${homebrewCreatedEntity.id}`)"
+              >
+                Open Draft
+              </button>
+            </div>
+
+            <div class="mt-5 rounded-none border border-[rgba(201,164,90,0.12)] bg-[rgba(4,8,14,0.40)] p-4 text-xs leading-6 text-[#9f9278]">
+              V1 creates a real Eldra entity, marks it as homebrew, clones the template's mechanical core blocks, and opens the article for editing. The next pass adds type-specific mechanical forms.
             </div>
           </div>
         </div>

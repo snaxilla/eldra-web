@@ -714,12 +714,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div data-world-importer-page class="h-full overflow-y-auto bg-transparent">
-    <ClientOnly>
-      <ImporterFixedThpace />
-    </ClientOnly>
+  <div data-world-importer-page class="importer-space relative isolate h-full overflow-y-auto bg-[#020712] text-[#efe2bd]">
+    <WorldChooserThpace mode="sticky" />
 
-<div class="mx-auto max-w-[1800px] p-6">
+<div data-importer-content-shell class="relative z-10 -mt-[100dvh] mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div class="space-y-6">
           <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
@@ -1720,6 +1718,69 @@ onMounted(async () => {
 }
 
 [data-world-importer-page] :deep([data-importer-generic-preview] h3) {
+  overflow-wrap: anywhere;
+}
+
+/* Eldra Importer Background Source of Truth v7
+   Mirrors app/pages/worlds/[id]/admin.vue:
+   root scroll container -> WorldChooserThpace sticky -> content shell -mt-[100dvh].
+*/
+[data-world-importer-page].importer-space {
+  position: relative !important;
+  isolation: isolate;
+  min-height: 100%;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  color: #efe2bd;
+  background: #020712 !important;
+}
+
+[data-world-importer-page].importer-space::before,
+[data-world-importer-page].importer-space::after {
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+  background: none !important;
+}
+
+[data-world-importer-page].importer-space > .pointer-events-none {
+  position: sticky !important;
+  top: 0 !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  z-index: 0 !important;
+  overflow: hidden !important;
+}
+
+[data-world-importer-page].importer-space > [data-importer-content-shell] {
+  position: relative !important;
+  z-index: 10 !important;
+  margin-top: -100dvh !important;
+}
+
+[data-world-importer-page].importer-space > [data-importer-fixed-thpace],
+[data-world-importer-page].importer-space > [data-importer-real-thpace],
+[data-world-importer-page].importer-space > [data-importer-thpace-layer] {
+  display: none !important;
+}
+
+[data-world-importer-page].importer-space :deep([data-importer-fixed-thpace]),
+[data-world-importer-page].importer-space :deep([data-importer-real-thpace]),
+[data-world-importer-page].importer-space :deep([data-importer-thpace-layer]) {
+  display: none !important;
+}
+
+[data-world-importer-page].importer-space :deep(section),
+[data-world-importer-page].importer-space :deep(aside),
+[data-world-importer-page].importer-space :deep(article) {
+  backdrop-filter: blur(14px);
+}
+
+[data-world-importer-page].importer-space :deep([data-importer-generic-preview]) {
+  min-width: 0;
+}
+
+[data-world-importer-page].importer-space :deep([data-importer-generic-preview] h3) {
   overflow-wrap: anywhere;
 }
 </style>

@@ -715,10 +715,7 @@ onMounted(async () => {
 
 <template>
   <div data-world-importer-page class="h-full overflow-y-auto bg-transparent">
-    <div data-importer-thpace-layer aria-hidden="true">
-      <WorldChooserThpace />
-    </div>
-    <div class="mx-auto max-w-[1800px] p-6">
+<div class="mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div class="space-y-6">
           <section class="rounded-[24px] border border-white/10 bg-[linear-gradient(to_bottom,rgba(26,30,38,0.40),rgba(12,16,22,0.28))] p-6 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
@@ -1506,5 +1503,80 @@ onMounted(async () => {
 [data-world-importer-page] > :not([data-importer-thpace-layer]) {
   position: relative;
   z-index: 1;
+}
+
+/* Eldra Importer Scoped Admin Starfield v3 */
+[data-world-importer-page] {
+  position: relative !important;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  color: #efe2bd;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 32% 9%, rgba(255, 255, 255, 0.42) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 71% 13%, rgba(255, 255, 255, 0.60) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 86% 42%, rgba(255, 255, 255, 0.38) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 28% 74%, rgba(255, 255, 255, 0.44) 0 1px, transparent 1.4px),
+    linear-gradient(180deg, #020712 0%, #050811 46%, #03040a 100%) !important;
+}
+
+[data-world-importer-page] > [data-importer-thpace-layer] {
+  display: none !important;
+}
+
+[data-world-importer-page]::before,
+[data-world-importer-page]::after {
+  content: "";
+  pointer-events: none;
+  position: absolute !important;
+  inset: 0;
+  z-index: 0;
+}
+
+[data-world-importer-page]::before {
+  opacity: 0.42;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(58, 142, 255, 0.18), transparent 24%),
+    radial-gradient(circle at 78% 68%, rgba(201, 164, 90, 0.10), transparent 28%),
+    radial-gradient(circle at 52% 48%, rgba(112, 86, 255, 0.09), transparent 32%);
+  filter: blur(0.2px);
+}
+
+[data-world-importer-page]::after {
+  opacity: 0.52;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.4px),
+    radial-gradient(circle, rgba(201, 214, 255, 0.42) 0 1px, transparent 1.2px);
+  background-size: 240px 240px, 380px 380px;
+  background-position: 32px 18px, 144px 96px;
+}
+
+[data-world-importer-page] > :not([data-importer-thpace-layer]) {
+  position: relative;
+  z-index: 1;
+}
+
+[data-world-importer-page] :deep(section),
+[data-world-importer-page] :deep(aside),
+[data-world-importer-page] :deep(article) {
+  backdrop-filter: blur(14px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-world-importer-page]::after {
+    animation: importer-admin-star-drift 80s linear infinite;
+  }
+}
+
+@keyframes importer-admin-star-drift {
+  from {
+    background-position: 32px 18px, 144px 96px;
+  }
+
+  to {
+    background-position: 272px 258px, 524px 476px;
+  }
 }
 </style>

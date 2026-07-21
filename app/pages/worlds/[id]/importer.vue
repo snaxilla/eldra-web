@@ -715,7 +715,7 @@ onMounted(async () => {
 
 <template>
   <div data-world-importer-page class="h-full overflow-y-auto bg-transparent">
-    <ImporterThpace />
+    <ImporterFixedThpace />
 
 <div class="mx-auto max-w-[1800px] p-6">
       <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -1623,5 +1623,50 @@ onMounted(async () => {
 [data-world-importer-page] :deep(aside),
 [data-world-importer-page] :deep(article) {
   backdrop-filter: blur(14px);
+}
+
+/* Eldra Importer Fixed Thpace v5 */
+[data-world-importer-page] {
+  position: relative !important;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  color: #efe2bd;
+  background:
+    linear-gradient(180deg, rgba(3, 7, 17, 0.96) 0%, rgba(5, 8, 13, 0.94) 52%, rgba(4, 5, 10, 0.98) 100%) !important;
+}
+
+[data-world-importer-page]::before,
+[data-world-importer-page]::after {
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+  background: none !important;
+}
+
+[data-world-importer-page] > [data-importer-real-thpace],
+[data-world-importer-page] > [data-importer-thpace-layer] {
+  display: none !important;
+}
+
+[data-world-importer-page] > :not([data-importer-fixed-thpace]):not([data-importer-real-thpace]):not([data-importer-thpace-layer]) {
+  position: relative;
+  z-index: 1;
+}
+
+[data-world-importer-page] :deep(section),
+[data-world-importer-page] :deep(aside),
+[data-world-importer-page] :deep(article) {
+  backdrop-filter: blur(14px);
+}
+
+/* Right rail importer preview: do not allow generic preview cards to split into impossible skinny columns. */
+[data-world-importer-page] :deep([data-importer-generic-preview]) {
+  min-width: 0;
+}
+
+[data-world-importer-page] :deep([data-importer-generic-preview] h3) {
+  overflow-wrap: anywhere;
 }
 </style>

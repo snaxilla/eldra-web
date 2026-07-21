@@ -38,7 +38,7 @@ function clean5eText(value: any): string {
   if (typeof value === 'object') {
     const parts: string[] = []
 
-    if (value.name) parts.push(`### ${clean5eText(value.name)}`)
+    if (value.name) parts.push(clean5eText(value.name))
     if (value.entry) parts.push(clean5eText(value.entry))
     if (value.entries) parts.push(clean5eText(value.entries))
     if (value.items) parts.push(clean5eText(value.items))
@@ -69,10 +69,6 @@ function blockKey(block: any) {
 
 function blockLabel(block: any) {
   return titleCase(blockKey(block) || 'Block')
-}
-
-function blocksForItem(item: any) {
-  return Array.isArray(item?.blocks) ? item.blocks : []
 }
 
 function blockData(block: any) {
@@ -117,7 +113,16 @@ const previewItem = computed(() =>
   null
 )
 
-const itemBlocks = computed(() => blocksForItem(previewItem.value))
+const itemBlocks = computed(() =>
+  Array.isArray(previewItem.value?.blocks) ? previewItem.value.blocks : []
+)
+
+const rawPayload = computed(() =>
+  previewItem.value?.raw ||
+  previewItem.value?.raw_json ||
+  previewItem.value?.rawJson ||
+  {}
+)
 
 const imageUrl = computed(() => {
   const direct =
@@ -134,11 +139,10 @@ const imageUrl = computed(() => {
     if (image) return image
   }
 
-  const raw = previewItem.value?.raw || previewItem.value?.raw_json || previewItem.value?.rawJson || null
   const imagePath =
-    raw?.fluff?.images?.[0]?.href?.path ||
-    raw?.images?.[0]?.href?.path ||
-    raw?.token?.path ||
+    rawPayload.value?.fluff?.images?.[0]?.href?.path ||
+    rawPayload.value?.images?.[0]?.href?.path ||
+    rawPayload.value?.token?.path ||
     ''
 
   return imagePath ? `/api/5etools-img/${imagePath}` : ''
@@ -169,7 +173,7 @@ const sourceCode = computed(() =>
     previewItem.value?.sourceBook ||
     previewItem.value?.source ||
     previewItem.value?.source_code ||
-    previewItem.value?.raw?.source ||
+    rawPayload.value?.source ||
     props.result?.source ||
     ''
   ).trim().toUpperCase()
@@ -185,17 +189,16 @@ const countText = computed(() => {
 })
 
 const metaChips = computed(() => {
-  const raw = previewItem.value?.raw || previewItem.value?.raw_json || previewItem.value?.rawJson || {}
   const coreBlocks = itemBlocks.value.map(blockKey).filter(Boolean)
 
   return [
     entityType.value,
-    sourceCode.value ? sourceCode.value : '',
+    sourceCode.value,
     props.sourceDisplay && props.sourceDisplay !== sourceCode.value ? props.sourceDisplay : '',
-    raw?.cr !== undefined ? `CR ${raw.cr}` : '',
-    raw?.level !== undefined ? `Level ${raw.level}` : '',
-    raw?.school ? `School ${clean5eText(raw.school)}` : '',
-    slug.value ? slug.value : '',
+    rawPayload.value?.cr !== undefined ? `CR ${rawPayload.value.cr}` : '',
+    rawPayload.value?.level !== undefined ? `Level ${rawPayload.value.level}` : '',
+    rawPayload.value?.school ? `School ${clean5eText(rawPayload.value.school)}` : '',
+    slug.value,
     coreBlocks.length ? `${coreBlocks.length} blocks` : '',
     countText.value
   ]
@@ -220,15 +223,13 @@ function overviewFromBlocks() {
 }
 
 const summary = computed(() => {
-  const raw = previewItem.value?.raw || previewItem.value?.raw_json || previewItem.value?.rawJson || {}
-
   return (
     clean5eText(previewItem.value?.summary) ||
     overviewFromBlocks() ||
     clean5eText(previewItem.value?.description) ||
-    clean5eText(raw?.fluff?.entries) ||
-    clean5eText(raw?.entries) ||
-    clean5eText(raw?.entriesHigherLevel) ||
+    clean5eText(rawPayload.value?.fluff?.entries) ||
+    clean5eText(rawPayload.value?.entries) ||
+    clean5eText(rawPayload.value?.entriesHigherLevel) ||
     ''
   )
 })
@@ -281,6 +282,15 @@ const displayBlocks = computed(() =>
     .slice(0, 8)
 )
 
+const initials = computed(() =>
+  title.value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || '?'
+)
+
 const hasPreview = computed(() => !!previewItem.value)
 </script>
 
@@ -288,63 +298,62 @@ const hasPreview = computed(() => !!previewItem.value)
   <div
     v-if="hasPreview"
     class="space-y-4"
+    data-importer-generic-preview
   >
     <section class="overflow-hidden rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(8,17,27,0.38)]">
-      <div class="grid gap-0 xl:grid-cols-[240px_minmax(0,1fr)]">
-        <div
-          v-if="imageUrl"
-          class="border-b border-[rgba(201,164,90,0.16)] bg-black/20 xl:border-b-0 xl:border-r"
+      <div
+        v-if="imageUrl"
+        class="border-b border-[rgba(201,164,90,0.16)] bg-black/20"
+      >
+        <img
+          :src="imageUrl"
+          :alt="title"
+          class="h-44 w-full object-cover object-top"
         >
-          <img
-            :src="imageUrl"
-            :alt="title"
-            class="h-64 w-full object-cover object-top xl:h-full"
-          >
+      </div>
+
+      <div
+        v-else
+        class="flex h-44 items-center justify-center border-b border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.46)] text-4xl font-semibold text-[#d8ceb8]"
+      >
+        {{ initials }}
+      </div>
+
+      <div class="min-w-0 p-4">
+        <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">
+          {{ entityType }} Preview
         </div>
 
+        <h3 class="mt-2 break-words text-2xl font-semibold leading-tight text-white">
+          {{ title }}
+        </h3>
+
         <div
+          v-if="metaChips.length"
+          class="mt-4 flex flex-wrap gap-2"
+        >
+          <span
+            v-for="chip in metaChips"
+            :key="chip"
+            class="max-w-full rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d8ceb8]"
+          >
+            {{ chip }}
+          </span>
+        </div>
+
+        <p
+          v-if="summary"
+          class="mt-4 text-sm leading-7 text-[#d8ceb8]"
+        >
+          {{ summary }}
+        </p>
+
+        <p
           v-else
-          class="flex h-48 items-center justify-center border-b border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.46)] text-4xl font-semibold text-[#d8ceb8] xl:h-auto xl:border-b-0 xl:border-r"
+          class="mt-4 text-sm leading-7 text-[#9f9278]"
         >
-          {{ title.slice(0, 2).toUpperCase() }}
-        </div>
-
-        <div class="min-w-0 p-5">
-          <div class="text-[10px] uppercase tracking-[0.32em] text-[#9f9278]">
-            {{ entityType }} Preview
-          </div>
-
-          <h3 class="mt-2 text-3xl font-semibold leading-tight text-white">
-            {{ title }}
-          </h3>
-
-          <div
-            v-if="metaChips.length"
-            class="mt-4 flex flex-wrap gap-2"
-          >
-            <span
-              v-for="chip in metaChips"
-              :key="chip"
-              class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d8ceb8]"
-            >
-              {{ chip }}
-            </span>
-          </div>
-
-          <p
-            v-if="summary"
-            class="mt-4 max-w-4xl text-sm leading-7 text-[#d8ceb8]"
-          >
-            {{ summary }}
-          </p>
-
-          <p
-            v-else
-            class="mt-4 text-sm leading-7 text-[#9f9278]"
-          >
-            This preview has structured blocks, but no readable summary field yet.
-          </p>
-        </div>
+          This preview has structured blocks, but no readable summary field yet.
+        </p>
       </div>
     </section>
 
@@ -383,7 +392,7 @@ const hasPreview = computed(() => !!previewItem.value)
 
           <p
             v-if="dataPreview(block)"
-            class="mt-2 line-clamp-3 text-xs leading-5 text-[#d8ceb8]"
+            class="mt-2 text-xs leading-5 text-[#d8ceb8]"
           >
             {{ dataPreview(block) }}
           </p>
@@ -406,3 +415,13 @@ const hasPreview = computed(() => !!previewItem.value)
     No preview item returned.
   </div>
 </template>
+
+<style scoped>
+[data-importer-generic-preview] {
+  min-width: 0;
+}
+
+[data-importer-generic-preview] * {
+  min-width: 0;
+}
+</style>

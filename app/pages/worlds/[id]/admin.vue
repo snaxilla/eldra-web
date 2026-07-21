@@ -458,6 +458,280 @@ function resetSpellBuilderForm() {
 }
 
 
+
+const ITEM_TYPE_OPTIONS = [
+  { value: 'G', label: 'Adventuring Gear / Wondrous' },
+  { value: 'M', label: 'Melee Weapon' },
+  { value: 'R', label: 'Ranged Weapon' },
+  { value: 'A', label: 'Ammunition' },
+  { value: 'LA', label: 'Light Armor' },
+  { value: 'MA', label: 'Medium Armor' },
+  { value: 'HA', label: 'Heavy Armor' },
+  { value: 'S', label: 'Shield' },
+  { value: 'P', label: 'Potion' },
+  { value: 'RD', label: 'Rod' },
+  { value: 'WD', label: 'Wand' },
+  { value: 'ST', label: 'Staff' },
+  { value: 'RG', label: 'Ring' },
+  { value: 'SC', label: 'Scroll' },
+  { value: 'SCF', label: 'Spellcasting Focus' },
+  { value: 'T', label: 'Tool' }
+]
+
+const ITEM_RARITY_OPTIONS = [
+  'none',
+  'common',
+  'uncommon',
+  'rare',
+  'very rare',
+  'legendary',
+  'artifact'
+]
+
+const ITEM_EQUIP_SLOT_OPTIONS = [
+  { value: '', label: 'Not Equipped' },
+  { value: 'hand', label: 'Hand' },
+  { value: 'off_hand', label: 'Off Hand' },
+  { value: 'body', label: 'Body / Armor' },
+  { value: 'ammo', label: 'Ammunition' },
+  { value: 'ring', label: 'Ring' },
+  { value: 'neck', label: 'Neck' },
+  { value: 'shoulders', label: 'Shoulders' },
+  { value: 'head', label: 'Head' },
+  { value: 'hands', label: 'Hands' },
+  { value: 'feet', label: 'Feet' },
+  { value: 'waist', label: 'Waist' },
+  { value: 'worn', label: 'Worn' }
+]
+
+const ITEM_DAMAGE_TYPES = [
+  '',
+  'acid',
+  'bludgeoning',
+  'cold',
+  'fire',
+  'force',
+  'lightning',
+  'necrotic',
+  'piercing',
+  'poison',
+  'psychic',
+  'radiant',
+  'slashing',
+  'thunder'
+]
+
+const ITEM_ACTION_TIMINGS = [
+  'Action',
+  'Bonus Action',
+  'Reaction',
+  'Magic Action',
+  'Free Action',
+  'Other'
+]
+
+const ITEM_RECHARGE_OPTIONS = [
+  '',
+  'short rest',
+  'long rest',
+  'dawn',
+  'daily',
+  'charges'
+]
+
+const itemBuilderForm = reactive({
+  name: '',
+  itemType: 'G',
+  rarity: 'common',
+  requiresAttunement: false,
+  attunementText: '',
+  equippable: false,
+  equipSlot: '',
+  weight: '',
+  value: '',
+  description: '',
+  weaponEnabled: false,
+  weaponKind: 'melee',
+  weaponCategory: '',
+  weaponDamage: '',
+  weaponDamageType: '',
+  weaponRange: '',
+  weaponProperties: '',
+  magicBonus: '',
+  attackBonus: '',
+  damageBonus: '',
+  armorEnabled: false,
+  armorClass: '',
+  armorType: 'armor',
+  dexCap: '',
+  strength: '',
+  stealthDisadvantage: false,
+  acBonus: '',
+  saveBonus: '',
+  spellAttackBonus: '',
+  spellSaveDcBonus: '',
+  grantedActionName: '',
+  grantedActionTiming: 'Action',
+  grantedActionDetail: '',
+  grantedActionUses: '',
+  grantedActionRecharge: ''
+})
+
+function itemBuilderText(value: any) {
+  return String(value ?? '').trim()
+}
+
+function itemBuilderBool(value: any) {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+function itemTypeLabel(value: any) {
+  const key = String(value || '').toUpperCase()
+  return ITEM_TYPE_OPTIONS.find((option) => option.value === key)?.label || key || 'Item'
+}
+
+function hydrateItemBuilderFromTemplate(template: any) {
+  const core = template?.core || {}
+
+  itemBuilderForm.name = itemBuilderText(core.name || template?.title || '')
+  itemBuilderForm.itemType = itemBuilderText(core.item_type || core.itemType || 'G').split('|')[0].toUpperCase() || 'G'
+  itemBuilderForm.rarity = itemBuilderText(core.rarity || 'common')
+  itemBuilderForm.requiresAttunement = itemBuilderBool(core.requiresAttunement)
+  itemBuilderForm.attunementText = itemBuilderText(core.attunementText || '')
+  itemBuilderForm.equippable = itemBuilderBool(core.equippable)
+  itemBuilderForm.equipSlot = itemBuilderText(core.equipSlot || '')
+  itemBuilderForm.weight = itemBuilderText(core.weight || '')
+  itemBuilderForm.value = itemBuilderText(core.value || '')
+  itemBuilderForm.description = itemBuilderText(core.description || template?.summary || '')
+
+  itemBuilderForm.weaponEnabled = itemBuilderBool(core.weaponKind || core.damage || ['M', 'R', 'A'].includes(itemBuilderForm.itemType))
+  itemBuilderForm.weaponKind = itemBuilderText(core.weaponKind || (itemBuilderForm.itemType === 'R' ? 'ranged' : 'melee'))
+  itemBuilderForm.weaponCategory = itemBuilderText(core.weaponCategory || '')
+  itemBuilderForm.weaponDamage = itemBuilderText(core.damage || '')
+  itemBuilderForm.weaponDamageType = itemBuilderText(core.damageType || core.damage_type || '')
+  itemBuilderForm.weaponRange = itemBuilderText(core.weaponRange || '')
+  itemBuilderForm.weaponProperties = itemBuilderText(core.weaponProperties || '')
+  itemBuilderForm.magicBonus = itemBuilderText(core.magicBonus || '')
+  itemBuilderForm.attackBonus = itemBuilderText(core.attackBonus || '')
+  itemBuilderForm.damageBonus = itemBuilderText(core.damageBonus || '')
+
+  itemBuilderForm.armorEnabled = itemBuilderBool(core.armorClass || ['LA', 'MA', 'HA', 'S'].includes(itemBuilderForm.itemType))
+  itemBuilderForm.armorClass = itemBuilderText(core.armorClass || '')
+  itemBuilderForm.armorType = itemBuilderText(core.armorType || (itemBuilderForm.itemType === 'S' ? 'shield' : 'armor'))
+  itemBuilderForm.dexCap = itemBuilderText(core.dexCap || '')
+  itemBuilderForm.strength = itemBuilderText(core.strength || '')
+  itemBuilderForm.stealthDisadvantage = itemBuilderBool(core.stealthDisadvantage)
+
+  itemBuilderForm.acBonus = itemBuilderText(core.acBonus || '')
+  itemBuilderForm.saveBonus = itemBuilderText(core.saveBonus || '')
+  itemBuilderForm.spellAttackBonus = itemBuilderText(core.spellAttackBonus || '')
+  itemBuilderForm.spellSaveDcBonus = itemBuilderText(core.spellSaveDcBonus || '')
+
+  itemBuilderForm.grantedActionName = itemBuilderText(core.grantedActionName || '')
+  itemBuilderForm.grantedActionTiming = itemBuilderText(core.grantedActionTiming || 'Action')
+  itemBuilderForm.grantedActionDetail = itemBuilderText(core.grantedActionDetail || '')
+  itemBuilderForm.grantedActionUses = itemBuilderText(core.grantedActionUses || '')
+  itemBuilderForm.grantedActionRecharge = itemBuilderText(core.grantedActionRecharge || '')
+
+  if (!homebrewTitle.value.trim()) {
+    homebrewTitle.value = itemBuilderForm.name
+      ? `Homebrew: ${itemBuilderForm.name}`
+      : defaultHomebrewTitle(template)
+  }
+}
+
+function resetItemBuilderForm() {
+  itemBuilderForm.name = ''
+  itemBuilderForm.itemType = 'G'
+  itemBuilderForm.rarity = 'common'
+  itemBuilderForm.requiresAttunement = false
+  itemBuilderForm.attunementText = ''
+  itemBuilderForm.equippable = false
+  itemBuilderForm.equipSlot = ''
+  itemBuilderForm.weight = ''
+  itemBuilderForm.value = ''
+  itemBuilderForm.description = ''
+  itemBuilderForm.weaponEnabled = false
+  itemBuilderForm.weaponKind = 'melee'
+  itemBuilderForm.weaponCategory = ''
+  itemBuilderForm.weaponDamage = ''
+  itemBuilderForm.weaponDamageType = ''
+  itemBuilderForm.weaponRange = ''
+  itemBuilderForm.weaponProperties = ''
+  itemBuilderForm.magicBonus = ''
+  itemBuilderForm.attackBonus = ''
+  itemBuilderForm.damageBonus = ''
+  itemBuilderForm.armorEnabled = false
+  itemBuilderForm.armorClass = ''
+  itemBuilderForm.armorType = 'armor'
+  itemBuilderForm.dexCap = ''
+  itemBuilderForm.strength = ''
+  itemBuilderForm.stealthDisadvantage = false
+  itemBuilderForm.acBonus = ''
+  itemBuilderForm.saveBonus = ''
+  itemBuilderForm.spellAttackBonus = ''
+  itemBuilderForm.spellSaveDcBonus = ''
+  itemBuilderForm.grantedActionName = ''
+  itemBuilderForm.grantedActionTiming = 'Action'
+  itemBuilderForm.grantedActionDetail = ''
+  itemBuilderForm.grantedActionUses = ''
+  itemBuilderForm.grantedActionRecharge = ''
+}
+
+function itemBuilderPayload() {
+  return {
+    name: itemBuilderForm.name,
+    itemType: itemBuilderForm.itemType,
+    rarity: itemBuilderForm.rarity,
+    requiresAttunement: itemBuilderForm.requiresAttunement,
+    attunementText: itemBuilderForm.attunementText,
+    equippable: itemBuilderForm.equippable,
+    equipSlot: itemBuilderForm.equipSlot,
+    weight: itemBuilderForm.weight,
+    value: itemBuilderForm.value,
+    description: itemBuilderForm.description,
+    weaponEnabled: itemBuilderForm.weaponEnabled,
+    weaponKind: itemBuilderForm.weaponKind,
+    weaponCategory: itemBuilderForm.weaponCategory,
+    damage: itemBuilderForm.weaponDamage,
+    damageType: itemBuilderForm.weaponDamageType,
+    weaponRange: itemBuilderForm.weaponRange,
+    weaponProperties: itemBuilderForm.weaponProperties,
+    magicBonus: itemBuilderForm.magicBonus,
+    attackBonus: itemBuilderForm.attackBonus,
+    damageBonus: itemBuilderForm.damageBonus,
+    armorEnabled: itemBuilderForm.armorEnabled,
+    armorClass: itemBuilderForm.armorClass,
+    armorType: itemBuilderForm.armorType,
+    dexCap: itemBuilderForm.dexCap,
+    strength: itemBuilderForm.strength,
+    stealthDisadvantage: itemBuilderForm.stealthDisadvantage,
+    acBonus: itemBuilderForm.acBonus,
+    saveBonus: itemBuilderForm.saveBonus,
+    spellAttackBonus: itemBuilderForm.spellAttackBonus,
+    spellSaveDcBonus: itemBuilderForm.spellSaveDcBonus,
+    grantedActionName: itemBuilderForm.grantedActionName,
+    grantedActionTiming: itemBuilderForm.grantedActionTiming,
+    grantedActionDetail: itemBuilderForm.grantedActionDetail,
+    grantedActionUses: itemBuilderForm.grantedActionUses,
+    grantedActionRecharge: itemBuilderForm.grantedActionRecharge
+  }
+}
+
+const itemBuilderSummaryLine = computed(() => {
+  if (homebrewType.value !== 'item') return ''
+
+  return [
+    itemTypeLabel(itemBuilderForm.itemType),
+    itemBuilderForm.rarity,
+    itemBuilderForm.requiresAttunement ? 'Attunement' : '',
+    itemBuilderForm.equippable ? itemBuilderForm.equipSlot || 'Equippable' : '',
+    itemBuilderForm.weaponEnabled && itemBuilderForm.weaponDamage ? itemBuilderForm.weaponDamage : '',
+    itemBuilderForm.armorEnabled && itemBuilderForm.armorClass ? `AC ${itemBuilderForm.armorClass}` : ''
+  ].filter(Boolean).join(' · ')
+})
+
+
 function defaultHomebrewTitle(template: any) {
   const title = String(template?.title || selectedHomebrewType.value?.label || 'Homebrew').trim()
   return title.startsWith('Homebrew:')
@@ -481,6 +755,10 @@ function selectHomebrewTemplate(template: any) {
 
   if (homebrewType.value === 'spell') {
     hydrateSpellBuilderFromTemplate(template)
+  }
+
+  if (homebrewType.value === 'item') {
+    hydrateItemBuilderFromTemplate(template)
   }
 
   if (!homebrewTitle.value.trim()) {
@@ -543,6 +821,9 @@ async function createHomebrewDraft() {
           : (homebrewTitle.value || defaultHomebrewTitle(selectedHomebrewTemplate.value)),
         spell: homebrewType.value === 'spell'
           ? spellBuilderPayload()
+          : undefined,
+        item: homebrewType.value === 'item'
+          ? itemBuilderPayload()
           : undefined
       }
     })
@@ -1518,6 +1799,421 @@ async function refreshAdmin() {
                   rows="3"
                   class="eldra-input w-full rounded-none px-3 py-3 text-sm leading-6 text-white"
                   placeholder="How the spell scales when cast with higher-level slots..."
+                />
+              </label>
+            </div>
+
+            <div
+              v-if="homebrewType === 'item' && selectedHomebrewTemplate"
+              data-homebrew-item-builder
+              class="mt-5 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(8,17,27,0.42)] p-4"
+            >
+              <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                    Item Builder
+                  </div>
+                  <h3 class="mt-2 text-xl font-semibold text-white">
+                    Item Mechanics
+                  </h3>
+                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                    Build the structured item profile Eldra will use for sheets, granted actions, and eventual Foundry export.
+                  </p>
+                </div>
+
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-3 py-2 text-xs leading-5 text-[#d8ceb8]">
+                  {{ itemBuilderSummaryLine || 'No item mechanics yet' }}
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-4 xl:grid-cols-3">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Item Name</span>
+                  <input
+                    v-model="itemBuilderForm.name"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="Flamebrand Longsword, Lucky Boots..."
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Item Type</span>
+                  <select
+                    v-model="itemBuilderForm.itemType"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="type in ITEM_TYPE_OPTIONS"
+                      :key="type.value"
+                      :value="type.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ type.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Rarity</span>
+                  <select
+                    v-model="itemBuilderForm.rarity"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="rarity in ITEM_RARITY_OPTIONS"
+                      :key="rarity"
+                      :value="rarity"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ rarity }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="mt-4 grid gap-4 xl:grid-cols-4">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Weight</span>
+                  <input
+                    v-model="itemBuilderForm.weight"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="1"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Value</span>
+                  <input
+                    v-model="itemBuilderForm.value"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="5000 cp or raw value"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Equip Slot</span>
+                  <select
+                    v-model="itemBuilderForm.equipSlot"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="slot in ITEM_EQUIP_SLOT_OPTIONS"
+                      :key="slot.value"
+                      :value="slot.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ slot.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <div class="grid gap-2">
+                  <label class="inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-3 py-2 text-sm text-[#d8ceb8]">
+                    <input
+                      v-model="itemBuilderForm.equippable"
+                      type="checkbox"
+                      class="accent-[#c9a45a]"
+                    >
+                    Equippable
+                  </label>
+
+                  <label class="inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-3 py-2 text-sm text-[#d8ceb8]">
+                    <input
+                      v-model="itemBuilderForm.requiresAttunement"
+                      type="checkbox"
+                      class="accent-[#c9a45a]"
+                    >
+                    Requires Attunement
+                  </label>
+                </div>
+              </div>
+
+              <label
+                v-if="itemBuilderForm.requiresAttunement"
+                class="mt-4 block"
+              >
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Attunement Text</span>
+                <input
+                  v-model="itemBuilderForm.attunementText"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  placeholder="by a spellcaster, by a dwarf, etc."
+                >
+              </label>
+
+              <div class="mt-5 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.40)] p-4">
+                <label class="inline-flex items-center gap-2 text-sm font-semibold text-[#fff7df]">
+                  <input
+                    v-model="itemBuilderForm.weaponEnabled"
+                    type="checkbox"
+                    class="accent-[#c9a45a]"
+                  >
+                  Weapon Profile
+                </label>
+
+                <div
+                  v-if="itemBuilderForm.weaponEnabled"
+                  class="mt-4 grid gap-4 xl:grid-cols-4"
+                >
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Kind</span>
+                    <select
+                      v-model="itemBuilderForm.weaponKind"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    >
+                      <option value="melee" class="bg-[#090909] text-[#f5e7bd]">Melee</option>
+                      <option value="ranged" class="bg-[#090909] text-[#f5e7bd]">Ranged</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Category</span>
+                    <input
+                      v-model="itemBuilderForm.weaponCategory"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="simple, martial..."
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Damage</span>
+                    <input
+                      v-model="itemBuilderForm.weaponDamage"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="1d8"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Damage Type</span>
+                    <select
+                      v-model="itemBuilderForm.weaponDamageType"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    >
+                      <option
+                        v-for="type in ITEM_DAMAGE_TYPES"
+                        :key="type || 'none'"
+                        :value="type"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ type || 'None' }}
+                      </option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Range</span>
+                    <input
+                      v-model="itemBuilderForm.weaponRange"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="5, 20/60, 120/360"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Properties</span>
+                    <input
+                      v-model="itemBuilderForm.weaponProperties"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="finesse, light, thrown"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Attack Bonus</span>
+                    <input
+                      v-model="itemBuilderForm.attackBonus"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="+1"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Damage Bonus</span>
+                    <input
+                      v-model="itemBuilderForm.damageBonus"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="+1"
+                    >
+                  </label>
+                </div>
+              </div>
+
+              <div class="mt-5 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.40)] p-4">
+                <label class="inline-flex items-center gap-2 text-sm font-semibold text-[#fff7df]">
+                  <input
+                    v-model="itemBuilderForm.armorEnabled"
+                    type="checkbox"
+                    class="accent-[#c9a45a]"
+                  >
+                  Armor / Shield Profile
+                </label>
+
+                <div
+                  v-if="itemBuilderForm.armorEnabled"
+                  class="mt-4 grid gap-4 xl:grid-cols-5"
+                >
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">AC</span>
+                    <input
+                      v-model="itemBuilderForm.armorClass"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="16"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Armor Type</span>
+                    <input
+                      v-model="itemBuilderForm.armorType"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="armor, shield"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Dex Cap</span>
+                    <input
+                      v-model="itemBuilderForm.dexCap"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="2"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Strength Req.</span>
+                    <input
+                      v-model="itemBuilderForm.strength"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="13"
+                    >
+                  </label>
+
+                  <label class="inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-3 py-2 text-sm text-[#d8ceb8]">
+                    <input
+                      v-model="itemBuilderForm.stealthDisadvantage"
+                      type="checkbox"
+                      class="accent-[#c9a45a]"
+                    >
+                    Stealth Disadvantage
+                  </label>
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-4 xl:grid-cols-4">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">AC Bonus</span>
+                  <input
+                    v-model="itemBuilderForm.acBonus"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="+1"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Save Bonus</span>
+                  <input
+                    v-model="itemBuilderForm.saveBonus"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="+1"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Spell Attack Bonus</span>
+                  <input
+                    v-model="itemBuilderForm.spellAttackBonus"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="+1"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Spell Save DC Bonus</span>
+                  <input
+                    v-model="itemBuilderForm.spellSaveDcBonus"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="+1"
+                  >
+                </label>
+              </div>
+
+              <div class="mt-5 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.40)] p-4">
+                <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                  Granted Action
+                </div>
+
+                <div class="mt-4 grid gap-4 xl:grid-cols-4">
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Action Name</span>
+                    <input
+                      v-model="itemBuilderForm.grantedActionName"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="Poison the Blade"
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Timing</span>
+                    <select
+                      v-model="itemBuilderForm.grantedActionTiming"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    >
+                      <option
+                        v-for="timing in ITEM_ACTION_TIMINGS"
+                        :key="timing"
+                        :value="timing"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ timing }}
+                      </option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Uses</span>
+                    <input
+                      v-model="itemBuilderForm.grantedActionUses"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                      placeholder="1, 3, etc."
+                    >
+                  </label>
+
+                  <label>
+                    <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Recharge</span>
+                    <select
+                      v-model="itemBuilderForm.grantedActionRecharge"
+                      class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    >
+                      <option
+                        v-for="recharge in ITEM_RECHARGE_OPTIONS"
+                        :key="recharge || 'none'"
+                        :value="recharge"
+                        class="bg-[#090909] text-[#f5e7bd]"
+                      >
+                        {{ recharge || 'None' }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+
+                <label class="mt-4 block">
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Action Detail</span>
+                  <textarea
+                    v-model="itemBuilderForm.grantedActionDetail"
+                    rows="4"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm leading-6 text-white"
+                    placeholder="Describe the action this item grants..."
+                  />
+                </label>
+              </div>
+
+              <label class="mt-5 block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Description</span>
+                <textarea
+                  v-model="itemBuilderForm.description"
+                  rows="7"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm leading-6 text-white"
+                  placeholder="What the item does at the table..."
                 />
               </label>
             </div>

@@ -281,6 +281,8 @@ function sourceFromBlocks(blocks: any[]) {
 
 function templateCoreForBuilder(config: TypeConfig, blocks: any[]) {
   const core = blockData(findBlock(blocks, config.coreBlocks))
+  const source = blockData(findBlock(blocks, ['import_source']))
+  const raw = asObject(source.raw_json ?? source.rawJson)
 
   if (config.key === 'spell') {
     return {
@@ -305,6 +307,58 @@ function templateCoreForBuilder(config: TypeConfig, blocks: any[]) {
       attack_type: cleanText(core.attack_type ?? core.attackType),
       attackType: cleanText(core.attack_type ?? core.attackType),
       classes: cleanText(core.classes)
+    }
+  }
+
+  if (config.key === 'item') {
+    const weapon = asObject(core.weapon)
+    const armor = asObject(core.armor)
+    const firstAction = Array.isArray(core.grantedActions) ? asObject(core.grantedActions[0]) : {}
+    const modifiers = Array.isArray(core.modifiers) ? core.modifiers : []
+
+    function modifierValue(type: string) {
+      const found = modifiers.find((modifier: any) => String(modifier?.type || '') === type)
+      return found?.value ?? ''
+    }
+
+    return {
+      name: cleanText(core.name || raw.name),
+      item_type: cleanText(core.item_type ?? core.itemType ?? raw.type),
+      itemType: cleanText(core.item_type ?? core.itemType ?? raw.type),
+      rarity: cleanText(core.rarity ?? raw.rarity),
+      requiresAttunement: Boolean(core.requiresAttunement ?? core.requires_attunement ?? raw.reqAttune ?? raw.attunement),
+      attunementText: cleanText(core.attunementText ?? core.attunement_text ?? (typeof raw.reqAttune === 'string' ? raw.reqAttune : '')),
+      equippable: Boolean(core.equippable ?? raw.weapon ?? raw.armor ?? weapon.kind ?? armor.baseAc),
+      equipSlot: cleanText(core.equipSlot ?? core.equip_slot),
+      weight: core.weight ?? raw.weight ?? '',
+      value: core.value ?? raw.value ?? '',
+      description: cleanText(core.description),
+      damage: cleanText(core.damage ?? weapon.damage ?? raw.dmg1 ?? raw.damage),
+      damage_type: cleanText(core.damage_type ?? core.damageType ?? weapon.damageType ?? raw.dmgType ?? raw.damageType),
+      damageType: cleanText(core.damage_type ?? core.damageType ?? weapon.damageType ?? raw.dmgType ?? raw.damageType),
+      weaponKind: cleanText(core.weaponKind ?? core.weapon_kind ?? weapon.kind ?? (raw.weapon ? 'weapon' : '')),
+      weaponCategory: cleanText(core.weaponCategory ?? core.weapon_category ?? weapon.category),
+      weaponRange: cleanText(core.weaponRange ?? core.weapon_range ?? weapon.range ?? raw.range),
+      weaponProperties: Array.isArray(weapon.properties)
+        ? weapon.properties.map((property: any) => cleanText(property?.code || property?.label || property)).filter(Boolean).join(', ')
+        : cleanText(core.weaponProperties ?? core.weapon_properties ?? raw.property),
+      magicBonus: core.magicBonus ?? core.magic_bonus ?? weapon.magicBonus ?? raw.bonusWeapon ?? '',
+      attackBonus: core.attackBonus ?? core.attack_bonus ?? weapon.attackBonus ?? raw.bonusWeaponAttack ?? modifierValue('weapon_attack_bonus'),
+      damageBonus: core.damageBonus ?? core.damage_bonus ?? weapon.damageBonus ?? raw.bonusWeaponDamage ?? modifierValue('weapon_damage_bonus'),
+      armorClass: core.armorClass ?? core.armor_class ?? armor.baseAc ?? armor.ac ?? raw.ac ?? '',
+      armorType: cleanText(core.armorType ?? core.armor_type ?? armor.type),
+      dexCap: core.dexCap ?? core.dex_cap ?? armor.dexCap ?? '',
+      strength: core.strength ?? armor.strength ?? raw.strength ?? '',
+      stealthDisadvantage: Boolean(core.stealthDisadvantage ?? core.stealth_disadvantage ?? armor.stealthDisadvantage ?? raw.stealth),
+      acBonus: core.acBonus ?? core.ac_bonus ?? modifierValue('ac_bonus') ?? raw.bonusAc ?? '',
+      saveBonus: core.saveBonus ?? core.save_bonus ?? modifierValue('saving_throw_bonus') ?? raw.bonusSavingThrow ?? '',
+      spellAttackBonus: core.spellAttackBonus ?? core.spell_attack_bonus ?? modifierValue('spell_attack_bonus') ?? raw.bonusSpellAttack ?? '',
+      spellSaveDcBonus: core.spellSaveDcBonus ?? core.spell_save_dc_bonus ?? modifierValue('spell_save_dc_bonus') ?? raw.bonusSpellSaveDc ?? '',
+      grantedActionName: cleanText(firstAction.name),
+      grantedActionTiming: cleanText(firstAction.timing ?? firstAction.actionKind),
+      grantedActionDetail: cleanText(firstAction.detail),
+      grantedActionUses: firstAction.uses ?? firstAction.maxUses ?? '',
+      grantedActionRecharge: cleanText(firstAction.recharge)
     }
   }
 
@@ -357,12 +411,6 @@ function normalizeSpellSchool(value: any) {
 
 function normalizeHomebrewSpellPatch(value: any, fallbackTitle = '') {
   const spell = asObject(value)
-  const components = cleanText(spell.components)
-  const damage = cleanText(spell.damage)
-  const damageType = cleanText(spell.damageType ?? spell.damage_type)
-  const saveAbility = cleanText(spell.saveAbility ?? spell.save_ability)
-  const attackType = cleanText(spell.attackType ?? spell.attack_type)
-  const classes = cleanText(spell.classes)
 
   return {
     name: cleanText(spell.name) || cleanText(fallbackTitle),
@@ -371,16 +419,16 @@ function normalizeHomebrewSpellPatch(value: any, fallbackTitle = '') {
     casting_time: cleanText(spell.castingTime ?? spell.casting_time),
     range: cleanText(spell.range),
     duration: cleanText(spell.duration),
-    components,
+    components: cleanText(spell.components),
     ritual: booleanish(spell.ritual),
     concentration: booleanish(spell.concentration),
     description: cleanText(spell.description),
     higher_level: cleanText(spell.higherLevel ?? spell.higher_level),
-    damage,
-    damage_type: damageType,
-    save_ability: saveAbility,
-    attack_type: attackType,
-    classes
+    damage: cleanText(spell.damage),
+    damage_type: cleanText(spell.damageType ?? spell.damage_type),
+    save_ability: cleanText(spell.saveAbility ?? spell.save_ability),
+    attack_type: cleanText(spell.attackType ?? spell.attack_type),
+    classes: cleanText(spell.classes)
   }
 }
 
@@ -406,7 +454,6 @@ function applyHomebrewSpellPatch(core: any, value: any, fallbackTitle: string) {
   data.description = spell.description
   data.higher_level = spell.higher_level
   data.higherLevel = spell.higher_level
-
   data.damage = spell.damage
   data.damage_type = spell.damage_type
   data.damageType = spell.damage_type
@@ -432,6 +479,267 @@ function applyHomebrewSpellPatch(core: any, value: any, fallbackTitle: string) {
   return data
 }
 
+function splitListText(value: any) {
+  return cleanText(value)
+    .split(/[,\n]/)
+    .map((item) => cleanText(item))
+    .filter(Boolean)
+}
+
+function numberOrBlank(value: any) {
+  const text = cleanText(value)
+  if (!text) return ''
+
+  const parsed = Number(text.replace(/^\+/, ''))
+  return Number.isFinite(parsed) ? parsed : text
+}
+
+function normalizeHomebrewItemType(value: any) {
+  const raw = cleanText(value).toUpperCase()
+
+  const aliases: Record<string, string> = {
+    WEAPON: 'M',
+    MELEE: 'M',
+    MELEE_WEAPON: 'M',
+    RANGED: 'R',
+    RANGED_WEAPON: 'R',
+    ARMOR: 'LA',
+    LIGHT_ARMOR: 'LA',
+    MEDIUM_ARMOR: 'MA',
+    HEAVY_ARMOR: 'HA',
+    SHIELD: 'S',
+    POTION: 'P',
+    ROD: 'RD',
+    WAND: 'WD',
+    STAFF: 'ST',
+    RING: 'RG',
+    SCROLL: 'SC',
+    GEAR: 'G',
+    WONDROUS: 'G',
+    TOOL: 'T',
+    AMMUNITION: 'A'
+  }
+
+  return aliases[raw] || raw || 'G'
+}
+
+function normalizeHomebrewItemPatch(value: any, fallbackTitle = '') {
+  const item = asObject(value)
+
+  return {
+    name: cleanText(item.name) || cleanText(fallbackTitle),
+    item_type: normalizeHomebrewItemType(item.itemType ?? item.item_type),
+    rarity: cleanText(item.rarity || 'common'),
+    requires_attunement: booleanish(item.requiresAttunement ?? item.requires_attunement),
+    attunement_text: cleanText(item.attunementText ?? item.attunement_text),
+    equippable: booleanish(item.equippable),
+    equip_slot: cleanText(item.equipSlot ?? item.equip_slot),
+    weight: numberOrBlank(item.weight),
+    value: numberOrBlank(item.value),
+    description: cleanText(item.description),
+    damage: cleanText(item.damage),
+    damage_type: cleanText(item.damageType ?? item.damage_type),
+    weapon_enabled: booleanish(item.weaponEnabled ?? item.weapon_enabled),
+    weapon_kind: cleanText(item.weaponKind ?? item.weapon_kind),
+    weapon_category: cleanText(item.weaponCategory ?? item.weapon_category),
+    weapon_range: cleanText(item.weaponRange ?? item.weapon_range),
+    weapon_properties: cleanText(item.weaponProperties ?? item.weapon_properties),
+    magic_bonus: numberOrBlank(item.magicBonus ?? item.magic_bonus),
+    attack_bonus: numberOrBlank(item.attackBonus ?? item.attack_bonus),
+    damage_bonus: numberOrBlank(item.damageBonus ?? item.damage_bonus),
+    armor_enabled: booleanish(item.armorEnabled ?? item.armor_enabled),
+    armor_class: numberOrBlank(item.armorClass ?? item.armor_class),
+    armor_type: cleanText(item.armorType ?? item.armor_type),
+    dex_cap: numberOrBlank(item.dexCap ?? item.dex_cap),
+    strength: numberOrBlank(item.strength),
+    stealth_disadvantage: booleanish(item.stealthDisadvantage ?? item.stealth_disadvantage),
+    ac_bonus: numberOrBlank(item.acBonus ?? item.ac_bonus),
+    save_bonus: numberOrBlank(item.saveBonus ?? item.save_bonus),
+    spell_attack_bonus: numberOrBlank(item.spellAttackBonus ?? item.spell_attack_bonus),
+    spell_save_dc_bonus: numberOrBlank(item.spellSaveDcBonus ?? item.spell_save_dc_bonus),
+    granted_action_name: cleanText(item.grantedActionName ?? item.granted_action_name),
+    granted_action_timing: cleanText(item.grantedActionTiming ?? item.granted_action_timing),
+    granted_action_detail: cleanText(item.grantedActionDetail ?? item.granted_action_detail),
+    granted_action_uses: numberOrBlank(item.grantedActionUses ?? item.granted_action_uses),
+    granted_action_recharge: cleanText(item.grantedActionRecharge ?? item.granted_action_recharge)
+  }
+}
+
+function homebrewItemSummary(value: any) {
+  const item = normalizeHomebrewItemPatch(value)
+  return compactPreviewText(item.description, 420)
+}
+
+function normalizedNumber(value: any) {
+  const parsed = Number(cleanText(value).replace(/^\+/, ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function normalizedOptionalNumber(value: any) {
+  const text = cleanText(value)
+  if (!text) return null
+
+  const parsed = Number(text.replace(/^\+/, ''))
+  return Number.isFinite(parsed) ? parsed : text
+}
+
+function homebrewItemModifiers(item: any) {
+  const modifiers: any[] = []
+
+  const pairs = [
+    ['ac_bonus', item.ac_bonus],
+    ['saving_throw_bonus', item.save_bonus],
+    ['spell_attack_bonus', item.spell_attack_bonus],
+    ['spell_save_dc_bonus', item.spell_save_dc_bonus],
+    ['weapon_attack_bonus', item.attack_bonus || item.magic_bonus],
+    ['weapon_damage_bonus', item.damage_bonus || item.magic_bonus]
+  ]
+
+  for (const [type, value] of pairs) {
+    const parsed = normalizedNumber(value)
+
+    if (parsed) {
+      modifiers.push({
+        type,
+        value: parsed,
+        source: 'homebrew'
+      })
+    }
+  }
+
+  return modifiers
+}
+
+function homebrewGrantedActions(item: any) {
+  if (!item.granted_action_name && !item.granted_action_detail) return []
+
+  const uses = normalizedOptionalNumber(item.granted_action_uses)
+
+  return [
+    {
+      id: 'homebrew-item-action-main',
+      name: item.granted_action_name || item.name || 'Item Action',
+      timing: item.granted_action_timing || 'Action',
+      actionKind: item.granted_action_timing || 'Action',
+      detail: item.granted_action_detail || item.description || '',
+      uses,
+      maxUses: uses,
+      recharge: item.granted_action_recharge || '',
+      consumesResource: Boolean(uses)
+    }
+  ]
+}
+
+function applyHomebrewItemPatch(core: any, value: any, fallbackTitle: string) {
+  const data = deepClone(asObject(core))
+  const item = normalizeHomebrewItemPatch(value, fallbackTitle)
+
+  data.name = item.name || fallbackTitle
+  data.item_type = item.item_type
+  data.itemType = item.item_type
+  data.rarity = item.rarity
+  data.requiresAttunement = item.requires_attunement
+  data.requires_attunement = item.requires_attunement
+  data.attunementText = item.attunement_text
+  data.attunement_text = item.attunement_text
+  data.equippable = item.equippable
+  data.equipSlot = item.equip_slot
+  data.equip_slot = item.equip_slot
+  data.weight = item.weight
+  data.value = item.value
+  data.description = item.description
+  data.damage = item.damage
+  data.damage_type = item.damage_type
+  data.damageType = item.damage_type
+
+  if (item.weapon_enabled || item.damage || item.weapon_kind || item.weapon_category) {
+    const properties = splitListText(item.weapon_properties).map((property) => ({
+      code: property.toUpperCase(),
+      label: property
+    }))
+
+    data.weapon = {
+      ...(asObject(data.weapon)),
+      kind: item.weapon_kind || (item.item_type === 'R' ? 'ranged' : 'melee'),
+      category: item.weapon_category || '',
+      damage: item.damage,
+      damageType: item.damage_type,
+      range: item.weapon_range,
+      properties,
+      propertyCodes: properties.map((property) => property.code),
+      magicBonus: normalizedNumber(item.magic_bonus),
+      attackBonus: normalizedNumber(item.attack_bonus || item.magic_bonus),
+      damageBonus: normalizedNumber(item.damage_bonus || item.magic_bonus)
+    }
+  } else {
+    data.weapon = null
+  }
+
+  if (item.armor_enabled || item.armor_class || ['LA', 'MA', 'HA', 'S'].includes(item.item_type)) {
+    data.armor = {
+      ...(asObject(data.armor)),
+      type: item.armor_type || (item.item_type === 'S' ? 'shield' : 'armor'),
+      baseAc: normalizedOptionalNumber(item.armor_class),
+      ac: normalizedOptionalNumber(item.armor_class),
+      dexCap: normalizedOptionalNumber(item.dex_cap),
+      strength: normalizedOptionalNumber(item.strength),
+      stealthDisadvantage: item.stealth_disadvantage
+    }
+  } else {
+    data.armor = null
+  }
+
+  data.modifiers = homebrewItemModifiers(item)
+  data.grantedActions = homebrewGrantedActions(item)
+  data.homebrew = true
+  data.source_kind = 'homebrew'
+  data.sourceKind = 'homebrew'
+
+  return data
+}
+
+function homebrewItemRawJson(value: any, fallbackTitle = '') {
+  const item = normalizeHomebrewItemPatch(value, fallbackTitle)
+  const raw: Record<string, any> = {
+    name: item.name || fallbackTitle,
+    source: 'ELDRA',
+    type: item.item_type,
+    rarity: item.rarity || 'common',
+    weight: item.weight || undefined,
+    value: item.value || undefined,
+    reqAttune: item.requires_attunement ? item.attunement_text || true : undefined,
+    entries: item.description ? [item.description] : [],
+    homebrew: true
+  }
+
+  if (item.weapon_enabled || item.damage || item.weapon_kind || item.weapon_category) {
+    raw.weapon = true
+    raw.dmg1 = item.damage || undefined
+    raw.dmgType = item.damage_type || undefined
+    raw.range = item.weapon_range || undefined
+    raw.property = splitListText(item.weapon_properties)
+    raw.bonusWeapon = item.magic_bonus || undefined
+    raw.bonusWeaponAttack = item.attack_bonus || item.magic_bonus || undefined
+    raw.bonusWeaponDamage = item.damage_bonus || item.magic_bonus || undefined
+  }
+
+  if (item.armor_enabled || item.armor_class || ['LA', 'MA', 'HA', 'S'].includes(item.item_type)) {
+    raw.armor = true
+    raw.ac = item.armor_class || undefined
+    raw.stealth = item.stealth_disadvantage || undefined
+    raw.strength = item.strength || undefined
+  }
+
+  if (item.ac_bonus) raw.bonusAc = item.ac_bonus
+  if (item.save_bonus) raw.bonusSavingThrow = item.save_bonus
+  if (item.spell_attack_bonus) raw.bonusSpellAttack = item.spell_attack_bonus
+  if (item.spell_save_dc_bonus) raw.bonusSpellSaveDc = item.spell_save_dc_bonus
+
+  raw.homebrewBuilder = item
+
+  return raw
+}
+
 function prepareHomebrewBlockData(key: string, data: any, type: HomebrewType, body: any, title: string) {
   const normalizedKey = cleanText(key)
 
@@ -442,6 +750,21 @@ function prepareHomebrewBlockData(key: string, data: any, type: HomebrewType, bo
   if (type === 'spell' && normalizedKey === 'overview') {
     const next = deepClone(asObject(data))
     const description = homebrewSpellSummary(body?.spell)
+
+    if (description) {
+      next.text = description
+    }
+
+    return next
+  }
+
+  if (type === 'item' && normalizedKey === 'item_core') {
+    return applyHomebrewItemPatch(data, body?.item || {}, title)
+  }
+
+  if (type === 'item' && normalizedKey === 'overview') {
+    const next = deepClone(asObject(data))
+    const description = homebrewItemSummary(body?.item)
 
     if (description) {
       next.text = description
@@ -527,6 +850,23 @@ function cloneableBlocksForType(config: TypeConfig, blocks: any[]) {
 }
 
 function homebrewImportSourceData(template: any, type: HomebrewType, body: any = {}, title = '') {
+  const fallbackRawJson = {
+    homebrew: true,
+    spell: type === 'spell'
+      ? normalizeHomebrewSpellPatch(body?.spell || {}, title || template.title)
+      : null,
+    item: type === 'item'
+      ? normalizeHomebrewItemPatch(body?.item || {}, title || template.title)
+      : null,
+    templateEntityId: template.id,
+    templateTitle: template.title,
+    templateType: template.entity_type
+  }
+
+  const rawJson = type === 'item'
+    ? homebrewItemRawJson(body?.item || {}, title || template.title)
+    : fallbackRawJson
+
   return {
     provider: 'eldra-homebrew',
     source_kind: 'homebrew',
@@ -544,15 +884,10 @@ function homebrewImportSourceData(template: any, type: HomebrewType, body: any =
     templateTitle: template.title,
     template_type: template.entity_type,
     templateType: template.entity_type,
-    raw_json: {
-      homebrew: true,
-      spell: type === 'spell' ? normalizeHomebrewSpellPatch(body?.spell || {}, title || template.title) : null,
-      templateEntityId: template.id,
-      templateTitle: template.title,
-      templateType: template.entity_type
-    }
+    raw_json: rawJson
   }
 }
+
 
 function homebrewMetaData(template: any, type: HomebrewType, title: string) {
   return {
@@ -714,10 +1049,12 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
 
   const title = cleanText(body?.title) ||
     (type === 'spell' ? cleanText(body?.spell?.name) : '') ||
+    (type === 'item' ? cleanText(body?.item?.name) : '') ||
     `Homebrew: ${template.title || config.label}`
   const slug = await uniqueEntitySlug(worldId, title)
   const summary = cleanText(body?.summary) ||
     (type === 'spell' ? homebrewSpellSummary(body?.spell) : '') ||
+    (type === 'item' ? homebrewItemSummary(body?.item) : '') ||
     `Homebrew ${config.label.toLowerCase()} draft based on ${template.title || 'a template'}.`
 
   const entityFields = await collectionFields('entities', ENTITY_FALLBACK_FIELDS)

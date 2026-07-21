@@ -5,8 +5,8 @@ const hostRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
 let thpaceInstance: any = null
+let resizeFrame = 0
 let resizeObserver: ResizeObserver | null = null
-let rebuildFrame = 0
 
 const settings = {
     colors: [
@@ -34,22 +34,48 @@ const settings = {
     }
   }
 
-function importerPaneElement() {
-  const host = hostRef.value
-  if (!host) return null
+const hostStyle = reactive<Record<string, string>>({
+  position: 'fixed',
+  left: '0px',
+  top: '0px',
+  width: '0px',
+  height: '0px',
+  zIndex: '0',
+  pointerEvents: 'none',
+  overflow: 'hidden'
+})
 
-  return host.closest('[data-world-importer-page]') as HTMLElement | null
+const canvasStyle = reactive<Record<string, string>>({
+  display: 'block',
+  position: 'absolute',
+  inset: '0',
+  width: '100%',
+  height: '100%'
+})
+
+function importerPaneElement() {
+  if (typeof document === 'undefined') return null
+
+  return document.querySelector('[data-world-importer-page]') as HTMLElement | null
 }
 
 function paneBounds() {
+  if (typeof window === 'undefined') {
+    return {
+      left: 0,
+      top: 0,
+      width: 1,
+      height: 1
+    }
+  }
+
   const pane = importerPaneElement()
   const rect = pane?.getBoundingClientRect()
 
-  const left = Math.max(0, rect?.left ?? 0)
-  const top = Math.max(0, rect?.top ?? 0)
-  const right = Math.min(window.innerWidth, rect?.right ?? window.innerWidth)
-  const width = Math.max(1, right - left)
-  const height = Math.max(1, window.innerHeight - top)
+  const left = Math.max(0, Math.floor(rect?.left ?? 0))
+  const top = Math.max(0, Math.floor(rect?.top ?? 0))
+  const width = Math.max(1, Math.ceil(window.innerWidth - left))
+  const height = Math.max(1, Math.ceil(window.innerHeight - top))
 
   return {
     left,
@@ -60,32 +86,29 @@ function paneBounds() {
 }
 
 function applyBounds() {
-  const host = hostRef.value
   const canvas = canvasRef.value
-  if (!host || !canvas || typeof window === 'undefined') return
+  if (!canvas || typeof window === 'undefined') return
 
   const bounds = paneBounds()
   const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
-  host.style.left = `${bounds.left}px`
-  host.style.top = `${bounds.top}px`
-  host.style.width = `${bounds.width}px`
-  host.style.height = `${bounds.height}px`
+  hostStyle.left = `${bounds.left}px`
+  hostStyle.top = `${bounds.top}px`
+  hostStyle.width = `${bounds.width}px`
+  hostStyle.height = `${bounds.height}px`
 
-  canvas.style.width = `${bounds.width}px`
-  canvas.style.height = `${bounds.height}px`
-
-  const nextWidth = Math.floor(bounds.width * dpr)
-  const nextHeight = Math.floor(bounds.height * dpr)
+  const nextWidth = Math.max(1, Math.floor(bounds.width * dpr))
+  const nextHeight = Math.max(1, Math.floor(bounds.height * dpr))
 
   if (canvas.width !== nextWidth) canvas.width = nextWidth
   if (canvas.height !== nextHeight) canvas.height = nextHeight
 }
 
 function destroyThpace() {
-  if (thpaceInstance?.remove) {
-    thpaceInstance.remove()
-  }
+  try {
+    thpaceInstance?.remove?.()
+    thpaceInstance?.destroy?.()
+  } catch {}
 
   thpaceInstance = null
 }
@@ -94,53 +117,54 @@ function buildThpace() {
   const canvas = canvasRef.value
   if (!canvas || typeof window === 'undefined') return
 
-  destroyThpace()
   applyBounds()
+  destroyThpace()
 
   thpaceInstance = ThpaceGL.create(canvas, settings)
 }
 
-function scheduleRebuild() {
+function scheduleBuild() {
   if (typeof window === 'undefined') return
 
-  if (rebuildFrame) {
-    window.cancelAnimationFrame(rebuildFrame)
+  if (resizeFrame) {
+    window.cancelAnimationFrame(resizeFrame)
   }
 
-  rebuildFrame = window.requestAnimationFrame(() => {
-    rebuildFrame = 0
+  resizeFrame = window.requestAnimationFrame(() => {
+    resizeFrame = 0
     buildThpace()
   })
 }
 
-function syncBoundsOnly() {
+function syncPositionOnly() {
   applyBounds()
 }
 
 onMounted(async () => {
   await nextTick()
+
   buildThpace()
 
-  window.addEventListener('resize', scheduleRebuild)
-  window.addEventListener('orientationchange', scheduleRebuild)
-  window.addEventListener('scroll', syncBoundsOnly, true)
+  window.addEventListener('resize', scheduleBuild)
+  window.addEventListener('orientationchange', scheduleBuild)
+  window.addEventListener('scroll', syncPositionOnly, true)
 
   const pane = importerPaneElement()
   if (pane && typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(scheduleRebuild)
+    resizeObserver = new ResizeObserver(scheduleBuild)
     resizeObserver.observe(pane)
   }
 })
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', scheduleRebuild)
-    window.removeEventListener('orientationchange', scheduleRebuild)
-    window.removeEventListener('scroll', syncBoundsOnly, true)
+    window.removeEventListener('resize', scheduleBuild)
+    window.removeEventListener('orientationchange', scheduleBuild)
+    window.removeEventListener('scroll', syncPositionOnly, true)
 
-    if (rebuildFrame) {
-      window.cancelAnimationFrame(rebuildFrame)
-      rebuildFrame = 0
+    if (resizeFrame) {
+      window.cancelAnimationFrame(resizeFrame)
+      resizeFrame = 0
     }
   }
 
@@ -154,27 +178,12 @@ onBeforeUnmount(() => {
   <div
     ref="hostRef"
     data-importer-fixed-thpace
+    :style="hostStyle"
     aria-hidden="true"
   >
-    <canvas ref="canvasRef" />
+    <canvas
+      ref="canvasRef"
+      :style="canvasStyle"
+    />
   </div>
 </template>
-
-<style scoped>
-[data-importer-fixed-thpace] {
-  position: fixed;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 22% 16%, rgba(56, 189, 248, 0.10), transparent 34%),
-    radial-gradient(circle at 78% 24%, rgba(91, 33, 182, 0.16), transparent 36%),
-    #05080d;
-}
-
-[data-importer-fixed-thpace] canvas {
-  display: block;
-  position: absolute;
-  inset: 0;
-}
-</style>

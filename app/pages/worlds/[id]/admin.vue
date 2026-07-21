@@ -799,6 +799,211 @@ async function loadHomebrewTemplates() {
   }
 }
 
+
+type HomebrewCheckStatus = 'ok' | 'warn' | 'error'
+
+function homebrewHasText(value: any) {
+  return String(value ?? '').trim().length > 0
+}
+
+function homebrewNumberText(value: any) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+
+  return text.startsWith('+') || text.startsWith('-')
+    ? text
+    : text
+}
+
+function homebrewReviewValue(value: any, fallback = '—') {
+  const text = String(value ?? '').trim()
+  return text || fallback
+}
+
+const homebrewDraftTitlePreview = computed(() => {
+  if (homebrewType.value === 'spell') {
+    return homebrewTitle.value.trim() ||
+      spellBuilderForm.name.trim() ||
+      (selectedHomebrewTemplate.value ? defaultHomebrewTitle(selectedHomebrewTemplate.value) : '')
+  }
+
+  if (homebrewType.value === 'item') {
+    return homebrewTitle.value.trim() ||
+      itemBuilderForm.name.trim() ||
+      (selectedHomebrewTemplate.value ? defaultHomebrewTitle(selectedHomebrewTemplate.value) : '')
+  }
+
+  return homebrewTitle.value.trim() ||
+    (selectedHomebrewTemplate.value ? defaultHomebrewTitle(selectedHomebrewTemplate.value) : '')
+})
+
+const homebrewDraftChecks = computed(() => {
+  const checks: Array<{
+    status: HomebrewCheckStatus
+    label: string
+    detail: string
+  }> = []
+
+  function push(status: HomebrewCheckStatus, label: string, detail: string) {
+    checks.push({ status, label, detail })
+  }
+
+  if (!selectedHomebrewTemplate.value) {
+    push('error', 'Template Required', 'Choose a template before creating a homebrew draft.')
+    return checks
+  }
+
+  if (!homebrewHasText(homebrewDraftTitlePreview.value)) {
+    push('error', 'Title Required', 'Give the draft a title.')
+  }
+
+  if (homebrewType.value === 'spell') {
+    if (!homebrewHasText(spellBuilderForm.name)) {
+      push('error', 'Spell Name Required', 'Set the spell name before creating the draft.')
+    }
+
+    if (!homebrewHasText(spellBuilderForm.description)) {
+      push('warn', 'Description Empty', 'The spell can be created, but its article and overview will be thin.')
+    }
+
+    if (spellBuilderForm.attackType === 'saving_throw' && !homebrewHasText(spellBuilderForm.saveAbility)) {
+      push('error', 'Save Ability Required', 'Saving throw spells need a Strength, Dexterity, Constitution, Intelligence, Wisdom, or Charisma save.')
+    }
+
+    if (homebrewHasText(spellBuilderForm.damageType) && !homebrewHasText(spellBuilderForm.damage)) {
+      push('warn', 'Damage Dice Missing', 'A damage type is set, but no damage/healing dice were entered.')
+    }
+
+    if (homebrewHasText(spellBuilderForm.damage) && !homebrewHasText(spellBuilderForm.damageType)) {
+      push('warn', 'Damage Type Missing', 'Damage/healing dice are set, but no damage type is selected.')
+    }
+
+    if (!homebrewHasText(spellBuilderForm.castingTime)) {
+      push('warn', 'Casting Time Empty', 'Foundry-style export will eventually need a casting time.')
+    }
+
+    if (!homebrewHasText(spellBuilderForm.range)) {
+      push('warn', 'Range Empty', 'Foundry-style export will eventually need range.')
+    }
+
+    if (!homebrewHasText(spellBuilderForm.duration)) {
+      push('warn', 'Duration Empty', 'Foundry-style export will eventually need duration.')
+    }
+  }
+
+  if (homebrewType.value === 'item') {
+    if (!homebrewHasText(itemBuilderForm.name)) {
+      push('error', 'Item Name Required', 'Set the item name before creating the draft.')
+    }
+
+    if (!homebrewHasText(itemBuilderForm.description)) {
+      push('warn', 'Description Empty', 'The item can be created, but its article and overview will be thin.')
+    }
+
+    if (itemBuilderForm.equippable && !homebrewHasText(itemBuilderForm.equipSlot)) {
+      push('warn', 'Equip Slot Empty', 'Equippable items should usually have a slot.')
+    }
+
+    if (itemBuilderForm.requiresAttunement && !homebrewHasText(itemBuilderForm.attunementText)) {
+      push('warn', 'Attunement Text Empty', 'Attunement is enabled, but there is no restriction text.')
+    }
+
+    if (itemBuilderForm.weaponEnabled && !homebrewHasText(itemBuilderForm.weaponDamage)) {
+      push('warn', 'Weapon Damage Empty', 'Weapon profile is enabled without damage dice.')
+    }
+
+    if (itemBuilderForm.weaponEnabled && !homebrewHasText(itemBuilderForm.weaponDamageType)) {
+      push('warn', 'Weapon Damage Type Empty', 'Weapon profile is enabled without a damage type.')
+    }
+
+    if (itemBuilderForm.armorEnabled && !homebrewHasText(itemBuilderForm.armorClass)) {
+      push('warn', 'Armor Class Empty', 'Armor/shield profile is enabled without an AC value.')
+    }
+
+    if (homebrewHasText(itemBuilderForm.grantedActionDetail) && !homebrewHasText(itemBuilderForm.grantedActionName)) {
+      push('warn', 'Granted Action Name Empty', 'Action detail exists, but no action name is set.')
+    }
+  }
+
+  if (!checks.length) {
+    push('ok', 'Ready', 'This draft has the minimum fields Eldra needs.')
+  }
+
+  return checks
+})
+
+const homebrewBlockingCheckCount = computed(() =>
+  homebrewDraftChecks.value.filter((check) => check.status === 'error').length
+)
+
+const homebrewWarningCheckCount = computed(() =>
+  homebrewDraftChecks.value.filter((check) => check.status === 'warn').length
+)
+
+const homebrewCanCreate = computed(() =>
+  Boolean(selectedHomebrewTemplate.value) &&
+  homebrewBlockingCheckCount.value === 0
+)
+
+function homebrewCheckClass(status: HomebrewCheckStatus) {
+  if (status === 'error') {
+    return 'border-red-400/25 bg-red-500/10 text-red-100'
+  }
+
+  if (status === 'warn') {
+    return 'border-amber-300/25 bg-amber-400/10 text-amber-100'
+  }
+
+  return 'border-emerald-300/20 bg-emerald-400/10 text-emerald-100'
+}
+
+const homebrewReviewRows = computed(() => {
+  if (!selectedHomebrewTemplate.value) return []
+
+  if (homebrewType.value === 'spell') {
+    return [
+      ['Title', homebrewDraftTitlePreview.value],
+      ['Level', spellLevelLabel(spellBuilderForm.level)],
+      ['School', spellSchoolLabel(spellBuilderForm.school)],
+      ['Casting', spellBuilderForm.castingTime],
+      ['Range', spellBuilderForm.range],
+      ['Duration', spellBuilderForm.duration],
+      ['Components', spellBuilderForm.components],
+      ['Mode', SPELL_ATTACK_OPTIONS.find((option) => option.value === spellBuilderForm.attackType)?.label || 'None / Utility'],
+      ['Save', SPELL_SAVE_OPTIONS.find((option) => option.value === spellBuilderForm.saveAbility)?.label || 'No Save'],
+      ['Damage', [spellBuilderForm.damage, spellBuilderForm.damageType].filter(Boolean).join(' ')],
+      ['Classes', spellBuilderForm.classes]
+    ]
+  }
+
+  if (homebrewType.value === 'item') {
+    return [
+      ['Title', homebrewDraftTitlePreview.value],
+      ['Type', itemTypeLabel(itemBuilderForm.itemType)],
+      ['Rarity', itemBuilderForm.rarity],
+      ['Weight', itemBuilderForm.weight],
+      ['Value', itemBuilderForm.value],
+      ['Equipped', itemBuilderForm.equippable ? itemBuilderForm.equipSlot || 'Equippable' : 'No'],
+      ['Attunement', itemBuilderForm.requiresAttunement ? itemBuilderForm.attunementText || 'Required' : 'No'],
+      ['Weapon', itemBuilderForm.weaponEnabled ? [itemBuilderForm.weaponDamage, itemBuilderForm.weaponDamageType, itemBuilderForm.weaponRange].filter(Boolean).join(' · ') : 'No'],
+      ['Armor', itemBuilderForm.armorEnabled ? `AC ${itemBuilderForm.armorClass || '—'}` : 'No'],
+      ['Modifiers', [
+        itemBuilderForm.acBonus ? `AC ${homebrewNumberText(itemBuilderForm.acBonus)}` : '',
+        itemBuilderForm.saveBonus ? `Save ${homebrewNumberText(itemBuilderForm.saveBonus)}` : '',
+        itemBuilderForm.spellAttackBonus ? `Spell Attack ${homebrewNumberText(itemBuilderForm.spellAttackBonus)}` : '',
+        itemBuilderForm.spellSaveDcBonus ? `Spell DC ${homebrewNumberText(itemBuilderForm.spellSaveDcBonus)}` : ''
+      ].filter(Boolean).join(' · ')],
+      ['Granted Action', itemBuilderForm.grantedActionName || itemBuilderForm.grantedActionDetail ? itemBuilderForm.grantedActionName || 'Unnamed Action' : 'No']
+    ]
+  }
+
+  return [
+    ['Title', homebrewDraftTitlePreview.value],
+    ['Type', selectedHomebrewType.value.label],
+    ['Template', selectedHomebrewTemplate.value?.title || '—']
+  ]
+})
+
 async function createHomebrewDraft() {
   if (!selectedHomebrewTemplate.value) {
     homebrewError.value = 'Choose a template first.'
@@ -2228,6 +2433,62 @@ async function refreshAdmin() {
             </label>
 
             <div
+              v-if="selectedHomebrewTemplate"
+              data-homebrew-draft-review
+              class="mt-5 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(8,17,27,0.42)] p-4"
+            >
+              <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                    Draft Review
+                  </div>
+                  <h3 class="mt-2 text-xl font-semibold text-white">
+                    Ready Check
+                  </h3>
+                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                    Quick sanity pass before Eldra creates the structured draft.
+                  </p>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <span class="rounded-none border border-red-400/20 bg-red-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-red-100">
+                    {{ homebrewBlockingCheckCount }} blockers
+                  </span>
+                  <span class="rounded-none border border-amber-300/20 bg-amber-400/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-100">
+                    {{ homebrewWarningCheckCount }} warnings
+                  </span>
+                </div>
+              </div>
+
+              <div class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <div
+                  v-for="row in homebrewReviewRows"
+                  :key="`${row[0]}-${row[1]}`"
+                  class="rounded-none border border-[rgba(201,164,90,0.12)] bg-[rgba(4,8,14,0.42)] p-3"
+                >
+                  <div class="text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">
+                    {{ row[0] }}
+                  </div>
+                  <div class="mt-1 break-words text-sm font-semibold text-[#fff7df]">
+                    {{ homebrewReviewValue(row[1]) }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 grid gap-2">
+                <div
+                  v-for="check in homebrewDraftChecks"
+                  :key="`${check.status}-${check.label}`"
+                  class="rounded-none border px-3 py-2 text-sm leading-6"
+                  :class="homebrewCheckClass(check.status)"
+                >
+                  <span class="font-semibold">{{ check.label }}:</span>
+                  <span class="ml-1">{{ check.detail }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div
               v-if="homebrewError"
               class="mt-4 rounded-none border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-100"
             >
@@ -2245,7 +2506,7 @@ async function refreshAdmin() {
               <button
                 type="button"
                 class="eldra-button rounded-none px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                :disabled="homebrewCreating || !selectedHomebrewTemplate"
+                :disabled="homebrewCreating || !homebrewCanCreate"
                 @click="createHomebrewDraft"
               >
                 {{ homebrewCreating ? 'Creating Draft...' : 'Create Draft & Open Article' }}

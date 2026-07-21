@@ -278,6 +278,182 @@ function sourceFromBlocks(blocks: any[]) {
   }
 }
 
+
+function templateCoreForBuilder(config: TypeConfig, blocks: any[]) {
+  const core = blockData(findBlock(blocks, config.coreBlocks))
+
+  if (config.key === 'spell') {
+    return {
+      name: cleanText(core.name),
+      level: core.level ?? 0,
+      school: cleanText(core.school),
+      casting_time: cleanText(core.casting_time ?? core.castingTime),
+      castingTime: cleanText(core.casting_time ?? core.castingTime),
+      range: cleanText(core.range),
+      duration: cleanText(core.duration),
+      components: cleanText(core.components),
+      ritual: Boolean(core.ritual),
+      concentration: Boolean(core.concentration),
+      description: cleanText(core.description),
+      higher_level: cleanText(core.higher_level ?? core.higherLevel),
+      higherLevel: cleanText(core.higher_level ?? core.higherLevel),
+      damage: cleanText(core.damage),
+      damage_type: cleanText(core.damage_type ?? core.damageType),
+      damageType: cleanText(core.damage_type ?? core.damageType),
+      save_ability: cleanText(core.save_ability ?? core.saveAbility),
+      saveAbility: cleanText(core.save_ability ?? core.saveAbility),
+      attack_type: cleanText(core.attack_type ?? core.attackType),
+      attackType: cleanText(core.attack_type ?? core.attackType),
+      classes: cleanText(core.classes)
+    }
+  }
+
+  return {}
+}
+
+function compactPreviewText(value: any, limit = 320) {
+  const text = cleanText(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text) return ''
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text
+}
+
+function numberOrDefault(value: any, fallback = 0) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function booleanish(value: any) {
+  return value === true || value === 'true' || value === 1 || value === '1' || value === 'on'
+}
+
+function normalizeSpellSchool(value: any) {
+  const raw = cleanText(value)
+  const normalized = raw.toUpperCase()
+
+  const schoolMap: Record<string, string> = {
+    A: 'A',
+    ABJURATION: 'A',
+    C: 'C',
+    CONJURATION: 'C',
+    D: 'D',
+    DIVINATION: 'D',
+    E: 'E',
+    ENCHANTMENT: 'E',
+    V: 'V',
+    EVOCATION: 'V',
+    I: 'I',
+    ILLUSION: 'I',
+    N: 'N',
+    NECROMANCY: 'N',
+    T: 'T',
+    TRANSMUTATION: 'T'
+  }
+
+  return schoolMap[normalized] || raw
+}
+
+function normalizeHomebrewSpellPatch(value: any, fallbackTitle = '') {
+  const spell = asObject(value)
+  const components = cleanText(spell.components)
+  const damage = cleanText(spell.damage)
+  const damageType = cleanText(spell.damageType ?? spell.damage_type)
+  const saveAbility = cleanText(spell.saveAbility ?? spell.save_ability)
+  const attackType = cleanText(spell.attackType ?? spell.attack_type)
+  const classes = cleanText(spell.classes)
+
+  return {
+    name: cleanText(spell.name) || cleanText(fallbackTitle),
+    level: numberOrDefault(spell.level, 0),
+    school: normalizeSpellSchool(spell.school),
+    casting_time: cleanText(spell.castingTime ?? spell.casting_time),
+    range: cleanText(spell.range),
+    duration: cleanText(spell.duration),
+    components,
+    ritual: booleanish(spell.ritual),
+    concentration: booleanish(spell.concentration),
+    description: cleanText(spell.description),
+    higher_level: cleanText(spell.higherLevel ?? spell.higher_level),
+    damage,
+    damage_type: damageType,
+    save_ability: saveAbility,
+    attack_type: attackType,
+    classes
+  }
+}
+
+function homebrewSpellSummary(value: any) {
+  const spell = normalizeHomebrewSpellPatch(value)
+  return compactPreviewText(spell.description, 420)
+}
+
+function applyHomebrewSpellPatch(core: any, value: any, fallbackTitle: string) {
+  const data = deepClone(asObject(core))
+  const spell = normalizeHomebrewSpellPatch(value, fallbackTitle)
+
+  if (spell.name) data.name = spell.name
+  data.level = spell.level
+  data.school = spell.school
+  data.casting_time = spell.casting_time
+  data.castingTime = spell.casting_time
+  data.range = spell.range
+  data.duration = spell.duration
+  data.components = spell.components
+  data.ritual = spell.ritual
+  data.concentration = spell.concentration
+  data.description = spell.description
+  data.higher_level = spell.higher_level
+  data.higherLevel = spell.higher_level
+
+  data.damage = spell.damage
+  data.damage_type = spell.damage_type
+  data.damageType = spell.damage_type
+  data.save_ability = spell.save_ability
+  data.saveAbility = spell.save_ability
+  data.attack_type = spell.attack_type
+  data.attackType = spell.attack_type
+  data.classes = spell.classes
+
+  data.homebrew = true
+  data.source_kind = 'homebrew'
+  data.sourceKind = 'homebrew'
+
+  data.mechanics = {
+    ...(asObject(data.mechanics)),
+    attackType: spell.attack_type,
+    saveAbility: spell.save_ability,
+    damage: spell.damage,
+    damageType: spell.damage_type,
+    classes: spell.classes
+  }
+
+  return data
+}
+
+function prepareHomebrewBlockData(key: string, data: any, type: HomebrewType, body: any, title: string) {
+  const normalizedKey = cleanText(key)
+
+  if (type === 'spell' && normalizedKey === 'spell_core') {
+    return applyHomebrewSpellPatch(data, body?.spell || {}, title)
+  }
+
+  if (type === 'spell' && normalizedKey === 'overview') {
+    const next = deepClone(asObject(data))
+    const description = homebrewSpellSummary(body?.spell)
+
+    if (description) {
+      next.text = description
+    }
+
+    return next
+  }
+
+  return data
+}
+
+
 function templateMetaLine(config: TypeConfig, blocks: any[]) {
   const source = sourceFromBlocks(blocks)
   const sourcePart = source.sourceBook
@@ -350,7 +526,7 @@ function cloneableBlocksForType(config: TypeConfig, blocks: any[]) {
   )
 }
 
-function homebrewImportSourceData(template: any, type: HomebrewType) {
+function homebrewImportSourceData(template: any, type: HomebrewType, body: any = {}, title = '') {
   return {
     provider: 'eldra-homebrew',
     source_kind: 'homebrew',
@@ -370,6 +546,7 @@ function homebrewImportSourceData(template: any, type: HomebrewType) {
     templateType: template.entity_type,
     raw_json: {
       homebrew: true,
+      spell: type === 'spell' ? normalizeHomebrewSpellPatch(body?.spell || {}, title || template.title) : null,
       templateEntityId: template.id,
       templateTitle: template.title,
       templateType: template.entity_type
@@ -486,7 +663,8 @@ export async function listHomebrewTemplates(worldId: string | number, rawType: a
       provider: source.provider,
       metaLine: templateMetaLine(config, rowBlocks),
       blockCount: rowBlocks.length,
-      coreBlockKeys: rowBlocks.map(blockKey).filter(Boolean)
+      coreBlockKeys: rowBlocks.map(blockKey).filter(Boolean),
+      core: templateCoreForBuilder(config, rowBlocks)
     }
   })
 
@@ -534,9 +712,13 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
     })
   }
 
-  const title = cleanText(body?.title) || `Homebrew: ${template.title || config.label}`
+  const title = cleanText(body?.title) ||
+    (type === 'spell' ? cleanText(body?.spell?.name) : '') ||
+    `Homebrew: ${template.title || config.label}`
   const slug = await uniqueEntitySlug(worldId, title)
-  const summary = cleanText(body?.summary) || `Homebrew ${config.label.toLowerCase()} draft based on ${template.title || 'a template'}.`
+  const summary = cleanText(body?.summary) ||
+    (type === 'spell' ? homebrewSpellSummary(body?.spell) : '') ||
+    `Homebrew ${config.label.toLowerCase()} draft based on ${template.title || 'a template'}.`
 
   const entityFields = await collectionFields('entities', ENTITY_FALLBACK_FIELDS)
 
@@ -586,7 +768,7 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
       key: 'import_source',
       label: 'Import Source',
       sort: 10,
-      data: homebrewImportSourceData(template, type)
+      data: homebrewImportSourceData(template, type, body, title)
     }
   ]
 
@@ -599,7 +781,7 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
       label: cleanText(block.label) || titleCase(cloned.key),
       repeatable: Boolean(block.repeatable),
       sort: Number(block.sort) || sort,
-      data: cloned.data
+      data: prepareHomebrewBlockData(cloned.key, cloned.data, type, body, title)
     })
 
     sort += 10

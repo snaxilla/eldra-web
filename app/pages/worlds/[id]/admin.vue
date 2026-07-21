@@ -279,6 +279,185 @@ const selectedHomebrewTemplate = computed(() =>
   ) || null
 )
 
+
+const SPELL_SCHOOL_OPTIONS = [
+  { value: 'A', label: 'Abjuration' },
+  { value: 'C', label: 'Conjuration' },
+  { value: 'D', label: 'Divination' },
+  { value: 'E', label: 'Enchantment' },
+  { value: 'V', label: 'Evocation' },
+  { value: 'I', label: 'Illusion' },
+  { value: 'N', label: 'Necromancy' },
+  { value: 'T', label: 'Transmutation' }
+]
+
+const SPELL_LEVEL_OPTIONS = [
+  { value: '0', label: 'Cantrip' },
+  { value: '1', label: 'Level 1' },
+  { value: '2', label: 'Level 2' },
+  { value: '3', label: 'Level 3' },
+  { value: '4', label: 'Level 4' },
+  { value: '5', label: 'Level 5' },
+  { value: '6', label: 'Level 6' },
+  { value: '7', label: 'Level 7' },
+  { value: '8', label: 'Level 8' },
+  { value: '9', label: 'Level 9' }
+]
+
+const SPELL_ATTACK_OPTIONS = [
+  { value: '', label: 'None / Utility' },
+  { value: 'spell_attack', label: 'Spell Attack' },
+  { value: 'saving_throw', label: 'Saving Throw' },
+  { value: 'healing', label: 'Healing' },
+  { value: 'summon', label: 'Summon / Control' }
+]
+
+const SPELL_SAVE_OPTIONS = [
+  { value: '', label: 'No Save' },
+  { value: 'str', label: 'Strength' },
+  { value: 'dex', label: 'Dexterity' },
+  { value: 'con', label: 'Constitution' },
+  { value: 'int', label: 'Intelligence' },
+  { value: 'wis', label: 'Wisdom' },
+  { value: 'cha', label: 'Charisma' }
+]
+
+const SPELL_DAMAGE_TYPES = [
+  '',
+  'acid',
+  'bludgeoning',
+  'cold',
+  'fire',
+  'force',
+  'lightning',
+  'necrotic',
+  'piercing',
+  'poison',
+  'psychic',
+  'radiant',
+  'slashing',
+  'thunder'
+]
+
+const spellBuilderForm = reactive({
+  name: '',
+  level: '0',
+  school: 'V',
+  castingTime: '',
+  range: '',
+  duration: '',
+  components: '',
+  ritual: false,
+  concentration: false,
+  attackType: '',
+  saveAbility: '',
+  damage: '',
+  damageType: '',
+  classes: '',
+  description: '',
+  higherLevel: ''
+})
+
+function spellBuilderText(value: any) {
+  return String(value ?? '').trim()
+}
+
+function spellLevelLabel(value: any) {
+  const key = String(value ?? '0')
+  return SPELL_LEVEL_OPTIONS.find((option) => option.value === key)?.label || `Level ${key}`
+}
+
+function spellSchoolLabel(value: any) {
+  const key = String(value || '').toUpperCase()
+  return SPELL_SCHOOL_OPTIONS.find((option) => option.value === key)?.label || key || 'School'
+}
+
+function spellBuilderBool(value: any) {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+function hydrateSpellBuilderFromTemplate(template: any) {
+  const core = template?.core || {}
+
+  spellBuilderForm.name = spellBuilderText(core.name || template?.title || '')
+  spellBuilderForm.level = String(core.level ?? '0')
+  spellBuilderForm.school = spellBuilderText(core.school || 'V').toUpperCase()
+  spellBuilderForm.castingTime = spellBuilderText(core.casting_time || core.castingTime || '')
+  spellBuilderForm.range = spellBuilderText(core.range || '')
+  spellBuilderForm.duration = spellBuilderText(core.duration || '')
+  spellBuilderForm.components = spellBuilderText(core.components || '')
+  spellBuilderForm.ritual = spellBuilderBool(core.ritual)
+  spellBuilderForm.concentration = spellBuilderBool(core.concentration)
+  spellBuilderForm.attackType = spellBuilderText(core.attack_type || core.attackType || '')
+  spellBuilderForm.saveAbility = spellBuilderText(core.save_ability || core.saveAbility || '')
+  spellBuilderForm.damage = spellBuilderText(core.damage || '')
+  spellBuilderForm.damageType = spellBuilderText(core.damage_type || core.damageType || '')
+  spellBuilderForm.classes = spellBuilderText(core.classes || '')
+  spellBuilderForm.description = spellBuilderText(core.description || template?.summary || '')
+  spellBuilderForm.higherLevel = spellBuilderText(core.higher_level || core.higherLevel || '')
+
+  if (!homebrewTitle.value.trim()) {
+    homebrewTitle.value = spellBuilderForm.name
+      ? `Homebrew: ${spellBuilderForm.name}`
+      : defaultHomebrewTitle(template)
+  }
+}
+
+function spellBuilderPayload() {
+  return {
+    name: spellBuilderForm.name,
+    level: Number(spellBuilderForm.level || 0),
+    school: spellBuilderForm.school,
+    castingTime: spellBuilderForm.castingTime,
+    range: spellBuilderForm.range,
+    duration: spellBuilderForm.duration,
+    components: spellBuilderForm.components,
+    ritual: spellBuilderForm.ritual,
+    concentration: spellBuilderForm.concentration,
+    attackType: spellBuilderForm.attackType,
+    saveAbility: spellBuilderForm.saveAbility,
+    damage: spellBuilderForm.damage,
+    damageType: spellBuilderForm.damageType,
+    classes: spellBuilderForm.classes,
+    description: spellBuilderForm.description,
+    higherLevel: spellBuilderForm.higherLevel
+  }
+}
+
+const spellBuilderSummaryLine = computed(() => {
+  if (homebrewType.value !== 'spell') return ''
+
+  return [
+    spellLevelLabel(spellBuilderForm.level),
+    spellSchoolLabel(spellBuilderForm.school),
+    spellBuilderForm.castingTime,
+    spellBuilderForm.range,
+    spellBuilderForm.duration,
+    spellBuilderForm.concentration ? 'Concentration' : '',
+    spellBuilderForm.ritual ? 'Ritual' : ''
+  ].filter(Boolean).join(' · ')
+})
+
+function resetSpellBuilderForm() {
+  spellBuilderForm.name = ''
+  spellBuilderForm.level = '0'
+  spellBuilderForm.school = 'V'
+  spellBuilderForm.castingTime = ''
+  spellBuilderForm.range = ''
+  spellBuilderForm.duration = ''
+  spellBuilderForm.components = ''
+  spellBuilderForm.ritual = false
+  spellBuilderForm.concentration = false
+  spellBuilderForm.attackType = ''
+  spellBuilderForm.saveAbility = ''
+  spellBuilderForm.damage = ''
+  spellBuilderForm.damageType = ''
+  spellBuilderForm.classes = ''
+  spellBuilderForm.description = ''
+  spellBuilderForm.higherLevel = ''
+}
+
+
 function defaultHomebrewTitle(template: any) {
   const title = String(template?.title || selectedHomebrewType.value?.label || 'Homebrew').trim()
   return title.startsWith('Homebrew:')
@@ -299,6 +478,10 @@ function selectHomebrewTemplate(template: any) {
   homebrewSelectedTemplateId.value = String(template?.id || '')
   homebrewSuccess.value = ''
   homebrewError.value = ''
+
+  if (homebrewType.value === 'spell') {
+    hydrateSpellBuilderFromTemplate(template)
+  }
 
   if (!homebrewTitle.value.trim()) {
     homebrewTitle.value = defaultHomebrewTitle(template)
@@ -355,7 +538,12 @@ async function createHomebrewDraft() {
       body: {
         type: homebrewType.value,
         templateEntityId: homebrewSelectedTemplateId.value,
-        title: homebrewTitle.value || defaultHomebrewTitle(selectedHomebrewTemplate.value)
+        title: homebrewType.value === 'spell'
+          ? (homebrewTitle.value || spellBuilderForm.name || defaultHomebrewTitle(selectedHomebrewTemplate.value))
+          : (homebrewTitle.value || defaultHomebrewTitle(selectedHomebrewTemplate.value)),
+        spell: homebrewType.value === 'spell'
+          ? spellBuilderPayload()
+          : undefined
       }
     })
 
@@ -384,6 +572,7 @@ watch(
     homebrewTemplateSearch.value = ''
     homebrewCreatedEntity.value = null
     homebrewSuccess.value = ''
+    resetSpellBuilderForm()
     void loadHomebrewTemplates()
   },
   { immediate: true }
@@ -1113,6 +1302,224 @@ async function refreshAdmin() {
               <div class="mt-1 text-xs text-[#9f9278]">
                 {{ homebrewTemplateSubtitle(selectedHomebrewTemplate) || 'Structured template selected.' }}
               </div>
+            </div>
+
+            <div
+              v-if="homebrewType === 'spell' && selectedHomebrewTemplate"
+              data-homebrew-spell-builder
+              class="mt-5 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(8,17,27,0.42)] p-4"
+            >
+              <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                    Spell Builder
+                  </div>
+                  <h3 class="mt-2 text-xl font-semibold text-white">
+                    Spell Mechanics
+                  </h3>
+                  <p class="mt-2 text-sm leading-6 text-[#d8ceb8]">
+                    Start from the selected template, then override the combat-useful fields before Eldra creates the draft.
+                  </p>
+                </div>
+
+                <div class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(201,164,90,0.08)] px-3 py-2 text-xs leading-5 text-[#d8ceb8]">
+                  {{ spellBuilderSummaryLine || 'No mechanics yet' }}
+                </div>
+              </div>
+
+              <div class="mt-5 grid gap-4 xl:grid-cols-3">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Spell Name</span>
+                  <input
+                    v-model="spellBuilderForm.name"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="Magic Missile, Fireball, etc."
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Level</span>
+                  <select
+                    v-model="spellBuilderForm.level"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="level in SPELL_LEVEL_OPTIONS"
+                      :key="level.value"
+                      :value="level.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ level.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">School</span>
+                  <select
+                    v-model="spellBuilderForm.school"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="school in SPELL_SCHOOL_OPTIONS"
+                      :key="school.value"
+                      :value="school.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ school.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="mt-4 grid gap-4 xl:grid-cols-4">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Casting Time</span>
+                  <input
+                    v-model="spellBuilderForm.castingTime"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="1 Action"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Range</span>
+                  <input
+                    v-model="spellBuilderForm.range"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="60 feet"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Duration</span>
+                  <input
+                    v-model="spellBuilderForm.duration"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="Instantaneous"
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Components</span>
+                  <input
+                    v-model="spellBuilderForm.components"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="V, S, M (a tiny bell)"
+                  >
+                </label>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-3">
+                <label class="inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-3 py-2 text-sm text-[#d8ceb8]">
+                  <input
+                    v-model="spellBuilderForm.concentration"
+                    type="checkbox"
+                    class="accent-[#c9a45a]"
+                  >
+                  Concentration
+                </label>
+
+                <label class="inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(20,17,12,0.52)] px-3 py-2 text-sm text-[#d8ceb8]">
+                  <input
+                    v-model="spellBuilderForm.ritual"
+                    type="checkbox"
+                    class="accent-[#c9a45a]"
+                  >
+                  Ritual
+                </label>
+              </div>
+
+              <div class="mt-4 grid gap-4 xl:grid-cols-4">
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Combat Mode</span>
+                  <select
+                    v-model="spellBuilderForm.attackType"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="option in SPELL_ATTACK_OPTIONS"
+                      :key="option.value"
+                      :value="option.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Save Ability</span>
+                  <select
+                    v-model="spellBuilderForm.saveAbility"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="option in SPELL_SAVE_OPTIONS"
+                      :key="option.value"
+                      :value="option.value"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Damage / Healing</span>
+                  <input
+                    v-model="spellBuilderForm.damage"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                    placeholder="8d6, 2d8, etc."
+                  >
+                </label>
+
+                <label>
+                  <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Damage Type</span>
+                  <select
+                    v-model="spellBuilderForm.damageType"
+                    class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  >
+                    <option
+                      v-for="type in SPELL_DAMAGE_TYPES"
+                      :key="type || 'none'"
+                      :value="type"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ type || 'None' }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <label class="mt-4 block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Class Lists / Tags</span>
+                <input
+                  v-model="spellBuilderForm.classes"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm text-white"
+                  placeholder="Wizard, Cleric, Druid..."
+                >
+              </label>
+
+              <label class="mt-4 block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Description</span>
+                <textarea
+                  v-model="spellBuilderForm.description"
+                  rows="7"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm leading-6 text-white"
+                  placeholder="What the spell does at the table..."
+                />
+              </label>
+
+              <label class="mt-4 block">
+                <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">At Higher Levels</span>
+                <textarea
+                  v-model="spellBuilderForm.higherLevel"
+                  rows="3"
+                  class="eldra-input w-full rounded-none px-3 py-3 text-sm leading-6 text-white"
+                  placeholder="How the spell scales when cast with higher-level slots..."
+                />
+              </label>
             </div>
 
             <label class="mt-5 block">

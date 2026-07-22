@@ -4,6 +4,7 @@ import AdminHomebrewTemplatePicker from '~/components/admin/homebrew/AdminHomebr
 import AdminHomebrewSpellBuilder from '~/components/admin/homebrew/AdminHomebrewSpellBuilder.vue'
 import AdminHomebrewItemBuilder from '~/components/admin/homebrew/AdminHomebrewItemBuilder.vue'
 import AdminHomebrewDraftReview from '~/components/admin/homebrew/AdminHomebrewDraftReview.vue'
+import AdminHomebrewEnemyBuilder from '~/components/admin/homebrew/AdminHomebrewEnemyBuilder.vue'
 
 const props = defineProps<{
   worldId: string | number
@@ -560,6 +561,212 @@ const itemBuilderSummaryLine = computed(() => {
 })
 
 
+const ENEMY_SIZE_OPTIONS = [
+  { value: 'T', label: 'Tiny' },
+  { value: 'S', label: 'Small' },
+  { value: 'M', label: 'Medium' },
+  { value: 'L', label: 'Large' },
+  { value: 'H', label: 'Huge' },
+  { value: 'G', label: 'Gargantuan' }
+]
+
+const ENEMY_TYPE_OPTIONS = [
+  'aberration',
+  'beast',
+  'celestial',
+  'construct',
+  'dragon',
+  'elemental',
+  'fey',
+  'fiend',
+  'giant',
+  'humanoid',
+  'monstrosity',
+  'ooze',
+  'plant',
+  'undead'
+]
+
+const ENEMY_ALIGNMENT_OPTIONS = [
+  { value: '', label: 'Unaligned / Any' },
+  { value: 'L / G', label: 'Lawful Good' },
+  { value: 'N / G', label: 'Neutral Good' },
+  { value: 'C / G', label: 'Chaotic Good' },
+  { value: 'L / N', label: 'Lawful Neutral' },
+  { value: 'N', label: 'Neutral' },
+  { value: 'C / N', label: 'Chaotic Neutral' },
+  { value: 'L / E', label: 'Lawful Evil' },
+  { value: 'N / E', label: 'Neutral Evil' },
+  { value: 'C / E', label: 'Chaotic Evil' }
+]
+
+const enemyBuilderForm = reactive({
+  name: '',
+  size: 'M',
+  creatureType: 'humanoid',
+  alignment: '',
+  challengeRating: '',
+  xp: '',
+  armorClass: '',
+  hitPoints: '',
+  speed: '',
+  str: '10',
+  dex: '10',
+  con: '10',
+  int: '10',
+  wis: '10',
+  cha: '10',
+  savingThrows: '',
+  skills: '',
+  senses: '',
+  languages: '',
+  vulnerabilities: '',
+  resistances: '',
+  immunities: '',
+  conditionImmunities: '',
+  description: '',
+  traits: '',
+  actions: '',
+  bonusActions: '',
+  reactions: '',
+  legendaryActions: ''
+})
+
+function enemyBuilderText(value: any) {
+  return String(value ?? '').trim()
+}
+
+function enemySizeLabel(value: any) {
+  const key = String(value || '').toUpperCase()
+  return ENEMY_SIZE_OPTIONS.find((option) => option.value === key)?.label || key || 'Size'
+}
+
+function enemyAbilityValue(value: any, fallback = '10') {
+  const text = enemyBuilderText(value)
+  if (!text) return fallback
+
+  const parsed = Number(text)
+  return Number.isFinite(parsed) ? String(Math.floor(parsed)) : fallback
+}
+
+function hydrateEnemyBuilderFromTemplate(template: any) {
+  const core = template?.core || {}
+
+  enemyBuilderForm.name = enemyBuilderText(core.name || template?.title || '')
+  enemyBuilderForm.size = enemyBuilderText(core.size || 'M').split('/')[0].trim().toUpperCase() || 'M'
+  enemyBuilderForm.creatureType = enemyBuilderText(core.creature_type || core.creatureType || 'humanoid')
+  enemyBuilderForm.alignment = enemyBuilderText(core.alignment || '')
+  enemyBuilderForm.challengeRating = enemyBuilderText(core.challenge_rating || core.challengeRating || '')
+  enemyBuilderForm.xp = enemyBuilderText(core.xp || '')
+  enemyBuilderForm.armorClass = enemyBuilderText(core.armor_class || core.armorClass || '')
+  enemyBuilderForm.hitPoints = enemyBuilderText(core.hit_points || core.hitPoints || '')
+  enemyBuilderForm.speed = enemyBuilderText(core.speed || '')
+  enemyBuilderForm.str = enemyAbilityValue(core.str)
+  enemyBuilderForm.dex = enemyAbilityValue(core.dex)
+  enemyBuilderForm.con = enemyAbilityValue(core.con)
+  enemyBuilderForm.int = enemyAbilityValue(core.int)
+  enemyBuilderForm.wis = enemyAbilityValue(core.wis)
+  enemyBuilderForm.cha = enemyAbilityValue(core.cha)
+  enemyBuilderForm.savingThrows = enemyBuilderText(core.savingThrows || core.saving_throws || '')
+  enemyBuilderForm.skills = enemyBuilderText(core.skills || '')
+  enemyBuilderForm.senses = enemyBuilderText(core.senses || '')
+  enemyBuilderForm.languages = enemyBuilderText(core.languages || '')
+  enemyBuilderForm.vulnerabilities = enemyBuilderText(core.vulnerabilities || '')
+  enemyBuilderForm.resistances = enemyBuilderText(core.resistances || '')
+  enemyBuilderForm.immunities = enemyBuilderText(core.immunities || '')
+  enemyBuilderForm.conditionImmunities = enemyBuilderText(core.conditionImmunities || core.condition_immunities || '')
+  enemyBuilderForm.description = enemyBuilderText(core.description || template?.summary || '')
+  enemyBuilderForm.traits = enemyBuilderText(core.traits || '')
+  enemyBuilderForm.actions = enemyBuilderText(core.actions || '')
+  enemyBuilderForm.bonusActions = enemyBuilderText(core.bonusActions || core.bonus_actions || '')
+  enemyBuilderForm.reactions = enemyBuilderText(core.reactions || '')
+  enemyBuilderForm.legendaryActions = enemyBuilderText(core.legendaryActions || core.legendary_actions || '')
+
+  if (!homebrewTitle.value.trim()) {
+    homebrewTitle.value = enemyBuilderForm.name
+      ? `Homebrew: ${enemyBuilderForm.name}`
+      : defaultHomebrewTitle(template)
+  }
+}
+
+function resetEnemyBuilderForm() {
+  enemyBuilderForm.name = ''
+  enemyBuilderForm.size = 'M'
+  enemyBuilderForm.creatureType = 'humanoid'
+  enemyBuilderForm.alignment = ''
+  enemyBuilderForm.challengeRating = ''
+  enemyBuilderForm.xp = ''
+  enemyBuilderForm.armorClass = ''
+  enemyBuilderForm.hitPoints = ''
+  enemyBuilderForm.speed = ''
+  enemyBuilderForm.str = '10'
+  enemyBuilderForm.dex = '10'
+  enemyBuilderForm.con = '10'
+  enemyBuilderForm.int = '10'
+  enemyBuilderForm.wis = '10'
+  enemyBuilderForm.cha = '10'
+  enemyBuilderForm.savingThrows = ''
+  enemyBuilderForm.skills = ''
+  enemyBuilderForm.senses = ''
+  enemyBuilderForm.languages = ''
+  enemyBuilderForm.vulnerabilities = ''
+  enemyBuilderForm.resistances = ''
+  enemyBuilderForm.immunities = ''
+  enemyBuilderForm.conditionImmunities = ''
+  enemyBuilderForm.description = ''
+  enemyBuilderForm.traits = ''
+  enemyBuilderForm.actions = ''
+  enemyBuilderForm.bonusActions = ''
+  enemyBuilderForm.reactions = ''
+  enemyBuilderForm.legendaryActions = ''
+}
+
+function enemyBuilderPayload() {
+  return {
+    name: enemyBuilderForm.name,
+    size: enemyBuilderForm.size,
+    creatureType: enemyBuilderForm.creatureType,
+    alignment: enemyBuilderForm.alignment,
+    challengeRating: enemyBuilderForm.challengeRating,
+    xp: enemyBuilderForm.xp,
+    armorClass: enemyBuilderForm.armorClass,
+    hitPoints: enemyBuilderForm.hitPoints,
+    speed: enemyBuilderForm.speed,
+    str: enemyBuilderForm.str,
+    dex: enemyBuilderForm.dex,
+    con: enemyBuilderForm.con,
+    int: enemyBuilderForm.int,
+    wis: enemyBuilderForm.wis,
+    cha: enemyBuilderForm.cha,
+    savingThrows: enemyBuilderForm.savingThrows,
+    skills: enemyBuilderForm.skills,
+    senses: enemyBuilderForm.senses,
+    languages: enemyBuilderForm.languages,
+    vulnerabilities: enemyBuilderForm.vulnerabilities,
+    resistances: enemyBuilderForm.resistances,
+    immunities: enemyBuilderForm.immunities,
+    conditionImmunities: enemyBuilderForm.conditionImmunities,
+    description: enemyBuilderForm.description,
+    traits: enemyBuilderForm.traits,
+    actions: enemyBuilderForm.actions,
+    bonusActions: enemyBuilderForm.bonusActions,
+    reactions: enemyBuilderForm.reactions,
+    legendaryActions: enemyBuilderForm.legendaryActions
+  }
+}
+
+const enemyBuilderSummaryLine = computed(() => {
+  if (homebrewType.value !== 'enemy') return ''
+
+  return [
+    enemySizeLabel(enemyBuilderForm.size),
+    enemyBuilderForm.creatureType,
+    enemyBuilderForm.challengeRating ? `CR ${enemyBuilderForm.challengeRating}` : '',
+    enemyBuilderForm.armorClass ? `AC ${enemyBuilderForm.armorClass}` : '',
+    enemyBuilderForm.hitPoints ? `HP ${enemyBuilderForm.hitPoints}` : ''
+  ].filter(Boolean).join(' - ')
+})
+
 function defaultHomebrewTitle(template: any) {
   const title = String(template?.title || selectedHomebrewType.value?.label || 'Homebrew').trim()
   return title.startsWith('Homebrew:')
@@ -587,6 +794,10 @@ function selectHomebrewTemplate(template: any) {
 
   if (homebrewType.value === 'item') {
     hydrateItemBuilderFromTemplate(template)
+  }
+
+  if (homebrewType.value === 'enemy') {
+    hydrateEnemyBuilderFromTemplate(template)
   }
 
   if (!homebrewTitle.value.trim()) {
@@ -660,6 +871,14 @@ const homebrewDraftTitlePreview = computed(() => {
       itemBuilderForm.name.trim() ||
       (selectedHomebrewTemplate.value ? defaultHomebrewTitle(selectedHomebrewTemplate.value) : '')
   }
+
+
+  if (homebrewType.value === 'enemy') {
+    return homebrewTitle.value.trim() ||
+      enemyBuilderForm.name.trim() ||
+      (selectedHomebrewTemplate.value ? defaultHomebrewTitle(selectedHomebrewTemplate.value) : '')
+  }
+
 
   return homebrewTitle.value.trim() ||
     (selectedHomebrewTemplate.value ? defaultHomebrewTitle(selectedHomebrewTemplate.value) : '')
@@ -752,6 +971,34 @@ const homebrewDraftChecks = computed(() => {
       push('warn', 'Granted Action Name Empty', 'Action detail exists, but no action name is set.')
     }
   }
+
+
+  if (homebrewType.value === 'enemy') {
+    if (!homebrewHasText(enemyBuilderForm.name)) {
+      push('error', 'Enemy Name Required', 'Set the enemy name before creating the draft.')
+    }
+
+    if (!homebrewHasText(enemyBuilderForm.challengeRating)) {
+      push('warn', 'CR Empty', 'Combat export will eventually need challenge rating.')
+    }
+
+    if (!homebrewHasText(enemyBuilderForm.armorClass)) {
+      push('warn', 'AC Empty', 'Combat export will eventually need armor class.')
+    }
+
+    if (!homebrewHasText(enemyBuilderForm.hitPoints)) {
+      push('warn', 'HP Empty', 'Combat export will eventually need hit points.')
+    }
+
+    if (!homebrewHasText(enemyBuilderForm.actions)) {
+      push('warn', 'Actions Empty', 'The enemy has no action text yet.')
+    }
+
+    if (!homebrewHasText(enemyBuilderForm.description)) {
+      push('warn', 'Description Empty', 'The enemy can be created, but its article and overview will be thin.')
+    }
+  }
+
 
   if (!checks.length) {
     push('ok', 'Ready', 'This draft has the minimum fields Eldra needs.')
@@ -857,6 +1104,9 @@ async function createHomebrewDraft() {
           : undefined,
         item: homebrewType.value === 'item'
           ? itemBuilderPayload()
+          : undefined,
+        enemy: homebrewType.value === 'enemy'
+          ? enemyBuilderPayload()
           : undefined
       }
     })
@@ -955,6 +1205,16 @@ watch(
               :action-timings="ITEM_ACTION_TIMINGS"
               :recharge-options="ITEM_RECHARGE_OPTIONS"
             />
+
+            <AdminHomebrewEnemyBuilder
+              v-if="homebrewType === 'enemy' && selectedHomebrewTemplate"
+              :form="enemyBuilderForm"
+              :summary-line="enemyBuilderSummaryLine"
+              :size-options="ENEMY_SIZE_OPTIONS"
+              :type-options="ENEMY_TYPE_OPTIONS"
+              :alignment-options="ENEMY_ALIGNMENT_OPTIONS"
+            />
+
   
               <label class="mt-5 block">
                 <span class="mb-2 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">Draft Title</span>

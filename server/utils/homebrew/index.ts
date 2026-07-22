@@ -3,6 +3,7 @@ import { directusServiceRequest } from '../directus'
 import {
   applyHomebrewEnemyPatch,
   homebrewEnemyCoreForBuilder,
+  homebrewEnemyCoreFromStructuredRows,
   homebrewEnemySummary,
   isEnemyHomebrewCoreBlock
 } from './enemy'
@@ -966,6 +967,93 @@ export function homebrewTypeOptions() {
   }))
 }
 
+type EnemyTemplateStructuredRows = {
+  statblock: any | null
+  actions: any[]
+  monsterProfile: any | null
+}
+
+function enemyTemplateStructuredBucket() {
+  return {
+    statblock: null,
+    actions: [],
+    monsterProfile: null
+  } as EnemyTemplateStructuredRows
+}
+
+async function loadEnemyTemplateStructuredRows(entityIds: any[]) {
+  const ids = Array.from(new Set(
+    entityIds
+      .map((id: any) => cleanText(id))
+      .filter(Boolean)
+  ))
+
+  const map = new Map<string, EnemyTemplateStructuredRows>()
+
+  for (const id of ids) {
+    map.set(id, enemyTemplateStructuredBucket())
+  }
+
+  if (!ids.length) return map
+
+  const [statblocksRes, actionsRes, profilesRes] = await Promise.all([
+    directusServiceRequest('/items/entity_statblocks', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _in: ids }
+        },
+        limit: -1,
+        fields: '*'
+      }
+    }),
+    directusServiceRequest('/items/entity_actions', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _in: ids }
+        },
+        sort: 'entity_id,action_type,sort_order,id',
+        limit: -1,
+        fields: '*'
+      }
+    }),
+    directusServiceRequest('/items/monster_profiles', {
+      method: 'GET',
+      query: {
+        filter: {
+          entity_id: { _in: ids }
+        },
+        limit: -1,
+        fields: '*'
+      }
+    })
+  ])
+
+  for (const statblock of Array.isArray(statblocksRes?.data) ? statblocksRes.data : []) {
+    const key = cleanText(statblock?.entity_id ?? statblock?.entityId)
+    if (!key) continue
+    if (!map.has(key)) map.set(key, enemyTemplateStructuredBucket())
+    map.get(key)!.statblock = statblock
+  }
+
+  for (const action of Array.isArray(actionsRes?.data) ? actionsRes.data : []) {
+    const key = cleanText(action?.entity_id ?? action?.entityId)
+    if (!key) continue
+    if (!map.has(key)) map.set(key, enemyTemplateStructuredBucket())
+    map.get(key)!.actions.push(action)
+  }
+
+  for (const profile of Array.isArray(profilesRes?.data) ? profilesRes.data : []) {
+    const key = cleanText(profile?.entity_id ?? profile?.entityId)
+    if (!key) continue
+    if (!map.has(key)) map.set(key, enemyTemplateStructuredBucket())
+    map.get(key)!.monsterProfile = profile
+  }
+
+  return map
+}
+
 export async function listHomebrewTemplates(worldId: string | number, rawType: any) {
   const type = normalizeHomebrewType(rawType || 'spell')
   const config = TYPE_CONFIGS[type]
@@ -1005,12 +1093,40 @@ export async function listHomebrewTemplates(worldId: string | number, rawType: a
     ...config.coreBlocks
   ]))
 
-  const blocks = await loadBlocksForEntityIds(rows.map((row: any) => row.id), blockKeys)
+  const rowIds = rows.map((row: any) => row.id).filter(Boolean)
+  const blocks = await loadBlocksForEntityIds(rowIds, blockKeys)
   const blockMap = blocksByEntityId(blocks)
+  const enemyStructuredMap = type === 'enemy'
+    ? await loadEnemyTemplateStructuredRows(rowIds)
+    : new Map<string, EnemyTemplateStructuredRows>()
 
   const templates = rows.map((row: any) => {
     const rowBlocks = blockMap.get(cleanText(row.id)) || []
     const source = sourceFromBlocks(rowBlocks)
+    const enemyStructured = type === 'enemy'
+      ? enemyStructuredMap.get(cleanText(row.id)) || null
+      : null
+    const enemyStructuredKeys = type === 'enemy'
+      ? [
+          enemyStructured?.statblock ? 'entity_statblocks' : '',
+          enemyStructured?.monsterProfile ? 'monster_profiles' : '',
+          Array.isArray(enemyStructured?.actions) && enemyStructured.actions.length ? 'entity_actions' : ''
+        ].filter(Boolean)
+      : []
+    const templateBlockCount = rowBlocks.length + enemyStructuredKeys.length
+    const templateCoreBlockKeys = [
+      ...rowBlocks.map(blockKey).filter(Boolean),
+      ...enemyStructuredKeys
+    ]
+    const templateCore = type === 'enemy'
+      ? homebrewEnemyCoreFromStructuredRows(
+          row,
+          rowBlocks,
+          enemyStructured?.statblock || null,
+          enemyStructured?.actions || [],
+          enemyStructured?.monsterProfile || null
+        )
+      : templateCoreForBuilder(config, rowBlocks)
 
     return {
       id: cleanText(row.id),
@@ -1023,9 +1139,9 @@ export async function listHomebrewTemplates(worldId: string | number, rawType: a
       sourcePage: source.sourcePage,
       provider: source.provider,
       metaLine: templateMetaLine(config, rowBlocks),
-      blockCount: rowBlocks.length,
-      coreBlockKeys: rowBlocks.map(blockKey).filter(Boolean),
-      core: templateCoreForBuilder(config, rowBlocks)
+      blockCount: templateBlockCount,
+      coreBlockKeys: templateCoreBlockKeys,
+      core: templateCore
     }
   })
 

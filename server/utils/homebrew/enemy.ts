@@ -303,3 +303,178 @@ export function isEnemyHomebrewCoreBlock(key: any) {
     'monster_actions'
   ].includes(normalized)
 }
+
+function parseEnemyMaybeJson(value: any) {
+  if (typeof value !== 'string') return value
+
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
+function enemyBlockDataByKey(blocks: any[], key: string) {
+  const found = blocks.find((block: any) =>
+    String(block?.block_key || block?.blockKey || '') === key
+  )
+
+  return asObject(found?.data)
+}
+
+function enemyFirstText(...values: any[]) {
+  for (const value of values) {
+    const parsed = parseEnemyMaybeJson(value)
+    const text = enemyValueText(parsed)
+
+    if (text) return text
+  }
+
+  return ''
+}
+
+function enemyAbilityFromStructured(statblock: any, raw: any, key: string) {
+  const field = `${key}_score`
+  const upper = key.toUpperCase()
+
+  return cleanText(
+    statblock?.[field] ??
+    statblock?.[key] ??
+    statblock?.[upper] ??
+    raw?.[key] ??
+    raw?.[upper] ??
+    ''
+  )
+}
+
+function enemyHitPointsFromStructured(statblock: any, raw: any) {
+  const average =
+    statblock?.hit_points_average ??
+    statblock?.hitPointsAverage ??
+    raw?.hp?.average ??
+    ''
+
+  const formula =
+    statblock?.hit_points_formula ??
+    statblock?.hitPointsFormula ??
+    raw?.hp?.formula ??
+    ''
+
+  if (average && formula) return `${average} (${formula})`
+  if (average) return cleanText(average)
+  if (formula) return cleanText(formula)
+
+  return enemyValueText(raw?.hp)
+}
+
+function enemyActionRowsToText(actionRows: any[], type: string, rawEntries: any) {
+  const rows = actionRows
+    .filter((row: any) => String(row?.action_type || row?.actionType || '').toLowerCase() === type)
+    .sort((a: any, b: any) => Number(a?.sort_order || a?.sortOrder || 0) - Number(b?.sort_order || b?.sortOrder || 0))
+
+  if (rows.length) {
+    return rows
+      .map((row: any, index: number) => {
+        const raw = parseEnemyMaybeJson(row?.raw_json ?? row?.rawJson)
+        const name = cleanText(row?.name || raw?.name || `Entry ${index + 1}`)
+        const detail = cleanText(row?.text) || enemyEntriesToText(raw?.entries ?? raw?.entry ?? raw)
+
+        if (name && detail) return `${name}: ${detail}`
+        return name || detail
+      })
+      .filter(Boolean)
+      .join('\n\n')
+  }
+
+  return enemyEntriesToText(rawEntries)
+}
+
+function enemyDescriptionFromStructured(entity: any, blocks: any[], monsterProfile: any, raw: any) {
+  const overview = enemyBlockDataByKey(blocks, 'overview')
+  const fluff = parseEnemyMaybeJson(
+    monsterProfile?.fluff_json ??
+    monsterProfile?.fluffJson ??
+    raw?.fluff
+  )
+
+  return cleanText(
+    monsterProfile?.fluff_markdown ??
+    monsterProfile?.fluffMarkdown ??
+    ''
+  ) ||
+    enemyEntriesToText(fluff?.entries) ||
+    cleanText(overview?.text) ||
+    cleanText(entity?.summary)
+}
+
+export function homebrewEnemyCoreFromStructuredRows(
+  entityValue: any,
+  blocksValue: any,
+  statblockValue: any,
+  actionRowsValue: any,
+  monsterProfileValue: any
+) {
+  const entity = asObject(entityValue)
+  const blocks = Array.isArray(blocksValue) ? blocksValue : []
+  const statblock = asObject(statblockValue)
+  const actionRows = Array.isArray(actionRowsValue) ? actionRowsValue : []
+  const monsterProfile = asObject(monsterProfileValue)
+
+  const raw = asObject(parseEnemyMaybeJson(
+    statblock?.raw_payload_json ??
+    statblock?.rawPayloadJson ??
+    monsterProfile?.raw_payload_json ??
+    monsterProfile?.rawPayloadJson
+  ))
+
+  const name = cleanText(
+    raw?.name ||
+    entity?.title ||
+    entity?.name
+  )
+
+  return {
+    name,
+    size: enemyFirstText(statblock?.size_json, statblock?.sizeJson, raw?.size),
+    creature_type: enemyFirstText(statblock?.creature_type, statblock?.creatureType, raw?.type),
+    creatureType: enemyFirstText(statblock?.creature_type, statblock?.creatureType, raw?.type),
+    alignment: enemyFirstText(statblock?.alignment_json, statblock?.alignmentJson, raw?.alignment),
+    challenge_rating: enemyFirstText(statblock?.challenge_rating, statblock?.challengeRating, raw?.cr),
+    challengeRating: enemyFirstText(statblock?.challenge_rating, statblock?.challengeRating, raw?.cr),
+    xp: enemyFirstText(statblock?.xp, raw?.xp),
+    armor_class: enemyFirstText(statblock?.armor_class, statblock?.armorClass, statblock?.armor_class_json, statblock?.armorClassJson, raw?.ac),
+    armorClass: enemyFirstText(statblock?.armor_class, statblock?.armorClass, statblock?.armor_class_json, statblock?.armorClassJson, raw?.ac),
+    hit_points: enemyHitPointsFromStructured(statblock, raw),
+    hitPoints: enemyHitPointsFromStructured(statblock, raw),
+    speed: enemyFirstText(statblock?.speed_json, statblock?.speedJson, raw?.speed),
+
+    str: enemyAbilityFromStructured(statblock, raw, 'str'),
+    dex: enemyAbilityFromStructured(statblock, raw, 'dex'),
+    con: enemyAbilityFromStructured(statblock, raw, 'con'),
+    int: enemyAbilityFromStructured(statblock, raw, 'int'),
+    wis: enemyAbilityFromStructured(statblock, raw, 'wis'),
+    cha: enemyAbilityFromStructured(statblock, raw, 'cha'),
+
+    savingThrows: enemyFirstText(statblock?.saving_throws_json, statblock?.savingThrowsJson, raw?.save),
+    skills: enemyFirstText(statblock?.skills_json, statblock?.skillsJson, raw?.skill),
+    senses: enemyFirstText(statblock?.senses_json, statblock?.sensesJson, raw?.senses),
+    languages: enemyFirstText(statblock?.languages_json, statblock?.languagesJson, raw?.languages),
+
+    vulnerabilities: enemyFirstText(statblock?.vulnerabilities_json, statblock?.vulnerabilitiesJson, raw?.vulnerable),
+    resistances: enemyFirstText(statblock?.resistances_json, statblock?.resistancesJson, raw?.resist),
+    immunities: enemyFirstText(statblock?.immunities_json, statblock?.immunitiesJson, raw?.immune),
+    conditionImmunities: enemyFirstText(statblock?.condition_immunities_json, statblock?.conditionImmunitiesJson, raw?.conditionImmune),
+
+    traits: enemyActionRowsToText(actionRows, 'trait', raw?.trait),
+    actions: enemyActionRowsToText(actionRows, 'action', raw?.action),
+    bonusActions: enemyActionRowsToText(actionRows, 'bonus', raw?.bonus),
+    reactions: enemyActionRowsToText(actionRows, 'reaction', raw?.reaction),
+    legendaryActions: enemyActionRowsToText(actionRows, 'legendary', raw?.legendary),
+
+    description: enemyDescriptionFromStructured(entity, blocks, monsterProfile, raw)
+  }
+}
+

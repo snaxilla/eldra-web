@@ -1,5 +1,11 @@
 import { createError } from 'h3'
 import { directusServiceRequest } from '../directus'
+import {
+  applyHomebrewEnemyPatch,
+  homebrewEnemyCoreForBuilder,
+  homebrewEnemySummary,
+  isEnemyHomebrewCoreBlock
+} from './enemy'
 
 type HomebrewType =
   | 'spell'
@@ -360,6 +366,11 @@ function templateCoreForBuilder(config: TypeConfig, blocks: any[]) {
       grantedActionUses: firstAction.uses ?? firstAction.maxUses ?? '',
       grantedActionRecharge: cleanText(firstAction.recharge)
     }
+  }
+
+
+  if (config.key === 'enemy') {
+    return homebrewEnemyCoreForBuilder(core, raw)
   }
 
   return {}
@@ -773,6 +784,21 @@ function prepareHomebrewBlockData(key: string, data: any, type: HomebrewType, bo
     return next
   }
 
+  if (type === 'enemy' && isEnemyHomebrewCoreBlock(normalizedKey)) {
+    return applyHomebrewEnemyPatch(data, body?.enemy || {}, title)
+  }
+
+  if (type === 'enemy' && normalizedKey === 'overview') {
+    const next = deepClone(asObject(data))
+    const description = homebrewEnemySummary(body?.enemy)
+
+    if (description) {
+      next.text = description
+    }
+
+    return next
+  }
+
   return data
 }
 
@@ -1050,11 +1076,13 @@ export async function createHomebrewDraft(worldId: string | number, body: any = 
   const title = cleanText(body?.title) ||
     (type === 'spell' ? cleanText(body?.spell?.name) : '') ||
     (type === 'item' ? cleanText(body?.item?.name) : '') ||
+    (type === 'enemy' ? cleanText(body?.enemy?.name) : '') ||
     `Homebrew: ${template.title || config.label}`
   const slug = await uniqueEntitySlug(worldId, title)
   const summary = cleanText(body?.summary) ||
     (type === 'spell' ? homebrewSpellSummary(body?.spell) : '') ||
     (type === 'item' ? homebrewItemSummary(body?.item) : '') ||
+    (type === 'enemy' ? homebrewEnemySummary(body?.enemy) : '') ||
     `Homebrew ${config.label.toLowerCase()} draft based on ${template.title || 'a template'}.`
 
   const entityFields = await collectionFields('entities', ENTITY_FALLBACK_FIELDS)

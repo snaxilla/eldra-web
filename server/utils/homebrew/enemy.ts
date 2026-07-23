@@ -478,3 +478,278 @@ export function homebrewEnemyCoreFromStructuredRows(
   }
 }
 
+function splitEnemyListText(value: any) {
+  return cleanText(value)
+    .split(/[,;]/)
+    .map((item) => cleanText(item))
+    .filter(Boolean)
+}
+
+function enemyFirstNumber(value: any) {
+  const match = cleanText(value).match(/-?\d+/)
+  if (!match) return null
+
+  const parsed = Number(match[0])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function enemySizeJson(value: any) {
+  const text = cleanText(value)
+  if (!text) return []
+
+  return text
+    .split(/[\/,]/)
+    .map((item) => cleanText(item).toUpperCase())
+    .filter(Boolean)
+}
+
+function enemyAlignmentJson(value: any) {
+  const text = cleanText(value)
+  if (!text) return []
+
+  if (/unaligned|any/i.test(text)) return []
+
+  return text
+    .split(/[\/,]/)
+    .map((item) => cleanText(item).toUpperCase())
+    .filter(Boolean)
+}
+
+function enemyArmorClassJson(value: any) {
+  const text = cleanText(value)
+  if (!text) return []
+
+  const parsed = enemyFirstNumber(text)
+
+  return parsed === null
+    ? [text]
+    : [{ ac: parsed, from: text === String(parsed) ? [] : [text] }]
+}
+
+function enemyHitPointsParts(value: any) {
+  const text = cleanText(value)
+
+  if (!text) {
+    return {
+      average: null,
+      formula: ''
+    }
+  }
+
+  const withFormula = text.match(/^(\d+)\s*\(([^)]+)\)/)
+
+  if (withFormula) {
+    return {
+      average: Number(withFormula[1]),
+      formula: cleanText(withFormula[2])
+    }
+  }
+
+  return {
+    average: enemyFirstNumber(text),
+    formula: ''
+  }
+}
+
+function enemySpeedJson(value: any) {
+  const text = cleanText(value)
+  if (!text) return {}
+
+  const speed: Record<string, any> = {}
+
+  for (const part of text.split(',')) {
+    const chunk = cleanText(part)
+    if (!chunk) continue
+
+    const named = chunk.match(/^(walk|burrow|climb|fly|swim)\s+(\d+)/i)
+    if (named) {
+      speed[named[1].toLowerCase()] = Number(named[2])
+      continue
+    }
+
+    const walk = chunk.match(/(\d+)/)
+    if (walk && speed.walk === undefined) {
+      speed.walk = Number(walk[1])
+      continue
+    }
+
+    if (!speed.special) speed.special = []
+    speed.special.push(chunk)
+  }
+
+  return Object.keys(speed).length
+    ? speed
+    : { text }
+}
+
+function enemyKeyValueJson(value: any) {
+  const text = cleanText(value)
+  if (!text) return {}
+
+  const result: Record<string, any> = {}
+
+  for (const part of text.split(',')) {
+    const chunk = cleanText(part)
+    if (!chunk) continue
+
+    const match = chunk.match(/^([A-Za-z][A-Za-z\s'()-]*?)\s*[: ]\s*([+-]?\d+)$/)
+
+    if (!match) {
+      result[chunk] = true
+      continue
+    }
+
+    const key = cleanText(match[1]).toLowerCase().replace(/\s+/g, '_')
+    const parsed = Number(match[2])
+
+    result[key] = Number.isFinite(parsed) ? parsed : match[2]
+  }
+
+  return result
+}
+
+function enemyPassivePerception(value: any) {
+  const match = cleanText(value).match(/passive\s+perception\s+(\d+)/i)
+  if (!match) return null
+
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function enemyDamageTagsJson(enemy: any) {
+  return {
+    vulnerabilities: splitEnemyListText(enemy.vulnerabilities),
+    resistances: splitEnemyListText(enemy.resistances),
+    immunities: splitEnemyListText(enemy.immunities),
+    conditionImmunities: splitEnemyListText(enemy.condition_immunities)
+  }
+}
+
+function enemyRawPayloadFromPatch(enemy: any) {
+  const hp = enemyHitPointsParts(enemy.hit_points)
+
+  return {
+    name: enemy.name,
+    source: 'ELDRA',
+    size: enemySizeJson(enemy.size),
+    type: enemy.creature_type || 'creature',
+    alignment: enemyAlignmentJson(enemy.alignment),
+    ac: enemyArmorClassJson(enemy.armor_class),
+    hp: {
+      average: hp.average,
+      formula: hp.formula
+    },
+    speed: enemySpeedJson(enemy.speed),
+    cr: enemy.challenge_rating || undefined,
+    xp: enemy.xp || undefined,
+    str: enemy.str,
+    dex: enemy.dex,
+    con: enemy.con,
+    int: enemy.int,
+    wis: enemy.wis,
+    cha: enemy.cha,
+    save: enemyKeyValueJson(enemy.saving_throws),
+    skill: enemyKeyValueJson(enemy.skills),
+    senses: enemy.senses || undefined,
+    languages: splitEnemyListText(enemy.languages),
+    vulnerable: splitEnemyListText(enemy.vulnerabilities),
+    resist: splitEnemyListText(enemy.resistances),
+    immune: splitEnemyListText(enemy.immunities),
+    conditionImmune: splitEnemyListText(enemy.condition_immunities),
+    trait: parseEnemyEntryList(enemy.traits),
+    action: parseEnemyEntryList(enemy.actions),
+    bonus: parseEnemyEntryList(enemy.bonus_actions),
+    reaction: parseEnemyEntryList(enemy.reactions),
+    legendary: parseEnemyEntryList(enemy.legendary_actions),
+    entries: enemy.description ? [enemy.description] : [],
+    homebrew: true,
+    homebrewBuilder: enemy
+  }
+}
+
+function enemyActionRowsFromPatch(enemy: any) {
+  const groups = [
+    ['trait', enemy.traits],
+    ['action', enemy.actions],
+    ['bonus', enemy.bonus_actions],
+    ['reaction', enemy.reactions],
+    ['legendary', enemy.legendary_actions]
+  ]
+
+  const rows: any[] = []
+
+  for (const [actionType, text] of groups) {
+    const entries = parseEnemyEntryList(text)
+
+    entries.forEach((entry, index) => {
+      rows.push({
+        action_type: actionType,
+        name: entry.name || `Entry ${index + 1}`,
+        sort_order: rows.length * 10 + 10,
+        text: entry.detail || enemyEntriesToText(entry.entries),
+        raw_json: {
+          name: entry.name,
+          entries: entry.entries || (entry.detail ? [entry.detail] : [])
+        }
+      })
+    })
+  }
+
+  return rows
+}
+
+export function homebrewEnemyStructuredRowsForDraft(value: any, fallbackTitle = '') {
+  const enemy = normalizeHomebrewEnemyPatch(value, fallbackTitle)
+  const hp = enemyHitPointsParts(enemy.hit_points)
+  const raw = enemyRawPayloadFromPatch(enemy)
+
+  return {
+    statblock: {
+      profile_kind: 'monster',
+      size_json: enemySizeJson(enemy.size),
+      creature_type: enemy.creature_type,
+      alignment_json: enemyAlignmentJson(enemy.alignment),
+      armor_class: enemyFirstNumber(enemy.armor_class),
+      armor_class_json: enemyArmorClassJson(enemy.armor_class),
+      hit_points_average: hp.average,
+      hit_points_formula: hp.formula,
+      speed_json: enemySpeedJson(enemy.speed),
+      str_score: enemy.str,
+      dex_score: enemy.dex,
+      con_score: enemy.con,
+      int_score: enemy.int,
+      wis_score: enemy.wis,
+      cha_score: enemy.cha,
+      saving_throws_json: enemyKeyValueJson(enemy.saving_throws),
+      skills_json: enemyKeyValueJson(enemy.skills),
+      senses_json: enemy.senses ? splitEnemyListText(enemy.senses) : [],
+      passive_perception: enemyPassivePerception(enemy.senses),
+      languages_json: splitEnemyListText(enemy.languages),
+      challenge_rating: enemy.challenge_rating,
+      level: null,
+      damage_tags_json: enemyDamageTagsJson(enemy),
+      raw_payload_json: raw
+    },
+    actions: enemyActionRowsFromPatch(enemy),
+    monsterProfile: {
+      source: 'ELDRA',
+      page: null,
+      environment_json: [],
+      treasure_json: [],
+      reference_sources_json: {},
+      sound_clip_url: null,
+      token_name: '',
+      token_source: '',
+      has_fluff: Boolean(enemy.description),
+      has_fluff_images: false,
+      fluff_json: enemy.description
+        ? { entries: [enemy.description] }
+        : null,
+      action_tags_json: [],
+      language_tags_json: splitEnemyListText(enemy.languages),
+      misc_tags_json: [],
+      raw_payload_json: raw
+    }
+  }
+}
+

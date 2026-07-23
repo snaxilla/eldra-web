@@ -4,6 +4,7 @@ import AdminHomebrewTemplatePicker from '~/components/admin/homebrew/AdminHomebr
 import AdminHomebrewSpellBuilder from '~/components/admin/homebrew/AdminHomebrewSpellBuilder.vue'
 import AdminHomebrewItemBuilder from '~/components/admin/homebrew/AdminHomebrewItemBuilder.vue'
 import AdminHomebrewDraftReview from '~/components/admin/homebrew/AdminHomebrewDraftReview.vue'
+import AdminHomebrewDraftImagePicker from '~/components/admin/homebrew/AdminHomebrewDraftImagePicker.vue'
 import AdminHomebrewEnemyBuilder from '~/components/admin/homebrew/AdminHomebrewEnemyBuilder.vue'
 
 const props = defineProps<{
@@ -75,6 +76,10 @@ const homebrewCreating = ref(false)
 const homebrewError = ref('')
 const homebrewSuccess = ref('')
 const homebrewCreatedEntity = ref<any | null>(null)
+const homebrewImageFileId = ref('')
+const homebrewImageUrl = ref('')
+const homebrewImageTitle = ref('')
+
 
 const selectedHomebrewType = computed(() =>
   homebrewTypes.find((type) => type.key === homebrewType.value) || homebrewTypes[0]
@@ -1096,6 +1101,7 @@ async function createHomebrewDraft() {
       body: {
         type: homebrewType.value,
         templateEntityId: homebrewSelectedTemplateId.value,
+        imageFileId: homebrewImageFileId.value || undefined,
         title: homebrewType.value === 'spell'
           ? (homebrewTitle.value || spellBuilderForm.name || defaultHomebrewTitle(selectedHomebrewTemplate.value))
           : (homebrewTitle.value || defaultHomebrewTitle(selectedHomebrewTemplate.value)),
@@ -1135,6 +1141,9 @@ watch(
     homebrewTitle.value = ''
     homebrewTemplateSearch.value = ''
     homebrewCreatedEntity.value = null
+    homebrewImageFileId.value = ''
+    homebrewImageUrl.value = ''
+    homebrewImageTitle.value = ''
     homebrewSuccess.value = ''
     resetSpellBuilderForm()
     void loadHomebrewTemplates()
@@ -1225,7 +1234,15 @@ watch(
                 >
               </label>
   
-              <AdminHomebrewDraftReview
+              <AdminHomebrewDraftImagePicker
+              v-if="selectedHomebrewTemplate"
+              v-model:file-id="homebrewImageFileId"
+              v-model:image-url="homebrewImageUrl"
+              v-model:title="homebrewImageTitle"
+              :world-id="worldId"
+            />
+
+            <AdminHomebrewDraftReview
               v-if="selectedHomebrewTemplate"
               :review-rows="homebrewReviewRows"
               :checks="homebrewDraftChecks"

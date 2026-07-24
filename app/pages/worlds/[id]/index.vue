@@ -607,35 +607,13 @@ function openSelectedPinContextMap() {
 <template>
   <div class="relative h-full w-full overflow-hidden bg-[#09111a]">
 
-    <div class="absolute left-4 top-4 z-20 flex items-center gap-2">
-      <button
-        type="button"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
-        @click="goToWorldRootMap"
-      >
-        <UIcon name="i-lucide-orbit" class="h-4 w-4 text-[#f5e7bd]" />
-        <span>World Map</span>
-      </button>
-
-      <button
-        v-for="ancestor in ancestorMaps"
-        :key="ancestor.id"
-        type="button"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm text-[#e8d9b5] backdrop-blur"
-        @click="goToMapBySlug(ancestor.slug)"
-      >
-        <UIcon name="i-lucide-chevron-right" class="h-4 w-4 text-[#9f9278]" />
-        <span>{{ ancestor.title }}</span>
-      </button>
-
-      <div
-        v-if="activeMap && String(activeMap.id) !== String(worldRootMap?.id || '')"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold text-[#fff7df] backdrop-blur"
-      >
-        <UIcon name="i-lucide-map" class="h-4 w-4 text-[#f5e7bd]" />
-        <span>{{ activeMap.title }}</span>
-      </div>
-    </div>
+    <MapBreadcrumbs
+      :active-map="activeMap"
+      :world-root-map="worldRootMap"
+      :ancestor-maps="ancestorMaps"
+      @root="goToWorldRootMap"
+      @ancestor="goToMapBySlug"
+    />
 
     <div
       v-if="mode === 'build'"

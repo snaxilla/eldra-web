@@ -11,6 +11,8 @@ const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
 
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+const leftCollapsed = useState<boolean>('world-workspace-left-collapsed')
+
 const showPins = useState<boolean>('world-map-show-pins', () => true)
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
@@ -607,78 +609,6 @@ function openSelectedPinContextMap() {
   <div class="relative h-full w-full overflow-hidden bg-[#09111a]">
 
     <div class="absolute left-4 top-4 z-20 flex items-center gap-2">
-      <button
-        type="button"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
-        @click="goToWorldRootMap"
-      >
-        <UIcon name="i-lucide-orbit" class="h-4 w-4 text-[#f5e7bd]" />
-        <span>World Map</span>
-      </button>
-
-      <button
-        v-for="ancestor in ancestorMaps"
-        :key="ancestor.id"
-        type="button"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm text-[#e8d9b5] backdrop-blur"
-        @click="goToMapBySlug(ancestor.slug)"
-      >
-        <UIcon name="i-lucide-chevron-right" class="h-4 w-4 text-[#9f9278]" />
-        <span>{{ ancestor.title }}</span>
-      </button>
-
-      <div
-        v-if="activeMap && String(activeMap.id) !== String(worldRootMap?.id || '')"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold text-[#fff7df] backdrop-blur"
-      >
-        <UIcon name="i-lucide-map" class="h-4 w-4 text-[#f5e7bd]" />
-        <span>{{ activeMap.title }}</span>
-      </div>
-    </div>
-
-    <div
-      v-if="mode === 'build'"
-      class="pointer-events-none absolute right-4 top-4 z-20 inline-flex items-center gap-2 rounded-none border border-[rgba(201,164,90,0.38)] bg-[rgba(20,17,12,0.82)] px-4 py-2 text-sm font-medium text-[#f5e7bd] backdrop-blur shadow-[0_0_24px_rgba(201,164,90,0.12)]"
-    >
-      <UIcon name="i-lucide-pencil-ruler" class="h-4 w-4" />
-      Build Mode — click map to place pin
-    </div>
-
-    <div v-if="mapImageUrl" class="absolute inset-0 z-0">
-      <WorldMapLeaflet
-        :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
-        :map-image-url="mapImageUrl"
-        :tile-enabled="activeMap?.tileEnabled"
-        :tile-path="activeMap?.tilePath"
-        :tile-min-zoom="activeMap?.tileMinZoom"
-        :tile-max-zoom="activeMap?.tileMaxZoom"
-        :tile-original-width="activeMap?.tileOriginalWidth"
-        :tile-original-height="activeMap?.tileOriginalHeight"
-        :pins="visiblePins"
-        :selected-pin-id="selectedPinId"
-        :build-mode="mode === 'build'"
-        @select-pin="selectPin"
-        @map-click="onMapClick"
-      />
-    </div>
-
-    <div v-else class="flex h-full items-center justify-center">
-      <div class="text-center">
-        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">No Map Selected</div>
-        <div class="mt-3 text-lg text-[#d8ceb8]">Upload a map and set one as the default world map.</div>
-      </div>
-    </div>
-
-
-    <button
-      type="button"
-      class="eldra-button fixed bottom-6 left-6 z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
-      @click="showLayerPanel = !showLayerPanel"
-    >
-      <UIcon name="i-lucide-layers-3" class="h-4 w-4 text-[#f5e7bd]" />
-      <span>Layers</span>
-    </button>
-
 
     <Transition
       enter-from-class="-translate-x-full opacity-0"
@@ -688,7 +618,10 @@ function openSelectedPinContextMap() {
     >
       <div
         v-if="showLayerPanel"
-        class="eldra-ornate-panel eldra-frame-corners fixed bottom-24 left-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+         :class="[
+        'eldra-ornate-panel eldra-frame-corners fixed bottom-24 z-30 w-80 rounded-none border p-5 backdrop-blur transition-all duration-200',
+        leftCollapsed ? 'left-[78px]' : 'left-[290px]'
+      ]" 
       >
         <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
           Map Layers

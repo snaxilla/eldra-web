@@ -391,9 +391,6 @@ watch(
   }
 )
 
-onMounted(async () => {
-  await renderMap()
-})
 
 onBeforeUnmount(() => {
   if (map) {

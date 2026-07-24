@@ -39,6 +39,7 @@ let map: any = null
 let imageOverlay: any = null
 let tileLayer: any = null
 let markerLayer: any = null
+let overlayLayer: any = null
 let currentBounds: any = null
 
 function getIconSvg(icon?: string | null) {

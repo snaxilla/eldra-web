@@ -7,6 +7,7 @@ import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawe
 import MapBreadcrumbs from '~/components/world/map/MapBreadcrumbs.vue'
 import MapBuildBanner from '~/components/world/map/MapBuildBanner.vue'
 import MapLayerPanel from '~/components/world/map/MapLayerPanel.vue'
+import MapSelectedPinCard from '~/components/world/map/MapSelectedPinCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -664,40 +665,14 @@ function openSelectedPinContextMap() {
       @open-map="openSelectedPinContextMap"
     />
 
-    <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
-      <div
-        v-if="selectedPin && mode === 'build' && !showPinEditor"
-        class="eldra-ornate-panel eldra-frame-corners fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
-      >
-        <div class="mb-1 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-          {{ formatLocationType(selectedPin.pinType) || 'Location' }}
-        </div>
-
-        <div class="text-xl font-semibold text-white">
-          {{ selectedPin.resolvedTitle }}
-        </div>
-
-        <div class="mt-2 text-sm text-[#9f9278]">
-          Icon: {{ iconLabel(selectedPin.icon) }}
-        </div>
-
-        <div class="mt-4 flex gap-2">
-          <button
-            class="eldra-button flex-1 rounded-none px-3 py-2 text-sm"
-            @click="editPin(selectedPin)"
-          >
-            Edit
-          </button>
-
-          <button
-            class="rounded-none border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300 transition hover:bg-red-500/20"
-            @click="deletePin(selectedPin.id)"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    </Transition>
+    <MapSelectedPinCard
+      :open="Boolean(selectedPin && mode === 'build' && !showPinEditor)"
+      :selected-pin="selectedPin"
+      :format-location-type="formatLocationType"
+      :icon-label="iconLabel"
+      @edit="editPin(selectedPin)"
+      @delete="deletePin(selectedPin.id)"
+    />
 
     <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
       <div

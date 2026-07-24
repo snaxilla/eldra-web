@@ -364,7 +364,6 @@ watch(
   async () => {
     await nextTick()
     await renderMap()
-  },
   }
 )
 

@@ -365,7 +365,7 @@ watch(
     await nextTick()
     await renderMap()
   },
-  { immediate: true }
+  }
 )
 
 watch(
@@ -390,6 +390,13 @@ watch(
     map.getContainer().style.cursor = props.buildMode ? 'crosshair' : ''
   }
 )
+
+
+
+onMounted(async () => {
+  await nextTick()
+  await renderMap()
+})
 
 
 onBeforeUnmount(() => {

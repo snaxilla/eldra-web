@@ -20,6 +20,8 @@ const props = defineProps<{
   tileMaxZoom?: number | null
   tileOriginalWidth?: number | null
   tileOriginalHeight?: number | null
+  overlayImageUrl?: string | null
+  overlayOpacity?: number | null
   pins: Pin[]
   selectedPinId?: string | null
   buildMode?: boolean
@@ -202,6 +204,11 @@ function clearMap() {
     imageOverlay = null
   }
 
+  if (overlayLayer && map) {
+    map.removeLayer(overlayLayer)
+    overlayLayer = null
+  }
+
   if (tileLayer && map) {
     map.removeLayer(tileLayer)
     tileLayer = null
@@ -317,6 +324,13 @@ async function renderMap() {
     imageOverlay = L.imageOverlay(props.mapImageUrl, currentBounds).addTo(map)
   }
 
+  if (props.overlayImageUrl) {
+    overlayLayer = L.imageOverlay(props.overlayImageUrl, currentBounds, {
+      opacity: Number.isFinite(Number(props.overlayOpacity)) ? Number(props.overlayOpacity) : 0.65,
+      interactive: false
+    }).addTo(map)
+  }
+
   const center = currentBounds.getCenter()
   const startZoom = getCoverZoom(currentBounds)
 
@@ -342,7 +356,9 @@ watch(
     props.tileMinZoom,
     props.tileMaxZoom,
     props.tileOriginalWidth,
-    props.tileOriginalHeight
+    props.tileOriginalHeight,
+    props.overlayImageUrl,
+    props.overlayOpacity
   ],
   async () => {
     await nextTick()

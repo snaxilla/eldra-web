@@ -4,6 +4,7 @@ definePageMeta({
 })
 
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+import MapBreadcrumbs from '~/components/world/map/MapBreadcrumbs.vue'
 
 const route = useRoute()
 const router = useRouter()

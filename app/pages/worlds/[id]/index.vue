@@ -8,6 +8,7 @@ import MapBreadcrumbs from '~/components/world/map/MapBreadcrumbs.vue'
 import MapBuildBanner from '~/components/world/map/MapBuildBanner.vue'
 import MapLayerPanel from '~/components/world/map/MapLayerPanel.vue'
 import MapSelectedPinCard from '~/components/world/map/MapSelectedPinCard.vue'
+import MapPinEditorHeader from '~/components/world/map/MapPinEditorHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -680,21 +681,10 @@ function openSelectedPinContextMap() {
         class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
       >
         <div class="flex h-full flex-col">
-          <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
-            <div>
-              <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">Build Mode</div>
-              <h3 class="mt-1 text-lg font-semibold text-white">
-                {{ editingPin.id ? 'Edit Pin' : 'Place Pin' }}
-              </h3>
-            </div>
-
-            <button
-              class="text-[#9f9278] transition hover:text-white"
-              @click="closePinEditor"
-            >
-              <UIcon name="i-lucide-x" class="h-5 w-5" />
-            </button>
-          </div>
+          <MapPinEditorHeader
+            :editing-pin="editingPin"
+            @close="closePinEditor"
+          />
 
           <div class="flex-1 overflow-y-auto px-5 py-5">
             <div class="space-y-5">

@@ -15,8 +15,38 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
 
+type SceneLayer = {
+  id: string
+  label: string
+  visible: boolean
+  locked?: boolean
+}
+
+type SceneModel = {
+  id: string
+  title: string
+  layers: SceneLayer[]
+}
+
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 const showPins = useState<boolean>('world-map-show-pins', () => true)
+const scene = ref<SceneModel>({
+  id: 'world-map-scene',
+  title: 'World Map',
+  layers: [
+    {
+      id: 'base-map',
+      label: 'Base Map',
+      visible: true,
+      locked: true,
+    },
+    {
+      id: 'pins',
+      label: 'Pins',
+      visible: showPins.value,
+    },
+  ],
+})
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 const { data: worldEntities, refresh: refreshWorldEntities } = await useFetch(() => `/api/worlds/${worldId.value}/entities?summary=1`, {
@@ -135,10 +165,26 @@ const visiblePins = computed(() => {
 const selectedPinId = ref<string | null>(null)
 
 watch(showPins, (value) => {
+  const pinsLayer = scene.value.layers.find((layer) => layer.id === 'pins')
+  if (pinsLayer && pinsLayer.visible !== value) {
+    pinsLayer.visible = value
+  }
+
   if (!value) {
     selectedPinId.value = null
   }
 })
+
+function toggleSceneLayer(payload: { layerId: string; visible: boolean }) {
+  const layer = scene.value.layers.find((entry) => entry.id === payload.layerId)
+  if (!layer || layer.locked) return
+
+  layer.visible = payload.visible
+
+  if (payload.layerId === 'pins') {
+    showPins.value = payload.visible
+  }
+}
 const loadingPins = ref(false)
 
 async function fetchPins() {
@@ -622,7 +668,9 @@ function openSelectedPinContextMap() {
 
     <MapLayerPanel
       :open="showLayerPanel"
+      :scene="scene"
       @close="showLayerPanel = !showLayerPanel"
+      @toggle-layer="toggleSceneLayer"
     />
 
 

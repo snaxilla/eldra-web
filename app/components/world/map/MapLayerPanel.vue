@@ -1,11 +1,31 @@
 <script setup lang="ts">
-defineProps<{
+type SceneLayer = {
+  id: string
+  label: string
+  visible: boolean
+  locked?: boolean
+}
+
+type SceneModel = {
+  id: string
+  title: string
+  layers: SceneLayer[]
+}
+
+const props = defineProps<{
   open: boolean
+  scene: SceneModel
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'toggle-layer', payload: { layerId: string; visible: boolean }): void
 }>()
+
+function onLayerToggle(layerId: string, event: Event) {
+  const input = event.target as HTMLInputElement
+  emit('toggle-layer', { layerId, visible: input.checked })
+}
 </script>
 
 <template>
@@ -36,23 +56,19 @@ const emit = defineEmits<{
       </div>
 
       <div class="mt-4 space-y-2">
-
-        <label class="flex items-center gap-3 text-sm text-[#d8ceb8]">
-          <input checked disabled type="checkbox">
-          <span>Base Map</span>
+        <label
+          v-for="layer in props.scene.layers"
+          :key="layer.id"
+          class="flex items-center gap-3 text-sm text-[#d8ceb8]"
+        >
+          <input
+            :checked="layer.visible"
+            :disabled="layer.locked"
+            type="checkbox"
+            @change="onLayerToggle(layer.id, $event)"
+          >
+          <span>{{ layer.label }}</span>
         </label>
-
-        <label class="flex items-center gap-3 text-sm text-[#d8ceb8]">
-          <input checked disabled type="checkbox">
-          <span>Pins</span>
-        </label>
-
-      </div>
-
-      <div
-        class="mt-5 border-t border-[rgba(201,164,90,0.18)] pt-4 text-xs text-[#9f9278]"
-      >
-        Layer system coming in the next commits...
       </div>
     </div>
   </Transition>

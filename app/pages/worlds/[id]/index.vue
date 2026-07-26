@@ -644,6 +644,7 @@ function openSelectedPinContextMap() {
       <WorldMapLeaflet
         :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
         :map-image-url="mapImageUrl"
+        :scene="scene"
         :tile-enabled="activeMap?.tileEnabled"
         :tile-path="activeMap?.tilePath"
         :tile-min-zoom="activeMap?.tileMinZoom"

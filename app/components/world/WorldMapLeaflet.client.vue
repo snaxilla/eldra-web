@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import 'leaflet/dist/leaflet.css'
 
 type Pin = {
@@ -12,6 +12,19 @@ type Pin = {
   icon?: string | null
 }
 
+type SceneLayer = {
+  id: string
+  type?: string | null
+  visible?: boolean
+  data?: any
+}
+
+type SceneModel = {
+  id: string
+  title?: string
+  layers: SceneLayer[]
+}
+
 const props = defineProps<{
   mapImageUrl: string
   tileEnabled?: boolean
@@ -22,6 +35,8 @@ const props = defineProps<{
   tileOriginalHeight?: number | null
   overlayImageUrl?: string | null
   overlayOpacity?: number | null
+  scene?: SceneModel | null
+  layers?: SceneLayer[] | null
   pins: Pin[]
   selectedPinId?: string | null
   buildMode?: boolean
@@ -41,6 +56,12 @@ let tileLayer: any = null
 let markerLayer: any = null
 let overlayLayer: any = null
 let currentBounds: any = null
+
+const inputLayers = computed(() => {
+  if (Array.isArray(props.scene?.layers)) return props.scene?.layers || []
+  if (Array.isArray(props.layers)) return props.layers
+  return []
+})
 
 function getIconSvg(icon?: string | null) {
   switch (icon) {
@@ -370,6 +391,15 @@ watch(
 watch(
   () => props.pins,
   () => {
+    renderPins()
+  },
+  { deep: true }
+)
+
+watch(
+  () => inputLayers.value,
+  () => {
+    // Phase 2 plumbing: accept scene/layers input, but keep legacy pin rendering path.
     renderPins()
   },
   { deep: true }

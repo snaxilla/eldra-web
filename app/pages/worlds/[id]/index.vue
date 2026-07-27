@@ -14,6 +14,7 @@ const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
+const sceneBootstrapTimestamp = new Date().toISOString()
 
 type SceneLayer = {
   id: string
@@ -84,6 +85,12 @@ const scene = ref<SceneModel>({
       id: 'pins',
       label: 'Pins',
       visible: showPins.value,
+      objects: [],
+    },
+    {
+      id: 'image-overlays',
+      label: 'Image Overlays',
+      visible: true,
       objects: [],
     },
   ],
@@ -236,12 +243,48 @@ const pinLayerObjects = computed<LayerObject[]>(() => {
   }))
 })
 
+const imageOverlayLayerObjects = computed<LayerObject[]>(() => {
+  if (!mapImageUrl.value) return []
+
+  return [
+    {
+      objectId: `image-overlay-${String(activeMap.value?.id || 'world-map')}`,
+      objectType: 'image-overlay',
+      objectSchemaVersion: '1',
+      visible: true,
+      geometry: {
+        type: 'bounds',
+      },
+      properties: {
+        imageUrl: mapImageUrl.value,
+        opacity: 0.45,
+      },
+      style: {
+        opacity: 0.45,
+      },
+      createdAt: sceneBootstrapTimestamp,
+      updatedAt: sceneBootstrapTimestamp,
+      name: String(activeMap.value?.title || 'Image Overlay'),
+    },
+  ]
+})
+
 watch(
   pinLayerObjects,
   (objects) => {
     const pinsLayer = scene.value.layers.find((layer) => layer.id === 'pins')
     if (!pinsLayer) return
     pinsLayer.objects = objects
+  },
+  { immediate: true }
+)
+
+watch(
+  imageOverlayLayerObjects,
+  (objects) => {
+    const overlayLayer = scene.value.layers.find((layer) => layer.id === 'image-overlays')
+    if (!overlayLayer) return
+    overlayLayer.objects = objects
   },
   { immediate: true }
 )

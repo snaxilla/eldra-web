@@ -145,6 +145,68 @@ const resolvedPins = computed<Pin[]>(() => {
   return candidate as Pin[]
 })
 
+const resolvedImageOverlays = computed(() => {
+  const overlayLayer = inputLayers.value.find((layer) => {
+    const id = String(layer?.id || '').trim().toLowerCase()
+    const type = String(layer?.type || '').trim().toLowerCase()
+    return id === 'image-overlays' || type === 'image-overlays'
+  })
+
+  if (overlayLayer && overlayLayer.visible === false) {
+    return []
+  }
+
+  if (!overlayLayer) {
+    if (!props.overlayImageUrl) return []
+
+    return [
+      {
+        objectId: 'legacy-overlay',
+        objectType: 'image-overlay',
+        objectSchemaVersion: '1',
+        visible: true,
+        geometry: { type: 'bounds' },
+        properties: {
+          imageUrl: props.overlayImageUrl,
+        },
+        style: {
+          opacity: Number.isFinite(Number(props.overlayOpacity)) ? Number(props.overlayOpacity) : 0.65,
+        },
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]
+  }
+
+  if (Array.isArray(overlayLayer.objects)) {
+    const objects = overlayLayer.objects.filter((object) => {
+      return object?.visible !== false && String(object?.objectType || '').trim().toLowerCase() === 'image-overlay'
+    })
+
+    if (objects.length) return objects
+  }
+
+  if (!props.overlayImageUrl) return []
+
+  return [
+    {
+      objectId: 'legacy-overlay',
+      objectType: 'image-overlay',
+      objectSchemaVersion: '1',
+      visible: true,
+      geometry: { type: 'bounds' },
+      properties: {
+        imageUrl: props.overlayImageUrl,
+      },
+      style: {
+        opacity: Number.isFinite(Number(props.overlayOpacity)) ? Number(props.overlayOpacity) : 0.65,
+      },
+      createdAt: '',
+      updatedAt: '',
+    },
+  ]
+})
+
 function getIconSvg(icon?: string | null) {
   switch (icon) {
     case 'city':
@@ -319,6 +381,33 @@ function clearMap() {
   }
 }
 
+function renderImageOverlays() {
+  if (!L || !map || !currentBounds) return
+
+  if (!overlayLayer) {
+    overlayLayer = L.layerGroup().addTo(map)
+  } else {
+    overlayLayer.clearLayers()
+  }
+
+  for (const overlayObject of resolvedImageOverlays.value || []) {
+    const imageUrl = String(overlayObject?.properties?.imageUrl || '').trim()
+    if (!imageUrl) continue
+
+    const opacityCandidate = overlayObject?.style?.opacity ?? overlayObject?.properties?.opacity
+    const opacity = Number.isFinite(Number(opacityCandidate))
+      ? Number(opacityCandidate)
+      : Number.isFinite(Number(props.overlayOpacity))
+        ? Number(props.overlayOpacity)
+        : 0.65
+
+    L.imageOverlay(imageUrl, currentBounds, {
+      opacity,
+      interactive: false,
+    }).addTo(overlayLayer)
+  }
+}
+
 function renderPins() {
   if (!L || !map || !markerLayer) return
 
@@ -428,12 +517,7 @@ async function renderMap() {
     imageOverlay = L.imageOverlay(props.mapImageUrl, currentBounds).addTo(map)
   }
 
-  if (props.overlayImageUrl) {
-    overlayLayer = L.imageOverlay(props.overlayImageUrl, currentBounds, {
-      opacity: Number.isFinite(Number(props.overlayOpacity)) ? Number(props.overlayOpacity) : 0.65,
-      interactive: false
-    }).addTo(map)
-  }
+  renderImageOverlays()
 
   const center = currentBounds.getCenter()
   const startZoom = getCoverZoom(currentBounds)
@@ -479,9 +563,18 @@ watch(
 )
 
 watch(
+  () => resolvedImageOverlays.value,
+  () => {
+    renderImageOverlays()
+  },
+  { deep: true }
+)
+
+watch(
   () => inputLayers.value,
   () => {
-    // Phase 2 plumbing: accept scene/layers input, but keep legacy pin rendering path.
+    // Scene graph plumbing: accept scene/layers input for pins and image overlays.
+    renderImageOverlays()
     renderPins()
   },
   { deep: true }

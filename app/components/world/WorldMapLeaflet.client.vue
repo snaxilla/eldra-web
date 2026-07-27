@@ -16,7 +16,46 @@ type SceneLayer = {
   id: string
   type?: string | null
   visible?: boolean
+  objects?: LayerObject[]
   data?: any
+}
+
+type LayerObject = {
+  objectId: string
+  objectType: string
+  objectSchemaVersion: string
+  visible: boolean
+  geometry: LayerObjectGeometry
+  properties: LayerObjectProperties
+  style: LayerObjectStyle
+  createdAt: string
+  updatedAt: string
+  name?: string
+  locked?: boolean
+  opacity?: number
+  zOffset?: number
+  state?: any
+  schedule?: any
+  links?: any
+  tags?: string[]
+  permissionsOverrides?: any
+  custom?: any
+  archivedAt?: string
+  deletedAt?: string
+}
+
+type LayerObjectGeometry = {
+  type: string
+  coordinates?: any
+  [key: string]: any
+}
+
+type LayerObjectProperties = {
+  [key: string]: any
+}
+
+type LayerObjectStyle = {
+  [key: string]: any
 }
 
 type SceneModel = {
@@ -76,6 +115,26 @@ const resolvedPins = computed<Pin[]>(() => {
 
   if (pinsLayer.visible === false) {
     return []
+  }
+
+  if (Array.isArray(pinsLayer.objects)) {
+    return pinsLayer.objects
+      .filter((object) => object?.visible !== false && String(object?.objectType || '').trim().toLowerCase() === 'pin')
+      .map((object) => {
+        const coordinates = object.geometry?.coordinates
+        const x = typeof coordinates?.x === 'number' ? coordinates.x : Number(coordinates?.[0] ?? 0)
+        const y = typeof coordinates?.y === 'number' ? coordinates.y : Number(coordinates?.[1] ?? 0)
+
+        return {
+          id: String(object.objectId),
+          title: String(object.properties?.title || object.name || ''),
+          x,
+          y,
+          color: object.style?.color ?? null,
+          pinType: object.properties?.pinType ?? null,
+          icon: object.style?.icon ?? null,
+        }
+      })
   }
 
   const candidate = pinsLayer?.data?.pins ?? pinsLayer?.data

@@ -69,7 +69,6 @@ type SceneModel = {
 
 type RenderSceneLayer = SceneLayer & {
   type?: string
-  data?: any
 }
 
 type RenderSceneModel = {
@@ -215,6 +214,38 @@ const visiblePins = computed(() => {
   return (pins.value || []).filter(isPinVisible)
 })
 
+const pinLayerObjects = computed<LayerObject[]>(() => {
+  return visiblePins.value.map((pin: any) => ({
+    objectId: String(pin.id),
+    objectType: 'pin',
+    objectSchemaVersion: '1',
+    visible: true,
+    geometry: {
+      type: 'point',
+      coordinates: {
+        x: Number(pin.x),
+        y: Number(pin.y),
+      },
+    },
+    properties: {
+      title: String(pin.title || ''),
+      summary: pin.summary || '',
+      pinType: pin.pinType || null,
+      entityId: pin.entityId ?? null,
+      linkedMapId: pin.linkedMapId ?? null,
+      imageUrl: pin.imageUrl || null,
+      inheritFromEntity: pin.inheritFromEntity === true,
+    },
+    style: {
+      color: pin.color || null,
+      icon: pin.icon || 'marker',
+    },
+    createdAt: String(pin.createdAt || pin.created_at || pin.date_created || ''),
+    updatedAt: String(pin.updatedAt || pin.updated_at || pin.date_updated || ''),
+    name: String(pin.title || ''),
+  }))
+})
+
 const renderScene = computed<RenderSceneModel>(() => {
   return {
     id: scene.value.id,
@@ -224,9 +255,7 @@ const renderScene = computed<RenderSceneModel>(() => {
         return {
           ...layer,
           type: 'pins',
-          data: {
-            pins: visiblePins.value,
-          },
+          objects: pinLayerObjects.value,
         }
       }
 

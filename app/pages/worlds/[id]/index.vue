@@ -20,6 +20,45 @@ type SceneLayer = {
   label: string
   visible: boolean
   locked?: boolean
+  objects: LayerObject[]
+}
+
+type LayerObject = {
+  objectId: string
+  objectType: string
+  objectSchemaVersion: string
+  visible: boolean
+  geometry: LayerObjectGeometry
+  properties: LayerObjectProperties
+  style: LayerObjectStyle
+  createdAt: string
+  updatedAt: string
+  name?: string
+  locked?: boolean
+  opacity?: number
+  zOffset?: number
+  state?: any
+  schedule?: any
+  links?: any
+  tags?: string[]
+  permissionsOverrides?: any
+  custom?: any
+  archivedAt?: string
+  deletedAt?: string
+}
+
+type LayerObjectGeometry = {
+  type: string
+  coordinates?: any
+  [key: string]: any
+}
+
+type LayerObjectProperties = {
+  [key: string]: any
+}
+
+type LayerObjectStyle = {
+  [key: string]: any
 }
 
 type SceneModel = {
@@ -50,11 +89,13 @@ const scene = ref<SceneModel>({
       label: 'Base Map',
       visible: true,
       locked: true,
+      objects: [],
     },
     {
       id: 'pins',
       label: 'Pins',
       visible: showPins.value,
+      objects: [],
     },
   ],
 })

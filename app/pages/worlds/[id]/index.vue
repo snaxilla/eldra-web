@@ -28,6 +28,17 @@ type SceneModel = {
   layers: SceneLayer[]
 }
 
+type RenderSceneLayer = SceneLayer & {
+  type?: string
+  data?: any
+}
+
+type RenderSceneModel = {
+  id: string
+  title: string
+  layers: RenderSceneLayer[]
+}
+
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 const showPins = useState<boolean>('world-map-show-pins', () => true)
 const scene = ref<SceneModel>({
@@ -162,6 +173,29 @@ function isPinVisible(pin: any) {
 const visiblePins = computed(() => {
   return (pins.value || []).filter(isPinVisible)
 })
+
+const renderScene = computed<RenderSceneModel>(() => {
+  return {
+    id: scene.value.id,
+    title: scene.value.title,
+    layers: scene.value.layers.map((layer) => {
+      if (layer.id === 'pins') {
+        return {
+          ...layer,
+          type: 'pins',
+          data: {
+            pins: visiblePins.value,
+          },
+        }
+      }
+
+      return {
+        ...layer,
+      }
+    }),
+  }
+})
+
 const selectedPinId = ref<string | null>(null)
 
 watch(showPins, (value) => {
@@ -644,7 +678,7 @@ function openSelectedPinContextMap() {
       <WorldMapLeaflet
         :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
         :map-image-url="mapImageUrl"
-        :scene="scene"
+        :scene="renderScene"
         :tile-enabled="activeMap?.tileEnabled"
         :tile-path="activeMap?.tilePath"
         :tile-min-zoom="activeMap?.tileMinZoom"

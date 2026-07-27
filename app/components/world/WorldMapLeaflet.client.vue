@@ -63,6 +63,29 @@ const inputLayers = computed(() => {
   return []
 })
 
+const resolvedPins = computed<Pin[]>(() => {
+  const pinsLayer = inputLayers.value.find((layer) => {
+    const id = String(layer?.id || '').trim().toLowerCase()
+    const type = String(layer?.type || '').trim().toLowerCase()
+    return id === 'pins' || type === 'pins'
+  })
+
+  if (!pinsLayer) {
+    return props.pins || []
+  }
+
+  if (pinsLayer.visible === false) {
+    return []
+  }
+
+  const candidate = pinsLayer?.data?.pins ?? pinsLayer?.data
+  if (!Array.isArray(candidate)) {
+    return props.pins || []
+  }
+
+  return candidate as Pin[]
+})
+
 function getIconSvg(icon?: string | null) {
   switch (icon) {
     case 'city':
@@ -242,7 +265,7 @@ function renderPins() {
 
   markerLayer.clearLayers()
 
-  for (const pin of props.pins || []) {
+  for (const pin of resolvedPins.value || []) {
     const scale = mapCoordinateScale()
     const lat = usingTiles() ? -(pin.y / scale) : pin.y
     const lng = usingTiles() ? pin.x / scale : pin.x
@@ -389,7 +412,7 @@ watch(
 )
 
 watch(
-  () => props.pins,
+  () => resolvedPins.value,
   () => {
     renderPins()
   },

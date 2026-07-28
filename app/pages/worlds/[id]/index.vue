@@ -6,6 +6,7 @@ definePageMeta({
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 import MapBreadcrumbs from '~/components/world/map/MapBreadcrumbs.vue'
 import MapBuildBanner from '~/components/world/map/MapBuildBanner.vue'
+import MapImageOverlayEditor from '~/components/world/map/MapImageOverlayEditor.vue'
 import MapLayerPanel from '~/components/world/map/MapLayerPanel.vue'
 import MapSelectedPinCard from '~/components/world/map/MapSelectedPinCard.vue'
 import MapPinEditor from '~/components/world/map/MapPinEditor.vue'
@@ -14,7 +15,6 @@ const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
-const sceneBootstrapTimestamp = new Date().toISOString()
 
 type SceneLayer = {
   id: string
@@ -189,6 +189,31 @@ const ancestorMaps = computed(() => {
 })
 
 const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
+const currentMapId = computed(() => String(activeMap.value?.id || ''))
+
+const imageOverlayObjectsByMapId = useState<Record<string, LayerObject[]>>('world-map-image-overlay-objects', () => ({}))
+const showImageOverlayEditor = ref(false)
+const savingImageOverlay = ref(false)
+const imageOverlaySaveError = ref('')
+const editingImageOverlay = ref<any | null>(null)
+
+const currentImageOverlayObjects = computed<LayerObject[]>(() => {
+  if (!currentMapId.value) return []
+  return imageOverlayObjectsByMapId.value[currentMapId.value] || []
+})
+
+const currentImageOverlayObject = computed(() => {
+  return currentImageOverlayObjects.value.find((object) => String(object?.objectType || '').trim().toLowerCase() === 'image-overlay') || null
+})
+
+function syncCurrentImageOverlayObjects(objects: LayerObject[]) {
+  if (!currentMapId.value) return
+
+  imageOverlayObjectsByMapId.value = {
+    ...imageOverlayObjectsByMapId.value,
+    [currentMapId.value]: objects,
+  }
+}
 
 const pins = ref<any[]>([])
 
@@ -243,31 +268,15 @@ const pinLayerObjects = computed<LayerObject[]>(() => {
   }))
 })
 
-const imageOverlayLayerObjects = computed<LayerObject[]>(() => {
-  if (!mapImageUrl.value) return []
-
-  return [
-    {
-      objectId: `image-overlay-${String(activeMap.value?.id || 'world-map')}`,
-      objectType: 'image-overlay',
-      objectSchemaVersion: '1',
-      visible: true,
-      geometry: {
-        type: 'bounds',
-      },
-      properties: {
-        imageUrl: mapImageUrl.value,
-        opacity: 0.45,
-      },
-      style: {
-        opacity: 0.45,
-      },
-      createdAt: sceneBootstrapTimestamp,
-      updatedAt: sceneBootstrapTimestamp,
-      name: String(activeMap.value?.title || 'Image Overlay'),
-    },
-  ]
-})
+watch(
+  currentImageOverlayObjects,
+  (objects) => {
+    const overlayLayer = scene.value.layers.find((layer) => layer.id === 'image-overlays')
+    if (!overlayLayer) return
+    overlayLayer.objects = objects
+  },
+  { immediate: true, deep: true }
+)
 
 watch(
   pinLayerObjects,
@@ -279,17 +288,13 @@ watch(
   { immediate: true }
 )
 
-watch(
-  imageOverlayLayerObjects,
-  (objects) => {
-    const overlayLayer = scene.value.layers.find((layer) => layer.id === 'image-overlays')
-    if (!overlayLayer) return
-    overlayLayer.objects = objects
-  },
-  { immediate: true }
-)
-
 const selectedPinId = ref<string | null>(null)
+
+watch(currentMapId, () => {
+  showImageOverlayEditor.value = false
+  editingImageOverlay.value = null
+  imageOverlaySaveError.value = ''
+})
 
 watch(showPins, (value) => {
   const pinsLayer = scene.value.layers.find((layer) => layer.id === 'pins')
@@ -312,6 +317,95 @@ function toggleSceneLayer(payload: { layerId: string; visible: boolean }) {
     showPins.value = payload.visible
   }
 }
+
+function imageOverlayObjectToDraft(object: LayerObject) {
+  const imageFileId = String(object?.properties?.imageFileId || object?.properties?.fileId || '').trim()
+  const imageUrl = String(object?.properties?.imageUrl || '').trim() || (imageFileId ? `/api/assets/${imageFileId}` : '')
+
+  return {
+    objectId: String(object?.objectId || ''),
+    name: String(object?.name || object?.properties?.name || 'Image Overlay'),
+    imageFileId,
+    imageUrl,
+    opacity: Number.isFinite(Number(object?.style?.opacity ?? object?.properties?.opacity))
+      ? Number(object?.style?.opacity ?? object?.properties?.opacity)
+      : 0.65,
+  }
+}
+
+function openImageOverlayEditor() {
+  imageOverlaySaveError.value = ''
+  editingImageOverlay.value = currentImageOverlayObject.value
+    ? imageOverlayObjectToDraft(currentImageOverlayObject.value)
+    : {
+        objectId: '',
+        name: 'Image Overlay',
+        imageFileId: '',
+        imageUrl: '',
+        opacity: 0.65,
+      }
+  showImageOverlayEditor.value = true
+}
+
+function closeImageOverlayEditor() {
+  showImageOverlayEditor.value = false
+  editingImageOverlay.value = null
+  imageOverlaySaveError.value = ''
+}
+
+function removeImageOverlay() {
+  syncCurrentImageOverlayObjects([])
+  closeImageOverlayEditor()
+}
+
+function saveImageOverlay() {
+  if (!editingImageOverlay.value || !currentMapId.value) return
+
+  const imageUrl = String(editingImageOverlay.value.imageUrl || '').trim()
+  if (!imageUrl) {
+    imageOverlaySaveError.value = 'Choose an image for the overlay.'
+    return
+  }
+
+  imageOverlaySaveError.value = ''
+
+  savingImageOverlay.value = true
+  try {
+    const existing = currentImageOverlayObject.value
+    const now = new Date().toISOString()
+    const nextOpacity = Number(editingImageOverlay.value.opacity)
+
+    const overlayObject: LayerObject = {
+      objectId: String(existing?.objectId || editingImageOverlay.value.objectId || `image-overlay-${currentMapId.value}`),
+      objectType: 'image-overlay',
+      objectSchemaVersion: '1',
+      visible: true,
+      geometry: {
+        type: 'bounds',
+        coordinates: {
+          anchor: 'map',
+        },
+      },
+      properties: {
+        name: String(editingImageOverlay.value.name || 'Image Overlay'),
+        imageFileId: String(editingImageOverlay.value.imageFileId || '').trim() || null,
+        imageUrl,
+      },
+      style: {
+        opacity: Number.isFinite(nextOpacity) ? Math.max(0, Math.min(1, nextOpacity)) : 0.65,
+      },
+      createdAt: String(existing?.createdAt || now),
+      updatedAt: now,
+      name: String(editingImageOverlay.value.name || 'Image Overlay'),
+    }
+
+    syncCurrentImageOverlayObjects([overlayObject])
+    closeImageOverlayEditor()
+  } finally {
+    savingImageOverlay.value = false
+  }
+}
+
 const loadingPins = ref(false)
 
 async function fetchPins() {
@@ -801,6 +895,19 @@ function openSelectedPinContextMap() {
       @toggle-layer="toggleSceneLayer"
     />
 
+    <button
+      v-if="mode === 'build' && mapImageUrl"
+      type="button"
+      class="eldra-button fixed bottom-6 left-32 z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
+      @click="openImageOverlayEditor"
+    >
+      <UIcon
+        name="i-lucide-image"
+        class="h-4 w-4 text-[#f5e7bd]"
+      />
+      <span>{{ currentImageOverlayObject ? 'Edit Overlay' : 'Add Overlay' }}</span>
+    </button>
+
 
 
     <WorldEntityContextDrawer
@@ -837,6 +944,17 @@ function openSelectedPinContextMap() {
       @save="savePin"
       @create-article="createArticleFromPin"
       @upload-image="uploadPinImage"
+    />
+
+    <MapImageOverlayEditor
+      :open="showImageOverlayEditor"
+      :editing-overlay="editingImageOverlay"
+      :world-id="worldId"
+      :saving-overlay="savingImageOverlay"
+      :save-error="imageOverlaySaveError"
+      @close="closeImageOverlayEditor"
+      @save="saveImageOverlay"
+      @remove="removeImageOverlay"
     />
 
   </div>

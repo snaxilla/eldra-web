@@ -72,8 +72,6 @@ const props = defineProps<{
   tileMaxZoom?: number | null
   tileOriginalWidth?: number | null
   tileOriginalHeight?: number | null
-  overlayImageUrl?: string | null
-  overlayOpacity?: number | null
   scene?: SceneModel | null
   layers?: SceneLayer[] | null
   pins: Pin[]
@@ -152,31 +150,7 @@ const resolvedImageOverlays = computed(() => {
     return id === 'image-overlays' || type === 'image-overlays'
   })
 
-  if (overlayLayer && overlayLayer.visible === false) {
-    return []
-  }
-
-  if (!overlayLayer) {
-    if (!props.overlayImageUrl) return []
-
-    return [
-      {
-        objectId: 'legacy-overlay',
-        objectType: 'image-overlay',
-        objectSchemaVersion: '1',
-        visible: true,
-        geometry: { type: 'bounds' },
-        properties: {
-          imageUrl: props.overlayImageUrl,
-        },
-        style: {
-          opacity: Number.isFinite(Number(props.overlayOpacity)) ? Number(props.overlayOpacity) : 0.65,
-        },
-        createdAt: '',
-        updatedAt: '',
-      },
-    ]
-  }
+  if (!overlayLayer || overlayLayer.visible === false) return []
 
   if (Array.isArray(overlayLayer.objects)) {
     const objects = overlayLayer.objects.filter((object) => {
@@ -186,25 +160,7 @@ const resolvedImageOverlays = computed(() => {
     if (objects.length) return objects
   }
 
-  if (!props.overlayImageUrl) return []
-
-  return [
-    {
-      objectId: 'legacy-overlay',
-      objectType: 'image-overlay',
-      objectSchemaVersion: '1',
-      visible: true,
-      geometry: { type: 'bounds' },
-      properties: {
-        imageUrl: props.overlayImageUrl,
-      },
-      style: {
-        opacity: Number.isFinite(Number(props.overlayOpacity)) ? Number(props.overlayOpacity) : 0.65,
-      },
-      createdAt: '',
-      updatedAt: '',
-    },
-  ]
+  return []
 })
 
 function getIconSvg(icon?: string | null) {
@@ -397,9 +353,7 @@ function renderImageOverlays() {
     const opacityCandidate = overlayObject?.style?.opacity ?? overlayObject?.properties?.opacity
     const opacity = Number.isFinite(Number(opacityCandidate))
       ? Number(opacityCandidate)
-      : Number.isFinite(Number(props.overlayOpacity))
-        ? Number(props.overlayOpacity)
-        : 0.65
+      : 0.65
 
     L.imageOverlay(imageUrl, currentBounds, {
       opacity,
@@ -544,9 +498,7 @@ watch(
     props.tileMinZoom,
     props.tileMaxZoom,
     props.tileOriginalWidth,
-    props.tileOriginalHeight,
-    props.overlayImageUrl,
-    props.overlayOpacity
+    props.tileOriginalHeight
   ],
   async () => {
     await nextTick()

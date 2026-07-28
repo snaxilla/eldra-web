@@ -68,7 +68,10 @@ type SceneModel = {
   layers: SceneLayer[]
 }
 
+type BuildTool = 'select' | 'pin' | 'image-overlay'
+
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
+const activeBuildTool = useState<BuildTool>('world-map-active-build-tool', () => 'select')
 const showPins = useState<boolean>('world-map-show-pins', () => true)
 const scene = ref<SceneModel>({
   id: 'world-map-scene',
@@ -337,6 +340,22 @@ watch(currentMapId, () => {
   showImageOverlayEditor.value = false
   editingImageOverlay.value = null
   imageOverlaySaveError.value = ''
+  if (mode.value === 'build') {
+    activeBuildTool.value = 'select'
+  }
+})
+
+watch(mode, (value) => {
+  if (value !== 'build') {
+    activeBuildTool.value = 'select'
+    closeImageOverlayEditor()
+    closePinEditor()
+    return
+  }
+
+  if (!activeBuildTool.value) {
+    activeBuildTool.value = 'select'
+  }
 })
 
 watch(showPins, (value) => {
@@ -377,6 +396,9 @@ function imageOverlayObjectToDraft(object: LayerObject) {
 }
 
 function openImageOverlayEditor() {
+  activeBuildTool.value = 'image-overlay'
+  closePinEditor()
+
   imageOverlaySaveError.value = ''
   editingImageOverlay.value = currentImageOverlayObject.value
     ? imageOverlayObjectToDraft(currentImageOverlayObject.value)
@@ -390,10 +412,13 @@ function openImageOverlayEditor() {
   showImageOverlayEditor.value = true
 }
 
-function closeImageOverlayEditor() {
+function closeImageOverlayEditor(nextTool: BuildTool = 'select') {
   showImageOverlayEditor.value = false
   editingImageOverlay.value = null
   imageOverlaySaveError.value = ''
+  if (mode.value === 'build') {
+    activeBuildTool.value = nextTool
+  }
 }
 
 function removeImageOverlay() {
@@ -517,7 +542,24 @@ function goToWorldRootMap() {
   router.push(`/worlds/${worldId.value}`)
 }
 
+function setActiveBuildTool(tool: BuildTool) {
+  if (mode.value !== 'build') return
+  if (activeBuildTool.value === tool) return
+
+  activeBuildTool.value = tool
+
+  if (tool !== 'image-overlay') {
+    closeImageOverlayEditor(tool)
+  }
+
+  if (tool !== 'pin') {
+    closePinEditor()
+  }
+}
+
 function openNewPinEditor(coords: { x: number; y: number }) {
+  if (mode.value !== 'build' || activeBuildTool.value !== 'pin') return
+
   saveError.value = ''
   createEntityError.value = ''
   createEntitySuccess.value = ''
@@ -542,11 +584,14 @@ function openNewPinEditor(coords: { x: number; y: number }) {
 }
 
 function onMapClick(coords: { x: number; y: number }) {
-  if (mode.value !== 'build') return
+  if (mode.value !== 'build' || activeBuildTool.value !== 'pin') return
   openNewPinEditor(coords)
 }
 
 function editPin(pin: any) {
+  if (mode.value !== 'build' || activeBuildTool.value === 'image-overlay') return
+  activeBuildTool.value = 'pin'
+
   saveError.value = ''
   createEntityError.value = ''
   createEntitySuccess.value = ''
@@ -876,6 +921,7 @@ function openSelectedPinContextMap() {
 
     <MapBuildBanner
       :show="mode === 'build'"
+      :active-tool="activeBuildTool"
     />
 
     <div v-if="mapImageUrl" class="absolute inset-0 z-0">
@@ -891,7 +937,7 @@ function openSelectedPinContextMap() {
         :tile-original-height="activeMap?.tileOriginalHeight"
         :pins="visiblePins"
         :selected-pin-id="selectedPinId"
-        :build-mode="mode === 'build'"
+        :build-mode="mode === 'build' && activeBuildTool === 'pin'"
         @select-pin="selectPin"
         @map-click="onMapClick"
       />
@@ -912,18 +958,41 @@ function openSelectedPinContextMap() {
       @toggle-layer="toggleSceneLayer"
     />
 
-    <button
+    <div
       v-if="mode === 'build' && mapImageUrl"
-      type="button"
-      class="eldra-button fixed bottom-6 left-32 z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
-      @click="openImageOverlayEditor"
+      class="fixed bottom-6 left-32 z-30 inline-flex items-center gap-2"
     >
-      <UIcon
-        name="i-lucide-image"
-        class="h-4 w-4 text-[#f5e7bd]"
-      />
-      <span>{{ currentImageOverlayObject ? 'Edit Overlay' : 'Add Overlay' }}</span>
-    </button>
+      <button
+        type="button"
+        class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
+        :class="activeBuildTool === 'select' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        @click="setActiveBuildTool('select')"
+      >
+        Select
+      </button>
+
+      <button
+        type="button"
+        class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
+        :class="activeBuildTool === 'pin' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        @click="setActiveBuildTool('pin')"
+      >
+        Pin
+      </button>
+
+      <button
+        type="button"
+        class="eldra-button inline-flex items-center gap-2 rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
+        :class="activeBuildTool === 'image-overlay' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        @click="openImageOverlayEditor"
+      >
+        <UIcon
+          name="i-lucide-image"
+          class="h-4 w-4 text-[#f5e7bd]"
+        />
+        <span>{{ currentImageOverlayObject ? 'Edit Overlay' : 'Add Overlay' }}</span>
+      </button>
+    </div>
 
 
 
@@ -938,7 +1007,7 @@ function openSelectedPinContextMap() {
     />
 
     <MapSelectedPinCard
-      :open="Boolean(selectedPin && mode === 'build' && !showPinEditor)"
+      :open="Boolean(selectedPin && mode === 'build' && activeBuildTool !== 'image-overlay' && !showPinEditor)"
       :selected-pin="selectedPin"
       :format-location-type="formatLocationType"
       :icon-label="iconLabel"

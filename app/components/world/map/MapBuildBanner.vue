@@ -1,7 +1,14 @@
 <script setup lang="ts">
 defineProps<{
   show: boolean
+  activeTool?: 'select' | 'pin' | 'image-overlay'
 }>()
+
+const toolLabelById: Record<string, string> = {
+  select: 'Select',
+  pin: 'Pin',
+  'image-overlay': 'Image Overlay',
+}
 </script>
 
 <template>
@@ -13,6 +20,6 @@ defineProps<{
       name="i-lucide-pencil-ruler"
       class="h-4 w-4"
     />
-    Build Mode — click map to place pin
+    Build Mode - {{ toolLabelById[activeTool || 'select'] || 'Select' }} Tool
   </div>
 </template>

@@ -206,6 +206,49 @@ const currentImageOverlayObject = computed(() => {
   return currentImageOverlayObjects.value.find((object) => String(object?.objectType || '').trim().toLowerCase() === 'image-overlay') || null
 })
 
+function buildImageOverlayObjectFromDraft(draft: any, existing: LayerObject | null) {
+  const now = new Date().toISOString()
+  const imageUrl = String(draft?.imageUrl || '').trim()
+  const nextOpacity = Number(draft?.opacity)
+
+  return {
+    objectId: String(existing?.objectId || draft?.objectId || `image-overlay-${currentMapId.value}`),
+    objectType: 'image-overlay',
+    objectSchemaVersion: '1',
+    visible: true,
+    geometry: {
+      type: 'bounds',
+      coordinates: {
+        anchor: 'map',
+      },
+    },
+    properties: {
+      name: String(draft?.name || 'Image Overlay'),
+      imageFileId: String(draft?.imageFileId || '').trim() || null,
+      imageUrl,
+    },
+    style: {
+      opacity: Number.isFinite(nextOpacity) ? Math.max(0, Math.min(1, nextOpacity)) : 0.65,
+    },
+    createdAt: String(existing?.createdAt || now),
+    updatedAt: now,
+    name: String(draft?.name || 'Image Overlay'),
+  }
+}
+
+const runtimeImageOverlayObjects = computed<LayerObject[]>(() => {
+  if (!showImageOverlayEditor.value || !editingImageOverlay.value) {
+    return currentImageOverlayObjects.value
+  }
+
+  const previewImageUrl = String(editingImageOverlay.value.imageUrl || '').trim()
+  if (!previewImageUrl) {
+    return currentImageOverlayObjects.value
+  }
+
+  return [buildImageOverlayObjectFromDraft(editingImageOverlay.value, currentImageOverlayObject.value)]
+})
+
 function syncCurrentImageOverlayObjects(objects: LayerObject[]) {
   if (!currentMapId.value) return
 
@@ -269,7 +312,7 @@ const pinLayerObjects = computed<LayerObject[]>(() => {
 })
 
 watch(
-  currentImageOverlayObjects,
+  runtimeImageOverlayObjects,
   (objects) => {
     const overlayLayer = scene.value.layers.find((layer) => layer.id === 'image-overlays')
     if (!overlayLayer) return
@@ -371,33 +414,7 @@ function saveImageOverlay() {
 
   savingImageOverlay.value = true
   try {
-    const existing = currentImageOverlayObject.value
-    const now = new Date().toISOString()
-    const nextOpacity = Number(editingImageOverlay.value.opacity)
-
-    const overlayObject: LayerObject = {
-      objectId: String(existing?.objectId || editingImageOverlay.value.objectId || `image-overlay-${currentMapId.value}`),
-      objectType: 'image-overlay',
-      objectSchemaVersion: '1',
-      visible: true,
-      geometry: {
-        type: 'bounds',
-        coordinates: {
-          anchor: 'map',
-        },
-      },
-      properties: {
-        name: String(editingImageOverlay.value.name || 'Image Overlay'),
-        imageFileId: String(editingImageOverlay.value.imageFileId || '').trim() || null,
-        imageUrl,
-      },
-      style: {
-        opacity: Number.isFinite(nextOpacity) ? Math.max(0, Math.min(1, nextOpacity)) : 0.65,
-      },
-      createdAt: String(existing?.createdAt || now),
-      updatedAt: now,
-      name: String(editingImageOverlay.value.name || 'Image Overlay'),
-    }
+    const overlayObject = buildImageOverlayObjectFromDraft(editingImageOverlay.value, currentImageOverlayObject.value)
 
     syncCurrentImageOverlayObjects([overlayObject])
     closeImageOverlayEditor()

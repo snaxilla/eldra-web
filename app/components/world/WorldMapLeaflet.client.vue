@@ -77,11 +77,13 @@ const props = defineProps<{
   pins: Pin[]
   selectedPinId?: string | null
   buildMode?: boolean
+  roadMode?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'select-pin', id: string): void
   (e: 'map-click', coords: { x: number; y: number }): void
+  (e: 'map-double-click', coords: { x: number; y: number }): void
 }>()
 
 const rootEl = ref<HTMLDivElement | null>(null)
@@ -92,6 +94,7 @@ let imageOverlay: any = null
 let tileLayer: any = null
 let markerLayer: any = null
 let overlayLayer: any = null
+let roadLayer: any = null
 let currentBounds: any = null
 
 const inputLayers = computed(() => {
@@ -161,6 +164,22 @@ const resolvedImageOverlays = computed(() => {
   }
 
   return []
+})
+
+const resolvedRoads = computed(() => {
+  const roadsLayer = inputLayers.value.find((layer) => {
+    const id = String(layer?.id || '').trim().toLowerCase()
+    const type = String(layer?.type || '').trim().toLowerCase()
+    return id === 'roads' || type === 'roads'
+  })
+
+  if (!roadsLayer || roadsLayer.visible === false || !Array.isArray(roadsLayer.objects)) {
+    return []
+  }
+
+  return roadsLayer.objects.filter((object) => {
+    return object?.visible !== false && String(object?.objectType || '').trim().toLowerCase() === 'road'
+  })
 })
 
 function getIconSvg(icon?: string | null) {
@@ -315,6 +334,19 @@ async function ensureMap() {
     })
   })
 
+  map.on('dblclick', (e: any) => {
+    if (!props.roadMode) return
+
+    e.originalEvent?.preventDefault?.()
+    const { lat, lng } = e.latlng
+    const scale = mapCoordinateScale()
+
+    emit('map-double-click', {
+      x: usingTiles() ? lng * scale : lng,
+      y: usingTiles() ? -lat * scale : lat
+    })
+  })
+
   markerLayer = L.layerGroup().addTo(map)
 }
 
@@ -331,9 +363,57 @@ function clearMap() {
     overlayLayer = null
   }
 
+  if (roadLayer && map) {
+    map.removeLayer(roadLayer)
+    roadLayer = null
+  }
+
   if (tileLayer && map) {
     map.removeLayer(tileLayer)
     tileLayer = null
+  }
+}
+
+function renderRoads() {
+  if (!L || !map || !currentBounds) return
+
+  if (!roadLayer) {
+    roadLayer = L.layerGroup().addTo(map)
+  } else {
+    roadLayer.clearLayers()
+  }
+
+  for (const roadObject of resolvedRoads.value || []) {
+    const coordinates = Array.isArray(roadObject?.geometry?.coordinates)
+      ? roadObject.geometry.coordinates
+      : []
+
+    const latLngs = coordinates
+      .map((coordinate: any) => {
+        const x = Number(coordinate?.x)
+        const y = Number(coordinate?.y)
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+
+        const scale = mapCoordinateScale()
+        const lat = usingTiles() ? -(y / scale) : y
+        const lng = usingTiles() ? x / scale : x
+        return L.latLng(lat, lng)
+      })
+      .filter(Boolean)
+
+    if (latLngs.length < 2) continue
+
+    const isDraft = roadObject?.properties?.isDraft === true
+
+    L.polyline(latLngs, {
+      color: '#d4b072',
+      weight: isDraft ? 3 : 4,
+      opacity: isDraft ? 0.8 : 0.9,
+      interactive: false,
+      dashArray: isDraft ? '8 6' : undefined,
+      lineCap: 'round',
+      lineJoin: 'round',
+    }).addTo(roadLayer)
   }
 }
 
@@ -472,6 +552,7 @@ async function renderMap() {
   }
 
   renderImageOverlays()
+  renderRoads()
 
   const center = currentBounds.getCenter()
   const startZoom = getCoverZoom(currentBounds)
@@ -523,10 +604,19 @@ watch(
 )
 
 watch(
+  () => resolvedRoads.value,
+  () => {
+    renderRoads()
+  },
+  { deep: true }
+)
+
+watch(
   () => inputLayers.value,
   () => {
-    // Scene graph plumbing: accept scene/layers input for pins and image overlays.
+    // Scene graph plumbing: accept scene/layers input for pins, image overlays, and roads.
     renderImageOverlays()
+    renderRoads()
     renderPins()
   },
   { deep: true }
@@ -544,6 +634,18 @@ watch(
   () => {
     if (!map) return
     map.getContainer().style.cursor = props.buildMode ? 'crosshair' : ''
+  }
+)
+
+watch(
+  () => props.roadMode,
+  () => {
+    if (!map) return
+    if (props.roadMode) {
+      map.doubleClickZoom.disable()
+      return
+    }
+    map.doubleClickZoom.enable()
   }
 )
 

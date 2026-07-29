@@ -5,7 +5,6 @@ definePageMeta({
 
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 import MapBreadcrumbs from '~/components/world/map/MapBreadcrumbs.vue'
-import MapBuildBanner from '~/components/world/map/MapBuildBanner.vue'
 import MapImageOverlayEditor from '~/components/world/map/MapImageOverlayEditor.vue'
 import MapLayerPanel from '~/components/world/map/MapLayerPanel.vue'
 import MapSelectedPinCard from '~/components/world/map/MapSelectedPinCard.vue'
@@ -68,7 +67,8 @@ type SceneModel = {
   layers: SceneLayer[]
 }
 
-type BuildTool = 'select' | 'pin' | 'image-overlay'
+type BuildTool = 'select' | 'pin' | 'image-overlay' | 'road'
+type RoadVertex = { x: number; y: number }
 
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 const activeBuildTool = useState<BuildTool>('world-map-active-build-tool', () => 'select')
@@ -93,6 +93,12 @@ const scene = ref<SceneModel>({
     {
       id: 'image-overlays',
       label: 'Image Overlays',
+      visible: true,
+      objects: [],
+    },
+    {
+      id: 'roads',
+      label: 'Roads',
       visible: true,
       objects: [],
     },
@@ -195,10 +201,12 @@ const mapImageUrl = computed(() => activeMap.value?.imageUrl || '')
 const currentMapId = computed(() => String(activeMap.value?.id || ''))
 
 const imageOverlayObjectsByMapId = useState<Record<string, LayerObject[]>>('world-map-image-overlay-objects', () => ({}))
+const roadObjectsByMapId = useState<Record<string, LayerObject[]>>('world-map-road-objects', () => ({}))
 const showImageOverlayEditor = ref(false)
 const savingImageOverlay = ref(false)
 const imageOverlaySaveError = ref('')
 const editingImageOverlay = ref<any | null>(null)
+const roadDraftVertices = ref<RoadVertex[]>([])
 
 const currentImageOverlayObjects = computed<LayerObject[]>(() => {
   if (!currentMapId.value) return []
@@ -208,6 +216,40 @@ const currentImageOverlayObjects = computed<LayerObject[]>(() => {
 const currentImageOverlayObject = computed(() => {
   return currentImageOverlayObjects.value.find((object) => String(object?.objectType || '').trim().toLowerCase() === 'image-overlay') || null
 })
+
+const currentRoadObjects = computed<LayerObject[]>(() => {
+  if (!currentMapId.value) return []
+  return roadObjectsByMapId.value[currentMapId.value] || []
+})
+
+function roadVerticesToCoordinates(vertices: RoadVertex[]) {
+  return vertices.map((vertex) => ({
+    x: Number(vertex.x),
+    y: Number(vertex.y),
+  }))
+}
+
+function buildRoadObjectFromVertices(vertices: RoadVertex[]) {
+  const now = new Date().toISOString()
+
+  return {
+    objectId: `road-${currentMapId.value}-${now}`,
+    objectType: 'road',
+    objectSchemaVersion: '1',
+    visible: true,
+    geometry: {
+      type: 'polyline',
+      coordinates: roadVerticesToCoordinates(vertices),
+    },
+    properties: {
+      name: 'Road',
+    },
+    style: {},
+    createdAt: now,
+    updatedAt: now,
+    name: 'Road',
+  }
+}
 
 function buildImageOverlayObjectFromDraft(draft: any, existing: LayerObject | null) {
   const now = new Date().toISOString()
@@ -260,6 +302,49 @@ function syncCurrentImageOverlayObjects(objects: LayerObject[]) {
     [currentMapId.value]: objects,
   }
 }
+
+function syncCurrentRoadObjects(objects: LayerObject[]) {
+  if (!currentMapId.value) return
+
+  roadObjectsByMapId.value = {
+    ...roadObjectsByMapId.value,
+    [currentMapId.value]: objects,
+  }
+}
+
+const runtimeRoadObjects = computed<LayerObject[]>(() => {
+  if (mode.value !== 'build' || activeBuildTool.value !== 'road') {
+    return currentRoadObjects.value
+  }
+
+  if (roadDraftVertices.value.length < 2) {
+    return currentRoadObjects.value
+  }
+
+  const now = new Date().toISOString()
+  const draftObject: LayerObject = {
+    objectId: `road-draft-${currentMapId.value}`,
+    objectType: 'road',
+    objectSchemaVersion: '1',
+    visible: true,
+    geometry: {
+      type: 'polyline',
+      coordinates: roadVerticesToCoordinates(roadDraftVertices.value),
+    },
+    properties: {
+      name: 'Road Draft',
+      isDraft: true,
+    },
+    style: {
+      opacity: 0.8,
+    },
+    createdAt: now,
+    updatedAt: now,
+    name: 'Road Draft',
+  }
+
+  return [...currentRoadObjects.value, draftObject]
+})
 
 const pins = ref<any[]>([])
 
@@ -334,12 +419,23 @@ watch(
   { immediate: true }
 )
 
+watch(
+  runtimeRoadObjects,
+  (objects) => {
+    const roadsLayer = scene.value.layers.find((layer) => layer.id === 'roads')
+    if (!roadsLayer) return
+    roadsLayer.objects = objects
+  },
+  { immediate: true, deep: true }
+)
+
 const selectedPinId = ref<string | null>(null)
 
 watch(currentMapId, () => {
   showImageOverlayEditor.value = false
   editingImageOverlay.value = null
   imageOverlaySaveError.value = ''
+  roadDraftVertices.value = []
   if (mode.value === 'build') {
     activeBuildTool.value = 'select'
   }
@@ -350,6 +446,7 @@ watch(mode, (value) => {
     activeBuildTool.value = 'select'
     closeImageOverlayEditor()
     closePinEditor()
+    roadDraftVertices.value = []
     return
   }
 
@@ -396,8 +493,7 @@ function imageOverlayObjectToDraft(object: LayerObject) {
 }
 
 function openImageOverlayEditor() {
-  activeBuildTool.value = 'image-overlay'
-  closePinEditor()
+  setActiveBuildTool('image-overlay')
 
   imageOverlaySaveError.value = ''
   editingImageOverlay.value = currentImageOverlayObject.value
@@ -555,6 +651,33 @@ function setActiveBuildTool(tool: BuildTool) {
   if (tool !== 'pin') {
     closePinEditor()
   }
+
+  if (tool !== 'road') {
+    roadDraftVertices.value = []
+  }
+}
+
+function onRoadMapClick(coords: { x: number; y: number }) {
+  roadDraftVertices.value = [...roadDraftVertices.value, { x: Number(coords.x), y: Number(coords.y) }]
+}
+
+function onRoadMapDoubleClick(coords: { x: number; y: number }) {
+  const lastVertex = roadDraftVertices.value[roadDraftVertices.value.length - 1]
+  const nextX = Number(coords.x)
+  const nextY = Number(coords.y)
+
+  if (!lastVertex || lastVertex.x !== nextX || lastVertex.y !== nextY) {
+    roadDraftVertices.value = [...roadDraftVertices.value, { x: nextX, y: nextY }]
+  }
+
+  if (roadDraftVertices.value.length < 2) {
+    roadDraftVertices.value = []
+    return
+  }
+
+  const completedRoad = buildRoadObjectFromVertices(roadDraftVertices.value)
+  syncCurrentRoadObjects([...currentRoadObjects.value, completedRoad])
+  roadDraftVertices.value = []
 }
 
 function openNewPinEditor(coords: { x: number; y: number }) {
@@ -584,8 +707,21 @@ function openNewPinEditor(coords: { x: number; y: number }) {
 }
 
 function onMapClick(coords: { x: number; y: number }) {
-  if (mode.value !== 'build' || activeBuildTool.value !== 'pin') return
-  openNewPinEditor(coords)
+  if (mode.value !== 'build') return
+
+  if (activeBuildTool.value === 'pin') {
+    openNewPinEditor(coords)
+    return
+  }
+
+  if (activeBuildTool.value === 'road') {
+    onRoadMapClick(coords)
+  }
+}
+
+function onMapDoubleClick(coords: { x: number; y: number }) {
+  if (mode.value !== 'build' || activeBuildTool.value !== 'road') return
+  onRoadMapDoubleClick(coords)
 }
 
 function editPin(pin: any) {
@@ -919,11 +1055,6 @@ function openSelectedPinContextMap() {
       @ancestor="goToMapBySlug"
     />
 
-    <MapBuildBanner
-      :show="mode === 'build'"
-      :active-tool="activeBuildTool"
-    />
-
     <div v-if="mapImageUrl" class="absolute inset-0 z-0">
       <WorldMapLeaflet
         :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
@@ -937,9 +1068,11 @@ function openSelectedPinContextMap() {
         :tile-original-height="activeMap?.tileOriginalHeight"
         :pins="visiblePins"
         :selected-pin-id="selectedPinId"
-        :build-mode="mode === 'build' && activeBuildTool === 'pin'"
+        :build-mode="mode === 'build' && (activeBuildTool === 'pin' || activeBuildTool === 'road')"
+        :road-mode="mode === 'build' && activeBuildTool === 'road'"
         @select-pin="selectPin"
         @map-click="onMapClick"
+        @map-double-click="onMapDoubleClick"
       />
     </div>
 
@@ -961,7 +1094,7 @@ function openSelectedPinContextMap() {
 
     <div
       v-if="mapImageUrl"
-      class="fixed bottom-6 left-6 z-30 inline-flex items-center gap-2"
+      class="absolute left-4 top-20 z-20 inline-flex items-center gap-2"
     >
       <button
         type="button"
@@ -974,6 +1107,16 @@ function openSelectedPinContextMap() {
           class="h-4 w-4 text-[#f5e7bd]"
         />
         <span>Layers</span>
+      </button>
+
+      <button
+        v-if="mode === 'build'"
+        type="button"
+        class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
+        :class="activeBuildTool === 'road' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        @click="setActiveBuildTool('road')"
+      >
+        Road
       </button>
 
       <button

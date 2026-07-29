@@ -954,15 +954,30 @@ function openSelectedPinContextMap() {
     <MapLayerPanel
       :open="showLayerPanel"
       :scene="scene"
+      :show-trigger="false"
       @close="showLayerPanel = !showLayerPanel"
       @toggle-layer="toggleSceneLayer"
     />
 
     <div
-      v-if="mode === 'build' && mapImageUrl"
-      class="fixed bottom-6 left-32 z-30 inline-flex items-center gap-2"
+      v-if="mapImageUrl"
+      class="fixed bottom-6 left-6 z-30 inline-flex items-center gap-2"
     >
       <button
+        type="button"
+        class="eldra-button inline-flex items-center gap-2 rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
+        :class="showLayerPanel ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        @click="showLayerPanel = !showLayerPanel"
+      >
+        <UIcon
+          name="i-lucide-layers-3"
+          class="h-4 w-4 text-[#f5e7bd]"
+        />
+        <span>Layers</span>
+      </button>
+
+      <button
+        v-if="mode === 'build'"
         type="button"
         class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
         :class="activeBuildTool === 'select' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
@@ -972,6 +987,7 @@ function openSelectedPinContextMap() {
       </button>
 
       <button
+        v-if="mode === 'build'"
         type="button"
         class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
         :class="activeBuildTool === 'pin' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
@@ -981,6 +997,7 @@ function openSelectedPinContextMap() {
       </button>
 
       <button
+        v-if="mode === 'build'"
         type="button"
         class="eldra-button inline-flex items-center gap-2 rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
         :class="activeBuildTool === 'image-overlay' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"

@@ -12,10 +12,13 @@ type SceneModel = {
   layers: SceneLayer[]
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean
   scene: SceneModel
-}>()
+  showTrigger?: boolean
+}>(), {
+  showTrigger: true,
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -30,6 +33,7 @@ function onLayerToggle(layerId: string, event: Event) {
 
 <template>
   <button
+    v-if="props.showTrigger"
     type="button"
     class="eldra-button fixed bottom-6 left-6 z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
     @click="emit('close')"

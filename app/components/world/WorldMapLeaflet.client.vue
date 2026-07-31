@@ -76,12 +76,14 @@ const props = defineProps<{
   layers?: SceneLayer[] | null
   pins: Pin[]
   selectedPinId?: string | null
+  selectedRoadId?: string | null
   buildMode?: boolean
   roadMode?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'select-pin', id: string): void
+  (e: 'select-road', id: string): void
   (e: 'map-click', coords: { x: number; y: number }): void
   (e: 'map-double-click', coords: { x: number; y: number }): void
 }>()
@@ -404,16 +406,26 @@ function renderRoads() {
     if (latLngs.length < 2) continue
 
     const isDraft = roadObject?.properties?.isDraft === true
+    const isSelected = String(roadObject?.objectId || '') === String(props.selectedRoadId || '')
 
-    L.polyline(latLngs, {
-      color: '#d4b072',
-      weight: isDraft ? 3 : 4,
-      opacity: isDraft ? 0.8 : 0.9,
-      interactive: false,
+    const polyline = L.polyline(latLngs, {
+      color: isSelected ? '#f5e7bd' : '#d4b072',
+      weight: isSelected ? 5 : (isDraft ? 3 : 4),
+      opacity: isSelected ? 1 : (isDraft ? 0.8 : 0.9),
+      interactive: !isDraft,
       dashArray: isDraft ? '8 6' : undefined,
       lineCap: 'round',
       lineJoin: 'round',
-    }).addTo(roadLayer)
+    })
+
+    if (!isDraft) {
+      polyline.on('click', (e: any) => {
+        e.originalEvent?.stopPropagation?.()
+        emit('select-road', String(roadObject?.objectId || ''))
+      })
+    }
+
+    polyline.addTo(roadLayer)
   }
 }
 
@@ -626,6 +638,13 @@ watch(
   () => props.selectedPinId,
   () => {
     renderPins()
+  }
+)
+
+watch(
+  () => props.selectedRoadId,
+  () => {
+    renderRoads()
   }
 )
 

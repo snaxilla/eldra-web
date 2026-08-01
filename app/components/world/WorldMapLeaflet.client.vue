@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import 'leaflet/dist/leaflet.css'
+import type { LayerObject, SceneLayer, SceneModel } from '~/lib/eldra/scene'
 
 type Pin = {
   id: string
@@ -10,58 +11,6 @@ type Pin = {
   color?: string | null
   pinType?: string | null
   icon?: string | null
-}
-
-type SceneLayer = {
-  id: string
-  type?: string | null
-  visible?: boolean
-  objects?: LayerObject[]
-  data?: any
-}
-
-type LayerObject = {
-  objectId: string
-  objectType: string
-  objectSchemaVersion: string
-  visible: boolean
-  geometry: LayerObjectGeometry
-  properties: LayerObjectProperties
-  style: LayerObjectStyle
-  createdAt: string
-  updatedAt: string
-  name?: string
-  locked?: boolean
-  opacity?: number
-  zOffset?: number
-  state?: any
-  schedule?: any
-  links?: any
-  tags?: string[]
-  permissionsOverrides?: any
-  custom?: any
-  archivedAt?: string
-  deletedAt?: string
-}
-
-type LayerObjectGeometry = {
-  type: string
-  coordinates?: any
-  [key: string]: any
-}
-
-type LayerObjectProperties = {
-  [key: string]: any
-}
-
-type LayerObjectStyle = {
-  [key: string]: any
-}
-
-type SceneModel = {
-  id: string
-  title?: string
-  layers: SceneLayer[]
 }
 
 const props = defineProps<{

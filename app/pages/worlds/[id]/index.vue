@@ -9,63 +9,12 @@ import MapImageOverlayEditor from '~/components/world/map/MapImageOverlayEditor.
 import MapLayerPanel from '~/components/world/map/MapLayerPanel.vue'
 import MapSelectedPinCard from '~/components/world/map/MapSelectedPinCard.vue'
 import MapPinEditor from '~/components/world/map/MapPinEditor.vue'
+import type { LayerObject, SceneModel } from '~/lib/eldra/scene'
 
 const route = useRoute()
 const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const selectedMapSlug = computed(() => String(route.query.map || ''))
-
-type SceneLayer = {
-  id: string
-  label: string
-  visible: boolean
-  locked?: boolean
-  objects: LayerObject[]
-}
-
-type LayerObject = {
-  objectId: string
-  objectType: string
-  objectSchemaVersion: string
-  visible: boolean
-  geometry: LayerObjectGeometry
-  properties: LayerObjectProperties
-  style: LayerObjectStyle
-  createdAt: string
-  updatedAt: string
-  name?: string
-  locked?: boolean
-  opacity?: number
-  zOffset?: number
-  state?: any
-  schedule?: any
-  links?: any
-  tags?: string[]
-  permissionsOverrides?: any
-  custom?: any
-  archivedAt?: string
-  deletedAt?: string
-}
-
-type LayerObjectGeometry = {
-  type: string
-  coordinates?: any
-  [key: string]: any
-}
-
-type LayerObjectProperties = {
-  [key: string]: any
-}
-
-type LayerObjectStyle = {
-  [key: string]: any
-}
-
-type SceneModel = {
-  id: string
-  title: string
-  layers: SceneLayer[]
-}
 
 type BuildTool = 'select' | 'pin' | 'image-overlay' | 'road'
 type RoadVertex = { x: number; y: number }

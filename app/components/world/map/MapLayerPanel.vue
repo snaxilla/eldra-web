@@ -1,16 +1,5 @@
 <script setup lang="ts">
-type SceneLayer = {
-  id: string
-  label: string
-  visible: boolean
-  locked?: boolean
-}
-
-type SceneModel = {
-  id: string
-  title: string
-  layers: SceneLayer[]
-}
+import type { SceneModel } from '~/lib/eldra/scene'
 
 const props = withDefaults(defineProps<{
   open: boolean

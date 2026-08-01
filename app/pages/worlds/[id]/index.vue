@@ -175,6 +175,12 @@ function readSceneLayerObjectsForMap(mapId: string) {
   }
 }
 
+// Not currently called anywhere (no wiring to a lifecycle hook or event).
+// Left in place per the seam these functions were originally added for;
+// see the persistence write/read path introduced below
+// (loadSceneLayerObjectsForMap / writeSceneLayerObjectsForMap) which now
+// owns that responsibility instead. Candidate for removal once it's
+// confirmed nothing still expects a whole-snapshot save/load shape.
 function serializeSceneForPersistence(mapId: string): ScenePersistenceSnapshot {
   // Seam for future persistence write path: Scene -> Layers -> Objects.
   return {
@@ -188,12 +194,14 @@ function hydrateSceneFromPersistence(snapshot: ScenePersistenceSnapshot) {
   writeSceneLayerObjectsForMap(snapshot.mapId, snapshot.layers)
 }
 
-function writeSceneLayerObjectsForMap(
+function applySceneLayerObjectsToCache(
   mapId: string,
   payload: { imageOverlays?: LayerObject[]; roads?: LayerObject[] }
 ) {
-  // Seam for future canonical Scene serialization: replace this in-memory write
-  // with persisted Scene -> Layers -> Objects storage.
+  // Local reactive cache only -- mirrors the pattern already used for pins
+  // (see `pins` ref / `fetchPins`): the server (via the functions below)
+  // is the source of truth, this is just what the renderer/computeds read
+  // synchronously.
   if (payload.imageOverlays) {
     imageOverlayObjectsByMapId.value = {
       ...imageOverlayObjectsByMapId.value,
@@ -207,6 +215,94 @@ function writeSceneLayerObjectsForMap(
       [mapId]: payload.roads,
     }
   }
+}
+
+async function fetchLayerObjectsForMap(mapId: string) {
+  const result = await $fetch<{ objects: Array<{ layerId: string; object: LayerObject }> }>(
+    `/api/worlds/${worldId.value}/maps/${mapId}/layer-objects`
+  )
+  return result?.objects || []
+}
+
+async function createLayerObjectOnServer(mapId: string, layerId: string, object: LayerObject) {
+  const result = await $fetch<{ object: LayerObject }>(
+    `/api/worlds/${worldId.value}/maps/${mapId}/layer-objects`,
+    { method: 'POST', body: { layerId, object } }
+  )
+  return result?.object || object
+}
+
+async function updateLayerObjectOnServer(mapId: string, objectId: string, patch: Partial<LayerObject>) {
+  const result = await $fetch<{ object: LayerObject }>(
+    `/api/worlds/${worldId.value}/maps/${mapId}/layer-objects/${objectId}`,
+    { method: 'PATCH', body: patch }
+  )
+  return result?.object || patch
+}
+
+async function deleteLayerObjectOnServer(mapId: string, objectId: string) {
+  await $fetch(`/api/worlds/${worldId.value}/maps/${mapId}/layer-objects/${objectId}`, {
+    method: 'DELETE',
+  })
+}
+
+async function syncLayerObjectsToServer(
+  mapId: string,
+  layerId: string,
+  previous: LayerObject[],
+  next: LayerObject[]
+) {
+  // Callers pass "the new full list" for a layer (matching prior behavior);
+  // this diffs it against what's cached so only the objects that actually
+  // changed are sent to the server abstraction as create/update/delete.
+  const previousById = new Map(previous.map((object) => [object.objectId, object]))
+  const nextById = new Map(next.map((object) => [object.objectId, object]))
+
+  for (const [objectId, object] of nextById) {
+    const existing = previousById.get(objectId)
+    if (!existing) {
+      await createLayerObjectOnServer(mapId, layerId, object)
+    } else if (JSON.stringify(existing) !== JSON.stringify(object)) {
+      await updateLayerObjectOnServer(mapId, objectId, object)
+    }
+  }
+
+  for (const objectId of previousById.keys()) {
+    if (!nextById.has(objectId)) {
+      await deleteLayerObjectOnServer(mapId, objectId)
+    }
+  }
+}
+
+async function loadSceneLayerObjectsForMap(mapId: string) {
+  const objects = await fetchLayerObjectsForMap(mapId)
+
+  applySceneLayerObjectsToCache(mapId, {
+    imageOverlays: objects.filter((entry) => entry.layerId === 'image-overlays').map((entry) => entry.object),
+    roads: objects.filter((entry) => entry.layerId === 'roads').map((entry) => entry.object),
+  })
+}
+
+async function writeSceneLayerObjectsForMap(
+  mapId: string,
+  payload: { imageOverlays?: LayerObject[]; roads?: LayerObject[] }
+) {
+  // Thin client wrapper around the server-side Scene Layer Object
+  // persistence abstraction (server/utils/scene-layer-objects.ts / the
+  // /api/worlds/:id/maps/:mapId/layer-objects routes). The client no
+  // longer owns persistence -- it only diffs and mirrors what the server
+  // confirms.
+  const current = readSceneLayerObjectsForMap(mapId)
+
+  if (payload.imageOverlays) {
+    await syncLayerObjectsToServer(mapId, 'image-overlays', current.imageOverlays, payload.imageOverlays)
+  }
+
+  if (payload.roads) {
+    await syncLayerObjectsToServer(mapId, 'roads', current.roads, payload.roads)
+  }
+
+  applySceneLayerObjectsToCache(mapId, payload)
 }
 
 const currentImageOverlayObjects = computed<LayerObject[]>(() => {
@@ -299,14 +395,14 @@ const runtimeImageOverlayObjects = computed<LayerObject[]>(() => {
   return [buildImageOverlayObjectFromDraft(editingImageOverlay.value, currentImageOverlayObject.value)]
 })
 
-function syncCurrentImageOverlayObjects(objects: LayerObject[]) {
+async function syncCurrentImageOverlayObjects(objects: LayerObject[]) {
   if (!currentMapId.value) return
-  writeSceneLayerObjectsForMap(currentMapId.value, { imageOverlays: objects })
+  await writeSceneLayerObjectsForMap(currentMapId.value, { imageOverlays: objects })
 }
 
-function syncCurrentRoadObjects(objects: LayerObject[]) {
+async function syncCurrentRoadObjects(objects: LayerObject[]) {
   if (!currentMapId.value) return
-  writeSceneLayerObjectsForMap(currentMapId.value, { roads: objects })
+  await writeSceneLayerObjectsForMap(currentMapId.value, { roads: objects })
 }
 
 const runtimeRoadObjects = computed<LayerObject[]>(() => {
@@ -515,12 +611,12 @@ function closeImageOverlayEditor(nextTool: BuildTool = 'select') {
   }
 }
 
-function removeImageOverlay() {
-  syncCurrentImageOverlayObjects([])
+async function removeImageOverlay() {
+  await syncCurrentImageOverlayObjects([])
   closeImageOverlayEditor()
 }
 
-function saveImageOverlay() {
+async function saveImageOverlay() {
   if (!editingImageOverlay.value || !currentMapId.value) return
 
   const imageUrl = String(editingImageOverlay.value.imageUrl || '').trim()
@@ -535,7 +631,7 @@ function saveImageOverlay() {
   try {
     const overlayObject = buildImageOverlayObjectFromDraft(editingImageOverlay.value, currentImageOverlayObject.value)
 
-    syncCurrentImageOverlayObjects([overlayObject])
+    await syncCurrentImageOverlayObjects([overlayObject])
     closeImageOverlayEditor()
   } finally {
     savingImageOverlay.value = false
@@ -563,6 +659,15 @@ watch(
   (id) => {
     if (!id) return
     fetchPins()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => activeMap.value?.id,
+  (id) => {
+    if (!id) return
+    loadSceneLayerObjectsForMap(String(id))
   },
   { immediate: true }
 )
@@ -686,7 +791,7 @@ async function onRoadMapDoubleClick(coords: { x: number; y: number }) {
   }
 
   const completedRoad = buildRoadObjectFromVertices(roadDraftVertices.value)
-  syncCurrentRoadObjects([...currentRoadObjects.value, completedRoad])
+  await syncCurrentRoadObjects([...currentRoadObjects.value, completedRoad])
 
   roadDraftVertices.value = []
 }
@@ -913,7 +1018,7 @@ async function deleteSelectedRoad() {
   if (!selectedRoadId.value) return
 
   const roadId = String(selectedRoadId.value)
-  syncCurrentRoadObjects(currentRoadObjects.value.filter((road) => String(road.objectId) !== roadId))
+  await syncCurrentRoadObjects(currentRoadObjects.value.filter((road) => String(road.objectId) !== roadId))
   selectedRoadId.value = null
 }
 

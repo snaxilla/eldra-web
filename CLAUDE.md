@@ -254,6 +254,33 @@ Directus schema is provisioned via one-off shell scripts at the repo root
 (`create_eldra_directus_schema.sh`, `create_eldra_collections_minimal.sh`, `create_worlds_only.sh`,
 `create_block_instances_schema.sh`, `verify_directus_collections.sh`, `directus_debug.sh`) and Node
 scripts in `scripts/directus/*.mjs` — these are infra/setup tooling, not part of the app build.
+`scripts/directus/bootstrap.mjs` runs every `.mjs` schema script in sequence and is the canonical
+single entry point for provisioning — see Deployment Checklist below for why running it is currently
+a manual step, not an automated one.
+
+## Deployment Checklist
+
+**Deployment automation (CI/CD, Dokploy hooks) is intentionally deferred until after Eldra 2.0's
+application milestones.** The runtime container is built from [Dockerfile](Dockerfile) and contains only `.output` —
+no `package.json`, no `scripts/`, no source. Nothing in the deployment pipeline runs Directus schema
+migrations automatically today. This was the root cause of the `scene_layer_objects` collection
+never existing in production despite the migration script being committed weeks earlier (Commit 3)
+— the script was correct, but nothing had ever executed it against the real instance.
+
+Until automation exists, the canonical deployment procedure is manual:
+
+1. Deploy the application (existing Dokploy flow, unchanged).
+2. If the deployment introduces new Directus schema, run `node scripts/directus/bootstrap.mjs`
+   manually against the deployment's real `DIRECTUS_URL`/`DIRECTUS_TOKEN` (idempotent — safe to run
+   on every deploy, not just ones that changed schema, if unsure).
+3. Verify the application (schema-dependent features actually work, not just that the app boots).
+4. Continue development.
+
+This is an intentional temporary process, not undiscovered technical debt — see the deployment
+investigation history (git log around "deployment migration strategy") for the fuller Dokploy
+research behind this decision. Collection *schema* permission and collection *item* CRUD permission
+are separate Directus concerns — creating a collection does not by itself guarantee the service
+account can read/write items in it; verify both if a newly-provisioned collection still 403s.
 
 ## Key Files
 
@@ -496,10 +523,42 @@ Renderer:
 
 Persistence:
 
-- Roads and Image Overlays use `scene_layer_objects` (canonical, Directus-backed).
+- Roads and Image Overlays use `scene_layer_objects` (canonical, Directus-backed). The collection was
+  provisioned in production and both collection-level schema and item-level CRUD access were verified
+  directly against Directus during the deployment investigation — see Deployment Checklist above.
 - Pins intentionally remain on `map_pins` until a future migration is explicitly approved (design
   proposal only, not yet started).
 
 Deferred (not blocking, not forgotten):
 
 - Renderer compatibility paths noted under Scene Graph Cleanup above, pending runtime verification.
+- Full Road create/persist/reload/rename/delete workflow verification through the running
+  application UI (not yet done — the previous blocker was the collection not existing at all;
+  that's resolved, but a browser-driven walkthrough with a real session is still outstanding).
+
+## Build Tool Philosophy
+
+All Build Tools should follow a consistent authoring workflow.
+
+A completed object should transition naturally into editing.
+
+Future Build Tools should reuse the Build Tool HUD rather than creating custom instructional UI.
+
+Avoid introducing shared abstractions until multiple tools require the same implementation.
+
+## Deployment Checklist (Current Process)
+
+Until deployment automation is implemented:
+
+For any release introducing Directus schema changes:
+
+1. Deploy the application.
+2. Run:
+
+   node scripts/directus/bootstrap.mjs
+
+3. Verify the migration completed successfully.
+4. Verify application functionality.
+5. Continue normal development.
+
+This manual deployment step is intentional and temporary until deployment automation is implemented.

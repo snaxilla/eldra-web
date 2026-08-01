@@ -9,6 +9,7 @@ import MapImageOverlayEditor from '~/components/world/map/MapImageOverlayEditor.
 import MapLayerPanel from '~/components/world/map/MapLayerPanel.vue'
 import MapSelectedPinCard from '~/components/world/map/MapSelectedPinCard.vue'
 import MapPinEditor from '~/components/world/map/MapPinEditor.vue'
+import MapBuildBanner from '~/components/world/map/MapBuildBanner.vue'
 import type { LayerObject, SceneModel } from '~/lib/eldra/scene'
 
 const route = useRoute()
@@ -381,7 +382,7 @@ const runtimeRoadObjects = computed<LayerObject[]>(() => {
     return currentRoadObjects.value
   }
 
-  if (roadDraftVertices.value.length < 2) {
+  if (roadDraftVertices.value.length < 1) {
     return currentRoadObjects.value
   }
 
@@ -765,7 +766,41 @@ async function onRoadMapDoubleClick(coords: { x: number; y: number }) {
   await syncCurrentRoadObjects([...currentRoadObjects.value, completedRoad])
 
   roadDraftVertices.value = []
+
+  // Creation naturally transitions into editing: select the new road and
+  // switch to the Select tool so the existing inspector panel opens for it.
+  selectedRoadId.value = completedRoad.objectId
+  setActiveBuildTool('select')
 }
+
+function cancelRoadDraft() {
+  roadDraftVertices.value = []
+}
+
+function undoLastRoadVertex() {
+  roadDraftVertices.value = roadDraftVertices.value.slice(0, -1)
+}
+
+function onBuildKeydown(event: KeyboardEvent) {
+  if (mode.value !== 'build' || activeBuildTool.value !== 'road') return
+  if (roadDraftVertices.value.length === 0) return
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    cancelRoadDraft()
+  } else if (event.key === 'Backspace') {
+    event.preventDefault()
+    undoLastRoadVertex()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onBuildKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onBuildKeydown)
+})
 
 function openNewPinEditor(coords: { x: number; y: number }) {
   if (mode.value !== 'build' || activeBuildTool.value !== 'pin') return
@@ -1148,6 +1183,11 @@ function openSelectedPinContextMap() {
       :ancestor-maps="ancestorMaps"
       @root="goToWorldRootMap"
       @ancestor="goToMapBySlug"
+    />
+
+    <MapBuildBanner
+      :show="mode === 'build'"
+      :active-tool="activeBuildTool"
     />
 
     <div v-if="mapImageUrl" class="absolute inset-0 z-0">

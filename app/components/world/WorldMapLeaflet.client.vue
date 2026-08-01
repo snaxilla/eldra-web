@@ -46,6 +46,8 @@ let tileLayer: any = null
 let markerLayer: any = null
 let overlayLayer: any = null
 let roadLayer: any = null
+let roadRubberBandLine: any = null
+let roadDraftLastVertex: any = null
 let currentBounds: any = null
 
 const inputLayers = computed(() => {
@@ -298,6 +300,10 @@ async function ensureMap() {
     })
   })
 
+  map.on('mousemove', (e: any) => {
+    updateRoadRubberBand(e.latlng)
+  })
+
   markerLayer = L.layerGroup().addTo(map)
 }
 
@@ -317,6 +323,8 @@ function clearMap() {
   if (roadLayer && map) {
     map.removeLayer(roadLayer)
     roadLayer = null
+    roadRubberBandLine = null
+    roadDraftLastVertex = null
   }
 
   if (tileLayer && map) {
@@ -333,6 +341,11 @@ function renderRoads() {
   } else {
     roadLayer.clearLayers()
   }
+
+  // clearLayers() above already removed the rubber-band line from the map;
+  // drop the stale reference so updateRoadRubberBand() recreates it.
+  roadRubberBandLine = null
+  roadDraftLastVertex = null
 
   for (const roadObject of resolvedRoads.value || []) {
     const coordinates = Array.isArray(roadObject?.geometry?.coordinates)
@@ -352,9 +365,29 @@ function renderRoads() {
       })
       .filter(Boolean)
 
-    if (latLngs.length < 2) continue
+    if (!latLngs.length) continue
 
     const isDraft = roadObject?.properties?.isDraft === true
+
+    if (isDraft) {
+      // Vertex markers for every placed point, including the first --
+      // a user should never wonder whether a click was registered.
+      for (const point of latLngs) {
+        L.circleMarker(point, {
+          radius: 4,
+          color: '#f5e7bd',
+          weight: 2,
+          fillColor: '#1a1610',
+          fillOpacity: 1,
+          interactive: false,
+        }).addTo(roadLayer)
+      }
+
+      roadDraftLastVertex = latLngs[latLngs.length - 1]
+    }
+
+    if (latLngs.length < 2) continue
+
     const isSelected = String(roadObject?.objectId || '') === String(props.selectedRoadId || '')
 
     const polyline = L.polyline(latLngs, {
@@ -375,6 +408,30 @@ function renderRoads() {
     }
 
     polyline.addTo(roadLayer)
+  }
+}
+
+function updateRoadRubberBand(latlng: any) {
+  if (!L || !map || !roadLayer) return
+
+  if (!props.roadMode || !roadDraftLastVertex) {
+    if (roadRubberBandLine) {
+      roadLayer.removeLayer(roadRubberBandLine)
+      roadRubberBandLine = null
+    }
+    return
+  }
+
+  if (roadRubberBandLine) {
+    roadRubberBandLine.setLatLngs([roadDraftLastVertex, latlng])
+  } else {
+    roadRubberBandLine = L.polyline([roadDraftLastVertex, latlng], {
+      color: '#d4b072',
+      weight: 2,
+      opacity: 0.6,
+      dashArray: '4 6',
+      interactive: false,
+    }).addTo(roadLayer)
   }
 }
 
@@ -614,6 +671,11 @@ watch(
       return
     }
     map.doubleClickZoom.enable()
+
+    if (roadRubberBandLine && roadLayer) {
+      roadLayer.removeLayer(roadRubberBandLine)
+      roadRubberBandLine = null
+    }
   }
 )
 

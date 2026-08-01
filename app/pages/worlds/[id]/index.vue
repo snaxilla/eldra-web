@@ -10,6 +10,7 @@ import MapLayerPanel from '~/components/world/map/MapLayerPanel.vue'
 import MapSelectedPinCard from '~/components/world/map/MapSelectedPinCard.vue'
 import MapPinEditor from '~/components/world/map/MapPinEditor.vue'
 import MapBuildBanner from '~/components/world/map/MapBuildBanner.vue'
+import MapRoadEditor from '~/components/world/map/MapRoadEditor.vue'
 import type { LayerObject, SceneModel } from '~/lib/eldra/scene'
 
 const route = useRoute()
@@ -294,6 +295,57 @@ const currentRoadObjects = computed<LayerObject[]>(() => {
 const selectedRoad = computed(() => {
   return currentRoadObjects.value.find((road) => String(road.objectId) === String(selectedRoadId.value || '')) || null
 })
+
+type RoadDraft = { objectId: string; name: string }
+
+const editingRoadDraft = ref<RoadDraft | null>(null)
+const savingRoad = ref(false)
+
+watch(selectedRoad, (road) => {
+  if (!road) {
+    editingRoadDraft.value = null
+    return
+  }
+
+  // Only reset the draft when selection moves to a *different* road, so an
+  // in-progress edit isn't clobbered by the reactive re-read that follows
+  // saving it.
+  if (editingRoadDraft.value?.objectId !== road.objectId) {
+    editingRoadDraft.value = {
+      objectId: road.objectId,
+      name: String(road.name || road.properties?.name || 'Road'),
+    }
+  }
+})
+
+async function saveRoadEditor() {
+  if (!editingRoadDraft.value || !selectedRoad.value) return
+
+  const name = editingRoadDraft.value.name.trim() || 'Road'
+
+  savingRoad.value = true
+  try {
+    const updatedRoad: LayerObject = {
+      ...selectedRoad.value,
+      name,
+      properties: {
+        ...selectedRoad.value.properties,
+        name,
+      },
+      updatedAt: new Date().toISOString(),
+    }
+
+    await syncCurrentRoadObjects(
+      currentRoadObjects.value.map((road) => (road.objectId === updatedRoad.objectId ? updatedRoad : road))
+    )
+  } finally {
+    savingRoad.value = false
+  }
+}
+
+function closeRoadEditor() {
+  selectedRoadId.value = null
+}
 
 function roadVerticesToCoordinates(vertices: RoadVertex[]) {
   return vertices.map((vertex) => ({
@@ -1312,37 +1364,15 @@ function openSelectedPinContextMap() {
       @delete="deletePin(selectedPin.id)"
     />
 
-    <Transition
-      enter-from-class="translate-x-full opacity-0"
-      enter-active-class="transition duration-200"
-      leave-to-class="translate-x-full opacity-0"
-      leave-active-class="transition duration-200"
-    >
-      <div
-        v-if="mode === 'build' && activeBuildTool === 'select' && selectedRoad"
-        class="eldra-ornate-panel eldra-frame-corners fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
-      >
-        <div class="mb-1 text-xs uppercase tracking-[0.3em] text-[#9f9278]">Road</div>
-
-        <div class="text-xl font-semibold text-white">
-          {{ selectedRoad.name || selectedRoad.properties?.name || 'Road' }}
-        </div>
-
-        <div class="mt-2 text-sm text-[#9f9278]">
-          Vertices: {{ Array.isArray(selectedRoad.geometry?.coordinates) ? selectedRoad.geometry.coordinates.length : 0 }}
-        </div>
-
-        <div class="mt-4 flex gap-2">
-          <button
-            type="button"
-            class="rounded-none border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300 transition hover:bg-red-500/20"
-            @click="deleteSelectedRoad"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    </Transition>
+    <MapRoadEditor
+      :open="mode === 'build' && activeBuildTool === 'select' && !!selectedRoad"
+      :editing-road="editingRoadDraft"
+      :vertex-count="Array.isArray(selectedRoad?.geometry?.coordinates) ? selectedRoad.geometry.coordinates.length : 0"
+      :saving="savingRoad"
+      @close="closeRoadEditor"
+      @save="saveRoadEditor"
+      @delete="deleteSelectedRoad"
+    />
 
     <MapPinEditor
       :open="showPinEditor"

@@ -1,0 +1,98 @@
+<script setup lang="ts">
+// Reference implementation for Scene Graph object editors. Structure to
+// follow for future editors (Regions, Lighting, Walls, Fog, Tokens):
+// - The parent page owns a small draft object (id + editable fields) and
+//   passes it down; this component mutates it directly via v-model, the
+//   same lifted-state pattern MapPinEditor.vue uses for `editingPin`.
+// - Nothing here talks to persistence directly -- the parent's existing
+//   canonical Scene Layer Object sync path (writeSceneLayerObjectsForMap)
+//   handles that on `save`.
+// - Read-only derived data (vertex count) is passed pre-computed rather
+//   than handing this component raw LayerObject/geometry internals, so it
+//   stays decoupled from the Scene Graph object shape.
+// - Sections are already split (Name, Info, Actions) so a future property
+//   (style, width, labels) can be added as its own section without
+//   restructuring the component.
+
+type RoadDraft = {
+  objectId: string
+  name: string
+}
+
+const props = defineProps<{
+  open: boolean
+  editingRoad: RoadDraft | null
+  vertexCount: number
+  saving: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'save'): void
+  (e: 'delete'): void
+}>()
+</script>
+
+<template>
+  <Transition
+    enter-from-class="translate-x-full opacity-0"
+    enter-active-class="transition duration-200"
+    leave-to-class="translate-x-full opacity-0"
+    leave-active-class="transition duration-200"
+  >
+    <div
+      v-if="open && editingRoad"
+      class="eldra-ornate-panel eldra-frame-corners fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+    >
+      <div class="mb-3 flex items-center justify-between">
+        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+          Road
+        </div>
+
+        <button
+          type="button"
+          class="text-[#9f9278] transition hover:text-white"
+          @click="emit('close')"
+        >
+          <UIcon
+            name="i-lucide-x"
+            class="h-4 w-4"
+          />
+        </button>
+      </div>
+
+      <div>
+        <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Name</label>
+        <input
+          v-model="editingRoad.name"
+          type="text"
+          placeholder="e.g. The Old King's Road"
+          class="eldra-input w-full rounded-none px-4 py-2.5 text-sm placeholder-[#756a57]"
+        >
+      </div>
+
+      <div class="mt-3 text-sm text-[#9f9278]">
+        Vertices: {{ vertexCount }}
+      </div>
+
+      <div class="mt-4 flex gap-2">
+        <button
+          type="button"
+          class="rounded-none border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300 transition hover:bg-red-500/20"
+          @click="emit('delete')"
+        >
+          Delete
+        </button>
+
+        <button
+          type="button"
+          class="eldra-button flex-1 rounded-none py-2.5 text-sm font-medium disabled:opacity-50"
+          :disabled="saving || !editingRoad.name.trim()"
+          @click="emit('save')"
+        >
+          {{ saving ? 'Saving…' : 'Save' }}
+        </button>
+      </div>
+    </div>
+  </Transition>
+</template>

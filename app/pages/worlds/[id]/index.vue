@@ -158,40 +158,11 @@ const editingImageOverlay = ref<any | null>(null)
 const roadDraftVertices = ref<RoadVertex[]>([])
 const selectedRoadId = ref<string | null>(null)
 
-type SceneLayerObjectsSnapshot = {
-  imageOverlays: LayerObject[]
-  roads: LayerObject[]
-}
-
-type ScenePersistenceSnapshot = {
-  mapId: string
-  layers: SceneLayerObjectsSnapshot
-}
-
 function readSceneLayerObjectsForMap(mapId: string) {
   return {
     imageOverlays: imageOverlayObjectsByMapId.value[mapId] || [],
     roads: roadObjectsByMapId.value[mapId] || [],
   }
-}
-
-// Not currently called anywhere (no wiring to a lifecycle hook or event).
-// Left in place per the seam these functions were originally added for;
-// see the persistence write/read path introduced below
-// (loadSceneLayerObjectsForMap / writeSceneLayerObjectsForMap) which now
-// owns that responsibility instead. Candidate for removal once it's
-// confirmed nothing still expects a whole-snapshot save/load shape.
-function serializeSceneForPersistence(mapId: string): ScenePersistenceSnapshot {
-  // Seam for future persistence write path: Scene -> Layers -> Objects.
-  return {
-    mapId,
-    layers: readSceneLayerObjectsForMap(mapId),
-  }
-}
-
-function hydrateSceneFromPersistence(snapshot: ScenePersistenceSnapshot) {
-  // Seam for future persistence read path: Scene <- Layers <- Objects.
-  writeSceneLayerObjectsForMap(snapshot.mapId, snapshot.layers)
 }
 
 function applySceneLayerObjectsToCache(

@@ -2,6 +2,16 @@
 
 This project is under active development. Apparent duplication, transitional code, and legacy compatibility paths may be intentional. Do not "clean them up" without understanding the migration strategy.
 
+# Product Vision
+
+Eldra is not intended to be merely a campaign management tool.
+
+The long-term vision is a modern, self-hosted Virtual Tabletop built around worldbuilding, persistent campaign management, collaborative storytelling, and tactical battlemaps.
+
+Major architectural decisions should be evaluated against that long-term vision.
+
+Features should generally evolve existing systems rather than introducing parallel implementations.
+
 # Eldra Web
 
 ## Overview
@@ -12,10 +22,14 @@ wiki-style entities (characters, locations, items, factions, etc.), build intera
 Directus (headless CMS / Postgres) as the system of record, with a thin Nuxt server layer acting as a
 BFF (backend-for-frontend) in front of Directus.
 
-The active area of development is the **World Editor map/scene system** (see git log: "scene graph",
-"build tool palette", "Road Tool", "canonical layer object persistence") — a from-scratch
-Figma/GIS-style scene graph for authoring interactive maps (pins, image overlays, roads, and future
-object types like regions, weather, encounter zones).
+Recent commit history is dominated by the **World Editor map/scene system** ("scene graph", "build
+tool palette", "Road Tool", "canonical layer object persistence") — a from-scratch Figma/GIS-style
+scene graph for authoring interactive maps (pins, image overlays, roads, and future object types like
+regions, weather, encounter zones). However, the explicit **Current Development Roadmap** (see below)
+lists Character Sheet infrastructure/redesign as the top priorities for the "Eldra 2.0" milestone and
+doesn't call out Scene Graph work by name — treat both signals as real: git history shows where recent
+effort actually went, the roadmap states current intent. If a task's priority relative to these isn't
+obvious, ask rather than assume one supersedes the other.
 
 ## Architecture Summary
 
@@ -51,20 +65,26 @@ content; rendering, editor UI, and persistence are all "projections" of it. Obje
   future: regions/fog/weather/encounter zones/trigger volumes).
 - Every object has three independent sections: **Geometry** (where), **Properties** (what/semantics),
   **Style** (visual intent only — renderers translate it to engine-specific drawing).
-- Current implementation status (see recent commits): the `SceneLayer`/`LayerObject` TypeScript shapes
-  are currently duplicated inline in both [app/pages/worlds/[id]/index.vue](app/pages/worlds/%5Bid%5D/index.vue) and
-  [app/components/world/WorldMapLeaflet.client.vue](app/components/world/WorldMapLeaflet.client.vue) rather than imported from one shared module —
-  this is an active seam being worked (see "Prepare scene graph seams for canonical map object
-  persistence"), not a finished abstraction.
+- `SceneLayer`/`LayerObject`/etc. TypeScript shapes live in one shared module,
+  [app/lib/eldra/scene.ts](app/lib/eldra/scene.ts), imported by both [app/pages/worlds/[id]/index.vue](app/pages/worlds/%5Bid%5D/index.vue) and
+  [app/components/world/WorldMapLeaflet.client.vue](app/components/world/WorldMapLeaflet.client.vue).
 - Build tools: `world-map-active-build-tool` (`useState`) drives an active tool (`select | pin |
   image-overlay | road`) toggled from `MapBuildBanner.vue` / a build tool palette; `play` vs `build`
   mode is tracked via the `world-workspace-mode` `useState`.
 - Key components: [app/components/world/WorldMapLeaflet.client.vue](app/components/world/WorldMapLeaflet.client.vue) (renderer, client-only — Leaflet
   needs `window`), `app/components/world/map/*` (Map­BreadcrumbsPanel, MapLayerPanel, MapPinEditor,
   MapImageOverlayEditor, MapSelectedPinCard, MapBuildBanner).
-- Persistence today is a mix of legacy dedicated Directus collections (`maps`, pins via
-  `server/utils/map-pins.ts`) and the newer canonical layer-object model being introduced; expect both
-  to co-exist mid-migration (legacy fallback rendering paths are explicit in the git history).
+- **Persistence**: Image Overlays and Roads persist through the canonical Scene Layer Object
+  persistence system — [server/utils/scene-layer-objects.ts](server/utils/scene-layer-objects.ts) (the permanent client/server contract,
+  `listLayerObjects`/`createLayerObject`/`updateLayerObject`/`deleteLayerObject`) backed by the
+  `scene_layer_objects` Directus collection (schema: [scripts/directus/create-scene-layer-objects-schema.mjs](scripts/directus/create-scene-layer-objects-schema.mjs)).
+  The client (`app/pages/worlds/[id]/index.vue`) never talks to Directus directly, only to
+  `server/api/worlds/[id]/maps/[mapId]/layer-objects/**`. **Pins intentionally remain on the legacy
+  `map_pins` Directus collection** (`server/utils/map-pins.ts`, `/api/map-pins/**`) — pin *rendering*
+  already flows through the Scene Graph (pins are adapted into `LayerObject` shape client-side via the
+  `pinLayerObjects` computed before reaching the renderer), but pin *persistence* migration onto
+  `scene_layer_objects` is intentionally deferred pending a future design proposal, not started. See
+  Scene Graph Status below.
 - Map tiling for large images: `server/api/map-tiles/[mapId]/[z]/[x]/[y].get.ts` +
   `server/utils/map-tiles.ts` (on-demand tile generation, likely via `sharp`).
 
@@ -91,6 +111,16 @@ enemies — `app/components/admin/homebrew/*`, `server/utils/homebrew.ts`). Rule
 `app/components/characters/*` (many `Sheet*.vue` components) and `app/pages/worlds/[id]/characters/**`
 and `app/pages/worlds/[id]/entities/[entityId]/sheet.vue`.
 
+**Note the scale of `sheet.vue` itself**: `app/pages/worlds/[id]/entities/[entityId]/sheet.vue` is
+~8,900 lines in a single file — by far the largest file in the app and a direct tension with the
+"business logic in composables, presentation in components" convention. Recent git history (rail
+width standardization, single-open-drawer behavior, theme defaults) shows this file under continuous,
+incremental churn rather than being frozen legacy. This matches the roadmap's #1/#2 priorities
+("Character Sheet infrastructure refactor", "Desktop Character Sheet redesign" — see Current
+Development Roadmap below): expect this file to be an active refactor target, and prefer extracting
+cohesive pieces into `Sheet*.vue` components/composables over adding more logic inline, consistent with
+the project's own stated convention.
+
 ### 4. Timeline System
 
 Per-world timelines of dated in-world events. API: `server/api/worlds/[id]/timelines/**`
@@ -107,6 +137,24 @@ implemented; `systemKey` on worlds/entities is the extension point). `app/lib/im
 `server/api/import/**` + `server/utils/import-*.ts` implement a 5etools JSON → Directus import
 pipeline (preview then save, per content type: spells, items, monsters, classes, species, backgrounds,
 feats), used by `app/pages/dev/import-*` pages and `app/pages/worlds/[id]/importer.vue`.
+
+### 6. World Page Presentation
+
+A smaller, separate system for per-page visual customization (background image/theme) of world
+workspace pages, keyed by `pageKey` (see `pageKey` computed logic in `app/layouts/world-workspace.vue`).
+UI: `app/components/world/WorldPagePresentationPanel.vue` (~490 lines). API:
+`server/api/worlds/[id]/presentation/[pageKey].get/post.ts` and `presentation/upload-background.post.ts`.
+Independent of the Scene Graph — don't confuse "presentation" (page chrome/background) with
+"properties"/"style" in the Scene Graph object model.
+
+## Layouts
+
+Two layouts are relevant to map/world work and are easy to conflate:
+- `world-map.vue` — a bare fullscreen shell (just a slot on a dark background), used for map-only
+  views.
+- `world-workspace.vue` — the full World workspace chrome: owns `world-workspace-mode` (`play`/`build`),
+  the show-pins cookie/state, the collapsible left sidebar, and the page Presentation system above. Most
+  `worlds/[id]/**` pages use this one.
 
 ## State Management
 
@@ -166,10 +214,14 @@ Formal standards are checked into [.github/copilot-instructions.md](.github/copi
 Observed patterns in the code (not formally documented, but consistent):
 - Server route business logic is pushed into `server/utils/*.ts` helper modules; `server/api/**`
   handlers stay thin (parse params → call a util → return).
-- Directus is always accessed through `directusRequest` / `directusServiceRequest`
-  (`server/utils/directus.ts`) — never a raw `fetch` to Directus from elsewhere (map-data.ts uses a
-  separate legacy `dxFetch`, note this inconsistency if refactoring that file).
-  form for booleans/ids/dates coming back (see `normalizeMap` in `app/pages/worlds/[id]/index.vue`).
+- `server/utils/directus.ts` (`directusRequest`/`directusServiceRequest`) is the *intended* single
+  Directus client, but in practice most `server/api/**` route files and several `server/utils/*.ts`
+  files define their own local `dxFetch`/`baseUrl`/`token` trio that hits `process.env.DIRECTUS_URL`
+  with a raw `fetch` directly — see "Two Directus access patterns" under Technical Debt below before
+  assuming `directus.ts` is universally used.
+- Directus returns snake_case rows; call sites normalize them into camelCase by hand at the boundary
+  (see `normalizeMap`/`normalize` in `app/pages/worlds/[id]/index.vue` and `server/utils/map-data.ts`,
+  `normalizeUser` in `useAuth.ts`) rather than through a shared schema/mapper.
 - Client-only browser-API components (Leaflet, dice box) use Nuxt's `.client.vue` suffix.
 
 ## Build Commands
@@ -187,8 +239,16 @@ pnpm run typecheck  # nuxt typecheck (vue-tsc)
 
 CI (`.github/workflows/ci.yml`) runs `pnpm install`, `pnpm run lint`, `pnpm run typecheck` on every
 push (Node 22). There is currently no automated test suite (no unit/e2e tests in the repo) — lint +
-typecheck are the only automated gates. The Copilot instructions ask for `npm run build` as a manual
-safety check after edits even though CI itself doesn't build.
+typecheck are the only automated gates.
+
+**Package-manager inconsistency across docs — use pnpm.** The project's actual package manager is
+pnpm (lockfile, CI, `packageManager` field), but `.github/copilot-instructions.md` says to run
+`npm run build` as a safety check, and [Dockerfile](Dockerfile) builds the production image with plain `npm install`
+/ `npm run build` (no lockfile committed for npm, no pnpm in the image). Treat `pnpm build` /
+`pnpm run lint` / `pnpm run typecheck` as authoritative for local verification; don't "fix" the
+Dockerfile or copilot-instructions.md to pnpm without asking — the Docker build may intentionally
+tolerate a lockfile-less `npm install` for portability, and changing it is a deployment-affecting
+decision.
 
 Directus schema is provisioned via one-off shell scripts at the repo root
 (`create_eldra_directus_schema.sh`, `create_eldra_collections_minimal.sh`, `create_worlds_only.sh`,
@@ -201,28 +261,42 @@ scripts in `scripts/directus/*.mjs` — these are infra/setup tooling, not part 
 - [app/lib/eldra/types.ts](app/lib/eldra/types.ts) — core domain types (World, Entity, EntityBlockInstance).
 - [server/utils/directus.ts](server/utils/directus.ts) — the only sanctioned way to talk to Directus.
 - [app/composables/useAuth.ts](app/composables/useAuth.ts) — session/auth state.
-- [app/pages/worlds/[id]/index.vue](app/pages/worlds/%5Bid%5D/index.vue) — World Map page; owns the in-memory `SceneModel` and build-tool state.
+- [app/pages/worlds/[id]/index.vue](app/pages/worlds/%5Bid%5D/index.vue) — World Map page; owns the `SceneModel`, build-tool state, and the client-side write/read cache for Image Overlay/Road persistence.
 - [app/components/world/WorldMapLeaflet.client.vue](app/components/world/WorldMapLeaflet.client.vue) — the scene renderer (Leaflet-backed).
-- [server/utils/map-data.ts](server/utils/map-data.ts) / [server/utils/map-pins.ts](server/utils/map-pins.ts) — legacy map/pin persistence still in active use.
+- [server/utils/scene-layer-objects.ts](server/utils/scene-layer-objects.ts) — canonical Scene Layer Object persistence (Image Overlays, Roads); the runtime-model ↔ Directus-row translation boundary.
+- [server/utils/map-data.ts](server/utils/map-data.ts) — Map (not Layer Object) metadata persistence; out of scope for the Scene Graph migration (a Map is the Scene's container, not a Layer Object).
+- [server/utils/map-pins.ts](server/utils/map-pins.ts) — legacy pin persistence, intentionally still in active use (see Scene Graph Status below).
 - [server/utils/character-sheets.ts](server/utils/character-sheets.ts) — character sheet aggregate load/save logic.
 - [.github/docs/architecture/scene-graph.md](.github/docs/architecture/scene-graph.md) — authoritative scene graph design spec.
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — binding process/style rules for AI-assisted edits.
 
 ## Current Technical Debt
 
-- **Duplicated Scene Graph types**: `SceneLayer`/`LayerObject`/etc. TypeScript shapes are copy-pasted
-  between `app/pages/worlds/[id]/index.vue` and `WorldMapLeaflet.client.vue` instead of living in one
-  shared `app/lib/eldra` (or similar) module. Recent commits are actively working toward
-  "canonical map object persistence," so expect this to be mid-refactor.
-- **Two Directus access patterns**: `server/utils/directus.ts` (`directusRequest`/
-  `directusServiceRequest`) is the general-purpose client, but `server/utils/map-data.ts` implements
-  its own parallel `dxFetch` using `axios` directly against `process.env.DIRECTUS_URL`. Consolidating
-  onto one client is a plausible future cleanup, but do it deliberately, not incidentally.
-- **Legacy map/pin persistence vs. canonical layer objects**: pins currently have both a legacy
-  dedicated flow (`map-pins.ts`, `MapPinEditor.vue`) and a newer canonical-layer-object path; rendering
-  code (`WorldMapLeaflet.client.vue`) carries explicit "legacy fallback" logic per the git history
-  ("Phase 3: render pins from scene layer with legacy fallback").
-  Any migration work should keep both paths working until the old one is explicitly retired.
+- **Two Directus access patterns, and the "wrong" one is dominant**: `server/utils/directus.ts`
+  (`directusRequest`/`directusServiceRequest`, session-cookie-aware) is the only client that respects
+  the logged-in user's permissions. But a raw `dxFetch`/`baseUrl`/`token` helper (plain `fetch` or
+  `axios` straight to `process.env.DIRECTUS_URL` with the *service* token) is copy-pasted independently
+  in at least 15 files, including `server/utils/map-data.ts`, `map-pins.ts`, `entity-factory.ts`,
+  `directus-maps.ts`, and route handlers like `server/api/worlds/[id]/maps.get.ts`,
+  `presentation/[pageKey].get.ts`, `entities/[entityId].patch.ts`, `pins/create-entity.post.ts`. This
+  is not one legacy outlier — it's the majority pattern for anything touching maps, pins, and entity
+  writes. Consolidating is a large, cross-cutting refactor; don't do it opportunistically inside an
+  unrelated task, and note that some of these routes may be *intentionally* using the service token
+  (bypassing per-user permissions) rather than by accident — confirm intent before changing auth
+  behavior on any one of them.
+- **Pins: legacy persistence, but already canonical-shaped rendering**: pins persist via the dedicated
+  `map_pins` collection (`map-pins.ts`, `MapPinEditor.vue`), not `scene_layer_objects` — intentionally
+  deferred, see Scene Graph Status below. Rendering is already fully migrated: pins are adapted into
+  `LayerObject` shape client-side (`pinLayerObjects` computed in `index.vue`) before reaching the
+  renderer, so this is a persistence-backend gap, not a rendering-shape one.
+- **Renderer compatibility paths (`WorldMapLeaflet.client.vue`), identified but not yet removed**:
+  `SceneLayer.type`/`SceneLayer.data` and the `type === 'X'` / `pinsLayer?.data?.pins` / `props.pins`
+  fallback branches in `resolvedPins`/`resolvedImageOverlays`/`resolvedRoads` (from the pre-migration
+  "Phase 3: render pins from scene layer with legacy fallback" commit) all appear unreachable from the
+  only current caller (`index.vue`'s `scene.value` never sets `.type`/`.data`, always populates
+  `.objects`) — confirmed by tracing, not by removal. Left in place pending a runtime check (actually
+  loading the World Map page and confirming behavior after removal), since this is renderer-facing code
+  with no test coverage. Do not remove without that verification.
 - **Dead top-level `components/`, `composables/` directories** (pre-`app/`-restructure leftovers) —
   risk of someone editing the stale copy by mistake. See "Legacy/dead directories" above.
 - **Stray `.bak` files** committed under `app/lib/importers/*.ts.bak` and `backups/*.bak.*` — not
@@ -253,25 +327,34 @@ scripts in `scripts/directus/*.mjs` — these are infra/setup tooling, not part 
   implemented today. Avoid hardcoding "5e-only" assumptions deeper into shared entity/world code than
   necessary.
 
-## Recommendations for Future Claude Code Sessions
+## Codebase-Specific Notes for Future Claude Code Sessions
 
-1. **Read [.github/copilot-instructions.md](.github/copilot-instructions.md) and follow it literally** — it's short, explicit, and
-   the user has already encoded their preferred workflow there (small diffs, no auto-commit, run the
-   build after edits, ask before destructive changes).
-2. Before touching anything map/scene-related, read
-   [.github/docs/architecture/scene-graph.md](.github/docs/architecture/scene-graph.md) and the last ~15 commits (`git log --oneline`) — this area is
-   under active, deliberate refactor and half-finished-looking code (duplicated types, legacy fallback
-   branches) is often intentional mid-migration state, not a bug to "fix" opportunistically.
-3. When adding a new map object type, follow the Scene Graph doc's extension pattern (new Object Type)
+General workflow rules (small diffs, ask before approval-gated changes, validation steps) are covered
+by the **AI Working Agreement** and `.github/copilot-instructions.md` below — this list only covers
+things specific to *this* codebase that aren't generic process advice:
+
+1. Before touching anything map/scene-related, read
+   [.github/docs/architecture/scene-graph.md](.github/docs/architecture/scene-graph.md), the Scene Graph Status section below, and the last ~15
+   commits (`git log --oneline`) — Image Overlay/Road persistence is now canonical, but pins are
+   *intentionally* still on legacy persistence, and the renderer's pin-rendering fallback branches
+   (`SceneLayer.type`/`.data`, `props.pins`) are identified as safe-looking but explicitly deferred
+   pending runtime verification, not bugs to "fix" opportunistically.
+2. When adding a new map object type, follow the Scene Graph doc's extension pattern (new Object Type)
    rather than modifying `Scene`/`Layer` core fields.
-4. Don't "clean up" the legacy top-level `components/`/`composables/` or `.bak` files without asking —
-   confirm they're truly unused first (they appear to be, but deletion is a call for the user).
-5. There's no test suite; after any non-trivial change, at minimum run `pnpm run lint` and
-   `pnpm run typecheck`, and where feasible exercise the affected page in the dev server per the
-   project's own house rules.
-6. When working on the character sheet system, note the fan-out across many small
+3. Don't "clean up" the legacy top-level `components/`/`composables/`, `.bak` files, or the widespread
+   local `dxFetch` duplication without asking — confirm scope and get explicit sign-off; these look like
+   easy wins but touch working, deployed code paths (see Technical Debt above).
+4. When working on the character sheet system, note the fan-out across many small
    `server/utils/character-sheet-*.ts` files — find the specific concern (math, inventory, notes,
-   subclasses, resolver) rather than assuming logic lives in `character-sheets.ts` itself.
+   subclasses, resolver) rather than assuming logic lives in `character-sheets.ts` itself. On the
+   client side, expect most logic to live directly in the ~8,900-line `sheet.vue` page rather than in
+   composables — this is the codebase's biggest deviation from its own stated conventions, and per the
+   roadmap it's an explicit refactor target, not merely tolerated debt.
+5. Local dev/testing requires a running Directus instance and `DIRECTUS_URL`/`NUXT_PUBLIC_DIRECTUS_URL`
+   + `DIRECTUS_TOKEN` env vars (no `.env` is committed — see `nuxt.config.ts` runtimeConfig). Don't
+   assume a mock or in-memory data layer exists; `app/lib/eldra/dev-data.ts` is fixture/sample data for
+   reference, not a substitute backend.
+
 # AI Working Agreement
 
 This document is the canonical onboarding guide for AI assistants working on Eldra.
@@ -378,3 +461,45 @@ For all non-trivial work:
 5. Implement in logical commits.
 6. Run validation.
 7. Summarize completed work.
+
+## Scene Graph Cleanup
+
+Commit 5 results:
+
+- Dead persistence scaffolding removed: `serializeSceneForPersistence`, `hydrateSceneFromPersistence`,
+  `SceneLayerObjectsSnapshot`, `ScenePersistenceSnapshot` (had zero call sites; superseded by
+  `loadSceneLayerObjectsForMap`/`writeSceneLayerObjectsForMap`).
+- Renderer compatibility paths identified and intentionally deferred pending runtime verification:
+  `SceneLayer.type`, `SceneLayer.data`, and the `type === 'X'` / `pinsLayer?.data?.pins` / `props.pins`
+  fallback branches in `WorldMapLeaflet.client.vue`'s `resolvedPins`/`resolvedImageOverlays`/
+  `resolvedRoads`. Traced to zero reachable call paths from the single current caller (`index.vue`),
+  but not removed — this is renderer-facing code with no automated test coverage, so removal needs an
+  actual page load/manual check first, not just static tracing. Do not remove without that
+  verification (see Technical Debt above).
+- Pin persistence intentionally excluded from this migration — see Scene Graph Status below.
+
+## Scene Graph Status
+
+Canonical:
+
+- Roads
+- Image Overlays
+
+Legacy (intentional):
+
+- Pins
+
+Renderer:
+
+- Fully Scene Graph driven for all three object types today (pins included — pins are adapted into
+  `LayerObject` shape client-side before reaching the renderer, independent of where they persist).
+
+Persistence:
+
+- Roads and Image Overlays use `scene_layer_objects` (canonical, Directus-backed).
+- Pins intentionally remain on `map_pins` until a future migration is explicitly approved (design
+  proposal only, not yet started).
+
+Deferred (not blocking, not forgotten):
+
+- Renderer compatibility paths noted under Scene Graph Cleanup above, pending runtime verification.

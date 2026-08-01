@@ -159,6 +159,8 @@ const imageOverlaySaveError = ref('')
 const editingImageOverlay = ref<any | null>(null)
 const roadDraftVertices = ref<RoadVertex[]>([])
 const selectedRoadId = ref<string | null>(null)
+const roadSaveError = ref('')
+const savingRoadDraft = ref(false)
 
 function readSceneLayerObjectsForMap(mapId: string) {
   return {
@@ -300,6 +302,7 @@ type RoadDraft = { objectId: string; name: string }
 
 const editingRoadDraft = ref<RoadDraft | null>(null)
 const savingRoad = ref(false)
+const roadEditorSaveError = ref('')
 
 watch(selectedRoad, (road) => {
   if (!road) {
@@ -315,6 +318,7 @@ watch(selectedRoad, (road) => {
       objectId: road.objectId,
       name: String(road.name || road.properties?.name || 'Road'),
     }
+    roadEditorSaveError.value = ''
   }
 })
 
@@ -323,6 +327,7 @@ async function saveRoadEditor() {
 
   const name = editingRoadDraft.value.name.trim() || 'Road'
 
+  roadEditorSaveError.value = ''
   savingRoad.value = true
   try {
     const updatedRoad: LayerObject = {
@@ -338,6 +343,9 @@ async function saveRoadEditor() {
     await syncCurrentRoadObjects(
       currentRoadObjects.value.map((road) => (road.objectId === updatedRoad.objectId ? updatedRoad : road))
     )
+  } catch (error) {
+    console.error('Failed to save road name', error)
+    roadEditorSaveError.value = 'Failed to save. Try again.'
   } finally {
     savingRoad.value = false
   }
@@ -797,6 +805,7 @@ function setActiveBuildTool(tool: BuildTool) {
 }
 
 function onRoadMapClick(coords: { x: number; y: number }) {
+  roadSaveError.value = ''
   roadDraftVertices.value = [...roadDraftVertices.value, { x: Number(coords.x), y: Number(coords.y) }]
 }
 
@@ -815,7 +824,26 @@ async function onRoadMapDoubleClick(coords: { x: number; y: number }) {
   }
 
   const completedRoad = buildRoadObjectFromVertices(roadDraftVertices.value)
-  await syncCurrentRoadObjects([...currentRoadObjects.value, completedRoad])
+
+  // Persistence is a network call and can fail (schema not yet applied,
+  // connectivity, auth). Previously an unhandled rejection here silently
+  // aborted everything after it -- the draft never cleared, the road never
+  // got selected, and the editor never opened, which read as "double-click
+  // does nothing." Keep the draft intact on failure so the user's work
+  // isn't lost and they can retry, and surface the error instead of
+  // failing silently.
+  roadSaveError.value = ''
+  savingRoadDraft.value = true
+
+  try {
+    await syncCurrentRoadObjects([...currentRoadObjects.value, completedRoad])
+  } catch (error) {
+    console.error('Failed to save road', error)
+    roadSaveError.value = 'Failed to save road. Double-click to try again.'
+    return
+  } finally {
+    savingRoadDraft.value = false
+  }
 
   roadDraftVertices.value = []
 
@@ -1242,6 +1270,13 @@ function openSelectedPinContextMap() {
       :active-tool="activeBuildTool"
     />
 
+    <div
+      v-if="roadSaveError"
+      class="pointer-events-none absolute right-4 top-24 z-20 max-w-xs rounded-none border border-red-500/30 bg-[rgba(20,17,12,0.9)] px-4 py-2.5 text-xs text-red-200 backdrop-blur"
+    >
+      {{ roadSaveError }}
+    </div>
+
     <div v-if="mapImageUrl" class="absolute inset-0 z-0">
       <WorldMapLeaflet
         :key="`${worldId}-${selectedMapSlug}-${mapImageUrl}`"
@@ -1369,6 +1404,7 @@ function openSelectedPinContextMap() {
       :editing-road="editingRoadDraft"
       :vertex-count="Array.isArray(selectedRoad?.geometry?.coordinates) ? selectedRoad.geometry.coordinates.length : 0"
       :saving="savingRoad"
+      :save-error="roadEditorSaveError"
       @close="closeRoadEditor"
       @save="saveRoadEditor"
       @delete="deleteSelectedRoad"

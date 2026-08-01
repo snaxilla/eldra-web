@@ -24,7 +24,7 @@ function onLayerToggle(layerId: string, event: Event) {
   <button
     v-if="props.showTrigger"
     type="button"
-    class="eldra-button fixed bottom-6 left-6 z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
+    class="eldra-button absolute bottom-6 left-6 z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
     @click="emit('close')"
   >
     <UIcon
@@ -42,7 +42,7 @@ function onLayerToggle(layerId: string, event: Event) {
   >
     <div
       v-if="open"
-      class="eldra-ornate-panel eldra-frame-corners fixed bottom-24 left-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+      class="eldra-ornate-panel eldra-frame-corners absolute bottom-24 left-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
     >
       <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
         Map Layers

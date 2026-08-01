@@ -266,7 +266,12 @@ async function ensureMap() {
 
   map = L.map(rootEl.value, {
     crs: L.CRS.Simple,
-    zoomControl: true,
+    // The World Editor's own Build Tool controls occupy the map's
+    // top-left corner (see index.vue's build tool palette). Leaflet's
+    // default zoom control position is also top-left, which overlapped
+    // it -- move the zoom control to a corner the World Editor UI doesn't
+    // use instead of fighting Leaflet's default.
+    zoomControl: false,
     attributionControl: false,
     minZoom: -5,
     maxZoom: 5,
@@ -276,6 +281,8 @@ async function ensureMap() {
     fadeAnimation: true,
     markerZoomAnimation: true,
   })
+
+  L.control.zoom({ position: 'bottomleft' }).addTo(map)
 
   map.on('click', (e: any) => {
     if (!props.buildMode) return

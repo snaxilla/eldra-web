@@ -20,9 +20,19 @@
 // .github/docs/architecture/scene-graph.md's Style section).
 type RoadDashPattern = 'solid' | 'dashed' | 'dotted'
 
+// A preset is authoring convenience, not a constraint: picking one
+// populates the four style fields below, but those fields (not the
+// preset id) remain the actual source of truth for rendering -- the
+// preset is only remembered so the editor can show "this Road started
+// life as a Stone Road" even after individual values are overridden.
+// 'custom' is the implicit value for any Road with no recognized preset,
+// including every Road persisted before this feature existed.
+type RoadPresetId = 'custom' | 'trail' | 'dirt-road' | 'stone-road' | 'kings-road'
+
 type RoadDraft = {
   objectId: string
   name: string
+  preset: RoadPresetId
   color: string
   width: number
   opacity: number
@@ -33,6 +43,23 @@ const DASH_PATTERN_OPTIONS: { label: string; value: RoadDashPattern }[] = [
   { label: 'Solid', value: 'solid' },
   { label: 'Dashed', value: 'dashed' },
   { label: 'Dotted', value: 'dotted' },
+]
+
+type RoadPresetDefinition = {
+  id: RoadPresetId
+  label: string
+  color?: string
+  width?: number
+  opacity?: number
+  dashPattern?: RoadDashPattern
+}
+
+const ROAD_PRESETS: RoadPresetDefinition[] = [
+  { id: 'custom', label: 'Custom' },
+  { id: 'trail', label: 'Trail', color: '#8b5a2b', width: 2, opacity: 0.7, dashPattern: 'dotted' },
+  { id: 'dirt-road', label: 'Dirt Road', color: '#c2a173', width: 4, opacity: 0.85, dashPattern: 'dashed' },
+  { id: 'stone-road', label: 'Stone Road', color: '#b8b8b8', width: 4, opacity: 0.9, dashPattern: 'solid' },
+  { id: 'kings-road', label: "King's Road", color: '#e8dfc8', width: 6, opacity: 1, dashPattern: 'solid' },
 ]
 
 const props = defineProps<{
@@ -48,6 +75,24 @@ const emit = defineEmits<{
   (e: 'save'): void
   (e: 'delete'): void
 }>()
+
+// Applies a preset's defaults to the draft's style fields. Does not
+// touch `preset` itself -- the <select>'s v-model already set that.
+// Only fires on an explicit preset change, so it never runs again just
+// because the user tweaked a slider afterward -- the preset stays
+// selected until they deliberately pick a different one (including back
+// to "Custom", which is a real, explicit choice, not an automatic reset).
+function onPresetChange() {
+  if (!props.editingRoad) return
+
+  const preset = ROAD_PRESETS.find((p) => p.id === props.editingRoad!.preset)
+  if (!preset) return
+
+  if (preset.color != null) props.editingRoad.color = preset.color
+  if (preset.width != null) props.editingRoad.width = preset.width
+  if (preset.opacity != null) props.editingRoad.opacity = preset.opacity
+  if (preset.dashPattern != null) props.editingRoad.dashPattern = preset.dashPattern
+}
 </script>
 
 <template>
@@ -97,6 +142,24 @@ const emit = defineEmits<{
 
       <div class="mt-3 text-sm text-[#9f9278]">
         Vertices: {{ vertexCount }}
+      </div>
+
+      <div class="mt-4 border-t border-[rgba(201,164,90,0.22)] pt-4">
+        <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Road Type</label>
+        <select
+          v-model="editingRoad.preset"
+          class="eldra-input w-full rounded-none px-3 py-1.5 text-sm text-[#f5e7bd]"
+          @change="onPresetChange"
+        >
+          <option
+            v-for="preset in ROAD_PRESETS"
+            :key="preset.id"
+            :value="preset.id"
+            class="bg-[#090909] text-[#f5e7bd]"
+          >
+            {{ preset.label }}
+          </option>
+        </select>
       </div>
 
       <div class="mt-4 border-t border-[rgba(201,164,90,0.22)] pt-4">

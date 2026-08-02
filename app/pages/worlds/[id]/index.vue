@@ -300,9 +300,17 @@ const selectedRoad = computed(() => {
 
 type RoadDashPattern = 'solid' | 'dashed' | 'dotted'
 
+// Mirrors MapRoadEditor.vue's RoadPresetId -- kept as an independent
+// local type here rather than a shared module, matching how
+// RoadDashPattern is already duplicated between the two files. 'custom'
+// is the implicit value for any Road with no recognized preset,
+// including every Road persisted before this feature existed.
+type RoadPresetId = 'custom' | 'trail' | 'dirt-road' | 'stone-road' | 'kings-road'
+
 type RoadDraft = {
   objectId: string
   name: string
+  preset: RoadPresetId
   color: string
   width: number
   opacity: number
@@ -324,6 +332,12 @@ function readRoadDashPattern(value: any): RoadDashPattern {
   return value === 'dashed' || value === 'dotted' ? value : ROAD_STYLE_DEFAULTS.dashPattern
 }
 
+const ROAD_PRESET_IDS: RoadPresetId[] = ['trail', 'dirt-road', 'stone-road', 'kings-road']
+
+function readRoadPreset(value: any): RoadPresetId {
+  return ROAD_PRESET_IDS.includes(value) ? value : 'custom'
+}
+
 const editingRoadDraft = ref<RoadDraft | null>(null)
 const savingRoad = ref(false)
 const roadEditorSaveError = ref('')
@@ -343,6 +357,7 @@ watch(selectedRoad, (road) => {
     editingRoadDraft.value = {
       objectId: road.objectId,
       name: String(road.name || road.properties?.name || 'Road'),
+      preset: readRoadPreset(style.preset),
       color: typeof style.color === 'string' && style.color ? style.color : ROAD_STYLE_DEFAULTS.color,
       width: Number.isFinite(Number(style.width)) && Number(style.width) > 0 ? Number(style.width) : ROAD_STYLE_DEFAULTS.width,
       opacity: Number.isFinite(Number(style.opacity)) ? Math.max(0, Math.min(1, Number(style.opacity))) : ROAD_STYLE_DEFAULTS.opacity,
@@ -356,7 +371,7 @@ async function saveRoadEditor() {
   if (!editingRoadDraft.value || !selectedRoad.value) return
 
   const name = editingRoadDraft.value.name.trim() || 'Road'
-  const { color, width, opacity, dashPattern } = editingRoadDraft.value
+  const { preset, color, width, opacity, dashPattern } = editingRoadDraft.value
 
   roadEditorSaveError.value = ''
   savingRoad.value = true
@@ -370,6 +385,7 @@ async function saveRoadEditor() {
       },
       style: {
         ...selectedRoad.value.style,
+        preset,
         color,
         width,
         opacity,

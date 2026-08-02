@@ -29,8 +29,8 @@ function roadDashArray(pattern: unknown): string | undefined {
   return undefined
 }
 
-function roadStyleFor(roadObject: LayerObject) {
-  const style: any = roadObject?.style || {}
+function resolveRoadStyle(style: any) {
+  style = style || {}
 
   const color = typeof style.color === 'string' && style.color ? style.color : ROAD_STYLE_DEFAULTS.color
   const width = Number.isFinite(Number(style.width)) && Number(style.width) > 0 ? Number(style.width) : ROAD_STYLE_DEFAULTS.width
@@ -38,6 +38,10 @@ function roadStyleFor(roadObject: LayerObject) {
   const dashArray = roadDashArray(style.dashPattern ?? ROAD_STYLE_DEFAULTS.dashPattern)
 
   return { color, width, opacity, dashArray }
+}
+
+function roadStyleFor(roadObject: LayerObject) {
+  return resolveRoadStyle(roadObject?.style)
 }
 
 const props = defineProps<{
@@ -53,6 +57,12 @@ const props = defineProps<{
   pins: Pin[]
   selectedPinId?: string | null
   selectedRoadId?: string | null
+  // Live-preview override for the Road currently open in the editor.
+  // Read-only from this component's perspective -- never written back,
+  // never persisted from here. Only applies to the Road matching
+  // selectedRoadId; every other Road always renders its own persisted
+  // style, unaffected.
+  editingRoadStyle?: { color?: string; width?: number; opacity?: number; dashPattern?: string } | null
   buildMode?: boolean
   roadMode?: boolean
 }>()
@@ -423,7 +433,15 @@ function renderRoads() {
     if (latLngs.length < 2) continue
 
     const isSelected = String(roadObject?.objectId || '') === String(props.selectedRoadId || '')
-    const roadStyle = roadStyleFor(roadObject)
+
+    // While this Road is open in the editor, render from the in-progress
+    // draft style instead of the persisted one -- live preview. Nothing is
+    // written back to roadObject/persistence here; this only changes what
+    // gets drawn. Every other Road (isSelected false) is unaffected and
+    // always renders its own persisted style.
+    const roadStyle = isSelected && props.editingRoadStyle
+      ? resolveRoadStyle(props.editingRoadStyle)
+      : roadStyleFor(roadObject)
 
     // Selection is indicated with a translucent halo drawn underneath the
     // real line, rather than by overriding color/weight/opacity/dashArray
@@ -703,6 +721,14 @@ watch(
   () => {
     renderRoads()
   }
+)
+
+watch(
+  () => props.editingRoadStyle,
+  () => {
+    renderRoads()
+  },
+  { deep: true }
 )
 
 watch(

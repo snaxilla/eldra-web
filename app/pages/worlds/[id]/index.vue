@@ -393,6 +393,21 @@ function closeRoadEditor() {
   selectedRoadId.value = null
 }
 
+// Live-preview source for the renderer -- read-only reflection of the
+// in-progress draft, never written into persistence. Null whenever
+// nothing is being edited, so every other Road (and this one once
+// deselected/cancelled) falls back to its own persisted style.
+const editingRoadStylePreview = computed(() => {
+  if (!editingRoadDraft.value) return null
+
+  return {
+    color: editingRoadDraft.value.color,
+    width: editingRoadDraft.value.width,
+    opacity: editingRoadDraft.value.opacity,
+    dashPattern: editingRoadDraft.value.dashPattern,
+  }
+})
+
 function roadVerticesToCoordinates(vertices: RoadVertex[]) {
   return vertices.map((vertex) => ({
     x: Number(vertex.x),
@@ -1329,6 +1344,7 @@ function openSelectedPinContextMap() {
         :pins="visiblePins"
         :selected-pin-id="selectedPinId"
         :selected-road-id="selectedRoadId"
+        :editing-road-style="editingRoadStylePreview"
         :build-mode="mode === 'build' && (activeBuildTool === 'pin' || activeBuildTool === 'road')"
         :road-mode="mode === 'build' && activeBuildTool === 'road'"
         @select-pin="selectPin"

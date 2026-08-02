@@ -57,7 +57,7 @@ function toPersistenceMetadata(object: LayerObject) {
 
 function toPersistenceRow(mapId: string, layerId: string, object: LayerObject) {
   return {
-    map_id: Number(mapId),
+    map_id: mapId,
     layer_id: layerId,
     object_id: object.objectId,
     object_type: object.objectType,

@@ -109,6 +109,35 @@ async function ensureField(collection, fieldDef) {
   console.log(`Created field: ${collection}.${fieldDef.field}`)
 }
 
+// Migrates an existing field to a different data_type if it was
+// provisioned incorrectly (e.g. map_id was originally created as
+// integer; maps.id is actually uuid). Directus's normal ensureField()
+// only checks whether a field with this name exists, not whether its
+// type is correct, so a wrong type would otherwise never self-heal.
+// Safe here because no meaningful data exists under the old type --
+// this exact mismatch has been rejecting every write since the
+// collection was created, so there is nothing valid to preserve.
+async function ensureFieldType(collection, field, expectedDataType, buildFieldDef) {
+  const names = await fieldNames(collection)
+
+  if (!names.has(field)) {
+    await ensureField(collection, buildFieldDef())
+    return
+  }
+
+  const res = await dx(`/fields/${collection}/${field}`)
+  const currentType = res?.data?.schema?.data_type
+
+  if (currentType === expectedDataType) {
+    console.log(`Field type OK: ${collection}.${field} (${currentType})`)
+    return
+  }
+
+  console.log(`Field type mismatch: ${collection}.${field} is "${currentType}", expected "${expectedDataType}" -- migrating.`)
+  await dx(`/fields/${collection}/${field}`, { method: 'DELETE' })
+  await ensureField(collection, buildFieldDef())
+}
+
 let sort = 1
 
 function baseMeta(collection, field, interfaceName, note, extra = {}) {
@@ -138,6 +167,24 @@ function integerField(collection, field, options = {}) {
       name: field,
       table: collection,
       data_type: 'integer',
+      is_nullable: options.required ? false : true,
+      default_value: options.defaultValue ?? null
+    }
+  }
+}
+
+function uuidField(collection, field, options = {}) {
+  return {
+    field,
+    type: 'uuid',
+    meta: baseMeta(collection, field, 'input', options.note, {
+      required: options.required,
+      width: options.width
+    }),
+    schema: {
+      name: field,
+      table: collection,
+      data_type: 'uuid',
       is_nullable: options.required ? false : true,
       default_value: options.defaultValue ?? null
     }
@@ -244,9 +291,10 @@ async function createSchema() {
 
   // Persistence association (mapId/layerId are storage-boundary concerns,
   // never part of the runtime LayerObject -- see server/utils/scene-layer-objects.ts).
-  await ensureField(COLLECTION, integerField(COLLECTION, 'map_id', {
+  // maps.id is a UUID primary key, not an integer -- map_id must match.
+  await ensureFieldType(COLLECTION, 'map_id', 'uuid', () => uuidField(COLLECTION, 'map_id', {
     required: true,
-    note: 'maps.id this object belongs to.'
+    note: 'maps.id this object belongs to. Maps use UUID primary keys.'
   }))
 
   await ensureField(COLLECTION, stringField(COLLECTION, 'layer_id', {

@@ -425,10 +425,26 @@ function renderRoads() {
     const isSelected = String(roadObject?.objectId || '') === String(props.selectedRoadId || '')
     const roadStyle = roadStyleFor(roadObject)
 
+    // Selection is indicated with a translucent halo drawn underneath the
+    // real line, rather than by overriding color/weight/opacity/dashArray
+    // on the line itself -- a selected road (which is every road while its
+    // editor is open) must always render its own style, or style changes
+    // are invisible until deselected.
+    if (isSelected && !isDraft) {
+      L.polyline(latLngs, {
+        color: '#f5e7bd',
+        weight: roadStyle.width + 4,
+        opacity: 0.35,
+        interactive: false,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(roadLayer)
+    }
+
     const polyline = L.polyline(latLngs, {
-      color: isSelected ? '#f5e7bd' : roadStyle.color,
-      weight: isSelected ? 5 : (isDraft ? 3 : roadStyle.width),
-      opacity: isSelected ? 1 : (isDraft ? 0.8 : roadStyle.opacity),
+      color: roadStyle.color,
+      weight: isDraft ? 3 : roadStyle.width,
+      opacity: isDraft ? 0.8 : roadStyle.opacity,
       interactive: !isDraft,
       dashArray: isDraft ? '8 6' : roadStyle.dashArray,
       lineCap: 'round',

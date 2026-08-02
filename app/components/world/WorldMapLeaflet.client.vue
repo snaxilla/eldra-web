@@ -13,6 +13,18 @@ type Pin = {
   icon?: string | null
 }
 
+// Rendering-quality defaults for every line-based Scene Graph object
+// (Roads today; Rivers/Borders/Walls in the future). Rounded caps/joins
+// are a native Leaflet polyline option, not a Road-specific concern --
+// every polyline this renderer draws for a line-type object should
+// spread this in, so cap/join style stays centrally defined once rather
+// than repeated (and able to drift) per call site. Purely visual: does
+// not touch authored style, persistence, selection, or live preview.
+const LINE_RENDER_QUALITY = {
+  lineCap: 'round' as const,
+  lineJoin: 'round' as const,
+}
+
 // Canonical renderer-wide zoom scaling. A renderer concern only -- never
 // touches persisted/authoring size, never touches the Scene Graph. Given
 // an authoring-time size (marker scale, ...) and the current Leaflet
@@ -571,23 +583,21 @@ function renderRoads() {
     // are invisible until deselected.
     if (isSelected && !isDraft) {
       L.polyline(latLngs, {
+        ...LINE_RENDER_QUALITY,
         color: '#f5e7bd',
         weight: displayWeight + 4,
         opacity: 0.35,
         interactive: false,
-        lineCap: 'round',
-        lineJoin: 'round',
       }).addTo(roadLayer)
     }
 
     const polyline = L.polyline(latLngs, {
+      ...LINE_RENDER_QUALITY,
       color: roadStyle.color,
       weight: isDraft ? 3 : displayWeight,
       opacity: isDraft ? 0.8 : displayOpacity,
       interactive: !isDraft,
       dashArray: isDraft ? '8 6' : roadStyle.dashArray,
-      lineCap: 'round',
-      lineJoin: 'round',
     })
 
     if (!isDraft) {
@@ -616,6 +626,7 @@ function updateRoadRubberBand(latlng: any) {
     roadRubberBandLine.setLatLngs([roadDraftLastVertex, latlng])
   } else {
     roadRubberBandLine = L.polyline([roadDraftLastVertex, latlng], {
+      ...LINE_RENDER_QUALITY,
       color: '#d4b072',
       weight: 2,
       opacity: 0.6,

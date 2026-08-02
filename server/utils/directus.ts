@@ -1,4 +1,13 @@
 import type { H3Event } from 'h3'
+import { createHash } from 'node:crypto'
+
+// TEMPORARY DIAGNOSTIC ONLY -- remove once the runtime-vs-manual token
+// contradiction is resolved. Not used for auth/security, only to compare
+// a runtime request's token against a manually-tested token without
+// logging the secret itself.
+function hashToken(token: string) {
+  return createHash('sha256').update(token).digest('hex')
+}
 
 function getRuntimeDirectusConfig() {
   const config = useRuntimeConfig()
@@ -42,9 +51,24 @@ export async function directusServiceRequest(path: string, options: any = {}) {
     headers.Authorization = `Bearer ${serviceToken}`
   }
 
+  // TEMPORARY DIAGNOSTIC INSTRUMENTATION -- observational only, does not
+  // alter the request, headers, auth, or response handling. Remove once
+  // the runtime-vs-manual token/403 contradiction is resolved.
+  const debugMethod = String(options.method || 'GET').toUpperCase()
+  const debugUrl = `${baseUrl}${path}`
+  const debugTokenRaw = String(headers.Authorization || '').replace(/^Bearer\s+/i, '')
+  const debugTokenHash = debugTokenRaw ? hashToken(debugTokenRaw) : '(no token)'
+  console.log(`[directus-debug] request method=${debugMethod} url=${debugUrl} token_sha256=${debugTokenHash}`)
+
   return await $fetch(`${baseUrl}${path}`, {
     ...options,
-    headers
+    headers,
+    onResponse({ response }: any) {
+      console.log(`[directus-debug] response method=${debugMethod} url=${debugUrl} status=${response.status} body=${JSON.stringify(response._data)}`)
+    },
+    onResponseError({ response }: any) {
+      console.log(`[directus-debug] response method=${debugMethod} url=${debugUrl} status=${response.status} body=${JSON.stringify(response._data)}`)
+    }
   })
 }
 

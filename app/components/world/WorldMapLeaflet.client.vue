@@ -13,6 +13,33 @@ type Pin = {
   icon?: string | null
 }
 
+// Matches the hardcoded road appearance that existed before per-road
+// styling -- a Road with no (or partial) style values must render
+// identically to before, with no migration required.
+const ROAD_STYLE_DEFAULTS = {
+  color: '#d4b072',
+  width: 4,
+  opacity: 0.9,
+  dashPattern: 'solid' as 'solid' | 'dashed' | 'dotted',
+}
+
+function roadDashArray(pattern: unknown): string | undefined {
+  if (pattern === 'dashed') return '8 6'
+  if (pattern === 'dotted') return '2 6'
+  return undefined
+}
+
+function roadStyleFor(roadObject: LayerObject) {
+  const style: any = roadObject?.style || {}
+
+  const color = typeof style.color === 'string' && style.color ? style.color : ROAD_STYLE_DEFAULTS.color
+  const width = Number.isFinite(Number(style.width)) && Number(style.width) > 0 ? Number(style.width) : ROAD_STYLE_DEFAULTS.width
+  const opacity = Number.isFinite(Number(style.opacity)) ? Math.max(0, Math.min(1, Number(style.opacity))) : ROAD_STYLE_DEFAULTS.opacity
+  const dashArray = roadDashArray(style.dashPattern ?? ROAD_STYLE_DEFAULTS.dashPattern)
+
+  return { color, width, opacity, dashArray }
+}
+
 const props = defineProps<{
   mapImageUrl: string
   tileEnabled?: boolean
@@ -396,13 +423,14 @@ function renderRoads() {
     if (latLngs.length < 2) continue
 
     const isSelected = String(roadObject?.objectId || '') === String(props.selectedRoadId || '')
+    const roadStyle = roadStyleFor(roadObject)
 
     const polyline = L.polyline(latLngs, {
-      color: isSelected ? '#f5e7bd' : '#d4b072',
-      weight: isSelected ? 5 : (isDraft ? 3 : 4),
-      opacity: isSelected ? 1 : (isDraft ? 0.8 : 0.9),
+      color: isSelected ? '#f5e7bd' : roadStyle.color,
+      weight: isSelected ? 5 : (isDraft ? 3 : roadStyle.width),
+      opacity: isSelected ? 1 : (isDraft ? 0.8 : roadStyle.opacity),
       interactive: !isDraft,
-      dashArray: isDraft ? '8 6' : undefined,
+      dashArray: isDraft ? '8 6' : roadStyle.dashArray,
       lineCap: 'round',
       lineJoin: 'round',
     })

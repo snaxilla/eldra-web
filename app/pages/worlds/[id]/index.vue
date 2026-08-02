@@ -298,7 +298,31 @@ const selectedRoad = computed(() => {
   return currentRoadObjects.value.find((road) => String(road.objectId) === String(selectedRoadId.value || '')) || null
 })
 
-type RoadDraft = { objectId: string; name: string }
+type RoadDashPattern = 'solid' | 'dashed' | 'dotted'
+
+type RoadDraft = {
+  objectId: string
+  name: string
+  color: string
+  width: number
+  opacity: number
+  dashPattern: RoadDashPattern
+}
+
+// Matches the hardcoded appearance WorldMapLeaflet.client.vue already used
+// for roads before per-road styling existed -- an existing Road with no
+// (or partial) style values must render identically to before this
+// feature, with no migration and no visible change.
+const ROAD_STYLE_DEFAULTS = {
+  color: '#d4b072',
+  width: 4,
+  opacity: 0.9,
+  dashPattern: 'solid' as RoadDashPattern,
+}
+
+function readRoadDashPattern(value: any): RoadDashPattern {
+  return value === 'dashed' || value === 'dotted' ? value : ROAD_STYLE_DEFAULTS.dashPattern
+}
 
 const editingRoadDraft = ref<RoadDraft | null>(null)
 const savingRoad = ref(false)
@@ -314,9 +338,15 @@ watch(selectedRoad, (road) => {
   // in-progress edit isn't clobbered by the reactive re-read that follows
   // saving it.
   if (editingRoadDraft.value?.objectId !== road.objectId) {
+    const style = road.style || {}
+
     editingRoadDraft.value = {
       objectId: road.objectId,
       name: String(road.name || road.properties?.name || 'Road'),
+      color: typeof style.color === 'string' && style.color ? style.color : ROAD_STYLE_DEFAULTS.color,
+      width: Number.isFinite(Number(style.width)) && Number(style.width) > 0 ? Number(style.width) : ROAD_STYLE_DEFAULTS.width,
+      opacity: Number.isFinite(Number(style.opacity)) ? Math.max(0, Math.min(1, Number(style.opacity))) : ROAD_STYLE_DEFAULTS.opacity,
+      dashPattern: readRoadDashPattern(style.dashPattern),
     }
     roadEditorSaveError.value = ''
   }
@@ -326,6 +356,7 @@ async function saveRoadEditor() {
   if (!editingRoadDraft.value || !selectedRoad.value) return
 
   const name = editingRoadDraft.value.name.trim() || 'Road'
+  const { color, width, opacity, dashPattern } = editingRoadDraft.value
 
   roadEditorSaveError.value = ''
   savingRoad.value = true
@@ -336,6 +367,13 @@ async function saveRoadEditor() {
       properties: {
         ...selectedRoad.value.properties,
         name,
+      },
+      style: {
+        ...selectedRoad.value.style,
+        color,
+        width,
+        opacity,
+        dashPattern,
       },
       updatedAt: new Date().toISOString(),
     }

@@ -14,10 +14,26 @@
 //   (style, width, labels) can be added as its own section without
 //   restructuring the component.
 
+// Dash pattern is stored as a semantic intent ('solid'/'dashed'/'dotted'),
+// not a raw Leaflet dashArray string -- the renderer decides how to turn
+// that intent into engine-specific drawing instructions (see
+// .github/docs/architecture/scene-graph.md's Style section).
+type RoadDashPattern = 'solid' | 'dashed' | 'dotted'
+
 type RoadDraft = {
   objectId: string
   name: string
+  color: string
+  width: number
+  opacity: number
+  dashPattern: RoadDashPattern
 }
+
+const DASH_PATTERN_OPTIONS: { label: string; value: RoadDashPattern }[] = [
+  { label: 'Solid', value: 'solid' },
+  { label: 'Dashed', value: 'dashed' },
+  { label: 'Dotted', value: 'dotted' },
+]
 
 const props = defineProps<{
   open: boolean
@@ -81,6 +97,62 @@ const emit = defineEmits<{
 
       <div class="mt-3 text-sm text-[#9f9278]">
         Vertices: {{ vertexCount }}
+      </div>
+
+      <div class="mt-4 border-t border-[rgba(201,164,90,0.22)] pt-4">
+        <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Style</div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="mb-1 block text-xs text-[#9f9278]">Color</label>
+            <input
+              v-model="editingRoad.color"
+              type="color"
+              class="h-9 w-full cursor-pointer rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-1"
+            >
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs text-[#9f9278]">Width</label>
+            <input
+              v-model.number="editingRoad.width"
+              type="number"
+              min="1"
+              max="20"
+              step="1"
+              class="eldra-input w-full rounded-none px-3 py-1.5 text-sm"
+            >
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs text-[#9f9278]">Opacity ({{ editingRoad.opacity.toFixed(2) }})</label>
+            <input
+              v-model.number="editingRoad.opacity"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              class="w-full"
+            >
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs text-[#9f9278]">Dash Pattern</label>
+            <select
+              v-model="editingRoad.dashPattern"
+              class="eldra-input w-full rounded-none px-3 py-1.5 text-sm text-[#f5e7bd]"
+            >
+              <option
+                v-for="opt in DASH_PATTERN_OPTIONS"
+                :key="opt.value"
+                :value="opt.value"
+                class="bg-[#090909] text-[#f5e7bd]"
+              >
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div class="mt-4 flex gap-2">

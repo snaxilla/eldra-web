@@ -13,6 +13,29 @@ type Pin = {
   icon?: string | null
 }
 
+// Canonical renderer-wide zoom scaling. A renderer concern only -- never
+// touches persisted/authoring size, never touches the Scene Graph. Given
+// an authoring-time size (line width, marker scale, ...) and the current
+// Leaflet zoom, returns the on-screen size to actually draw at, so line
+// and point objects scale smoothly and consistently instead of staying a
+// fixed pixel size regardless of zoom. Damping is intentionally gentler
+// than Leaflet's native 2x-per-zoom-level tile scaling -- authored sizes
+// should grow/shrink noticeably across the zoom range without becoming
+// absurdly large zoomed in or vanishing zoomed out. Any future line/point
+// object type (rivers, borders, walls, region outlines, tokens) should
+// reuse this rather than deriving its own zoom math.
+const ZOOM_SCALE_REFERENCE = 0
+const ZOOM_SCALE_DAMPING = 0.35
+
+function zoomScaleFactor(zoom: number) {
+  return Math.pow(2, (zoom - ZOOM_SCALE_REFERENCE) * ZOOM_SCALE_DAMPING)
+}
+
+function scaledSize(authoringSize: number, zoom: number, min: number, max: number) {
+  const scaled = authoringSize * zoomScaleFactor(zoom)
+  return Math.max(min, Math.min(max, scaled))
+}
+
 // Matches the hardcoded road appearance that existed before per-road
 // styling -- a Road with no (or partial) style values must render
 // identically to before, with no migration required.
@@ -22,6 +45,17 @@ const ROAD_STYLE_DEFAULTS = {
   opacity: 0.9,
   dashPattern: 'solid' as 'solid' | 'dashed' | 'dotted',
 }
+
+// Display bounds for scaledSize() -- keeps a thin authored road visible
+// when zoomed out and a thick one from becoming absurd zoomed in.
+const ROAD_WEIGHT_DISPLAY_MIN = 1
+const ROAD_WEIGHT_DISPLAY_MAX = 16
+
+// Display bounds for pin marker scale (multiplier on the 20x28 base
+// icon) -- keeps pins readable zoomed out without looking oversized at
+// continent scale, and without ballooning zoomed in.
+const PIN_SCALE_DISPLAY_MIN = 0.55
+const PIN_SCALE_DISPLAY_MAX = 1.5
 
 function roadDashArray(pattern: unknown): string | undefined {
   if (pattern === 'dashed') return '8 6'
@@ -243,20 +277,20 @@ function getIconSvg(icon?: string | null) {
   }
 }
 
-function makePinHtml(pin: Pin, selected: boolean) {
+function makePinHtml(pin: Pin, selected: boolean, width: number, height: number) {
   const bg = pin.color || '#3b82f6'
   const stroke = selected ? '#ffffff' : 'rgba(255,255,255,0.55)'
   const inner = getIconSvg(pin.icon).replaceAll('__PIN_BG__', bg)
 
   return `
     <div style="
-      width: 20px;
-      height: 28px;
+      width: ${width}px;
+      height: ${height}px;
       filter: drop-shadow(0 10px 18px rgba(0,0,0,0.35));
       transform: ${selected ? 'scale(1.08)' : 'scale(1)'};
       transition: transform 140ms ease;
     ">
-      <svg width="20" height="28" viewBox="0 0 34 44" xmlns="http://www.w3.org/2000/svg">
+      <svg width="${width}" height="${height}" viewBox="0 0 34 44" xmlns="http://www.w3.org/2000/svg">
         <path
           d="M17 1.5C8.44 1.5 1.5 8.44 1.5 17c0 11.17 12.63 22.62 14.1 23.92a2.1 2.1 0 0 0 2.8 0C19.87 39.62 32.5 28.17 32.5 17 32.5 8.44 25.56 1.5 17 1.5Z"
           fill="${bg}"
@@ -348,6 +382,13 @@ async function ensureMap() {
     updateRoadRubberBand(e.latlng)
   })
 
+  // Re-derive on-screen size for zoom-scaled objects (roads, pins) when
+  // zoom settles -- authoring size never changes, only display size.
+  map.on('zoomend', () => {
+    renderRoads()
+    renderPins()
+  })
+
   markerLayer = L.layerGroup().addTo(map)
 }
 
@@ -390,6 +431,8 @@ function renderRoads() {
   // drop the stale reference so updateRoadRubberBand() recreates it.
   roadRubberBandLine = null
   roadDraftLastVertex = null
+
+  const currentZoom = map.getZoom()
 
   for (const roadObject of resolvedRoads.value || []) {
     const coordinates = Array.isArray(roadObject?.geometry?.coordinates)
@@ -443,6 +486,10 @@ function renderRoads() {
       ? resolveRoadStyle(props.editingRoadStyle)
       : roadStyleFor(roadObject)
 
+    // Authoring width is unchanged (still whatever's persisted/being
+    // edited) -- only the on-screen weight is zoom-scaled.
+    const displayWeight = scaledSize(roadStyle.width, currentZoom, ROAD_WEIGHT_DISPLAY_MIN, ROAD_WEIGHT_DISPLAY_MAX)
+
     // Selection is indicated with a translucent halo drawn underneath the
     // real line, rather than by overriding color/weight/opacity/dashArray
     // on the line itself -- a selected road (which is every road while its
@@ -451,7 +498,7 @@ function renderRoads() {
     if (isSelected && !isDraft) {
       L.polyline(latLngs, {
         color: '#f5e7bd',
-        weight: roadStyle.width + 4,
+        weight: displayWeight + 4,
         opacity: 0.35,
         interactive: false,
         lineCap: 'round',
@@ -461,7 +508,7 @@ function renderRoads() {
 
     const polyline = L.polyline(latLngs, {
       color: roadStyle.color,
-      weight: isDraft ? 3 : roadStyle.width,
+      weight: isDraft ? 3 : displayWeight,
       opacity: isDraft ? 0.8 : roadStyle.opacity,
       interactive: !isDraft,
       dashArray: isDraft ? '8 6' : roadStyle.dashArray,
@@ -534,6 +581,12 @@ function renderPins() {
 
   markerLayer.clearLayers()
 
+  // Authoring size stays the base 20x28 icon -- only the on-screen scale
+  // multiplier is zoom-driven, same scaledSize() helper roads use.
+  const pinScale = scaledSize(1, map.getZoom(), PIN_SCALE_DISPLAY_MIN, PIN_SCALE_DISPLAY_MAX)
+  const width = 20 * pinScale
+  const height = 28 * pinScale
+
   for (const pin of resolvedPins.value || []) {
     const scale = mapCoordinateScale()
     const lat = usingTiles() ? -(pin.y / scale) : pin.y
@@ -542,10 +595,10 @@ function renderPins() {
     const marker = L.marker(L.latLng(lat, lng), {
       icon: L.divIcon({
         className: 'eldra-leaflet-pin',
-        html: makePinHtml(pin, pin.id === props.selectedPinId),
-        iconSize: [20, 28],
-        iconAnchor: [10, 27],
-        tooltipAnchor: [0, -24],
+        html: makePinHtml(pin, pin.id === props.selectedPinId, width, height),
+        iconSize: [width, height],
+        iconAnchor: [width / 2, height - 1],
+        tooltipAnchor: [0, -(height - 4)],
       }),
     })
 
@@ -558,7 +611,7 @@ function renderPins() {
       marker.bindTooltip(pin.title, {
         permanent: false,
         direction: 'top',
-        offset: [0, -24],
+        offset: [0, -(height - 4)],
         className: 'eldra-pin-tooltip',
       })
     }

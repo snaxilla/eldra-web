@@ -56,6 +56,19 @@ const ROAD_ZOOM_TUNING = {
   max: 16,
 }
 
+// Line *visibility* scaling, not just width: GIS-style road rendering
+// fades minor roads as much as it thins them, so at continent scale a
+// road reads as subtle infrastructure rather than a bold highway that
+// competes with terrain and Pins. Shares ROAD_ZOOM_TUNING.damping with
+// width so both channels fade/thin in lockstep (one coordinated effect,
+// not two independently-drifting ones). No `max` here -- opacity is
+// capped per-call at the road's own authored opacity, never boosted
+// above it, so editing-scale rendering stays exactly what was authored.
+const ROAD_OPACITY_ZOOM_TUNING = {
+  damping: ROAD_ZOOM_TUNING.damping,
+  min: 0.15,
+}
+
 // Pins scale conservatively -- a tighter zoomed-in ceiling than Roads so
 // they stay stable navigation markers rather than growing into visual
 // billboards, but still need enough damping to actually shrink away from
@@ -496,9 +509,20 @@ function renderRoads() {
       ? resolveRoadStyle(props.editingRoadStyle)
       : roadStyleFor(roadObject)
 
-    // Authoring width is unchanged (still whatever's persisted/being
-    // edited) -- only the on-screen weight is zoom-scaled.
+    // Authoring width/opacity are unchanged (still whatever's
+    // persisted/being edited) -- only the on-screen weight and opacity
+    // are zoom-scaled, and only ever downward from what was authored:
+    // opacity's own max is the authored value itself, so at or above the
+    // reference zoom a Road always looks exactly as authored, never
+    // fainter or bolder than intended.
     const displayWeight = scaledSize(roadStyle.width, currentZoom, ROAD_ZOOM_TUNING.damping, ROAD_ZOOM_TUNING.min, ROAD_ZOOM_TUNING.max)
+    const displayOpacity = scaledSize(
+      roadStyle.opacity,
+      currentZoom,
+      ROAD_OPACITY_ZOOM_TUNING.damping,
+      Math.min(ROAD_OPACITY_ZOOM_TUNING.min, roadStyle.opacity),
+      roadStyle.opacity
+    )
 
     // Selection is indicated with a translucent halo drawn underneath the
     // real line, rather than by overriding color/weight/opacity/dashArray
@@ -519,7 +543,7 @@ function renderRoads() {
     const polyline = L.polyline(latLngs, {
       color: roadStyle.color,
       weight: isDraft ? 3 : displayWeight,
-      opacity: isDraft ? 0.8 : roadStyle.opacity,
+      opacity: isDraft ? 0.8 : displayOpacity,
       interactive: !isDraft,
       dashArray: isDraft ? '8 6' : roadStyle.dashArray,
       lineCap: 'round',

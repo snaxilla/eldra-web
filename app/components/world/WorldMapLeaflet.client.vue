@@ -18,21 +18,20 @@ type Pin = {
 // an authoring-time size (line width, marker scale, ...) and the current
 // Leaflet zoom, returns the on-screen size to actually draw at, so line
 // and point objects scale smoothly and consistently instead of staying a
-// fixed pixel size regardless of zoom. Damping is intentionally gentler
-// than Leaflet's native 2x-per-zoom-level tile scaling -- authored sizes
-// should grow/shrink noticeably across the zoom range without becoming
-// absurdly large zoomed in or vanishing zoomed out. Any future line/point
-// object type (rivers, borders, walls, region outlines, tokens) should
-// reuse this rather than deriving its own zoom math.
+// fixed pixel size regardless of zoom. This is the one model every
+// visual primitive type uses -- `damping`/`min`/`max` are per-call tuning
+// (see ROAD_ZOOM_TUNING / PIN_ZOOM_TUNING below), not a reason to fork
+// the formula. Any future line/point object type (rivers, borders,
+// walls, region outlines, tokens) should reuse this with its own tuning
+// rather than deriving its own zoom math.
 const ZOOM_SCALE_REFERENCE = 0
-const ZOOM_SCALE_DAMPING = 0.35
 
-function zoomScaleFactor(zoom: number) {
-  return Math.pow(2, (zoom - ZOOM_SCALE_REFERENCE) * ZOOM_SCALE_DAMPING)
+function zoomScaleFactor(zoom: number, damping: number) {
+  return Math.pow(2, (zoom - ZOOM_SCALE_REFERENCE) * damping)
 }
 
-function scaledSize(authoringSize: number, zoom: number, min: number, max: number) {
-  const scaled = authoringSize * zoomScaleFactor(zoom)
+function scaledSize(authoringSize: number, zoom: number, damping: number, min: number, max: number) {
+  const scaled = authoringSize * zoomScaleFactor(zoom, damping)
   return Math.max(min, Math.min(max, scaled))
 }
 
@@ -46,16 +45,27 @@ const ROAD_STYLE_DEFAULTS = {
   dashPattern: 'solid' as 'solid' | 'dashed' | 'dotted',
 }
 
-// Display bounds for scaledSize() -- keeps a thin authored road visible
-// when zoomed out and a thick one from becoming absurd zoomed in.
-const ROAD_WEIGHT_DISPLAY_MIN = 1
-const ROAD_WEIGHT_DISPLAY_MAX = 16
+// Roads shrink aggressively zoomed out (continent-scale views should
+// read as infrastructure, not highways) down to a thin-but-never-zero
+// floor, and stay at their authored width at normal editing zoom
+// (scaledSize == authoringSize exactly at zoom == ZOOM_SCALE_REFERENCE,
+// regardless of damping).
+const ROAD_ZOOM_TUNING = {
+  damping: 0.55,
+  min: 0.75,
+  max: 16,
+}
 
-// Display bounds for pin marker scale (multiplier on the 20x28 base
-// icon) -- keeps pins readable zoomed out without looking oversized at
-// continent scale, and without ballooning zoomed in.
-const PIN_SCALE_DISPLAY_MIN = 0.55
-const PIN_SCALE_DISPLAY_MAX = 1.5
+// Pins scale conservatively -- a tighter zoomed-in ceiling than Roads so
+// they stay stable navigation markers rather than growing into visual
+// billboards, but still need enough damping to actually shrink away from
+// their base size at continent scale rather than dominating the map; the
+// floor stays large enough to remain a comfortable click target.
+const PIN_ZOOM_TUNING = {
+  damping: 0.5,
+  min: 0.35,
+  max: 1.15,
+}
 
 function roadDashArray(pattern: unknown): string | undefined {
   if (pattern === 'dashed') return '8 6'
@@ -488,7 +498,7 @@ function renderRoads() {
 
     // Authoring width is unchanged (still whatever's persisted/being
     // edited) -- only the on-screen weight is zoom-scaled.
-    const displayWeight = scaledSize(roadStyle.width, currentZoom, ROAD_WEIGHT_DISPLAY_MIN, ROAD_WEIGHT_DISPLAY_MAX)
+    const displayWeight = scaledSize(roadStyle.width, currentZoom, ROAD_ZOOM_TUNING.damping, ROAD_ZOOM_TUNING.min, ROAD_ZOOM_TUNING.max)
 
     // Selection is indicated with a translucent halo drawn underneath the
     // real line, rather than by overriding color/weight/opacity/dashArray
@@ -583,7 +593,7 @@ function renderPins() {
 
   // Authoring size stays the base 20x28 icon -- only the on-screen scale
   // multiplier is zoom-driven, same scaledSize() helper roads use.
-  const pinScale = scaledSize(1, map.getZoom(), PIN_SCALE_DISPLAY_MIN, PIN_SCALE_DISPLAY_MAX)
+  const pinScale = scaledSize(1, map.getZoom(), PIN_ZOOM_TUNING.damping, PIN_ZOOM_TUNING.min, PIN_ZOOM_TUNING.max)
   const width = 20 * pinScale
   const height = 28 * pinScale
 

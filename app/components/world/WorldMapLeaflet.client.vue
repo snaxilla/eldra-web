@@ -47,31 +47,22 @@ const ROAD_STYLE_DEFAULTS = {
   dashPattern: 'solid' as 'solid' | 'dashed' | 'dotted',
 }
 
-// Road visual-prominence policy. This intentionally does NOT use
-// scaledSize()/zoomScaleFactor() -- those preserve a floor of visual
-// presence at every zoom level by design, which is exactly the wrong
-// optimization for a supporting-information object type. Roads are not
-// "a thing that must stay visible"; they're "a thing that must not
-// compete with terrain, coastlines, and Pins" once the view is wide
-// enough to be about the world rather than a specific place.
-//
-// Policy, expressed directly in the three tiers the design calls for:
-//   - Editing scale  (zoom fraction >= EDITING_FRACTION): authored
-//     fidelity, no attenuation at all.
-//   - Regional scale (between REGIONAL_FRACTION and EDITING_FRACTION):
-//     eased down to a "supporting context" level.
-//   - Continent scale (zoom fraction -> 0): eased further down to
-//     near-invisible. Not literally zero -- a Road is still technically
-//     present -- but visually subordinate to everything else on the map.
+// Road visibility policy. Continuous attenuation (tried in earlier
+// commits) still reads as "a road that's always there, just faint" --
+// which still competes with terrain at world scale simply by being
+// continuously present. Roads are now gated instead: a genuine local
+// editing layer that is not rendered at all below a threshold, fades in
+// over a short window, and is fully authored by normal editing scale.
+// Pins deliberately do NOT use this -- they keep the always-visible
+// point policy (PIN_ZOOM_TUNING below) since a navigation marker must
+// stay findable regardless of zoom, which is the opposite goal.
 //
 // Zoom fraction is computed against the CURRENT map's actual min/max
 // zoom (not a fixed absolute zoom number), so this behaves consistently
 // whether the underlying map is a small raster image or a large tiled
 // one with a completely different zoom range.
-const ROAD_EDITING_FRACTION = 0.6
-const ROAD_REGIONAL_FRACTION = 0.28
-const ROAD_REGIONAL_VISUAL_LEVEL = 0.4
-const ROAD_CONTINENT_VISUAL_LEVEL = 0.04
+const ROAD_VISIBILITY_HIDDEN_FRACTION = 0.32
+const ROAD_VISIBILITY_FULL_FRACTION = 0.5
 
 function roadZoomFraction(zoom: number) {
   if (!map) return 1
@@ -84,27 +75,36 @@ function roadZoomFraction(zoom: number) {
   return Math.max(0, Math.min(1, (zoom - minZoom) / (maxZoom - minZoom)))
 }
 
+function smoothstep(t: number) {
+  const clamped = Math.max(0, Math.min(1, t))
+  return clamped * clamped * (3 - 2 * clamped)
+}
+
 // Returns a 0..1 multiplier applied to BOTH authored width and authored
 // opacity together -- one prominence value, not two independently-tuned
-// channels, so a Road fades and thins as a single coordinated effect.
-function roadVisualProminence(zoom: number) {
+// channels, so a Road fades in as a single coordinated effect rather
+// than, say, becoming full-width before it's fully opaque.
+//
+// `forceVisible` is for a Road currently being drawn or edited -- a road
+// someone is actively working on must stay visible regardless of
+// whatever zoom level they happen to be at; the gate is about ambient
+// rendering of roads at rest, not about hiding the thing being edited.
+function roadVisualProminence(zoom: number, forceVisible: boolean) {
+  if (forceVisible) return 1
+
   const fraction = roadZoomFraction(zoom)
 
-  if (fraction >= ROAD_EDITING_FRACTION) return 1
+  if (fraction <= ROAD_VISIBILITY_HIDDEN_FRACTION) return 0
+  if (fraction >= ROAD_VISIBILITY_FULL_FRACTION) return 1
 
-  if (fraction >= ROAD_REGIONAL_FRACTION) {
-    const t = (fraction - ROAD_REGIONAL_FRACTION) / (ROAD_EDITING_FRACTION - ROAD_REGIONAL_FRACTION)
-    return ROAD_REGIONAL_VISUAL_LEVEL + (1 - ROAD_REGIONAL_VISUAL_LEVEL) * Math.pow(t, 1.5)
-  }
-
-  const t = fraction / ROAD_REGIONAL_FRACTION
-  return ROAD_CONTINENT_VISUAL_LEVEL + (ROAD_REGIONAL_VISUAL_LEVEL - ROAD_CONTINENT_VISUAL_LEVEL) * Math.pow(t, 2)
+  const t = (fraction - ROAD_VISIBILITY_HIDDEN_FRACTION) / (ROAD_VISIBILITY_FULL_FRACTION - ROAD_VISIBILITY_HIDDEN_FRACTION)
+  return smoothstep(t)
 }
 
 // Absolute rendering floors -- not a "stay visible" policy, just what
-// keeps a browser from rasterizing a degenerate/glitchy line. Reached
-// only once roadVisualProminence has already pushed the Road to near
-// nothing at true continent scale.
+// keeps a browser from rasterizing a degenerate/glitchy line while a
+// Road is fading in/out. Never reached at prominence 0 -- that case
+// skips rendering the Road entirely (see renderRoads()).
 const ROAD_DISPLAY_WEIGHT_FLOOR = 0.4
 const ROAD_DISPLAY_OPACITY_FLOOR = 0.02
 
@@ -552,7 +552,15 @@ function renderRoads() {
     // persisted/being edited). Display values apply a single prominence
     // multiplier to both together -- at editing scale it's 1 (exactly
     // authored); it only ever reduces from there as the view widens.
-    const prominence = roadVisualProminence(currentZoom)
+    // A Road actively being drawn or edited stays visible regardless of
+    // zoom (forceVisible) -- the gate only governs roads at rest.
+    const prominence = roadVisualProminence(currentZoom, isDraft || isSelected)
+
+    // Below the visibility threshold, a Road is not rendered at all --
+    // not drawn faint, not interactive, genuinely absent -- matching
+    // "Roads are not rendered" at continent scale.
+    if (prominence <= 0) continue
+
     const displayWeight = Math.max(ROAD_DISPLAY_WEIGHT_FLOOR, roadStyle.width * prominence)
     const displayOpacity = Math.max(ROAD_DISPLAY_OPACITY_FLOOR, roadStyle.opacity * prominence)
 

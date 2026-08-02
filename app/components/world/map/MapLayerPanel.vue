@@ -42,7 +42,7 @@ function onLayerToggle(layerId: string, event: Event) {
   >
     <div
       v-if="open"
-      class="eldra-ornate-panel eldra-frame-corners absolute bottom-24 left-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+      class="eldra-ornate-panel eldra-frame-corners absolute left-4 top-32 z-30 w-80 rounded-none border p-5 backdrop-blur"
     >
       <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
         Map Layers

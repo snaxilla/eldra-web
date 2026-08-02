@@ -152,6 +152,12 @@ function roadStyleFor(roadObject: LayerObject) {
   return resolveRoadStyle(roadObject?.style)
 }
 
+// Transportation Network: how close (in screen pixels, not map units) a
+// click needs to land to a Pin for a Road endpoint to snap to it. Pixel-
+// based rather than map-unit-based so the snap target stays the same
+// physical size on screen regardless of zoom level.
+const ROAD_SNAP_PIXEL_RADIUS = 20
+
 const props = defineProps<{
   mapImageUrl: string
   tileEnabled?: boolean
@@ -178,8 +184,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select-pin', id: string): void
   (e: 'select-road', id: string): void
-  (e: 'map-click', coords: { x: number; y: number }): void
-  (e: 'map-double-click', coords: { x: number; y: number }): void
+  (e: 'map-click', coords: { x: number; y: number; nodeRef?: string | null }): void
+  (e: 'map-double-click', coords: { x: number; y: number; nodeRef?: string | null }): void
 }>()
 
 const rootEl = ref<HTMLDivElement | null>(null)
@@ -193,6 +199,7 @@ let overlayLayer: any = null
 let roadLayer: any = null
 let roadRubberBandLine: any = null
 let roadDraftLastVertex: any = null
+let roadSnapHighlightMarker: any = null
 let currentBounds: any = null
 
 const inputLayers = computed(() => {
@@ -279,6 +286,46 @@ const resolvedRoads = computed(() => {
     return object?.visible !== false && String(object?.objectType || '').trim().toLowerCase() === 'road'
   })
 })
+
+// Resolves a Pin's current position for a Transportation Network node
+// reference. Reads from resolvedPins (the same live Scene Graph pin data
+// the renderer already draws Pins from), never from anything cached at
+// Road-authoring time -- this is what makes a connected Road endpoint move
+// automatically when its Pin moves.
+function resolvePinPosition(pinId: string): { x: number; y: number } | null {
+  const pin = (resolvedPins.value || []).find((candidate) => String(candidate.id) === String(pinId))
+  if (!pin) return null
+  return { x: Number(pin.x), y: Number(pin.y) }
+}
+
+function pinToLatLng(pin: Pin) {
+  const scale = mapCoordinateScale()
+  const lat = usingTiles() ? -(pin.y / scale) : pin.y
+  const lng = usingTiles() ? pin.x / scale : pin.x
+  return L.latLng(lat, lng)
+}
+
+// Finds the closest Pin within snapping distance of a click/hover point,
+// in screen pixels. Used both to decide whether a Road endpoint snaps on
+// click, and to drive the hover highlight that makes snapping visually
+// obvious before the user commits to a click.
+function findNearbyPinForSnap(latlng: any): Pin | null {
+  if (!L || !map) return null
+
+  const targetPoint = map.latLngToContainerPoint(latlng)
+  let closest: { pin: Pin; distance: number } | null = null
+
+  for (const pin of resolvedPins.value || []) {
+    const pinPoint = map.latLngToContainerPoint(pinToLatLng(pin))
+    const distance = targetPoint.distanceTo(pinPoint)
+
+    if (distance <= ROAD_SNAP_PIXEL_RADIUS && (!closest || distance < closest.distance)) {
+      closest = { pin, distance }
+    }
+  }
+
+  return closest?.pin || null
+}
 
 function getIconSvg(icon?: string | null) {
   switch (icon) {
@@ -433,10 +480,14 @@ async function ensureMap() {
     if (!props.buildMode) return
     const { lat, lng } = e.latlng
     const scale = mapCoordinateScale()
-    emit('map-click', {
-      x: usingTiles() ? lng * scale : lng,
-      y: usingTiles() ? -lat * scale : lat
-    })
+    const snapPin = props.roadMode ? findNearbyPinForSnap(e.latlng) : null
+
+    emit('map-click', snapPin
+      ? { x: Number(snapPin.x), y: Number(snapPin.y), nodeRef: String(snapPin.id) }
+      : {
+          x: usingTiles() ? lng * scale : lng,
+          y: usingTiles() ? -lat * scale : lat
+        })
   })
 
   map.on('dblclick', (e: any) => {
@@ -445,15 +496,19 @@ async function ensureMap() {
     e.originalEvent?.preventDefault?.()
     const { lat, lng } = e.latlng
     const scale = mapCoordinateScale()
+    const snapPin = findNearbyPinForSnap(e.latlng)
 
-    emit('map-double-click', {
-      x: usingTiles() ? lng * scale : lng,
-      y: usingTiles() ? -lat * scale : lat
-    })
+    emit('map-double-click', snapPin
+      ? { x: Number(snapPin.x), y: Number(snapPin.y), nodeRef: String(snapPin.id) }
+      : {
+          x: usingTiles() ? lng * scale : lng,
+          y: usingTiles() ? -lat * scale : lat
+        })
   })
 
   map.on('mousemove', (e: any) => {
     updateRoadRubberBand(e.latlng)
+    updateRoadSnapHighlight(e.latlng)
   })
 
   // Re-derive on-screen size for zoom-scaled objects (roads, pins) when
@@ -484,6 +539,7 @@ function clearMap() {
     roadLayer = null
     roadRubberBandLine = null
     roadDraftLastVertex = null
+    roadSnapHighlightMarker = null
   }
 
   if (tileLayer && map) {
@@ -501,10 +557,12 @@ function renderRoads() {
     roadLayer.clearLayers()
   }
 
-  // clearLayers() above already removed the rubber-band line from the map;
-  // drop the stale reference so updateRoadRubberBand() recreates it.
+  // clearLayers() above already removed the rubber-band line and snap
+  // highlight from the map; drop the stale references so
+  // updateRoadRubberBand()/updateRoadSnapHighlight() recreate them.
   roadRubberBandLine = null
   roadDraftLastVertex = null
+  roadSnapHighlightMarker = null
 
   const currentZoom = map.getZoom()
 
@@ -515,6 +573,21 @@ function renderRoads() {
 
     const latLngs = coordinates
       .map((coordinate: any) => {
+        // Transportation Network endpoint: resolve to the referenced
+        // Pin's live position instead of stored x/y (there is none stored
+        // for a nodeRef coordinate -- see roadVerticesToPersistedCoordinates
+        // in index.vue). If the Pin no longer exists, this vertex is
+        // dropped rather than rendering a broken/degenerate Road.
+        if (coordinate?.nodeRef) {
+          const resolved = resolvePinPosition(coordinate.nodeRef)
+          if (!resolved) return null
+
+          const scale = mapCoordinateScale()
+          const lat = usingTiles() ? -(resolved.y / scale) : resolved.y
+          const lng = usingTiles() ? resolved.x / scale : resolved.x
+          return L.latLng(lat, lng)
+        }
+
         const x = Number(coordinate?.x)
         const y = Number(coordinate?.y)
         if (!Number.isFinite(x) || !Number.isFinite(y)) return null
@@ -631,6 +704,49 @@ function updateRoadRubberBand(latlng: any) {
       weight: 2,
       opacity: 0.6,
       dashArray: '4 6',
+      interactive: false,
+    }).addTo(roadLayer)
+  }
+}
+
+// Transportation Network snapping feedback: while drawing a Road, highlight
+// whichever Pin the cursor is currently close enough to snap to, so
+// snapping is visually obvious before the user commits with a click.
+// Active for the whole time a Road is being drawn (not just at the two
+// endpoints) since findNearbyPinForSnap is cheap and index.vue is what
+// decides which clicks actually apply the nodeRef.
+function updateRoadSnapHighlight(latlng: any) {
+  if (!L || !map || !roadLayer) return
+
+  if (!props.roadMode) {
+    if (roadSnapHighlightMarker) {
+      roadLayer.removeLayer(roadSnapHighlightMarker)
+      roadSnapHighlightMarker = null
+    }
+    return
+  }
+
+  const snapPin = findNearbyPinForSnap(latlng)
+
+  if (!snapPin) {
+    if (roadSnapHighlightMarker) {
+      roadLayer.removeLayer(roadSnapHighlightMarker)
+      roadSnapHighlightMarker = null
+    }
+    return
+  }
+
+  const point = pinToLatLng(snapPin)
+
+  if (roadSnapHighlightMarker) {
+    roadSnapHighlightMarker.setLatLng(point)
+  } else {
+    roadSnapHighlightMarker = L.circleMarker(point, {
+      radius: 14,
+      color: '#7dd3fc',
+      weight: 2,
+      fillColor: '#7dd3fc',
+      fillOpacity: 0.15,
       interactive: false,
     }).addTo(roadLayer)
   }
@@ -816,6 +932,12 @@ watch(
   () => resolvedPins.value,
   () => {
     renderPins()
+    // A Pin moving must move every Road endpoint referencing it as a
+    // Transportation Node (see resolvePinPosition in renderRoads) --
+    // Roads are re-rendered on every Pin change, not just Pin-specific
+    // ones, since there's no cheap way to know in advance whether a given
+    // Pin is referenced by any Road.
+    renderRoads()
   },
   { deep: true }
 )
@@ -890,6 +1012,11 @@ watch(
     if (roadRubberBandLine && roadLayer) {
       roadLayer.removeLayer(roadRubberBandLine)
       roadRubberBandLine = null
+    }
+
+    if (roadSnapHighlightMarker && roadLayer) {
+      roadLayer.removeLayer(roadSnapHighlightMarker)
+      roadSnapHighlightMarker = null
     }
   }
 )

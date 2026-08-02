@@ -15,15 +15,17 @@ type Pin = {
 
 // Canonical renderer-wide zoom scaling. A renderer concern only -- never
 // touches persisted/authoring size, never touches the Scene Graph. Given
-// an authoring-time size (line width, marker scale, ...) and the current
-// Leaflet zoom, returns the on-screen size to actually draw at, so line
-// and point objects scale smoothly and consistently instead of staying a
-// fixed pixel size regardless of zoom. This is the one model every
-// visual primitive type uses -- `damping`/`min`/`max` are per-call tuning
-// (see ROAD_ZOOM_TUNING / PIN_ZOOM_TUNING below), not a reason to fork
-// the formula. Any future line/point object type (rivers, borders,
-// walls, region outlines, tokens) should reuse this with its own tuning
-// rather than deriving its own zoom math.
+// an authoring-time size (marker scale, ...) and the current Leaflet
+// zoom, returns the on-screen size to actually draw at, so a point
+// object scales smoothly instead of staying a fixed pixel size
+// regardless of zoom. Used by Pins (PIN_ZOOM_TUNING below). Roads use a
+// different, dedicated policy (see roadVisualProminence further down) --
+// scaledSize()'s floor-based model preserves a minimum of visual
+// presence at every zoom level by design, which is correct for a
+// point/navigation object but wrong for a supporting-information line
+// object that should be allowed to fade almost away. A future line-based
+// object type should evaluate which of the two policies actually
+// matches its intent rather than assuming scaledSize() is always right.
 const ZOOM_SCALE_REFERENCE = 0
 
 function zoomScaleFactor(zoom: number, damping: number) {
@@ -45,29 +47,66 @@ const ROAD_STYLE_DEFAULTS = {
   dashPattern: 'solid' as 'solid' | 'dashed' | 'dotted',
 }
 
-// Roads shrink aggressively zoomed out (continent-scale views should
-// read as infrastructure, not highways) down to a thin-but-never-zero
-// floor, and stay at their authored width at normal editing zoom
-// (scaledSize == authoringSize exactly at zoom == ZOOM_SCALE_REFERENCE,
-// regardless of damping).
-const ROAD_ZOOM_TUNING = {
-  damping: 0.55,
-  min: 0.75,
-  max: 16,
+// Road visual-prominence policy. This intentionally does NOT use
+// scaledSize()/zoomScaleFactor() -- those preserve a floor of visual
+// presence at every zoom level by design, which is exactly the wrong
+// optimization for a supporting-information object type. Roads are not
+// "a thing that must stay visible"; they're "a thing that must not
+// compete with terrain, coastlines, and Pins" once the view is wide
+// enough to be about the world rather than a specific place.
+//
+// Policy, expressed directly in the three tiers the design calls for:
+//   - Editing scale  (zoom fraction >= EDITING_FRACTION): authored
+//     fidelity, no attenuation at all.
+//   - Regional scale (between REGIONAL_FRACTION and EDITING_FRACTION):
+//     eased down to a "supporting context" level.
+//   - Continent scale (zoom fraction -> 0): eased further down to
+//     near-invisible. Not literally zero -- a Road is still technically
+//     present -- but visually subordinate to everything else on the map.
+//
+// Zoom fraction is computed against the CURRENT map's actual min/max
+// zoom (not a fixed absolute zoom number), so this behaves consistently
+// whether the underlying map is a small raster image or a large tiled
+// one with a completely different zoom range.
+const ROAD_EDITING_FRACTION = 0.6
+const ROAD_REGIONAL_FRACTION = 0.28
+const ROAD_REGIONAL_VISUAL_LEVEL = 0.4
+const ROAD_CONTINENT_VISUAL_LEVEL = 0.04
+
+function roadZoomFraction(zoom: number) {
+  if (!map) return 1
+
+  const minZoom = map.getMinZoom()
+  const maxZoom = map.getMaxZoom()
+
+  if (!Number.isFinite(minZoom) || !Number.isFinite(maxZoom) || maxZoom <= minZoom) return 1
+
+  return Math.max(0, Math.min(1, (zoom - minZoom) / (maxZoom - minZoom)))
 }
 
-// Line *visibility* scaling, not just width: GIS-style road rendering
-// fades minor roads as much as it thins them, so at continent scale a
-// road reads as subtle infrastructure rather than a bold highway that
-// competes with terrain and Pins. Shares ROAD_ZOOM_TUNING.damping with
-// width so both channels fade/thin in lockstep (one coordinated effect,
-// not two independently-drifting ones). No `max` here -- opacity is
-// capped per-call at the road's own authored opacity, never boosted
-// above it, so editing-scale rendering stays exactly what was authored.
-const ROAD_OPACITY_ZOOM_TUNING = {
-  damping: ROAD_ZOOM_TUNING.damping,
-  min: 0.15,
+// Returns a 0..1 multiplier applied to BOTH authored width and authored
+// opacity together -- one prominence value, not two independently-tuned
+// channels, so a Road fades and thins as a single coordinated effect.
+function roadVisualProminence(zoom: number) {
+  const fraction = roadZoomFraction(zoom)
+
+  if (fraction >= ROAD_EDITING_FRACTION) return 1
+
+  if (fraction >= ROAD_REGIONAL_FRACTION) {
+    const t = (fraction - ROAD_REGIONAL_FRACTION) / (ROAD_EDITING_FRACTION - ROAD_REGIONAL_FRACTION)
+    return ROAD_REGIONAL_VISUAL_LEVEL + (1 - ROAD_REGIONAL_VISUAL_LEVEL) * Math.pow(t, 1.5)
+  }
+
+  const t = fraction / ROAD_REGIONAL_FRACTION
+  return ROAD_CONTINENT_VISUAL_LEVEL + (ROAD_REGIONAL_VISUAL_LEVEL - ROAD_CONTINENT_VISUAL_LEVEL) * Math.pow(t, 2)
 }
+
+// Absolute rendering floors -- not a "stay visible" policy, just what
+// keeps a browser from rasterizing a degenerate/glitchy line. Reached
+// only once roadVisualProminence has already pushed the Road to near
+// nothing at true continent scale.
+const ROAD_DISPLAY_WEIGHT_FLOOR = 0.4
+const ROAD_DISPLAY_OPACITY_FLOOR = 0.02
 
 // Pins scale conservatively -- a tighter zoomed-in ceiling than Roads so
 // they stay stable navigation markers rather than growing into visual
@@ -510,19 +549,12 @@ function renderRoads() {
       : roadStyleFor(roadObject)
 
     // Authoring width/opacity are unchanged (still whatever's
-    // persisted/being edited) -- only the on-screen weight and opacity
-    // are zoom-scaled, and only ever downward from what was authored:
-    // opacity's own max is the authored value itself, so at or above the
-    // reference zoom a Road always looks exactly as authored, never
-    // fainter or bolder than intended.
-    const displayWeight = scaledSize(roadStyle.width, currentZoom, ROAD_ZOOM_TUNING.damping, ROAD_ZOOM_TUNING.min, ROAD_ZOOM_TUNING.max)
-    const displayOpacity = scaledSize(
-      roadStyle.opacity,
-      currentZoom,
-      ROAD_OPACITY_ZOOM_TUNING.damping,
-      Math.min(ROAD_OPACITY_ZOOM_TUNING.min, roadStyle.opacity),
-      roadStyle.opacity
-    )
+    // persisted/being edited). Display values apply a single prominence
+    // multiplier to both together -- at editing scale it's 1 (exactly
+    // authored); it only ever reduces from there as the view widens.
+    const prominence = roadVisualProminence(currentZoom)
+    const displayWeight = Math.max(ROAD_DISPLAY_WEIGHT_FLOOR, roadStyle.width * prominence)
+    const displayOpacity = Math.max(ROAD_DISPLAY_OPACITY_FLOOR, roadStyle.opacity * prominence)
 
     // Selection is indicated with a translucent halo drawn underneath the
     // real line, rather than by overriding color/weight/opacity/dashArray

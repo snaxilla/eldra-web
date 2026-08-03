@@ -20,11 +20,17 @@ const selectedMapSlug = computed(() => String(route.query.map || ''))
 
 type BuildTool = 'select' | 'pin' | 'image-overlay' | 'road'
 
-// nodeRef is only ever set on the first or last vertex of a Road -- a
-// Transportation Node (Pin) connection is an endpoint concept, not
-// something an interior vertex can have. See buildRoadObjectFromVertices
-// for where that rule is enforced at persistence time.
-type RoadVertex = { x: number; y: number; nodeRef?: string | null }
+// nodeRef/junctionRef are only ever set on the first or last vertex of a
+// Road -- Transportation Node (Pin) and Transportation Junction
+// (Road-to-Road) connections are both endpoint concepts, not something an
+// interior vertex can have. See buildRoadObjectFromVertices for where that
+// rule is enforced at persistence time. A vertex should never carry both
+// -- an endpoint snaps to exactly one target -- but the type doesn't
+// bother encoding that as a union since the two fields are set from a
+// single resolved snap target upstream (WorldMapLeaflet's
+// snapTargetToCoords) that only ever produces one or the other.
+type RoadJunctionRef = { roadId: string; endpoint: 'start' | 'end' }
+type RoadVertex = { x: number; y: number; nodeRef?: string | null; junctionRef?: RoadJunctionRef | null }
 
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 const activeBuildTool = useState<BuildTool>('world-map-active-build-tool', () => 'select')
@@ -439,18 +445,25 @@ function roadVerticesToCoordinates(vertices: RoadVertex[]) {
 // Transportation Network endpoint representation (see
 // .github/docs/architecture/scene-graph.md and CLAUDE.md's Transportation
 // Network section once written up): a Road endpoint that was snapped to a
-// Pin persists as a bare Pin reference -- { nodeRef } -- instead of raw
-// coordinates, so moving the Pin later moves the Road endpoint for free
-// (resolved live at render time, see WorldMapLeaflet's resolvePinPosition).
-// Only the first and last coordinate are eligible; interior vertices are
-// always plain coordinates, matching "Road endpoints may optionally
-// connect" -- connectivity is an endpoint concept, not a path concept.
+// Pin persists as a bare Pin reference -- { nodeRef } -- and one snapped
+// to another Road's endpoint (a Transportation Junction) persists as
+// { junctionRef: { roadId, endpoint } } -- neither stores raw coordinates,
+// so moving the Pin, or resolving through the chain of Roads a junction
+// points at, happens live at render time (see WorldMapLeaflet's
+// resolveRoadCoordinateXY). Only the first and last coordinate are
+// eligible; interior vertices are always plain coordinates, matching
+// "Road endpoints may optionally connect" -- connectivity is an endpoint
+// concept, not a path concept.
 function roadVerticesToPersistedCoordinates(vertices: RoadVertex[]) {
   return vertices.map((vertex, index) => {
     const isEndpoint = index === 0 || index === vertices.length - 1
 
     if (isEndpoint && vertex.nodeRef) {
       return { nodeRef: vertex.nodeRef }
+    }
+
+    if (isEndpoint && vertex.junctionRef) {
+      return { junctionRef: vertex.junctionRef }
     }
 
     return { x: Number(vertex.x), y: Number(vertex.y) }
@@ -924,21 +937,22 @@ function setActiveBuildTool(tool: BuildTool) {
   }
 }
 
-function onRoadMapClick(coords: { x: number; y: number; nodeRef?: string | null }) {
+function onRoadMapClick(coords: { x: number; y: number; nodeRef?: string | null; junctionRef?: RoadJunctionRef | null }) {
   roadSaveError.value = ''
 
   // Only the Road's start (the very first vertex placed) is an endpoint --
   // every subsequent single click adds an interior vertex, which can never
-  // carry a Transportation Node connection even if the click happened to
-  // land near a Pin.
+  // carry a Transportation Node/Junction connection even if the click
+  // happened to land near a Pin or another Road's endpoint.
   const isFirstVertex = roadDraftVertices.value.length === 0
   const vertex: RoadVertex = { x: Number(coords.x), y: Number(coords.y) }
   if (isFirstVertex && coords.nodeRef) vertex.nodeRef = coords.nodeRef
+  if (isFirstVertex && coords.junctionRef) vertex.junctionRef = coords.junctionRef
 
   roadDraftVertices.value = [...roadDraftVertices.value, vertex]
 }
 
-async function onRoadMapDoubleClick(coords: { x: number; y: number; nodeRef?: string | null }) {
+async function onRoadMapDoubleClick(coords: { x: number; y: number; nodeRef?: string | null; junctionRef?: RoadJunctionRef | null }) {
   const lastVertex = roadDraftVertices.value[roadDraftVertices.value.length - 1]
   const nextX = Number(coords.x)
   const nextY = Number(coords.y)
@@ -948,6 +962,7 @@ async function onRoadMapDoubleClick(coords: { x: number; y: number; nodeRef?: st
     // endpoint.
     const vertex: RoadVertex = { x: nextX, y: nextY }
     if (coords.nodeRef) vertex.nodeRef = coords.nodeRef
+    if (coords.junctionRef) vertex.junctionRef = coords.junctionRef
     roadDraftVertices.value = [...roadDraftVertices.value, vertex]
   }
 
@@ -1078,7 +1093,7 @@ function openNewPinEditor(coords: { x: number; y: number }) {
   selectedPinId.value = null
 }
 
-function onMapClick(coords: { x: number; y: number; nodeRef?: string | null }) {
+function onMapClick(coords: { x: number; y: number; nodeRef?: string | null; junctionRef?: RoadJunctionRef | null }) {
   if (mode.value !== 'build') return
 
   if (activeBuildTool.value === 'pin') {
@@ -1102,7 +1117,7 @@ function onMapClick(coords: { x: number; y: number; nodeRef?: string | null }) {
   }
 }
 
-function onMapDoubleClick(coords: { x: number; y: number; nodeRef?: string | null }) {
+function onMapDoubleClick(coords: { x: number; y: number; nodeRef?: string | null; junctionRef?: RoadJunctionRef | null }) {
   if (mode.value !== 'build' || activeBuildTool.value !== 'road') return
   void onRoadMapDoubleClick(coords)
 }

@@ -153,10 +153,23 @@ function roadStyleFor(roadObject: LayerObject) {
 }
 
 // Transportation Network: how close (in screen pixels, not map units) a
-// click needs to land to a Pin for a Road endpoint to snap to it. Pixel-
-// based rather than map-unit-based so the snap target stays the same
-// physical size on screen regardless of zoom level.
+// click needs to land to a snap target (Pin or another Road's endpoint)
+// for a Road endpoint to connect to it. Pixel-based rather than
+// map-unit-based so the snap target stays the same physical size on
+// screen regardless of zoom level.
 const ROAD_SNAP_PIXEL_RADIUS = 20
+
+// A Road endpoint reference -- what a Road's first/last coordinate can be
+// instead of raw { x, y }. Transportation Junctions (endpoint) is the
+// Phase 2 generalization of endpoint snapping (Phase 1 only supported
+// Pins/Transportation Nodes): a Road endpoint may now also reference
+// another Road's endpoint directly, forming Road-to-Road connectivity
+// with no intersection/splitting logic -- see resolveRoadCoordinateXY.
+type RoadJunctionRef = { roadId: string; endpoint: 'start' | 'end' }
+
+type RoadSnapTarget =
+  | { kind: 'pin'; pin: Pin }
+  | { kind: 'road-endpoint'; roadId: string; endpoint: 'start' | 'end'; x: number; y: number }
 
 const props = defineProps<{
   mapImageUrl: string
@@ -184,8 +197,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select-pin', id: string): void
   (e: 'select-road', id: string): void
-  (e: 'map-click', coords: { x: number; y: number; nodeRef?: string | null }): void
-  (e: 'map-double-click', coords: { x: number; y: number; nodeRef?: string | null }): void
+  (e: 'map-click', coords: { x: number; y: number; nodeRef?: string | null; junctionRef?: RoadJunctionRef | null }): void
+  (e: 'map-double-click', coords: { x: number; y: number; nodeRef?: string | null; junctionRef?: RoadJunctionRef | null }): void
 }>()
 
 const rootEl = ref<HTMLDivElement | null>(null)
@@ -305,26 +318,121 @@ function pinToLatLng(pin: Pin) {
   return L.latLng(lat, lng)
 }
 
-// Finds the closest Pin within snapping distance of a click/hover point,
-// in screen pixels. Used both to decide whether a Road endpoint snaps on
-// click, and to drive the hover highlight that makes snapping visually
-// obvious before the user commits to a click.
-function findNearbyPinForSnap(latlng: any): Pin | null {
+// Resolves any Road coordinate entry -- plain { x, y }, a Transportation
+// Node reference ({ nodeRef }), or a Transportation Junction reference
+// ({ junctionRef }) -- down to a concrete position, always by reading live
+// data (resolvedPins / resolvedRoads), never a cached copy. A junctionRef
+// resolves by looking up the referenced Road's own start/end coordinate
+// and resolving THAT (recursively -- it may itself be a nodeRef, a plain
+// coordinate, or another junctionRef one hop further down the chain).
+// `visited` guards against a cycle (A's endpoint junctioned to B's
+// endpoint junctioned back to A) by tracking which road+endpoint pairs
+// have already been walked; a cycle resolves to null (dropped, same as a
+// deleted Pin/Road target) rather than infinitely recursing.
+function resolveRoadCoordinateXY(coordinate: any, visited: Set<string> = new Set()): { x: number; y: number } | null {
+  if (!coordinate) return null
+
+  if (coordinate.nodeRef) {
+    return resolvePinPosition(coordinate.nodeRef)
+  }
+
+  if (coordinate.junctionRef) {
+    const roadId = String(coordinate.junctionRef.roadId || '')
+    const endpoint = coordinate.junctionRef.endpoint === 'start' ? 'start' : 'end'
+    const key = `${roadId}:${endpoint}`
+
+    if (!roadId || visited.has(key)) return null
+    visited.add(key)
+
+    const targetRoad = (resolvedRoads.value || []).find((candidate) => String(candidate.objectId) === roadId)
+    if (!targetRoad) return null
+
+    const targetCoordinates = Array.isArray(targetRoad.geometry?.coordinates) ? targetRoad.geometry.coordinates : []
+    if (targetCoordinates.length < 2) return null
+
+    const targetCoordinate = endpoint === 'start' ? targetCoordinates[0] : targetCoordinates[targetCoordinates.length - 1]
+    return resolveRoadCoordinateXY(targetCoordinate, visited)
+  }
+
+  const x = Number(coordinate.x)
+  const y = Number(coordinate.y)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+
+  return { x, y }
+}
+
+function mapPointFor(position: { x: number; y: number }) {
+  const scale = mapCoordinateScale()
+  const lat = usingTiles() ? -(position.y / scale) : position.y
+  const lng = usingTiles() ? position.x / scale : position.x
+  return L.latLng(lat, lng)
+}
+
+// Finds the closest snap target -- a Pin (Transportation Node) or another
+// Road's endpoint (Transportation Junction) -- within snapping distance of
+// a click/hover point, in screen pixels. Used both to decide whether a
+// Road endpoint snaps on click, and to drive the hover highlight that
+// makes snapping visually obvious before the user commits to a click.
+// Draft (in-progress) Roads are never snap targets -- an unfinished Road
+// has no stable id to reference yet.
+function findNearbySnapTarget(latlng: any): RoadSnapTarget | null {
   if (!L || !map) return null
 
   const targetPoint = map.latLngToContainerPoint(latlng)
-  let closest: { pin: Pin; distance: number } | null = null
+  let closest: { distance: number; target: RoadSnapTarget } | null = null
 
   for (const pin of resolvedPins.value || []) {
-    const pinPoint = map.latLngToContainerPoint(pinToLatLng(pin))
-    const distance = targetPoint.distanceTo(pinPoint)
+    const distance = targetPoint.distanceTo(map.latLngToContainerPoint(pinToLatLng(pin)))
 
     if (distance <= ROAD_SNAP_PIXEL_RADIUS && (!closest || distance < closest.distance)) {
-      closest = { pin, distance }
+      closest = { distance, target: { kind: 'pin', pin } }
     }
   }
 
-  return closest?.pin || null
+  for (const road of resolvedRoads.value || []) {
+    if (road?.properties?.isDraft === true) continue
+
+    const coordinates = Array.isArray(road.geometry?.coordinates) ? road.geometry.coordinates : []
+    if (coordinates.length < 2) continue
+
+    const endpoints: Array<['start' | 'end', any]> = [
+      ['start', coordinates[0]],
+      ['end', coordinates[coordinates.length - 1]],
+    ]
+
+    for (const [endpoint, coordinate] of endpoints) {
+      const resolved = resolveRoadCoordinateXY(coordinate)
+      if (!resolved) continue
+
+      const distance = targetPoint.distanceTo(map.latLngToContainerPoint(mapPointFor(resolved)))
+
+      if (distance <= ROAD_SNAP_PIXEL_RADIUS && (!closest || distance < closest.distance)) {
+        closest = {
+          distance,
+          target: { kind: 'road-endpoint', roadId: String(road.objectId || ''), endpoint, x: resolved.x, y: resolved.y },
+        }
+      }
+    }
+  }
+
+  return closest?.target || null
+}
+
+// Converts a resolved snap target into the map-click/map-double-click
+// event payload -- Road position/id for a road-endpoint target so a
+// Transportation Junction can be attached, Pin position/id for a pin
+// target so a Transportation Node can be attached (Phase 1 behavior,
+// unchanged).
+function snapTargetToCoords(target: RoadSnapTarget) {
+  if (target.kind === 'pin') {
+    return { x: Number(target.pin.x), y: Number(target.pin.y), nodeRef: String(target.pin.id) }
+  }
+
+  return {
+    x: target.x,
+    y: target.y,
+    junctionRef: { roadId: target.roadId, endpoint: target.endpoint },
+  }
 }
 
 function getIconSvg(icon?: string | null) {
@@ -480,10 +588,10 @@ async function ensureMap() {
     if (!props.buildMode) return
     const { lat, lng } = e.latlng
     const scale = mapCoordinateScale()
-    const snapPin = props.roadMode ? findNearbyPinForSnap(e.latlng) : null
+    const snapTarget = props.roadMode ? findNearbySnapTarget(e.latlng) : null
 
-    emit('map-click', snapPin
-      ? { x: Number(snapPin.x), y: Number(snapPin.y), nodeRef: String(snapPin.id) }
+    emit('map-click', snapTarget
+      ? snapTargetToCoords(snapTarget)
       : {
           x: usingTiles() ? lng * scale : lng,
           y: usingTiles() ? -lat * scale : lat
@@ -496,10 +604,10 @@ async function ensureMap() {
     e.originalEvent?.preventDefault?.()
     const { lat, lng } = e.latlng
     const scale = mapCoordinateScale()
-    const snapPin = findNearbyPinForSnap(e.latlng)
+    const snapTarget = findNearbySnapTarget(e.latlng)
 
-    emit('map-double-click', snapPin
-      ? { x: Number(snapPin.x), y: Number(snapPin.y), nodeRef: String(snapPin.id) }
+    emit('map-double-click', snapTarget
+      ? snapTargetToCoords(snapTarget)
       : {
           x: usingTiles() ? lng * scale : lng,
           y: usingTiles() ? -lat * scale : lat
@@ -573,29 +681,15 @@ function renderRoads() {
 
     const latLngs = coordinates
       .map((coordinate: any) => {
-        // Transportation Network endpoint: resolve to the referenced
-        // Pin's live position instead of stored x/y (there is none stored
-        // for a nodeRef coordinate -- see roadVerticesToPersistedCoordinates
-        // in index.vue). If the Pin no longer exists, this vertex is
-        // dropped rather than rendering a broken/degenerate Road.
-        if (coordinate?.nodeRef) {
-          const resolved = resolvePinPosition(coordinate.nodeRef)
-          if (!resolved) return null
-
-          const scale = mapCoordinateScale()
-          const lat = usingTiles() ? -(resolved.y / scale) : resolved.y
-          const lng = usingTiles() ? resolved.x / scale : resolved.x
-          return L.latLng(lat, lng)
-        }
-
-        const x = Number(coordinate?.x)
-        const y = Number(coordinate?.y)
-        if (!Number.isFinite(x) || !Number.isFinite(y)) return null
-
-        const scale = mapCoordinateScale()
-        const lat = usingTiles() ? -(y / scale) : y
-        const lng = usingTiles() ? x / scale : x
-        return L.latLng(lat, lng)
+        // Transportation Network endpoint: resolve a nodeRef (Pin) or
+        // junctionRef (another Road's endpoint) to its live position
+        // instead of stored x/y -- there is none stored for either
+        // reference kind (see roadVerticesToPersistedCoordinates in
+        // index.vue). If the referenced Pin/Road no longer exists (or a
+        // junctionRef cycle is detected), this vertex is dropped rather
+        // than rendering a broken/degenerate Road.
+        const resolved = resolveRoadCoordinateXY(coordinate)
+        return resolved ? mapPointFor(resolved) : null
       })
       .filter(Boolean)
 
@@ -710,11 +804,11 @@ function updateRoadRubberBand(latlng: any) {
 }
 
 // Transportation Network snapping feedback: while drawing a Road, highlight
-// whichever Pin the cursor is currently close enough to snap to, so
-// snapping is visually obvious before the user commits with a click.
-// Active for the whole time a Road is being drawn (not just at the two
-// endpoints) since findNearbyPinForSnap is cheap and index.vue is what
-// decides which clicks actually apply the nodeRef.
+// whichever Pin or Road endpoint the cursor is currently close enough to
+// snap to, so snapping is visually obvious before the user commits with a
+// click. Active for the whole time a Road is being drawn (not just at the
+// two endpoints) since findNearbySnapTarget is cheap and index.vue is what
+// decides which clicks actually apply the nodeRef/junctionRef.
 function updateRoadSnapHighlight(latlng: any) {
   if (!L || !map || !roadLayer) return
 
@@ -726,9 +820,9 @@ function updateRoadSnapHighlight(latlng: any) {
     return
   }
 
-  const snapPin = findNearbyPinForSnap(latlng)
+  const snapTarget = findNearbySnapTarget(latlng)
 
-  if (!snapPin) {
+  if (!snapTarget) {
     if (roadSnapHighlightMarker) {
       roadLayer.removeLayer(roadSnapHighlightMarker)
       roadSnapHighlightMarker = null
@@ -736,7 +830,7 @@ function updateRoadSnapHighlight(latlng: any) {
     return
   }
 
-  const point = pinToLatLng(snapPin)
+  const point = snapTarget.kind === 'pin' ? pinToLatLng(snapTarget.pin) : mapPointFor(snapTarget)
 
   if (roadSnapHighlightMarker) {
     roadSnapHighlightMarker.setLatLng(point)

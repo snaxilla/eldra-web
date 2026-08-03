@@ -12,6 +12,11 @@ defineProps<{
   createEntitySuccess: string
   entityOptions: any[]
   mapOptions: any[]
+  // Pin Repositioning: true while the parent page is capturing map clicks
+  // to update editingPin's position instead of opening a new pin editor.
+  // Purely a display flag here -- this component never touches
+  // editingPin.x/y itself, same as it never touches persistence.
+  moveActive: boolean
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +24,9 @@ const emit = defineEmits<{
   (e: 'save'): void
   (e: 'create-article'): void
   (e: 'upload-image', event: Event): void
+  (e: 'start-move'): void
+  (e: 'confirm-move'): void
+  (e: 'cancel-move'): void
 }>()
 
 const PIN_TYPE_OPTIONS = [
@@ -250,7 +258,58 @@ const ICON_OPTIONS = [
               </label>
             </div>
 
-            <div class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]">
+            <div v-if="editingPin.id">
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Position</label>
+
+              <div class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]">
+                x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
+              </div>
+
+              <div
+                v-if="!moveActive"
+                class="mt-2"
+              >
+                <button
+                  type="button"
+                  class="eldra-button w-full rounded-none py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+                  @click="emit('start-move')"
+                >
+                  Move Pin
+                </button>
+              </div>
+
+              <div
+                v-else
+                class="mt-2 space-y-2"
+              >
+                <p class="text-xs text-[#9f9278]">
+                  Click the map to reposition this pin. Esc cancels.
+                </p>
+
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="eldra-button flex-1 rounded-none py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+                    @click="emit('cancel-move')"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    class="eldra-button flex-1 rounded-none py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+                    @click="emit('confirm-move')"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-else
+              class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]"
+            >
               x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
             </div>
           </div>

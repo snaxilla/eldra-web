@@ -583,8 +583,25 @@ function isPinVisible(pin: any) {
   return true
 }
 
+// Pin Repositioning: while movePinActive is true, the Pin being edited is
+// previewed at editingPin's live x/y instead of its persisted position.
+// This deliberately reuses editingPin as the only source of truth for the
+// draft position (the same field the rest of the Pin editor already
+// mutates for title/color/etc.) rather than introducing a second,
+// duplicate coordinate ref -- consistent with how Roads resolve a
+// Transportation Node's position from the live Pin instead of a cached
+// copy. Because this feeds pinLayerObjects -> the 'pins' scene layer,
+// connected Road endpoints already re-resolve through the existing
+// Transportation Node renderer with no renderer changes required.
 const visiblePins = computed(() => {
-  return (pins.value || []).filter(isPinVisible)
+  return (pins.value || [])
+    .filter(isPinVisible)
+    .map((pin) => {
+      if (movePinActive.value && editingPin.value?.id && String(pin.id) === String(editingPin.value.id)) {
+        return { ...pin, x: Number(editingPin.value.x), y: Number(editingPin.value.y) }
+      }
+      return pin
+    })
 })
 
 const pinLayerObjects = computed<LayerObject[]>(() => {
@@ -834,6 +851,14 @@ const createEntityError = ref('')
 const createEntitySuccess = ref('')
 const editingPin = ref<any | null>(null)
 
+// Pin Repositioning. movePinActive gates whether a map click updates
+// editingPin's position instead of opening a new pin editor (see
+// onMapClick). pinMoveOriginalPosition is a snapshot taken only to support
+// Cancel/Escape reverting the move -- not a second live copy of the
+// position (editingPin.x/y remains the only draft position while moving).
+const movePinActive = ref(false)
+const pinMoveOriginalPosition = ref<{ x: number; y: number } | null>(null)
+
 const showLayerPanel = ref(false)
 
 const ICON_OPTIONS = [
@@ -969,7 +994,42 @@ function undoLastRoadVertex() {
   roadDraftVertices.value = roadDraftVertices.value.slice(0, -1)
 }
 
+// Pin Repositioning. Mirrors the Road draft's Escape-to-cancel pattern
+// (cancelRoadDraft/onBuildKeydown below) -- same editing philosophy, no
+// new interaction model. startMovePin snapshots the current position only
+// so cancelMovePin/onBuildKeydown's Escape handler can restore it;
+// confirmMovePin leaves whatever position is currently in editingPin (set
+// live by onMapClick while movePinActive) for the editor's existing Save
+// button to persist, same as any other edited field.
+function startMovePin() {
+  if (!editingPin.value?.id) return
+  pinMoveOriginalPosition.value = { x: Number(editingPin.value.x), y: Number(editingPin.value.y) }
+  movePinActive.value = true
+}
+
+function cancelMovePin() {
+  if (pinMoveOriginalPosition.value && editingPin.value) {
+    editingPin.value.x = pinMoveOriginalPosition.value.x
+    editingPin.value.y = pinMoveOriginalPosition.value.y
+  }
+  movePinActive.value = false
+  pinMoveOriginalPosition.value = null
+}
+
+function confirmMovePin() {
+  movePinActive.value = false
+  pinMoveOriginalPosition.value = null
+}
+
 function onBuildKeydown(event: KeyboardEvent) {
+  if (mode.value === 'build' && activeBuildTool.value === 'pin' && movePinActive.value) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelMovePin()
+    }
+    return
+  }
+
   if (mode.value !== 'build' || activeBuildTool.value !== 'road') return
   if (roadDraftVertices.value.length === 0) return
 
@@ -996,6 +1056,8 @@ function openNewPinEditor(coords: { x: number; y: number }) {
   saveError.value = ''
   createEntityError.value = ''
   createEntitySuccess.value = ''
+  movePinActive.value = false
+  pinMoveOriginalPosition.value = null
 
   editingPin.value = {
     title: '',
@@ -1020,6 +1082,17 @@ function onMapClick(coords: { x: number; y: number; nodeRef?: string | null }) {
   if (mode.value !== 'build') return
 
   if (activeBuildTool.value === 'pin') {
+    // While repositioning the Pin currently open in the editor, a map
+    // click updates its draft position instead of opening a new pin
+    // editor -- the same "clicking the map means something different
+    // right now" pattern the Road tool already uses while a draft is in
+    // progress.
+    if (movePinActive.value && editingPin.value) {
+      editingPin.value.x = Number(coords.x)
+      editingPin.value.y = Number(coords.y)
+      return
+    }
+
     openNewPinEditor(coords)
     return
   }
@@ -1041,6 +1114,8 @@ function editPin(pin: any) {
   saveError.value = ''
   createEntityError.value = ''
   createEntitySuccess.value = ''
+  movePinActive.value = false
+  pinMoveOriginalPosition.value = null
 
   editingPin.value = {
     id: pin.id,
@@ -1067,6 +1142,8 @@ function closePinEditor() {
   saveError.value = ''
   createEntityError.value = ''
   createEntitySuccess.value = ''
+  movePinActive.value = false
+  pinMoveOriginalPosition.value = null
 }
 
 async function syncLinkedArticleSummaryFromPin(payload: any) {
@@ -1530,10 +1607,14 @@ function openSelectedPinContextMap() {
       :create-entity-success="createEntitySuccess"
       :entity-options="entityOptions"
       :map-options="mapOptions"
+      :move-active="movePinActive"
       @close="closePinEditor"
       @save="savePin"
       @create-article="createArticleFromPin"
       @upload-image="uploadPinImage"
+      @start-move="startMovePin"
+      @confirm-move="confirmMovePin"
+      @cancel-move="cancelMovePin"
     />
 
     <MapImageOverlayEditor

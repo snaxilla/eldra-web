@@ -1,0 +1,18 @@
+{
+  "item": [
+    {
+      "name": "Test Blade of Placeholder",
+      "source": "TEST",
+      "page": 20,
+      "type": "M",
+      "rarity": "uncommon",
+      "weight": 3,
+      "value": { "amount": 50, "coin": "gp" },
+      "reqAttune": true,
+      "dmg1": "1d8",
+      "dmgType": "S",
+      "ac": [{ "ac": 2 }],
+      "entries": ["A blade forged solely for characterization testing."]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "background": [
+    {
+      "name": "Test Wanderer",
+      "source": "TEST",
+      "page": 5,
+      "skillProficiencies": [
+        { "choose": { "from": ["insight", "survival", "perception"], "count": 2 } }
+      ],
+      "toolProficiencies": ["Gaming set"],
+      "languageProficiencies": [{ "anyStandard": 2 }],
+      "entries": [
+        {
+          "type": "list",
+          "items": ["A weathered cloak", "A tin whistle"]
+        },
+        {
+          "name": "Test Feature: Wanderer's Welcome",
+          "entries": ["You are always welcome at a roadside camp, an original placeholder feature."]
+        }
+      ]
+    }
+  ]
+}

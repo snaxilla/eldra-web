@@ -9,6 +9,7 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
+    "test": "vitest run",
     "directus:create-character-sheets": "node scripts/directus/create-character-sheet-schema.mjs",
     "directus:create-inventory-transfers": "node scripts/directus/create-inventory-transfer-schema.mjs",
     "directus:create-entity-relationships": "node scripts/directus/create-entity-relationship-schema.mjs",
@@ -47,6 +48,7 @@
     "@types/markdown-it": "^14.1.2",
     "eslint": "^10.0.3",
     "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
     "vue-tsc": "^3.2.5"
   },
   "packageManager": "pnpm@10.32.1"

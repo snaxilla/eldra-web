@@ -1,0 +1,17 @@
+{
+  "spell": [
+    {
+      "name": "Test Cantrip of Sparks",
+      "source": "TEST",
+      "page": 99,
+      "level": 0,
+      "school": "V",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 30 } },
+      "duration": [{ "type": "instant" }],
+      "components": { "v": true, "s": true },
+      "entries": ["A small mote of light springs from the caster's fingertip, purely for testing."],
+      "entriesHigherLevel": []
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "class": [
+    {
+      "name": "Test Vanguard",
+      "source": "TEST",
+      "page": 12,
+      "hd": { "number": 1, "faces": 10 },
+      "proficiency": ["str", "con"],
+      "primaryAbility": ["str"],
+      "startingProficiencies": {
+        "armor": ["light", "medium", "shield"],
+        "weapons": ["simple", "martial"],
+        "tools": ["thieves' tools"]
+      },
+      "entries": [
+        "A test vanguard is an original placeholder class used for characterization testing.",
+        {
+          "type": "entries",
+          "name": "Class Features",
+          "entries": ["Gains a bonus at 1st level."]
+        }
+      ]
+    }
+  ]
+}

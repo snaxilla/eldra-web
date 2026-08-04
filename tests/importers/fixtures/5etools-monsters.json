@@ -1,0 +1,38 @@
+{
+  "monster": [
+    {
+      "name": "Test Sprocket Golem",
+      "source": "TEST",
+      "page": 150,
+      "size": ["M"],
+      "type": { "type": "construct", "tags": ["clockwork"] },
+      "alignment": ["U"],
+      "ac": [15],
+      "hp": { "average": 45, "formula": "6d8 + 18" },
+      "speed": { "walk": 20, "climb": 10 },
+      "str": 16,
+      "dex": 10,
+      "con": 16,
+      "int": 3,
+      "wis": 10,
+      "cha": 3,
+      "save": { "con": "+5" },
+      "skill": { "perception": "+2" },
+      "passive": 12,
+      "cr": "2",
+      "trait": [
+        { "name": "Clockwork Resolve", "entries": ["The golem cannot be frightened, an original placeholder trait."] }
+      ],
+      "action": [
+        { "name": "Slam", "entries": ["Melee Weapon Attack: an original placeholder attack line."] }
+      ]
+    }
+  ],
+  "monsterFluff": [
+    {
+      "name": "Test Sprocket Golem",
+      "source": "TEST",
+      "entries": ["Built from scavenged gears and old clock parts, purely for characterization testing."]
+    }
+  ]
+}

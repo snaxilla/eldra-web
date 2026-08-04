@@ -1,0 +1,996 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`preview5eToolsBackgrounds > matches the current preview result for a background with a structured skill choice 1`] = `
+{
+  "count": 1,
+  "entityType": "background",
+  "items": [
+    {
+      "blocks": [
+        {
+          "blockKey": "import_source",
+          "data": {
+            "external_id": "Test Wanderer__TEST",
+            "hash": "",
+            "import_version": "preview",
+            "imported_at": "2024-01-01T00:00:00.000Z",
+            "provider": "5etools-json",
+            "raw_json": {
+              "entries": [
+                {
+                  "items": [
+                    "A weathered cloak",
+                    "A tin whistle",
+                  ],
+                  "type": "list",
+                },
+                {
+                  "entries": [
+                    "You are always welcome at a roadside camp, an original placeholder feature.",
+                  ],
+                  "name": "Test Feature: Wanderer's Welcome",
+                },
+              ],
+              "languageProficiencies": [
+                {
+                  "anyStandard": 2,
+                },
+              ],
+              "name": "Test Wanderer",
+              "page": 5,
+              "skillProficiencies": [
+                {
+                  "choose": {
+                    "count": 2,
+                    "from": [
+                      "insight",
+                      "survival",
+                      "perception",
+                    ],
+                  },
+                },
+              ],
+              "source": "TEST",
+              "toolProficiencies": [
+                "Gaming set",
+              ],
+            },
+            "source_book": "TEST",
+            "source_page": "5",
+            "source_url": "",
+          },
+          "label": "Import Source",
+          "repeatable": false,
+          "sort": 1,
+        },
+        {
+          "blockKey": "background_core",
+          "data": {
+            "equipment": "- A weathered cloak
+- A tin whistle",
+            "feature_description": "You are always welcome at a roadside camp, an original placeholder feature.",
+            "feature_name": "Test Feature: Wanderer's Welcome",
+            "image": "",
+            "languages": "{
+  "anyStandard": 2
+}",
+            "name": "Test Wanderer",
+            "skill_proficiencies": "{
+  "choose": {
+    "from": [
+      "insight",
+      "survival",
+      "perception"
+    ],
+    "count": 2
+  }
+}",
+            "tool_proficiencies": "Gaming set",
+          },
+          "label": "Background Core",
+          "repeatable": false,
+          "sort": 2,
+        },
+      ],
+      "entityType": "background",
+      "externalId": "Test Wanderer__TEST",
+      "provider": "5etools-json",
+      "raw": {
+        "entries": [
+          {
+            "items": [
+              "A weathered cloak",
+              "A tin whistle",
+            ],
+            "type": "list",
+          },
+          {
+            "entries": [
+              "You are always welcome at a roadside camp, an original placeholder feature.",
+            ],
+            "name": "Test Feature: Wanderer's Welcome",
+          },
+        ],
+        "languageProficiencies": [
+          {
+            "anyStandard": 2,
+          },
+        ],
+        "name": "Test Wanderer",
+        "page": 5,
+        "skillProficiencies": [
+          {
+            "choose": {
+              "count": 2,
+              "from": [
+                "insight",
+                "survival",
+                "perception",
+              ],
+            },
+          },
+        ],
+        "source": "TEST",
+        "toolProficiencies": [
+          "Gaming set",
+        ],
+      },
+      "slug": "test-wanderer-test",
+      "sourceBook": "TEST",
+      "sourcePage": "5",
+      "systemKey": "dnd5e",
+      "title": "Test Wanderer",
+    },
+  ],
+  "provider": "5etools-json",
+  "systemKey": "dnd5e",
+  "warnings": [],
+}
+`;
+
+exports[`preview5eToolsClasses > matches the current preview result for a class with a structured hit die and features 1`] = `
+{
+  "count": 1,
+  "entityType": "class",
+  "items": [
+    {
+      "blocks": [
+        {
+          "blockKey": "import_source",
+          "data": {
+            "external_id": "Test Vanguard__TEST",
+            "hash": "",
+            "import_version": "preview",
+            "imported_at": "2024-01-01T00:00:00.000Z",
+            "provider": "5etools-json",
+            "raw_json": {
+              "entries": [
+                "A test vanguard is an original placeholder class used for characterization testing.",
+                {
+                  "entries": [
+                    "Gains a bonus at 1st level.",
+                  ],
+                  "name": "Class Features",
+                  "type": "entries",
+                },
+              ],
+              "hd": {
+                "faces": 10,
+                "number": 1,
+              },
+              "name": "Test Vanguard",
+              "page": 12,
+              "primaryAbility": [
+                "str",
+              ],
+              "proficiency": [
+                "str",
+                "con",
+              ],
+              "source": "TEST",
+              "startingProficiencies": {
+                "armor": [
+                  "light",
+                  "medium",
+                  "shield",
+                ],
+                "tools": [
+                  "thieves' tools",
+                ],
+                "weapons": [
+                  "simple",
+                  "martial",
+                ],
+              },
+            },
+            "source_book": "TEST",
+            "source_page": "12",
+            "source_url": "",
+          },
+          "label": "Import Source",
+          "repeatable": false,
+          "sort": 1,
+        },
+        {
+          "blockKey": "class_core",
+          "data": {
+            "armor_proficiencies": "light, medium, shield",
+            "description": "A test vanguard is an original placeholder class used for characterization testing.
+
+Gains a bonus at 1st level.",
+            "hit_die": "d10",
+            "image": "",
+            "name": "Test Vanguard",
+            "primary_ability": "str",
+            "saving_throws": "str, con",
+            "tool_proficiencies": "thieves' tools",
+            "weapon_proficiencies": "simple, martial",
+          },
+          "label": "Class Core",
+          "repeatable": false,
+          "sort": 2,
+        },
+      ],
+      "entityType": "class",
+      "externalId": "Test Vanguard__TEST",
+      "provider": "5etools-json",
+      "raw": {
+        "entries": [
+          "A test vanguard is an original placeholder class used for characterization testing.",
+          {
+            "entries": [
+              "Gains a bonus at 1st level.",
+            ],
+            "name": "Class Features",
+            "type": "entries",
+          },
+        ],
+        "hd": {
+          "faces": 10,
+          "number": 1,
+        },
+        "name": "Test Vanguard",
+        "page": 12,
+        "primaryAbility": [
+          "str",
+        ],
+        "proficiency": [
+          "str",
+          "con",
+        ],
+        "source": "TEST",
+        "startingProficiencies": {
+          "armor": [
+            "light",
+            "medium",
+            "shield",
+          ],
+          "tools": [
+            "thieves' tools",
+          ],
+          "weapons": [
+            "simple",
+            "martial",
+          ],
+        },
+      },
+      "slug": "test-vanguard-test",
+      "sourceBook": "TEST",
+      "sourcePage": "12",
+      "systemKey": "dnd5e",
+      "title": "Test Vanguard",
+    },
+  ],
+  "provider": "5etools-json",
+  "systemKey": "dnd5e",
+  "warnings": [],
+}
+`;
+
+exports[`preview5eToolsFeats > matches the current preview result for a feat using 5etools {@tag} markup 1`] = `
+{
+  "count": 1,
+  "entityType": "feat",
+  "items": [
+    {
+      "blocks": [
+        {
+          "blockKey": "import_source",
+          "data": {
+            "external_id": "Test Adept__TEST",
+            "hash": "",
+            "import_version": "preview",
+            "imported_at": "2024-01-01T00:00:00.000Z",
+            "provider": "5etools-json",
+            "raw_json": {
+              "ability": [
+                {
+                  "choose": {
+                    "amount": 1,
+                    "from": [
+                      "str",
+                      "dex",
+                    ],
+                  },
+                },
+              ],
+              "category": "G",
+              "entries": [
+                "You gain proficiency in one skill of your choice, such as {@skill Perception}.",
+                {
+                  "entries": [
+                    "You also gain a +1 bonus to that skill, an original placeholder benefit.",
+                  ],
+                  "name": "Bonus",
+                  "type": "entries",
+                },
+              ],
+              "name": "Test Adept",
+              "page": 8,
+              "prerequisite": [
+                {
+                  "level": 4,
+                },
+              ],
+              "source": "TEST",
+            },
+            "source_book": "TEST",
+            "source_page": "8",
+            "source_url": "",
+          },
+          "label": "Import Source",
+          "repeatable": false,
+          "sort": 1,
+        },
+        {
+          "blockKey": "feat_core",
+          "data": {
+            "ability_score_increase": "choose: from: str
+
+dex; amount: 1",
+            "additional_spells": "",
+            "benefits": "You gain proficiency in one skill of your choice, such as Perception.
+
+## Bonus
+
+You also gain a +1 bonus to that skill, an original placeholder benefit.",
+            "category": "G",
+            "image": "",
+            "name": "Test Adept",
+            "page": "8",
+            "prerequisites": "level: 4",
+            "repeatable": false,
+            "source": "TEST",
+          },
+          "label": "Feat Core",
+          "repeatable": false,
+          "sort": 2,
+        },
+      ],
+      "entityType": "feat",
+      "externalId": "Test Adept__TEST",
+      "provider": "5etools-json",
+      "raw": {
+        "ability": [
+          {
+            "choose": {
+              "amount": 1,
+              "from": [
+                "str",
+                "dex",
+              ],
+            },
+          },
+        ],
+        "category": "G",
+        "entries": [
+          "You gain proficiency in one skill of your choice, such as {@skill Perception}.",
+          {
+            "entries": [
+              "You also gain a +1 bonus to that skill, an original placeholder benefit.",
+            ],
+            "name": "Bonus",
+            "type": "entries",
+          },
+        ],
+        "name": "Test Adept",
+        "page": 8,
+        "prerequisite": [
+          {
+            "level": 4,
+          },
+        ],
+        "source": "TEST",
+      },
+      "slug": "test-adept-test",
+      "sourceBook": "TEST",
+      "sourcePage": "8",
+      "systemKey": "dnd5e",
+      "title": "Test Adept",
+    },
+  ],
+  "provider": "5etools-json",
+  "systemKey": "dnd5e",
+  "warnings": [],
+}
+`;
+
+exports[`preview5eToolsItems > matches the current preview result for an item with structured value/damage/AC 1`] = `
+{
+  "count": 1,
+  "entityType": "item",
+  "items": [
+    {
+      "blocks": [
+        {
+          "blockKey": "import_source",
+          "data": {
+            "external_id": "item__Test Blade of Placeholder__TEST",
+            "hash": "",
+            "import_version": "preview",
+            "imported_at": "2024-01-01T00:00:00.000Z",
+            "provider": "5etools-json",
+            "raw_json": {
+              "__importKind": "item",
+              "ac": [
+                {
+                  "ac": 2,
+                },
+              ],
+              "dmg1": "1d8",
+              "dmgType": "S",
+              "entries": [
+                "A blade forged solely for characterization testing.",
+              ],
+              "name": "Test Blade of Placeholder",
+              "page": 20,
+              "rarity": "uncommon",
+              "reqAttune": true,
+              "source": "TEST",
+              "type": "M",
+              "value": {
+                "amount": 50,
+                "coin": "gp",
+              },
+              "weight": 3,
+            },
+            "source_book": "TEST",
+            "source_page": "20",
+            "source_url": "",
+          },
+          "label": "Import Source",
+          "repeatable": false,
+          "sort": 1,
+        },
+        {
+          "blockKey": "item_core",
+          "data": {
+            "armor_class": 2,
+            "attunement": true,
+            "damage": "1d8",
+            "damage_type": "S",
+            "description": "A blade forged solely for characterization testing.",
+            "image": "",
+            "import_kind": "item",
+            "item_type": "M",
+            "name": "Test Blade of Placeholder",
+            "rarity": "uncommon",
+            "value": "50 gp",
+            "weight": 3,
+          },
+          "label": "Item Core",
+          "repeatable": false,
+          "sort": 2,
+        },
+      ],
+      "entityType": "item",
+      "externalId": "item__Test Blade of Placeholder__TEST",
+      "provider": "5etools-json",
+      "raw": {
+        "__importKind": "item",
+        "ac": [
+          {
+            "ac": 2,
+          },
+        ],
+        "dmg1": "1d8",
+        "dmgType": "S",
+        "entries": [
+          "A blade forged solely for characterization testing.",
+        ],
+        "name": "Test Blade of Placeholder",
+        "page": 20,
+        "rarity": "uncommon",
+        "reqAttune": true,
+        "source": "TEST",
+        "type": "M",
+        "value": {
+          "amount": 50,
+          "coin": "gp",
+        },
+        "weight": 3,
+      },
+      "slug": "test-blade-of-placeholder-test",
+      "sourceBook": "TEST",
+      "sourcePage": "20",
+      "systemKey": "dnd5e",
+      "title": "Test Blade of Placeholder",
+    },
+  ],
+  "provider": "5etools-json",
+  "systemKey": "dnd5e",
+  "warnings": [],
+}
+`;
+
+exports[`preview5eToolsMonsters > matches the current preview result for a monster with matched fluff 1`] = `
+{
+  "items": [
+    {
+      "_monsterData": {
+        "actions": [
+          {
+            "actionType": "trait",
+            "name": "Clockwork Resolve",
+            "raw": {
+              "entries": [
+                "The golem cannot be frightened, an original placeholder trait.",
+              ],
+              "name": "Clockwork Resolve",
+            },
+            "sort": 0,
+            "text": "The golem cannot be frightened, an original placeholder trait.",
+          },
+          {
+            "actionType": "action",
+            "name": "Slam",
+            "raw": {
+              "entries": [
+                "Melee Weapon Attack: an original placeholder attack line.",
+              ],
+              "name": "Slam",
+            },
+            "sort": 0,
+            "text": "Melee Weapon Attack: an original placeholder attack line.",
+          },
+        ],
+        "monsterProfile": {
+          "action_tags_json": null,
+          "environment_json": null,
+          "fluff_json": {
+            "entries": [
+              "Built from scavenged gears and old clock parts, purely for characterization testing.",
+            ],
+            "name": "Test Sprocket Golem",
+            "source": "TEST",
+          },
+          "fluff_markdown": null,
+          "gear_json": null,
+          "has_fluff": true,
+          "has_fluff_images": false,
+          "language_tags_json": null,
+          "misc_tags_json": null,
+          "page": 150,
+          "raw_payload_json": {
+            "ac": [
+              15,
+            ],
+            "action": [
+              {
+                "entries": [
+                  "Melee Weapon Attack: an original placeholder attack line.",
+                ],
+                "name": "Slam",
+              },
+            ],
+            "alignment": [
+              "U",
+            ],
+            "cha": 3,
+            "con": 16,
+            "cr": "2",
+            "dex": 10,
+            "hp": {
+              "average": 45,
+              "formula": "6d8 + 18",
+            },
+            "int": 3,
+            "name": "Test Sprocket Golem",
+            "page": 150,
+            "passive": 12,
+            "save": {
+              "con": "+5",
+            },
+            "size": [
+              "M",
+            ],
+            "skill": {
+              "perception": "+2",
+            },
+            "source": "TEST",
+            "speed": {
+              "climb": 10,
+              "walk": 20,
+            },
+            "str": 16,
+            "trait": [
+              {
+                "entries": [
+                  "The golem cannot be frightened, an original placeholder trait.",
+                ],
+                "name": "Clockwork Resolve",
+              },
+            ],
+            "type": {
+              "tags": [
+                "clockwork",
+              ],
+              "type": "construct",
+            },
+            "wis": 10,
+          },
+          "reference_sources_json": null,
+          "sound_clip_url": null,
+          "source": "TEST",
+          "token_name": null,
+          "token_source": null,
+          "treasure_json": null,
+        },
+        "statblock": {
+          "alignment_json": [
+            "U",
+          ],
+          "armor_class": 15,
+          "armor_class_json": [
+            15,
+          ],
+          "cha_score": 3,
+          "challenge_rating": "2",
+          "con_score": 16,
+          "creature_type": "construct (clockwork)",
+          "damage_tags_json": null,
+          "dex_score": 10,
+          "hit_points_average": 45,
+          "hit_points_formula": "6d8 + 18",
+          "int_score": 3,
+          "languages_json": null,
+          "level": null,
+          "passive_perception": 12,
+          "profile_kind": "monster",
+          "raw_payload_json": {
+            "ac": [
+              15,
+            ],
+            "action": [
+              {
+                "entries": [
+                  "Melee Weapon Attack: an original placeholder attack line.",
+                ],
+                "name": "Slam",
+              },
+            ],
+            "alignment": [
+              "U",
+            ],
+            "cha": 3,
+            "con": 16,
+            "cr": "2",
+            "dex": 10,
+            "hp": {
+              "average": 45,
+              "formula": "6d8 + 18",
+            },
+            "int": 3,
+            "name": "Test Sprocket Golem",
+            "page": 150,
+            "passive": 12,
+            "save": {
+              "con": "+5",
+            },
+            "size": [
+              "M",
+            ],
+            "skill": {
+              "perception": "+2",
+            },
+            "source": "TEST",
+            "speed": {
+              "climb": 10,
+              "walk": 20,
+            },
+            "str": 16,
+            "trait": [
+              {
+                "entries": [
+                  "The golem cannot be frightened, an original placeholder trait.",
+                ],
+                "name": "Clockwork Resolve",
+              },
+            ],
+            "type": {
+              "tags": [
+                "clockwork",
+              ],
+              "type": "construct",
+            },
+            "wis": 10,
+          },
+          "saving_throws_json": {
+            "con": "+5",
+          },
+          "size_json": [
+            "M",
+          ],
+          "skills_json": {
+            "perception": "+2",
+          },
+          "speed_json": {
+            "climb": 10,
+            "walk": 20,
+          },
+          "str_score": 16,
+          "wis_score": 10,
+        },
+      },
+      "blocks": [
+        {
+          "blockKey": "overview",
+          "data": {
+            "text": "Built from scavenged gears and old clock parts, purely for characterization testing.",
+          },
+          "label": "Overview",
+          "repeatable": false,
+          "sort": 0,
+        },
+        {
+          "blockKey": "source",
+          "data": {
+            "page": 150,
+            "source": "TEST",
+          },
+          "label": "Source",
+          "repeatable": false,
+          "sort": 1,
+        },
+      ],
+      "entityType": "enemy",
+      "slug": "test-sprocket-golem-test",
+      "summary": "Built from scavenged gears and old clock parts, purely for characterization testing.",
+      "systemKey": "dnd5e",
+      "title": "Test Sprocket Golem",
+    },
+  ],
+  "warnings": [],
+}
+`;
+
+exports[`preview5eToolsSpecies > matches the current preview result for a species with a named trait section 1`] = `
+{
+  "count": 1,
+  "entityType": "species",
+  "items": [
+    {
+      "blocks": [
+        {
+          "blockKey": "import_source",
+          "data": {
+            "external_id": "Testkin__ELDRATEST",
+            "hash": "",
+            "import_version": "preview",
+            "imported_at": "2024-01-01T00:00:00.000Z",
+            "provider": "5etools-json",
+            "raw_json": {
+              "ability": [
+                {
+                  "con": 1,
+                  "str": 1,
+                },
+              ],
+              "entries": [
+                {
+                  "entries": [
+                    "You can see in the dark up to 60 feet, an original placeholder trait.",
+                  ],
+                  "name": "Darkvision",
+                  "type": "entries",
+                },
+                "A non-trait flavor line that is not itself a named trait entry.",
+              ],
+              "name": "Testkin",
+              "page": 3,
+              "size": "M",
+              "source": "ELDRATEST",
+              "speed": 30,
+            },
+            "source_book": "ELDRATEST",
+            "source_page": "3",
+            "source_url": "",
+          },
+          "label": "Import Source",
+          "repeatable": false,
+          "sort": 1,
+        },
+        {
+          "blockKey": "species_core",
+          "data": {
+            "ability_score_increase": "{
+  "str": 1,
+  "con": 1
+}",
+            "image": "",
+            "name": "Testkin",
+            "size": "M",
+            "speed": "30",
+            "traits": "## Darkvision
+
+You can see in the dark up to 60 feet, an original placeholder trait.",
+          },
+          "label": "Species Core",
+          "repeatable": false,
+          "sort": 2,
+        },
+      ],
+      "entityType": "species",
+      "externalId": "Testkin__ELDRATEST",
+      "provider": "5etools-json",
+      "raw": {
+        "ability": [
+          {
+            "con": 1,
+            "str": 1,
+          },
+        ],
+        "entries": [
+          {
+            "entries": [
+              "You can see in the dark up to 60 feet, an original placeholder trait.",
+            ],
+            "name": "Darkvision",
+            "type": "entries",
+          },
+          "A non-trait flavor line that is not itself a named trait entry.",
+        ],
+        "name": "Testkin",
+        "page": 3,
+        "size": "M",
+        "source": "ELDRATEST",
+        "speed": 30,
+      },
+      "slug": "testkin-eldratest",
+      "sourceBook": "ELDRATEST",
+      "sourcePage": "3",
+      "systemKey": "dnd5e",
+      "title": "Testkin",
+    },
+  ],
+  "provider": "5etools-json",
+  "systemKey": "dnd5e",
+  "warnings": [],
+}
+`;
+
+exports[`preview5eToolsSpells > matches the current preview result for a spell with structured time/range/duration 1`] = `
+{
+  "count": 1,
+  "entityType": "spell",
+  "items": [
+    {
+      "blocks": [
+        {
+          "blockKey": "import_source",
+          "data": {
+            "external_id": "Test Cantrip of Sparks__TEST",
+            "hash": "",
+            "import_version": "preview",
+            "imported_at": "2024-01-01T00:00:00.000Z",
+            "provider": "5etools-json",
+            "raw_json": {
+              "components": {
+                "s": true,
+                "v": true,
+              },
+              "duration": [
+                {
+                  "type": "instant",
+                },
+              ],
+              "entries": [
+                "A small mote of light springs from the caster's fingertip, purely for testing.",
+              ],
+              "entriesHigherLevel": [],
+              "level": 0,
+              "name": "Test Cantrip of Sparks",
+              "page": 99,
+              "range": {
+                "distance": {
+                  "amount": 30,
+                  "type": "feet",
+                },
+                "type": "point",
+              },
+              "school": "V",
+              "source": "TEST",
+              "time": [
+                {
+                  "number": 1,
+                  "unit": "action",
+                },
+              ],
+            },
+            "source_book": "TEST",
+            "source_page": "99",
+            "source_url": "",
+          },
+          "label": "Import Source",
+          "repeatable": false,
+          "sort": 1,
+        },
+        {
+          "blockKey": "spell_core",
+          "data": {
+            "casting_time": "1 action",
+            "components": "V, S",
+            "concentration": false,
+            "description": "A small mote of light springs from the caster's fingertip, purely for testing.",
+            "duration": "Instantaneous",
+            "higher_level": "",
+            "image": "",
+            "level": 0,
+            "name": "Test Cantrip of Sparks",
+            "range": "30 feet",
+            "ritual": false,
+            "school": "V",
+          },
+          "label": "Spell Core",
+          "repeatable": false,
+          "sort": 2,
+        },
+      ],
+      "entityType": "spell",
+      "externalId": "Test Cantrip of Sparks__TEST",
+      "provider": "5etools-json",
+      "raw": {
+        "components": {
+          "s": true,
+          "v": true,
+        },
+        "duration": [
+          {
+            "type": "instant",
+          },
+        ],
+        "entries": [
+          "A small mote of light springs from the caster's fingertip, purely for testing.",
+        ],
+        "entriesHigherLevel": [],
+        "level": 0,
+        "name": "Test Cantrip of Sparks",
+        "page": 99,
+        "range": {
+          "distance": {
+            "amount": 30,
+            "type": "feet",
+          },
+          "type": "point",
+        },
+        "school": "V",
+        "source": "TEST",
+        "time": [
+          {
+            "number": 1,
+            "unit": "action",
+          },
+        ],
+      },
+      "slug": "test-cantrip-of-sparks-test",
+      "sourceBook": "TEST",
+      "sourcePage": "99",
+      "systemKey": "dnd5e",
+      "title": "Test Cantrip of Sparks",
+    },
+  ],
+  "provider": "5etools-json",
+  "systemKey": "dnd5e",
+  "warnings": [],
+}
+`;

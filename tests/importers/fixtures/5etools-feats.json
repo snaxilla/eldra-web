@@ -1,0 +1,20 @@
+{
+  "feat": [
+    {
+      "name": "Test Adept",
+      "source": "TEST",
+      "page": 8,
+      "category": "G",
+      "prerequisite": [{ "level": 4 }],
+      "ability": [{ "choose": { "from": ["str", "dex"], "amount": 1 } }],
+      "entries": [
+        "You gain proficiency in one skill of your choice, such as {@skill Perception}.",
+        {
+          "type": "entries",
+          "name": "Bonus",
+          "entries": ["You also gain a +1 bonus to that skill, an original placeholder benefit."]
+        }
+      ]
+    }
+  ]
+}

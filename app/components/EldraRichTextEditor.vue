@@ -391,7 +391,7 @@ watch(
   (value) => {
     if (!editor.value) return
     if (editor.value.getHTML() === value) return
-    editor.value.commands.setContent(value || '', false)
+    editor.value.commands.setContent(value || '')
   }
 )
 

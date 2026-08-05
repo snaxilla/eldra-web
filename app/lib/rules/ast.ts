@@ -114,6 +114,12 @@ export type BinaryExpressionNode = {
 // reroll) -- kept as ordinary function calls rather than folded into
 // DiceExpressionNode, since the architecture never shows how they compose
 // with `dice(n, faces)` syntactically; see the commit Summary.
+//
+// No longer used to type FunctionCallExpressionNode.name (see below) --
+// kept exported as the reference vocabulary a future semantic/type-checking
+// phase validates function names against. The parser does not perform that
+// check (rules-engine.md §14.11's validation happens "at import," not at
+// parse time), so it cannot be the type of `name` itself.
 export type RuleFunctionName =
   | 'floor' | 'ceil' | 'round' | 'abs' | 'min' | 'max' | 'clamp' | 'pow' | 'sqrt' | 'sign'
   | 'not' | 'and' | 'or'
@@ -121,9 +127,17 @@ export type RuleFunctionName =
   | 'toNumber' | 'toText'
   | 'keepHighest' | 'keepLowest' | 'explode' | 'reroll'
 
+// AST CHANGE (parser commit): `name` was `RuleFunctionName` (closed) when
+// this file was first committed. Widened to `string` because the parser
+// commit's own explicit spec requires `banana(2)` to parse successfully
+// even though `banana` is not a real function -- "the parser only
+// understands grammar" (not semantics), and a closed literal union cannot
+// hold an arbitrary unrecognized name. Whether `name` is one of
+// RuleFunctionName's members is exactly the kind of check deferred to a
+// later semantic-validation phase, never the parser's job.
 export type FunctionCallExpressionNode = {
   kind: 'call'
-  name: RuleFunctionName
+  name: string
   args: RuleExpressionNode[]
 }
 

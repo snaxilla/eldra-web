@@ -285,57 +285,200 @@ reasons, not just "we already have one way":
    non-programmers already know from spreadsheet formulas, which is a real readability asset ternary
    syntax doesn't have.
 
+### 7.1 Boolean contexts — no truthiness, ever *(added in revision 3)*
+
+Two places in the language require a `boolean` rather than merely accepting one:
+
+1. the first argument of `if(condition, whenTrue, whenFalse)`;
+2. a **Modifier `condition`** (`rules-engine.md` §16.1, §16.11A) — an expression whose entire job is
+   to answer yes or no.
+
+**EEL has no truthiness.** There is no rule by which `0`, `""`, or an empty list is "falsy", and
+none by which a non-empty value is "truthy". A boolean context that receives a non-boolean produces
+an `error`, exactly as `1 + "text"` does. This is §14.3's no-implicit-coercion rule applied to
+gating rather than to arithmetic — the same rule, not a new one, and stating it here closes the gap
+that let an implementation read a number as a condition.
+
+**`error` in a boolean context is `error`, never `false`.** This is the more important half. A
+boolean context is not a filter that absorbs failures: whatever an `error` flows into is an `error`,
+and gating is not an exception. Reading `error` as `false` would make every diagnostic this language
+produces — an absent `@source:` field (§8.2), a runtime dependency cycle, an evaluation-budget abort —
+silently disappear at exactly the point a package author most needs to see it. `rules-engine.md`
+§16.11A specifies the consequences for the Modifier Pipeline, where the distinction has teeth.
+
+A package that genuinely wants "treat undeterminable as inactive" writes it explicitly:
+`if(@source:duration.remaining > 0, @source:equipped, false)`. The engine never assumes that intent.
+
+**Static checking.** Where the condition's type is statically knowable, type validation rejects a
+non-boolean at *package validation* — `"condition": { "text": "@value:might" }` on a `number` Value
+never reaches a session. Where it is not knowable — `@source:<itemField>` types are statically
+unknown by construction (§8.2) — the failure surfaces at evaluation. Both checks are required;
+neither subsumes the other.
+
 ---
 
 ## 8. References
 
 Full reconsideration of `@value:x`-style syntax, as requested. Six namespaces are directly and
-completely grounded by §14.2 of the architecture's own bullet list; two additional forms were found
-during this review and are flagged, not silently folded in.
+completely grounded by §14.2 of the architecture's own bullet list; a seventh (`@source:`) was found
+during this review, flagged rather than silently folded in, and **resolved in revision 3** (§8.2).
 
-### 8.1 The six established namespaces
+### 8.1 The seven namespaces
 
 ```
-@value:might          @value:hull.current
+@value:might           @value:hull.current
 @collection:inventory  @collection:rig
-@sources               @sources[tag = "stressed"]
+@sources               @sources[definitionId = "source:condition.stressed"]
 @choice:origin
 @world:roadType.speedFactor
 @ctx:successes
+@source:equipped       @source:duration.remaining      (revision 3 — §8.2)
 ```
 
-§14.2 presents this as a complete enumerated bullet list ("`@value:x`, `@collection:x`, `@sources`,
-`@choice:x` — actor state references"; "`@world:x`"; "`@ctx:x`"), so `ReferenceNamespace` in
-`ast.ts` (`'value' | 'collection' | 'sources' | 'choice' | 'world' | 'ctx'`) is treated as closed and
-correct as committed — no change proposed here for these six.
+§14.2 presents the first six as a complete enumerated bullet list ("`@value:x`, `@collection:x`,
+`@sources`, `@choice:x` — actor state references"; "`@world:x`"; "`@ctx:x`"), and they stand
+unchanged. `@source:` is added as the seventh (§8.2), making `ReferenceNamespace` in `ast.ts`
+`'value' | 'collection' | 'sources' | 'choice' | 'world' | 'ctx' | 'source'` — still closed.
 
-### 8.2 Two forms this review found and neither is yet represented correctly
+> **Revision 3 repairs a stale example.** §8.1 previously showed `@sources[tag = "stressed"]`.
+> `SourceDefinition.tags` is a *list* and EEL has no membership function, so a scalar `tag = …`
+> comparison was never satisfiable. `@sources` items expose exactly `instanceId`, `definitionId`, and
+> `tags`; the canonical filter is on `definitionId`. Tag-based filtering of `@sources` is deferred to
+> V2 together with a membership function.
 
-Grepping every `@`-prefixed token across the entire architecture document (not just §14's own
-examples) surfaced two additional forms actually used in worked JSON, neither of which the current
-`ast.ts` union accounts for cleanly:
+### 8.2 `@source:` — the seventh namespace *(resolved in revision 3)*
 
-**`@source.equipped`** — singular, **dot**-accessed, no colon. Appears twice, identically, in
-concrete modifier examples (§16.1's `mod:shield.defense`, and the Appendix's Package A armour
-modifier): `"condition": { "text": "@source.equipped" }`. This is a **different concept** from
-`@sources` (plural): `@sources` is the actor's whole collection of active Source instances,
-filterable with `[...]`; `@source` (singular) means "the one Source instance this modifier itself is
-attached to" — meaningful only inside that Source's own embedded modifier expressions, never
-globally. `ast.ts`'s `ReferenceNamespace` currently has `'sources'` but not `'source'`.
-**Recommendation: add `'source'` as a seventh namespace, scoped to `ModifierDefinition`-context
-expressions only** (a parser/type-checker concern to enforce later, not a lexical one). **Requires
-an `ast.ts` change — not made here, flagged in §9.**
+**Canonical syntax: `@source:<path>`.** Colon-separated like every other namespace, never
+dot-accessed.
+
+Revision 2 of `rules-engine.md` wrote this as `@source.equipped` in two places (§16.1's shield
+modifier and the Appendix's armour modifier). That form was never legal: it would have made `source`
+the only namespace whose separator is `.` rather than `:`, creating two namespace rules where §1's
+philosophy demands one. Both occurrences are now corrected in `rules-engine.md`, and `@source:` is
+specified here in full.
+
+**Concept.** `@source:` (singular) is a **different concept** from `@sources` (plural). `@sources` is
+the actor's whole set of active Source instances, filterable with `[...]`. `@source:` is *the one
+Source instance through which the enclosing modifier was activated* — always exactly one, guaranteed
+by `rules-engine.md` §16.1's activation invariant.
+
+**Lexical scope.** `@source:` is legal **only** inside a `ModifierSpec`'s `value` and `condition`
+expressions. In a `ValueDefinition.formula`, a `RollSpec.dice`, a `ResourceDefinition.max`, or any
+`ActionDefinition` expression it is a **reference-validation error** — not a syntax error. The parser
+accepts it anywhere, exactly as it accepts `banana(2)`: the parser understands grammar, not context.
+
+**Grammar.**
+
+```
+sourceReference := "@" "source" ":" path
+path            := identifier ("." identifier)*
+```
+
+**The path is mandatory.** This is what makes `@source` and `@sources` impossible to confuse despite
+differing by one character:
+
+| Input | Result |
+|---|---|
+| `@source:equipped` | Valid — namespace `source`, path `equipped` |
+| `@source` | **Syntax error**: "`@source` requires a path (did you mean `@sources`?)" |
+| `@sources` | Valid — namespace `sources`, no path |
+| `@sources:equipped` | **Syntax error**: "`@sources` takes no path (did you mean `@source:equipped`?)" |
+
+Both diagnostics name the other form explicitly, so either typo is caught at parse time with a
+one-step fix.
+
+**Tokenizer.** No changes. `@source:equipped` already lexes as `at · identifier("source") ·
+colon · identifier("equipped")` — the tokenizer never knew the namespace list, and still doesn't.
+`source` and `sources` are simply different `identifier` tokens.
+
+**AST.** No new node kind. `'source'` becomes the seventh member of `ReferenceNamespace`, and
+`@source:equipped` produces the ordinary `reference(source, "equipped")` node. Adding a node kind
+would mean auditing every exhaustive `switch` in the parser, type checker, dependency extractor, and
+evaluator for no gain (`rules-engine.md` §14.12 makes the same argument about `unresolved`).
+
+**Path resolution.** One flat namespace, two groups of fields:
+
+| Path | Type | Availability |
+|---|---|---|
+| `@source:instanceId` | `text` | always |
+| `@source:definitionId` | `text` | always |
+| `@source:duration.kind` | `text` | always (`""` when the instance has no duration) |
+| `@source:duration.remaining` | `number` | always (`0` when the instance has no duration) |
+| `@source:<itemField>` | declared by the collection's `itemSchema` | only when the instance came from a collection item |
+
+`duration.kind` and `duration.remaining` are the **only** nested paths. Item fields are exposed flat
+(`@source:equipped`, not `@source:item.equipped`) because a collection item *is* the record — there
+is no sub-object to reach into, and inventing one would add a path level with no referent.
+
+`instanceId`, `definitionId`, `duration`, and `origin` are **engine-reserved**: an `itemSchema` that
+declares any of them is a package validation error (`rules-engine.md` §16.9). That rule is what keeps
+one flat namespace unambiguous.
+
+**Static typing.** The four engine-reserved paths have known types and are checked statically. Item
+fields are **statically unknown** — the same treatment `@world:`, `@ctx:`, `@choice:`, and `@sources`
+already receive — because which collection (if any) activates a given Source is not knowable from the
+package alone. Type validation therefore neither accepts nor rejects an expression on the basis of an
+item field's type; it propagates "unknown" and defers to runtime.
+
+**Runtime failure.** An absent field evaluates to `error`, never to a type-appropriate zero:
+
+- `@source:equipped` on a *declared* (non-item) instance → `error`. A condition has no `equipped`.
+- `@source:equiped` (misspelled) → `error`.
+
+This is a deliberate exception to §11's "every value has a type-appropriate zero": that rule applies
+where the type is known, and an absent field has none. Returning `false` for a misspelling would
+disable a modifier permanently with no diagnostic.
+
+**That error must then survive the boolean context it lands in.** Per §7.1, an `error` in a
+condition is an `error`, never `false`: it propagates out and makes the modified value visibly
+`error`, naming the modifier and the Source instance (`rules-engine.md` §16.11A). Producing an error
+here and having the pipeline read it as "not true" would deliver precisely the silent permanent
+deactivation this rule exists to prevent — this paragraph and §7.1 are load-bearing for each other,
+and neither works alone.
+
+**Dependency extraction.** `@source:` contributes **no** static dependency edge — it reads runtime
+instance data, never a Definition. It joins `ctx`, `world`, `sources`, and `choice` in the
+never-an-edge set (`rules-engine.md` §16.9).
+
+**Valid examples**
+
+```
+@source:equipped
+@source:quantity
+@source:instanceId
+@source:duration.remaining > 0
+if(@source:equipped, 2, 0)
+@value:might.mod + @source:enhancementBonus
+```
+
+**Invalid examples**
+
+```
+@source                      // no path — did you mean @sources?
+@sources:equipped            // @sources takes no path — did you mean @source:equipped?
+@source.equipped             // '.' is a path separator, not a namespace separator
+@source:                     // path segment expected
+@source:item.weight          // no 'item' sub-object; item fields are flat
+@source:equipped             // valid syntax, but a reference-validation ERROR
+                             //   inside a ValueDefinition.formula (§8.2 lexical scope)
+```
+
+### 8.2.1 `@self` — still unresolved
 
 **`@self`** — bare, no colon, no path. Appears once, in a migration `transformValue` step's `using`
-expression (§25.3): `{ "op": "transformValue", "id": "value:defense", "using": { "text": "@self +
-1" } }`. Unlike the six established namespaces, this is a single occurrence in a context (data
-migration, not live actor evaluation) that may have its own, narrower expression grammar entirely —
-migrations transform one stored value using its own prior value, which is conceptually different
-from any of §14.2's namespaces. **This document does not resolve whether `@self` belongs to EEL
-proper as a seventh (or eighth) reference namespace, or whether it's a keyword scoped only to the
-migration-step DSL with its own separate grammar.** This is exactly the kind of ambiguity §1's
-philosophy says to document and not silently decide — flagged for an explicit architecture decision
-before a parser can treat it either way.
+expression (`rules-engine.md` §25.3): `{ "op": "transformValue", "id": "value:defense", "using":
+{ "text": "@self + 1" } }`. Unlike the seven established namespaces, this is a single occurrence in a
+context (data migration, not live actor evaluation) that may have its own, narrower expression
+grammar entirely — migrations transform one stored value using its own prior value, which is
+conceptually different from any of §14.2's namespaces. **This document still does not resolve whether
+`@self` belongs to EEL proper or to a separate migration-step grammar.** Revision 3 deliberately did
+not fold it in: `@source:` was resolved because the modifier system is blocked without it, while
+`@self` blocks only a migration feature that does not yet exist.
+
+The open question is unchanged: **does `@self` belong to EEL proper as an eighth reference namespace,
+or is it a keyword scoped only to the migration-step DSL with its own separate grammar?** This is
+exactly the kind of ambiguity §1's philosophy says to document and not silently decide — flagged for
+an explicit architecture decision before a parser can treat it either way.
 
 ### 8.3 Case sensitivity
 
@@ -385,7 +528,11 @@ established convention, not proposed here.** Grounded by both forms actually use
 
 - **Bare field-name shorthand**: `[equipped]` — means "where the current item's `equipped` field is
   truthy."
-- **Full comparison**: `[tag = "stressed"]` — an ordinary EEL boolean expression.
+- **Full comparison**: `[quantity > 1]` — an ordinary EEL boolean expression over the item's fields.
+
+> **Revision 3** replaced the previous full-comparison example, `[tag = "stressed"]`. It filtered
+> `@sources` on a scalar `tag` field that no modeled type ever had (`SourceDefinition.tags` is a
+> list — see §8.1), so it was not a satisfiable expression.
 
 **Generalization (not textually shown beyond these two forms, but the natural and minimal reading):**
 the predicate inside `[...]` is any valid EEL expression producing a boolean, evaluated once per
@@ -418,20 +565,36 @@ literal either way.
 ## 9. Required AST Changes — Summary
 
 Everything in this document was checked against `app/lib/rules/ast.ts` as committed. Three findings
-require a change to that file before a parser can implement this specification faithfully. None has
-been made — this section exists so they can be evaluated and approved as their own decision, per
-this task's explicit constraint ("No AST changes unless required by an approved language decision").
+require a change to that file before a parser can implement this specification faithfully.
 
-| # | Finding | Proposed change | Where |
-|---|---|---|---|
-| 1 | `%` (modulo) is a genuine, justified gap (§3.1) | Add `'%'` to `BinaryOperator` | `ast.ts` |
-| 2 | Unary operator vocabulary was left open pending this document (§3.4) | Narrow `UnaryExpressionNode.operator` from `string` to `'-'` | `ast.ts` |
-| 3 | `@source` (singular, dot-accessed) is real, grounded syntax distinct from `@sources` (§8.2) | Add `'source'` to `ReferenceNamespace` | `ast.ts` |
+| # | Finding | Proposed change | Where | Status |
+|---|---|---|---|---|
+| 1 | `%` (modulo) is a genuine, justified gap (§3.1) | Add `'%'` to `BinaryOperator` | `ast.ts` | Still proposed, unapproved |
+| 2 | Unary operator vocabulary was left open pending this document (§3.4) | Narrow `UnaryExpressionNode.operator` from `string` to `'-'` | `ast.ts` | Still proposed, unapproved |
+| 3 | `@source:` is real syntax distinct from `@sources` (§8.2) | Add `'source'` to `ReferenceNamespace` | `ast.ts` | **Approved in revision 3** — the modifier system is unimplementable without it (`rules-engine.md` §16.9, ADR-020) |
 
-One additional finding is **not** a proposed AST change, because it isn't yet resolved enough to
-propose one: `@self` (§8.2) may belong to EEL's `ReferenceNamespace` as a context-scoped form, or may
-belong entirely to a separate, narrower migration-step grammar. This needs a decision before either
-path is taken, not a guess baked into the AST.
+Finding 3 is now a required change rather than a proposal, and it is the *only* AST change revision 3
+authorizes. Findings 1 and 2 remain independent decisions and must not be bundled into the same
+commit.
+
+Two further changes revision 3 requires live outside `ast.ts` and so are not AST changes at all,
+listed here so no one goes looking for them in the wrong file:
+
+| Finding | Change | Where |
+|---|---|---|
+| `@source` must never be bare; `@sources` must never take a path (§8.2) | Namespace-specific path arity check with paired suggestions | `parser.ts` |
+| `@source:` is legal only inside `ModifierSpec` expressions (§8.2) | Owning-Definition-aware scope check | reference validation |
+| A Modifier `condition` is a boolean context (§7.1) | Reject a statically non-boolean condition at package validation | type validation |
+| `error` and non-boolean results must not be read as `false` (§7.1) | Propagate rather than exclude; enrich with provenance | `modifier-pipeline.ts` (`rules-engine.md` §16.11A) |
+
+None of these four touches `ast.ts`. The last one is a *behavioral* change to shipped code rather
+than a new capability, and it is the one that must not be deferred: every diagnostic §8.2 and §12
+promise is unobservable while a boolean context absorbs errors.
+
+One finding remains **unresolved** and is deliberately not an AST change: `@self` (§8.2.1) may belong
+to EEL's `ReferenceNamespace` as a context-scoped form, or may belong entirely to a separate, narrower
+migration-step grammar. This needs a decision before either path is taken, not a guess baked into the
+AST.
 
 ---
 
@@ -468,6 +631,11 @@ safely past. A reference to a Value that happens to be unset simply evaluates to
 (`0`, `""`, `false`) — a type-checker concern (a later, not-yet-built phase), not a parser concern.
 `error` (§14.4) is the one distinguished "something went wrong" value, and it is not null-like: it
 propagates deliberately (`1 + error` is `error`) rather than being silently absorbed.
+
+**And it propagates in boolean position too** *(revision 3)*. `error` is not a falsy value, and no
+context in this language may treat it as one — see §7.1. This is where "not null-like" stops being a
+turn of phrase: a null-like value would naturally be absorbed by a conditional, which is exactly the
+behavior that made a `RulesError` in a Modifier `condition` disappear.
 
 ---
 

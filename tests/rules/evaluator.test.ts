@@ -1,0 +1,411 @@
+// Unit tests for the Rules Engine core Evaluator (app/lib/rules/evaluator.ts).
+// These assert on the public API (evaluate) and on EvaluationSession's own
+// public API for cache/trace/visit-stack inspection. Per this task's own
+// scope, the Modifier Pipeline, Action/Roll execution, and cache
+// invalidation are not exercised here.
+
+import { describe, expect, it } from 'vitest'
+import { evaluate } from '../../app/lib/rules/evaluator'
+import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
+import { DependencyGraph } from '../../app/lib/rules/dependency-graph'
+import { RulesRegistry } from '../../app/lib/rules/registry'
+import { parseExpression } from '../../app/lib/rules/parser'
+import type {
+  ActorState,
+  CollectionDefinition,
+  Definition,
+  EvaluationContext,
+  Expression,
+  RulesPackageManifest,
+  ValueDefinition
+} from '../../app/lib/rules/types'
+
+function manifest(): RulesPackageManifest {
+  return {
+    packageId: 'eldra.test.pkg',
+    version: '1.0.0',
+    status: 'draft',
+    engineApiVersion: '^1.0.0',
+    stateSchemaVersion: 1,
+    title: 'Test Package',
+    license: { id: 'CC0-1.0' },
+    capabilities: [],
+    dependencies: []
+  }
+}
+
+function expression(text: string): Expression {
+  const result = parseExpression(text)
+  if (!result.ok) {
+    throw new Error(`Expected '${text}' to parse, got: ${JSON.stringify(result.diagnostics)}`)
+  }
+  return { text, ast: result.ast as Expression['ast'] }
+}
+
+function valueDefinition(
+  id: string,
+  overrides: Partial<ValueDefinition> = {}
+): ValueDefinition {
+  return { id, kind: 'value', valueType: 'number', storage: 'stored', ...overrides }
+}
+
+function derivedValue(id: string, formulaText: string, valueType: ValueDefinition['valueType'] = 'number'): ValueDefinition {
+  return { id, kind: 'value', valueType, storage: 'derived', formula: expression(formulaText) }
+}
+
+function collectionDefinition(id: string, itemSchema: CollectionDefinition['itemSchema']): CollectionDefinition {
+  return { id, kind: 'collection', itemSchema }
+}
+
+function actorState(overrides: Partial<ActorState> = {}): ActorState {
+  return {
+    actorId: 'actor:1',
+    packageId: 'eldra.test.pkg',
+    packageVersion: '1.0.0',
+    stateSchemaVersion: 1,
+    values: {},
+    collections: {},
+    choices: {},
+    sources: [],
+    ...overrides
+  }
+}
+
+function context(overrides: Partial<EvaluationContext> = {}): EvaluationContext {
+  return { ...overrides }
+}
+
+// Builds a session WITHOUT running static cycle detection or reference
+// validation first -- the evaluator's runtime guard is being tested in
+// isolation, independent of whichever earlier pass would ordinarily catch
+// a cyclic package before evaluation ever runs.
+function buildSession(
+  definitions: Definition[],
+  options: { actor?: Partial<ActorState>; tracingEnabled?: boolean } = {}
+): EvaluationSession {
+  const registryResult = RulesRegistry.create(manifest(), definitions)
+  if (!registryResult.ok) throw new Error(`registry construction failed: ${JSON.stringify(registryResult.errors)}`)
+  // The evaluator never consults session.graph directly (it recurses via
+  // evaluate() + the registry only), so a deliberately cyclic package --
+  // which static graph construction correctly rejects -- can still safely
+  // use a placeholder graph here to exercise the evaluator's OWN runtime
+  // guard in isolation, independent of static validation.
+  const graphResult = DependencyGraph.build(registryResult.registry)
+  const graph = graphResult.ok ? graphResult.graph : (undefined as unknown as DependencyGraph)
+  return new EvaluationSession(registryResult.registry, graph, actorState(options.actor), context(), {
+    tracingEnabled: options.tracingEnabled
+  })
+}
+
+describe('literal evaluation', () => {
+  it('a derived number literal evaluates to that number', () => {
+    const session = buildSession([derivedValue('value:x', '42')])
+    expect(evaluate('value:x', session)).toBe(42)
+  })
+
+  it('a derived text literal evaluates to that text', () => {
+    const session = buildSession([derivedValue('value:x', '"hello"', 'text')])
+    expect(evaluate('value:x', session)).toBe('hello')
+  })
+
+  it('a derived boolean literal evaluates to that boolean', () => {
+    const session = buildSession([derivedValue('value:x', 'true', 'boolean')])
+    expect(evaluate('value:x', session)).toBe(true)
+  })
+
+  it('a stored value with no ActorState entry and no default falls back to a type-appropriate zero', () => {
+    const session = buildSession([valueDefinition('value:x', { valueType: 'number' })])
+    expect(evaluate('value:x', session)).toBe(0)
+  })
+
+  it('a stored value reads from ActorState.values when present', () => {
+    const session = buildSession([valueDefinition('value:x')], { actor: { values: { 'value:x': 7 } } })
+    expect(evaluate('value:x', session)).toBe(7)
+  })
+
+  it('a stored value falls back to its declared default when ActorState has no entry', () => {
+    const session = buildSession([valueDefinition('value:x', { default: 3 })])
+    expect(evaluate('value:x', session)).toBe(3)
+  })
+})
+
+describe('reference evaluation', () => {
+  it('a formula referencing another Value evaluates through it', () => {
+    const session = buildSession([valueDefinition('value:a'), derivedValue('value:b', '@value:a')], {
+      actor: { values: { 'value:a': 5 } }
+    })
+    expect(evaluate('value:b', session)).toBe(5)
+  })
+
+  it("the architecture's own worked example evaluates correctly", () => {
+    const session = buildSession(
+      [valueDefinition('value:might'), derivedValue('value:might.mod', 'floor((@value:might - 10) / 2)')],
+      { actor: { values: { 'value:might': 16 } } }
+    )
+    expect(evaluate('value:might.mod', session)).toBe(3)
+  })
+
+  it('a reference to an unmodeled namespace (@ctx) evaluates to a RulesError', () => {
+    const session = buildSession([derivedValue('value:x', '@ctx:successes')])
+    const result = evaluate('value:x', session)
+    expect(result).toMatchObject({ definitionId: 'value:x' })
+    expect((result as { message: string }).message).toContain('ctx')
+  })
+})
+
+describe('recursive evaluation', () => {
+  it('a -> b -> c resolves through the full chain', () => {
+    const session = buildSession(
+      [valueDefinition('value:a'), derivedValue('value:b', '@value:a * 2'), derivedValue('value:c', '@value:b + 1')],
+      { actor: { values: { 'value:a': 3 } } }
+    )
+    expect(evaluate('value:c', session)).toBe(7)
+  })
+})
+
+describe('nested dependencies', () => {
+  it('a value with multiple references combined through nested arithmetic and a conditional', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:hp'),
+        valueDefinition('value:maxHp'),
+        derivedValue('value:status', 'if(@value:hp <= 0, "Dead", "Alive")', 'text')
+      ],
+      { actor: { values: { 'value:hp': 0, 'value:maxHp': 20 } } }
+    )
+    expect(evaluate('value:status', session)).toBe('Dead')
+  })
+
+  it('the conditional branch NOT selected is never evaluated (laziness)', () => {
+    // The unselected branch references a Definition that does not exist --
+    // if it were evaluated, this would produce a RulesError instead.
+    const session = buildSession([derivedValue('value:x', 'if(true, 1, @value:doesNotExist)')])
+    expect(evaluate('value:x', session)).toBe(1)
+  })
+})
+
+describe('memoization', () => {
+  it('evaluating a Definition populates the session cache', () => {
+    const session = buildSession([derivedValue('value:x', '42')])
+    expect(session.hasCached('value:x')).toBe(false)
+    evaluate('value:x', session)
+    expect(session.hasCached('value:x')).toBe(true)
+    expect(session.getCached('value:x')).toBe(42)
+  })
+
+  it('a second evaluate() call does not recompute -- it returns the cached value even after the underlying formula would produce something different', () => {
+    const session = buildSession([valueDefinition('value:a'), derivedValue('value:b', '@value:a')], {
+      actor: { values: { 'value:a': 1 } }
+    })
+    expect(evaluate('value:b', session)).toBe(1)
+    session.actorState.values['value:a'] = 999
+    // Still 1: the cached result from the first call, not recomputed.
+    expect(evaluate('value:b', session)).toBe(1)
+  })
+})
+
+describe('cache hits', () => {
+  it('a pre-populated cache entry is returned as-is, bypassing evaluation entirely', () => {
+    // The formula itself would error if actually evaluated (unknown
+    // reference) -- proving the cache hit short-circuits before any
+    // computation happens.
+    const session = buildSession([derivedValue('value:x', '@value:doesNotExist')])
+    session.setCached('value:x', 123)
+    expect(evaluate('value:x', session)).toBe(123)
+  })
+})
+
+describe('runtime cycle detection', () => {
+  it('a self-referencing formula produces a RulesError, not infinite recursion', () => {
+    const session = buildSession([derivedValue('value:x', '@value:x')])
+    const result = evaluate('value:x', session)
+    expect(result).toMatchObject({ definitionId: 'value:x' })
+    expect((result as { message: string }).message).toContain('cycle')
+  })
+
+  it('a two-Definition runtime cycle is caught via the session visit stack', () => {
+    // a evaluates b, b evaluates a again -- the cycle is detected re-
+    // entering 'value:a' (the id already on the visit stack), so the error
+    // names 'value:a', not 'value:b' which merely triggered the re-entry.
+    const session = buildSession([derivedValue('value:a', '@value:b'), derivedValue('value:b', '@value:a')])
+    const result = evaluate('value:a', session)
+    expect(result).toMatchObject({ definitionId: 'value:a' })
+    expect((result as { message: string }).message).toContain('cycle')
+  })
+
+  it('the visit stack is empty again after a cycle is caught and unwound', () => {
+    const session = buildSession([derivedValue('value:x', '@value:x')])
+    evaluate('value:x', session)
+    expect(session.getVisitPath()).toEqual([])
+  })
+
+  it('a runtime cycle error is not cached, so a later call can still be attempted', () => {
+    const session = buildSession([derivedValue('value:x', '@value:x')])
+    evaluate('value:x', session)
+    expect(session.hasCached('value:x')).toBe(false)
+  })
+
+  it('a cycle error is not cached even at an intermediate frame it merely passes through', () => {
+    // a -> b -> a: the error is constructed naming 'a', but it unwinds
+    // through 'b's own evaluate() frame first. Neither id should end up
+    // cached with this transient result.
+    const session = buildSession([derivedValue('value:a', '@value:b'), derivedValue('value:b', '@value:a')])
+    evaluate('value:a', session)
+    expect(session.hasCached('value:a')).toBe(false)
+    expect(session.hasCached('value:b')).toBe(false)
+  })
+})
+
+describe('trace creation', () => {
+  it('no trace is recorded when tracingEnabled is false', () => {
+    const session = buildSession([derivedValue('value:x', '42')])
+    evaluate('value:x', session)
+    expect(session.getTrace('value:x')).toBeUndefined()
+  })
+
+  it('a trace is recorded when tracingEnabled is true', () => {
+    const session = buildSession([derivedValue('value:x', '42')], { tracingEnabled: true })
+    evaluate('value:x', session)
+    expect(session.getTrace('value:x')).toEqual({ path: 'value:x', result: 42, steps: [] })
+  })
+})
+
+describe('repeated evaluation', () => {
+  it('evaluating the same Definition multiple times yields the same result every time', () => {
+    const session = buildSession(
+      [valueDefinition('value:a'), derivedValue('value:b', '@value:a + 1')],
+      { actor: { values: { 'value:a': 4 } } }
+    )
+    const first = evaluate('value:b', session)
+    const second = evaluate('value:b', session)
+    const third = evaluate('value:b', session)
+    expect(first).toBe(5)
+    expect(second).toBe(5)
+    expect(third).toBe(5)
+  })
+})
+
+describe('arithmetic and function whitelist', () => {
+  it('evaluates the four arithmetic operators', () => {
+    const session = buildSession([derivedValue('value:x', '(2 + 3) * 4 / 2 - 1')])
+    expect(evaluate('value:x', session)).toBe(9)
+  })
+
+  it('evaluates clamp/min/max/floor', () => {
+    const session = buildSession([derivedValue('value:x', 'floor(clamp(max(1, 2), 0, min(10, 5)) / 2)')])
+    // clamp(2, 0, 5) = 2; floor(2/2) = 1
+    expect(evaluate('value:x', session)).toBe(1)
+  })
+
+  it('evaluates text functions', () => {
+    const session = buildSession([derivedValue('value:x', 'upper(concat(lower("A"), "b"))', 'text')])
+    expect(evaluate('value:x', session)).toBe('AB')
+  })
+
+  it('and/or short-circuit and do not evaluate later arguments once determined', () => {
+    const session = buildSession([derivedValue('value:x', 'and(false, @value:doesNotExist)', 'boolean')])
+    expect(evaluate('value:x', session)).toBe(false)
+  })
+
+  it('an unrecognized function name produces a RulesError', () => {
+    const session = buildSession([derivedValue('value:x', 'banana(1)')])
+    expect(evaluate('value:x', session)).toMatchObject({ definitionId: 'value:x' })
+  })
+
+  it('error propagation: an error inside a sub-expression propagates through arithmetic unchanged', () => {
+    // The error is constructed where the actual problem is (the missing
+    // reference), not rewrapped with the outer formula's own id.
+    const session = buildSession([derivedValue('value:x', '1 + @value:doesNotExist')])
+    const result = evaluate('value:x', session)
+    expect(result).toMatchObject({ definitionId: 'value:doesNotExist' })
+  })
+})
+
+describe('dice', () => {
+  it('a literal NdF dice token evaluates to a diceSpec, not a number', () => {
+    const session = buildSession([derivedValue('value:x', '2d6')])
+    expect(evaluate('value:x', session)).toEqual({ count: 2, faces: 6 })
+  })
+
+  it('dice(count, faces) with a referenced count evaluates correctly', () => {
+    const session = buildSession([valueDefinition('value:pool'), derivedValue('value:x', 'dice(@value:pool, 6)')], {
+      actor: { values: { 'value:pool': 3 } }
+    })
+    expect(evaluate('value:x', session)).toEqual({ count: 3, faces: 6 })
+  })
+
+  it('keepHighest annotates a diceSpec without rolling it', () => {
+    const session = buildSession([derivedValue('value:x', 'keepHighest(dice(4, 6), 3)')])
+    expect(evaluate('value:x', session)).toEqual({ count: 4, faces: 6, keep: 'highest', keepCount: 3 })
+  })
+})
+
+describe('collections', () => {
+  const inventorySchema: CollectionDefinition['itemSchema'] = [
+    { key: 'weightEach', valueType: 'number' },
+    { key: 'quantity', valueType: 'number' },
+    { key: 'equipped', valueType: 'boolean' }
+  ]
+
+  it("the architecture's own sum/aggregate example evaluates correctly", () => {
+    const session = buildSession(
+      [
+        collectionDefinition('collection:inventory', inventorySchema),
+        derivedValue('value:totalWeight', 'sum(@collection:inventory[equipped], "weightEach" * "quantity")')
+      ],
+      {
+        actor: {
+          collections: {
+            'collection:inventory': [
+              { instanceId: '1', weightEach: 2, quantity: 3, equipped: true },
+              { instanceId: '2', weightEach: 5, quantity: 1, equipped: false },
+              { instanceId: '3', weightEach: 1, quantity: 4, equipped: true }
+            ]
+          }
+        }
+      }
+    )
+    // (2*3) + (1*4) = 10 -- item 2 excluded by the [equipped] filter
+    expect(evaluate('value:totalWeight', session)).toBe(10)
+  })
+
+  it('count() counts filtered items', () => {
+    const session = buildSession(
+      [
+        collectionDefinition('collection:inventory', inventorySchema),
+        derivedValue('value:equippedCount', 'count(@collection:inventory[equipped])')
+      ],
+      {
+        actor: {
+          collections: {
+            'collection:inventory': [
+              { instanceId: '1', equipped: true },
+              { instanceId: '2', equipped: false },
+              { instanceId: '3', equipped: true }
+            ]
+          }
+        }
+      }
+    )
+    expect(evaluate('value:equippedCount', session)).toBe(2)
+  })
+
+  it('any() reports whether any item matches', () => {
+    const session = buildSession(
+      [
+        collectionDefinition('collection:inventory', inventorySchema),
+        derivedValue('value:hasEquipped', 'any(@collection:inventory[equipped])', 'boolean')
+      ],
+      { actor: { collections: { 'collection:inventory': [{ instanceId: '1', equipped: false }] } } }
+    )
+    expect(evaluate('value:hasEquipped', session)).toBe(false)
+  })
+
+  it('an empty (unset) collection instance is treated as zero items', () => {
+    const session = buildSession([
+      collectionDefinition('collection:inventory', inventorySchema),
+      derivedValue('value:count', 'count(@collection:inventory)')
+    ])
+    expect(evaluate('value:count', session)).toBe(0)
+  })
+})

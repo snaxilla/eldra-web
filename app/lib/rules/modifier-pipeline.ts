@@ -67,6 +67,37 @@
 //    comment already notes the predicate shape "is not specified in the
 //    architecture". Suppression by Source DefinitionId is implemented;
 //    tag predicates are not.
+//
+// ---------------------------------------------------------------------------
+// REVISION 3 -- COMMIT 1: condition-result / error-propagation correction
+// ---------------------------------------------------------------------------
+// rules-engine.md §16.11A (ADR-022) replaces this module's original
+// condition-gating rule. The deployed rule this commit removes was: "a
+// non-true condition result -- including a RulesError -- excludes the
+// Modifier." That made three other architectural guarantees unreachable in
+// practice (an absent `@source:` field erroring, a runtime cycle surfacing
+// visibly, and §28's "visible degradation over silent corruption" generally):
+// a RulesError produced by a condition was silently reinterpreted as "not
+// true" and the Modifier just disappeared.
+//
+// The governing rule is now: **false eligibility excludes; evaluation
+// failure propagates.** `resolveActiveModifiers` reflects this in its return
+// type -- it no longer returns a bare array, because an empty array is a
+// legitimate SUCCESS ("nothing applies") and can no longer also mean
+// "something broke." It returns `ActiveModifier[] | RulesError` here, using
+// only types this codebase already has. §16.18's full type-contract delta
+// (a dedicated `ModifierResolution` discriminated union, `RulesErrorProvenance`,
+// `ModifierPipelineStage`, etc.) is explicitly out of scope for this commit
+// and will replace this union type once it lands -- see the comment on
+// `resolveActiveModifiers` below for exactly what that future commit
+// simplifies.
+//
+// This commit implements ONLY the condition-result/error-propagation rule.
+// `@source:`, the Source Overlay, stacking selection, and clamp redesign
+// (ambiguities A, C, D above) are untouched and remain exactly as
+// before -- this module still discovers Modifiers only through
+// `ActorState.sources` (ambiguity C persists) and still cannot parse
+// `@source:` conditions (ambiguity A persists).
 
 import type { EvaluationSession } from './evaluation-session'
 import type {
@@ -75,6 +106,7 @@ import type {
   ModifierDefinition,
   ModifierPhase,
   RuleValue,
+  RulesError,
   SourceDefinition,
   SourceInstance
 } from './types'
@@ -114,15 +146,32 @@ const PHASE_INDEX: ReadonlyMap<ModifierPhase, number> = new Map(
 // unknown, so this is the only policy currently reachable.
 export const DEFAULT_STACKING = 'stack'
 
+// §16.11A: the stable reason code for a condition that evaluated
+// successfully but did not yield a boolean. Not `RulesError.code` -- that
+// field does not exist yet (types.ts's `RulesError` has no discriminated
+// code; it arrives with §16.18's type-contract delta). `reason` is the
+// closest existing field and is used here as a stable, grep-able string in
+// the meantime.
+export const MODIFIER_CONDITION_NOT_BOOLEAN = 'modifier-condition-not-boolean'
+
 // Returns every active Modifier targeting `targetId`, ordered by
 // (§16.4 phase, then §15.3's `(explicitOrder, sourceDefinitionId,
 // sourceInstanceId)`). Discovery -> suppression -> target match ->
 // applicability -> ordering. Computes no values.
+//
+// REVISION 3 (§16.11A, ADR-022): the return type is no longer a bare array.
+// A condition failure -- a non-boolean result, or an existing RulesError
+// (including a runtime cycle) -- aborts resolution entirely, and that is
+// signalled by returning a `RulesError` instead of `ActiveModifier[]`. An
+// empty array remains a legitimate, distinct outcome: "every Modifier was
+// either absent, suppressed, target-mismatched, or its condition was
+// boolean `false`" -- ordinary eligibility, not failure. Callers MUST check
+// for a RulesError before treating the result as a list.
 export function resolveActiveModifiers(
   targetId: DefinitionId,
   session: EvaluationSession,
   evaluateCondition: ConditionEvaluator
-): ActiveModifier[] {
+): ActiveModifier[] | RulesError {
   const active = resolveActiveSources(session)
   const surviving = applySuppression(active)
 
@@ -144,7 +193,8 @@ export function resolveActiveModifiers(
   // Ordered BEFORE conditions are evaluated so that condition evaluation
   // itself happens in a deterministic sequence -- conditions can read other
   // Values, and a stable evaluation order is what §15.3 exists to
-  // guarantee.
+  // guarantee. It is also what makes "which error is reported first"
+  // reproducible (§16.11A decision 5).
   const ordered = candidates.sort(compareActiveModifiers)
 
   const applicable: ActiveModifier[] = []
@@ -153,16 +203,66 @@ export function resolveActiveModifiers(
       applicable.push(candidate)
       continue
     }
+
     const result = evaluateCondition(candidate.modifier.condition, candidate.sourceDefinitionId)
-    if (result === true) applicable.push(candidate)
-    // A non-boolean or error condition result excludes the modifier. §14.4
-    // ("errors propagate... visible degradation over silent corruption")
-    // governs values, not gating: a modifier whose condition could not be
-    // established as true is simply not applied, rather than corrupting an
-    // otherwise-good target value with an error.
+
+    if (result === true) {
+      applicable.push(candidate)
+      continue
+    }
+
+    if (result === false) {
+      // Ordinary eligibility, not a failure (§16.11A: "false eligibility
+      // excludes"). The package author gave a well-formed "no". No error,
+      // no diagnostic -- silently excluded, exactly as before this commit.
+      continue
+    }
+
+    if (isRulesError(result)) {
+      // §16.11A decision 4 / ADR-022: propagate the ORIGINAL error
+      // unchanged. Never converted to `false`, never re-labelled -- a
+      // runtime cycle keeps its own message and path (§16.13 example 8).
+      // First error aborts resolution of this target entirely (§16.11A
+      // decision 1): no further candidates are evaluated. Full provenance
+      // enrichment (source/instance/attachmentIndex on the error itself)
+      // is deferred to the type-contract commit, once RulesError can carry
+      // it structurally (§16.18's RulesErrorProvenance) -- attributing this
+      // failure to the target being resolved is left to the caller, which
+      // is exactly what evaluator.ts already does for every other error
+      // this pipeline can produce.
+      return result
+    }
+
+    // Non-boolean, non-error: an authoring mistake, not an eligibility
+    // answer. EEL has no truthiness (expression-language.md §7.1) -- this
+    // MUST error rather than silently exclude, per §16.11A. First error
+    // aborts resolution of this target; no further candidates evaluated.
+    return {
+      definitionId: candidate.sourceDefinitionId,
+      message:
+        `Modifier condition on Source '${candidate.sourceDefinitionId}' (targeting '${targetId}') ` +
+        `must evaluate to boolean, got '${typeof result}'`,
+      reason: MODIFIER_CONDITION_NOT_BOOLEAN
+    }
   }
 
   return applicable
+}
+
+// Mirrors evaluator.ts's own `isRulesError` exactly. Duplicated rather than
+// imported: evaluator.ts imports `resolveActiveModifiers` from this module,
+// so importing the other way would create a cycle. Both copies must be kept
+// in sync until the type-contract commit gives RulesError a discriminant
+// (e.g. a `kind: 'error'` tag) that would let this collapse to one check.
+function isRulesError(value: unknown): value is RulesError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    'definitionId' in value &&
+    'message' in value &&
+    !('count' in value && 'faces' in value)
+  )
 }
 
 // ---------------------------------------------------------------------------

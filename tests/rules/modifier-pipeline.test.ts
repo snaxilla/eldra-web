@@ -307,9 +307,17 @@ describe('conditional Modifiers', () => {
     expect(resolve('value:defense', session, false)).toEqual([])
   })
 
-  it('a modifier is excluded when its condition yields a non-boolean', () => {
+  it('a non-boolean condition result aborts resolution with a RulesError, not an empty list (§16.11A, revision 3)', () => {
+    // Pre-revision-3 behavior silently excluded the modifier here (an
+    // empty array). Revision 3 (ADR-022) makes this a resolution FAILURE:
+    // EEL has no truthiness, so a non-boolean condition result is an
+    // authoring mistake, not an eligibility answer, and must propagate.
     const session = buildSession(conditional(), { sources: [instance('si-1', 'source:rage')] })
-    expect(resolve('value:defense', session, 1)).toEqual([])
+    const result = resolve('value:defense', session, 1)
+    expect(result).not.toEqual([])
+    expect(Array.isArray(result)).toBe(false)
+    expect(result).toMatchObject({ definitionId: 'source:rage', reason: 'modifier-condition-not-boolean' })
+    expect((result as { message: string }).message).toContain('boolean')
   })
 
   it('a modifier with no condition is unconditionally applicable', () => {
@@ -332,6 +340,123 @@ describe('conditional Modifiers', () => {
       sources: [instance('si-1', 'source:rage')]
     })
     expect(evaluate('value:defense', notApplied)).toBe(10)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Revision 3, commit 1: condition-result / error-propagation correction
+// (rules-engine.md §16.11A, ADR-022). "False eligibility excludes;
+// evaluation failure propagates." These exercise the change end to end,
+// through evaluate() -- not just resolveActiveModifiers() in isolation --
+// since the defect this corrects was specifically that a failure used to
+// disappear before ever reaching the target Value.
+// ---------------------------------------------------------------------------
+
+describe('condition failure propagation (§16.11A, revision 3)', () => {
+  it('a genuinely non-boolean condition result aborts target evaluation -- the target becomes an error, not the unmodified base', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        valueDefinition('value:might', { default: 5 }),
+        source('source:rage', [modifier('value:defense', 'add', 2, { condition: expression('@value:might') })])
+      ],
+      { sources: [instance('si-1', 'source:rage')] }
+    )
+    // '@value:might' evaluates to the number 5 -- a well-formed, non-error,
+    // non-boolean RuleValue. It must not be silently treated as "false".
+    const result = evaluate('value:defense', session)
+    expect(result).not.toBe(10) // not the unmodified base
+    expect(result).not.toBe(12) // not silently applied either
+    expect(result).toMatchObject({ reason: 'modifier-condition-not-boolean' })
+  })
+
+  it('an existing RulesError produced inside a condition propagates unchanged -- never read as "not true"', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        source('source:rage', [modifier('value:defense', 'add', 2, { condition: expression('@ctx:something') })])
+      ],
+      { sources: [instance('si-1', 'source:rage')] }
+    )
+    // '@ctx:something' is well-formed syntax that the evaluator does not
+    // resolve (evaluateReference's namespace fallback) -- a genuine
+    // RulesError, produced independently of this commit's change.
+    const result = evaluate('value:defense', session)
+    expect(result).not.toBe(10)
+    // Attributed to the Source that owns the condition, not the target --
+    // the same existing convention modifierValue() uses for value-expression
+    // errors (evaluator.ts), unchanged by this commit.
+    expect(result).toMatchObject({ definitionId: 'source:rage' })
+    expect((result as { message: string }).message).toContain('ctx')
+    // Not re-labelled as a boolean-context failure -- the original error's
+    // own message survives untouched (ADR-022: enrich, never wrap).
+    expect((result as { message: string }).message).not.toContain('modifier-condition-not-boolean')
+  })
+
+  it('a runtime dynamic cycle reached through a condition propagates as a visible error, never as a silently-excluded modifier', () => {
+    // Mirrors rules-engine.md §16.13 example 8: value:guard's modifier
+    // condition depends on value:morale, whose formula depends back on
+    // value:guard -- a cycle that exists only once this Source is active.
+    const session = buildSession(
+      [
+        valueDefinition('value:guard', { default: 10 }),
+        valueDefinition('value:morale', { storage: 'derived', formula: expression('@value:guard') }),
+        source('source:spell', [
+          modifier('value:guard', 'add', 2, { condition: expression('@value:morale < 12') })
+        ])
+      ],
+      { sources: [instance('si-1', 'source:spell')] }
+    )
+    const result = evaluate('value:guard', session)
+    expect(result).not.toBe(10) // the cycle must not resolve as "condition false"
+    expect((result as { message: string }).message).toContain('Runtime dependency cycle detected')
+    expect((result as { message: string }).message).toContain('value:guard')
+    expect((result as { message: string }).message).toContain('value:morale')
+  })
+
+  it('a successful boolean true condition still applies its modifier, unaffected by this change', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        valueDefinition('value:might', { default: 16 }),
+        source('source:rage', [
+          modifier('value:defense', 'add', 2, { condition: expression('@value:might > 10') })
+        ])
+      ],
+      { sources: [instance('si-1', 'source:rage')] }
+    )
+    expect(evaluate('value:defense', session)).toBe(12)
+  })
+
+  it('a successful boolean false condition still excludes its modifier silently, unaffected by this change', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        valueDefinition('value:might', { default: 4 }),
+        source('source:rage', [
+          modifier('value:defense', 'add', 2, { condition: expression('@value:might > 10') })
+        ])
+      ],
+      { sources: [instance('si-1', 'source:rage')] }
+    )
+    expect(evaluate('value:defense', session)).toBe(10)
+  })
+
+  it('a propagated condition error is memoized like any other RuleValue (§15.4) -- repeated reads return the same cached result', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        valueDefinition('value:might', { default: 5 }),
+        source('source:rage', [modifier('value:defense', 'add', 2, { condition: expression('@value:might') })])
+      ],
+      { sources: [instance('si-1', 'source:rage')] }
+    )
+    expect(session.hasCached('value:defense')).toBe(false)
+    const first = evaluate('value:defense', session)
+    expect(session.hasCached('value:defense')).toBe(true)
+    expect(session.getCached('value:defense')).toEqual(first)
+    const second = evaluate('value:defense', session)
+    expect(second).toEqual(first)
   })
 })
 

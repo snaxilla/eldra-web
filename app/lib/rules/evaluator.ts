@@ -15,6 +15,12 @@
 // that module returns (see applyModifiers below, including the two phases
 // applied under documented interpretations).
 //
+// REVISION 3 (§16.11A, ADR-022): resolveActiveModifiers can now return a
+// RulesError instead of a sequence, meaning gating itself failed rather
+// than resolved to "nothing applies." applyModifiers propagates that error
+// exactly like any other -- see the comment on applyModifiers below for the
+// one behavior change this commit makes.
+//
 // ---------------------------------------------------------------------------
 // DESIGN DECISIONS AND GAPS FOUND (expanded in the commit Summary)
 // ---------------------------------------------------------------------------
@@ -297,9 +303,23 @@ function computeBaseValue(
 //     (min/max) is unambiguous but is not a Modifier and is out of this
 //     commit's scope.
 function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: EvaluationSession): RuleValue {
-  const active = resolveActiveModifiers(definitionId, session, (condition, ownerId) =>
+  const resolution = resolveActiveModifiers(definitionId, session, (condition, ownerId) =>
     evaluateExpression(asRuleExpressionNode(condition), session, ownerId)
   )
+
+  // REVISION 3 (rules-engine.md §16.11A, ADR-022): resolveActiveModifiers no
+  // longer signals "a condition failed" with an empty array -- an empty
+  // array is now exclusively "nothing applies", a legitimate success. A
+  // condition that errored, or that evaluated to a non-boolean, aborts
+  // resolution and is returned as a RulesError instead, and it must
+  // propagate here exactly like any other error this function already
+  // returns (§14.4: `1 + error` is `error`) -- never be read as "base is
+  // unmodified." This is the one behavior change this commit makes; the
+  // rest of applyModifiers (phase application, the base/clamp
+  // interpretations already documented above) is untouched.
+  if (isRulesError(resolution)) return resolution
+
+  const active = resolution
   if (active.length === 0) return base
 
   const byPhase = groupByPhase(active)

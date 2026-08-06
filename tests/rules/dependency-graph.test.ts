@@ -7,7 +7,17 @@ import { describe, expect, it } from 'vitest'
 import { DependencyGraph } from '../../app/lib/rules/dependency-graph'
 import { RulesRegistry } from '../../app/lib/rules/registry'
 import { parseExpression } from '../../app/lib/rules/parser'
-import type { Definition, Expression, RulesPackageManifest, ValueDefinition } from '../../app/lib/rules/types'
+import type {
+  ActionCost,
+  ActionDefinition,
+  Definition,
+  Expression,
+  ModifierDefinition,
+  RollSpec,
+  RulesPackageManifest,
+  SourceDefinition,
+  ValueDefinition
+} from '../../app/lib/rules/types'
 
 function manifest(overrides: Partial<RulesPackageManifest> = {}): RulesPackageManifest {
   return {
@@ -42,6 +52,33 @@ function valueDefinition(id: string, formulaText?: string): ValueDefinition {
   }
 }
 
+function modifierDefinition(
+  id: string,
+  target: string,
+  overrides: Partial<ModifierDefinition> = {}
+): ModifierDefinition {
+  return { id, kind: 'modifier', target, phase: 'add', value: 1, ...overrides }
+}
+
+function sourceDefinition(id: string, modifiers: ModifierDefinition[]): SourceDefinition {
+  return { id, kind: 'source', modifiers }
+}
+
+function rollSpec(id: string): RollSpec {
+  return { id, kind: 'roll', dice: expression('1d20'), successRule: { kind: 'atLeast' } }
+}
+
+function actionDefinition(
+  id: string,
+  overrides: Partial<Pick<ActionDefinition, 'roll' | 'costs'>> = {}
+): ActionDefinition {
+  return { id, kind: 'action', ...overrides }
+}
+
+function actionCost(resource: string, amountText = '1'): ActionCost {
+  return { resource, amount: expression(amountText) }
+}
+
 function buildOk(definitions: Definition[]): DependencyGraph {
   const registryResult = RulesRegistry.create(manifest(), definitions)
   if (!registryResult.ok) {
@@ -52,6 +89,18 @@ function buildOk(definitions: Definition[]): DependencyGraph {
     throw new Error(`Expected graph construction to succeed, got: ${JSON.stringify(graphResult.errors)}`)
   }
   return graphResult.graph
+}
+
+function buildErrors(definitions: Definition[]) {
+  const registryResult = RulesRegistry.create(manifest(), definitions)
+  if (!registryResult.ok) {
+    throw new Error(`Expected registry construction to succeed, got: ${JSON.stringify(registryResult.errors)}`)
+  }
+  const graphResult = DependencyGraph.build(registryResult.registry)
+  if (graphResult.ok) {
+    throw new Error('Expected graph construction to fail, but it succeeded')
+  }
+  return graphResult.errors
 }
 
 describe('isolated Definitions', () => {
@@ -187,6 +236,159 @@ describe('deterministic graph construction', () => {
       valueDefinition('value:root', '@value:z + @value:a + @value:m')
     ])
     expect(graph.getDependencies('value:root')).toEqual(['value:z', 'value:a', 'value:m'])
+  })
+})
+
+describe('structural edges: modifier target direction', () => {
+  it('a standalone modifier targeting a Value makes the Value depend on the modifier, not the reverse', () => {
+    const graph = buildOk([valueDefinition('value:strength'), modifierDefinition('modifier:heroism', 'value:strength')])
+    expect(graph.getDependencies('value:strength')).toEqual(['modifier:heroism'])
+    expect(graph.getDependents('modifier:heroism')).toEqual(['value:strength'])
+    // The inversion, stated explicitly: the modifier itself does not gain
+    // the target as one of ITS dependencies merely because it targets it.
+    expect(graph.getDependencies('modifier:heroism')).toEqual([])
+    expect(graph.getDependents('value:strength')).toEqual([])
+  })
+
+  it('an inline modifier embedded in a Source attributes its target edge to the owning Source', () => {
+    // No id/kind on the inline modifier -- matches the real authoring shape
+    // (SourceDefinition.modifiers[] entries have no id of their own).
+    const source = sourceDefinition('source:brace', [{ target: 'value:defense', phase: 'add', value: 1 }])
+    const graph = buildOk([valueDefinition('value:defense'), source])
+    expect(graph.getDependencies('value:defense')).toEqual(['source:brace'])
+    expect(graph.getDependents('source:brace')).toEqual(['value:defense'])
+  })
+})
+
+describe('structural edges: modifier condition/value dependencies coexist with the inverted target edge', () => {
+  it('a modifier with both a condition/value Expression dependency and a target produces both edges', () => {
+    const modifier = modifierDefinition('modifier:heroism', 'value:strength', {
+      value: expression('@value:might'),
+      condition: expression('@value:attackBonus > 0')
+    })
+    const graph = buildOk([
+      valueDefinition('value:strength'),
+      valueDefinition('value:might'),
+      valueDefinition('value:attackBonus'),
+      modifier
+    ])
+    // The modifier's own outgoing edges: Expression-derived only (its
+    // condition/value references), never its own target (that edge is
+    // inverted onto the target, not attributed to the modifier itself).
+    expect(graph.getDependencies('modifier:heroism')).toEqual(['value:might', 'value:attackBonus'])
+    // The target's incoming edge: the modifier, via the inverted structural
+    // edge -- independent of, and alongside, the modifier's own Expression
+    // dependencies.
+    expect(graph.getDependencies('value:strength')).toEqual(['modifier:heroism'])
+  })
+})
+
+describe('structural edges: action -> roll dependency', () => {
+  it('an Action with a roll depends on that Roll Spec', () => {
+    const graph = buildOk([rollSpec('roll:attack'), actionDefinition('action:strike', { roll: 'roll:attack' })])
+    expect(graph.getDependencies('action:strike')).toEqual(['roll:attack'])
+    expect(graph.getDependents('roll:attack')).toEqual(['action:strike'])
+  })
+})
+
+describe('structural edges: action -> resource dependency through costs', () => {
+  it('an Action with a cost depends on that cost\'s Resource', () => {
+    const graph = buildOk([
+      valueDefinition('value:stress'),
+      actionDefinition('action:rage', { costs: [actionCost('value:stress')] })
+    ])
+    expect(graph.getDependencies('action:rage')).toEqual(['value:stress'])
+    expect(graph.getDependents('value:stress')).toEqual(['action:rage'])
+  })
+
+  it('multiple costs referencing the same Resource deduplicate to one edge', () => {
+    const graph = buildOk([
+      valueDefinition('value:stress'),
+      actionDefinition('action:rage', {
+        costs: [actionCost('value:stress', '1'), actionCost('value:stress', '2')]
+      })
+    ])
+    expect(graph.getDependencies('action:rage')).toEqual(['value:stress'])
+  })
+})
+
+describe('structural and Expression-derived edges converging on the same target deduplicate', () => {
+  it('an Action whose roll id also appears via an Expression dependency still produces one edge', () => {
+    // Roll Specs cannot themselves be @value:/@collection: referenced (no
+    // such worked example exists), so this exercises convergence the
+    // realistic way: an Action's prerequisite Expression and its own
+    // `roll` field both pointing at the same Value/Resource-shaped target
+    // is not representable (roll targets a RollSpec, prerequisites can
+    // only reference @value:/@collection:) -- convergence is instead
+    // exercised via cost + a prerequisite Expression both naming the same
+    // Resource.
+    const action: ActionDefinition = {
+      id: 'action:rage',
+      kind: 'action',
+      costs: [actionCost('value:stress')],
+      prerequisites: [expression('@value:stress > 0')]
+    }
+    const graph = buildOk([valueDefinition('value:stress'), action])
+    expect(graph.getDependencies('action:rage')).toEqual(['value:stress'])
+    expect(graph.getDependents('value:stress')).toEqual(['action:rage'])
+  })
+})
+
+describe('structural edges fail cleanly on a missing target', () => {
+  it('a modifier targeting a nonexistent Definition fails construction', () => {
+    const errors = buildErrors([modifierDefinition('modifier:heroism', 'value:missing')])
+    expect(errors).toEqual([
+      {
+        message: "Modifier 'modifier:heroism' targets 'value:missing', which does not exist in the registry",
+        definitionId: 'modifier:heroism',
+        dependencyKey: 'value:missing'
+      }
+    ])
+  })
+
+  it('an action referencing a nonexistent Roll fails construction', () => {
+    const errors = buildErrors([actionDefinition('action:strike', { roll: 'roll:missing' })])
+    expect(errors).toEqual([
+      {
+        message: "Action 'action:strike' uses Roll 'roll:missing', which does not exist in the registry",
+        definitionId: 'action:strike',
+        dependencyKey: 'roll:missing'
+      }
+    ])
+  })
+
+  it('an action cost referencing a nonexistent Resource fails construction', () => {
+    const errors = buildErrors([actionDefinition('action:rage', { costs: [actionCost('value:missing')] })])
+    expect(errors).toEqual([
+      {
+        message: "Action 'action:rage' has a cost referencing Resource 'value:missing', which does not exist in the registry",
+        definitionId: 'action:rage',
+        dependencyKey: 'value:missing'
+      }
+    ])
+  })
+})
+
+describe('the four-node modifier-mediated cycle is fully represented in adjacency', () => {
+  it('every edge of the cycle described in the task exists, in the correct direction', () => {
+    // value:attackBonus -> value:strengthModifier -> value:strength
+    // -> modifier:heroism -> value:attackBonus (via condition)
+    const graph = buildOk([
+      valueDefinition('value:attackBonus', '@value:strengthModifier'),
+      valueDefinition('value:strengthModifier', '@value:strength'),
+      valueDefinition('value:strength'),
+      modifierDefinition('modifier:heroism', 'value:strength', {
+        condition: expression('@value:attackBonus > 0')
+      })
+    ])
+
+    expect(graph.getDependencies('value:attackBonus')).toEqual(['value:strengthModifier'])
+    expect(graph.getDependencies('value:strengthModifier')).toEqual(['value:strength'])
+    expect(graph.getDependencies('value:strength')).toEqual(['modifier:heroism'])
+    expect(graph.getDependencies('modifier:heroism')).toEqual(['value:attackBonus'])
+
+    // Not run here (cycle detection is a later commit's job) -- this only
+    // asserts the adjacency a future DFS would need to actually find it.
   })
 })
 

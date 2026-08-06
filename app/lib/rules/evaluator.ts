@@ -3,27 +3,30 @@
 // §14.3-§14.6 (type system, error behavior, function whitelist, dice), and
 // §14.8 (cycles) for the design this implements.
 //
-// This module answers exactly what this task's OBJECTIVE names: given a
-// DefinitionId, produce a RuleValue, lazily, recursively, memoized, pull-
-// based, using an EvaluationSession for all runtime state. It does NOT
-// implement the Modifier Pipeline (§16.4's phase-based composition), does
-// NOT execute Actions or Rolls, does NOT mutate Resources, does NOT
-// schedule or batch-evaluate, and does NOT compute cache invalidation. A
-// derived Value's evaluated result here is its `formula` alone -- no
-// active Modifiers are layered on top yet; that composition is future work
-// this task explicitly excludes.
+// This module produces a RuleValue for a DefinitionId: lazily, recursively,
+// memoized, pull-based, using an EvaluationSession for all runtime state.
+// It does NOT execute Actions or Rolls, does NOT mutate Resources, does NOT
+// schedule or batch-evaluate, and does NOT compute cache invalidation.
+//
+// A Value's result is its base (formula, or stored/default) with §16.4's
+// fixed Modifier phase pipeline applied on top. Discovering, suppressing,
+// gating, and ordering those Modifiers belongs entirely to
+// modifier-pipeline.ts -- this module only applies the ordered sequence
+// that module returns (see applyModifiers below, including the two phases
+// applied under documented interpretations).
 //
 // ---------------------------------------------------------------------------
 // DESIGN DECISIONS AND GAPS FOUND (expanded in the commit Summary)
 // ---------------------------------------------------------------------------
-// 1. Per-Definition-kind evaluation, given no modifier/action/roll
-//    execution exists yet:
+// 1. Per-Definition-kind evaluation, given no action/roll execution exists
+//    yet:
 //      - ValueDefinition (storage:'stored'): read ActorState.values[id];
 //        fall back to `default`; fall back further to §14.4's "every value
-//        has a type-appropriate zero."
-//      - ValueDefinition (storage:'derived'): evaluate `formula`'s AST
-//        directly. No formula present is a malformed-package condition
-//        (nothing to derive from) -> RulesError, not a zero-fallback.
+//        has a type-appropriate zero." Modifiers then apply on top.
+//      - ValueDefinition (storage:'derived'): evaluate `formula`'s AST to
+//        get the base, then apply Modifiers. No formula present is a
+//        malformed-package condition (nothing to derive from) ->
+//        RulesError, not a zero-fallback.
 //      - ResourceDefinition: evaluates `max` (its one Expression|RuleValue
 //        field). §12.5's "expands into two Values... a resourceOf
 //        back-link" is the LOADER's job (no loader exists -- explicit
@@ -138,6 +141,7 @@ import type {
   RuleExpressionNode
 } from './ast'
 import type { EvaluationSession } from './evaluation-session'
+import { groupByPhase, resolveActiveModifiers, type ActiveModifier } from './modifier-pipeline'
 import type {
   CollectionInstanceItem,
   Definition,
@@ -238,6 +242,19 @@ function computeValue(
   definition: Extract<Definition, { kind: 'value' }>,
   session: EvaluationSession
 ): RuleValue {
+  const base = computeBaseValue(definitionId, definition, session)
+  const baseError = firstError(base)
+  if (baseError) return baseError
+  return applyModifiers(definitionId, base, session)
+}
+
+// §16.4 phase 1: "base -- establishes the starting value (formula or
+// default)". This is that starting value, before any Modifier participates.
+function computeBaseValue(
+  definitionId: DefinitionId,
+  definition: Extract<Definition, { kind: 'value' }>,
+  session: EvaluationSession
+): RuleValue {
   if (definition.storage === 'derived') {
     if (!definition.formula) {
       return evaluationError(definitionId, `Derived Value '${definitionId}' has no formula to evaluate`)
@@ -250,6 +267,110 @@ function computeValue(
   if (stored !== undefined) return stored
   if (definition.default !== undefined) return definition.default
   return typeAppropriateZero(definition.valueType)
+}
+
+// ---------------------------------------------------------------------------
+// Modifier application (§16.4's fixed phase pipeline)
+// ---------------------------------------------------------------------------
+//
+// Discovery/suppression/applicability/ordering all belong to
+// modifier-pipeline.ts; this function only APPLIES the ordered sequence it
+// returns. Two phases are applied under documented interpretations rather
+// than unambiguous specification -- both reported in the commit Summary:
+//
+//   - `base`-phase MODIFIERS: §16.4 describes the base phase as "establishes
+//     the starting value (formula or default)", i.e. as the slot the
+//     formula/default itself occupies -- it never says what a Modifier
+//     *declaring* phase 'base' does, yet ModifierPhase admits one. Applied
+//     here as an override of the computed starting value, last in §15.3
+//     order winning (the same shape `set`/`final` use, since every other
+//     reading would have to invent one).
+//
+//   - `clamp`-phase modifiers: §16.4 says clamp does "min / max / floor /
+//     ceiling", but ModifierDefinition (types.ts) carries a single `value`
+//     and no field distinguishing which. §27.1's one worked clamp step
+//     ({op:"clamp", label:"Maximum", value:30}) is a label, not a
+//     discriminator. Rather than guess whether a bound is a floor or a
+//     ceiling -- a guess that silently produces a wrong number either way --
+//     a clamp-phase modifier yields a RulesError, per §14.4's "visible
+//     degradation over silent corruption". ValueDefinition.constraints
+//     (min/max) is unambiguous but is not a Modifier and is out of this
+//     commit's scope.
+function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: EvaluationSession): RuleValue {
+  const active = resolveActiveModifiers(definitionId, session, (condition, ownerId) =>
+    evaluateExpression(asRuleExpressionNode(condition), session, ownerId)
+  )
+  if (active.length === 0) return base
+
+  const byPhase = groupByPhase(active)
+  let running = base
+
+  for (const entry of byPhase.get('base') ?? []) {
+    const value = modifierValue(entry, session)
+    const error = firstError(value)
+    if (error) return error
+    running = value
+  }
+
+  for (const entry of byPhase.get('set') ?? []) {
+    const value = modifierValue(entry, session)
+    const error = firstError(value)
+    if (error) return error
+    running = value
+  }
+
+  // §16.4: "add -- additive, grouped by modifier type, resolved per that
+  // type's policy". With no declaration site for §16.3's modifierTypes
+  // policy table, every type is unknown and defaults to `stack` (sum all) --
+  // under which per-type grouping is arithmetically a no-op, so the sum is
+  // taken directly. Grouping becomes meaningful only once 'highest'/
+  // 'lowest'/'exclusive' are declarable.
+  for (const entry of byPhase.get('add') ?? []) {
+    const value = modifierValue(entry, session)
+    const error = firstError(value)
+    if (error) return error
+    if (typeof running !== 'number' || typeof value !== 'number') {
+      return evaluationError(definitionId, `'add' modifier requires numbers, got '${typeof running} + ${typeof value}'`)
+    }
+    running = running + value
+  }
+
+  for (const entry of byPhase.get('scale') ?? []) {
+    const value = modifierValue(entry, session)
+    const error = firstError(value)
+    if (error) return error
+    if (typeof running !== 'number' || typeof value !== 'number') {
+      return evaluationError(definitionId, `'scale' modifier requires numbers, got '${typeof running} * ${typeof value}'`)
+    }
+    running = running * value
+  }
+
+  const clampModifiers = byPhase.get('clamp') ?? []
+  if (clampModifiers.length > 0) {
+    return evaluationError(
+      definitionId,
+      `Cannot apply 'clamp' modifier from Source '${clampModifiers[0]!.sourceDefinitionId}' -- ModifierDefinition has no field distinguishing a minimum from a maximum bound (rules-engine.md §16.4 is unresolved on this)`
+    )
+  }
+
+  for (const entry of byPhase.get('final') ?? []) {
+    const value = modifierValue(entry, session)
+    const error = firstError(value)
+    if (error) return error
+    running = value
+  }
+
+  return running
+}
+
+// A Modifier's `value` is `Expression | RuleValue` (types.ts). Expressions
+// are evaluated in the context of the Source that owns them, so any error
+// is attributed to that Source rather than to the target Value.
+function modifierValue(entry: ActiveModifier, session: EvaluationSession): RuleValue {
+  const value = entry.modifier.value
+  return isExpression(value)
+    ? evaluateExpression(asRuleExpressionNode(value), session, entry.sourceDefinitionId)
+    : value
 }
 
 // ---------------------------------------------------------------------------

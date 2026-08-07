@@ -8,7 +8,13 @@ import { describe, expect, it } from 'vitest'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import { DependencyGraph } from '../../app/lib/rules/dependency-graph'
 import { RulesRegistry } from '../../app/lib/rules/registry'
-import type { ActorState, EvaluationContext, RulesPackageManifest, ValueDefinition } from '../../app/lib/rules/types'
+import type {
+  ActorState,
+  EvaluationContext,
+  RulesPackageManifest,
+  SourceDefinition,
+  ValueDefinition
+} from '../../app/lib/rules/types'
 
 function manifest(): RulesPackageManifest {
   return {
@@ -247,5 +253,41 @@ describe('diagnostics', () => {
     session.addDiagnostic(first)
     session.addDiagnostic(second)
     expect(session.getDiagnostics()).toEqual([first, second])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Source Overlay integration (§16.8, revision 3, Commit 4). Full builder
+// coverage (declared/collection-derived instances, provenance, ordering,
+// diagnostics) lives in source-overlay.test.ts -- these only confirm the
+// session actually wires buildSourceOverlay in, once, at construction.
+// ---------------------------------------------------------------------------
+
+function sourceDefinition(id: string): SourceDefinition {
+  return { id, kind: 'source', modifiers: [] }
+}
+
+describe('Source Overlay integration', () => {
+  it('constructs sourceOverlay from the ActorState passed in, at construction', () => {
+    const registryResult = RulesRegistry.create(manifest(), [valueDefinition('value:might'), sourceDefinition('source:blessed')])
+    if (!registryResult.ok) throw new Error('registry construction failed')
+    const graphResult = DependencyGraph.build(registryResult.registry)
+    if (!graphResult.ok) throw new Error('graph construction failed')
+
+    const actor = actorState({ sources: [{ instanceId: 'cs-1', sourceRef: 'source:blessed' }] })
+    const session = new EvaluationSession(registryResult.registry, graphResult.graph, actor, context())
+
+    expect(session.sourceOverlay.instances).toHaveLength(1)
+    expect(session.sourceOverlay.instances[0]).toMatchObject({ instanceId: 'cs-1', definitionId: 'source:blessed' })
+  })
+
+  it('an ActorState with no Sources produces an empty, not undefined, overlay', () => {
+    const { session } = buildSession()
+    expect(session.sourceOverlay).toEqual({ instances: [], diagnostics: [] })
+  })
+
+  it('sourceOverlay is the same instance across repeated reads -- built once, not lazily recomputed', () => {
+    const { session } = buildSession()
+    expect(session.sourceOverlay).toBe(session.sourceOverlay)
   })
 })

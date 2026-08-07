@@ -81,9 +81,26 @@
 //    ahead of time, over the whole package's DependencyGraph; this stack
 //    only ever reflects whichever single evaluation chain is currently
 //    in progress for one read.
+//
+// 7. REVISION 3 -- COMMIT 4 (§16.8): `sourceOverlay` is a `readonly`
+//    field, built by calling `buildSourceOverlay(registry, actorState)`
+//    exactly once, here in the constructor -- never lazily, never
+//    recomputed. This is precisely the one documented step §16.8 assigns
+//    this class ("EvaluationSession's role widens by exactly one
+//    documented step: it calls buildSourceOverlay once at construction. It
+//    gains no other computation."), and mirrors design decision 2 above:
+//    `SourceOverlay` (source-overlay.ts) is itself fully immutable once
+//    built (its arrays are frozen), so a plain `readonly` field is
+//    sufficient -- no wrapping needed to prevent mutation through the
+//    reference. Nothing in this class yet CONSUMES the overlay (modifier
+//    discovery, §source: resolution, and cache invalidation on an item-
+//    field edit are all later commits, per this commit's own NON-GOALS);
+//    it is stored so those commits have a session-owned artifact to read
+//    rather than each recomputing their own.
 
 import type { DependencyGraph } from './dependency-graph'
 import type { RulesRegistry } from './registry'
+import { buildSourceOverlay, type SourceOverlay } from './source-overlay'
 import type { ActorState, DefinitionId, EvaluationContext, RuleValue, RulesError, Trace } from './types'
 
 // ---------------------------------------------------------------------------
@@ -102,6 +119,8 @@ export class EvaluationSession {
   readonly graph: DependencyGraph
   readonly actorState: ActorState
   readonly context: EvaluationContext
+  // §16.8 (revision 3, Commit 4) -- see design decision 7 above.
+  readonly sourceOverlay: SourceOverlay
 
   // §15.5: "Off by default." Mutable -- see design decision 5.
   tracingEnabled: boolean
@@ -122,6 +141,7 @@ export class EvaluationSession {
     this.graph = graph
     this.actorState = actorState
     this.context = context
+    this.sourceOverlay = buildSourceOverlay(registry, actorState)
     this.tracingEnabled = options.tracingEnabled ?? false
   }
 

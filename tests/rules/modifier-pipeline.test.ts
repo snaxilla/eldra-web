@@ -16,6 +16,8 @@ import type {
   EvaluationContext,
   Expression,
   ModifierApplicationPhase,
+  ModifierDefinition,
+  ModifierReference,
   ModifierSpec,
   RuleValue,
   RulesPackageManifest,
@@ -65,8 +67,28 @@ function modifier(
   return { target, phase, value, ...overrides } as ModifierSpec
 }
 
-function source(id: string, modifiers: ModifierSpec[], overrides: Partial<SourceDefinition> = {}): SourceDefinition {
+function source(
+  id: string,
+  modifiers: Array<ModifierSpec | ModifierReference>,
+  overrides: Partial<SourceDefinition> = {}
+): SourceDefinition {
   return { id, kind: 'source', modifiers, ...overrides }
+}
+
+// A standalone, reusable Modifier Definition (§16.1, §16.10) -- has its own
+// id/kind, attached to a Source only via `{ ref: id }` (modifierRef below).
+function standaloneModifier(
+  id: string,
+  target: string,
+  phase: ModifierApplicationPhase,
+  value: ModifierSpec['value'],
+  overrides: Partial<ModifierSpec> = {}
+): ModifierDefinition {
+  return { id, kind: 'modifier', target, phase, value, ...overrides } as ModifierDefinition
+}
+
+function modifierRef(ref: string): ModifierReference {
+  return { ref }
 }
 
 function instance(instanceId: string, sourceRef: string): SourceInstance {
@@ -309,6 +331,211 @@ describe('deterministic ordering', () => {
       { sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b')] }
     )
     expect(resolve('value:defense', session)).toEqual(resolve('value:defense', session))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Modifier attachment resolution (§16.10, revision 3, Commit 5). @source:
+// runtime field resolution is explicitly out of scope here -- these tests
+// only assert on ActiveModifier's provenance fields (attachmentIndex,
+// origin, sourceDefinitionId, sourceInstanceId), never on evaluated values.
+// ---------------------------------------------------------------------------
+
+describe('modifier attachment resolution (§16.10)', () => {
+  it('an inline modifier resolves with attachmentIndex 0 and declared origin', () => {
+    const session = buildSession(
+      [valueDefinition('value:defense'), source('source:a', [modifier('value:defense', 'add', 1)])],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    const [active] = resolve('value:defense', session)
+    expect(active).toMatchObject({
+      attachmentIndex: 0,
+      origin: { kind: 'declared' },
+      sourceDefinitionId: 'source:a',
+      sourceInstanceId: 'si-1'
+    })
+  })
+
+  it('a { ref } entry resolves to the standalone ModifierDefinition it names', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense'),
+        standaloneModifier('modifier:shieldBonus', 'value:defense', 'add', 2),
+        source('source:shield', [modifierRef('modifier:shieldBonus')])
+      ],
+      { sources: [instance('si-1', 'source:shield')] }
+    )
+    const active = resolve('value:defense', session)
+    expect(active).toHaveLength(1)
+    expect(active[0]!.modifier.value).toBe(2)
+    expect(active[0]!.modifier.target).toBe('value:defense')
+  })
+
+  it('inline and referenced Modifiers become indistinguishable after resolution (§16.10 decision 4)', () => {
+    const inlineSession = buildSession(
+      [valueDefinition('value:defense'), source('source:a', [modifier('value:defense', 'add', 2, { label: 'X' })])],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    const refSession = buildSession(
+      [
+        valueDefinition('value:defense'),
+        standaloneModifier('modifier:x', 'value:defense', 'add', 2, { label: 'X' }),
+        source('source:a', [modifierRef('modifier:x')])
+      ],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    const inlineActive = resolve('value:defense', inlineSession)
+    const refActive = resolve('value:defense', refSession)
+    // Same shape apart from the modifier's own (irrelevant) id/kind identity.
+    expect(refActive[0]!.attachmentIndex).toBe(inlineActive[0]!.attachmentIndex)
+    expect(refActive[0]!.origin).toEqual(inlineActive[0]!.origin)
+    expect(refActive[0]!.phase).toBe(inlineActive[0]!.phase)
+    expect(refActive[0]!.sourceDefinitionId).toBe(inlineActive[0]!.sourceDefinitionId)
+    expect(refActive[0]!.sourceInstanceId).toBe(inlineActive[0]!.sourceInstanceId)
+    expect(refActive[0]!.modifier.target).toBe(inlineActive[0]!.modifier.target)
+    expect(refActive[0]!.modifier.value).toBe(inlineActive[0]!.modifier.value)
+  })
+
+  it('one standalone modifier referenced by multiple Sources attaches independently to each', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:resistance'),
+        standaloneModifier('modifier:fireResist', 'value:resistance', 'add', 5),
+        source('source:ring', [modifierRef('modifier:fireResist')]),
+        source('source:cloak', [modifierRef('modifier:fireResist')])
+      ],
+      { sources: [instance('si-ring', 'source:ring'), instance('si-cloak', 'source:cloak')] }
+    )
+    const active = resolve('value:resistance', session)
+    expect(active).toHaveLength(2)
+    expect(active.map((entry) => entry.sourceDefinitionId).sort()).toEqual(['source:cloak', 'source:ring'])
+    expect(active.every((entry) => entry.modifier.value === 5)).toBe(true)
+  })
+
+  it('mixed inline and referenced entries in one Source\'s modifiers array both attach', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense'),
+        standaloneModifier('modifier:armour', 'value:defense', 'add', 3),
+        source('source:brace', [modifierRef('modifier:armour'), modifier('value:defense', 'add', 1)])
+      ],
+      { sources: [instance('si-1', 'source:brace')] }
+    )
+    const active = resolve('value:defense', session)
+    expect(active).toHaveLength(2)
+    expect(active.map((entry) => entry.modifier.value)).toEqual([3, 1])
+  })
+
+  it('attachmentIndex reflects position within SourceDefinition.modifiers, inline or referenced alike', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense'),
+        standaloneModifier('modifier:a', 'value:defense', 'add', 1),
+        source('source:mixed', [
+          modifierRef('modifier:a'),                    // index 0
+          modifier('value:defense', 'add', 2),           // index 1
+          modifier('value:defense', 'add', 3)            // index 2
+        ])
+      ],
+      { sources: [instance('si-1', 'source:mixed')] }
+    )
+    const active = resolve('value:defense', session)
+    expect(active.map((entry) => entry.attachmentIndex)).toEqual([0, 1, 2])
+  })
+
+  it('attachmentIndex is the final ordering tiebreak when order/sourceDefinitionId/sourceInstanceId all tie (§15.3)', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense'),
+        source('source:mixed', [
+          modifier('value:defense', 'add', 10, { label: 'first' }),
+          modifier('value:defense', 'add', 20, { label: 'second' })
+        ])
+      ],
+      { sources: [instance('si-1', 'source:mixed')] }
+    )
+    // Neither modifier declares `order` (both default to the same tie), and
+    // both share sourceDefinitionId/sourceInstanceId -- only attachmentIndex
+    // (array position) can break the tie, and it must resolve in authoring
+    // order, not be left undefined.
+    expect(resolve('value:defense', session).map((entry) => entry.modifier.label)).toEqual(['first', 'second'])
+  })
+
+  it('a { ref } naming a nonexistent Definition is skipped, not treated as active (missing ModifierDefinition)', () => {
+    const session = buildSession(
+      [valueDefinition('value:defense'), source('source:a', [modifierRef('modifier:doesNotExist')])],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    expect(resolve('value:defense', session)).toEqual([])
+  })
+
+  it('a { ref } naming a Definition that exists but is not kind "modifier" is skipped', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense'),
+        valueDefinition('value:notAModifier'),
+        source('source:a', [modifierRef('value:notAModifier')])
+      ],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    expect(resolve('value:defense', session)).toEqual([])
+  })
+
+  it('a resolvable { ref } coexists with an unresolvable one -- the good entry still attaches', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense'),
+        standaloneModifier('modifier:good', 'value:defense', 'add', 7),
+        source('source:a', [modifierRef('modifier:doesNotExist'), modifierRef('modifier:good')])
+      ],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    const active = resolve('value:defense', session)
+    expect(active).toHaveLength(1)
+    expect(active[0]!.modifier.value).toBe(7)
+    // The surviving entry keeps its OWN array position (index 1), not a
+    // renumbered "0" after the skipped entry -- attachmentIndex names a
+    // position in the authored array, not a count of survivors.
+    expect(active[0]!.attachmentIndex).toBe(1)
+  })
+
+  it('resolving the same mixed-attachment target twice is deterministic', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense'),
+        standaloneModifier('modifier:a', 'value:defense', 'add', 1),
+        source('source:mixed', [modifierRef('modifier:a'), modifier('value:defense', 'add', 2)])
+      ],
+      { sources: [instance('si-1', 'source:mixed')] }
+    )
+    expect(resolve('value:defense', session)).toEqual(resolve('value:defense', session))
+  })
+
+  it('collection-derived Sources (via the Source Overlay) now also contribute modifiers (ambiguity C resolved)', () => {
+    // The pipeline no longer reads ActorState.sources directly -- it reads
+    // session.sourceOverlay, which already includes collection-derived
+    // instances (source-overlay.ts, Commit 4). This was unreachable before
+    // this commit. buildSession only forwards `sources`/`values`, so the
+    // session is constructed directly here to also populate `collections`.
+    const registryResult = RulesRegistry.create(manifest(), [
+      valueDefinition('value:defense'),
+      { id: 'collection:inventory', kind: 'collection', itemSchema: [], sourceRefField: 'sourceRef' } satisfies Definition,
+      source('source:item.ring', [modifier('value:defense', 'add', 4)])
+    ])
+    if (!registryResult.ok) throw new Error('registry construction failed')
+    const graphResult = DependencyGraph.build(registryResult.registry)
+    if (!graphResult.ok) throw new Error('graph construction failed')
+    const state = actorState({
+      collections: { 'collection:inventory': [{ instanceId: 'ci-1', sourceRef: 'source:item.ring' }] }
+    })
+    const session = new EvaluationSession(registryResult.registry, graphResult.graph, state, {} as EvaluationContext)
+
+    const active = resolve('value:defense', session)
+    expect(active).toHaveLength(1)
+    expect(active[0]).toMatchObject({
+      sourceInstanceId: 'ci-1',
+      origin: { kind: 'collection', collectionId: 'collection:inventory', itemInstanceId: 'ci-1' }
+    })
   })
 })
 

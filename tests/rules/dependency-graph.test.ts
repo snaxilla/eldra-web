@@ -270,6 +270,106 @@ describe('structural edges: modifier target direction', () => {
   })
 })
 
+describe('structural edges: { ref } attachment (§16.10, revision 3, Commit 5)', () => {
+  it('a { ref } entry adds source -> modifier, and the referenced modifier\'s own target -> source (§16.10 decision 8)', () => {
+    // `modifier:armour` is ALSO a standalone top-level Definition, which
+    // already (pre-revision-3, unchanged by this commit) gets its own
+    // unconditional `target -> modifier` edge merely by existing --
+    // "structural edges: modifier target direction" above covers that
+    // case alone. Attaching it via { ref } adds two edges on top:
+    // source -> modifier, and (mirroring an inline entry) target -> source.
+    // All three coexist; this test isolates the two NEW ones.
+    const graph = buildOk([
+      valueDefinition('value:defense'),
+      modifierDefinition('modifier:armour', 'value:defense'),
+      sourceDefinition('source:brace', [{ ref: 'modifier:armour' }])
+    ])
+    // source -> modifier (new)
+    expect(graph.getDependencies('source:brace')).toEqual(['modifier:armour'])
+    // target -> source (new), alongside the pre-existing target -> modifier
+    expect(graph.getDependencies('value:defense')).toEqual(expect.arrayContaining(['modifier:armour', 'source:brace']))
+    expect(graph.getDependents('modifier:armour')).toEqual(expect.arrayContaining(['value:defense', 'source:brace']))
+    expect(graph.getDependents('source:brace')).toEqual(expect.arrayContaining(['value:defense']))
+  })
+
+  it('the referenced modifier\'s own condition/value Expression dependencies remain visible on its own node', () => {
+    const modifier = modifierDefinition('modifier:heroism', 'value:strength', {
+      value: expression('@value:might'),
+      condition: expression('@value:attackBonus > 0')
+    })
+    const graph = buildOk([
+      valueDefinition('value:strength'),
+      valueDefinition('value:might'),
+      valueDefinition('value:attackBonus'),
+      modifier,
+      sourceDefinition('source:brace', [{ ref: 'modifier:heroism' }])
+    ])
+    expect(graph.getDependencies('modifier:heroism')).toEqual(['value:might', 'value:attackBonus'])
+    expect(graph.getDependencies('source:brace')).toEqual(['modifier:heroism'])
+  })
+
+  it('mixed inline and referenced entries in one Source both contribute target -> source edges', () => {
+    const graph = buildOk([
+      valueDefinition('value:defense'),
+      modifierDefinition('modifier:armour', 'value:defense'),
+      sourceDefinition('source:brace', [
+        { ref: 'modifier:armour' },
+        { target: 'value:defense', phase: 'add', value: 1 }
+      ])
+    ])
+    // Deduplicated to one target -> source edge regardless of how many of
+    // the Source's entries target it (inline entry here, plus the
+    // referenced one) -- alongside the standalone modifier's own
+    // pre-existing direct edge (see the previous test's comment).
+    expect(graph.getDependencies('value:defense')).toEqual(expect.arrayContaining(['modifier:armour', 'source:brace']))
+    expect(graph.getDependencies('value:defense')).toHaveLength(2)
+    expect(graph.getDependencies('source:brace')).toEqual(['modifier:armour'])
+  })
+
+  it('a { ref } naming a nonexistent Definition fails construction cleanly', () => {
+    const errors = buildErrors([
+      valueDefinition('value:defense'),
+      sourceDefinition('source:brace', [{ ref: 'modifier:doesNotExist' }])
+    ])
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors.some((e) => e.message.includes('modifier:doesNotExist'))).toBe(true)
+  })
+
+  it('a { ref } naming a Definition that exists but is not kind "modifier" fails construction cleanly', () => {
+    const errors = buildErrors([
+      valueDefinition('value:defense'),
+      valueDefinition('value:notAModifier'),
+      sourceDefinition('source:brace', [{ ref: 'value:notAModifier' }])
+    ])
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors.some((e) => e.message.includes('not a Modifier'))).toBe(true)
+  })
+
+  it('a cycle routed entirely through a { ref }-attached modifier is fully represented in adjacency (§16.15 example 8)', () => {
+    // value:strength -> source:brace -> modifier:heroism -> value:attackBonus
+    // -> value:strengthModifier -> value:strength (plus the standalone
+    // modifier's own pre-existing direct value:strength -> modifier:heroism
+    // edge, which alone already made this a cycle even before { ref }
+    // attachment existed -- the point of this test is that the NEW edges
+    // do not break that existing detectability, not that they are what
+    // first introduces it).
+    const graph = buildOk([
+      valueDefinition('value:attackBonus', '@value:strengthModifier'),
+      valueDefinition('value:strengthModifier', '@value:strength'),
+      valueDefinition('value:strength'),
+      modifierDefinition('modifier:heroism', 'value:strength', { condition: expression('@value:attackBonus > 0') }),
+      sourceDefinition('source:brace', [{ ref: 'modifier:heroism' }])
+    ])
+    expect(graph.getDependencies('value:attackBonus')).toEqual(['value:strengthModifier'])
+    expect(graph.getDependencies('value:strengthModifier')).toEqual(['value:strength'])
+    expect(graph.getDependencies('value:strength')).toEqual(expect.arrayContaining(['modifier:heroism', 'source:brace']))
+    expect(graph.getDependencies('source:brace')).toEqual(['modifier:heroism'])
+    expect(graph.getDependencies('modifier:heroism')).toEqual(['value:attackBonus'])
+    // Not run here (cycle detection is a different module's job) -- this
+    // only asserts the adjacency a future DFS would need to find it.
+  })
+})
+
 describe('structural edges: modifier condition/value dependencies coexist with the inverted target edge', () => {
   it('a modifier with both a condition/value Expression dependency and a target produces both edges', () => {
     const modifier = modifierDefinition('modifier:heroism', 'value:strength', {

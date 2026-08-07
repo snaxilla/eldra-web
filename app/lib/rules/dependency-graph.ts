@@ -137,15 +137,22 @@ import type {
 } from './types'
 
 // REVISION 3 -- COMMIT 2 (Type Contract Delta) note: `SourceDefinition.modifiers`
-// (types.ts) is now `Array<ModifierSpec | ModifierReference>` (§16.10), not
-// `ModifierDefinition[]`. `{ ref }` attachment entries are skipped below,
-// not resolved -- resolving one into the ModifierDefinition it names is
-// "Modifier attachment resolution," explicitly out of this commit's scope.
-// This means a referenced modifier's own Expression dependencies, and the
-// `source -> modifier` attachment edge §16.10 decision 8 calls for, are
-// both invisible to this graph until that later commit lands -- a real,
-// temporary gap in cycle-detection coverage for packages that use `{ ref }`
-// attachment, not silently assumed sound.
+// (types.ts) is `Array<ModifierSpec | ModifierReference>` (§16.10), not
+// `ModifierDefinition[]`.
+//
+// REVISION 3 -- COMMIT 5 (Modifier Attachment Resolution) note: `{ ref }`
+// entries are now resolved here too (collectStructuralEdges' `case
+// 'source':` below), mirroring modifier-pipeline.ts's own attachment
+// resolution. §16.10 decision 8's "attachment adds `source -> modifier`"
+// edge, plus the referenced ModifierDefinition's own inverted
+// `target -> source` edge (identical to what an inline entry already
+// gets), are both added. `collectExpressions` below is UNCHANGED and does
+// not need to change: a referenced ModifierDefinition is also its own
+// top-level Definition in the registry, so its condition/value Expression-
+// derived edges are already produced independently by `collectExpressions`'
+// existing `case 'modifier':` -- the new `source -> modifier` structural
+// edge is what connects that already-independent contribution into any
+// cycle routed through the Source, exactly as §16.15 example 8 describes.
 function isModifierReference(entry: ModifierSpec | ModifierReference): entry is ModifierReference {
   return 'ref' in entry
 }
@@ -224,12 +231,18 @@ export class DependencyGraph {
         }
       }
 
-      for (const edge of collectStructuralEdges(id, definition)) {
-        if (!registry.has(edge.dependent) || !registry.has(edge.dependency)) {
+      for (const edge of collectStructuralEdges(id, definition, registry)) {
+        if (edge.forceError || !registry.has(edge.dependent) || !registry.has(edge.dependency)) {
           errors.push({
             message: edge.message,
             definitionId: id,
-            dependencyKey: registry.has(edge.dependency) ? edge.dependent : edge.dependency
+            // `forceError` always names a real, kind-mismatched reference
+            // as `edge.dependency` (the producer already resolved it and
+            // knows this) -- prefer it over the generic existence-based
+            // guess below, which would otherwise misreport `edge.dependent`
+            // (the source) since `edge.dependency` DOES exist, just as the
+            // wrong kind.
+            dependencyKey: edge.forceError || !registry.has(edge.dependency) ? edge.dependency : edge.dependent
           })
           continue
         }
@@ -346,9 +359,20 @@ type StructuralEdge = {
   dependent: DefinitionId
   dependency: DefinitionId
   message: string
+  // Revision 3, Commit 5: every structural edge before this commit only
+  // ever needed EXISTENCE checked (registry.has()), which `build()` already
+  // does generically below. A `{ ref }` attachment target additionally
+  // needs its KIND checked ('modifier', not any other Definition kind) --
+  // a real Definition that exists but is the wrong kind passes
+  // `registry.has()` and would otherwise be silently accepted as a valid
+  // edge. `forceError` lets a producer that has already done its own
+  // (necessarily kind-specific) validation fail construction without
+  // requiring `build()`'s generic check to somehow rediscover the same
+  // problem from an id string alone.
+  forceError?: boolean
 }
 
-function collectStructuralEdges(id: DefinitionId, definition: Definition): StructuralEdge[] {
+function collectStructuralEdges(id: DefinitionId, definition: Definition, registry: RulesRegistry): StructuralEdge[] {
   switch (definition.kind) {
     case 'value':
     case 'resource':
@@ -365,18 +389,68 @@ function collectStructuralEdges(id: DefinitionId, definition: Definition): Struc
         }
       ]
 
-    case 'source':
-      // {ref} entries skipped -- see the isModifierReference comment above.
-      // Inline type predicate (not a call to isModifierReference directly)
-      // so .filter narrows the array to ModifierSpec[] -- negating a named
-      // guard does not itself produce a recognized type predicate.
-      return definition.modifiers
-        .filter((entry): entry is ModifierSpec => !isModifierReference(entry))
-        .map((modifier) => ({
-          dependent: modifier.target,
+    case 'source': {
+      const edges: StructuralEdge[] = []
+      for (const entry of definition.modifiers) {
+        if (!isModifierReference(entry)) {
+          edges.push({
+            dependent: entry.target,
+            dependency: id,
+            message: `Source '${id}' has a modifier targeting '${entry.target}', which does not exist in the registry`
+          })
+          continue
+        }
+
+        // §16.10 (revision 3, Commit 5): resolve the `{ ref }` attachment.
+        // A missing target is caught by the generic dependency/dependent
+        // existence check in DependencyGraph.build (registry.has() covers
+        // "does not exist" once the edge below is added) -- but a
+        // WRONG-KIND target (exists, just not a Modifier) is NOT caught by
+        // that generic check, since registry.has() only tests existence,
+        // so it is checked explicitly here.
+        const target = registry.getById(entry.ref)
+
+        if (!target) {
+          edges.push({
+            dependent: id,
+            dependency: entry.ref,
+            message: `Source '${id}' references modifier '${entry.ref}', which does not exist in the registry`
+          })
+          continue
+        }
+
+        if (target.kind !== 'modifier') {
+          edges.push({
+            dependent: id,
+            dependency: entry.ref,
+            message: `Source '${id}' references '${entry.ref}' as a modifier, but it is a '${target.kind}' Definition, not a Modifier`,
+            // registry.has(entry.ref) is true (it exists) -- the generic
+            // existence check below cannot see that the KIND is wrong, so
+            // this producer must force the failure itself.
+            forceError: true
+          })
+          continue
+        }
+
+        // §16.10 decision 8: "attachment adds source -> modifier (the
+        // Source's contribution requires that modifier's expressions)."
+        edges.push({
+          dependent: id,
+          dependency: entry.ref,
+          message: `Source '${id}' references modifier '${entry.ref}'`
+        })
+        // The referenced ModifierDefinition's own `.target` produces the
+        // identical inverted "target -> source" edge an inline entry
+        // already gets -- §16.10 decision 4: a referenced modifier is
+        // indistinguishable from an inline one after resolution.
+        edges.push({
+          dependent: target.target,
           dependency: id,
-          message: `Source '${id}' has a modifier targeting '${modifier.target}', which does not exist in the registry`
-        }))
+          message: `Source '${id}' has a modifier (via '${entry.ref}') targeting '${target.target}', which does not exist in the registry`
+        })
+      }
+      return edges
+    }
 
     case 'action': {
       const edges: StructuralEdge[] = []

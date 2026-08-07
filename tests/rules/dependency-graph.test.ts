@@ -13,6 +13,8 @@ import type {
   Definition,
   Expression,
   ModifierDefinition,
+  ModifierReference,
+  ModifierSpec,
   RollSpec,
   RulesPackageManifest,
   SourceDefinition,
@@ -52,15 +54,23 @@ function valueDefinition(id: string, formulaText?: string): ValueDefinition {
   }
 }
 
+// `ModifierDefinition` is discriminated on `phase` (revision 3, Commit 2 --
+// a clamp Modifier must carry a `clamp` bound, §16.12). No call site in
+// this file overrides `phase`, so the cast is a formality here, not a
+// masked gap -- mirrors modifier-pipeline.test.ts's `modifier()` helper.
 function modifierDefinition(
   id: string,
   target: string,
-  overrides: Partial<ModifierDefinition> = {}
+  overrides: Partial<ModifierSpec> = {}
 ): ModifierDefinition {
-  return { id, kind: 'modifier', target, phase: 'add', value: 1, ...overrides }
+  return { id, kind: 'modifier', target, phase: 'add', value: 1, ...overrides } as ModifierDefinition
 }
 
-function sourceDefinition(id: string, modifiers: ModifierDefinition[]): SourceDefinition {
+// Inline entries have no id/kind of their own (§16.1) -- ModifierSpec, not
+// ModifierDefinition (revision 3, Commit 2's split). ModifierReference is
+// included in the parameter type for shape-completeness with the real
+// SourceDefinition.modifiers type, though no fixture in this file uses it.
+function sourceDefinition(id: string, modifiers: Array<ModifierSpec | ModifierReference>): SourceDefinition {
   return { id, kind: 'source', modifiers }
 }
 

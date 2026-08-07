@@ -4,7 +4,7 @@
 // execution, Roll execution, and Resource mutation are not exercised.
 
 import { describe, expect, it } from 'vitest'
-import { groupByPhase, resolveActiveModifiers, MODIFIER_PHASES } from '../../app/lib/rules/modifier-pipeline'
+import { groupByPhase, resolveActiveModifiers, MODIFIER_PHASES, type ActiveModifier } from '../../app/lib/rules/modifier-pipeline'
 import { evaluate } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import { DependencyGraph } from '../../app/lib/rules/dependency-graph'
@@ -15,8 +15,8 @@ import type {
   Definition,
   EvaluationContext,
   Expression,
-  ModifierDefinition,
-  ModifierPhase,
+  ModifierApplicationPhase,
+  ModifierSpec,
   RuleValue,
   RulesPackageManifest,
   SourceDefinition,
@@ -50,16 +50,22 @@ function valueDefinition(id: string, overrides: Partial<ValueDefinition> = {}): 
   return { id, kind: 'value', valueType: 'number', storage: 'stored', ...overrides }
 }
 
+// Builds an inline `ModifierSpec` (revision 3, Commit 2 -- was
+// `ModifierDefinition`; inline entries carry no id/kind of their own).
+// `ModifierSpec` is discriminated on `phase` (a clamp modifier requires a
+// `clamp` bound, §16.12), which a single generic helper cannot express
+// without a cast -- callers are responsible for passing a `clamp` override
+// when `phase === 'clamp'`, exactly as a real package author would.
 function modifier(
   target: string,
-  phase: ModifierPhase,
-  value: ModifierDefinition['value'],
-  overrides: Partial<ModifierDefinition> = {}
-): ModifierDefinition {
-  return { target, phase, value, ...overrides }
+  phase: ModifierApplicationPhase,
+  value: ModifierSpec['value'],
+  overrides: Partial<ModifierSpec> = {}
+): ModifierSpec {
+  return { target, phase, value, ...overrides } as ModifierSpec
 }
 
-function source(id: string, modifiers: ModifierDefinition[], overrides: Partial<SourceDefinition> = {}): SourceDefinition {
+function source(id: string, modifiers: ModifierSpec[], overrides: Partial<SourceDefinition> = {}): SourceDefinition {
   return { id, kind: 'source', modifiers, ...overrides }
 }
 
@@ -102,8 +108,21 @@ function buildSession(
 // one directly (defaulting to "condition holds") so the pipeline's OWN
 // discovery/suppression/gating/ordering logic is what is under test.
 // Real condition evaluation is covered separately, through evaluate().
-function resolve(targetId: string, session: EvaluationSession, conditionResult: RuleValue = true) {
-  return resolveActiveModifiers(targetId, session, () => conditionResult)
+//
+// Unwraps a successful `ModifierResolution` (revision 3, Commit 2) to its
+// `ActiveModifier[]`, matching resolveActiveModifiers' pre-revision-3 bare-
+// array return so every existing success-path assertion in this file
+// (`.toEqual([])`, `.toHaveLength(...)`, `.map(...)`) needs no change.
+// Throws with a clear message on an unexpected failure, mirroring
+// dependency-graph.test.ts's buildOk/buildErrors pattern -- a test whose
+// whole point IS inspecting a failure calls resolveActiveModifiers
+// directly instead (see the 'non-boolean condition result' test below).
+function resolve(targetId: string, session: EvaluationSession, conditionResult: RuleValue = true): ActiveModifier[] {
+  const resolution = resolveActiveModifiers(targetId, session, () => conditionResult)
+  if (!resolution.ok) {
+    throw new Error(`Expected modifier resolution to succeed, got: ${JSON.stringify(resolution.error)}`)
+  }
+  return [...resolution.modifiers]
 }
 
 describe('active Source discovery', () => {
@@ -156,7 +175,7 @@ describe('inactive Sources', () => {
       [
         valueDefinition('value:defense'),
         source('source:shield', [modifier('value:defense', 'add', 2)]),
-        source('source:disarm', [], { suppresses: ['source:shield'] })
+        source('source:disarm', [], { suppresses: { sources: ['source:shield'] } })
       ],
       { sources: [instance('si-1', 'source:shield'), instance('si-2', 'source:disarm')] }
     )
@@ -167,8 +186,8 @@ describe('inactive Sources', () => {
     const session = buildSession(
       [
         valueDefinition('value:defense'),
-        source('source:a', [], { suppresses: ['source:b'] }),
-        source('source:b', [modifier('value:defense', 'add', 2)], { suppresses: ['source:c'] }),
+        source('source:a', [], { suppresses: { sources: ['source:b'] } }),
+        source('source:b', [modifier('value:defense', 'add', 2)], { suppresses: { sources: ['source:c'] } }),
         source('source:c', [modifier('value:defense', 'add', 4)])
       ],
       {
@@ -312,12 +331,15 @@ describe('conditional Modifiers', () => {
     // empty array). Revision 3 (ADR-022) makes this a resolution FAILURE:
     // EEL has no truthiness, so a non-boolean condition result is an
     // authoring mistake, not an eligibility answer, and must propagate.
+    // Calls resolveActiveModifiers directly (not the resolve() helper,
+    // which throws on failure) since this test's whole point is inspecting
+    // the failure itself.
     const session = buildSession(conditional(), { sources: [instance('si-1', 'source:rage')] })
-    const result = resolve('value:defense', session, 1)
-    expect(result).not.toEqual([])
-    expect(Array.isArray(result)).toBe(false)
-    expect(result).toMatchObject({ definitionId: 'source:rage', reason: 'modifier-condition-not-boolean' })
-    expect((result as { message: string }).message).toContain('boolean')
+    const resolution = resolveActiveModifiers('value:defense', session, () => 1)
+    expect(resolution.ok).toBe(false)
+    if (resolution.ok) throw new Error('expected resolution to fail')
+    expect(resolution.error).toMatchObject({ definitionId: 'source:rage', code: 'modifier-condition-not-boolean' })
+    expect(resolution.error.message).toContain('boolean')
   })
 
   it('a modifier with no condition is unconditionally applicable', () => {
@@ -367,7 +389,7 @@ describe('condition failure propagation (§16.11A, revision 3)', () => {
     const result = evaluate('value:defense', session)
     expect(result).not.toBe(10) // not the unmodified base
     expect(result).not.toBe(12) // not silently applied either
-    expect(result).toMatchObject({ reason: 'modifier-condition-not-boolean' })
+    expect(result).toMatchObject({ code: 'modifier-condition-not-boolean' })
   })
 
   it('an existing RulesError produced inside a condition propagates unchanged -- never read as "not true"', () => {
@@ -565,9 +587,16 @@ describe('phase application through the Evaluator', () => {
     expect(evaluate('value:x', session)).toBe(8)
   })
 
-  it('a clamp-phase modifier yields a RulesError rather than guessing min vs max', () => {
+  it('a clamp-phase modifier yields a RulesError -- clamp evaluation is not yet implemented (§16.12)', () => {
+    // §16.12's `clamp: ClampBound` discriminator now exists on ModifierSpec
+    // (revision 3, Commit 2), so this fixture supplies a well-formed bound
+    // -- the RulesError below is no longer "the type can't say which bound
+    // this is," it is "clamp evaluation itself isn't implemented yet."
     const session = buildSession(
-      [valueDefinition('value:x', { default: 5 }), source('source:cap', [modifier('value:x', 'clamp', 30)])],
+      [
+        valueDefinition('value:x', { default: 5 }),
+        source('source:cap', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])
+      ],
       { sources: [instance('si-1', 'source:cap')] }
     )
     const result = evaluate('value:x', session)

@@ -293,33 +293,34 @@ function computeBaseValue(
 //     reading would have to invent one).
 //
 //   - `clamp`-phase modifiers: §16.4 says clamp does "min / max / floor /
-//     ceiling", but ModifierDefinition (types.ts) carries a single `value`
-//     and no field distinguishing which. §27.1's one worked clamp step
-//     ({op:"clamp", label:"Maximum", value:30}) is a label, not a
-//     discriminator. Rather than guess whether a bound is a floor or a
-//     ceiling -- a guess that silently produces a wrong number either way --
-//     a clamp-phase modifier yields a RulesError, per §14.4's "visible
-//     degradation over silent corruption". ValueDefinition.constraints
-//     (min/max) is unambiguous but is not a Modifier and is out of this
-//     commit's scope.
+//     ceiling". §16.12 (revision 3) has since resolved the ambiguity this
+//     comment originally described -- `ModifierSpec`'s clamp variant now
+//     carries a required `clamp: ClampBound` discriminator (types.ts) -- but
+//     *evaluating* a clamp modifier using that field is explicitly out of
+//     this codebase's implemented scope so far ("Do not implement clamp
+//     evaluation", revision 3 Commit 2's own instruction). A clamp-phase
+//     modifier therefore still yields a RulesError below, per §14.4's
+//     "visible degradation over silent corruption" -- now because clamp
+//     evaluation is simply not implemented yet, not because the type cannot
+//     express which bound is meant. ValueDefinition.constraints (min/max)
+//     is unambiguous but is not a Modifier and is out of this commit's
+//     scope.
 function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: EvaluationSession): RuleValue {
   const resolution = resolveActiveModifiers(definitionId, session, (condition, ownerId) =>
     evaluateExpression(asRuleExpressionNode(condition), session, ownerId)
   )
 
-  // REVISION 3 (rules-engine.md §16.11A, ADR-022): resolveActiveModifiers no
-  // longer signals "a condition failed" with an empty array -- an empty
-  // array is now exclusively "nothing applies", a legitimate success. A
-  // condition that errored, or that evaluated to a non-boolean, aborts
-  // resolution and is returned as a RulesError instead, and it must
-  // propagate here exactly like any other error this function already
-  // returns (§14.4: `1 + error` is `error`) -- never be read as "base is
-  // unmodified." This is the one behavior change this commit makes; the
-  // rest of applyModifiers (phase application, the base/clamp
-  // interpretations already documented above) is untouched.
-  if (isRulesError(resolution)) return resolution
+  // REVISION 3 (rules-engine.md §16.11A, ADR-022; §16.18 Commit 2):
+  // resolveActiveModifiers returns a ModifierResolution, not a bare array --
+  // `ok: true, modifiers: []` is "nothing applies" (a legitimate success);
+  // `ok: false` is a condition failure (a non-boolean result, or an
+  // existing RulesError, including a runtime cycle) that aborted
+  // resolution entirely. `resolution.error` must propagate here exactly
+  // like any other error this function already returns (§14.4: `1 + error`
+  // is `error`) -- never be read as "base is unmodified."
+  if (!resolution.ok) return resolution.error
 
-  const active = resolution
+  const active = resolution.modifiers
   if (active.length === 0) return base
 
   const byPhase = groupByPhase(active)
@@ -340,11 +341,13 @@ function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: Ev
   }
 
   // §16.4: "add -- additive, grouped by modifier type, resolved per that
-  // type's policy". With no declaration site for §16.3's modifierTypes
-  // policy table, every type is unknown and defaults to `stack` (sum all) --
-  // under which per-type grouping is arithmetically a no-op, so the sum is
-  // taken directly. Grouping becomes meaningful only once 'highest'/
-  // 'lowest'/'exclusive' are declarable.
+  // type's policy". `RulesPackageManifest.modifierTypes` (§16.3) is now a
+  // real, typed declaration site (revision 3, Commit 2), but nothing here
+  // reads it yet -- "Do not implement Modifier stacking" -- so every type
+  // is still treated as unknown/`stack` (sum all), under which per-type
+  // grouping is arithmetically a no-op and the sum is taken directly.
+  // Grouping becomes meaningful once 'highest'/'lowest'/'exclusive'
+  // selection is implemented against the declaration table.
   for (const entry of byPhase.get('add') ?? []) {
     const value = modifierValue(entry, session)
     const error = firstError(value)
@@ -367,9 +370,14 @@ function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: Ev
 
   const clampModifiers = byPhase.get('clamp') ?? []
   if (clampModifiers.length > 0) {
+    // §16.12's `clamp: ClampBound` discriminator now exists on ModifierSpec
+    // (revision 3, Commit 2) -- this is no longer an unresolved-type
+    // problem, but clamp evaluation itself is explicitly not implemented
+    // this commit ("Do not implement clamp evaluation"). See the file
+    // header's design-decision comment above applyModifiers.
     return evaluationError(
       definitionId,
-      `Cannot apply 'clamp' modifier from Source '${clampModifiers[0]!.sourceDefinitionId}' -- ModifierDefinition has no field distinguishing a minimum from a maximum bound (rules-engine.md §16.4 is unresolved on this)`
+      `Cannot apply 'clamp' modifier from Source '${clampModifiers[0]!.sourceDefinitionId}' -- clamp evaluation is not yet implemented (rules-engine.md §16.12)`
     )
   }
 

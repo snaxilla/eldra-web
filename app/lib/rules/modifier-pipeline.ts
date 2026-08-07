@@ -17,62 +17,61 @@
 // ---------------------------------------------------------------------------
 // A. `@source.equipped` -- the architecture's OWN canonical conditional-
 //    modifier syntax (§16.1's `mod:shield.defense`, and the Appendix
-//    Package A `mod:armour.guard`) -- does not parse. `@source` (singular,
-//    dot-accessed) is not one of the six closed ReferenceNamespaces
-//    (ast.ts), and expression-language.md §8.2/§9 already flagged adding it
-//    as a REQUIRED-BUT-NOT-MADE ast.ts change. Conditions using the six
-//    implemented namespaces (e.g. `@value:x > 0`) evaluate correctly; a
-//    condition using `@source.*` fails at parse time, long before this
-//    module sees it. This blocks the canonical "equipped item grants a
-//    bonus" pattern end to end.
+//    Package A `mod:armour.guard`) -- does not parse. **Partially resolved
+//    by revision 3's type contract (Commit 2):** the canonical syntax is
+//    now `@source:equipped` (§16.9), and `'source'` is the seventh member
+//    of `ReferenceNamespace` (ast.ts) as of this commit. But the PARSER's
+//    own namespace list (parser.ts's `REFERENCE_NAMESPACES`) is untouched
+//    by this commit -- "Do not implement parser behavior yet" -- so
+//    `@source:equipped` still fails to parse today. A condition using
+//    `@source:` therefore still fails at parse time, before this module
+//    ever sees it. Grammar support is a later commit.
 //
-// B. Standalone ModifierDefinitions have no attachment mechanism. §16.1 is
-//    explicit that "Modifiers are attached to Sources... A Source is active
-//    or not; its modifiers apply or not" -- and SourceDefinition.modifiers
-//    (types.ts) is an inline `ModifierDefinition[]`, with no field anywhere
-//    that references a standalone modifier by DefinitionId. Yet Appendix
-//    Package A authors `mod:armour.guard` as a top-level Definition with
-//    its own id and a `@source.equipped` condition, never listing it inside
-//    any SourceDefinition. How such a modifier becomes active is therefore
-//    unspecified. This module discovers modifiers ONLY through active
-//    SourceInstances (the unambiguous path); standalone ModifierDefinitions
-//    in the registry are never treated as active on their own.
+// B. Standalone ModifierDefinitions have no attachment mechanism.
+//    **Partially resolved by revision 3's type contract (Commit 2):**
+//    `SourceDefinition.modifiers` (types.ts) is now
+//    `Array<ModifierSpec | ModifierReference>` (§16.10), so the type system
+//    can represent `{ "ref": "modifier:armour.guard" }` attachment. But
+//    resolving a `ModifierReference` into the ModifierDefinition it names
+//    is explicitly NOT implemented this commit ("Do not implement Modifier
+//    attachment resolution") -- see isModifierReference below: this module
+//    still discovers modifiers ONLY through inline `ModifierSpec` entries
+//    in an active Source's `modifiers` array; `{ ref }` entries are
+//    skipped, not resolved. Standalone ModifierDefinitions in the registry
+//    are still never treated as active on their own.
 //
-// C. Collection-item-carried Sources are unreachable. §27.1's trace shows a
-//    modifier whose provenance is an inventory *item instance*
-//    (`sourceId: "inv:ci_01H..."`, modifierType "equipment"), and Package
-//    A's itemSchema carries `{key: "sourceRef", valueType: "ref", refKind:
-//    "definition"}` -- so collection items evidently carry Sources. But
-//    gating them on whether the item is equipped is precisely what
-//    `@source.equipped` was for (ambiguity A), and nothing specifies
-//    whether an item's `sourceRef` is active unconditionally or only under
-//    such a condition. Only ActorState.sources is used here.
+// C. Collection-item-carried Sources are unreachable. **Partially resolved
+//    by revision 3's type contract (Commit 2):**
+//    `CollectionDefinition.sourceRefField` (§16.8) and `SourceInstance.origin`
+//    now exist as types, but the Source Overlay builder that would actually
+//    derive a collection-item Source instance (`source-overlay.ts`) is
+//    explicitly NOT implemented this commit ("Do not implement Source
+//    Overlay"). Only `ActorState.sources` is used here, exactly as before.
 //
-// D. Stacking policy has no declaration site. §16.3 shows a package-level
-//    `modifierTypes` table ([{id, stacking}]), but RulesPackageManifest
-//    (types.ts) has no `modifierTypes` field, and the already-declared
-//    `ModifierStacking` union ('stack'|'highest'|'lowest'|'exclusive') is
-//    referenced by nothing in the entire codebase. Every modifierType is
-//    therefore "unknown" today, and §16.3 specifies exactly what that
-//    means: "Unknown types default to `stack`". That default is applied --
-//    which is specified behavior, not invention -- but 'highest'/'lowest'/
-//    'exclusive' are consequently unreachable until a declaration site
-//    exists. Adding one is a manifest/public-API change this task does not
-//    authorize.
+// D. Stacking policy has no declaration site. **Resolved at the type level
+//    by revision 3's type contract (Commit 2):** `RulesPackageManifest`
+//    (types.ts) now has `modifierTypes?: ModifierTypeDeclaration[]` (§16.3).
+//    But nothing in this module (or anywhere else) reads it yet -- "Do not
+//    implement Modifier stacking" -- so every modifierType is still treated
+//    as unknown at runtime and `DEFAULT_STACKING`/'stack' (sum all) is
+//    still the only policy this module's phase-application produces
+//    (applied by evaluator.ts, not here). Wiring the declaration table up
+//    to actual grouped selection is a later commit.
 //
-// E. Tag-predicate suppression is unreachable. §16.6/§16.5 allow a Source
-//    to suppress others "by ID or tag predicate", but neither
-//    SourceDefinition nor SourceInstance (types.ts) has a `tags` field --
-//    only ValueDefinition and EvaluationContext do -- and types.ts's own
-//    comment already notes the predicate shape "is not specified in the
-//    architecture". Suppression by Source DefinitionId is implemented;
-//    tag predicates are not.
+// E. Tag-predicate suppression is unreachable. **Partially resolved by
+//    revision 3's type contract (Commit 2):** `SourceDefinition.tags` and
+//    `SourceSuppression.tags` (§16.6) now exist as types. But tag matching
+//    is NOT implemented this commit (no non-goal explicitly names it, but
+//    "no new runtime capabilities beyond the new type system" covers it):
+//    applySuppression below reads only `suppresses.sources`, exactly the
+//    id-only behavior that existed before this commit. Tag matching is
+//    deferred alongside the rest of the suppression/stacking runtime work.
 //
 // ---------------------------------------------------------------------------
 // REVISION 3 -- COMMIT 1: condition-result / error-propagation correction
 // ---------------------------------------------------------------------------
 // rules-engine.md §16.11A (ADR-022) replaces this module's original
-// condition-gating rule. The deployed rule this commit removes was: "a
+// condition-gating rule. The deployed rule this commit removed was: "a
 // non-true condition result -- including a RulesError -- excludes the
 // Modifier." That made three other architectural guarantees unreachable in
 // practice (an absent `@source:` field erroring, a runtime cycle surfacing
@@ -81,32 +80,44 @@
 // true" and the Modifier just disappeared.
 //
 // The governing rule is now: **false eligibility excludes; evaluation
-// failure propagates.** `resolveActiveModifiers` reflects this in its return
-// type -- it no longer returns a bare array, because an empty array is a
-// legitimate SUCCESS ("nothing applies") and can no longer also mean
-// "something broke." It returns `ActiveModifier[] | RulesError` here, using
-// only types this codebase already has. §16.18's full type-contract delta
-// (a dedicated `ModifierResolution` discriminated union, `RulesErrorProvenance`,
-// `ModifierPipelineStage`, etc.) is explicitly out of scope for this commit
-// and will replace this union type once it lands -- see the comment on
-// `resolveActiveModifiers` below for exactly what that future commit
-// simplifies.
+// failure propagates.**
 //
-// This commit implements ONLY the condition-result/error-propagation rule.
-// `@source:`, the Source Overlay, stacking selection, and clamp redesign
-// (ambiguities A, C, D above) are untouched and remain exactly as
-// before -- this module still discovers Modifiers only through
-// `ActorState.sources` (ambiguity C persists) and still cannot parse
-// `@source:` conditions (ambiguity A persists).
+// ---------------------------------------------------------------------------
+// REVISION 3 -- COMMIT 2: Type Contract Delta (this commit)
+// ---------------------------------------------------------------------------
+// Mechanical fixups only, per §16.18's approved type contract:
+//   - `ActiveModifier.modifier` is now typed `ModifierSpec` (was
+//     `ModifierDefinition`) -- `SourceDefinition.modifiers` entries no
+//     longer carry `id`/`kind` at all in their inline form (ambiguity B).
+//   - Discovery filters out `ModifierReference` (`{ ref }`) entries via
+//     isModifierReference -- see ambiguity B above for why they are
+//     skipped, not resolved, this commit.
+//   - `applySuppression` reads `definition.suppresses?.sources` (was
+//     `definition.suppresses`, a bare array) -- see ambiguity E above.
+//   - `resolveActiveModifiers` returns `ModifierResolution`, replacing
+//     Commit 1's temporary `ActiveModifier[] | RulesError` union now that
+//     §16.18's named type exists. Behavior is unchanged from Commit 1 --
+//     only the return type's shape/name changed.
+//   - The Commit-1 non-boolean-condition error now sets `code` (the real
+//     `RulesError.code` field, §16.18) instead of overloading `reason`,
+//     which Commit 1's own comment flagged as a placeholder "in the
+//     meantime." `.provenance` is deliberately left unpopulated: attaching
+//     it now, without `attachmentIndex` (unavailable until attachment
+//     resolution exists -- ambiguity B), would mean shipping a partially-
+//     complete provenance object and completing it awkwardly in a later
+//     commit. It is populated once, in full, in the commit that implements
+//     attachment resolution.
 
 import type { EvaluationSession } from './evaluation-session'
 import type {
   DefinitionId,
   Expression,
-  ModifierDefinition,
   ModifierPhase,
+  ModifierReference,
+  ModifierSpec,
   RuleValue,
   RulesError,
+  RulesErrorCode,
   SourceDefinition,
   SourceInstance
 } from './types'
@@ -119,13 +130,34 @@ import type {
 // ("Source | Source instance ID (always recorded)") and §15.3 orders by.
 // `sourceDefinitionId`/`sourceInstanceId` are carried separately because
 // §15.3's ordering key needs both, and §27's traces name the instance.
+//
+// `modifier: ModifierSpec` (revision 3, Commit 2) -- was `ModifierDefinition`.
+// Every entry this module discovers comes from a Source's inline `modifiers`
+// array (ambiguity B above), which is `ModifierSpec`-shaped, never
+// `ModifierDefinition`-shaped (that identity-bearing form only appears
+// standalone in the registry, unreachable here until attachment resolution
+// exists). §16.18 additionally names `attachmentIndex`/`origin`/
+// `resolvedValue` fields for this type -- not added here: each requires
+// runtime work this commit does not implement (attachment resolution,
+// the Source Overlay, and stacking's candidate-value evaluation,
+// respectively) and adding the fields without a producer would be dead
+// weight, not a type-contract requirement.
 export type ActiveModifier = {
-  modifier: ModifierDefinition
+  modifier: ModifierSpec
   phase: ModifierPhase
   modifierType?: string
   sourceDefinitionId: DefinitionId
   sourceInstanceId: string
 }
+
+// §16.18 (revision 3, Commit 2): replaces Commit 1's temporary
+// `ActiveModifier[] | RulesError` union now that the architecture's own
+// named type exists. An empty `modifiers` array remains a legitimate,
+// distinct success ("nothing applies"); `ok: false` is the only failure
+// signal -- see resolveActiveModifiers below and rules-engine.md §16.11A.
+export type ModifierResolution =
+  | { ok: true; modifiers: readonly ActiveModifier[] }
+  | { ok: false; error: RulesError }
 
 // Resolves one condition Expression to a value. Injected rather than
 // imported so this module never depends on the Evaluator (which depends on
@@ -146,38 +178,43 @@ const PHASE_INDEX: ReadonlyMap<ModifierPhase, number> = new Map(
 // unknown, so this is the only policy currently reachable.
 export const DEFAULT_STACKING = 'stack'
 
-// §16.11A: the stable reason code for a condition that evaluated
-// successfully but did not yield a boolean. Not `RulesError.code` -- that
-// field does not exist yet (types.ts's `RulesError` has no discriminated
-// code; it arrives with §16.18's type-contract delta). `reason` is the
-// closest existing field and is used here as a stable, grep-able string in
-// the meantime.
-export const MODIFIER_CONDITION_NOT_BOOLEAN = 'modifier-condition-not-boolean'
+// §16.11A/§16.18: the stable `RulesError.code` for a condition that
+// evaluated successfully but did not yield a boolean. Commit 1 (before
+// `RulesError.code` existed) carried this same string in `.reason` as a
+// documented placeholder; this commit moves it to the real field now that
+// types.ts has one (types.ts's `RulesErrorCode`).
+export const MODIFIER_CONDITION_NOT_BOOLEAN: RulesErrorCode = 'modifier-condition-not-boolean'
 
 // Returns every active Modifier targeting `targetId`, ordered by
 // (§16.4 phase, then §15.3's `(explicitOrder, sourceDefinitionId,
 // sourceInstanceId)`). Discovery -> suppression -> target match ->
 // applicability -> ordering. Computes no values.
 //
-// REVISION 3 (§16.11A, ADR-022): the return type is no longer a bare array.
-// A condition failure -- a non-boolean result, or an existing RulesError
-// (including a runtime cycle) -- aborts resolution entirely, and that is
-// signalled by returning a `RulesError` instead of `ActiveModifier[]`. An
-// empty array remains a legitimate, distinct outcome: "every Modifier was
-// either absent, suppressed, target-mismatched, or its condition was
-// boolean `false`" -- ordinary eligibility, not failure. Callers MUST check
-// for a RulesError before treating the result as a list.
+// REVISION 3 (§16.11A, ADR-022; §16.18 Commit 2): the return type is a
+// `ModifierResolution`, not a bare array. A condition failure -- a
+// non-boolean result, or an existing RulesError (including a runtime
+// cycle) -- aborts resolution entirely, and that is signalled by
+// `{ ok: false, error }`. An empty `modifiers` array under `ok: true`
+// remains a legitimate, distinct outcome: "every Modifier was either
+// absent, suppressed, target-mismatched, or its condition was boolean
+// `false`" -- ordinary eligibility, not failure. Callers MUST check `ok`
+// before reading `modifiers`.
 export function resolveActiveModifiers(
   targetId: DefinitionId,
   session: EvaluationSession,
   evaluateCondition: ConditionEvaluator
-): ActiveModifier[] | RulesError {
+): ModifierResolution {
   const active = resolveActiveSources(session)
   const surviving = applySuppression(active)
 
   const candidates: ActiveModifier[] = []
   for (const { instance, definition } of surviving) {
-    for (const modifier of definition.modifiers) {
+    for (const entry of definition.modifiers) {
+      // §16.10 (ambiguity B above): `{ ref }` attachment entries are not
+      // yet resolved -- skipped, not treated as active, until a later
+      // commit implements attachment resolution.
+      if (isModifierReference(entry)) continue
+      const modifier = entry
       if (modifier.target !== targetId) continue
       candidates.push({
         modifier,
@@ -224,13 +261,11 @@ export function resolveActiveModifiers(
       // runtime cycle keeps its own message and path (§16.13 example 8).
       // First error aborts resolution of this target entirely (§16.11A
       // decision 1): no further candidates are evaluated. Full provenance
-      // enrichment (source/instance/attachmentIndex on the error itself)
-      // is deferred to the type-contract commit, once RulesError can carry
-      // it structurally (§16.18's RulesErrorProvenance) -- attributing this
-      // failure to the target being resolved is left to the caller, which
-      // is exactly what evaluator.ts already does for every other error
-      // this pipeline can produce.
-      return result
+      // enrichment is deliberately still not attached here -- see the
+      // "REVISION 3 -- COMMIT 2" file-header note on why `.provenance` is
+      // populated once, in full, by the attachment-resolution commit
+      // rather than partially here.
+      return { ok: false, error: result }
     }
 
     // Non-boolean, non-error: an authoring mistake, not an eligibility
@@ -238,22 +273,25 @@ export function resolveActiveModifiers(
     // MUST error rather than silently exclude, per §16.11A. First error
     // aborts resolution of this target; no further candidates evaluated.
     return {
-      definitionId: candidate.sourceDefinitionId,
-      message:
-        `Modifier condition on Source '${candidate.sourceDefinitionId}' (targeting '${targetId}') ` +
-        `must evaluate to boolean, got '${typeof result}'`,
-      reason: MODIFIER_CONDITION_NOT_BOOLEAN
+      ok: false,
+      error: {
+        definitionId: candidate.sourceDefinitionId,
+        message:
+          `Modifier condition on Source '${candidate.sourceDefinitionId}' (targeting '${targetId}') ` +
+          `must evaluate to boolean, got '${typeof result}'`,
+        code: MODIFIER_CONDITION_NOT_BOOLEAN
+      }
     }
   }
 
-  return applicable
+  return { ok: true, modifiers: applicable }
 }
 
 // Mirrors evaluator.ts's own `isRulesError` exactly. Duplicated rather than
 // imported: evaluator.ts imports `resolveActiveModifiers` from this module,
 // so importing the other way would create a cycle. Both copies must be kept
-// in sync until the type-contract commit gives RulesError a discriminant
-// (e.g. a `kind: 'error'` tag) that would let this collapse to one check.
+// in sync until a shared discriminant (e.g. a `kind: 'error'` tag on
+// RulesError) would let this collapse to one check.
 function isRulesError(value: unknown): value is RulesError {
   return (
     typeof value === 'object' &&
@@ -263,6 +301,14 @@ function isRulesError(value: unknown): value is RulesError {
     'message' in value &&
     !('count' in value && 'faces' in value)
   )
+}
+
+// §16.10 (revision 3, Commit 2): distinguishes an attachment reference from
+// an inline spec in `SourceDefinition.modifiers`. `ModifierReference`'s
+// only field is `ref`; `ModifierSpec` never has one, so a structural check
+// is exact -- no discriminant tag needed either way.
+function isModifierReference(entry: ModifierSpec | ModifierReference): entry is ModifierReference {
+  return 'ref' in entry
 }
 
 // ---------------------------------------------------------------------------
@@ -302,13 +348,17 @@ function resolveActiveSources(session: EvaluationSession): ActiveSource[] {
 // Non-transitivity falls directly out of computing the suppressed set from
 // the FULL original active list in one pass: B is still consulted as a
 // suppressor even after A has suppressed it, so C still goes away.
+// §16.6 (revision 3, Commit 2): `definition.suppresses` is now the
+// structured `SourceSuppression` shape (`{ sources?, tags? }`), not a bare
+// `string[]`. Only `.sources` is read here -- `.tags` is a real, typed
+// field as of this commit but tag matching itself is unimplemented
+// (ambiguity E above), so behavior is unchanged from before this commit:
+// id-only suppression.
 function applySuppression(active: ActiveSource[]): ActiveSource[] {
   const suppressedRefs = new Set<DefinitionId>()
   for (const { definition } of active) {
-    for (const entry of definition.suppresses ?? []) {
-      // Only Source-DefinitionId entries are honored; tag predicates are
-      // unreachable (ambiguity E above). An entry that matches no active
-      // Source's ref is simply inert.
+    for (const entry of definition.suppresses?.sources ?? []) {
+      // An entry that matches no active Source's ref is simply inert.
       suppressedRefs.add(entry)
     }
   }

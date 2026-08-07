@@ -40,11 +40,16 @@ import type { Definition, DefinitionId, RulesPackageManifest, SemanticRole } fro
 // Public API
 // ---------------------------------------------------------------------------
 
-// Derived, not hand-duplicated. NonNullable because ModifierDefinition.kind
-// is optional in ./types.ts (its own comment: standalone modifiers have a
-// populated kind; only the inline, embedded-in-a-Source form omits it, and
-// that form never appears in a top-level Definition list -- see
-// isIndexable below).
+// Derived, not hand-duplicated. `NonNullable` is a no-op as of revision 3's
+// type-contract delta (Commit 2): `ModifierDefinition.kind` was previously
+// the one optional `kind` in the `Definition` union (the inline,
+// embedded-in-a-Source form shared its type with the standalone form and
+// omitted `kind`); revision 3 splits those into `ModifierSpec` (no
+// identity, never a top-level Definition) and `ModifierDefinition` (id/kind
+// required, ./types.ts). Left as `NonNullable<...>` rather than simplified
+// to `Definition['kind']` directly -- harmless either way, and keeping the
+// wrapper means a future Definition variant with an optional `kind` would
+// not silently change this type's meaning.
 export type DefinitionKind = NonNullable<Definition['kind']>
 
 // Reported at construction time only for structural indexing problems --

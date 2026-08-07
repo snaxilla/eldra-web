@@ -98,10 +98,17 @@ class ParseFailure extends Error {
 // Grammar-level closed vocabularies
 // ---------------------------------------------------------------------------
 
-// expression-language.md §8.1: the six reference namespaces are presented
-// as a complete, closed enumeration (unlike function names -- see
-// ast.ts's FunctionCallExpressionNode comment). An `@` followed by anything
-// else is a syntax error, not a permissively-parsed unknown namespace.
+// expression-language.md §8.1: the reference namespaces this parser accepts
+// are a complete, closed enumeration (unlike function names -- see ast.ts's
+// FunctionCallExpressionNode comment). An `@` followed by anything else is
+// a syntax error, not a permissively-parsed unknown namespace.
+//
+// Six, not seven: `ast.ts`'s `ReferenceNamespace` gained `'source'` as its
+// seventh member in revision 3's type-contract delta (§16.9, ADR-020), but
+// grammar support for it is explicitly a separate, later commit ("Do not
+// implement parser behavior yet") -- this list intentionally still reflects
+// only what this parser can actually produce today, so `@source:x` is
+// still a syntax error until that commit lands.
 const REFERENCE_NAMESPACES: readonly ReferenceNamespace[] = [
   'value', 'collection', 'sources', 'choice', 'world', 'ctx'
 ]

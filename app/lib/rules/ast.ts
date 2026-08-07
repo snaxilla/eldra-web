@@ -34,11 +34,20 @@ import type { DefinitionId, UnresolvedExpressionNode } from './types'
 // References (§14.2)
 // ---------------------------------------------------------------------------
 
-// §14.2's bullet list is the complete enumerated set of reference
-// namespaces: "@value:x, @collection:x, @sources, @choice:x -- actor state
-// references", "@world:x -- World Configuration traits (§19)", "@ctx:x --
-// evaluation context (§15.6)".
-export type ReferenceNamespace = 'value' | 'collection' | 'sources' | 'choice' | 'world' | 'ctx'
+// §14.2's bullet list was the complete enumerated set of reference
+// namespaces through revision 2: "@value:x, @collection:x, @sources,
+// @choice:x -- actor state references", "@world:x -- World Configuration
+// traits (§19)", "@ctx:x -- evaluation context (§15.6)".
+//
+// `'source'` added (revision 3, Commit 2 of the type-contract delta):
+// expression-language.md §8.2 / rules-engine.md §16.9 resolve `@source:` as
+// the seventh namespace -- the one Source instance through which the
+// enclosing Modifier was activated. This commit adds the TYPE only, per
+// §16.18 finding 3 (ADR-020): the parser's own namespace list
+// (parser.ts's `REFERENCE_NAMESPACES`) is deliberately NOT updated here, so
+// `@source:x` still fails to parse today -- grammar support is a later,
+// separate commit ("Do not implement parser behavior yet").
+export type ReferenceNamespace = 'value' | 'collection' | 'sources' | 'choice' | 'world' | 'ctx' | 'source'
 
 // §14.2 shows `@value:might.mod`, `@world:roadType.speedFactor`,
 // `@ctx:successes`, etc. -- always a static, literal dot-path, never itself

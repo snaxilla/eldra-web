@@ -28,12 +28,15 @@
 //    superficially-similar fields were deliberately excluded.
 //
 // 2. Namespace scoping (Expression-derived edges only) mirrors
-//    reference-validation.ts exactly, for the same reason: of the six
-//    ReferenceNamespace values, only 'value' and 'collection' ever
-//    correspond to a Definition the registry can contain. A dependency in
-//    the other four namespaces ('sources', 'ctx', 'world', 'choice') is
-//    never turned into a graph edge -- not a gap, the same structural
-//    boundary already established and tested there.
+//    reference-validation.ts exactly, for the same reason: of the
+//    ReferenceNamespace values (seven as of revision 3's type-contract
+//    delta, which added 'source' -- ast.ts), only 'value' and 'collection'
+//    ever correspond to a Definition the registry can contain. A
+//    dependency in any other namespace ('sources', 'ctx', 'world',
+//    'choice', and now 'source' -- §16.9 is explicit `@source:` "contributes
+//    no static dependency edge") is never turned into a graph edge -- not a
+//    gap, the same structural boundary already established and tested
+//    there.
 //
 // 3. "Graph construction should fail cleanly if prerequisite validation has
 //    not succeeded" is read literally and applies uniformly to BOTH edge
@@ -128,9 +131,24 @@ import type {
   Definition,
   DefinitionId,
   Expression,
-  ModifierDefinition,
+  ModifierReference,
+  ModifierSpec,
   RollSpec
 } from './types'
+
+// REVISION 3 -- COMMIT 2 (Type Contract Delta) note: `SourceDefinition.modifiers`
+// (types.ts) is now `Array<ModifierSpec | ModifierReference>` (§16.10), not
+// `ModifierDefinition[]`. `{ ref }` attachment entries are skipped below,
+// not resolved -- resolving one into the ModifierDefinition it names is
+// "Modifier attachment resolution," explicitly out of this commit's scope.
+// This means a referenced modifier's own Expression dependencies, and the
+// `source -> modifier` attachment edge §16.10 decision 8 calls for, are
+// both invisible to this graph until that later commit lands -- a real,
+// temporary gap in cycle-detection coverage for packages that use `{ ref }`
+// attachment, not silently assumed sound.
+function isModifierReference(entry: ModifierSpec | ModifierReference): entry is ModifierReference {
+  return 'ref' in entry
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -170,10 +188,12 @@ export class DependencyGraph {
   // matching this session's established registry/validation pattern.
   static build(registry: RulesRegistry): GraphConstructionResult {
     const errors: GraphConstructionError[] = []
-    // ModifierDefinition.id is optional at the type level (./types.ts), but
-    // RulesRegistry.create already rejects any Definition lacking one
-    // (registry.ts) -- ids() pairs each Definition with its guaranteed-
-    // populated id once, rather than re-asserting it at every use site.
+    // Every Definition union member's `id` is required at the type level
+    // (revision 3, Commit 2 removed ModifierDefinition's prior optionality
+    // -- ./types.ts). `ids()` still narrows defensively rather than
+    // asserting: nothing here should trust the type over runtime data it
+    // did not itself validate (RulesRegistry.create is what actually
+    // rejects an id-less Definition, registry.ts).
     const definitions = ids(registry.listAll())
 
     const dependencies = new Map<DefinitionId, Set<DefinitionId>>()
@@ -279,7 +299,11 @@ function isExpression(value: unknown): value is Expression {
   return typeof value === 'object' && value !== null && 'text' in value && 'ast' in value
 }
 
-function collectModifierExpressions(modifier: ModifierDefinition): Expression[] {
+// `modifier: ModifierSpec` (revision 3, Commit 2) -- was `ModifierDefinition`.
+// A standalone top-level ModifierDefinition (case 'modifier' below) is
+// still accepted here: `ModifierDefinition = ModifierSpec & {id, kind}`, so
+// it structurally satisfies ModifierSpec too.
+function collectModifierExpressions(modifier: ModifierSpec): Expression[] {
   const expressions: Expression[] = []
   if (isExpression(modifier.value)) expressions.push(modifier.value)
   if (modifier.condition) expressions.push(modifier.condition)
@@ -342,11 +366,17 @@ function collectStructuralEdges(id: DefinitionId, definition: Definition): Struc
       ]
 
     case 'source':
-      return definition.modifiers.map((modifier) => ({
-        dependent: modifier.target,
-        dependency: id,
-        message: `Source '${id}' has a modifier targeting '${modifier.target}', which does not exist in the registry`
-      }))
+      // {ref} entries skipped -- see the isModifierReference comment above.
+      // Inline type predicate (not a call to isModifierReference directly)
+      // so .filter narrows the array to ModifierSpec[] -- negating a named
+      // guard does not itself produce a recognized type predicate.
+      return definition.modifiers
+        .filter((entry): entry is ModifierSpec => !isModifierReference(entry))
+        .map((modifier) => ({
+          dependent: modifier.target,
+          dependency: id,
+          message: `Source '${id}' has a modifier targeting '${modifier.target}', which does not exist in the registry`
+        }))
 
     case 'action': {
       const edges: StructuralEdge[] = []
@@ -397,7 +427,12 @@ function collectExpressions(definition: Definition): Expression[] {
     case 'roll':
       return collectRollExpressions(definition)
     case 'source':
-      return definition.modifiers.flatMap(collectModifierExpressions)
+      // {ref} entries skipped -- see the isModifierReference comment above:
+      // a referenced modifier's Expression dependencies are invisible to
+      // this graph until attachment resolution exists.
+      return definition.modifiers
+        .filter((entry): entry is ModifierSpec => !isModifierReference(entry))
+        .flatMap(collectModifierExpressions)
     case undefined:
       // Unreachable: RulesRegistry.create rejects any Definition without a
       // populated `kind` at construction time (registry.ts), so nothing

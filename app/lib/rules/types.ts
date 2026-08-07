@@ -46,11 +46,35 @@ export type Visibility = 'public' | 'owner' | 'gm'
 // operation is drawn from the same fixed set.
 export type ModifierPhase = 'base' | 'set' | 'add' | 'scale' | 'clamp' | 'final'
 
-// §16.3: modifier stacking policy. "Unknown types default to `stack` with a
-// validation warning" -- so ModifierDefinition.modifierType itself stays a
-// plain string (open, package-defined key), but the stacking policy value a
-// package may declare for a given modifierType is this closed set.
+// §16.4/§16.10 (revision 3): `base` is reserved for the Value's own
+// formula/default -- a Modifier may never declare it (package validation
+// error, not modeled by this type; see rules-engine.md §16.4). This is the
+// phase vocabulary a Modifier itself may occupy: `set | add | scale | clamp
+// | final`. Used below to build ModifierSpec's phase-discriminated union.
+export type ModifierApplicationPhase = Exclude<ModifierPhase, 'base'>
+
+// §16.12 (revision 3): a clamp modifier declares its bound explicitly --
+// "min" (lower bound) or "max" (upper bound). No inference, ever; the
+// evaluator never reads a label to decide which. Required whenever
+// `phase === 'clamp'`, enforced structurally by ModifierSpec's
+// discriminated union below, not by a runtime check.
+export type ClampBound = 'min' | 'max'
+
+// §16.3: modifier stacking policy, declared per `modifierType` at
+// `manifest.modifierTypes` (revision 3; see ModifierTypeDeclaration below).
 export type ModifierStacking = 'stack' | 'highest' | 'lowest' | 'exclusive'
+
+// §16.3 (revision 3): one declaration in `RulesPackageManifest.modifierTypes`.
+// `id` is the key `ModifierSpec.modifierType` names; `stacking` is the
+// policy §16.11 applies when multiple candidates target the same
+// `(target, phase, modifierType)` group. An undeclared `modifierType` is a
+// package validation error -- not modeled by this type, which only carries
+// the shape of a valid declaration.
+export type ModifierTypeDeclaration = {
+  id: string
+  stacking: ModifierStacking
+  label?: string
+}
 
 // §16.7: "Declared on the Source instance (`rounds`, `minutes`,
 // `until-rest`, `permanent`, `custom`)."
@@ -157,6 +181,37 @@ export type SourceSpan = {
   end: number
 }
 
+// §16.11A/§16.18 (revision 3): the Modifier Pipeline stage a RulesError
+// originated in or was enriched at, for provenance attribution. Named
+// exactly per §16.11A's stage list; 'overlay' is reserved for the not-yet-
+// implemented Source Overlay (§16.8) and is included now so the type is
+// complete rather than needing to grow again once that commit lands.
+export type ModifierPipelineStage = 'overlay' | 'condition' | 'candidate-value' | 'clamp-bound' | 'application'
+
+// §16.11A (revision 3): "enrich, never replace" -- provenance is attached
+// alongside a RulesError's original `message`/`reason`, never by
+// overwriting them. `sourceInstanceId`/`attachmentIndex` are optional
+// because not every error has Source/attachment context (e.g. a plain
+// unresolved-Definition error has none); `attachmentIndex` in particular
+// has no producer yet -- it requires modifier attachment resolution
+// (§16.10), which is a later commit.
+export type RulesErrorProvenance = {
+  targetId: DefinitionId
+  stage: ModifierPipelineStage
+  sourceDefinitionId?: DefinitionId
+  sourceInstanceId?: string
+  attachmentIndex?: number
+}
+
+// §16.11A/§16.9/§16.12 (revision 3): the closed set of stable, grep-able
+// error codes this revision introduces. Declared as a type now so producers
+// across the pipeline agree on one vocabulary; `source-field-absent` and
+// `clamp-range-impossible` have no producer yet (they require §16.9's
+// runtime `@source:` resolution and §16.12's clamp evaluation, both later
+// commits) -- included for completeness of the approved contract, per this
+// commit's own "types only" scope.
+export type RulesErrorCode = 'modifier-condition-not-boolean' | 'source-field-absent' | 'clamp-range-impossible'
+
 // Combines §14.11's authoring-error shape ({definitionId, span, message,
 // suggestion}) with §14.4's runtime-error description ("a reason and the
 // definition ID"). Used both when validation rejects a package and as the
@@ -168,6 +223,8 @@ export type RulesError = {
   reason?: string
   span?: SourceSpan
   suggestion?: string
+  code?: RulesErrorCode // NEW (revision 3, §16.18)
+  provenance?: RulesErrorProvenance // NEW (revision 3, §16.18)
 }
 
 // §27.1's worked example, cross-referenced against §15.5's field list
@@ -291,25 +348,63 @@ export type CollectionDefinition = {
   label?: string
   itemSchema: CollectionFieldDefinition[]
   slots?: CollectionSlotDefinition[]
+  // §16.8 (revision 3): names the `itemSchema` key whose value references a
+  // SourceDefinition -- every item whose field resolves instantiates a
+  // Source instance in the dynamic overlay (§16.8's Path 2). Schema-
+  // declared, not a hardcoded/conventional key name. Type-only in this
+  // commit: nothing yet reads this field (the overlay builder is a later
+  // commit; see source-overlay.ts).
+  sourceRefField?: string
 }
 
-// §16.1/§16.5. `id`/`kind` are optional: the architecture shows two distinct
-// authoring shapes -- a standalone reusable template under
-// definitions/modifiers/ (has its own id, e.g. `mod:shield.defense`) and a
-// modifier embedded inline inside a SourceDefinition.modifiers[] (no id of
-// its own, scoped to that Source). Both are the same type; only the
-// standalone form participates in the Definition union with a populated id.
-export type ModifierDefinition = {
-  id?: DefinitionId
-  kind?: 'modifier'
+// §16.1/§16.10 (revision 3): `ModifierSpec` is the shape a Modifier has
+// wherever it is AUTHORED -- inline inside a SourceDefinition.modifiers[],
+// or as the body of a standalone, reusable Definition. It carries no
+// identity of its own. Revision 2 modeled this as `ModifierDefinition` with
+// optional `id`/`kind`, which forced every consumer (registry, dependency
+// graph, evaluator) to carry an unreachable "no kind" branch for the inline
+// case. Revision 3 splits the type instead: ModifierSpec has no identity;
+// ModifierDefinition (below) adds the identity a standalone Definition
+// requires. See rules-engine.md §16.10 decision 10.
+//
+// Discriminated on `phase`: a clamp Modifier must declare its `clamp` bound
+// (§16.12) and cannot be constructed without one -- a type-level guarantee,
+// not a runtime check. `base` is excluded from the phases a Modifier may
+// declare at all (§16.4) via ModifierApplicationPhase.
+type ModifierSpecBase = {
   target: DefinitionId
-  phase: ModifierPhase
-  modifierType?: string
   value: Expression | RuleValue
   condition?: Expression
+  modifierType?: string
   order?: number
   label?: string
   suppressible?: boolean
+}
+
+export type ModifierSpec =
+  | (ModifierSpecBase & { phase: Exclude<ModifierApplicationPhase, 'clamp'> })
+  | (ModifierSpecBase & { phase: 'clamp'; clamp: ClampBound })
+
+// The standalone, reusable form (§16.1's "definitions/modifiers/" template,
+// e.g. `mod:shield.defense`): everything ModifierSpec has, plus the
+// identity every other Definition union member already requires
+// unconditionally. `id`/`kind` are no longer optional -- see the comment on
+// ModifierSpec above for why revision 2's optionality was removed. This is
+// a BREAKING change to a field no shipped package uses (no package format
+// has ever shipped).
+export type ModifierDefinition = ModifierSpec & {
+  id: DefinitionId
+  kind: 'modifier'
+}
+
+// §16.10 (revision 3): the attachment representation -- a SourceDefinition
+// references a standalone ModifierDefinition by id rather than embedding it
+// inline. Type-only in this commit: nothing yet resolves `{ ref }` entries
+// into the ModifierDefinition they name (§16.10's "activation" is a later
+// commit; modifier discovery in this commit still only sees inline
+// ModifierSpec entries -- see modifier-pipeline.ts).
+export type ModifierReference = {
+  ref: DefinitionId
 }
 
 // §16.1, §16.6, §16.7: what Modifiers attach to. Items, conditions,
@@ -319,17 +414,40 @@ export type SourceDuration = {
   remaining?: number
 }
 
+// §16.6 (revision 3): structured suppression -- `sources` holds Source
+// DefinitionIds, `tags` holds tags matched against SourceDefinition.tags
+// (exact match, no predicate language). Replaces the untyped `string[]`,
+// which could not distinguish an id from a tag without guessing. Breaking
+// change to a field no shipped package uses.
+export type SourceSuppression = {
+  sources?: DefinitionId[]
+  tags?: string[]
+}
+
 export type SourceDefinition = {
   id: DefinitionId
   kind: 'source'
   label?: string
-  modifiers: ModifierDefinition[]
+  // §16.6 (revision 3): matched against `SourceSuppression.tags`.
+  tags?: string[]
+  // §16.10 (revision 3): inline specs and references, in one array, in
+  // author order -- author order is the final §15.3 ordering tiebreak
+  // (`attachmentIndex`), so one mixed array avoids a merge rule a parallel
+  // `modifierRefs` array would need. BREAKING: was `ModifierDefinition[]`.
+  modifiers: Array<ModifierSpec | ModifierReference>
   duration?: SourceDuration
-  // §16.6: Source IDs or tag predicates this Source suppresses. Not
-  // transitive in V1 -- kept loose (not modeled further) since the
-  // predicate shape itself is not specified in the architecture.
-  suppresses?: string[]
+  // §16.6 (revision 3): structured suppression. BREAKING: was `string[]`.
+  suppresses?: SourceSuppression
 }
+
+// §16.8 (revision 3): how a Source instance was activated -- one of the two
+// V1 activation paths (declared in ActorState.sources, or derived from a
+// collection item via CollectionDefinition.sourceRefField). Type-only in
+// this commit: nothing yet derives a 'collection'-origin instance (that is
+// the Source Overlay builder's job -- source-overlay.ts, a later commit).
+export type SourceOrigin =
+  | { kind: 'declared' }
+  | { kind: 'collection'; collectionId: DefinitionId; itemInstanceId: string }
 
 // §17.3. One structure serving all three proof families (d20 roll-over/
 // advantage, percentile roll-under, dice pool) plus manual/GM-narrated
@@ -502,6 +620,13 @@ export type RulesPackageManifest = {
   modules?: PackageModule[]
   semanticRoles?: Partial<Record<SemanticRole, DefinitionId>>
   localization?: PackageLocalization
+  // §16.3 (revision 3): the modifier-type stacking-policy declaration site.
+  // Sits in the manifest for the same reason `semanticRoles` does -- package-
+  // wide policy the engine must understand, not content, referenced by no
+  // Expression, so it needs no DefinitionId/registry entry. Type-only in
+  // this commit: nothing yet validates a ModifierSpec.modifierType against
+  // this table (package validation is a later commit).
+  modifierTypes?: ModifierTypeDeclaration[]
 }
 
 // ---------------------------------------------------------------------------
@@ -529,6 +654,10 @@ export type SourceInstance = {
   instanceId: string
   sourceRef: DefinitionId
   duration?: SourceDuration
+  // §16.8 (revision 3): absent in stored state means 'declared' -- a
+  // pre-revision-3 SourceInstance with no `origin` is exactly a declared
+  // instance, so this addition is non-breaking for existing stored state.
+  origin?: SourceOrigin
 }
 
 // §13.2: only user decisions are stored here. Anything recomputable from

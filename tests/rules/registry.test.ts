@@ -57,15 +57,23 @@ function standaloneModifier(id: string): ModifierDefinition {
   return { id, kind: 'modifier', target: 'value:x', phase: 'add', value: 1 }
 }
 
-// The *inline* Modifier Definition shape (§16.1): embedded inside a
-// SourceDefinition.modifiers[], with no id/kind of its own. Used here to
-// construct the "malformed if it appears at the top level" fixtures.
+// Deliberately malformed fixtures: a Definition claimed to be a standalone
+// ModifierDefinition but missing `id`/`kind`, to exercise the registry's
+// runtime rejection of malformed/legacy data. Revision 3 (Commit 2) made
+// both fields required on ModifierDefinition, so these can no longer be
+// produced by well-typed authoring code -- the inline (embedded-in-a-
+// Source, no identity) form is now the genuinely distinct `ModifierSpec`
+// type, which never appears in a top-level Definition list at all. `as
+// unknown as ModifierDefinition` forces the cast past that guarantee on
+// purpose: the registry must still defend against data that arrives
+// already malformed (e.g. loaded from JSON), not just data TypeScript
+// would have caught.
 function inlineModifierMissingId(): Definition {
-  return { kind: 'modifier', target: 'value:x', phase: 'add', value: 1 } as ModifierDefinition
+  return { kind: 'modifier', target: 'value:x', phase: 'add', value: 1 } as unknown as ModifierDefinition
 }
 
 function inlineModifierMissingKind(id: string): Definition {
-  return { id, target: 'value:x', phase: 'add', value: 1 } as ModifierDefinition
+  return { id, target: 'value:x', phase: 'add', value: 1 } as unknown as ModifierDefinition
 }
 
 describe('registry construction', () => {

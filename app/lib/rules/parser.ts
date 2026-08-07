@@ -103,14 +103,16 @@ class ParseFailure extends Error {
 // FunctionCallExpressionNode comment). An `@` followed by anything else is
 // a syntax error, not a permissively-parsed unknown namespace.
 //
-// Six, not seven: `ast.ts`'s `ReferenceNamespace` gained `'source'` as its
-// seventh member in revision 3's type-contract delta (§16.9, ADR-020), but
-// grammar support for it is explicitly a separate, later commit ("Do not
-// implement parser behavior yet") -- this list intentionally still reflects
-// only what this parser can actually produce today, so `@source:x` is
-// still a syntax error until that commit lands.
+// `'source'` added (revision 3, Commit 3 -- §8.2/§16.9, ADR-020): the
+// seventh member of `ast.ts`'s `ReferenceNamespace`, added to the TYPE in
+// the type-contract commit but deliberately left out of this grammar list
+// until now ("Do not implement parser behavior yet"). This commit is that
+// later commit -- `@source:x` now parses. `isReferenceNamespace` below
+// accepting it is only half of §8.2's contract: the namespace-specific path
+// arity check in parseReference (below) is the other half, and is what
+// actually distinguishes `@source` from `@sources` beyond the bare token.
 const REFERENCE_NAMESPACES: readonly ReferenceNamespace[] = [
-  'value', 'collection', 'sources', 'choice', 'world', 'ctx'
+  'value', 'collection', 'sources', 'choice', 'world', 'ctx', 'source'
 ]
 
 function isReferenceNamespace(value: string): value is ReferenceNamespace {
@@ -324,9 +326,26 @@ class Parser {
     const namespace: ReferenceNamespace = namespaceToken.text
 
     let path: string | undefined
+    let colonToken: Token | undefined
     if (this.check('colon')) {
-      this.advance()
+      colonToken = this.advance()
       path = this.parsePathSegments()
+    }
+
+    // §8.2/§9 (revision 3, Commit 3): namespace-specific path arity.
+    // `@source` and `@sources` differ by one character and are otherwise
+    // impossible to tell apart from a typo -- `@source` always takes a
+    // path (it names one specific Source instance's field), `@sources`
+    // never does (it names the actor's whole active-Source set, only ever
+    // filtered with `[...]`, never `:path`). Each diagnostic names the
+    // other form explicitly, with the actual path/namespace substituted in,
+    // so either typo is a syntax error with a one-step fix -- exactly
+    // expression-language.md §8.2's worked table.
+    if (namespace === 'source' && path === undefined) {
+      throw new ParseFailure(namespaceToken, '@source requires a path (did you mean @sources?)')
+    }
+    if (namespace === 'sources' && path !== undefined) {
+      throw new ParseFailure(colonToken!, `@sources takes no path (did you mean @source:${path}?)`)
     }
 
     return { kind: 'reference', namespace, path }

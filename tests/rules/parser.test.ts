@@ -106,9 +106,131 @@ describe('references (§8)', () => {
     if (!result.ok) {
       expect(result.diagnostics[0].message).toContain('Unknown reference namespace')
       expect(result.diagnostics[0].expected).toEqual(
-        expect.arrayContaining(['value', 'collection', 'sources', 'choice', 'world', 'ctx'])
+        expect.arrayContaining(['value', 'collection', 'sources', 'choice', 'world', 'ctx', 'source'])
       )
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// @source: the seventh namespace (expression-language.md §8.2, revision 3,
+// Commit 3). Language/parser scope only -- no AST node change (reuses
+// ReferenceExpressionNode, unchanged since Commit 2 added 'source' to
+// ReferenceNamespace), no runtime lookup, no reference-validation lexical-
+// scope check. See that section's worked table for every case below.
+// ---------------------------------------------------------------------------
+
+describe('@source: the seventh namespace (§8.2, revision 3)', () => {
+  it('parses @source:equipped', () => {
+    expect(parseOk('@source:equipped')).toEqual({ kind: 'reference', namespace: 'source', path: 'equipped' })
+  })
+
+  it('parses @source:quantity', () => {
+    expect(parseOk('@source:quantity')).toEqual({ kind: 'reference', namespace: 'source', path: 'quantity' })
+  })
+
+  it('parses the engine-reserved @source:duration.kind path', () => {
+    expect(parseOk('@source:duration.kind')).toEqual({ kind: 'reference', namespace: 'source', path: 'duration.kind' })
+  })
+
+  it('parses the engine-reserved @source:duration.remaining path', () => {
+    expect(parseOk('@source:duration.remaining')).toEqual({
+      kind: 'reference', namespace: 'source', path: 'duration.remaining'
+    })
+  })
+
+  it('parses @source:instanceId (always-available engine field, §8.2)', () => {
+    expect(parseOk('@source:instanceId')).toEqual({ kind: 'reference', namespace: 'source', path: 'instanceId' })
+  })
+
+  it('composes inside a comparison and inside if(...), per §8.2\'s own worked examples', () => {
+    expect(parseOk('@source:duration.remaining > 0')).toEqual({
+      kind: 'binary', operator: '>',
+      left: { kind: 'reference', namespace: 'source', path: 'duration.remaining' },
+      right: numberLiteral(0)
+    })
+    expect(parseOk('if(@source:equipped, 2, 0)')).toEqual({
+      kind: 'conditional',
+      condition: { kind: 'reference', namespace: 'source', path: 'equipped' },
+      whenTrue: numberLiteral(2),
+      whenFalse: numberLiteral(0)
+    })
+  })
+
+  it('rejects bare @source -- a path is mandatory (§8.2)', () => {
+    const result = parseExpression('@source')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics[0].message).toBe('@source requires a path (did you mean @sources?)')
+    }
+  })
+
+  it('rejects @source. (dot separator) with the same "requires a path" diagnostic', () => {
+    // §8.2's own invalid-examples note: "'.' is a path separator, not a
+    // namespace separator" -- no colon follows 'source', so no path is
+    // ever captured; this is not a distinct code path from bare @source.
+    const result = parseExpression('@source.equipped')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics[0].message).toBe('@source requires a path (did you mean @sources?)')
+    }
+  })
+
+  it('rejects @source: with nothing after the colon', () => {
+    // Pre-existing parsePathSegments() behavior, unmodified by this
+    // commit -- extends to 'source' the same way it already covers every
+    // other namespace's `:` (e.g. `@value:`).
+    const result = parseExpression('@source:')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics[0].message.toLowerCase()).toContain('path segment')
+    }
+  })
+
+  it('rejects @sources:equipped -- @sources never takes a path (§8.2)', () => {
+    const result = parseExpression('@sources:equipped')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics[0].message).toBe('@sources takes no path (did you mean @source:equipped?)')
+    }
+  })
+
+  it('the @sources diagnostic names the exact path that was typed, not a generic placeholder', () => {
+    const result = parseExpression('@sources:duration.remaining')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics[0].message).toBe(
+        '@sources takes no path (did you mean @source:duration.remaining?)'
+      )
+    }
+  })
+
+  it('a nested "item.*" path is syntactically valid -- this parser does not reject it', () => {
+    // IMPORTANT: this is a deliberate, architecture-grounded choice, not an
+    // oversight. §8.2's grammar is `path := identifier ("." identifier)*`
+    // -- fully generic, with no closed vocabulary of legal path shapes.
+    // §8.2 lists `@source:item.weight` under "Invalid examples" with the
+    // note "no 'item' sub-object; item fields are flat", but that is a
+    // RUNTIME/path-resolution fact (there is no nested 'item' field to
+    // resolve, so this would evaluate to an absent-field `error`, exactly
+    // like a misspelled `@source:equiped`), not a grammar rule -- §8.2
+    // states only two structural rules ("the path is mandatory" for
+    // `@source`, "never a path" for `@sources`), and §9's table names
+    // exactly one parser change for this namespace: the arity check
+    // above. `duration.kind`/`duration.remaining` are ALSO two-segment
+    // dotted paths and are indistinguishable from `item.weight` at parse
+    // time -- nothing here knows which field names are real. Rejecting
+    // this string would mean inventing a closed path vocabulary in the
+    // parser that the approved grammar does not specify.
+    expect(parseOk('@source:item.weight')).toEqual({
+      kind: 'reference', namespace: 'source', path: 'item.weight'
+    })
+  })
+
+  it('parsing the same @source: expression twice is deterministic', () => {
+    expect(parseOk('@source:duration.remaining')).toEqual(parseOk('@source:duration.remaining'))
+    expect(parseExpression('@source')).toEqual(parseExpression('@source'))
+    expect(parseExpression('@sources:equipped')).toEqual(parseExpression('@sources:equipped'))
   })
 })
 

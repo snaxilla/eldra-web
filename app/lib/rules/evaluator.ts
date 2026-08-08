@@ -18,8 +18,28 @@
 // REVISION 3 (§16.11A, ADR-022): resolveActiveModifiers can now return a
 // RulesError instead of a sequence, meaning gating itself failed rather
 // than resolved to "nothing applies." applyModifiers propagates that error
-// exactly like any other -- see the comment on applyModifiers below for the
-// one behavior change this commit makes.
+// exactly like any other.
+//
+// REVISION 3 -- COMMIT 6 (§16.9): `@source:` runtime resolution.
+// evaluateReference now handles `namespace === 'source'` (see
+// evaluateSourceReference below) instead of folding it into design
+// decision 2's "not resolvable" fallback -- it is the seventh namespace's
+// only member with an actual runtime binding to resolve against outside
+// the registry-backed `value`/`collection` pair. That binding -- a
+// `ResolvedSourceInstance` -- is threaded through the whole recursive
+// descent (every `evaluate*` function below gains a `sourceBinding`
+// parameter) rather than looked up fresh at each reference, because it is
+// unambiguous and fixed for the ENTIRE evaluation of one Modifier's
+// `value`/`condition`: exactly one Source instance activated that
+// Modifier (§16.1's invariant), so there is exactly one binding for every
+// `@source:` reference anywhere inside that expression tree, however
+// deeply nested. Introduced at exactly the two places §16.9 says
+// `@source:` is legal (modifierValue, and applyModifiers' condition
+// callback) and nowhere else -- every other call path leaves it
+// `undefined`, which IS this module's enforcement of §16.9's lexical
+// scope: "the evaluator may defensively return RulesError if the binding
+// is absent" (this task's own instruction) rather than duplicating
+// Reference Validation's ahead-of-time AST-position check.
 //
 // ---------------------------------------------------------------------------
 // DESIGN DECISIONS AND GAPS FOUND (expanded in the commit Summary)
@@ -57,7 +77,11 @@
 //    'sources', 'ctx', 'world', and 'choice' all produce a RulesError
 //    rather than a real lookup, even though ActorState.choices and
 //    EvaluationContext.world are both concretely populated fields that
-//    COULD be read. Investigated and deliberately not wired up: (a)
+//    COULD be read. 'source' (singular) is the one exception, as of
+//    revision 3 Commit 6 -- see evaluateSourceReference and the file-header
+//    note above; it resolves against the `sourceBinding` a Modifier's own
+//    evaluation carries, never against `evaluate()` or the registry.
+//    Investigated and deliberately not wired up for the remaining four: (a)
 //    EvaluationContext (types.ts) has no open field @ctx:x's arbitrary
 //    named lookups could resolve against -- its shape is closed
 //    (`purpose?/actors?/world?/tags?/seed?`); (b) WorldConfigSnapshotRef
@@ -148,6 +172,7 @@ import type {
 } from './ast'
 import type { EvaluationSession } from './evaluation-session'
 import { groupByPhase, resolveActiveModifiers, type ActiveModifier } from './modifier-pipeline'
+import type { ResolvedSourceInstance } from './source-overlay'
 import type {
   CollectionInstanceItem,
   Definition,
@@ -306,8 +331,19 @@ function computeBaseValue(
 //     is unambiguous but is not a Modifier and is out of this commit's
 //     scope.
 function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: EvaluationSession): RuleValue {
-  const resolution = resolveActiveModifiers(definitionId, session, (condition, ownerId) =>
-    evaluateExpression(asRuleExpressionNode(condition), session, ownerId)
+  // §16.9 (Commit 6): the ConditionEvaluator callback now receives the
+  // full ActiveModifier candidate (modifier-pipeline.ts), which is what
+  // lets a condition's own `@source:` references resolve against the
+  // Source instance that activated THIS modifier -- see the file-header
+  // note above.
+  const resolution = resolveActiveModifiers(definitionId, session, (condition, modifier) =>
+    evaluateExpression(
+      asRuleExpressionNode(condition),
+      session,
+      modifier.sourceDefinitionId,
+      undefined,
+      findSourceInstance(session, modifier.sourceInstanceId)
+    )
   )
 
   // REVISION 3 (rules-engine.md §16.11A, ADR-022; §16.18 Commit 2):
@@ -393,12 +429,39 @@ function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: Ev
 
 // A Modifier's `value` is `Expression | RuleValue` (types.ts). Expressions
 // are evaluated in the context of the Source that owns them, so any error
-// is attributed to that Source rather than to the target Value.
+// is attributed to that Source rather than to the target Value. Carries
+// the same `sourceBinding` lookup as the condition callback in
+// applyModifiers above -- §16.9's `@source:` is legal in a ModifierSpec's
+// `value` exactly as much as its `condition`.
 function modifierValue(entry: ActiveModifier, session: EvaluationSession): RuleValue {
   const value = entry.modifier.value
   return isExpression(value)
-    ? evaluateExpression(asRuleExpressionNode(value), session, entry.sourceDefinitionId)
+    ? evaluateExpression(
+        asRuleExpressionNode(value),
+        session,
+        entry.sourceDefinitionId,
+        undefined,
+        findSourceInstance(session, entry.sourceInstanceId)
+      )
     : value
+}
+
+// §16.9 (Commit 6): resolves an ActiveModifier's `sourceInstanceId` back
+// to the `ResolvedSourceInstance` the Source Overlay (source-overlay.ts,
+// Commit 4) already built it from. A linear scan, not a Map lookup: the
+// overlay is a small, per-session, already-computed array (§15.7's own
+// scale estimate is ~50 modifiers), and building an id-indexed Map here
+// would be inventing a second runtime Source index alongside the overlay's
+// own array -- exactly the "second runtime Source model" this commit's
+// own scope forbids. Returns undefined (never throws) if the id is not
+// found; a well-formed `ActiveModifier` always names a real overlay
+// instance (it was itself discovered by scanning that same overlay in
+// modifier-pipeline.ts), so this is a defensive fallback, not an expected
+// path -- but the caller (evaluateSourceReference, via the `sourceBinding`
+// this feeds) treats "no binding" as an ordinary RulesError regardless of
+// why it is missing.
+function findSourceInstance(session: EvaluationSession, instanceId: string): ResolvedSourceInstance | undefined {
+  return session.sourceOverlay.instances.find((instance) => instance.instanceId === instanceId)
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +472,8 @@ function evaluateExpression(
   node: RuleExpressionNode,
   session: EvaluationSession,
   definitionId: DefinitionId,
-  itemScope?: CollectionInstanceItem
+  itemScope?: CollectionInstanceItem,
+  sourceBinding?: ResolvedSourceInstance
 ): RuleValue {
   switch (node.kind) {
     case 'literal': {
@@ -421,13 +485,13 @@ function evaluateExpression(
     }
 
     case 'reference':
-      return evaluateReference(node, session, definitionId)
+      return evaluateReference(node, session, definitionId, sourceBinding)
 
     case 'unary': {
       if (node.operator !== '-') {
         return evaluationError(definitionId, `Unknown unary operator '${node.operator}'`)
       }
-      const operand = evaluateExpression(node.operand, session, definitionId, itemScope)
+      const operand = evaluateExpression(node.operand, session, definitionId, itemScope, sourceBinding)
       const error = firstError(operand)
       if (error) return error
       if (typeof operand !== 'number') {
@@ -437,27 +501,27 @@ function evaluateExpression(
     }
 
     case 'binary':
-      return evaluateBinary(node.operator, node.left, node.right, session, definitionId, itemScope)
+      return evaluateBinary(node.operator, node.left, node.right, session, definitionId, itemScope, sourceBinding)
 
     case 'conditional':
-      return evaluateConditional(node, session, definitionId, itemScope)
+      return evaluateConditional(node, session, definitionId, itemScope, sourceBinding)
 
     case 'call':
-      return evaluateCall(node, session, definitionId, itemScope)
+      return evaluateCall(node, session, definitionId, itemScope, sourceBinding)
 
     case 'collection':
-      return evaluateCollection(node, session, definitionId)
+      return evaluateCollection(node, session, definitionId, sourceBinding)
 
     case 'lookup': {
       // Table is unmodeled (design decision 4). `key` is still evaluated so
       // an internal error inside it surfaces rather than being masked.
-      const keyError = firstError(evaluateExpression(node.key, session, definitionId, itemScope))
+      const keyError = firstError(evaluateExpression(node.key, session, definitionId, itemScope, sourceBinding))
       if (keyError) return keyError
       return evaluationError(definitionId, `Cannot evaluate lookup(${node.table}, ...) -- Table is not modeled`)
     }
 
     case 'dice':
-      return evaluateDice(node, session, definitionId, itemScope)
+      return evaluateDice(node, session, definitionId, itemScope, sourceBinding)
 
     case 'unresolved':
       // §14.12: "type-checks as error and evaluates to error."
@@ -470,11 +534,20 @@ function evaluateExpression(
   }
 }
 
+// §16.9 (Commit 6): `namespace === 'source'` now resolves against
+// `sourceBinding` (evaluateSourceReference below) instead of falling into
+// design decision 2's "not resolvable" case -- the one namespace besides
+// `value`/`collection` with a real runtime lookup.
 function evaluateReference(
   node: ReferenceExpressionNode,
   session: EvaluationSession,
-  definitionId: DefinitionId
+  definitionId: DefinitionId,
+  sourceBinding: ResolvedSourceInstance | undefined
 ): RuleValue {
+  if (node.namespace === 'source') {
+    return evaluateSourceReference(node, definitionId, sourceBinding)
+  }
+
   if (node.namespace === 'value' || node.namespace === 'collection') {
     const id = node.path === undefined ? node.namespace : `${node.namespace}:${node.path}`
     return evaluate(id, session)
@@ -488,16 +561,93 @@ function evaluateReference(
   )
 }
 
+// §16.9: `@source:` binds to the one Source instance through which the
+// enclosing Modifier was activated (§16.1's invariant) -- `sourceBinding`
+// IS that instance, already resolved by the caller (modifierValue /
+// applyModifiers' condition callback). This function performs runtime
+// LOOKUP only, exactly as this commit's own RESPONSIBILITY states -- it
+// never derives, activates, or invents a Source instance; that is the
+// Source Overlay's job (source-overlay.ts, Commit 4), already done before
+// this function is ever called.
+function evaluateSourceReference(
+  node: ReferenceExpressionNode,
+  definitionId: DefinitionId,
+  sourceBinding: ResolvedSourceInstance | undefined
+): RuleValue {
+  // Lexical scope (§16.9): `@source:` is legal only inside a ModifierSpec's
+  // `value`/`condition`. Reference Validation owns enforcing that ahead of
+  // time; this is the evaluator's OWN defensive fallback for the case
+  // where no binding was threaded in -- never re-implementing that check,
+  // just refusing to silently invent a value when there is nothing to
+  // read (task's own "the evaluator may defensively return RulesError if
+  // the binding is absent").
+  if (!sourceBinding) {
+    const path = node.path ? `:${node.path}` : ''
+    return evaluationError(
+      definitionId,
+      `Cannot evaluate '@source${path}' -- no active Source instance is bound here (@source: is only valid inside a Modifier's value or condition expression)`
+    )
+  }
+
+  // §8.2's own grammar requires a path (`@source` bare is a parser-level
+  // syntax error, parser.ts's arity check, Commit 3) -- this branch is
+  // therefore unreachable through the parser and exists only as a
+  // defensive fallback for a hand-built or deserialized AST node (the same
+  // caveat reference-validation.ts's KNOWN_NAMESPACES comment already
+  // makes about non-parser AST producers).
+  if (node.path === undefined) {
+    return evaluationError(definitionId, "Cannot evaluate '@source' -- a path is required")
+  }
+
+  switch (node.path) {
+    case 'instanceId':
+      return sourceBinding.instanceId
+    case 'definitionId':
+      return sourceBinding.definitionId
+    case 'duration.kind':
+      return sourceBinding.duration?.kind ?? ''
+    case 'duration.remaining':
+      return sourceBinding.duration?.remaining ?? 0
+    case 'duration':
+    case 'origin':
+      // Engine-reserved (§16.9) but not themselves readable scalars --
+      // only duration's two sub-paths are. Reserved names win even if a
+      // (malformed, package-validation's job to reject) item schema
+      // happened to declare a same-named field, so this check runs before
+      // any itemFields lookup below.
+      return evaluationError(
+        definitionId,
+        `'@source:${node.path}' is not a readable field -- ${node.path === 'duration' ? "use 'duration.kind' or 'duration.remaining'" : "'origin' is engine-internal provenance, not an expression-readable field"}`
+      )
+    default: {
+      // §16.9: "@source:<itemField> | declared by the item schema | only
+      // for collection-item instances." Absent -> error, never a
+      // type-appropriate zero (§16.9's own deliberate exception to §14.4's
+      // general rule) -- a misspelled field must fail visibly, not
+      // silently disable the Modifier by resolving to a falsy default.
+      const itemFields = sourceBinding.itemFields
+      if (itemFields && node.path in itemFields) {
+        return itemFields[node.path]!
+      }
+      return evaluationError(
+        definitionId,
+        `'@source:${node.path}' is not a field of Source instance '${sourceBinding.instanceId}' ('${sourceBinding.definitionId}')`
+      )
+    }
+  }
+}
+
 function evaluateBinary(
   operator: string,
   leftNode: RuleExpressionNode,
   rightNode: RuleExpressionNode,
   session: EvaluationSession,
   definitionId: DefinitionId,
-  itemScope: CollectionInstanceItem | undefined
+  itemScope: CollectionInstanceItem | undefined,
+  sourceBinding: ResolvedSourceInstance | undefined
 ): RuleValue {
-  const left = evaluateExpression(leftNode, session, definitionId, itemScope)
-  const right = evaluateExpression(rightNode, session, definitionId, itemScope)
+  const left = evaluateExpression(leftNode, session, definitionId, itemScope, sourceBinding)
+  const right = evaluateExpression(rightNode, session, definitionId, itemScope, sourceBinding)
   const error = firstError(left, right)
   if (error) return error
 
@@ -536,26 +686,28 @@ function evaluateConditional(
   node: ConditionalExpressionNode,
   session: EvaluationSession,
   definitionId: DefinitionId,
-  itemScope: CollectionInstanceItem | undefined
+  itemScope: CollectionInstanceItem | undefined,
+  sourceBinding: ResolvedSourceInstance | undefined
 ): RuleValue {
-  const condition = evaluateExpression(node.condition, session, definitionId, itemScope)
+  const condition = evaluateExpression(node.condition, session, definitionId, itemScope, sourceBinding)
   const error = firstError(condition)
   if (error) return error
   if (typeof condition !== 'boolean') {
     return evaluationError(definitionId, `if(...) condition must be boolean, got '${typeof condition}'`)
   }
   // Lazy: only the selected branch is ever evaluated.
-  return evaluateExpression(condition ? node.whenTrue : node.whenFalse, session, definitionId, itemScope)
+  return evaluateExpression(condition ? node.whenTrue : node.whenFalse, session, definitionId, itemScope, sourceBinding)
 }
 
 function evaluateDice(
   node: DiceExpressionNode,
   session: EvaluationSession,
   definitionId: DefinitionId,
-  itemScope: CollectionInstanceItem | undefined
+  itemScope: CollectionInstanceItem | undefined,
+  sourceBinding: ResolvedSourceInstance | undefined
 ): RuleValue {
-  const count = evaluateExpression(node.count, session, definitionId, itemScope)
-  const faces = evaluateExpression(node.faces, session, definitionId, itemScope)
+  const count = evaluateExpression(node.count, session, definitionId, itemScope, sourceBinding)
+  const faces = evaluateExpression(node.faces, session, definitionId, itemScope, sourceBinding)
   const error = firstError(count, faces)
   if (error) return error
   if (typeof count !== 'number' || typeof faces !== 'number') {
@@ -574,7 +726,8 @@ function evaluateCall(
   node: FunctionCallExpressionNode,
   session: EvaluationSession,
   definitionId: DefinitionId,
-  itemScope: CollectionInstanceItem | undefined
+  itemScope: CollectionInstanceItem | undefined,
+  sourceBinding: ResolvedSourceInstance | undefined
 ): RuleValue {
   const name = node.name
 
@@ -582,7 +735,7 @@ function evaluateCall(
   // argument is never touched once the result is already determined.
   if (name === 'and') {
     for (const arg of node.args) {
-      const value = evaluateExpression(arg, session, definitionId, itemScope)
+      const value = evaluateExpression(arg, session, definitionId, itemScope, sourceBinding)
       const error = firstError(value)
       if (error) return error
       if (typeof value !== 'boolean') return evaluationError(definitionId, `'and' requires boolean arguments, got '${typeof value}'`)
@@ -593,7 +746,7 @@ function evaluateCall(
 
   if (name === 'or') {
     for (const arg of node.args) {
-      const value = evaluateExpression(arg, session, definitionId, itemScope)
+      const value = evaluateExpression(arg, session, definitionId, itemScope, sourceBinding)
       const error = firstError(value)
       if (error) return error
       if (typeof value !== 'boolean') return evaluationError(definitionId, `'or' requires boolean arguments, got '${typeof value}'`)
@@ -602,7 +755,7 @@ function evaluateCall(
     return false
   }
 
-  const args = node.args.map((arg) => evaluateExpression(arg, session, definitionId, itemScope))
+  const args = node.args.map((arg) => evaluateExpression(arg, session, definitionId, itemScope, sourceBinding))
   const error = firstError(...args)
   if (error) return error
 
@@ -731,7 +884,8 @@ function requireNumber(
 function evaluateCollection(
   node: CollectionExpressionNode,
   session: EvaluationSession,
-  definitionId: DefinitionId
+  definitionId: DefinitionId,
+  sourceBinding: ResolvedSourceInstance | undefined
 ): RuleValue {
   const items = resolveCollectionItems(node.source, session)
   if (isRulesError(items)) return items
@@ -742,7 +896,7 @@ function evaluateCollection(
       filtered.push(item)
       continue
     }
-    const predicateResult = evaluateExpression(node.predicate, session, definitionId, item)
+    const predicateResult = evaluateExpression(node.predicate, session, definitionId, item, sourceBinding)
     const error = firstError(predicateResult)
     if (error) return error
     if (isTruthy(predicateResult)) filtered.push(item)
@@ -763,7 +917,7 @@ function evaluateCollection(
       }
       const values: number[] = []
       for (const item of filtered) {
-        const value = evaluateExpression(node.aggregate, session, definitionId, item)
+        const value = evaluateExpression(node.aggregate, session, definitionId, item, sourceBinding)
         const error = firstError(value)
         if (error) return error
         if (typeof value !== 'number') {

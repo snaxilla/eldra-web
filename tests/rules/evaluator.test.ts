@@ -16,7 +16,11 @@ import type {
   Definition,
   EvaluationContext,
   Expression,
+  ModifierApplicationPhase,
+  ModifierSpec,
   RulesPackageManifest,
+  SourceDefinition,
+  SourceInstance,
   ValueDefinition
 } from '../../app/lib/rules/types'
 
@@ -55,6 +59,27 @@ function derivedValue(id: string, formulaText: string, valueType: ValueDefinitio
 
 function collectionDefinition(id: string, itemSchema: CollectionDefinition['itemSchema']): CollectionDefinition {
   return { id, kind: 'collection', itemSchema }
+}
+
+// Inline `ModifierSpec` (§16.1) -- no id/kind of its own. Discriminated on
+// `phase` (a clamp modifier requires a `clamp` bound, §16.12), which a
+// single generic helper cannot express without a cast -- unused by any
+// fixture in this file, which never declares a clamp-phase modifier.
+function modifier(
+  target: string,
+  phase: ModifierApplicationPhase,
+  value: ModifierSpec['value'],
+  overrides: Partial<ModifierSpec> = {}
+): ModifierSpec {
+  return { target, phase, value, ...overrides } as ModifierSpec
+}
+
+function sourceDefinition(id: string, modifiers: ModifierSpec[], overrides: Partial<SourceDefinition> = {}): SourceDefinition {
+  return { id, kind: 'source', modifiers, ...overrides }
+}
+
+function sourceInstance(instanceId: string, sourceRef: string, overrides: Partial<SourceInstance> = {}): SourceInstance {
+  return { instanceId, sourceRef, ...overrides }
 }
 
 function actorState(overrides: Partial<ActorState> = {}): ActorState {
@@ -407,5 +432,277 @@ describe('collections', () => {
       derivedValue('value:count', 'count(@collection:inventory)')
     ])
     expect(evaluate('value:count', session)).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// @source: runtime resolution (§16.9, revision 3, Commit 6). `@source:` is
+// legal only inside a ModifierSpec's `value`/`condition` -- every test here
+// exercises it through evaluate() on the TARGET a Modifier affects, never
+// by calling an internal evaluator function directly, so these are true
+// end-to-end tests of the binding modifier-pipeline.ts's ActiveModifier
+// provenance now makes possible.
+// ---------------------------------------------------------------------------
+
+describe('@source: engine fields (§16.9)', () => {
+  it('@source:instanceId resolves to the activating Source instance\'s id', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:label', { valueType: 'text', default: '' }),
+        sourceDefinition('source:blessed', [modifier('value:label', 'set', expression('@source:instanceId'))])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed')] } }
+    )
+    expect(evaluate('value:label', session)).toBe('cs-1')
+  })
+
+  it('@source:definitionId resolves to the Source Definition\'s own id', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:label', { valueType: 'text', default: '' }),
+        sourceDefinition('source:blessed', [modifier('value:label', 'set', expression('@source:definitionId'))])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed')] } }
+    )
+    expect(evaluate('value:label', session)).toBe('source:blessed')
+  })
+
+  it('@source:duration.kind and @source:duration.remaining resolve when a duration is set', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:kind', { valueType: 'text', default: '' }),
+        valueDefinition('value:remaining', { valueType: 'number', default: 0 }),
+        sourceDefinition('source:stressed', [
+          modifier('value:kind', 'set', expression('@source:duration.kind')),
+          modifier('value:remaining', 'set', expression('@source:duration.remaining'))
+        ])
+      ],
+      {
+        actor: {
+          sources: [sourceInstance('cs-1', 'source:stressed', { duration: { kind: 'rounds', remaining: 3 } })]
+        }
+      }
+    )
+    expect(evaluate('value:kind', session)).toBe('rounds')
+    expect(evaluate('value:remaining', session)).toBe(3)
+  })
+
+  it('@source:duration.kind/.remaining default to "" and 0 when the instance has no duration (§16.9)', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:kind', { valueType: 'text', default: '' }),
+        valueDefinition('value:remaining', { valueType: 'number', default: 0 }),
+        sourceDefinition('source:permanent', [
+          modifier('value:kind', 'set', expression('@source:duration.kind')),
+          modifier('value:remaining', 'set', expression('@source:duration.remaining'))
+        ])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:permanent')] } }
+    )
+    expect(evaluate('value:kind', session)).toBe('')
+    expect(evaluate('value:remaining', session)).toBe(0)
+  })
+})
+
+describe('@source: flat item fields (§16.9, collection-derived instances)', () => {
+  it('a collection item\'s own field is readable through @source:<field>', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:bonus', { default: 0 }),
+        {
+          id: 'collection:inventory',
+          kind: 'collection',
+          sourceRefField: 'sourceRef',
+          itemSchema: [
+            { key: 'name', valueType: 'text' },
+            { key: 'enhancementBonus', valueType: 'number' },
+            { key: 'sourceRef', valueType: 'ref', refKind: 'source' }
+          ]
+        },
+        sourceDefinition('source:item.ring', [modifier('value:bonus', 'add', expression('@source:enhancementBonus'))])
+      ],
+      {
+        actor: {
+          collections: {
+            'collection:inventory': [
+              { instanceId: 'ci-1', name: 'Ring', enhancementBonus: 3, sourceRef: 'source:item.ring' }
+            ]
+          }
+        }
+      }
+    )
+    expect(evaluate('value:bonus', session)).toBe(3)
+  })
+})
+
+describe('@source: absent field is an error, never a zero or false (§16.9)', () => {
+  it('a misspelled/unknown field name produces a RulesError, never a type-appropriate zero', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:guard', { default: 10 }),
+        sourceDefinition('source:blessed', [
+          modifier('value:guard', 'add', 2, { condition: expression('@source:notARealField') })
+        ])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed')] } }
+    )
+    const result = evaluate('value:guard', session)
+    expect(result).not.toBe(10) // not silently excluded (would look like "condition false")
+    expect(result).not.toBe(12) // not silently applied either
+    expect((result as { message: string }).message).toContain('notARealField')
+  })
+
+  it('reading an item field on a DECLARED (non-collection) instance is an absent-field error, not a zero', () => {
+    // §16.9: "a condition has no `equipped`" -- a declared instance has no
+    // itemFields at all.
+    const session = buildSession(
+      [
+        valueDefinition('value:guard', { default: 10 }),
+        sourceDefinition('source:blessed', [
+          modifier('value:guard', 'add', 2, { condition: expression('@source:equipped') })
+        ])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed')] } }
+    )
+    const result = evaluate('value:guard', session)
+    expect(result).not.toBe(10)
+    expect((result as { message: string }).message).toContain('equipped')
+  })
+})
+
+describe('@source: missing binding (lexical scope, §16.9)', () => {
+  it('@source: used outside a Modifier value/condition (e.g. a Value formula) is a runtime RulesError', () => {
+    // The parser accepts @source: anywhere (grammar only, §8.2) -- Reference
+    // Validation is what would normally catch this at package-validation
+    // time (not implemented this commit); the evaluator's own defensive
+    // fallback is what is under test here.
+    const session = buildSession([derivedValue('value:x', '@source:instanceId', 'text')])
+    const result = evaluate('value:x', session)
+    expect((result as { message: string }).message).toContain('no active Source instance is bound')
+  })
+})
+
+describe('@source: condition evaluation (§16.9)', () => {
+  it('a condition reading @source:duration.remaining gates the modifier through real evaluation', () => {
+    const active = buildSession(
+      [
+        valueDefinition('value:guard', { default: 10 }),
+        sourceDefinition('source:blessed', [
+          modifier('value:guard', 'add', 2, { condition: expression('@source:duration.remaining > 0') })
+        ])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed', { duration: { kind: 'rounds', remaining: 3 } })] } }
+    )
+    expect(evaluate('value:guard', active)).toBe(12)
+
+    const expired = buildSession(
+      [
+        valueDefinition('value:guard', { default: 10 }),
+        sourceDefinition('source:blessed', [
+          modifier('value:guard', 'add', 2, { condition: expression('@source:duration.remaining > 0') })
+        ])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed', { duration: { kind: 'rounds', remaining: 0 } })] } }
+    )
+    expect(evaluate('value:guard', expired)).toBe(10)
+  })
+
+  it('the canonical equipped-item example resolves end to end (§16.13 example 1)', () => {
+    const equippedSchema = [
+      { key: 'name', valueType: 'text' as const },
+      { key: 'equipped', valueType: 'boolean' as const },
+      { key: 'sourceRef', valueType: 'ref' as const, refKind: 'source' }
+    ]
+    const definitions: Definition[] = [
+      valueDefinition('value:guard', { default: 10 }),
+      { id: 'collection:inventory', kind: 'collection', itemSchema: equippedSchema, sourceRefField: 'sourceRef' },
+      sourceDefinition('source:item.scaleHauberk', [
+        modifier('value:guard', 'add', 2, { condition: expression('@source:equipped') })
+      ])
+    ]
+
+    const registryResult = RulesRegistry.create(manifest(), definitions)
+    if (!registryResult.ok) throw new Error('registry construction failed')
+    const graphResult = DependencyGraph.build(registryResult.registry)
+    if (!graphResult.ok) throw new Error('graph construction failed')
+
+    const equippedState = actorState({
+      collections: {
+        'collection:inventory': [
+          { instanceId: 'ci-1', name: 'Scale Hauberk', equipped: true, sourceRef: 'source:item.scaleHauberk' }
+        ]
+      }
+    })
+    const equippedSession = new EvaluationSession(registryResult.registry, graphResult.graph, equippedState, context())
+    expect(evaluate('value:guard', equippedSession)).toBe(12)
+
+    const unequippedState = actorState({
+      collections: {
+        'collection:inventory': [
+          { instanceId: 'ci-1', name: 'Scale Hauberk', equipped: false, sourceRef: 'source:item.scaleHauberk' }
+        ]
+      }
+    })
+    const unequippedSession = new EvaluationSession(registryResult.registry, graphResult.graph, unequippedState, context())
+    expect(evaluate('value:guard', unequippedSession)).toBe(10)
+  })
+})
+
+describe('@source: value evaluation (§16.9)', () => {
+  it('a modifier value expression reads @source: (item field) rather than a condition', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:attack', { default: 0 }),
+        { id: 'collection:inventory', kind: 'collection', itemSchema: [
+          { key: 'name', valueType: 'text' },
+          { key: 'bonus', valueType: 'number' },
+          { key: 'sourceRef', valueType: 'ref', refKind: 'source' }
+        ], sourceRefField: 'sourceRef' },
+        sourceDefinition('source:item.wand', [modifier('value:attack', 'add', expression('@source:bonus'))])
+      ],
+      {
+        actor: {
+          collections: {
+            'collection:inventory': [{ instanceId: 'ci-1', name: 'Wand', bonus: 5, sourceRef: 'source:item.wand' }]
+          }
+        }
+      }
+    )
+    expect(evaluate('value:attack', session)).toBe(5)
+  })
+})
+
+describe('@source: runtime error propagation (§16.11A, unchanged by this commit)', () => {
+  it('an absent-field error inside a condition aborts the target -- never silently "false" (§16.11A)', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:guard', { default: 10 }),
+        sourceDefinition('source:blessed', [
+          modifier('value:guard', 'add', 2, { condition: expression('and(@source:duration.kind = "permanent", @source:nonsense)') })
+        ])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed', { duration: { kind: 'permanent' } })] } }
+    )
+    const result = evaluate('value:guard', session)
+    expect(result).not.toBe(10)
+    expect(result).not.toBe(12)
+    expect((result as { message: string }).message).toContain('nonsense')
+  })
+
+  it('an absent-field error is memoized like any other RuleValue (§15.4, unchanged since Commit 1)', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:guard', { default: 10 }),
+        sourceDefinition('source:blessed', [
+          modifier('value:guard', 'add', 2, { condition: expression('@source:notARealField') })
+        ])
+      ],
+      { actor: { sources: [sourceInstance('cs-1', 'source:blessed')] } }
+    )
+    expect(session.hasCached('value:guard')).toBe(false)
+    const first = evaluate('value:guard', session)
+    expect(session.hasCached('value:guard')).toBe(true)
+    const second = evaluate('value:guard', session)
+    expect(second).toEqual(first)
   })
 })

@@ -16,14 +16,16 @@
 // commit Summary, which reproduces this list in full)
 // ---------------------------------------------------------------------------
 // A. `@source.equipped` -- the architecture's OWN canonical conditional-
-//    modifier syntax -- did not parse. **Resolved by revision 3's language
-//    support (Commit 3):** `@source:equipped` now parses. `@source:`
-//    RUNTIME field resolution (actually reading a field off a
-//    ResolvedSourceInstance during evaluation) is explicitly NOT
-//    implemented this commit ("Do not implement @source runtime field
-//    resolution") -- see the commit Summary's "Remaining @source work"
-//    section. A condition using `@source:` still evaluates via the six
-//    pre-revision-3 namespaces' existing machinery only.
+//    modifier syntax -- did not parse. **Fully resolved as of revision 3's
+//    Commit 6.** Commit 3 made `@source:equipped` parse; Commit 6 makes it
+//    RESOLVE, in evaluator.ts -- `ConditionEvaluator` (below) now passes
+//    the full `ActiveModifier` rather than just `sourceDefinitionId`,
+//    which is what lets the evaluator look up the exact
+//    `ResolvedSourceInstance` a condition's `@source:` binds to
+//    (`session.sourceOverlay`, via `sourceInstanceId`). This module itself
+//    still does no evaluation and does not know what `@source:` means --
+//    it only widened the one value it was already threading through to a
+//    caller-supplied callback, per §16.9.
 //
 // B. Standalone ModifierDefinitions had no attachment mechanism. **Resolved
 //    by this commit (Commit 5).** `SourceDefinition.modifiers` entries of
@@ -108,12 +110,22 @@
 //      unpopulated -- it belongs to stacking's candidate-value evaluation,
 //      an explicit non-goal of this commit.
 //
-// `@source:` runtime field resolution is still NOT implemented ("Do not
-// implement @source runtime field resolution") -- this commit produces the
-// provenance (`origin`, `sourceInstanceId`, `attachmentIndex`) a future
-// commit's `@source:` lookup will need, but nothing yet reads it through
-// the expression language. Stacking, clamp, and package validation remain
-// untouched, per this commit's own NON-GOALS.
+// `@source:` runtime field resolution was NOT implemented as of Commit 5 --
+// that commit produced the provenance (`origin`, `sourceInstanceId`,
+// `attachmentIndex`) `@source:` lookup needs, but nothing read it through
+// the expression language yet.
+//
+// ---------------------------------------------------------------------------
+// REVISION 3 -- COMMIT 6: @source runtime resolution (this commit)
+// ---------------------------------------------------------------------------
+// This module's own change is small and purely mechanical: `ConditionEvaluator`
+// now takes the full `ActiveModifier` instead of just `sourceDefinitionId`
+// (see the type's own comment below) -- everything else (looking up the
+// `ResolvedSourceInstance`, resolving `@source:` paths, producing the
+// absent-field/no-binding RulesErrors) lives entirely in evaluator.ts,
+// which is the module that owns evaluation (this one still performs none).
+// Stacking, clamp, and package validation remain untouched, per this
+// commit's own NON-GOALS.
 
 import type { EvaluationSession } from './evaluation-session'
 import type { RulesRegistry } from './registry'
@@ -175,7 +187,16 @@ export type ModifierResolution =
 // imported so this module never depends on the Evaluator (which depends on
 // it) -- and so "the pipeline does not own evaluation" is enforced
 // structurally, not just by convention.
-export type ConditionEvaluator = (condition: Expression, ownerId: DefinitionId) => RuleValue
+//
+// Takes the full `ActiveModifier` (revision 3, Commit 6) -- was `ownerId:
+// DefinitionId` (just `sourceDefinitionId`). `@source:` runtime resolution
+// (§16.9) needs `sourceInstanceId` to look up the exact
+// `ResolvedSourceInstance` the condition's `@source:` binds to; the
+// evaluator (the only real implementer of this type) is what performs that
+// lookup against `session.sourceOverlay` -- this module still does not
+// import or depend on the evaluator, it just passes through the one value
+// (the whole candidate) the evaluator now needs.
+export type ConditionEvaluator = (condition: Expression, modifier: ActiveModifier) => RuleValue
 
 // §16.4's fixed phase order. "Fixed phase order is a deliberate
 // constraint" -- never sorted, never merged, never made configurable.
@@ -255,7 +276,7 @@ export function resolveActiveModifiers(
       continue
     }
 
-    const result = evaluateCondition(candidate.modifier.condition, candidate.sourceDefinitionId)
+    const result = evaluateCondition(candidate.modifier.condition, candidate)
 
     if (result === true) {
       applicable.push(candidate)

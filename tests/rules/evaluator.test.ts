@@ -5,7 +5,7 @@
 // invalidation are not exercised here.
 
 import { describe, expect, it } from 'vitest'
-import { evaluate } from '../../app/lib/rules/evaluator'
+import { evaluate, evaluateStandaloneExpression } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import { DependencyGraph } from '../../app/lib/rules/dependency-graph'
 import { RulesRegistry } from '../../app/lib/rules/registry'
@@ -363,6 +363,33 @@ describe('dice', () => {
     const session = buildSession([derivedValue('value:x', 'keepHighest(dice(4, 6), 3)')])
     expect(evaluate('value:x', session)).toEqual({ count: 4, faces: 6, keep: 'highest', keepCount: 3 })
   })
+
+  // §17.3's own worked table spells the d20 roll-over/advantage families as
+  // e.g. "1d20 + @mod" -- a diceSpec plus a flat numeric modifier, still
+  // constructing a diceSpec (§14.6), never rolling. Found missing while
+  // implementing the Roll Engine; fixed in evaluateBinary's '+' case.
+  it('diceSpec + number attaches a flat modifier without rolling', () => {
+    const session = buildSession([derivedValue('value:x', '1d20 + 5')])
+    expect(evaluate('value:x', session)).toEqual({ count: 1, faces: 20, modifier: 5 })
+  })
+
+  it('number + diceSpec attaches a flat modifier (operand order does not matter)', () => {
+    const session = buildSession([derivedValue('value:x', '5 + 1d20')])
+    expect(evaluate('value:x', session)).toEqual({ count: 1, faces: 20, modifier: 5 })
+  })
+
+  it('diceSpec + number modifiers accumulate left-to-right', () => {
+    const session = buildSession([derivedValue('value:x', '1d20 + 2 + 3')])
+    expect(evaluate('value:x', session)).toEqual({ count: 1, faces: 20, modifier: 5 })
+  })
+
+  it('a referenced modifier resolves through @value: before attaching', () => {
+    const session = buildSession(
+      [valueDefinition('value:mod'), derivedValue('value:x', '1d20 + @value:mod')],
+      { actor: { values: { 'value:mod': 4 } } }
+    )
+    expect(evaluate('value:x', session)).toEqual({ count: 1, faces: 20, modifier: 4 })
+  })
 })
 
 describe('collections', () => {
@@ -704,5 +731,28 @@ describe('@source: runtime error propagation (§16.11A, unchanged by this commit
     expect(session.hasCached('value:guard')).toBe(true)
     const second = evaluate('value:guard', session)
     expect(second).toEqual(first)
+  })
+})
+
+// Added while implementing the Roll Engine: RollSpec.successRule.threshold
+// (types.ts) is `Expression | RuleValue` -- the percentile roll-under
+// family (§17.3: `atMost: @value:skill`) needs the Expression form
+// evaluated against a session/scope, which previously had no public entry
+// point (only whole Definitions were evaluable via `evaluate`).
+describe('evaluateStandaloneExpression (added for the Roll Engine, §17.3)', () => {
+  it('evaluates a literal expression with no Definition of its own', () => {
+    const session = buildSession([])
+    expect(evaluateStandaloneExpression(expression('2 + 2'), session, 'roll:test')).toBe(4)
+  })
+
+  it('resolves a @value: reference against the session exactly like evaluate() does', () => {
+    const session = buildSession([valueDefinition('value:skill', { default: 35 })])
+    expect(evaluateStandaloneExpression(expression('@value:skill'), session, 'roll:test')).toBe(35)
+  })
+
+  it('propagates an internal error unchanged, attributed to the actual missing reference', () => {
+    const session = buildSession([])
+    const result = evaluateStandaloneExpression(expression('@value:doesNotExist'), session, 'roll:test')
+    expect(result).toMatchObject({ definitionId: 'value:doesNotExist' })
   })
 })

@@ -227,6 +227,23 @@ export function evaluate(definitionId: DefinitionId, session: EvaluationSession)
   return result
 }
 
+// ROLL ENGINE (§17): RollSpec.successRule.threshold (types.ts) is typed
+// `Expression | RuleValue` -- for the percentile roll-under family (§17.3:
+// `atMost: @value:skill`) it is a real Expression, not a literal. The Roll
+// Engine (roll-engine.ts) needs to evaluate that Expression against the
+// same session/scope rules this module already applies internally to
+// ResourceDefinition.max and ActionCost.amount (see computeDefinition's
+// `case 'resource'` above) -- this is that exact same call, exposed, so the
+// Roll Engine reuses this module's evaluation rather than reimplementing
+// any part of it (an explicit non-goal of that task).
+export function evaluateStandaloneExpression(
+  expression: Expression,
+  session: EvaluationSession,
+  definitionId: DefinitionId
+): RuleValue {
+  return evaluateExpression(asRuleExpressionNode(expression), session, definitionId)
+}
+
 // ---------------------------------------------------------------------------
 // Per-Definition-kind computation (design decision 1)
 // ---------------------------------------------------------------------------
@@ -704,7 +721,30 @@ function evaluateBinary(
   if (operator === '+') {
     if (typeof left === 'number' && typeof right === 'number') return left + right
     if (typeof left === 'string' && typeof right === 'string') return left + right
-    return evaluationError(definitionId, `'+' requires Number+Number or Text+Text, got '${typeof left}+${typeof right}'`)
+    // ROLL ENGINE gap, found and fixed while implementing roll-engine.ts:
+    // §17.3's own worked table shows the d20 roll-over and d20-advantage
+    // families spelled as `1d20 + @mod` / dice expressions with a flat
+    // numeric modifier added directly to a dice literal. §14.6 requires
+    // this to stay "a value, not evaluation" -- construct a DiceSpec, never
+    // roll -- so `+` between a diceSpec and a number cannot mean numeric
+    // addition (there is no number yet to add to); it must mean "attach a
+    // flat modifier to the dice construction," the same pattern
+    // `keepHighest`/`keepLowest`/`explode`/`reroll` already use to annotate
+    // a DiceSpec with extra flat keys (evaluateCall below). Without this,
+    // two of the three proof families in §17.3 could never evaluate their
+    // `dice` field to anything but a RulesError, which would make "execute
+    // arbitrary RollSpecs" (the Roll Engine's stated objective)
+    // unachievable for them. Modifiers accumulate (`1d20 + 2 + @mod`),
+    // matching left-associative `+` chaining elsewhere in this evaluator.
+    if (isDiceSpec(left) && typeof right === 'number') {
+      const existing = typeof left.modifier === 'number' ? left.modifier : 0
+      return { ...left, modifier: existing + right }
+    }
+    if (typeof left === 'number' && isDiceSpec(right)) {
+      const existing = typeof right.modifier === 'number' ? right.modifier : 0
+      return { ...right, modifier: existing + left }
+    }
+    return evaluationError(definitionId, `'+' requires Number+Number, Text+Text, or diceSpec+Number, got '${typeof left}+${typeof right}'`)
   }
 
   if (operator === '-' || operator === '*' || operator === '/') {

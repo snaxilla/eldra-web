@@ -317,19 +317,17 @@ function computeBaseValue(
 //     order winning (the same shape `set`/`final` use, since every other
 //     reading would have to invent one).
 //
-//   - `clamp`-phase modifiers: §16.4 says clamp does "min / max / floor /
-//     ceiling". §16.12 (revision 3) has since resolved the ambiguity this
-//     comment originally described -- `ModifierSpec`'s clamp variant now
-//     carries a required `clamp: ClampBound` discriminator (types.ts) -- but
-//     *evaluating* a clamp modifier using that field is explicitly out of
-//     this codebase's implemented scope so far ("Do not implement clamp
-//     evaluation", revision 3 Commit 7's own instruction). A clamp-phase
-//     modifier therefore still yields a RulesError below, per §14.4's
-//     "visible degradation over silent corruption" -- now because clamp
-//     evaluation is simply not implemented yet, not because the type cannot
-//     express which bound is meant. ValueDefinition.constraints (min/max)
-//     is unambiguous but is not a Modifier and is out of this commit's
-//     scope.
+//   - `clamp`-phase modifiers: §16.4's revision-2 wording "min / max / floor
+//     / ceiling" named four operations where there are two -- "floor"/
+//     "ceiling" are synonyms for the lower/upper bound, not distinct
+//     operations, and §16.12 (revision 3) corrected the wording. Evaluated
+//     as of revision 3 Commit 8 (§16.12): greatest-applicable-lower-bound,
+//     least-applicable-upper-bound, order-independent, `error` on an
+//     impossible range -- see the design-decision comment directly above
+//     the clamp block in applyModifiers below for the full algorithm.
+//     ValueDefinition.constraints (min/max) is a separate, unambiguous
+//     mechanism and remains out of §16's scope regardless (§13.3: applied
+//     after the whole modifier pipeline, at read time).
 //
 // REVISION 3 -- COMMIT 7 (§16.11, Modifier Stacking): candidate VALUES are
 // no longer evaluated here. `resolveActiveModifiers` now evaluates every
@@ -394,7 +392,9 @@ function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: Ev
   // survivors (`highest`/`lowest` only for `add`/`scale`; `exclusive` for
   // any phase, including `set`/`final`, per §16.13's own worked example --
   // see applyStackingSelection's comment). `clamp` passes through
-  // unchanged, this commit's own non-goal.
+  // unchanged HERE (§16.12: "declared modifierType stacking policies do
+  // NOT apply to clamp groups") -- its own greatest-lower/least-upper
+  // resolution happens separately, below, in the clamp block itself.
   const byPhase = applyStackingSelection(groupByPhase(active), session.registry)
   let running = base
 
@@ -433,15 +433,60 @@ function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: Ev
 
   const clampModifiers = byPhase.get('clamp') ?? []
   if (clampModifiers.length > 0) {
-    // §16.12's `clamp: ClampBound` discriminator now exists on ModifierSpec
-    // (revision 3, Commit 2) -- this is no longer an unresolved-type
-    // problem, but clamp evaluation itself is explicitly not implemented
-    // this commit ("Do not implement clamp evaluation"). See the file
-    // header's design-decision comment above applyModifiers.
-    return evaluationError(
-      definitionId,
-      `Cannot apply 'clamp' modifier from Source '${clampModifiers[0]!.sourceDefinitionId}' -- clamp evaluation is not yet implemented (rules-engine.md §16.12)`
-    )
+    if (typeof running !== 'number') {
+      return evaluationError(definitionId, `Cannot apply 'clamp': running value must be a number, got '${typeof running}'`)
+    }
+
+    // §16.12: "Collect every applicable min bound; the effective lower
+    // bound is the greatest of them. Collect every applicable max bound;
+    // the effective upper bound is the least of them." Declared
+    // `modifierType` stacking policies do NOT apply to clamp groups
+    // (applyStackingSelection, modifier-pipeline.ts, already leaves
+    // `clamp` untouched) -- this greatest-lower/least-upper reduction IS
+    // the clamp resolution, computed directly over every survivor
+    // regardless of order.
+    let lower: number | undefined
+    let upper: number | undefined
+    for (const entry of clampModifiers) {
+      // `entry.phase === 'clamp'` (groupByPhase's own key) always implies
+      // `entry.modifier.phase === 'clamp'` by construction (modifier-
+      // pipeline.ts copies `phase: modifier.phase` when building the
+      // candidate) -- narrowing on the modifier's OWN discriminant is what
+      // gives TypeScript access to `.clamp`, since `ActiveModifier.phase`
+      // and `ActiveModifier.modifier.phase` are structurally unrelated
+      // fields as far as the type checker knows.
+      if (entry.modifier.phase !== 'clamp') continue
+      // Guaranteed numeric: stage 6 (resolveActiveModifiers) now enforces
+      // "clamp is numeric-only" for candidate values, exactly like add/scale.
+      const bound = entry.resolvedValue as number
+      if (entry.modifier.clamp === 'min') {
+        lower = lower === undefined ? bound : Math.max(lower, bound)
+      } else {
+        upper = upper === undefined ? bound : Math.min(upper, bound)
+      }
+    }
+
+    // §16.12 step 3: "If both exist and lower > upper -> error. An
+    // impossible range is an authoring mistake, and silently preferring
+    // one bound would produce a plausible wrong number." `code` (not
+    // `.reason`): `clamp-range-impossible` is one of the three codes
+    // `RulesErrorCode` (types.ts) has carried since revision 3's own
+    // type-contract commit, anticipating exactly this error.
+    if (lower !== undefined && upper !== undefined && lower > upper) {
+      return {
+        definitionId,
+        message: `Impossible clamp range on '${definitionId}': lower bound ${lower} exceeds upper bound ${upper}`,
+        code: 'clamp-range-impossible'
+      }
+    }
+
+    // §16.12 step 4: "Otherwise apply lower first, then upper." Applying
+    // greatest-lower then least-upper makes the result independent of
+    // §15.3 order (Math.max/Math.min are commutative/associative over the
+    // already-reduced single lower/upper pair) -- ARCHITECTURE's own
+    // "evaluation order must not affect the final result" requirement.
+    if (lower !== undefined) running = Math.max(running, lower)
+    if (upper !== undefined) running = Math.min(running, upper)
   }
 
   for (const entry of byPhase.get('final') ?? []) {

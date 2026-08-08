@@ -1131,11 +1131,10 @@ describe('phase application through the Evaluator', () => {
     expect(evaluate('value:x', session)).toBe(8)
   })
 
-  it('a clamp-phase modifier yields a RulesError -- clamp evaluation is not yet implemented (§16.12)', () => {
-    // §16.12's `clamp: ClampBound` discriminator now exists on ModifierSpec
-    // (revision 3, Commit 2), so this fixture supplies a well-formed bound
-    // -- the RulesError below is no longer "the type can't say which bound
-    // this is," it is "clamp evaluation itself isn't implemented yet."
+  it('a clamp-phase modifier within bounds leaves the running value unchanged (§16.12, revision 3 Commit 8)', () => {
+    // Full clamp coverage lives in its own describe block below; this one
+    // stays here to confirm clamp composes correctly as the LAST phase
+    // before final in the overall phase-application sequence.
     const session = buildSession(
       [
         valueDefinition('value:x', { default: 5 }),
@@ -1143,13 +1142,299 @@ describe('phase application through the Evaluator', () => {
       ],
       { sources: [instance('si-1', 'source:cap')] }
     )
-    const result = evaluate('value:x', session)
-    expect(result).toMatchObject({ definitionId: 'value:x' })
-    expect((result as { message: string }).message).toContain('clamp')
+    expect(evaluate('value:x', session)).toBe(5)
   })
 
   it('a Value with no active modifiers is unchanged', () => {
     const session = buildSession([valueDefinition('value:x', { default: 5 })])
     expect(evaluate('value:x', session)).toBe(5)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Clamp evaluation (§16.12, revision 3, Commit 8). All through evaluate() --
+// clamp's own resolution needs real numeric running/candidate values,
+// exactly like stacking's own test suite above.
+// ---------------------------------------------------------------------------
+
+describe('clamp: single bound', () => {
+  it('a single minimum raises a running value below it', () => {
+    const session = buildSession(
+      [valueDefinition('value:x', { default: 5 }), source('source:a', [modifier('value:x', 'clamp', 10, { clamp: 'min' })])],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    expect(evaluate('value:x', session)).toBe(10)
+  })
+
+  it('a single minimum does not affect a running value already above it', () => {
+    const session = buildSession(
+      [valueDefinition('value:x', { default: 20 }), source('source:a', [modifier('value:x', 'clamp', 10, { clamp: 'min' })])],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    expect(evaluate('value:x', session)).toBe(20)
+  })
+
+  it('a single maximum lowers a running value above it', () => {
+    const session = buildSession(
+      [valueDefinition('value:x', { default: 40 }), source('source:a', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    expect(evaluate('value:x', session)).toBe(30)
+  })
+
+  it('a single maximum does not affect a running value already below it', () => {
+    const session = buildSession(
+      [valueDefinition('value:x', { default: 5 }), source('source:a', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    expect(evaluate('value:x', session)).toBe(5)
+  })
+})
+
+describe('clamp: multiple bounds of the same kind (§16.12)', () => {
+  it('multiple minimums resolve to the GREATEST lower bound', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 0 }),
+        source('source:a', [modifier('value:x', 'clamp', 5, { clamp: 'min' })]),
+        source('source:b', [modifier('value:x', 'clamp', 12, { clamp: 'min' })]),
+        source('source:c', [modifier('value:x', 'clamp', 8, { clamp: 'min' })])
+      ],
+      { sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b'), instance('si-c', 'source:c')] }
+    )
+    expect(evaluate('value:x', session)).toBe(12) // greatest of {5, 12, 8}
+  })
+
+  it('multiple maximums resolve to the LEAST upper bound', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 100 }),
+        source('source:a', [modifier('value:x', 'clamp', 50, { clamp: 'max' })]),
+        source('source:b', [modifier('value:x', 'clamp', 20, { clamp: 'max' })]),
+        source('source:c', [modifier('value:x', 'clamp', 35, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b'), instance('si-c', 'source:c')] }
+    )
+    expect(evaluate('value:x', session)).toBe(20) // least of {50, 20, 35}
+  })
+
+  it('deterministic ordering: the result does not depend on §15.3 authoring/source order', () => {
+    // Same three minimums as above, sources declared in a DIFFERENT order
+    // (and a different actor-state instance order) -- the greatest-lower-
+    // bound reduction must be order-independent (§16.12's own stated
+    // requirement, "evaluation order must not affect the final result").
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 0 }),
+        source('source:c', [modifier('value:x', 'clamp', 8, { clamp: 'min' })]),
+        source('source:a', [modifier('value:x', 'clamp', 5, { clamp: 'min' })]),
+        source('source:b', [modifier('value:x', 'clamp', 12, { clamp: 'min' })])
+      ],
+      { sources: [instance('si-c', 'source:c'), instance('si-b', 'source:b'), instance('si-a', 'source:a')] }
+    )
+    expect(evaluate('value:x', session)).toBe(12)
+  })
+})
+
+describe('clamp: mixed minimum and maximum (§16.12)', () => {
+  it('applies the effective lower bound first, then the effective upper bound', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 5 }),
+        source('source:min', [modifier('value:x', 'clamp', 10, { clamp: 'min' })]),
+        source('source:max', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-min', 'source:min'), instance('si-max', 'source:max')] }
+    )
+    expect(evaluate('value:x', session)).toBe(10) // 5 -> raised to 10 -> already <= 30
+  })
+
+  it('a running value above the maximum is lowered, even with a lower minimum also present', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 40 }),
+        source('source:min', [modifier('value:x', 'clamp', 10, { clamp: 'min' })]),
+        source('source:max', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-min', 'source:min'), instance('si-max', 'source:max')] }
+    )
+    expect(evaluate('value:x', session)).toBe(30) // 40 -> already >= 10 -> lowered to 30
+  })
+
+  it('a running value already within [min, max] is unaffected', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 18 }),
+        source('source:min', [modifier('value:x', 'clamp', 10, { clamp: 'min' })]),
+        source('source:max', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-min', 'source:min'), instance('si-max', 'source:max')] }
+    )
+    expect(evaluate('value:x', session)).toBe(18)
+  })
+})
+
+describe('clamp: impossible range (§16.12)', () => {
+  it('lower bound exceeding upper bound is a RulesError, never a silently-picked bound', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 18 }),
+        source('source:min', [modifier('value:x', 'clamp', 35, { clamp: 'min' })]),
+        source('source:max', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-min', 'source:min'), instance('si-max', 'source:max')] }
+    )
+    const result = evaluate('value:x', session)
+    expect(result).not.toBe(35)
+    expect(result).not.toBe(30)
+    expect(result).not.toBe(18)
+    expect((result as { code: string }).code).toBe('clamp-range-impossible')
+  })
+
+  it('the effective (reduced) bounds are impossible even when no single PAIR of raw bounds is', () => {
+    // min candidates {5, 35}; max candidates {40, 10} -- effective lower
+    // (35) exceeds effective upper (10), even though e.g. 5 < 40 alone
+    // would not be impossible. This confirms the check runs on the
+    // REDUCED greatest-lower/least-upper pair, not on raw candidate pairs.
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 0 }),
+        source('source:min.a', [modifier('value:x', 'clamp', 5, { clamp: 'min' })]),
+        source('source:min.b', [modifier('value:x', 'clamp', 35, { clamp: 'min' })]),
+        source('source:max.a', [modifier('value:x', 'clamp', 40, { clamp: 'max' })]),
+        source('source:max.b', [modifier('value:x', 'clamp', 10, { clamp: 'max' })])
+      ],
+      {
+        sources: [
+          instance('si-1', 'source:min.a'),
+          instance('si-2', 'source:min.b'),
+          instance('si-3', 'source:max.a'),
+          instance('si-4', 'source:max.b')
+        ]
+      }
+    )
+    const result = evaluate('value:x', session)
+    expect((result as { code: string }).code).toBe('clamp-range-impossible')
+  })
+
+  it('lower strictly equal to upper is possible (a valid single-point range), not an error', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 0 }),
+        source('source:min', [modifier('value:x', 'clamp', 15, { clamp: 'min' })]),
+        source('source:max', [modifier('value:x', 'clamp', 15, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-min', 'source:min'), instance('si-max', 'source:max')] }
+    )
+    expect(evaluate('value:x', session)).toBe(15)
+  })
+})
+
+describe('clamp: numeric enforcement (§16.12)', () => {
+  it('a non-numeric clamp bound value is a RulesError, never coerced', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 5 }),
+        source('source:a', [modifier('value:x', 'clamp', expression('"not a number"'), { clamp: 'max' })])
+      ],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    const result = evaluate('value:x', session)
+    expect(result).not.toBe(5)
+    expect((result as { message: string }).message).toContain('number')
+  })
+
+  it('a non-numeric RUNNING value at the clamp phase is a RulesError', () => {
+    // The running value arrives at clamp already non-numeric (a 'set'
+    // phase override to text) -- clamp itself never coerces.
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 0, valueType: 'text' }),
+        source('source:set', [modifier('value:x', 'set', 'hello')]),
+        source('source:cap', [modifier('value:x', 'clamp', 10, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-set', 'source:set'), instance('si-cap', 'source:cap')] }
+    )
+    const result = evaluate('value:x', session)
+    expect(result).not.toBe('hello')
+    expect((result as { message: string }).message).toContain('number')
+  })
+})
+
+describe('clamp: RulesError propagation (§16.11A, unchanged)', () => {
+  it('an ordinary evaluation error in a clamp bound expression aborts the target', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 5 }),
+        source('source:a', [modifier('value:x', 'clamp', expression('1 / 0'), { clamp: 'max' })])
+      ],
+      { sources: [instance('si-1', 'source:a')] }
+    )
+    const result = evaluate('value:x', session)
+    expect(result).not.toBe(5)
+    expect((result as { message: string }).message.toLowerCase()).toContain('division')
+  })
+
+  it('a good clamp bound is never silently applied when a sibling clamp candidate errors', () => {
+    // §16.11A: first error aborts the WHOLE resolution -- the well-formed
+    // 'source:good' bound must not be applied on its own once
+    // 'source:bad' fails, producing a plausible-but-wrong result.
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 5 }),
+        source('source:good', [modifier('value:x', 'clamp', 30, { clamp: 'max' })]),
+        source('source:bad', [modifier('value:x', 'clamp', expression('"nope"'), { clamp: 'min' })])
+      ],
+      { sources: [instance('si-good', 'source:good'), instance('si-bad', 'source:bad')] }
+    )
+    const result = evaluate('value:x', session)
+    expect(result).not.toBe(5)
+    expect(result).not.toBe(30)
+    expect((result as { message: string }).message).toContain('number')
+  })
+
+  it('clamp does not run at all if an earlier phase already produced an error', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 5 }),
+        source('source:add', [modifier('value:x', 'add', expression('1 / 0'))]),
+        source('source:cap', [modifier('value:x', 'clamp', 30, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-add', 'source:add'), instance('si-cap', 'source:cap')] }
+    )
+    const result = evaluate('value:x', session)
+    expect((result as { message: string }).message.toLowerCase()).toContain('division')
+  })
+})
+
+describe('clamp: phase ordering (§16.4 -- clamp between scale and final)', () => {
+  it('clamp applies after base/set/add/scale and before final', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 1 }),
+        source('source:all', [
+          modifier('value:x', 'add', 100),
+          modifier('value:x', 'clamp', 20, { clamp: 'max' }),
+          modifier('value:x', 'final', 999)
+        ])
+      ],
+      { sources: [instance('si-1', 'source:all')] }
+    )
+    // 1 + 100 = 101 -> clamped to 20 -> final overrides to 999. If clamp
+    // ran AFTER final, or not at all, this would be 999 either way -- the
+    // meaningful assertion is the intermediate clamp actually fired,
+    // verified by the next case where nothing overrides it.
+    expect(evaluate('value:x', session)).toBe(999)
+  })
+
+  it('without a final override, the clamped value (not the pre-clamp running value) is the result', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 1 }),
+        source('source:all', [modifier('value:x', 'add', 100), modifier('value:x', 'clamp', 20, { clamp: 'max' })])
+      ],
+      { sources: [instance('si-1', 'source:all')] }
+    )
+    expect(evaluate('value:x', session)).toBe(20) // not 101
   })
 })

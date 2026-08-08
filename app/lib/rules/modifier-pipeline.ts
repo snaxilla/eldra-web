@@ -165,8 +165,26 @@
 //      than rebuilding order from scratch, so §15.3 order is preserved for
 //      free.
 //
-// Clamp and package validation remain untouched, per this commit's own
+// Clamp and package validation remained untouched, per Commit 7's own
 // NON-GOALS.
+//
+// ---------------------------------------------------------------------------
+// REVISION 3 -- COMMIT 8: Clamp evaluation
+// ---------------------------------------------------------------------------
+// §16.12 wired up. This module's own change is narrow: the stage-6 numeric
+// check Commit 7 restricted to `add`/`scale` now also covers `clamp`
+// (§16.12: "clamp is numeric-only," applied here to a clamp modifier's
+// declared BOUND value -- the RUNNING value clamp is applied to is a
+// separate check, made in evaluator.ts once phase application reaches the
+// clamp block, since that value is not known until then). The actual
+// greatest-lower/least-upper resolution, and the impossible-range
+// diagnostic, live entirely in evaluator.ts -- this module already
+// excluded `clamp` from `applyStackingSelection` as of Commit 7 (§16.12:
+// "declared modifierType stacking policies do NOT apply to clamp groups"),
+// so nothing here needed to change for that half of the picture.
+//
+// Package validation, Action execution, and cache invalidation remain
+// untouched, per this commit's own NON-GOALS.
 
 import type { EvaluationSession } from './evaluation-session'
 import type { RulesRegistry } from './registry'
@@ -405,16 +423,21 @@ export function resolveActiveModifiers(
       return { ok: false, error: value }
     }
 
-    // §16.4: "add and scale are numeric-only." Checked here, independent
-    // of whatever stacking policy this candidate's modifierType eventually
-    // resolves to (stacking selection has not run yet) -- so a non-numeric
-    // LOSING candidate in a highest/lowest group still errors the whole
-    // target, exactly as §16.11's candidate-value-edge-cases table
-    // requires ("skipping the candidate would silently change the
-    // result"). `set`/`final`/`base`/`clamp` accept any RuleValueType at
-    // this stage; clamp's OWN numeric-only rule (§16.12) is that later
-    // commit's concern, not enforced here.
-    if ((candidate.phase === 'add' || candidate.phase === 'scale') && typeof value !== 'number') {
+    // §16.4/§16.12: "add and scale are numeric-only" / "clamp is numeric-
+    // only." Checked here, independent of whatever stacking policy this
+    // candidate's modifierType eventually resolves to (stacking selection
+    // has not run yet) -- so a non-numeric LOSING candidate in a
+    // highest/lowest group still errors the whole target, exactly as
+    // §16.11's candidate-value-edge-cases table requires ("skipping the
+    // candidate would silently change the result"). `set`/`final`/`base`
+    // accept any RuleValueType at this stage; a clamp modifier's declared
+    // BOUND value is checked here (revision 3, Commit 8) -- the RUNNING
+    // value clamp is applied TO is a separate check, in evaluator.ts's own
+    // clamp block, since that value is not known until phase application.
+    if (
+      (candidate.phase === 'add' || candidate.phase === 'scale' || candidate.phase === 'clamp') &&
+      typeof value !== 'number'
+    ) {
       return {
         ok: false,
         error: {
@@ -585,8 +608,12 @@ export function groupByPhase(modifiers: readonly ActiveModifier[]): Map<Modifier
 // (`highest`/`lowest` declared on an override phase) no worked example
 // anywhere in the architecture defines.
 //
-// `clamp` passes through completely unchanged regardless -- this commit's
-// explicit non-goal.
+// `clamp` passes through completely unchanged regardless -- §16.12 states
+// this explicitly ("declared modifierType stacking policies do NOT apply
+// to clamp groups"), not merely an unimplemented gap. Clamp's own
+// resolution (greatest-applicable-lower-bound, least-applicable-upper-
+// bound) is evaluator.ts's job, as of revision 3 Commit 8 -- see that
+// module's own clamp block.
 //
 // Takes and returns a `Map<ModifierPhase, ActiveModifier[]>` -- the exact
 // shape `groupByPhase` already produces and evaluator.ts's phase-

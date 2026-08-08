@@ -4,7 +4,13 @@
 // execution, Roll execution, and Resource mutation are not exercised.
 
 import { describe, expect, it } from 'vitest'
-import { groupByPhase, resolveActiveModifiers, MODIFIER_PHASES, type ActiveModifier } from '../../app/lib/rules/modifier-pipeline'
+import {
+  applyStackingSelection,
+  groupByPhase,
+  resolveActiveModifiers,
+  MODIFIER_PHASES,
+  type ActiveModifier
+} from '../../app/lib/rules/modifier-pipeline'
 import { evaluate } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import { DependencyGraph } from '../../app/lib/rules/dependency-graph'
@@ -26,7 +32,7 @@ import type {
   ValueDefinition
 } from '../../app/lib/rules/types'
 
-function manifest(): RulesPackageManifest {
+function manifest(overrides: Partial<RulesPackageManifest> = {}): RulesPackageManifest {
   return {
     packageId: 'eldra.test.pkg',
     version: '1.0.0',
@@ -36,7 +42,8 @@ function manifest(): RulesPackageManifest {
     title: 'Test Package',
     license: { id: 'CC0-1.0' },
     capabilities: [],
-    dependencies: []
+    dependencies: [],
+    ...overrides
   }
 }
 
@@ -111,9 +118,13 @@ function actorState(overrides: Partial<ActorState> = {}): ActorState {
 
 function buildSession(
   definitions: Definition[],
-  options: { values?: ActorState['values']; sources?: SourceInstance[] } = {}
+  options: {
+    values?: ActorState['values']
+    sources?: SourceInstance[]
+    modifierTypes?: RulesPackageManifest['modifierTypes']
+  } = {}
 ): EvaluationSession {
-  const registryResult = RulesRegistry.create(manifest(), definitions)
+  const registryResult = RulesRegistry.create(manifest({ modifierTypes: options.modifierTypes }), definitions)
   if (!registryResult.ok) throw new Error(`registry construction failed: ${JSON.stringify(registryResult.errors)}`)
   const graphResult = DependencyGraph.build(registryResult.registry)
   const graph = graphResult.ok ? graphResult.graph : (undefined as unknown as DependencyGraph)
@@ -126,10 +137,12 @@ function buildSession(
 }
 
 // The pipeline never evaluates anything itself -- it delegates every
-// condition to an injected ConditionEvaluator. Pipeline-level tests supply
-// one directly (defaulting to "condition holds") so the pipeline's OWN
-// discovery/suppression/gating/ordering logic is what is under test.
-// Real condition evaluation is covered separately, through evaluate().
+// condition (and, as of revision 3 Commit 7, every candidate value) to
+// injected callbacks. Pipeline-level tests supply trivial ones (condition
+// defaulting to "holds"; value passing a literal straight through) so the
+// pipeline's OWN discovery/suppression/gating/ordering/stacking logic is
+// what is under test. Real condition/value expression evaluation is
+// covered separately, through evaluate().
 //
 // Unwraps a successful `ModifierResolution` (revision 3, Commit 2) to its
 // `ActiveModifier[]`, matching resolveActiveModifiers' pre-revision-3 bare-
@@ -140,7 +153,12 @@ function buildSession(
 // whole point IS inspecting a failure calls resolveActiveModifiers
 // directly instead (see the 'non-boolean condition result' test below).
 function resolve(targetId: string, session: EvaluationSession, conditionResult: RuleValue = true): ActiveModifier[] {
-  const resolution = resolveActiveModifiers(targetId, session, () => conditionResult)
+  const resolution = resolveActiveModifiers(targetId, session, () => conditionResult, (value) => {
+    if (typeof value === 'object' && value !== null && 'text' in value && 'ast' in value) {
+      throw new Error('resolve() only supports literal modifier values -- use evaluate() to exercise real value expression evaluation')
+    }
+    return value
+  })
   if (!resolution.ok) {
     throw new Error(`Expected modifier resolution to succeed, got: ${JSON.stringify(resolution.error)}`)
   }
@@ -562,7 +580,11 @@ describe('conditional Modifiers', () => {
     // which throws on failure) since this test's whole point is inspecting
     // the failure itself.
     const session = buildSession(conditional(), { sources: [instance('si-1', 'source:rage')] })
-    const resolution = resolveActiveModifiers('value:defense', session, () => 1)
+    // The value evaluator is never invoked here -- the condition failure
+    // aborts resolution before stage 6 (candidate value evaluation) runs.
+    // Cast rather than a runtime narrowing check, since this callback is
+    // provably unreachable in this test.
+    const resolution = resolveActiveModifiers('value:defense', session, () => 1, (value) => value as RuleValue)
     expect(resolution.ok).toBe(false)
     if (resolution.ok) throw new Error('expected resolution to fail')
     expect(resolution.error).toMatchObject({ definitionId: 'source:rage', code: 'modifier-condition-not-boolean' })
@@ -731,7 +753,7 @@ describe('overlapping Modifiers', () => {
 // ---------------------------------------------------------------------------
 
 describe('stacking behavior defined by the architecture', () => {
-  it('untyped add modifiers stack (sum), the §16.3 default for unknown types', () => {
+  it('untyped add modifiers stack (sum) -- an omitted modifierType always forms its own group of one (§16.3)', () => {
     const session = buildSession(
       [
         valueDefinition('value:defense', { default: 10 }),
@@ -743,16 +765,311 @@ describe('stacking behavior defined by the architecture', () => {
     expect(evaluate('value:defense', session)).toBe(15)
   })
 
-  it('same-modifierType add modifiers also stack today, since no policy table can declare otherwise', () => {
+  it('same-modifierType add modifiers stack when the declared policy is "stack" (§16.3/§16.11)', () => {
     const session = buildSession(
       [
         valueDefinition('value:defense', { default: 10 }),
         source('source:a', [modifier('value:defense', 'add', 2, { modifierType: 'equipment' })]),
         source('source:b', [modifier('value:defense', 'add', 3, { modifierType: 'equipment' })])
       ],
-      { sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b')] }
+      {
+        sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b')],
+        modifierTypes: [{ id: 'equipment', stacking: 'stack' }]
+      }
     )
     expect(evaluate('value:defense', session)).toBe(15)
+  })
+
+  it('an undeclared modifierType falls back to "stack" at runtime (package validation not yet implemented)', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        source('source:a', [modifier('value:defense', 'add', 2, { modifierType: 'equipmnet' })]),
+        source('source:b', [modifier('value:defense', 'add', 3, { modifierType: 'equipmnet' })])
+      ],
+      { sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b')] } // no modifierTypes declared at all
+    )
+    expect(evaluate('value:defense', session)).toBe(15)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Modifier stacking (§16.11, revision 3, Commit 7). Uses evaluate() (the
+// real evaluator) rather than the resolve() helper, since stacking needs
+// real candidate VALUES to compare -- resolve()'s injected evaluators are
+// deliberately trivial stand-ins, see its own comment above.
+// ---------------------------------------------------------------------------
+
+describe('stacking: "stack" policy (§16.11)', () => {
+  it('every candidate applies, in §15.3 order', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        source('source:a', [modifier('value:defense', 'add', 2, { modifierType: 'circumstance' })]),
+        source('source:b', [modifier('value:defense', 'add', 3, { modifierType: 'circumstance' })]),
+        source('source:c', [modifier('value:defense', 'add', 1, { modifierType: 'circumstance' })])
+      ],
+      {
+        sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b'), instance('si-c', 'source:c')],
+        modifierTypes: [{ id: 'circumstance', stacking: 'stack' }]
+      }
+    )
+    expect(evaluate('value:defense', session)).toBe(16) // 10 + 2 + 3 + 1
+  })
+})
+
+describe('stacking: "highest" policy (§16.11)', () => {
+  it('applies only the numerically greatest candidate', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        source('source:hauberk', [modifier('value:defense', 'add', 2, { modifierType: 'equipment' })]),
+        source('source:ring', [modifier('value:defense', 'add', 3, { modifierType: 'equipment' })])
+      ],
+      {
+        sources: [instance('si-hauberk', 'source:hauberk'), instance('si-ring', 'source:ring')],
+        modifierTypes: [{ id: 'equipment', stacking: 'highest' }]
+      }
+    )
+    expect(evaluate('value:defense', session)).toBe(13) // 10 + 3, not 10 + 2 + 3
+  })
+
+  it('equal values: the first in §15.3 order wins the tie', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        // 'source:alpha' < 'source:zebra' lexicographically -- alpha sorts
+        // first in §15.3 order regardless of authoring/array position.
+        source('source:zebra', [modifier('value:defense', 'add', 5, { modifierType: 'equipment' })]),
+        source('source:alpha', [modifier('value:defense', 'add', 5, { modifierType: 'equipment' })])
+      ],
+      {
+        sources: [instance('si-z', 'source:zebra'), instance('si-a', 'source:alpha')],
+        modifierTypes: [{ id: 'equipment', stacking: 'highest' }]
+      }
+    )
+    // Both candidates are 5 -- the RESULT (15) is the same regardless of
+    // which one technically "won," so this alone would not distinguish
+    // correct tie-breaking from a bug. See the dedicated pipeline-level
+    // test below for a direct assertion on WHICH entry survives.
+    expect(evaluate('value:defense', session)).toBe(15)
+  })
+})
+
+describe('stacking: "lowest" policy (§16.11)', () => {
+  it('applies only the numerically least candidate', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:armour', { default: 10 }),
+        source('source:curse.a', [modifier('value:armour', 'add', -2, { modifierType: 'curse' })]),
+        source('source:curse.b', [modifier('value:armour', 'add', -5, { modifierType: 'curse' })])
+      ],
+      {
+        sources: [instance('si-a', 'source:curse.a'), instance('si-b', 'source:curse.b')],
+        modifierTypes: [{ id: 'curse', stacking: 'lowest' }]
+      }
+    )
+    expect(evaluate('value:armour', session)).toBe(5) // 10 + (-5), the LEAST value, not -2
+  })
+})
+
+describe('stacking: "exclusive" policy (§16.11)', () => {
+  it('selects the first candidate in §15.3 order, by priority (order), not by magnitude', () => {
+    // §16.11's own example: morph effects. The smaller `order` (higher
+    // priority) wins even though it is not the numerically greater value.
+    const session = buildSession(
+      [
+        valueDefinition('value:size', { default: 0 }),
+        source('source:reduce', [modifier('value:size', 'set', 1, { modifierType: 'morph', order: 5 })]),
+        source('source:enlarge', [modifier('value:size', 'set', 3, { modifierType: 'morph', order: 10 })])
+      ],
+      {
+        sources: [instance('si-enlarge', 'source:enlarge'), instance('si-reduce', 'source:reduce')],
+        modifierTypes: [{ id: 'morph', stacking: 'exclusive' }]
+      }
+    )
+    // NOTE: 'exclusive' selection only applies to add/scale (§16.11); this
+    // uses 'set' deliberately to also confirm exclusive-selected-then-
+    // override composes correctly end to end (§16.13 example 5's own
+    // worked case). Selection picks order 5 (source:reduce) as the
+    // candidate; the 'set' phase then applies it as the override.
+    expect(evaluate('value:size', session)).toBe(1)
+  })
+
+  it('more than one active exclusive candidate is not an error -- it is the normal case (§16.11)', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x', { default: 0 }),
+        source('source:a', [modifier('value:x', 'add', 10, { modifierType: 'morph', order: 1 })]),
+        source('source:b', [modifier('value:x', 'add', 20, { modifierType: 'morph', order: 2 })]),
+        source('source:c', [modifier('value:x', 'add', 30, { modifierType: 'morph', order: 3 })])
+      ],
+      {
+        sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b'), instance('si-c', 'source:c')],
+        modifierTypes: [{ id: 'morph', stacking: 'exclusive' }]
+      }
+    )
+    expect(evaluate('value:x', session)).not.toMatchObject({ message: expect.anything() })
+    expect(evaluate('value:x', session)).toBe(10) // lowest `order` (1) wins, not the sum
+  })
+})
+
+describe('stacking: pipeline-level selection (resolveActiveModifiers + applyStackingSelection)', () => {
+  // resolveActiveModifiers alone does NOT apply stacking selection -- that
+  // is §16.11 step 8, a separate stage (applyStackingSelection) that runs
+  // AFTER phase grouping (step 7), exactly as evaluator.ts's own
+  // applyModifiers calls them in sequence. This helper mirrors that
+  // pipeline precisely so these tests assert on WHICH ActiveModifier
+  // survives selection (by sourceDefinitionId), not just the final summed
+  // number -- the evaluate()-level tests above already cover the
+  // end-to-end numeric outcome.
+  function resolveStacked(
+    targetId: string,
+    session: EvaluationSession,
+    values: Record<string, RuleValue>
+  ): ActiveModifier[] {
+    const resolution = resolveActiveModifiers(
+      targetId,
+      session,
+      () => true,
+      (_value, modifier) => values[modifier.sourceDefinitionId] ?? 0
+    )
+    if (!resolution.ok) throw new Error(`Expected resolution to succeed, got: ${JSON.stringify(resolution.error)}`)
+    const stacked = applyStackingSelection(groupByPhase(resolution.modifiers), session.registry)
+    return [...stacked.values()].flat()
+  }
+
+  it('deterministic exclusive ordering: repeated resolution selects the same candidate every time', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:size'),
+        source('source:reduce', [modifier('value:size', 'add', 0, { modifierType: 'morph', order: 5 })]),
+        source('source:enlarge', [modifier('value:size', 'add', 0, { modifierType: 'morph', order: 10 })])
+      ],
+      {
+        sources: [instance('si-enlarge', 'source:enlarge'), instance('si-reduce', 'source:reduce')],
+        modifierTypes: [{ id: 'morph', stacking: 'exclusive' }]
+      }
+    )
+    const first = resolveStacked('value:size', session, {})
+    const second = resolveStacked('value:size', session, {})
+    expect(first.map((m) => m.sourceDefinitionId)).toEqual(['source:reduce'])
+    expect(first).toEqual(second)
+  })
+
+  it('grouping by phase: identical modifierType in add vs scale never stacks together', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x'),
+        source('source:add', [modifier('value:x', 'add', 5, { modifierType: 'shared' })]),
+        source('source:scale', [modifier('value:x', 'scale', 5, { modifierType: 'shared' })])
+      ],
+      {
+        sources: [instance('si-add', 'source:add'), instance('si-scale', 'source:scale')],
+        modifierTypes: [{ id: 'shared', stacking: 'highest' }]
+      }
+    )
+    // Both survive: 'add' and 'scale' are different groups despite sharing
+    // a modifierType (§16.11: "phase must be in the key").
+    const active = resolveStacked('value:x', session, { 'source:add': 5, 'source:scale': 5 })
+    expect(active.map((m) => m.sourceDefinitionId).sort()).toEqual(['source:add', 'source:scale'])
+  })
+
+  it('grouping by modifierType: two distinct types never compete for the same "highest" slot', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x'),
+        source('source:a', [modifier('value:x', 'add', 0, { modifierType: 'typeA' })]),
+        source('source:b', [modifier('value:x', 'add', 0, { modifierType: 'typeB' })])
+      ],
+      {
+        sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b')],
+        modifierTypes: [
+          { id: 'typeA', stacking: 'highest' },
+          { id: 'typeB', stacking: 'highest' }
+        ]
+      }
+    )
+    // Both survive: each modifierType is its own group of one candidate,
+    // so 'highest' trivially selects it -- they never compare against
+    // each other.
+    const active = resolveStacked('value:x', session, { 'source:a': 1, 'source:b': 100 })
+    expect(active.map((m) => m.sourceDefinitionId).sort()).toEqual(['source:a', 'source:b'])
+  })
+
+  it('grouping by target: a modifierType shared across two different targets never merges', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:x'),
+        valueDefinition('value:y'),
+        source('source:a', [modifier('value:x', 'add', 1, { modifierType: 'shared' })]),
+        source('source:b', [modifier('value:y', 'add', 2, { modifierType: 'shared' })])
+      ],
+      {
+        sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b')],
+        modifierTypes: [{ id: 'shared', stacking: 'highest' }]
+      }
+    )
+    // resolveActiveModifiers already scopes discovery to one target (its
+    // own `targetId` parameter) -- these two never even become candidates
+    // in the same resolution call, so grouping-by-target is structural,
+    // not a stacking-selection concern. Both survive independently.
+    expect(resolveStacked('value:x', session, { 'source:a': 1 }).map((m) => m.sourceDefinitionId)).toEqual(['source:a'])
+    expect(resolveStacked('value:y', session, { 'source:b': 2 }).map((m) => m.sourceDefinitionId)).toEqual(['source:b'])
+  })
+})
+
+describe('stacking: numeric requirement (§16.4/§16.11)', () => {
+  it('a non-numeric candidate in an add/scale group is a RulesError, never silently skipped', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        source('source:a', [modifier('value:defense', 'add', 2, { modifierType: 'equipment' })]),
+        source('source:b', [modifier('value:defense', 'add', expression('"not a number"'), { modifierType: 'equipment' })])
+      ],
+      {
+        sources: [instance('si-a', 'source:a'), instance('si-b', 'source:b')],
+        modifierTypes: [{ id: 'equipment', stacking: 'highest' }]
+      }
+    )
+    const result = evaluate('value:defense', session)
+    expect(result).not.toBe(10)
+    expect(result).not.toBe(12) // not "the numeric candidate happened to win"
+    expect((result as { message: string }).message).toContain('number')
+  })
+
+  it('the numeric requirement applies even to a LOSING candidate in a highest/lowest group', () => {
+    // §16.11's own edge-case table: "skipping the candidate would silently
+    // change the result." The malformed candidate's value (10) would lose
+    // to 999 numerically if it were ever compared -- but it must still
+    // error the whole target, not be quietly dropped from consideration.
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        source('source:huge', [modifier('value:defense', 'add', 999, { modifierType: 'equipment' })]),
+        source('source:bad', [modifier('value:defense', 'add', expression('"nope"'), { modifierType: 'equipment' })])
+      ],
+      {
+        sources: [instance('si-huge', 'source:huge'), instance('si-bad', 'source:bad')],
+        modifierTypes: [{ id: 'equipment', stacking: 'highest' }]
+      }
+    )
+    const result = evaluate('value:defense', session)
+    expect(result).not.toBe(1009) // not "999 won, error silently discarded"
+    expect((result as { message: string }).message).toContain('number')
+  })
+
+  it('RulesError propagation: an ordinary evaluation error in a candidate value still aborts the target', () => {
+    const session = buildSession(
+      [
+        valueDefinition('value:defense', { default: 10 }),
+        source('source:a', [modifier('value:defense', 'add', expression('1 / 0'))])
+      ],
+      { sources: [instance('si-a', 'source:a')] }
+    )
+    const result = evaluate('value:defense', session)
+    expect(result).not.toBe(10)
+    expect((result as { message: string }).message.toLowerCase()).toContain('division')
   })
 })
 

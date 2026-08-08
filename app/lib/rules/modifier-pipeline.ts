@@ -48,15 +48,16 @@
 //    declared ones. `ActorState.sources` is no longer read directly here --
 //    the Source Overlay is the one canonical runtime Source model.
 //
-// D. Stacking policy has no declaration site. **Resolved at the type level
-//    by revision 3's type contract (Commit 2):** `RulesPackageManifest`
-//    (types.ts) now has `modifierTypes?: ModifierTypeDeclaration[]` (§16.3).
-//    But nothing in this module (or anywhere else) reads it yet -- "Do not
-//    implement Modifier stacking" -- so every modifierType is still treated
-//    as unknown at runtime and `DEFAULT_STACKING`/'stack' (sum all) is
-//    still the only policy this module's phase-application produces
-//    (applied by evaluator.ts, not here). Wiring the declaration table up
-//    to actual grouped selection is a later commit.
+// D. Stacking policy has no declaration site. **Fully resolved as of
+//    revision 3's Commit 7 (this commit).** `RulesPackageManifest.modifierTypes`
+//    (§16.3, typed since Commit 2) is now indexed by `RulesRegistry.
+//    getModifierStacking` (registry.ts) and consulted by
+//    `applyStackingSelection` below, which groups by `(target, phase,
+//    modifierType)` (reduced to `(phase, modifierType)` -- resolution
+//    always runs for one target) and applies the declared policy. An
+//    undeclared `modifierType` is a package validation error per §16.3,
+//    not implemented yet; `DEFAULT_STACKING`/'stack' remains the runtime
+//    fallback for that gap only, not the general behavior it used to be.
 //
 // E. Tag-predicate suppression is unreachable. **Partially resolved by
 //    revision 3's type contract (Commit 2):** `SourceDefinition.tags` and
@@ -124,8 +125,48 @@
 // `ResolvedSourceInstance`, resolving `@source:` paths, producing the
 // absent-field/no-binding RulesErrors) lives entirely in evaluator.ts,
 // which is the module that owns evaluation (this one still performs none).
-// Stacking, clamp, and package validation remain untouched, per this
-// commit's own NON-GOALS.
+//
+// ---------------------------------------------------------------------------
+// REVISION 3 -- COMMIT 7: Modifier Stacking (this commit)
+// ---------------------------------------------------------------------------
+// §16.11 wired up. Two additions:
+//
+//   1. `resolveActiveModifiers` gains a stage between condition evaluation
+//      (§16.11 step 5) and phase grouping (step 7): candidate VALUE
+//      evaluation (step 6), via a newly-injected `ValueEvaluator` --
+//      structurally the same "inject rather than import" pattern as
+//      `ConditionEvaluator`, for the same reason (this module still
+//      performs no evaluation of its own). Every applicable candidate's
+//      `.modifier.value` is evaluated exactly once, in §15.3 order, with
+//      the SAME first-error-aborts semantics §16.11A already established
+//      for conditions -- extended here to values, per this commit's own
+//      ERROR PROPAGATION requirement. `add`/`scale` candidates are also
+//      checked numeric at this stage (§16.4's "numeric-only" phase rule),
+//      independent of whichever stacking policy eventually groups them --
+//      this is what makes §16.11's "a non-numeric candidate errors, it is
+//      never silently skipped to make a comparison succeed" true even for
+//      a `highest`/`lowest` group's losing candidates. The result populates
+//      `ActiveModifier.resolvedValue` (§16.18, left unpopulated since
+//      Commit 2 pending exactly this).
+//
+//   2. `applyStackingSelection` (new, exported) takes the phase-grouped map
+//      `groupByPhase` already produces, further groups each phase by
+//      `modifierType`, and applies that type's declared policy
+//      (`RulesRegistry.getModifierStacking`). `highest`/`lowest` run only
+//      for `add`/`scale` (§16.11: "not a coherent operation" for override
+//      phases, since they require numeric comparison); `exclusive` runs
+//      for EVERY phase, since it selects by `order` rather than by value
+//      comparison, and §16.13's own "Exclusive conflict" worked example
+//      shows it applied to `phase: set` explicitly -- see
+//      applyStackingSelection's own comment for the full reconciliation of
+//      that with §16.11's general "add/scale only" prose. `clamp` is this
+//      commit's own explicit non-goal and passes through untouched.
+//      Filters the ALREADY-ordered candidate list down to survivors rather
+//      than rebuilding order from scratch, so §15.3 order is preserved for
+//      free.
+//
+// Clamp and package validation remain untouched, per this commit's own
+// NON-GOALS.
 
 import type { EvaluationSession } from './evaluation-session'
 import type { RulesRegistry } from './registry'
@@ -136,6 +177,7 @@ import type {
   ModifierPhase,
   ModifierReference,
   ModifierSpec,
+  ModifierStacking,
   RuleValue,
   RulesError,
   RulesErrorCode,
@@ -159,11 +201,17 @@ import type {
 //
 // `attachmentIndex`/`origin` (Commit 5, §16.18): the entry's position
 // within its owning Source's `modifiers` array, and that Source instance's
-// activation provenance. Both exist to support a later `@source:`
-// resolution commit, traces, and diagnostics -- neither is read by
-// anything in this module today. `resolvedValue` (§16.18's third named
-// addition) is still absent: it belongs to stacking's candidate-value
-// evaluation, out of this commit's scope.
+// activation provenance -- read by `@source:` resolution (Commit 6) and by
+// `compareActiveModifiers` (attachmentIndex, the §15.3 ordering key's
+// fourth component).
+//
+// `resolvedValue` (Commit 7, §16.18): the candidate's own `.value`,
+// evaluated exactly once during `resolveActiveModifiers` (§16.11 step 6),
+// before stacking selection reads it. Optional at the TYPE level only
+// because candidates are constructed here in stages (discovery, before
+// this field is known) -- every `ActiveModifier` a caller actually
+// RECEIVES, in a successful `ModifierResolution.modifiers`, has it
+// populated; `resolveActiveModifiers` never returns one without it.
 export type ActiveModifier = {
   modifier: ModifierSpec
   phase: ModifierPhase
@@ -172,6 +220,7 @@ export type ActiveModifier = {
   sourceInstanceId: string
   attachmentIndex: number
   origin: SourceOrigin
+  resolvedValue?: RuleValue
 }
 
 // §16.18 (revision 3, Commit 2): replaces Commit 1's temporary
@@ -198,6 +247,14 @@ export type ModifierResolution =
 // (the whole candidate) the evaluator now needs.
 export type ConditionEvaluator = (condition: Expression, modifier: ActiveModifier) => RuleValue
 
+// §16.11 step 6 (Commit 7): resolves one candidate's `.modifier.value` to
+// a value. Same injection rationale as `ConditionEvaluator` above -- the
+// real implementation (evaluator.ts) evaluates an Expression, or passes a
+// literal RuleValue straight through; this module does not need to know
+// which, only that it gets back a RuleValue (possibly a RulesError) either
+// way.
+export type ValueEvaluator = (value: Expression | RuleValue, modifier: ActiveModifier) => RuleValue
+
 // §16.4's fixed phase order. "Fixed phase order is a deliberate
 // constraint" -- never sorted, never merged, never made configurable.
 export const MODIFIER_PHASES: readonly ModifierPhase[] = ['base', 'set', 'add', 'scale', 'clamp', 'final']
@@ -214,6 +271,16 @@ export const DEFAULT_STACKING = 'stack'
 // §16.11A/§16.18: the stable `RulesError.code` for a condition that
 // evaluated successfully but did not yield a boolean.
 export const MODIFIER_CONDITION_NOT_BOOLEAN: RulesErrorCode = 'modifier-condition-not-boolean'
+
+// §16.4/§16.11 (Commit 7): the stable reason for an `add`/`scale` candidate
+// whose value did not evaluate to a number. Not `RulesError.code` --
+// `RulesErrorCode` (types.ts) is the closed union Commit 2 introduced for
+// revision 3's THEN-known error cases, and it does not include this one
+// (a genuine gap in the approved type contract this commit surfaces, not
+// silently patched by widening that union here). `.reason` is the closest
+// existing open field, the same choice source-overlay.ts already made for
+// its own two diagnostic categories.
+export const MODIFIER_VALUE_NOT_NUMERIC = 'modifier-value-not-numeric'
 
 // Returns every active Modifier targeting `targetId`, ordered by
 // (§16.4 phase, then §15.3's `(explicitOrder, sourceDefinitionId,
@@ -233,7 +300,8 @@ export const MODIFIER_CONDITION_NOT_BOOLEAN: RulesErrorCode = 'modifier-conditio
 export function resolveActiveModifiers(
   targetId: DefinitionId,
   session: EvaluationSession,
-  evaluateCondition: ConditionEvaluator
+  evaluateCondition: ConditionEvaluator,
+  evaluateValue: ValueEvaluator
 ): ModifierResolution {
   const active = resolveSourceInstances(session)
   const surviving = applySuppression(active)
@@ -320,7 +388,49 @@ export function resolveActiveModifiers(
     }
   }
 
-  return { ok: true, modifiers: applicable }
+  // §16.11 step 6 (Commit 7): candidate VALUE evaluation, in the SAME
+  // §15.3 order as condition evaluation above, for every applicable
+  // candidate. First error aborts the whole resolution, exactly like
+  // condition evaluation -- "every candidate value is evaluated exactly
+  // once, for every policy" describes the case where nothing fails; the
+  // documented exception is failure itself, which stops evaluating
+  // candidates ordered after it (§16.11A decision 1, extended here from
+  // conditions to values per this commit's own ERROR PROPAGATION
+  // requirement).
+  const resolved: ActiveModifier[] = []
+  for (const candidate of applicable) {
+    const value = evaluateValue(candidate.modifier.value, candidate)
+
+    if (isRulesError(value)) {
+      return { ok: false, error: value }
+    }
+
+    // §16.4: "add and scale are numeric-only." Checked here, independent
+    // of whatever stacking policy this candidate's modifierType eventually
+    // resolves to (stacking selection has not run yet) -- so a non-numeric
+    // LOSING candidate in a highest/lowest group still errors the whole
+    // target, exactly as §16.11's candidate-value-edge-cases table
+    // requires ("skipping the candidate would silently change the
+    // result"). `set`/`final`/`base`/`clamp` accept any RuleValueType at
+    // this stage; clamp's OWN numeric-only rule (§16.12) is that later
+    // commit's concern, not enforced here.
+    if ((candidate.phase === 'add' || candidate.phase === 'scale') && typeof value !== 'number') {
+      return {
+        ok: false,
+        error: {
+          definitionId: candidate.sourceDefinitionId,
+          message:
+            `Modifier on Source '${candidate.sourceDefinitionId}' (targeting '${targetId}', phase '${candidate.phase}') ` +
+            `must evaluate to a number, got '${typeof value}'`,
+          reason: MODIFIER_VALUE_NOT_NUMERIC
+        }
+      }
+    }
+
+    resolved.push({ ...candidate, resolvedValue: value })
+  }
+
+  return { ok: true, modifiers: resolved }
 }
 
 // Mirrors evaluator.ts's own `isRulesError` exactly. Duplicated rather than
@@ -448,4 +558,151 @@ export function groupByPhase(modifiers: readonly ActiveModifier[]): Map<Modifier
     if (group) group.push(modifier)
   }
   return grouped
+}
+
+// ---------------------------------------------------------------------------
+// Stacking selection (§16.11 step 8, Commit 7)
+// ---------------------------------------------------------------------------
+
+// Applies §16.11's stacking policy to a phase-grouped sequence.
+//
+// §16.11's own prose states stacking selection applies "to the add and
+// scale phases only," reasoning that "the highest of two text overrides
+// is not a coherent operation" for the override phases (`base`/`set`/
+// `final`). But §16.13's own worked example ("Exclusive conflict") shows
+// two `phase: set` Modifiers under an `exclusive` modifierType, with the
+// text stating explicitly: "the exclusive policy still selects the single
+// winner before the override rule applies." The two are reconciled, not
+// contradictory, once the REASON for the general boundary is read
+// precisely: `highest`/`lowest` need a numeric COMPARISON, which is
+// genuinely incoherent for override phases (there is no "highest" of two
+// arbitrary override values) -- but `exclusive` never compares values at
+// all, only `order`, so that reasoning does not apply to it. This
+// function therefore runs `exclusive` selection on EVERY phase, and
+// restricts `highest`/`lowest` (and the`stack`-vs-unfiltered distinction,
+// which is a no-op either way) to `add`/`scale`, exactly matching §16.13's
+// worked example without inventing selection semantics for combinations
+// (`highest`/`lowest` declared on an override phase) no worked example
+// anywhere in the architecture defines.
+//
+// `clamp` passes through completely unchanged regardless -- this commit's
+// explicit non-goal.
+//
+// Takes and returns a `Map<ModifierPhase, ActiveModifier[]>` -- the exact
+// shape `groupByPhase` already produces and evaluator.ts's phase-
+// application loop already consumes -- so this slots in as one additional
+// step between them, not a redesign of either.
+export function applyStackingSelection(
+  grouped: ReadonlyMap<ModifierPhase, readonly ActiveModifier[]>,
+  registry: RulesRegistry
+): Map<ModifierPhase, ActiveModifier[]> {
+  const result = new Map<ModifierPhase, ActiveModifier[]>()
+  for (const [phase, modifiers] of grouped) {
+    result.set(phase, phase === 'clamp' ? [...modifiers] : selectForPhase(phase, modifiers, registry))
+  }
+  return result
+}
+
+// §16.11: "Grouping key: (target, phase, modifierType) -- reduces to
+// (phase, modifierType) in practice [resolution runs for one target at a
+// time]." `modifiers` here is already scoped to one target and one phase
+// (the caller's map key), so only `modifierType` remains to group by.
+// "A modifier with no modifierType forms its own group of one and is
+// never grouped with another" -- tracked by identity (a Set of survivors),
+// not by treating `undefined` as a shared key, which would incorrectly
+// merge every untyped modifier in the phase into one group.
+function selectForPhase(phase: ModifierPhase, modifiers: readonly ActiveModifier[], registry: RulesRegistry): ActiveModifier[] {
+  const numericPolicyEligible = phase === 'add' || phase === 'scale'
+
+  const typedGroups = new Map<string, ActiveModifier[]>()
+  const survivors = new Set<ActiveModifier>()
+
+  for (const modifier of modifiers) {
+    if (modifier.modifierType === undefined) {
+      survivors.add(modifier)
+      continue
+    }
+    const group = typedGroups.get(modifier.modifierType)
+    if (group) group.push(modifier)
+    else typedGroups.set(modifier.modifierType, [modifier])
+  }
+
+  for (const [modifierType, group] of typedGroups) {
+    // §16.3: an undeclared modifierType is a package validation error, not
+    // implemented yet (this commit's own non-goal) -- DEFAULT_STACKING is
+    // the runtime fallback for that gap only, per the file-header note on
+    // ambiguity D above and registry.ts's own comment on
+    // getModifierStacking.
+    const stacking = registry.getModifierStacking(modifierType) ?? DEFAULT_STACKING
+
+    if (!numericPolicyEligible && stacking !== 'exclusive') {
+      // `highest`/`lowest` on an override phase (or `stack`, which is a
+      // no-op either way): no worked example defines this combination
+      // ("not a coherent operation," §16.11) -- pass the whole group
+      // through unfiltered rather than inventing a comparison. For
+      // `stack` specifically this is exactly the policy's own rule
+      // anyway; for `highest`/`lowest` it is a deliberate non-decision,
+      // not a silent application of the wrong policy.
+      for (const member of group) survivors.add(member)
+      continue
+    }
+
+    for (const winner of selectByPolicy(group, stacking)) survivors.add(winner)
+  }
+
+  // Filtering the ORIGINAL ordered array (rather than concatenating
+  // per-group results) preserves §15.3 order for free -- no re-sort needed.
+  return modifiers.filter((modifier) => survivors.has(modifier))
+}
+
+// §16.11's four policies, applied to one already-§15.3-ordered group
+// (every candidate sharing one `(phase, modifierType)`). `group` is never
+// empty (it is only ever built from at least one real candidate above).
+function selectByPolicy(group: readonly ActiveModifier[], stacking: ModifierStacking): ActiveModifier[] {
+  switch (stacking) {
+    case 'stack':
+      // "Every candidate applies, in §15.3 order."
+      return [...group]
+
+    case 'exclusive':
+      // "Exactly one applies: first in §15.3 order, selected by priority,
+      // not by magnitude." `group` is already in that order -- selection
+      // is a no-op beyond taking the first element. More than one active
+      // `exclusive` candidate is the normal case this policy resolves, not
+      // an error (§16.11) -- the rest are simply not selected, no
+      // diagnostic.
+      return [group[0]!]
+
+    case 'highest':
+      // "Exactly one applies: the greatest numeric value. Ties broken by
+      // §15.3 order, first wins." Every candidate here already passed the
+      // add/scale numeric-only check in resolveActiveModifiers' stage 6,
+      // so `resolvedValue` is guaranteed `number` for every member.
+      return [selectExtreme(group, (candidate, winner) => (candidate.resolvedValue as number) > (winner.resolvedValue as number))]
+
+    case 'lowest':
+      // "Exactly one applies: the least numeric value. Ties broken by
+      // §15.3 order, first wins."
+      return [selectExtreme(group, (candidate, winner) => (candidate.resolvedValue as number) < (winner.resolvedValue as number))]
+
+    default: {
+      const exhaustive: never = stacking
+      return exhaustive
+    }
+  }
+}
+
+// Scans `group` left-to-right (i.e. in §15.3 order), replacing the current
+// winner only on a STRICT improvement -- an equal value never replaces the
+// existing winner, which is exactly what "ties broken by order, first
+// wins" means: the first-seen candidate among equals keeps winning.
+function selectExtreme(
+  group: readonly ActiveModifier[],
+  isBetter: (candidate: ActiveModifier, winner: ActiveModifier) => boolean
+): ActiveModifier {
+  let winner = group[0]!
+  for (const candidate of group.slice(1)) {
+    if (isBetter(candidate, winner)) winner = candidate
+  }
+  return winner
 }

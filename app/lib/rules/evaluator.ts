@@ -171,7 +171,7 @@ import type {
   RuleExpressionNode
 } from './ast'
 import type { EvaluationSession } from './evaluation-session'
-import { groupByPhase, resolveActiveModifiers, type ActiveModifier } from './modifier-pipeline'
+import { applyStackingSelection, groupByPhase, resolveActiveModifiers } from './modifier-pipeline'
 import type { ResolvedSourceInstance } from './source-overlay'
 import type {
   CollectionInstanceItem,
@@ -323,83 +323,110 @@ function computeBaseValue(
 //     carries a required `clamp: ClampBound` discriminator (types.ts) -- but
 //     *evaluating* a clamp modifier using that field is explicitly out of
 //     this codebase's implemented scope so far ("Do not implement clamp
-//     evaluation", revision 3 Commit 2's own instruction). A clamp-phase
+//     evaluation", revision 3 Commit 7's own instruction). A clamp-phase
 //     modifier therefore still yields a RulesError below, per §14.4's
 //     "visible degradation over silent corruption" -- now because clamp
 //     evaluation is simply not implemented yet, not because the type cannot
 //     express which bound is meant. ValueDefinition.constraints (min/max)
 //     is unambiguous but is not a Modifier and is out of this commit's
 //     scope.
+//
+// REVISION 3 -- COMMIT 7 (§16.11, Modifier Stacking): candidate VALUES are
+// no longer evaluated here. `resolveActiveModifiers` now evaluates every
+// applicable candidate's `.modifier.value` itself (§16.11 step 6, via the
+// injected `evaluateValue` callback below) and populates
+// `ActiveModifier.resolvedValue` -- this function reads that field
+// directly. Two consequences: (1) `modifierValue` (the old per-entry
+// evaluator this function used to call, once per phase-application) is
+// gone -- its logic now lives in the `evaluateValue` callback passed into
+// resolveActiveModifiers, called exactly once per candidate regardless of
+// phase; (2) `applyStackingSelection` (modifier-pipeline.ts) runs between
+// `groupByPhase` and phase application, filtering the `add`/`scale` groups
+// down to their stacking survivors -- `base`/`set`/`clamp`/`final` pass
+// through unchanged (see that function's own comment for why no selection
+// step is needed for them).
 function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: EvaluationSession): RuleValue {
-  // §16.9 (Commit 6): the ConditionEvaluator callback now receives the
-  // full ActiveModifier candidate (modifier-pipeline.ts), which is what
-  // lets a condition's own `@source:` references resolve against the
-  // Source instance that activated THIS modifier -- see the file-header
-  // note above.
-  const resolution = resolveActiveModifiers(definitionId, session, (condition, modifier) =>
-    evaluateExpression(
-      asRuleExpressionNode(condition),
-      session,
-      modifier.sourceDefinitionId,
-      undefined,
-      findSourceInstance(session, modifier.sourceInstanceId)
-    )
+  // §16.9 (Commit 6) / §16.11 step 6 (Commit 7): both injected callbacks
+  // resolve `@source:` the same way -- via the candidate's own
+  // sourceInstanceId, looked up against session.sourceOverlay. Neither
+  // callback needs `firstError`/error-checking of its own: whatever it
+  // returns (including a RulesError) is handled uniformly by
+  // resolveActiveModifiers itself (§16.11A's first-error-aborts rule,
+  // extended to values by Commit 7).
+  const resolution = resolveActiveModifiers(
+    definitionId,
+    session,
+    (condition, modifier) =>
+      evaluateExpression(
+        asRuleExpressionNode(condition),
+        session,
+        modifier.sourceDefinitionId,
+        undefined,
+        findSourceInstance(session, modifier.sourceInstanceId)
+      ),
+    (value, modifier) =>
+      isExpression(value)
+        ? evaluateExpression(
+            asRuleExpressionNode(value),
+            session,
+            modifier.sourceDefinitionId,
+            undefined,
+            findSourceInstance(session, modifier.sourceInstanceId)
+          )
+        : value
   )
 
   // REVISION 3 (rules-engine.md §16.11A, ADR-022; §16.18 Commit 2):
   // resolveActiveModifiers returns a ModifierResolution, not a bare array --
   // `ok: true, modifiers: []` is "nothing applies" (a legitimate success);
-  // `ok: false` is a condition failure (a non-boolean result, or an
-  // existing RulesError, including a runtime cycle) that aborted
-  // resolution entirely. `resolution.error` must propagate here exactly
-  // like any other error this function already returns (§14.4: `1 + error`
-  // is `error`) -- never be read as "base is unmodified."
+  // `ok: false` is a condition OR value failure (Commit 7 extended this to
+  // values) that aborted resolution entirely. `resolution.error` must
+  // propagate here exactly like any other error this function already
+  // returns (§14.4: `1 + error` is `error`) -- never be read as "base is
+  // unmodified."
   if (!resolution.ok) return resolution.error
 
   const active = resolution.modifiers
   if (active.length === 0) return base
 
-  const byPhase = groupByPhase(active)
+  // §16.11 steps 7-8: phase grouping, then stacking selection (Commit 7) --
+  // every phase's groups are filtered down to their policy-selected
+  // survivors (`highest`/`lowest` only for `add`/`scale`; `exclusive` for
+  // any phase, including `set`/`final`, per §16.13's own worked example --
+  // see applyStackingSelection's comment). `clamp` passes through
+  // unchanged, this commit's own non-goal.
+  const byPhase = applyStackingSelection(groupByPhase(active), session.registry)
   let running = base
 
   for (const entry of byPhase.get('base') ?? []) {
-    const value = modifierValue(entry, session)
-    const error = firstError(value)
-    if (error) return error
-    running = value
+    running = entry.resolvedValue!
   }
 
   for (const entry of byPhase.get('set') ?? []) {
-    const value = modifierValue(entry, session)
-    const error = firstError(value)
-    if (error) return error
-    running = value
+    running = entry.resolvedValue!
   }
 
-  // §16.4: "add -- additive, grouped by modifier type, resolved per that
-  // type's policy". `RulesPackageManifest.modifierTypes` (§16.3) is now a
-  // real, typed declaration site (revision 3, Commit 2), but nothing here
-  // reads it yet -- "Do not implement Modifier stacking" -- so every type
-  // is still treated as unknown/`stack` (sum all), under which per-type
-  // grouping is arithmetically a no-op and the sum is taken directly.
-  // Grouping becomes meaningful once 'highest'/'lowest'/'exclusive'
-  // selection is implemented against the declaration table.
+  // §16.11: "stack -- every candidate applies, in §15.3 order." Summed
+  // directly; per-type selection already happened in applyStackingSelection
+  // above, so what remains here is exactly the survivor set for this
+  // target's `add` group. Every survivor's `resolvedValue` is guaranteed
+  // `number` (resolveActiveModifiers' stage 6 rejects any add/scale
+  // candidate that isn't, aborting the whole resolution before stacking
+  // ever runs) -- `running`'s own type is not guaranteed (a prior `base`/
+  // `set` entry could have produced text), so that half of the check
+  // remains.
   for (const entry of byPhase.get('add') ?? []) {
-    const value = modifierValue(entry, session)
-    const error = firstError(value)
-    if (error) return error
-    if (typeof running !== 'number' || typeof value !== 'number') {
-      return evaluationError(definitionId, `'add' modifier requires numbers, got '${typeof running} + ${typeof value}'`)
+    const value = entry.resolvedValue as number
+    if (typeof running !== 'number') {
+      return evaluationError(definitionId, `'add' modifier requires numbers, got '${typeof running} + number'`)
     }
     running = running + value
   }
 
   for (const entry of byPhase.get('scale') ?? []) {
-    const value = modifierValue(entry, session)
-    const error = firstError(value)
-    if (error) return error
-    if (typeof running !== 'number' || typeof value !== 'number') {
-      return evaluationError(definitionId, `'scale' modifier requires numbers, got '${typeof running} * ${typeof value}'`)
+    const value = entry.resolvedValue as number
+    if (typeof running !== 'number') {
+      return evaluationError(definitionId, `'scale' modifier requires numbers, got '${typeof running} * number'`)
     }
     running = running * value
   }
@@ -418,32 +445,10 @@ function applyModifiers(definitionId: DefinitionId, base: RuleValue, session: Ev
   }
 
   for (const entry of byPhase.get('final') ?? []) {
-    const value = modifierValue(entry, session)
-    const error = firstError(value)
-    if (error) return error
-    running = value
+    running = entry.resolvedValue!
   }
 
   return running
-}
-
-// A Modifier's `value` is `Expression | RuleValue` (types.ts). Expressions
-// are evaluated in the context of the Source that owns them, so any error
-// is attributed to that Source rather than to the target Value. Carries
-// the same `sourceBinding` lookup as the condition callback in
-// applyModifiers above -- §16.9's `@source:` is legal in a ModifierSpec's
-// `value` exactly as much as its `condition`.
-function modifierValue(entry: ActiveModifier, session: EvaluationSession): RuleValue {
-  const value = entry.modifier.value
-  return isExpression(value)
-    ? evaluateExpression(
-        asRuleExpressionNode(value),
-        session,
-        entry.sourceDefinitionId,
-        undefined,
-        findSourceInstance(session, entry.sourceInstanceId)
-      )
-    : value
 }
 
 // §16.9 (Commit 6): resolves an ActiveModifier's `sourceInstanceId` back

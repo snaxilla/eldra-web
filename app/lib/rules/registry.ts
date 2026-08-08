@@ -33,8 +33,25 @@
 // grouped by directory, etc.) that a future package-loader-from-JSON phase
 // is better positioned to decide, since it will need to answer exactly that
 // shape question anyway.
+//
+// REVISION 3 -- COMMIT 7 (Modifier Stacking) addition: `getModifierStacking`
+// indexes `manifest.modifierTypes` (§16.3, added to the type contract in
+// Commit 2) at construction time, exactly mirroring how `getBySemanticRole`
+// already indexes `manifest.semanticRoles` -- a narrow, purpose-built
+// lookup, not a general "expose the manifest" escape hatch (reference-
+// validation.ts's own design decision 3 already notes the registry
+// deliberately does not expose the raw manifest). Stacking selection
+// (modifier-pipeline.ts) needs "what policy does this declared
+// modifierType use" and had no way to ask that question before this
+// commit -- this is that lookup, nothing more. An undeclared modifierType
+// is a package validation error per §16.3, but package validation is not
+// implemented yet (explicit non-goal of this commit); `getModifierStacking`
+// simply returns `undefined` for one, exactly as `getBySemanticRole`
+// already returns `undefined` for a dangling role binding -- the caller
+// decides what "unknown" means (modifier-pipeline.ts's DEFAULT_STACKING
+// fallback), this module does not.
 
-import type { Definition, DefinitionId, RulesPackageManifest, SemanticRole } from './types'
+import type { Definition, DefinitionId, ModifierStacking, RulesPackageManifest, SemanticRole } from './types'
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -77,7 +94,8 @@ export class RulesRegistry {
   private constructor(
     private readonly byId: ReadonlyMap<DefinitionId, Definition>,
     private readonly byKind: ReadonlyMap<DefinitionKind, readonly Definition[]>,
-    private readonly byRole: ReadonlyMap<SemanticRole, Definition>
+    private readonly byRole: ReadonlyMap<SemanticRole, Definition>,
+    private readonly modifierStacking: ReadonlyMap<string, ModifierStacking>
   ) {}
 
   // Builds a RulesRegistry from a manifest and its Definitions. Rejects
@@ -130,7 +148,18 @@ export class RulesRegistry {
       }
     }
 
-    return { ok: true, registry: new RulesRegistry(byId, byKind, byRole) }
+    // §16.3 (revision 3, Commit 7): `modifierTypes` declarations, indexed
+    // by `id` for `getModifierStacking`. A duplicate `id` across two
+    // declarations is a package-authoring mistake (package validation's
+    // job to reject, not implemented yet) -- last one wins here, the same
+    // "not this module's problem to diagnose" stance `byRole` above
+    // already takes for a dangling role binding.
+    const modifierStacking = new Map<string, ModifierStacking>()
+    for (const declaration of manifest.modifierTypes ?? []) {
+      modifierStacking.set(declaration.id, declaration.stacking)
+    }
+
+    return { ok: true, registry: new RulesRegistry(byId, byKind, byRole, modifierStacking) }
   }
 
   has(id: DefinitionId): boolean {
@@ -143,6 +172,13 @@ export class RulesRegistry {
 
   getBySemanticRole(role: SemanticRole): Definition | undefined {
     return this.byRole.get(role)
+  }
+
+  // §16.3 (revision 3, Commit 7). `undefined` means "not declared" -- the
+  // caller (modifier-pipeline.ts) decides what that means at runtime; see
+  // the file-header note above.
+  getModifierStacking(modifierType: string): ModifierStacking | undefined {
+    return this.modifierStacking.get(modifierType)
   }
 
   // A fresh, frozen snapshot each call -- callers can never mutate registry

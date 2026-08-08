@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { summarizeRollEvent } from '~/utils/diceBoxRollSummary'
+
 const visible = ref(false)
 const loading = ref(false)
 const ready = ref(false)
@@ -366,6 +368,129 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
   }
 }
 
+// ---------------------------------------------------------------------------
+// RollEvent integration (app/lib/rules/roll-service.ts). `rollDice` above
+// is UNCHANGED and still the entrypoint for every Character Sheet
+// interaction not yet migrated to requestRoll() (weapon attack/damage,
+// spell attack, species actions) -- those still only have a raw notation
+// string, not a RollEvent, so removing `rollDice` would break them; that
+// migration is future Character Sheet work, not 3D Dice work.
+//
+// `rollResult` is the new, canonical entrypoint: it never computes a total,
+// never decides success, and never generates the numbers it displays --
+// every number in `latestRoll` below comes from `event.result`, which is
+// why `summarizeRollEvent` (unlike `summarizeRoll` above) takes no `result`
+// argument from the dice engine at all.
+//
+// Known, verified limitation of @3d-dice/dice-box@1.1.4 (read in full
+// before writing this): its public API has no "land on this face" hook.
+// `Dice.getRollResult` (dist/Dice.js) returns a caller-supplied `.value`
+// only for non-mesh (no-WebGL-fallback) dice; every real, physics-rendered
+// die always resolves its value via raycasting against wherever the
+// physics simulation actually settled it -- there is no override. This
+// means the individual tumbling dice may visually settle on different pips
+// than `RollResult.rolls` reports. The animation still runs unmodified
+// (same throw, same physics, same theme, same sound) for its own sake --
+// "preserve existing physics" -- but its own settled values are never
+// read, trusted, or displayed anywhere: the Total/Dice/critical-outcome
+// readout is 100% sourced from the RollEvent (via summarizeRollEvent,
+// app/utils/diceBoxRollSummary.ts), which is what "the RollEvent must
+// remain authoritative" actually cashes out to here. Flagged in the
+// commit Summary, not silently papered over.
+async function rollResult(event: any, label = 'Roll') {
+  if (autoHideTimer) {
+    clearTimeout(autoHideTimer)
+    autoHideTimer = null
+  }
+
+  visible.value = true
+  error.value = ''
+
+  if (!event?.ok) {
+    loading.value = false
+    latestRoll.value = null
+    error.value = event?.error?.message || 'Roll failed.'
+    scheduleAutoHide()
+    return
+  }
+
+  const result = event.result
+  const summary = summarizeRollEvent(event.eventId, label, result)
+  const dice = result?.dice
+
+  loading.value = true
+  latestRoll.value = {
+    ...summary,
+    total: null,
+    diceTotal: null,
+    diceValues: [],
+    criticalOutcome: ''
+  }
+
+  // §17.3 "manual" rolls carry no dice at all -- nothing to animate, and
+  // `summary.total` is already the RollEvent's own null in that case.
+  if (!dice) {
+    latestRoll.value = summary
+    rollHistory.value = [summary, ...rollHistory.value].slice(0, 8)
+    loading.value = false
+    scheduleAutoHide()
+    return
+  }
+
+  const diceNotation = `${dice.count}d${dice.faces}`
+
+  const settle = () => {
+    latestRoll.value = summary
+    rollHistory.value = [summary, ...rollHistory.value].slice(0, 8)
+    loading.value = false
+    scheduleAutoHide()
+  }
+
+  try {
+    await nextTick()
+
+    const box = await prewarmDiceBox()
+
+    if (typeof box.resize === 'function') {
+      box.resize()
+    }
+
+    if (typeof box.clear === 'function') {
+      box.clear()
+    }
+
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    activeRollToken = token
+
+    // The physics engine's own settled values are intentionally never
+    // read here -- only that it finished is relevant.
+    box.onRollComplete = () => {
+      if (token !== activeRollToken) return
+      activeRollToken = ''
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer)
+        fallbackTimer = null
+      }
+      settle()
+    }
+
+    const returned = await Promise.resolve(box.roll(diceNotation))
+
+    if (returned) {
+      if (token === activeRollToken) {
+        activeRollToken = ''
+        settle()
+      }
+    } else {
+      fallbackTimer = setTimeout(settle, 3800)
+    }
+  } catch (err: any) {
+    // The visual flourish failed; the authoritative result still shows.
+    activeRollToken = ''
+    settle()
+  }
+}
+
 function closeRoller() {
   visible.value = false
 }
@@ -394,7 +519,8 @@ onBeforeUnmount(() => {
 })
 
 defineExpose({
-  rollDice
+  rollDice,
+  rollResult
 })
 </script>
 

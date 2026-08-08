@@ -118,18 +118,13 @@ const mentionContextDrawerOpen = ref(false)
 const mentionContextEntity = ref<any | null>(null)
 const diceBoxRef = ref<any | null>(null)
 // Rules Engine integration (Roll Service, app/lib/rules/roll-service.ts):
-// drives the simple d20 checks (ability/save/skill) below. 3D Dice is
-// intentionally not wired to this yet -- see rollAbilityCheck/
-// rollSavingThrow/rollSkillCheck.
-const { lastRollEvent, lastRollLabel, rollD20Check } = useCharacterSheetRolls()
-const rollResultIsError = computed(() => lastRollEvent.value?.ok === false)
-const rollResultBannerText = computed(() => {
-  const event = lastRollEvent.value
-  if (!event) return ''
-  const label = lastRollLabel.value || 'Roll'
-  if (!event.ok) return `${label} failed: ${event.error.message}`
-  return `${label}: ${event.result.total ?? '—'}`
-})
+// drives the simple d20 checks (ability/save/skill) below. The RollEvent
+// each returns is handed to diceBoxRef.rollResult(), which is now the
+// canonical RollEvent renderer (EldraDiceBox.client.vue) -- the previous
+// commit's own inline result banner is gone; the dice box's existing
+// Total/Formula/error panel is the "existing UI completion" this displays
+// through instead, avoiding showing the same number in two places.
+const { rollD20Check } = useCharacterSheetRolls()
 const noteSearch = ref('')
 const noteSaving = ref(false)
 const noteSaveError = ref('')
@@ -2715,6 +2710,11 @@ function firstNumberFromRow(row: any, keys: string[]) {
   return null
 }
 
+function rollD20AndAnimate(bonus: number, label: string) {
+  const event = rollD20Check(bonus, label)
+  diceBoxRef.value?.rollResult(event, label)
+}
+
 function rollAbilityCheck(row: any) {
   const label = rowDisplayLabel(row, 'Ability').toUpperCase()
   const key = rowAbilityKey(row)
@@ -2736,7 +2736,7 @@ function rollAbilityCheck(row: any) {
       ? abilityModifierNumberForKey(key)
       : 0
 
-  rollD20Check(resolvedBonus, `${label} Check`)
+  rollD20AndAnimate(resolvedBonus, `${label} Check`)
 }
 
 function rollSavingThrow(row: any) {
@@ -2760,7 +2760,7 @@ function rollSavingThrow(row: any) {
       ? abilityModifierNumberForKey(key)
       : 0
 
-  rollD20Check(resolvedBonus, `${label} Save`)
+  rollD20AndAnimate(resolvedBonus, `${label} Save`)
 }
 
 function rollSkillCheck(row: any) {
@@ -2777,7 +2777,7 @@ function rollSkillCheck(row: any) {
     'modText'
   ]) ?? 0
 
-  rollD20Check(bonus, `${label} Check`)
+  rollD20AndAnimate(bonus, `${label} Check`)
 }
 
 function damageTypeLabel(value: any) {
@@ -8446,17 +8446,6 @@ async function saveSheet() {
     >
       {{ portraitUploadError || portraitUploadSuccess }}
     </div>
-
-    <!-- Roll Service result readout (app/composables/useCharacterSheetRolls.ts) --
-         intentionally plain: no animation, no modal, no 3D Dice yet. -->
-    <div
-      v-if="lastRollEvent"
-      class="fixed left-4 right-4 top-16 z-[180] rounded-none border p-3 text-sm shadow-[0_12px_32px_rgba(0,0,0,0.35)] md:left-auto md:w-[360px]"
-      :class="rollResultIsError ? 'border-red-500/30 bg-red-950/90 text-red-100' : 'border-emerald-500/30 bg-emerald-950/90 text-emerald-100'"
-    >
-      {{ rollResultBannerText }}
-    </div>
-
 
     <!-- Portrait Lightbox -->
     <Transition enter-from-class="opacity-0" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-150">

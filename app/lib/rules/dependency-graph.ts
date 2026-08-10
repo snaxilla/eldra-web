@@ -486,7 +486,15 @@ function collectStructuralEdges(id: DefinitionId, definition: Definition, regist
 // set of formulas whose references become that Definition's outgoing
 // edges. CollectionDefinition contributes none (its itemSchema's
 // `default?` fields are RuleValue, never Expression).
-function collectExpressions(definition: Definition): Expression[] {
+//
+// Exported for package-validation.ts (Package Validation commit): it needs
+// the identical "every Expression field in a Definition" enumeration to
+// compose Reference Validation and Type Validation across a whole package,
+// and reimplementing an equivalent walk there would risk it silently
+// drifting from this one as new Definition fields are added -- exactly the
+// "do not duplicate existing validation" this task's own instruction
+// warns against. No behavior here changes; only visibility does.
+export function collectExpressions(definition: Definition): Expression[] {
   switch (definition.kind) {
     case 'value':
       return definition.formula ? [definition.formula] : []

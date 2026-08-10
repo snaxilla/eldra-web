@@ -630,6 +630,29 @@ export type RulesPackageManifest = {
 }
 
 // ---------------------------------------------------------------------------
+// Package Validation results (§16.14, Revision 3 Package Validation commit)
+// ---------------------------------------------------------------------------
+
+// §16.10 decision 6: an unattached standalone Modifier is a validation
+// *warning*, not an error -- "dead content, not incorrect content." This is
+// the one severity distinction Package Validation makes; every other rule
+// in §16.14's ownership table rejects the package.
+export type PackageValidationSeverity = 'error' | 'warning'
+
+// Named directly by the architecture's own "Validation results" type
+// listing (rules-engine.md, end of §16). `code` is left as `string`
+// (open), matching every other diagnostic-kind field in this file
+// (RulesErrorCode is the one exception, and only because §16.18
+// deliberately closes that specific vocabulary) -- package-validation.ts
+// is free to grow new codes without a type-contract change.
+export type PackageValidationIssue = {
+  severity: PackageValidationSeverity
+  code: string
+  message: string
+  definitionId?: DefinitionId
+}
+
+// ---------------------------------------------------------------------------
 // Character/Actor state (§13)
 // ---------------------------------------------------------------------------
 

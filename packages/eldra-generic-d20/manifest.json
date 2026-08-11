@@ -1,0 +1,48 @@
+{
+  "packageId": "eldra.starter.generic-d20",
+  "version": "0.1.0",
+  "status": "draft",
+  "engineApiVersion": "^1.0.0",
+  "stateSchemaVersion": 1,
+  "title": "Eldra Generic d20 (Starter)",
+  "description": "Minimal d20-style Rules Package proving the full infrastructure pipeline end to end -- Values, a derived Value, a Collection, a Source, a Modifier, two Roll Specs, one requiredTrait, one optionalRule, and two Semantic Role bindings. Not a game -- a runtime proof (see .github/docs/architecture/rules-package-infrastructure.md Infra 4).",
+  "authors": [{ "name": "Eldra" }],
+  "license": { "id": "CC0-1.0" },
+  "capabilities": [],
+  "dependencies": [],
+  "modifierTypes": [
+    { "id": "equipment", "stacking": "highest", "label": "Equipment" }
+  ],
+  "semanticRoles": {
+    "vitality": "value:vitality",
+    "level": "value:level"
+  },
+  "requiredTraits": [
+    { "kind": "campaign", "trait": "difficulty", "valueType": "number", "default": 10 }
+  ],
+  "optionalRules": [
+    {
+      "key": "gritty",
+      "label": "Gritty Checks",
+      "description": "Applies a -1 penalty to the Vitality Modifier.",
+      "valueType": "boolean",
+      "default": false
+    }
+  ],
+  "rollTypes": [
+    {
+      "id": "check",
+      "label": "Ability Check",
+      "rollSpec": "roll:check",
+      "surfaces": ["sheet", "gm-toolbar"],
+      "visibility": "public"
+    },
+    {
+      "id": "luck",
+      "label": "Luck Roll",
+      "rollSpec": "roll:luck",
+      "surfaces": ["sheet", "gm-toolbar"],
+      "visibility": "public"
+    }
+  ]
+}

@@ -15,7 +15,8 @@
     "directus:create-entity-relationships": "node scripts/directus/create-entity-relationship-schema.mjs",
     "directus:create-scene-layer-objects": "node scripts/directus/create-scene-layer-objects-schema.mjs",
     "directus:create-rules-packages": "node scripts/directus/create-rules-packages-schema.mjs",
-    "directus:bootstrap": "node scripts/directus/bootstrap.mjs"
+    "directus:bootstrap": "node scripts/directus/bootstrap.mjs",
+    "directus:publish-starter-package": "node scripts/directus/publish-starter-package.mjs"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
@@ -48,6 +49,7 @@
     "@nuxt/eslint": "^1.15.2",
     "@types/markdown-it": "^14.1.2",
     "eslint": "^10.0.3",
+    "jiti": "^2.6.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
     "vue-tsc": "^3.2.5"

@@ -1,0 +1,80 @@
+[
+  {
+    "id": "value:vitality",
+    "kind": "value",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 10,
+    "constraints": { "min": 1, "max": 20 },
+    "label": "Vitality",
+    "tags": ["attribute"]
+  },
+  {
+    "id": "value:level",
+    "kind": "value",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 1,
+    "constraints": { "min": 1, "max": 20 },
+    "label": "Level"
+  },
+  {
+    "id": "value:proficiency_bonus",
+    "kind": "value",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 2,
+    "constraints": { "min": 0, "max": 6 },
+    "label": "Proficiency Bonus"
+  },
+  {
+    "id": "value:vitality.mod",
+    "kind": "value",
+    "valueType": "number",
+    "storage": "derived",
+    "label": "Vitality Modifier",
+    "formula": { "text": "floor((@value:vitality - 10) / 2) + if(@world:rules.gritty, -1, 0)" }
+  },
+  {
+    "id": "collection:inventory",
+    "kind": "collection",
+    "label": "Inventory",
+    "sourceRefField": "sourceRef",
+    "itemSchema": [
+      { "key": "name", "valueType": "text" },
+      { "key": "equipped", "valueType": "boolean", "default": false },
+      { "key": "sourceRef", "valueType": "ref", "refKind": "source" }
+    ]
+  },
+  {
+    "id": "source:item.luckyCharm",
+    "kind": "source",
+    "label": "Lucky Charm",
+    "modifiers": [
+      {
+        "target": "value:vitality.mod",
+        "phase": "add",
+        "modifierType": "equipment",
+        "value": { "text": "1" },
+        "condition": { "text": "@source:equipped" },
+        "label": "Lucky Charm"
+      }
+    ]
+  },
+  {
+    "id": "roll:check",
+    "kind": "roll",
+    "label": "Ability Check",
+    "dice": { "text": "1d20 + @value:vitality.mod + @value:proficiency_bonus" },
+    "selection": { "keep": "all" },
+    "successRule": { "kind": "atLeast", "threshold": { "text": "@world:campaign.difficulty" } }
+  },
+  {
+    "id": "roll:luck",
+    "kind": "roll",
+    "label": "Luck Roll",
+    "dice": { "text": "1d20" },
+    "selection": { "keep": "all" },
+    "successRule": { "kind": "none" }
+  }
+]

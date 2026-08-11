@@ -21,7 +21,8 @@ import type {
   RulesPackageManifest,
   SourceDefinition,
   SourceInstance,
-  ValueDefinition
+  ValueDefinition,
+  WorldConfigSnapshot
 } from '../../app/lib/rules/types'
 
 function manifest(): RulesPackageManifest {
@@ -106,7 +107,7 @@ function context(overrides: Partial<EvaluationContext> = {}): EvaluationContext 
 // a cyclic package before evaluation ever runs.
 function buildSession(
   definitions: Definition[],
-  options: { actor?: Partial<ActorState>; tracingEnabled?: boolean } = {}
+  options: { actor?: Partial<ActorState>; tracingEnabled?: boolean; context?: Partial<EvaluationContext> } = {}
 ): EvaluationSession {
   const registryResult = RulesRegistry.create(manifest(), definitions)
   if (!registryResult.ok) throw new Error(`registry construction failed: ${JSON.stringify(registryResult.errors)}`)
@@ -117,9 +118,23 @@ function buildSession(
   // guard in isolation, independent of static validation.
   const graphResult = DependencyGraph.build(registryResult.registry)
   const graph = graphResult.ok ? graphResult.graph : (undefined as unknown as DependencyGraph)
-  return new EvaluationSession(registryResult.registry, graph, actorState(options.actor), context(), {
+  return new EvaluationSession(registryResult.registry, graph, actorState(options.actor), context(options.context), {
     tracingEnabled: options.tracingEnabled
   })
+}
+
+// World Configuration Commit 1: an already-RESOLVED snapshot, which is the
+// only thing the evaluator ever reads (defaults and Binding Gaps are
+// applied during resolution, which does not exist yet -- see
+// world-configuration.md §F.6).
+function worldSnapshot(traits: WorldConfigSnapshot['traits'] = {}): WorldConfigSnapshot {
+  return {
+    worldId: 'world:1',
+    packageId: 'eldra.test.pkg',
+    packageVersion: '1.0.0',
+    worldConfigVersion: 1,
+    traits
+  }
 }
 
 describe('literal evaluation', () => {
@@ -175,6 +190,121 @@ describe('reference evaluation', () => {
     const result = evaluate('value:x', session)
     expect(result).toMatchObject({ definitionId: 'value:x' })
     expect((result as { message: string }).message).toContain('ctx')
+  })
+
+  it('@choice and @sources remain unresolvable, unchanged by World Configuration', () => {
+    const choiceSession = buildSession([derivedValue('value:x', '@choice:origin', 'text')])
+    expect((evaluate('value:x', choiceSession) as { message: string }).message).toContain(
+      'not resolvable in the current runtime model'
+    )
+
+    const sourcesSession = buildSession([derivedValue('value:y', 'count(@sources)')])
+    expect((evaluate('value:y', sourcesSession) as { message: string }).message).toBeTruthy()
+  })
+})
+
+describe('@world reference evaluation (world-configuration.md §F)', () => {
+  it('resolves @world:rules.flanking from EvaluationContext.world', () => {
+    const session = buildSession([derivedValue('value:x', '@world:rules.flanking', 'boolean')], {
+      context: { world: worldSnapshot({ rules: { flanking: true } }) }
+    })
+    expect(evaluate('value:x', session)).toBe(true)
+  })
+
+  it('resolves a number trait and uses it in arithmetic', () => {
+    const session = buildSession([derivedValue('value:x', '1 + @world:roadType.quality * 0.1')], {
+      context: { world: worldSnapshot({ roadType: { quality: 4 } }) }
+    })
+    // §19.1's own worked example: `quality: 4` is the world-config fact,
+    // `1 + quality * 0.1` is the rules interpretation.
+    expect(evaluate('value:x', session)).toBeCloseTo(1.4)
+  })
+
+  it('resolves a text trait', () => {
+    const session = buildSession([derivedValue('value:x', '@world:calendar.currentSeason', 'text')], {
+      context: { world: worldSnapshot({ calendar: { currentSeason: 'winter' } }) }
+    })
+    expect(evaluate('value:x', session)).toBe('winter')
+  })
+
+  it('resolves a falsy trait as that value, not as an error', () => {
+    const session = buildSession([derivedValue('value:x', '@world:rules.flanking', 'boolean')], {
+      context: { world: worldSnapshot({ rules: { flanking: false } }) }
+    })
+    expect(evaluate('value:x', session)).toBe(false)
+  })
+
+  it('returns a RulesError when EvaluationContext.world is undefined (unconfigured world)', () => {
+    const session = buildSession([derivedValue('value:x', '@world:rules.flanking', 'boolean')])
+    const result = evaluate('value:x', session)
+    expect(result).toMatchObject({ definitionId: 'value:x' })
+    expect((result as { message: string }).message).toContain('no active World Configuration')
+  })
+
+  it('returns a RulesError when the trait is missing from a configured world', () => {
+    const session = buildSession([derivedValue('value:x', '@world:rules.grittyRest', 'boolean')], {
+      context: { world: worldSnapshot({ rules: { flanking: true } }) }
+    })
+    const result = evaluate('value:x', session)
+    expect(result).toMatchObject({ definitionId: 'value:x' })
+    expect((result as { message: string }).message).toContain('not present')
+  })
+
+  it('returns a RulesError when the whole kind is missing', () => {
+    const session = buildSession([derivedValue('value:x', '@world:calendar.currentSeason', 'text')], {
+      context: { world: worldSnapshot({ rules: { flanking: true } }) }
+    })
+    expect((evaluate('value:x', session) as { message: string }).message).toContain('not present')
+  })
+
+  it('never substitutes a zero, empty string, or false for a missing trait', () => {
+    const session = buildSession([derivedValue('value:x', '@world:rules.missing')], {
+      context: { world: worldSnapshot({ rules: {} }) }
+    })
+    const result = evaluate('value:x', session)
+    expect(result).not.toBe(0)
+    expect(result).not.toBe('')
+    expect(result).not.toBe(false)
+    expect(result).toMatchObject({ definitionId: 'value:x' })
+  })
+
+  it('returns a RulesError for a one-segment @world path (defensive: reference validation catches this first)', () => {
+    const session = buildSession([derivedValue('value:x', '@world:restVariant')], {
+      context: { world: worldSnapshot({ rules: { restVariant: 'gritty' } }) }
+    })
+    const result = evaluate('value:x', session)
+    expect((result as { message: string }).message).toContain('exactly two path segments')
+  })
+
+  it('returns a RulesError for a three-segment @world path', () => {
+    const session = buildSession([derivedValue('value:x', '@world:a.b.c')], {
+      context: { world: worldSnapshot({ a: { b: 1 } }) }
+    })
+    expect((evaluate('value:x', session) as { message: string }).message).toContain('exactly two path segments')
+  })
+
+  it('reports the unconfigured world before the path arity, per §F.6 check order', () => {
+    const session = buildSession([derivedValue('value:x', '@world:a.b.c')])
+    expect((evaluate('value:x', session) as { message: string }).message).toContain('no active World Configuration')
+  })
+
+  it('a @world error propagates through arithmetic rather than being absorbed', () => {
+    const session = buildSession([derivedValue('value:x', '1 + @world:rules.missing')], {
+      context: { world: worldSnapshot({ rules: {} }) }
+    })
+    expect(evaluate('value:x', session)).toMatchObject({ definitionId: 'value:x' })
+  })
+
+  it('the same snapshot is read for every reference in one session (frozen, §F.5)', () => {
+    const session = buildSession(
+      [
+        derivedValue('value:a', '@world:rules.bonus'),
+        derivedValue('value:b', '@world:rules.bonus'),
+        derivedValue('value:c', '@value:a + @value:b')
+      ],
+      { context: { world: worldSnapshot({ rules: { bonus: 3 } }) } }
+    )
+    expect(evaluate('value:c', session)).toBe(6)
   })
 })
 

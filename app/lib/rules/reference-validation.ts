@@ -72,12 +72,17 @@ import type { RuleExpressionNode } from './ast'
 import { extractDependencies } from './dependencies'
 import type { RulesRegistry } from './registry'
 import type { DefinitionId, RulesPackageManifest } from './types'
+import { parseWorldTraitPath } from './world-config'
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export type ReferenceDiagnosticKind = 'unknown-namespace' | 'unknown-definition' | 'unknown-semantic-role'
+export type ReferenceDiagnosticKind =
+  | 'unknown-namespace'
+  | 'unknown-definition'
+  | 'unknown-semantic-role'
+  | 'invalid-world-reference'
 
 export type ReferenceDiagnostic = {
   kind: ReferenceDiagnosticKind
@@ -164,9 +169,31 @@ export function validateReferences(ast: RuleExpressionNode, registry: RulesRegis
       continue
     }
 
+    // world-configuration.md §F.2/§F.7: `@world:` carries a grammar rule
+    // no other namespace does -- its path must be exactly two segments
+    // (`<kind>.<key>`), because §19's data model is `{kind, traits}` and a
+    // path of any other arity names no slot in it. This is ARITY ONLY.
+    // Whether `rules.flanking` is a declared optional rule, or
+    // `calendar.currentSeason` is declared in `manifest.requiredTraits`,
+    // is Package Validation's (world-configuration.md §15) -- both need
+    // the manifest, which this function does not take, and both are the
+    // next commit.
+    if (dependency.namespace === 'world' && !parseWorldTraitPath(dependency.path)) {
+      diagnostics.push({
+        kind: 'invalid-world-reference',
+        message: `'@world${dependency.path === undefined ? '' : `:${dependency.path}`}' must have exactly two path segments -- '@world:<kind>.<key>' (for example '@world:rules.flanking')`,
+        namespace: dependency.namespace,
+        path: dependency.path
+      })
+      continue
+    }
+
     if (!isRegistryCheckedNamespace(dependency.namespace)) {
       // sources / ctx / world / choice -- not registry-resolvable by
       // design or by current model gap; see design decision 2 above.
+      // A `world` reference that reached here passed the arity check
+      // above; its kind/key are still not registry-resolvable (World
+      // Configuration is a separate system, §19).
       continue
     }
 

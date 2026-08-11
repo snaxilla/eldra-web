@@ -74,29 +74,23 @@
 // 2. Reference namespaces: only 'value' and 'collection' recurse through
 //    `evaluate()` (the registry-backed namespaces, matching reference-
 //    validation.ts's and type-validation.ts's own established boundary).
-//    'sources', 'ctx', 'world', and 'choice' all produce a RulesError
-//    rather than a real lookup, even though ActorState.choices and
-//    EvaluationContext.world are both concretely populated fields that
-//    COULD be read. 'source' (singular) is the one exception, as of
-//    revision 3 Commit 6 -- see evaluateSourceReference and the file-header
-//    note above; it resolves against the `sourceBinding` a Modifier's own
-//    evaluation carries, never against `evaluate()` or the registry.
-//    Investigated and deliberately not wired up for the remaining four: (a)
-//    EvaluationContext (types.ts) has no open field @ctx:x's arbitrary
+//    'sources', 'ctx', and 'choice' produce a RulesError rather than a
+//    real lookup, even though ActorState.choices is a concretely populated
+//    field that COULD be read. Two namespaces are exceptions: 'source'
+//    (singular), as of revision 3 Commit 6 -- see evaluateSourceReference
+//    and the file-header note above -- and 'world', as of World
+//    Configuration Commit 1 (see decision 8 below).
+//    Investigated and deliberately not wired up for the remaining three:
+//    (a) EvaluationContext (types.ts) has no open field @ctx:x's arbitrary
 //    named lookups could resolve against -- its shape is closed
-//    (`purpose?/actors?/world?/tags?/seed?`); (b) WorldConfigSnapshotRef
-//    and ActorStateRef are both typed `Record<string, any>` specifically
-//    because types.ts's own comment says they are "opaque records pending
-//    that decision" -- and resolving `@world:roadType.speedFactor` would
-//    require deciding whether the path means nested-object drilling
-//    (`world.roadType.speedFactor`) or a flat key (mirroring how
-//    `value:might.mod` is one flat DefinitionId, not `.mod` drilling into
-//    `might`) -- a real, currently-undecided ambiguity, not a gap in this
-//    commit's effort; (c) ActorState.choices is keyed by DefinitionId, but
-//    ChoiceSet itself is unmodeled, so what a valid choice key even looks
-//    like is equally undecided. Guessing any of these would risk silently
-//    computing a wrong number a player would see -- worse than a clear,
-//    explained error.
+//    (`purpose?/actors?/world?/tags?/seed?`); (b) ActorStateRef is typed
+//    `Record<string, any>` specifically because types.ts's own comment
+//    says it is an "opaque record pending that decision"; (c)
+//    ActorState.choices is keyed by DefinitionId, but ChoiceSet itself is
+//    unmodeled, so what a valid choice key even looks like is equally
+//    undecided. Guessing any of these would risk silently computing a
+//    wrong number a player would see -- worse than a clear, explained
+//    error.
 //
 // 3. Collection expressions ARE evaluated (sum/count/any, fully;
 //    max_of/min_of, fully) by resolving the source's actual runtime items
@@ -161,6 +155,24 @@
 //    has something to re-run against and a final result to show) without
 //    attempting rich step-by-step rendering, per this task's own
 //    instruction.
+//
+// 8. WORLD CONFIGURATION -- COMMIT 1 (world-configuration.md §F):
+//    `@world:<kind>.<key>` now resolves against
+//    `EvaluationContext.world`, a WorldConfigSnapshot. This closes the
+//    ambiguity decision 2 previously recorded and refused to guess at --
+//    whether a `@world:` path meant nested-object drilling or a flat key.
+//    §F.2 answers "neither": it is a FIXED TWO-SEGMENT lookup,
+//    `traits[kind][key]`, because §19's data model is `{kind, traits}` and
+//    no other arity names a slot in it. The path grammar itself lives in
+//    world-config.ts (`parseWorldTraitPath`), shared with
+//    reference-validation.ts so validation and evaluation can never
+//    disagree about what parses. Unlike `@source:`, no binding is threaded
+//    through the recursive descent: the snapshot is session-wide and
+//    frozen (§F.5), so it is read straight off `session.context` at the
+//    one place it is needed. `@world` contributes NO dependency graph edge
+//    (§F.9) -- a trait is a session constant, not a Definition node --
+//    which is existing dependency-graph.ts behavior this commit leaves
+//    untouched.
 
 import type {
   CollectionExpressionNode,
@@ -182,6 +194,7 @@ import type {
   RuleValue,
   RulesError
 } from './types'
+import { lookupWorldTrait, parseWorldTraitPath } from './world-config'
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -615,17 +628,97 @@ function evaluateReference(
     return evaluateSourceReference(node, definitionId, sourceBinding)
   }
 
+  if (node.namespace === 'world') {
+    return evaluateWorldReference(node, session, definitionId)
+  }
+
   if (node.namespace === 'value' || node.namespace === 'collection') {
     const id = node.path === undefined ? node.namespace : `${node.namespace}:${node.path}`
     return evaluate(id, session)
   }
 
-  // sources / ctx / world / choice -- see design decision 2.
+  // sources / ctx / choice -- see design decision 2.
   const path = node.path ? `:${node.path}` : ''
   return evaluationError(
     definitionId,
     `Cannot evaluate '@${node.namespace}${path}' -- '${node.namespace}' references are not resolvable in the current runtime model`
   )
+}
+
+// world-configuration.md §F: `@world:<kind>.<key>` resolves against the
+// WorldConfigSnapshot on EvaluationContext -- a fixed two-level lookup,
+// `traits[kind][key]`. This replaces design decision 2's blanket "not
+// resolvable" answer for `world`, which existed because the path's
+// meaning (nested drilling vs. flat key) was, in this file's own words,
+// "a real, currently-undecided ambiguity." §F.2 decides it: neither --
+// exactly two segments, resolved at a fixed depth.
+//
+// This function READS an already-resolved snapshot and nothing else. It
+// never applies a declared default, never records a Binding Gap, and never
+// consults the manifest: §19.3's "changes produce binding gaps, not
+// runtime failures" is satisfied during RESOLUTION (world-configuration.md
+// commit 3), before any snapshot reaches a session. By the time a value is
+// read here, a trait is either present or genuinely absent -- and absent
+// is an error, never a type-appropriate zero. §16.9's `@source:` branch
+// above makes the identical call for the identical reason: a misspelled
+// field must fail visibly rather than silently resolve to something falsy
+// that quietly changes a number a player sees.
+//
+// Check order follows §F.6's three cases exactly: unconfigured world
+// first (a runtime state), then path arity (an authoring error Reference
+// Validation already reports ahead of time -- this is the defensive
+// fallback for AST that did not come through it), then presence.
+function evaluateWorldReference(
+  node: ReferenceExpressionNode,
+  session: EvaluationSession,
+  definitionId: DefinitionId
+): RuleValue {
+  const reference = `@world${node.path === undefined ? '' : `:${node.path}`}`
+  const snapshot = session.context.world
+
+  // world-configuration.md §3.3: an unconfigured world is a LEGAL state,
+  // not a broken one -- no package is active and the Rules Engine is not
+  // in its request path. It is only reaching a `@world:` reference at all
+  // that is the error, and this is exactly the behavior that shipped
+  // before this commit, preserved unchanged for unconfigured worlds.
+  if (snapshot === undefined) {
+    return evaluationError(
+      definitionId,
+      `Cannot evaluate '${reference}' -- this world has no active World Configuration`
+    )
+  }
+
+  const traitPath = parseWorldTraitPath(node.path)
+  if (!traitPath) {
+    return evaluationError(
+      definitionId,
+      `Cannot evaluate '${reference}' -- a @world reference must have exactly two path segments, '@world:<kind>.<key>'`
+    )
+  }
+
+  const value = lookupWorldTrait(snapshot, traitPath.kind, traitPath.key)
+  if (value === undefined) {
+    return evaluationError(
+      definitionId,
+      `'${reference}' is not present in this world's resolved World Configuration`
+    )
+  }
+
+  // §F.4 restricts traits to the scalar subset, and WorldConfigSnapshot's
+  // type says so -- but a snapshot will eventually arrive as deserialized
+  // JSON, where that claim is unenforceable. Returning a non-scalar would
+  // put a value outside the RuleValue domain into an evaluation. Refuse
+  // visibly instead; validating a world's supplied values against their
+  // declared types is World Config Validation's job (commit 3), and
+  // silently coercing here would mask exactly what it must report.
+  if (typeof value !== 'number' && typeof value !== 'string' && typeof value !== 'boolean') {
+    return evaluationError(
+      definitionId,
+      `'${reference}' resolved to a non-scalar World Configuration trait -- only number, text, and boolean traits are supported`
+    )
+  }
+
+  return value
 }
 
 // §16.9: `@source:` binds to the one Source instance through which the

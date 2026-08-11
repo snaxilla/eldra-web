@@ -250,21 +250,141 @@ export type Trace = {
 }
 
 // ---------------------------------------------------------------------------
+// World Configuration (§19; world-configuration.md §F and §6.1-6.2)
+// ---------------------------------------------------------------------------
+//
+// World Configuration answers "which game are we playing in this world?" --
+// it declares no mechanics, defines no Values, and computes nothing (§19.1,
+// ADR-006: rules read world config; world config never reads rules). These
+// are the types the ENGINE needs. Storage, loading, resolution, binding
+// gaps, and defaults all live outside this commit (world-configuration.md
+// §18, commits 3-5).
+
+// world-configuration.md §F.4: the scalar subset only -- no lists, no
+// `ref`, no `diceSpec` in V1. Lists are excluded for a concrete language
+// reason rather than caution: EEL has no membership function, which is
+// exactly why expression-language.md §8.1's revision-3 note had to retract
+// a `tags`-based filter example as never-satisfiable. Every member is
+// already a RuleValue, so a trait can be returned from the evaluator
+// without conversion.
+export type WorldTraitValue = number | string | boolean
+
+// world-configuration.md §F.2/§F.3: `@world:<kind>.<key>` is a fixed
+// TWO-segment lookup, resolved as `traits[kind][key]`. This is the
+// decision evaluator.ts previously (and correctly) refused to guess at --
+// it is neither arbitrary nested drilling NOR a flat opaque key, but a
+// fixed two-level lookup. §19's whole contract is `{kind, traits}`, so a
+// one-segment reference has no `kind` and therefore nowhere to resolve.
+//
+// `traits` is deliberately open (`Record<string, ...>`) rather than a
+// closed union of kinds: §19's kinds are setting vocabulary a world
+// declares (roadType, calendar, currency, ...), not an engine vocabulary.
+// One kind IS engine-reserved -- `rules`, holding optional-rule values
+// (world-configuration.md §E.4) -- but reserving it is Package
+// Validation's job (commit 2), not this type's.
+//
+// The snapshot is FROZEN for a session (§F.5): EvaluationSession holds one
+// EvaluationContext for its lifetime, so a trait cannot change mid-
+// evaluation and memoized values can never go stale within a session --
+// the same discipline `sourceOverlay` already follows.
+export type WorldConfigSnapshot = {
+  worldId: string
+  packageId: string
+  packageVersion: string
+  worldConfigVersion: number
+  traits: Record<string, Record<string, WorldTraitValue>>
+}
+
+// §19.2: what a Rules Package declares it NEEDS from a world's setting
+// vocabulary. `default` is REQUIRED, and that is the whole mechanism
+// behind §19.3 -- an unsupplied trait degrades to a named, user-resolvable
+// Binding Gap using this default, never a runtime failure. Declared here
+// as a manifest field (see RulesPackageManifest below); nothing in this
+// commit reads it (that is commit 2's package validation and commit 3's
+// resolution).
+export type RequiredTraitDeclaration = {
+  kind: string
+  trait: string
+  valueType: 'number' | 'text' | 'boolean'
+  default: WorldTraitValue
+}
+
+// world-configuration.md §E: optional rules (flanking, gritty rest,
+// encumbrance variants, ...) are package-DECLARED and world-SUPPLIED, read
+// through the engine-reserved `rules` kind: `@world:rules.<key>`. Typed --
+// boolean | number | enum -- never free-form JSON, which is what makes
+// both the declaration and the world's supplied value validatable.
+//
+// Discriminated on `valueType` so `default` cannot disagree with the
+// declared type and an `enum` cannot omit its `options` -- a type-level
+// guarantee, in the same spirit as ModifierSpec's phase/clamp union above.
+export type OptionalRuleDeclaration = {
+  key: string
+  label: string
+  description?: string
+} & (
+  | { valueType: 'boolean'; default: boolean }
+  | { valueType: 'number'; default: number; min?: number; max?: number }
+  | { valueType: 'enum'; default: string; options: string[] }
+)
+
+// world-configuration.md §J.4-§J.5: BROADCAST policy -- who sees a roll
+// when it happens. Deliberately NOT the same vocabulary as `Visibility`
+// (§24.3, `public | owner | gm`), which classifies DATA: `blind` (rolled
+// now, revealed later) has no meaning as a data classification, and
+// collapsing the two into one enum would lose that distinction. Inert in
+// V1 -- there are no users, sessions, or multiplayer to enforce it
+// against; carried so the RollSpec/roll-type contract does not have to
+// change shape when there are.
+export type RollVisibility = 'public' | 'gm' | 'self' | 'blind'
+
+// world-configuration.md §D.6-§D.7: where a roll type is offered. This is
+// how a future GM toolbar and the Character Sheet DISCOVER roll types
+// declaratively, without either one reading the package directly.
+export type RollTypeSurface = 'sheet' | 'gm-toolbar' | 'entity'
+
+// world-configuration.md §D: a package-declared default roll type ("Luck
+// Roll", "Initiative", "Morale Check"). Explicitly NOT a Semantic Role:
+// §12.4's role registry is closed and versioned with the engine, whereas
+// roll types are open and package-invented, so routing them through roles
+// would mean an engine version bump per roll type -- precisely the
+// coupling Semantic Roles exist to prevent.
+//
+// The engine never reads `id` or `label`; it executes `rollSpec` through
+// the existing Roll Service. That is what keeps "Luck Roll" out of the
+// engine entirely, per the Roll Service commit's standing constraint
+// ("Do not hardcode: Luck Roll, Initiative, Death Saves, Attack Rolls").
+export type RollTypeDeclaration = {
+  id: string
+  label: string
+  rollSpec: DefinitionId
+  surfaces: RollTypeSurface[]
+  visibility?: RollVisibility
+  order?: number
+}
+
+// ---------------------------------------------------------------------------
 // Evaluation (§15)
 // ---------------------------------------------------------------------------
 
-// §15.6: `actors`/`world` are reserved for cross-actor evaluation (opposed
-// checks, party travel) and are unused in V1, which only ever populates
-// "self". ActorStateRef/WorldConfigSnapshotRef are referenced by the
-// architecture but never given a shape -- declared as opaque records
-// pending that decision; see the commit Summary.
+// §15.6: `actors` is reserved for cross-actor evaluation (opposed checks,
+// party travel) and is unused in V1, which only ever populates "self".
+// ActorStateRef is referenced by the architecture but never given a shape
+// -- still declared as an opaque record pending that decision.
 export type ActorStateRef = Record<string, any>
-export type WorldConfigSnapshotRef = Record<string, any>
 
+// `world` is no longer opaque. It was `WorldConfigSnapshotRef`
+// (`Record<string, any>`) precisely because resolving `@world:` required a
+// decision nobody had made yet; world-configuration.md §F makes it, so the
+// placeholder type is removed rather than left as a second, meaningless
+// name for the same field. `undefined` means the world is UNCONFIGURED --
+// a legal, meaningful state (world-configuration.md §3.3), not an error:
+// every `@world:` reference then produces a RulesError, exactly as it did
+// before this commit.
 export type EvaluationContext = {
   purpose?: string
   actors?: Record<string, ActorStateRef>
-  world?: WorldConfigSnapshotRef
+  world?: WorldConfigSnapshot
   tags?: string[]
   seed?: string
 }
@@ -627,6 +747,20 @@ export type RulesPackageManifest = {
   // this commit: nothing yet validates a ModifierSpec.modifierType against
   // this table (package validation is a later commit).
   modifierTypes?: ModifierTypeDeclaration[]
+  // World Configuration (world-configuration.md §D, §E, §F). All three sit
+  // in the manifest for the same reason `semanticRoles`/`modifierTypes` do:
+  // package-wide declarations the engine or its consumers must understand,
+  // referenced by no Expression, needing no DefinitionId/registry entry.
+  //
+  // Type-only in THIS commit, deliberately: nothing yet checks that a
+  // `@world:rules.X` reference names a declared `optionalRules` key, that a
+  // `@world:<kind>.<key>` reference is declared in `requiredTraits`, or that
+  // a `rollTypes[].rollSpec` resolves to a `kind: 'roll'` Definition. All
+  // three are Package Validation's (commit 2), per world-configuration.md
+  // §15's ownership matrix -- this commit implements @world ARITY only.
+  requiredTraits?: RequiredTraitDeclaration[]
+  optionalRules?: OptionalRuleDeclaration[]
+  rollTypes?: RollTypeDeclaration[]
 }
 
 // ---------------------------------------------------------------------------

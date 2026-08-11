@@ -215,6 +215,20 @@ describe('namespaces that never become graph edges', () => {
     const graph = buildOk([valueDefinition('value:x', '@ctx:successes + toNumber(@sources) - toNumber(@choice:trained.climb) + @world:roadType.speedFactor')])
     expect(graph.getDependencies('value:x')).toEqual([])
   })
+
+  it('a @world reference still produces no edges now that it resolves (world-configuration.md §F.9)', () => {
+    // World Configuration Commit 1 gave @world real runtime semantics. It
+    // must NOT have gained a graph edge with them: a trait is a session
+    // constant, not a Definition node -- there is nothing to point an edge
+    // at and nothing to invalidate within a session.
+    const graph = buildOk([
+      valueDefinition('value:x', '@world:rules.flanking'),
+      valueDefinition('value:y', '@value:x + @world:roadType.quality')
+    ])
+    expect(graph.getDependencies('value:x')).toEqual([])
+    expect(graph.getDependencies('value:y')).toEqual(['value:x'])
+    expect(graph.getDependents('value:x')).toEqual(['value:y'])
+  })
 })
 
 describe('deterministic graph construction', () => {

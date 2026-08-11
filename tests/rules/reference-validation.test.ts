@@ -171,6 +171,88 @@ describe('namespaces the registry does not check', () => {
   })
 })
 
+describe('@world path arity (world-configuration.md §F.2)', () => {
+  it('accepts a two-segment @world reference', () => {
+    const registry = registryWith([])
+    expect(validateReferences(ast('@world:rules.flanking'), registry)).toEqual({ ok: true })
+  })
+
+  it('accepts a two-segment reference under a non-reserved kind', () => {
+    const registry = registryWith([])
+    expect(validateReferences(ast('@world:calendar.currentSeason'), registry)).toEqual({ ok: true })
+  })
+
+  it('rejects a one-segment @world reference', () => {
+    const registry = registryWith([])
+    const result = validateReferences(ast('@world:restVariant'), registry)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics).toEqual([
+        {
+          kind: 'invalid-world-reference',
+          message:
+            "'@world:restVariant' must have exactly two path segments -- '@world:<kind>.<key>' (for example '@world:rules.flanking')",
+          namespace: 'world',
+          path: 'restVariant'
+        }
+      ])
+    }
+  })
+
+  it('rejects a three-segment @world reference', () => {
+    const registry = registryWith([])
+    const result = validateReferences(ast('@world:a.b.c'), registry)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics.map((d) => d.kind)).toEqual(['invalid-world-reference'])
+      expect(result.diagnostics[0]?.path).toBe('a.b.c')
+    }
+  })
+
+  it('rejects a bare @world reference with no path', () => {
+    // The parser does not reject this today (only @source/@sources carry
+    // namespace-specific arity checks), so it is reachable through normal
+    // parsing, not just hand-built AST.
+    const registry = registryWith([])
+    const result = validateReferences(ast('@world'), registry)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics.map((d) => d.kind)).toEqual(['invalid-world-reference'])
+      expect(result.diagnostics[0]?.path).toBeUndefined()
+    }
+  })
+
+  it('reports arity per distinct reference, and does not affect other namespaces', () => {
+    const registry = registryWith([valueDefinition('value:a')])
+    const result = validateReferences(ast('@world:one + @world:a.b.c + @value:a + @ctx:x'), registry)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics.map((d) => d.path)).toEqual(['one', 'a.b.c'])
+    }
+  })
+
+  it('arity failure does not also report the reference as an unknown definition', () => {
+    // A `world` reference is never registry-resolvable, so an arity
+    // diagnostic must be the ONLY diagnostic it produces.
+    const registry = registryWith([])
+    const result = validateReferences(ast('@world:restVariant'), registry)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics).toHaveLength(1)
+    }
+  })
+
+  it('does not yet check whether the trait is declared -- that is Package Validation', () => {
+    // `rules.neverDeclared` names no declared optional rule and
+    // `roadType.neverDeclared` no declared requiredTrait, but neither
+    // check belongs to this phase (world-configuration.md §15): both need
+    // the manifest, which validateReferences does not take.
+    const registry = registryWith([])
+    expect(validateReferences(ast('@world:rules.neverDeclared'), registry)).toEqual({ ok: true })
+    expect(validateReferences(ast('@world:roadType.neverDeclared'), registry)).toEqual({ ok: true })
+  })
+})
+
 describe('unknown namespace (defensive, hand-built AST only)', () => {
   it('flags a reference node whose namespace is outside the closed six', () => {
     // The parser can never produce this (parser.ts rejects unknown

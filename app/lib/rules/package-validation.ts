@@ -94,12 +94,42 @@
 //    All four are genuine, pre-existing gaps in modules this task does not
 //    own -- flagged here and in the commit Summary, not silently patched
 //    by reaching into those files.
+//
+// ---------------------------------------------------------------------------
+// WORLD CONFIGURATION -- COMMIT 2 (world-configuration.md §15's ownership
+// matrix; §D/§E/§F for the sections themselves)
+// ---------------------------------------------------------------------------
+// Extends this module to validate the three new manifest sections World
+// Configuration Commit 1 added to the type contract only (requiredTraits,
+// optionalRules, rollTypes -- ./types.ts), plus the `@world:` reference
+// checks that need BOTH the manifest and a package's Expressions to decide,
+// which is exactly why world-configuration.md §15 assigns them here rather
+// than to reference-validation.ts (arity-only, already implemented in
+// Commit 1) or world-config.ts (pure lookup, no manifest, no I/O). This
+// commit validates package DECLARATIONS only -- no World Configuration
+// storage, resolution, Directus, or server route exists yet, and none of
+// that is touched or assumed by anything below.
+//
+// `checkWorldConfigReferences` walks every Expression in the package a
+// second time (collectExpressions again, exactly as the existing Reference
+// Validation loop above already does) rather than folding into that loop,
+// because it needs `manifest.requiredTraits`/`manifest.optionalRules` --
+// data `validateReferences(ast, registry)` deliberately does not take (its
+// own design decision 1: it validates against a RulesRegistry, and
+// requiredTraits/optionalRules are manifest-only declarations with no
+// registry entry, exactly like semanticRoles). A reference whose arity is
+// already wrong (`@world:oneSegment`, `@world:a.b.c`) was already reported
+// by reference-validation.ts's own arity check (Commit 1) and is skipped
+// here via `parseWorldTraitPath` returning `undefined` -- reporting it
+// again under a second code would be duplicate noise for the same mistake.
 
 import { DependencyGraph, collectExpressions } from './dependency-graph'
 import { detectCycles } from './cycle-detection'
+import { extractDependencies } from './dependencies'
 import { validateReferences, validateSemanticRoles } from './reference-validation'
 import { RulesRegistry } from './registry'
 import { validateExpressionType } from './type-validation'
+import { parseWorldTraitPath } from './world-config'
 import type { RuleExpressionNode } from './ast'
 import type {
   CollectionDefinition,
@@ -165,6 +195,11 @@ export function validatePackage(manifest: RulesPackageManifest, definitions: rea
     checkReservedItemFields(definition, issues)
   }
 
+  // --- World Configuration manifest sections (world-configuration.md §D/§E/§F) ---
+  checkRequiredTraits(manifest, issues)
+  checkOptionalRules(manifest, issues)
+  checkRollTypes(manifest, registry, issues)
+
   // --- Composed: Reference Validation (existence) across every Expression field ---
   for (const definition of registry.listAll()) {
     for (const expression of collectExpressions(definition)) {
@@ -176,6 +211,12 @@ export function validatePackage(manifest: RulesPackageManifest, definitions: rea
       }
     }
   }
+
+  // --- World Configuration: @world:rules.X / @world:<kind>.<key> declaredness
+  // (world-configuration.md §F.7, §15) -- a second Expression walk, deliberately;
+  // see the file-header note above for why this cannot be folded into the
+  // Reference Validation loop just above. ---
+  checkWorldConfigReferences(manifest, registry, issues)
 
   // --- Composed: Semantic Role bindings ---
   const roleResult = validateSemanticRoles(manifest, registry)
@@ -426,6 +467,253 @@ function checkReservedItemFields(collection: CollectionDefinition, issues: Packa
         message: `Collection '${collection.id}'s itemSchema declares reserved key '${field.key}' (engine-reserved: ${RESERVED_ITEM_FIELD_KEYS.join(', ')})`,
         definitionId: collection.id
       })
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// World Configuration -- manifest section checks (Commit 2)
+// ---------------------------------------------------------------------------
+
+// world-configuration.md §E.4: the one engine-reserved world-config `kind`.
+// Declared here, not in world-config.ts, per that file's own design decision
+// 4 ("reserving the kind... belongs to Package Validation, commit 2").
+const WORLD_CONFIG_RULES_KIND = 'rules'
+
+// world-configuration.md §15: "optionalRules key does not collide with a
+// real world-config kind." A single-member set today -- `rules` is the only
+// kind the engine itself reserves -- kept as a list rather than one bare
+// constant so a future second reserved kind is one array entry, not a
+// second parallel check.
+const RESERVED_WORLD_CONFIG_KINDS: readonly string[] = [WORLD_CONFIG_RULES_KIND]
+
+// world-configuration.md §F.4: the closed valueType vocabulary a
+// requiredTrait may declare, and the `typeof` its `default` must match.
+const REQUIRED_TRAIT_DEFAULT_TYPEOF: Record<string, string> = {
+  number: 'number',
+  text: 'string',
+  boolean: 'boolean'
+}
+
+// world-configuration.md §E.2: optionalRules are typed boolean | number |
+// enum; an `enum`'s runtime value (and its `default`) is a plain string.
+const OPTIONAL_RULE_DEFAULT_TYPEOF: Record<string, string> = {
+  boolean: 'boolean',
+  number: 'number',
+  enum: 'string'
+}
+
+const KNOWN_ROLL_TYPE_SURFACES: readonly string[] = ['sheet', 'gm-toolbar', 'entity']
+const KNOWN_ROLL_VISIBILITIES: readonly string[] = ['public', 'gm', 'self', 'blind']
+
+// world-configuration.md §19.2/§6.1, §15: "unique (kind, trait); valid
+// valueType; default present; default matches declared valueType." Runtime-
+// value checks throughout (not leaning on RequiredTraitDeclaration's own TS
+// shape), for the identical reason checkPhaseAndClamp above re-checks
+// `modifier.phase` defensively: this function's job is to catch the package
+// that violates what the type claims, for data that will eventually arrive
+// as deserialized JSON.
+function checkRequiredTraits(manifest: RulesPackageManifest, issues: PackageValidationIssue[]): void {
+  const seen = new Set<string>()
+
+  for (const declaration of manifest.requiredTraits ?? []) {
+    const key = `${declaration.kind} ${declaration.trait}`
+    if (seen.has(key)) {
+      issues.push({
+        severity: 'error',
+        code: 'duplicate-required-trait',
+        message: `manifest.requiredTraits declares (kind:'${declaration.kind}', trait:'${declaration.trait}') more than once`
+      })
+    }
+    seen.add(key)
+
+    const valueType = declaration.valueType as string
+    const expectedTypeof = REQUIRED_TRAIT_DEFAULT_TYPEOF[valueType]
+    if (expectedTypeof === undefined) {
+      issues.push({
+        severity: 'error',
+        code: 'invalid-required-trait-value-type',
+        message: `requiredTrait '${declaration.kind}.${declaration.trait}' declares unsupported valueType '${valueType}'`
+      })
+    }
+
+    const defaultValue = (declaration as { default: unknown }).default
+    if (defaultValue === undefined) {
+      issues.push({
+        severity: 'error',
+        code: 'missing-required-trait-default',
+        message: `requiredTrait '${declaration.kind}.${declaration.trait}' has no default`
+      })
+    } else if (expectedTypeof !== undefined && typeof defaultValue !== expectedTypeof) {
+      issues.push({
+        severity: 'error',
+        code: 'required-trait-default-type-mismatch',
+        message: `requiredTrait '${declaration.kind}.${declaration.trait}' declares valueType '${valueType}' but its default is '${typeof defaultValue}'`
+      })
+    }
+  }
+}
+
+// world-configuration.md §E.1-§E.2, §15: "unique key; default matches
+// declared valueType; enum declarations provide options; enum default
+// exists in options; key does not collide with reserved world kinds."
+function checkOptionalRules(manifest: RulesPackageManifest, issues: PackageValidationIssue[]): void {
+  const seen = new Set<string>()
+
+  for (const rule of manifest.optionalRules ?? []) {
+    if (seen.has(rule.key)) {
+      issues.push({
+        severity: 'error',
+        code: 'duplicate-optional-rule',
+        message: `manifest.optionalRules declares key '${rule.key}' more than once`
+      })
+    }
+    seen.add(rule.key)
+
+    if (RESERVED_WORLD_CONFIG_KINDS.includes(rule.key)) {
+      issues.push({
+        severity: 'error',
+        code: 'optional-rule-reserved-key-collision',
+        message: `manifest.optionalRules key '${rule.key}' collides with the engine-reserved world-config kind '${rule.key}'`
+      })
+    }
+
+    const valueType = rule.valueType as string
+    const defaultValue = (rule as { default: unknown }).default
+    const expectedTypeof = OPTIONAL_RULE_DEFAULT_TYPEOF[valueType]
+    if (expectedTypeof !== undefined && typeof defaultValue !== expectedTypeof) {
+      issues.push({
+        severity: 'error',
+        code: 'optional-rule-default-type-mismatch',
+        message: `optionalRule '${rule.key}' declares valueType '${valueType}' but its default is '${typeof defaultValue}'`
+      })
+    }
+
+    if (valueType === 'enum') {
+      const options = (rule as { options?: unknown }).options
+      if (!Array.isArray(options) || options.length === 0) {
+        issues.push({
+          severity: 'error',
+          code: 'optional-rule-enum-missing-options',
+          message: `optionalRule '${rule.key}' is valueType:'enum' but declares no options`
+        })
+      } else if (!options.includes(defaultValue)) {
+        issues.push({
+          severity: 'error',
+          code: 'optional-rule-enum-default-not-in-options',
+          message: `optionalRule '${rule.key}' default '${String(defaultValue)}' is not among its declared options`
+        })
+      }
+    }
+  }
+}
+
+// world-configuration.md §D.3, §D.5-§D.6, §15: "unique id; rollSpec
+// resolves; rollSpec resolves specifically to kind:'roll'; surfaces contain
+// only supported values; duplicate surface entries rejected; visibility
+// values valid." `rollSpec` is a plain DefinitionId field, never routed
+// through an Expression AST, so this existence/kind check belongs here --
+// reference-validation.ts's Expression-only `validateReferences` never sees
+// it (the same reasoning the file header already gives for
+// `suppresses.sources`/`ActionEffect.target`).
+function checkRollTypes(manifest: RulesPackageManifest, registry: RulesRegistry, issues: PackageValidationIssue[]): void {
+  const seenIds = new Set<string>()
+
+  for (const rollType of manifest.rollTypes ?? []) {
+    if (seenIds.has(rollType.id)) {
+      issues.push({
+        severity: 'error',
+        code: 'duplicate-roll-type-id',
+        message: `manifest.rollTypes declares id '${rollType.id}' more than once`
+      })
+    }
+    seenIds.add(rollType.id)
+
+    const target = registry.getById(rollType.rollSpec)
+    if (!target) {
+      issues.push({
+        severity: 'error',
+        code: 'unknown-roll-spec',
+        message: `Roll type '${rollType.id}' declares rollSpec '${rollType.rollSpec}', which does not resolve to any Definition`,
+        definitionId: rollType.rollSpec
+      })
+    } else if (target.kind !== 'roll') {
+      issues.push({
+        severity: 'error',
+        code: 'roll-type-target-not-roll',
+        message: `Roll type '${rollType.id}' declares rollSpec '${rollType.rollSpec}', which resolves to a '${target.kind}' Definition, not kind:'roll'`,
+        definitionId: rollType.rollSpec
+      })
+    }
+
+    const seenSurfaces = new Set<string>()
+    for (const surface of (rollType.surfaces ?? []) as string[]) {
+      if (!KNOWN_ROLL_TYPE_SURFACES.includes(surface)) {
+        issues.push({
+          severity: 'error',
+          code: 'invalid-roll-type-surface',
+          message: `Roll type '${rollType.id}' declares unsupported surface '${surface}' (supported: ${KNOWN_ROLL_TYPE_SURFACES.join(', ')})`
+        })
+      } else if (seenSurfaces.has(surface)) {
+        issues.push({
+          severity: 'error',
+          code: 'duplicate-roll-type-surface',
+          message: `Roll type '${rollType.id}' declares surface '${surface}' more than once`
+        })
+      }
+      seenSurfaces.add(surface)
+    }
+
+    if (rollType.visibility !== undefined && !KNOWN_ROLL_VISIBILITIES.includes(rollType.visibility as string)) {
+      issues.push({
+        severity: 'error',
+        code: 'invalid-roll-type-visibility',
+        message: `Roll type '${rollType.id}' declares unsupported visibility '${rollType.visibility}' (supported: ${KNOWN_ROLL_VISIBILITIES.join(', ')})`
+      })
+    }
+  }
+}
+
+// world-configuration.md §F.7, §15: "@world:rules.X" must name a declared
+// optionalRules key; "@world:<kind>.<key>" (any other kind) must name a
+// declared requiredTraits (kind, trait) pair. Both are checked from the
+// SAME walk since the branch is decided per-reference by whether its parsed
+// `kind` equals the one engine-reserved kind. A reference whose arity is
+// already invalid (`parseWorldTraitPath` returns `undefined`) is skipped --
+// reference-validation.ts's own arity check (Commit 1) already reports it.
+function checkWorldConfigReferences(manifest: RulesPackageManifest, registry: RulesRegistry, issues: PackageValidationIssue[]): void {
+  const optionalRuleKeys = new Set((manifest.optionalRules ?? []).map((rule) => rule.key))
+  const requiredTraitKeys = new Set((manifest.requiredTraits ?? []).map((declaration) => `${declaration.kind} ${declaration.trait}`))
+
+  for (const definition of registry.listAll()) {
+    for (const expression of collectExpressions(definition)) {
+      for (const dependency of extractDependencies(expression.ast as RuleExpressionNode)) {
+        if (dependency.namespace !== 'world') continue
+
+        const traitPath = parseWorldTraitPath(dependency.path)
+        if (!traitPath) continue
+
+        if (traitPath.kind === WORLD_CONFIG_RULES_KIND) {
+          if (!optionalRuleKeys.has(traitPath.key)) {
+            issues.push({
+              severity: 'error',
+              code: 'undeclared-optional-rule-reference',
+              message: `'@world:rules.${traitPath.key}' on '${definition.id}' does not name a key declared in manifest.optionalRules`,
+              definitionId: definition.id
+            })
+          }
+          continue
+        }
+
+        if (!requiredTraitKeys.has(`${traitPath.kind} ${traitPath.key}`)) {
+          issues.push({
+            severity: 'error',
+            code: 'undeclared-required-trait-reference',
+            message: `'@world:${traitPath.kind}.${traitPath.key}' on '${definition.id}' does not name a (kind, trait) pair declared in manifest.requiredTraits`,
+            definitionId: definition.id
+          })
+        }
+      }
     }
   }
 }

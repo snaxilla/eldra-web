@@ -14,6 +14,7 @@ import type {
   ModifierDefinition,
   ModifierReference,
   ModifierSpec,
+  RequiredTraitDeclaration,
   RollSpec,
   RulesPackageManifest,
   SourceDefinition,
@@ -334,5 +335,232 @@ describe('validatePackage -- roll specs and other definition kinds are unaffecte
       rollSpec('roll:attack')
     ])
     expect(result.ok).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// World Configuration -- Commit 2 (world-configuration.md §D/§E/§F, §15)
+// ---------------------------------------------------------------------------
+
+describe('validatePackage -- requiredTraits', () => {
+  it('rejects a manifest declaring the same (kind, trait) pair twice', () => {
+    const result = validatePackage(
+      manifest({
+        requiredTraits: [
+          { kind: 'roadType', trait: 'quality', valueType: 'number', default: 1 },
+          { kind: 'roadType', trait: 'quality', valueType: 'number', default: 2 }
+        ]
+      }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'duplicate-required-trait' }))
+  })
+
+  it('rejects a default whose runtime type does not match the declared valueType', () => {
+    const badTrait = { kind: 'roadType', trait: 'quality', valueType: 'number', default: 'not-a-number' } as unknown as RequiredTraitDeclaration
+    const result = validatePackage(manifest({ requiredTraits: [badTrait] }), [valueDefinition('value:guard')])
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'required-trait-default-type-mismatch' }))
+  })
+
+  it('accepts a well-formed requiredTrait declaration', () => {
+    const result = validatePackage(
+      manifest({ requiredTraits: [{ kind: 'roadType', trait: 'quality', valueType: 'number', default: 1 }] }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(true)
+    expect(issueCodes(result)).not.toContain('duplicate-required-trait')
+    expect(issueCodes(result)).not.toContain('required-trait-default-type-mismatch')
+    expect(issueCodes(result)).not.toContain('missing-required-trait-default')
+  })
+})
+
+describe('validatePackage -- optionalRules', () => {
+  it('rejects a manifest declaring the same key twice', () => {
+    const result = validatePackage(
+      manifest({
+        optionalRules: [
+          { key: 'flanking', label: 'Flanking', valueType: 'boolean', default: false },
+          { key: 'flanking', label: 'Flanking Again', valueType: 'boolean', default: true }
+        ]
+      }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'duplicate-optional-rule' }))
+  })
+
+  it('rejects an enum optional rule declared with no options', () => {
+    const result = validatePackage(
+      manifest({
+        optionalRules: [{ key: 'restVariant', label: 'Rest Variant', valueType: 'enum', default: 'standard', options: [] }]
+      }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'optional-rule-enum-missing-options' }))
+  })
+
+  it('rejects an enum optional rule whose default is not among its options', () => {
+    const result = validatePackage(
+      manifest({
+        optionalRules: [{ key: 'restVariant', label: 'Rest Variant', valueType: 'enum', default: 'gritty', options: ['standard', 'heroic'] }]
+      }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'optional-rule-enum-default-not-in-options' }))
+  })
+
+  it('rejects a default whose runtime type does not match the declared valueType', () => {
+    const result = validatePackage(
+      manifest({
+        optionalRules: [{ key: 'flanking', label: 'Flanking', valueType: 'boolean', default: 'yes' as unknown as boolean }]
+      }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'optional-rule-default-type-mismatch' }))
+  })
+
+  it('rejects an optional rule key that collides with the reserved world-config kind "rules"', () => {
+    const result = validatePackage(
+      manifest({ optionalRules: [{ key: 'rules', label: 'Rules', valueType: 'boolean', default: false }] }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'optional-rule-reserved-key-collision' }))
+  })
+
+  it('accepts a well-formed optionalRule declaration', () => {
+    const result = validatePackage(
+      manifest({ optionalRules: [{ key: 'flanking', label: 'Flanking', valueType: 'boolean', default: false }] }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(true)
+    expect(issueCodes(result).some((code) => code.startsWith('optional-rule'))).toBe(false)
+  })
+})
+
+describe('validatePackage -- rollTypes', () => {
+  it('rejects a manifest declaring the same roll type id twice', () => {
+    const result = validatePackage(
+      manifest({
+        rollTypes: [
+          { id: 'luck', label: 'Luck Roll', rollSpec: 'roll:luck', surfaces: ['sheet'] },
+          { id: 'luck', label: 'Luck Roll Again', rollSpec: 'roll:luck', surfaces: ['sheet'] }
+        ]
+      }),
+      [rollSpec('roll:luck')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'duplicate-roll-type-id' }))
+  })
+
+  it('rejects a surface not in the supported set', () => {
+    const result = validatePackage(
+      manifest({ rollTypes: [{ id: 'luck', label: 'Luck Roll', rollSpec: 'roll:luck', surfaces: ['gm-only' as unknown as 'sheet'] }] }),
+      [rollSpec('roll:luck')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'invalid-roll-type-surface' }))
+  })
+
+  it('rejects the same surface declared twice on one roll type', () => {
+    const result = validatePackage(
+      manifest({ rollTypes: [{ id: 'luck', label: 'Luck Roll', rollSpec: 'roll:luck', surfaces: ['sheet', 'sheet'] }] }),
+      [rollSpec('roll:luck')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'duplicate-roll-type-surface' }))
+  })
+
+  it('rejects a rollSpec that does not resolve to any Definition', () => {
+    const result = validatePackage(
+      manifest({ rollTypes: [{ id: 'luck', label: 'Luck Roll', rollSpec: 'roll:doesNotExist', surfaces: ['sheet'] }] }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'unknown-roll-spec' }))
+  })
+
+  it('rejects a rollSpec that resolves to a Definition that is not kind:roll', () => {
+    const result = validatePackage(
+      manifest({ rollTypes: [{ id: 'luck', label: 'Luck Roll', rollSpec: 'value:guard', surfaces: ['sheet'] }] }),
+      [valueDefinition('value:guard')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'roll-type-target-not-roll' }))
+  })
+
+  it('rejects an unsupported visibility value', () => {
+    const result = validatePackage(
+      manifest({
+        rollTypes: [{ id: 'luck', label: 'Luck Roll', rollSpec: 'roll:luck', surfaces: ['sheet'], visibility: 'hidden' as unknown as 'public' }]
+      }),
+      [rollSpec('roll:luck')]
+    )
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(expect.objectContaining({ severity: 'error', code: 'invalid-roll-type-visibility' }))
+  })
+
+  it('accepts a well-formed roll type declaration', () => {
+    const result = validatePackage(
+      manifest({ rollTypes: [{ id: 'luck', label: 'Luck Roll', rollSpec: 'roll:luck', surfaces: ['sheet', 'gm-toolbar'], visibility: 'public' }] }),
+      [rollSpec('roll:luck')]
+    )
+    expect(result.ok).toBe(true)
+  })
+})
+
+describe('validatePackage -- @world reference declaredness', () => {
+  it('accepts @world:rules.X when X is a declared optionalRules key', () => {
+    const result = validatePackage(
+      manifest({ optionalRules: [{ key: 'flanking', label: 'Flanking', valueType: 'boolean', default: false }] }),
+      [valueDefinition('value:x', { storage: 'derived', formula: expression('@world:rules.flanking') })]
+    )
+    expect(result.ok).toBe(true)
+    expect(issueCodes(result)).not.toContain('undeclared-optional-rule-reference')
+  })
+
+  it('rejects @world:rules.X when X is not a declared optionalRules key', () => {
+    const result = validatePackage(manifest(), [
+      valueDefinition('value:x', { storage: 'derived', formula: expression('@world:rules.flanking') })
+    ])
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ severity: 'error', code: 'undeclared-optional-rule-reference', definitionId: 'value:x' })
+    )
+  })
+
+  it('accepts @world:<kind>.<key> when the pair is a declared requiredTraits entry', () => {
+    const result = validatePackage(
+      manifest({ requiredTraits: [{ kind: 'roadType', trait: 'quality', valueType: 'number', default: 1 }] }),
+      [valueDefinition('value:x', { storage: 'derived', formula: expression('@world:roadType.quality') })]
+    )
+    expect(result.ok).toBe(true)
+    expect(issueCodes(result)).not.toContain('undeclared-required-trait-reference')
+  })
+
+  it('rejects @world:<kind>.<key> when the pair is not a declared requiredTraits entry', () => {
+    const result = validatePackage(manifest(), [
+      valueDefinition('value:x', { storage: 'derived', formula: expression('@world:roadType.quality') })
+    ])
+    expect(result.ok).toBe(false)
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ severity: 'error', code: 'undeclared-required-trait-reference', definitionId: 'value:x' })
+    )
+  })
+})
+
+describe('validatePackage -- World Configuration regression (no sections declared)', () => {
+  it('adds no World Configuration diagnostics for a manifest with no requiredTraits/optionalRules/rollTypes', () => {
+    const result = validatePackage(manifest(), [
+      valueDefinition('value:guard', { default: 10 }),
+      source('source:blessed', [modifier('value:guard', 'add', 2)])
+    ])
+    expect(result.ok).toBe(true)
+    expect(result.issues).toEqual([])
   })
 })

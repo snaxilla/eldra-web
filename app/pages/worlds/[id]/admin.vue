@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePageMeta({
-  layout: 'world-workspace'
+  layout: 'world-workspace',
+  middleware: 'admin'
 })
 
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'

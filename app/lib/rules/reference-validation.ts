@@ -50,8 +50,23 @@
 //      - 'source' (§16.9) refers to runtime Source-instance data, never a
 //        Definition -- rules-engine.md §16.9 is explicit that dependency
 //        extraction must emit no graph edge for it, exactly like 'sources'/
-//        'ctx'/'world'/'choice'. Not yet reachable in practice: parser.ts
-//        does not produce it (see KNOWN_NAMESPACES below).
+//        'ctx'/'world'/'choice'. `@source:equipped` is lexical: it only
+//        means something inside a ModifierSpec's `value`/`condition` when
+//        the Modifier Pipeline has already bound one specific Source
+//        instance (evaluator.ts's evaluateSourceReference reads that
+//        binding, not the registry). Which fields exist on that instance
+//        is not statically knowable at this layer -- item fields come from
+//        whichever CollectionDefinition.itemSchema activated it, chosen at
+//        runtime, per §16.9's own framing of `@source:<itemField>` as
+//        "declared by the item schema... only for collection-item
+//        instances." A missing field stays a runtime RulesError
+//        (evaluator.ts), exactly like `@value:`/`@collection:`'s own
+//        runtime fallback for an absent stored value. This module's job
+//        stops at "is 'source' a namespace this grammar recognizes" --
+//        recognized as of the @source cleanup commit, having been the
+//        seventh member of ast.ts's ReferenceNamespace, and parseable,
+//        since revision 3's grammar commit (parser.ts's
+//        REFERENCE_NAMESPACES).
 //    isRegistryCheckedNamespace() below is the single place this scoping
 //    decision lives.
 //
@@ -98,9 +113,10 @@ export type ValidationResult =
   | { ok: false; diagnostics: ReferenceDiagnostic[] }
 
 // expression-language.md §8.1 / ast.ts's own ReferenceNamespace comment
-// described six reference namespaces as "a complete, closed enumeration"
-// through revision 2. The parser already rejects anything else as a syntax
-// error at parse time (parser.ts's REFERENCE_NAMESPACES), so this list is
+// describes seven reference namespaces (six through revision 2, plus
+// 'source' as of revision 3's §8.2/§16.9/ADR-020) as "a complete, closed
+// enumeration." The parser already rejects anything else as a syntax error
+// at parse time (parser.ts's REFERENCE_NAMESPACES), so this list is
 // re-declared locally (not imported from parser.ts, which does not export
 // it, and which this task does not touch) purely as a defensive runtime
 // check for AST that did not come through the parser -- rules-engine.md
@@ -109,14 +125,18 @@ export type ValidationResult =
 // ReferenceExpressionNode from carrying a namespace value outside this set
 // despite the TypeScript type claiming otherwise.
 //
-// Six, not seven: `ast.ts`'s `ReferenceNamespace` type gained `'source'` as
-// a seventh member in revision 3's type-contract delta (§16.9, ADR-020),
-// but this list intentionally still reflects only what the parser can
-// currently produce (parser.ts's REFERENCE_NAMESPACES is unchanged this
-// commit) -- a hand-built AST node with `namespace: 'source'` is therefore
-// still reported as 'unknown-namespace' here, not silently accepted, until
-// the parser/grammar commit and this list are updated together.
-const KNOWN_NAMESPACES: readonly string[] = ['value', 'collection', 'sources', 'choice', 'world', 'ctx']
+// `'source'` was the type-contract commit's seventh member from the start,
+// but was deliberately left off this list until the parser could actually
+// produce it (revision 3 Commit 3 added that grammar support -- see
+// parser.ts's REFERENCE_NAMESPACES and its own "Do not implement parser
+// behavior yet" note on the type-contract commit). That left a gap: once
+// the parser started accepting `@source:x`, this list still reported it as
+// 'unknown-namespace', so a syntactically valid revision-3 package
+// expression failed reference validation before ever reaching the runtime
+// resolution evaluator.ts already implements (evaluateSourceReference).
+// Recognizing it here closes that gap -- this list and parser.ts's now
+// agree on the full seven-namespace grammar.
+const KNOWN_NAMESPACES: readonly string[] = ['value', 'collection', 'sources', 'choice', 'world', 'ctx', 'source']
 
 function isKnownNamespace(namespace: string): boolean {
   return KNOWN_NAMESPACES.includes(namespace)
@@ -189,11 +209,14 @@ export function validateReferences(ast: RuleExpressionNode, registry: RulesRegis
     }
 
     if (!isRegistryCheckedNamespace(dependency.namespace)) {
-      // sources / ctx / world / choice -- not registry-resolvable by
-      // design or by current model gap; see design decision 2 above.
-      // A `world` reference that reached here passed the arity check
-      // above; its kind/key are still not registry-resolvable (World
-      // Configuration is a separate system, §19).
+      // sources / ctx / world / choice / source -- not registry-resolvable
+      // by design or by current model gap; see design decision 2 above. A
+      // `world` reference that reached here passed the arity check above;
+      // its kind/key are still not registry-resolvable (World
+      // Configuration is a separate system, §19). A `source` reference
+      // names a field on a runtime Source *instance*, never a package
+      // Definition -- there is no existence check this module could
+      // perform even in principle (design decision 2).
       continue
     }
 

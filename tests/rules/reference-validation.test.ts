@@ -169,6 +169,73 @@ describe('namespaces the registry does not check', () => {
     const registry = registryWith([])
     expect(validateReferences(ast('@choice:background'), registry)).toEqual({ ok: true })
   })
+
+  it('@source references are never flagged as unknown definitions', () => {
+    // @source-cleanup commit: 'source' names a field on a runtime Source
+    // *instance*, never a package Definition -- there is no registry
+    // existence check that could apply to it, exactly like the four
+    // namespaces above.
+    const registry = registryWith([])
+    expect(validateReferences(ast('@source:equipped'), registry)).toEqual({ ok: true })
+  })
+})
+
+describe('@source namespace recognition (@source-cleanup commit)', () => {
+  // Before this commit, reference-validation.ts's KNOWN_NAMESPACES lagged
+  // behind parser.ts's REFERENCE_NAMESPACES: 'source' had been parseable
+  // since revision 3 Commit 3, and the evaluator has resolved it against a
+  // bound Source instance since revision 3 Commit 6, but this module still
+  // reported every @source: reference as 'unknown-namespace' -- so a
+  // syntactically and semantically valid revision-3 package expression
+  // failed reference validation before it ever reached the runtime.
+
+  it('@source:equipped parses and passes reference validation', () => {
+    const registry = registryWith([])
+    expect(validateReferences(ast('@source:equipped'), registry)).toEqual({ ok: true })
+  })
+
+  it('@source:duration.remaining parses and passes reference validation', () => {
+    const registry = registryWith([])
+    expect(validateReferences(ast('@source:duration.remaining'), registry)).toEqual({ ok: true })
+  })
+
+  it('@source:attuned and @source:quantity pass reference validation', () => {
+    const registry = registryWith([])
+    expect(validateReferences(ast('@source:attuned'), registry)).toEqual({ ok: true })
+    expect(validateReferences(ast('@source:quantity'), registry)).toEqual({ ok: true })
+  })
+
+  it('a modifier condition using @source:equipped -- §16.13 example 1, verbatim -- passes validation', () => {
+    const registry = registryWith([valueDefinition('value:defense')])
+    expect(validateReferences(ast('if(@source:equipped, 2, 0)'), registry)).toEqual({ ok: true })
+  })
+
+  it('@source produces no unknown-namespace diagnostic', () => {
+    const registry = registryWith([])
+    const result = validateReferences(ast('@source:equipped'), registry)
+    expect(result.ok).toBe(true)
+  })
+
+  it('@source produces no unknown-definition diagnostic, even mixed with a genuinely missing Value', () => {
+    const registry = registryWith([])
+    const result = validateReferences(ast('@source:equipped + @value:missing'), registry)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.diagnostics).toHaveLength(1)
+      expect(result.diagnostics[0]!.kind).toBe('unknown-definition')
+      expect(result.diagnostics[0]!.definitionId).toBe('value:missing')
+    }
+  })
+
+  it('does not try to prove @source:equipped exists on every possible Source instance', () => {
+    // Reference validation has no registry-level concept of "Source
+    // instance fields" to check against -- itemSchema is chosen at
+    // runtime, per-collection. Any @source:<path> passes here; a missing
+    // field remains a runtime RulesError (evaluator.ts), not a validation
+    // diagnostic.
+    const registry = registryWith([])
+    expect(validateReferences(ast('@source:thisFieldIsMadeUp'), registry)).toEqual({ ok: true })
+  })
 })
 
 describe('@world path arity (world-configuration.md §F.2)', () => {
@@ -254,7 +321,7 @@ describe('@world path arity (world-configuration.md §F.2)', () => {
 })
 
 describe('unknown namespace (defensive, hand-built AST only)', () => {
-  it('flags a reference node whose namespace is outside the closed six', () => {
+  it('flags a reference node whose namespace is outside the closed seven', () => {
     // The parser can never produce this (parser.ts rejects unknown
     // namespaces at parse time); this exercises the defensive runtime
     // check for AST built by something other than the parser.

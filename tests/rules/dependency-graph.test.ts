@@ -229,6 +229,18 @@ describe('namespaces that never become graph edges', () => {
     expect(graph.getDependencies('value:y')).toEqual(['value:x'])
     expect(graph.getDependents('value:x')).toEqual(['value:y'])
   })
+
+  it('@source remains graph-neutral now that reference validation recognizes it (@source-cleanup commit)', () => {
+    // The @source-cleanup commit only taught reference-validation.ts to
+    // recognize 'source' as a known namespace -- dependency-graph.ts
+    // already excluded it from edge production (§16.9: "contributes no
+    // dependency edge") independently, since graph construction has never
+    // consulted reference-validation.ts's namespace list. This confirms
+    // that independence held: no dependency-graph.ts change accompanies
+    // the reference-validation.ts fix, and none was needed.
+    const graph = buildOk([valueDefinition('value:x', 'if(@source:equipped, 2, 0)')])
+    expect(graph.getDependencies('value:x')).toEqual([])
+  })
 })
 
 describe('deterministic graph construction', () => {

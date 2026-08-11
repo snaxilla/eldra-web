@@ -364,6 +364,97 @@ export type RollTypeDeclaration = {
 }
 
 // ---------------------------------------------------------------------------
+// World Configuration -- resolution (world-configuration.md §6.3; World
+// Configuration Commit 3). Everything above this point in the World
+// Configuration section is what a PACKAGE declares or what an
+// already-resolved snapshot looks like; everything below is what a WORLD
+// has actually stored, and the composed result `resolveWorldConfig`
+// (world-config.ts) produces from the two. Still type-only in the sense
+// that matters most: no Directus, no persistence, no I/O -- these are the
+// in-memory shapes `resolveWorldConfig` reads and returns.
+// ---------------------------------------------------------------------------
+
+// world-configuration.md §D.5: the closed set of fields a World may
+// override on a package-declared roll type -- surface it or not, change its
+// presentation order, rebind it to a different package-declared `RollSpec`,
+// or override its default broadcast policy. Explicitly NOT here: `label`
+// (a World cannot relabel a roll type) or `surfaces` (a World cannot change
+// WHERE a roll type is offered) -- both stay package-owned. All four fields
+// are optional, not just `order`/`rollSpec`/`visibility`: a World overriding
+// only one aspect of a roll type (e.g. just reordering it) should not also
+// have to restate `enabled`.
+export type WorldRollTypeOverride = {
+  enabled?: boolean
+  order?: number
+  rollSpec?: DefinitionId
+  visibility?: RollVisibility
+}
+
+// world-configuration.md §6.3/§5.2: what a World has actually stored for
+// its active package -- the persisted counterpart `resolveWorldConfig`
+// composes against a `RulesPackageManifest`. Deliberately NARROWER than
+// §6.3's full sketch: `overrides` (the closed WorldOverride set,
+// §21.5/ADR-012) and `bindings` (previously-resolved Binding Gap answers
+// from Game Admin) are both omitted because nothing in Commit 3 reads or
+// applies them -- WorldOverride application and Binding-resolution
+// persistence are later, Game-Admin-adjacent commits, and declaring
+// `WorldOverride`'s own four-variant union now for a field with no reader
+// would repeat the "type declared, no reader yet" situation Commit 1
+// deliberately left for Commit 2 to resolve, one commit early.
+export type StoredWorldRulesConfig = {
+  worldId: string
+  activePackageId: string
+  activePackageVersion: string
+  worldConfigVersion: number
+  settings: Record<string, Record<string, WorldTraitValue>>
+  rollTypes: Record<string, WorldRollTypeOverride>
+}
+
+// world-configuration.md §19.3/§F.6: a named, user-resolvable diagnostic --
+// never a RulesError, never fatal -- produced when a World does not supply
+// a value for a package-declared `requiredTrait`. `declaredDefault` is what
+// the snapshot uses in the meantime (§F.6's "use the default; record a
+// Binding Gap"), so a Game Admin surface can show both "what's missing" and
+// "what it's currently defaulting to" without a second lookup.
+export type BindingGap = {
+  kind: string
+  trait: string
+  declaredDefault: WorldTraitValue
+  reason: string
+}
+
+// world-configuration.md §9/§D.7: a package-declared `RollTypeDeclaration`
+// after a World's `WorldRollTypeOverride` has been applied -- what a GM
+// toolbar or the Character Sheet's roll buttons actually read (filtered to
+// `surfaces`, already in final presentation order). `order` is always a
+// concrete number here (never `undefined`): composeRollTypes resolves the
+// declaration/override/index fallback chain once, so no consumer needs to
+// re-derive it.
+export type ResolvedRollType = {
+  id: string
+  label: string
+  rollSpec: DefinitionId
+  surfaces: readonly RollTypeSurface[]
+  visibility?: RollVisibility
+  order: number
+}
+
+// world-configuration.md §6.3: the one immutable runtime object
+// `resolveWorldConfig` produces -- package declarations composed with a
+// World's stored configuration. `snapshot` is the sole input
+// `EvaluationSession`/`EvaluationContext.world` needs (§F.5: frozen for a
+// session's lifetime); `rollTypes`/`gaps`/`unboundRecommendedRoles`/`issues`
+// are consumed by future, not-yet-built surfaces (Character Sheet roll
+// discovery, Game Admin) that this commit does not implement.
+export type ResolvedWorldConfig = {
+  snapshot: WorldConfigSnapshot
+  rollTypes: readonly ResolvedRollType[]
+  gaps: readonly BindingGap[]
+  unboundRecommendedRoles: readonly SemanticRole[]
+  issues: readonly PackageValidationIssue[]
+}
+
+// ---------------------------------------------------------------------------
 // Evaluation (§15)
 // ---------------------------------------------------------------------------
 

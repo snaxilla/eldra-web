@@ -14,6 +14,7 @@
     "directus:create-inventory-transfers": "node scripts/directus/create-inventory-transfer-schema.mjs",
     "directus:create-entity-relationships": "node scripts/directus/create-entity-relationship-schema.mjs",
     "directus:create-scene-layer-objects": "node scripts/directus/create-scene-layer-objects-schema.mjs",
+    "directus:create-rules-packages": "node scripts/directus/create-rules-packages-schema.mjs",
     "directus:bootstrap": "node scripts/directus/bootstrap.mjs"
   },
   "dependencies": {

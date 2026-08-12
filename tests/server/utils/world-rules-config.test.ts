@@ -15,6 +15,25 @@ vi.mock('../../../server/utils/directus', () => ({
   directusServiceRequest: directusServiceRequestMock
 }))
 
+// `createError` (used by world-rules-config.ts's Forbidden-blocker fix,
+// see findRawRow) is a Nitro server auto-import -- like `directusRequest`
+// above, it does not exist under plain Vitest. Stubbed here with the same
+// observable contract H3's real `createError` has (an Error carrying
+// `statusCode`/`statusMessage`/`data`) so the module under test can be
+// exercised exactly as it runs in production, without reaching into `h3`
+// as an undeclared dependency for one function.
+;(globalThis as any).createError = (input: { statusCode: number; statusMessage?: string; data?: unknown }) => {
+  const error = new Error(input.statusMessage || `Error ${input.statusCode}`) as Error & {
+    statusCode: number
+    statusMessage?: string
+    data?: unknown
+  }
+  error.statusCode = input.statusCode
+  error.statusMessage = input.statusMessage
+  error.data = input.data
+  return error
+}
+
 import { loadWorldRulesConfig, saveWorldRulesConfig } from '../../../server/utils/world-rules-config'
 
 type FakeRow = Record<string, any>
@@ -68,6 +87,70 @@ describe('loadWorldRulesConfig -- missing row', () => {
     createFakeDirectusStore([])
     const result = await loadWorldRulesConfig(42)
     expect(result).toBeNull()
+  })
+})
+
+// Blocker fix regression coverage: a request the store answers with zero
+// matching rows (above) and a request Directus REFUSES outright are
+// different failure modes and must never be confused. This reproduces the
+// real deployed failure: Directus returns 403 "You don't have permission
+// to access this" for ANY collection name it does not recognize --
+// verified identical for a genuinely nonexistent collection name, even
+// under a full-admin service token, since Directus does not distinguish
+// "unpermitted" from "does not exist" in its REST error responses.
+describe('loadWorldRulesConfig -- Directus request failure (the Forbidden blocker)', () => {
+  function directus403(): Error & { statusCode: number; statusMessage: string; data: unknown } {
+    const error = new Error('[GET] "https://directus.example/items/world_rules_config": 403 Forbidden') as any
+    error.statusCode = 403
+    error.statusMessage = 'Forbidden'
+    error.data = { errors: [{ message: "You don't have permission to access this.", extensions: { code: 'FORBIDDEN' } }] }
+    return error
+  }
+
+  it('does NOT return null -- a request failure is never read as an absent row', async () => {
+    directusServiceRequestMock.mockRejectedValueOnce(directus403())
+    await expect(loadWorldRulesConfig(1)).rejects.toThrow()
+  })
+
+  it('surfaces a distinct 502, never the raw upstream 403', async () => {
+    directusServiceRequestMock.mockRejectedValueOnce(directus403())
+
+    try {
+      await loadWorldRulesConfig(1)
+      throw new Error('expected loadWorldRulesConfig to throw')
+    } catch (error: any) {
+      // The critical assertion: NOT 403. The caller here (our own service
+      // token, reading its own collection) is not who is unauthorized --
+      // 403 would misleadingly blame the browser user. 502 names what
+      // actually happened: an upstream dependency failed.
+      expect(error.statusCode).toBe(502)
+      expect(error.statusCode).not.toBe(403)
+    }
+  })
+
+  it('carries the upstream status and message for diagnosis, not a bare label', async () => {
+    directusServiceRequestMock.mockRejectedValueOnce(directus403())
+
+    try {
+      await loadWorldRulesConfig(1)
+      throw new Error('expected loadWorldRulesConfig to throw')
+    } catch (error: any) {
+      expect(error.data.collection).toBe('world_rules_config')
+      expect(error.data.upstreamStatus).toBe(403)
+      expect(error.data.upstreamMessage).toContain("don't have permission")
+    }
+  })
+
+  it('a network-level failure with no status code is still caught and re-labeled, not left uncaught', async () => {
+    directusServiceRequestMock.mockRejectedValueOnce(new Error('fetch failed: ECONNREFUSED'))
+
+    try {
+      await loadWorldRulesConfig(1)
+      throw new Error('expected loadWorldRulesConfig to throw')
+    } catch (error: any) {
+      expect(error.statusCode).toBe(502)
+      expect(error.data.upstreamMessage).toContain('ECONNREFUSED')
+    }
   })
 })
 

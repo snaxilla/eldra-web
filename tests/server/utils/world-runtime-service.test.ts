@@ -92,6 +92,29 @@ describe('getWorldRuntime -- unconfigured', () => {
   })
 })
 
+// Blocker fix regression coverage: getWorldRuntime must not paper over a
+// world-config ACCESS failure by reporting it as { configured: false }.
+// loadWorldRulesConfig now throws (rather than returning null) when
+// Directus itself is unreachable/unrecognized (world-rules-config.ts's
+// findRawRow) -- this proves getWorldRuntime lets that distinction survive
+// rather than treating every rejection the same as "no row."
+describe('getWorldRuntime -- world-config access failure is never read as unconfigured', () => {
+  it('propagates a loadWorldRulesConfig rejection rather than returning { configured: false }', async () => {
+    const accessError = Object.assign(new Error('World Rules Configuration is unavailable'), { statusCode: 502 })
+    loadWorldRulesConfigMock.mockRejectedValueOnce(accessError)
+
+    await expect(getWorldRuntime(1)).rejects.toThrow('World Rules Configuration is unavailable')
+  })
+
+  it('never calls loadPublishedPackage when the config read itself failed', async () => {
+    const accessError = Object.assign(new Error('World Rules Configuration is unavailable'), { statusCode: 502 })
+    loadWorldRulesConfigMock.mockRejectedValueOnce(accessError)
+
+    await expect(getWorldRuntime(1)).rejects.toThrow()
+    expect(loadPublishedPackageMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('getWorldRuntime -- configured and ready', () => {
   it('assembles a real runtime from the real starter package', async () => {
     const { manifest, definitions } = loadStarterPackageContent()

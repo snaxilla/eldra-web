@@ -127,15 +127,58 @@ function coerceWorldId(worldId: string | number): number {
 // Public API
 // ---------------------------------------------------------------------------
 
+// Blocker fix (Forbidden on GET /rules/summary): a Directus REQUEST
+// failure (network error, permission denial, or -- the actual case found
+// live -- a collection Directus does not recognize at all) must never be
+// read the same way as "the query succeeded and matched zero rows."
+//
+// Verified against the deployed instance: Directus returns HTTP 403
+// `{"errors":[{"message":"You don't have permission to access
+// this.","extensions":{"code":"FORBIDDEN"}}]}` for ANY collection name it
+// does not recognize -- confirmed identical for a deliberately-nonexistent
+// collection name, even under a full-admin service token. It is not a
+// distinguishable "not found"; Directus deliberately does not reveal
+// whether an unrecognized name is unpermitted or simply does not exist,
+// to avoid collection-name enumeration. `directusServiceRequest` (a bare
+// `$fetch`) throws for this, uncaught, with `statusMessage: 'Forbidden'`
+// -- and until this fix, nothing between here and the HTTP response caught
+// it, so that exact upstream 403 reached the browser verbatim, reading as
+// "you are forbidden" when the true cause is an upstream access/
+// provisioning failure with nothing to do with the calling user's
+// authorization.
+//
+// This function's contract (`loadWorldRulesConfig` returns `null` only
+// for a genuinely absent row) must stay intact, so a thrown request error
+// is re-thrown as a distinctly labeled, honest error rather than
+// swallowed into `null` -- collapsing it into "unconfigured" would hide a
+// real infrastructure failure behind the World's normal, silent, correct
+// steady state, forever. It is also not rethrown as the raw upstream 403:
+// that status code describes the caller's own authorization, and the
+// caller here (our own service token, reading its own collection) is not
+// who is unauthorized. 502 names what actually happened: an upstream
+// dependency this request needed failed.
 async function findRawRow(worldId: string | number): Promise<any | null> {
-  const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
-    method: 'GET',
-    query: {
-      filter: { world_id: { _eq: coerceWorldId(worldId) } },
-      limit: 1,
-      fields: '*'
-    }
-  })
+  let res: any
+  try {
+    res = await directusServiceRequest(`/items/${COLLECTION}`, {
+      method: 'GET',
+      query: {
+        filter: { world_id: { _eq: coerceWorldId(worldId) } },
+        limit: 1,
+        fields: '*'
+      }
+    })
+  } catch (error: any) {
+    const upstreamStatus = error?.statusCode ?? error?.status ?? error?.response?.status ?? null
+    const upstreamMessage =
+      error?.data?.errors?.[0]?.message ?? error?.statusMessage ?? error?.message ?? String(error)
+
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'World Rules Configuration is unavailable',
+      data: { collection: COLLECTION, upstreamStatus, upstreamMessage }
+    })
+  }
 
   const rows = Array.isArray(res?.data) ? res.data : []
   return rows[0] ?? null

@@ -194,6 +194,45 @@ function parseJsonField<T>(
 // Public API
 // ---------------------------------------------------------------------------
 
+// Infrastructure Commit 9: the Rules Admin activation UI needs a package
+// picker, and no endpoint existed to list what is even installed
+// (rules-package-infrastructure.md's own Q9/module map named
+// `server/api/rules-packages/index.get.ts` for exactly this, envelope
+// columns only -- "Do not expose manifest. Do not expose definitions.").
+// Deliberately separate from `loadPublishedPackage` above: this performs
+// no verification (no status/engineApiVersion/integrity check -- a listing
+// is not an activation attempt), touches none of its logic, and reads only
+// four shallow columns, never `manifest`/`definitions`. Filtered to
+// `status: 'published'` because a draft can never be activated
+// (`loadPublishedPackage`'s own `not-published` rejection) -- there is no
+// reason to offer one in a picker.
+export type RulesPackageListing = {
+  packageId: string
+  version: string
+  title: string
+  engineApiVersion: string
+}
+
+export async function listPublishedRulesPackages(): Promise<RulesPackageListing[]> {
+  const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
+    method: 'GET',
+    query: {
+      filter: { status: { _eq: 'published' } },
+      fields: 'package_id,version,title,engine_api_version',
+      sort: ['package_id', '-version'],
+      limit: -1
+    }
+  })
+
+  const rows = Array.isArray(res?.data) ? res.data : []
+  return rows.map((row: any) => ({
+    packageId: String(row.package_id ?? ''),
+    version: String(row.version ?? ''),
+    title: String(row.title ?? ''),
+    engineApiVersion: String(row.engine_api_version ?? '')
+  }))
+}
+
 // Reads one published rules_packages row, verifies it is safe to run, and
 // returns a package ready for createWorldRuntime(manifest, definitions,
 // worldId, stored) -- this function never calls createWorldRuntime itself.

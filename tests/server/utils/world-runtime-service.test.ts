@@ -269,12 +269,149 @@ describe('summarizeWorldRuntime -- serialization', () => {
     const summary = summarizeWorldRuntime(result)
 
     expect(Object.keys(summary).sort()).toEqual(
-      ['bindingGaps', 'configured', 'integrityHash', 'issues', 'packageId', 'packageVersion', 'rollTypes', 'unboundRecommendedRoles'].sort()
+      [
+        'bindingGaps',
+        'configured',
+        'integrityHash',
+        'issues',
+        'optionalRules',
+        'packageId',
+        'packageVersion',
+        'rollTypeOverrides',
+        'rollTypeSettings',
+        'rollTypes',
+        'settings',
+        'unboundRecommendedRoles'
+      ].sort()
     )
     expect((summary as any).packageId).toBe('eldra.starter.generic-d20')
     expect((summary as any).packageVersion).toBe('0.1.0')
     expect((summary as any).integrityHash).toBe('sha256-abc')
     expect((summary as any).rollTypes.map((r: any) => r.id).sort()).toEqual(['check', 'luck'])
+  })
+})
+
+describe('summarizeWorldRuntime -- optionalRules (Infra 9)', () => {
+  it('composes the starter package\'s one optional rule with its currently-effective value', async () => {
+    const { manifest, definitions } = loadStarterPackageContent()
+    loadWorldRulesConfigMock.mockResolvedValueOnce(storedConfig({ settings: { campaign: { difficulty: 12 } } }))
+    loadPublishedPackageMock.mockResolvedValueOnce({
+      ok: true,
+      package: { packageId: manifest.packageId, version: manifest.version, manifest, definitions, integrityHash: 'sha256-abc' }
+    })
+
+    const result = await getWorldRuntime(1)
+    const summary = summarizeWorldRuntime(result) as any
+
+    expect(summary.optionalRules).toEqual([
+      { key: 'gritty', label: 'Gritty Checks', description: 'Applies a -1 penalty to the Vitality Modifier.', valueType: 'boolean', default: false, value: false }
+    ])
+  })
+
+  it('reflects a World-supplied value, not the package default', async () => {
+    const { manifest, definitions } = loadStarterPackageContent()
+    loadWorldRulesConfigMock.mockResolvedValueOnce(storedConfig({ settings: { rules: { gritty: true } } }))
+    loadPublishedPackageMock.mockResolvedValueOnce({
+      ok: true,
+      package: { packageId: manifest.packageId, version: manifest.version, manifest, definitions, integrityHash: 'sha256-abc' }
+    })
+
+    const result = await getWorldRuntime(1)
+    const summary = summarizeWorldRuntime(result) as any
+
+    expect(summary.optionalRules[0].value).toBe(true)
+    expect(summary.optionalRules[0].default).toBe(false)
+  })
+
+  it('exposes the raw stored settings unmodified, for non-destructive PATCH construction', async () => {
+    const { manifest, definitions } = loadStarterPackageContent()
+    const rawSettings = { campaign: { difficulty: 12 }, rules: { gritty: true } }
+    loadWorldRulesConfigMock.mockResolvedValueOnce(storedConfig({ settings: rawSettings }))
+    loadPublishedPackageMock.mockResolvedValueOnce({
+      ok: true,
+      package: { packageId: manifest.packageId, version: manifest.version, manifest, definitions, integrityHash: 'sha256-abc' }
+    })
+
+    const result = await getWorldRuntime(1)
+    const summary = summarizeWorldRuntime(result) as any
+
+    // Verbatim, not merely equal -- proves nothing was dropped or defaulted
+    // away, which is the entire point (design decision 6).
+    expect(summary.settings).toEqual(rawSettings)
+    expect(summary.settings.campaign.difficulty).toBe(12)
+  })
+})
+
+describe('summarizeWorldRuntime -- rollTypeSettings (Infra 9)', () => {
+  it('includes a roll type the World has DISABLED -- the gap rollTypes cannot cover', async () => {
+    const { manifest, definitions } = loadStarterPackageContent()
+    loadWorldRulesConfigMock.mockResolvedValueOnce(storedConfig({ rollTypes: { luck: { enabled: false } } }))
+    loadPublishedPackageMock.mockResolvedValueOnce({
+      ok: true,
+      package: { packageId: manifest.packageId, version: manifest.version, manifest, definitions, integrityHash: 'sha256-abc' }
+    })
+
+    const result = await getWorldRuntime(1)
+    const summary = summarizeWorldRuntime(result) as any
+
+    // The resolved, already-filtered list drops it entirely...
+    expect(summary.rollTypes.map((r: any) => r.id)).not.toContain('luck')
+    // ...but the editing view still shows it, disabled, so it can be
+    // turned back on.
+    const luckSetting = summary.rollTypeSettings.find((r: any) => r.id === 'luck')
+    expect(luckSetting).toBeDefined()
+    expect(luckSetting.enabled).toBe(false)
+  })
+
+  it('defaults enabled to true when the World has no override for a declared roll type', async () => {
+    const { manifest, definitions } = loadStarterPackageContent()
+    loadWorldRulesConfigMock.mockResolvedValueOnce(storedConfig({ rollTypes: {} }))
+    loadPublishedPackageMock.mockResolvedValueOnce({
+      ok: true,
+      package: { packageId: manifest.packageId, version: manifest.version, manifest, definitions, integrityHash: 'sha256-abc' }
+    })
+
+    const result = await getWorldRuntime(1)
+    const summary = summarizeWorldRuntime(result) as any
+
+    expect(summary.rollTypeSettings.every((r: any) => r.enabled)).toBe(true)
+    expect(summary.rollTypeSettings.map((r: any) => r.id).sort()).toEqual(['check', 'luck'])
+  })
+
+  it('reflects a World-overridden order and visibility, falling back to the declared visibility otherwise', async () => {
+    const { manifest, definitions } = loadStarterPackageContent()
+    loadWorldRulesConfigMock.mockResolvedValueOnce(
+      storedConfig({ rollTypes: { luck: { order: 9, visibility: 'gm' } } })
+    )
+    loadPublishedPackageMock.mockResolvedValueOnce({
+      ok: true,
+      package: { packageId: manifest.packageId, version: manifest.version, manifest, definitions, integrityHash: 'sha256-abc' }
+    })
+
+    const result = await getWorldRuntime(1)
+    const summary = summarizeWorldRuntime(result) as any
+
+    const luck = summary.rollTypeSettings.find((r: any) => r.id === 'luck')
+    const check = summary.rollTypeSettings.find((r: any) => r.id === 'check')
+    expect(luck.order).toBe(9)
+    expect(luck.visibility).toBe('gm')
+    expect(check.visibility).toBeUndefined()
+    expect(check.declaredVisibility).toBe('public')
+  })
+
+  it('exposes the raw stored rollTypeOverrides unmodified, for non-destructive PATCH construction', async () => {
+    const { manifest, definitions } = loadStarterPackageContent()
+    const rawOverrides = { luck: { enabled: false }, check: { order: 3 } }
+    loadWorldRulesConfigMock.mockResolvedValueOnce(storedConfig({ rollTypes: rawOverrides }))
+    loadPublishedPackageMock.mockResolvedValueOnce({
+      ok: true,
+      package: { packageId: manifest.packageId, version: manifest.version, manifest, definitions, integrityHash: 'sha256-abc' }
+    })
+
+    const result = await getWorldRuntime(1)
+    const summary = summarizeWorldRuntime(result) as any
+
+    expect(summary.rollTypeOverrides).toEqual(rawOverrides)
   })
 })
 

@@ -69,11 +69,54 @@
 //    exclusively from GET /rules/summary") makes exposing the existing,
 //    already-verified value here the correct fix rather than a second
 //    endpoint or a client-side recomputation.
+//
+// 6. (Added for Infra 9, the Rules Admin EDITING UI) `settings` and
+//    `rollTypeOverrides` are the World's RAW stored values (`stored.settings`
+//    / `stored.rollTypes`), threaded through unmodified -- `stored` was
+//    already fetched and already in scope here, exactly the same "expose
+//    an already-computed value" move as decision 5. They exist because
+//    `saveWorldRulesConfig` (world-rules-config.ts) replaces the whole
+//    `settings`/`roll_types` JSON column on any write that supplies it --
+//    it is not a deep merge. Confirmed against the starter package itself:
+//    it declares BOTH a `requiredTrait` (`campaign.difficulty`) and an
+//    `optionalRule` (`gritty`), both living under the same `settings`
+//    object but different `kind`s. Editing `gritty` with only
+//    `{ rules: { gritty: true } }` as the patch body would silently
+//    discard any World-supplied `campaign.difficulty` -- a real,
+//    demonstrable data-loss bug, not a hypothetical one. The client needs
+//    the CURRENT FULL raw object to build a non-destructive patch (copy,
+//    mutate one key, send the whole copy back); `optionalRules`/
+//    `rollTypeSettings` below (the DISPLAY-ready, declaration-joined views)
+//    are a separate concern and must not be confused with these.
+//
+// 7. (Added for Infra 9) `optionalRules`/`rollTypeSettings` are composed
+//    here, reading `runtime.manifest.optionalRules`/`runtime.manifest.
+//    rollTypes` -- the package's own small, already-validated declaration
+//    arrays (label, valueType, default, options/min/max for rules;
+//    label/surfaces/visibility for roll types). This is the one place
+//    this module reads `.manifest` at all, and deliberately narrowly: never
+//    `.registry`, `.dependencyGraph`, or `.manifest.requiredTraits`/
+//    `.semanticRoles`/anything else -- see the file header's "Do not
+//    expose ... RuntimeRulesPackage internals" rule, which this still
+//    honors: these two declaration arrays are the same category of small,
+//    display-safe metadata `rollTypes` (Infra 8) already exposes, not
+//    Definitions/Registry/Graph.
+//
+//    `rollTypeSettings` is NOT the same list as `rollTypes` above and both
+//    are kept: `rollTypes` (Infra 8) is the RESOLVED, already-filtered
+//    surface (disabled entries dropped -- world-config.ts's
+//    `composeRollTypes`, "if (!enabled) return"), which is what a future
+//    Character Sheet or GM toolbar should read. An editing UI needs the
+//    OPPOSITE -- every declared roll type, INCLUDING disabled ones,
+//    because there is no way to re-enable something invisible. Genuine
+//    API gap, not a style preference: `rollTypes` structurally cannot
+//    answer "what roll types exist that I could turn back on."
 
 import { loadPublishedPackage, type PublishedPackageLoadFailure } from './rules-packages'
 import { loadWorldRulesConfig } from './world-rules-config'
 import { createWorldRuntime } from '../../app/lib/rules/world-runtime'
 import type { RulesPackageLoadFailure, RuntimeRulesPackage } from '../../app/lib/rules/rules-package'
+import type { RollVisibility, StoredWorldRulesConfig, WorldRollTypeOverride, WorldTraitValue } from '../../app/lib/rules/types'
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -84,11 +127,20 @@ export type WorldRuntimeFailure =
   | { stage: 'runtime-construction'; failure: RulesPackageLoadFailure }
 
 // Exactly three states -- see design decision 1. Nothing else this module
-// returns collapses one into another.
+// returns collapses one into another. `settings`/`rollTypeOverrides` on the
+// ready branch are RAW stored values, not shaped for display -- see design
+// decision 6.
 export type WorldRuntimeResult =
   | { configured: false }
   | ({ configured: true; ok: false } & WorldRuntimeFailure)
-  | { configured: true; ok: true; runtime: RuntimeRulesPackage; integrityHash: string }
+  | {
+      configured: true
+      ok: true
+      runtime: RuntimeRulesPackage
+      integrityHash: string
+      settings: StoredWorldRulesConfig['settings']
+      rollTypeOverrides: Record<string, WorldRollTypeOverride>
+    }
 
 // The canonical entry point for obtaining a World's active Rules Runtime.
 // Composes loadWorldRulesConfig -> loadPublishedPackage -> createWorldRuntime,
@@ -117,7 +169,14 @@ export async function getWorldRuntime(worldId: string | number): Promise<WorldRu
     return { configured: true, ok: false, stage: 'runtime-construction', failure }
   }
 
-  return { configured: true, ok: true, runtime: runtimeResult.runtimePackage, integrityHash: packageResult.package.integrityHash }
+  return {
+    configured: true,
+    ok: true,
+    runtime: runtimeResult.runtimePackage,
+    integrityHash: packageResult.package.integrityHash,
+    settings: stored.settings,
+    rollTypeOverrides: stored.rollTypes
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -129,11 +188,34 @@ export async function getWorldRuntime(worldId: string | number): Promise<WorldRu
 // -- server/api/worlds/[id]/rules/summary.get.ts calls this and returns
 // its result verbatim. Deliberately narrow: only ever reads
 // packageId/packageVersion/worldConfig.{rollTypes,gaps,unboundRecommendedRoles,issues}
-// off a RuntimeRulesPackage -- never `manifest`, `registry`, or
+// plus (Infra 9, design decisions 6-7) manifest.optionalRules/manifest.
+// rollTypes and the raw stored settings/rollTypeOverrides off a
+// RuntimeRulesPackage/WorldRuntimeResult -- never `registry` or
 // `dependencyGraph`, so a Registry/DependencyGraph/Definition can never
 // reach a serialized response by accident (SUMMARY ENDPOINT: "Do not
 // expose Definitions. Do not expose Registry. Do not expose
 // DependencyGraph. Do not expose RuntimeRulesPackage internals.").
+export type ResolvedOptionalRuleView = {
+  key: string
+  label: string
+  description?: string
+  value: WorldTraitValue
+} & (
+  | { valueType: 'boolean'; default: boolean }
+  | { valueType: 'number'; default: number; min?: number; max?: number }
+  | { valueType: 'enum'; default: string; options: string[] }
+)
+
+export type ResolvedRollTypeSettingView = {
+  id: string
+  label: string
+  surfaces: readonly string[]
+  enabled: boolean
+  order: number
+  visibility?: RollVisibility
+  declaredVisibility?: RollVisibility
+}
+
 export type WorldRulesSummary =
   | { configured: false }
   | ({ configured: true; ok: false } & WorldRuntimeFailure)
@@ -146,7 +228,59 @@ export type WorldRulesSummary =
       bindingGaps: RuntimeRulesPackage['worldConfig']['gaps']
       unboundRecommendedRoles: RuntimeRulesPackage['worldConfig']['unboundRecommendedRoles']
       issues: RuntimeRulesPackage['worldConfig']['issues']
+      // Raw stored values -- see design decision 6. Used to build a
+      // non-destructive PATCH /rules/config body, never rendered directly.
+      settings: StoredWorldRulesConfig['settings']
+      rollTypeOverrides: Record<string, WorldRollTypeOverride>
+      // Declaration-joined display views -- see design decision 7.
+      optionalRules: ResolvedOptionalRuleView[]
+      rollTypeSettings: ResolvedRollTypeSettingView[]
     }
+
+// world-configuration.md §6.3/Commit 3: resolveWorldConfig unconditionally
+// writes every declared optional rule's key into `traits.rules` (supplied
+// value or the package default -- never a gap), so `currentRules[key]` is
+// guaranteed present here for every entry in `declarations`. The `??
+// declaration.default` fallback is defensive only, matching this module's
+// existing posture of not trusting a nested record read blindly.
+function composeOptionalRules(runtime: RuntimeRulesPackage): ResolvedOptionalRuleView[] {
+  const declarations = runtime.manifest.optionalRules ?? []
+  const currentRules = runtime.worldConfig.snapshot.traits.rules ?? {}
+
+  return declarations.map((declaration) => {
+    const value = Object.prototype.hasOwnProperty.call(currentRules, declaration.key)
+      ? currentRules[declaration.key]!
+      : declaration.default
+
+    return { ...declaration, value }
+  })
+}
+
+// Every package-declared roll type, including ones the World has disabled
+// -- see design decision 7 for why this must NOT reuse the already-filtered
+// `worldConfig.rollTypes`. Mirrors world-config.ts's own `composeRollTypes`
+// fallback chain (world override -> declaration order -> declaration
+// index) so the displayed `order` matches what activation would resolve.
+function composeRollTypeSettings(
+  runtime: RuntimeRulesPackage,
+  rollTypeOverrides: Record<string, WorldRollTypeOverride>
+): ResolvedRollTypeSettingView[] {
+  const declarations = runtime.manifest.rollTypes ?? []
+
+  return declarations.map((declaration, index) => {
+    const override = rollTypeOverrides[declaration.id]
+
+    return {
+      id: declaration.id,
+      label: declaration.label,
+      surfaces: declaration.surfaces,
+      enabled: override?.enabled ?? true,
+      order: override?.order ?? declaration.order ?? index,
+      visibility: override?.visibility,
+      declaredVisibility: declaration.visibility
+    }
+  })
+}
 
 export function summarizeWorldRuntime(result: WorldRuntimeResult): WorldRulesSummary {
   if (!result.configured) {
@@ -170,6 +304,10 @@ export function summarizeWorldRuntime(result: WorldRuntimeResult): WorldRulesSum
     rollTypes: runtime.worldConfig.rollTypes,
     bindingGaps: runtime.worldConfig.gaps,
     unboundRecommendedRoles: runtime.worldConfig.unboundRecommendedRoles,
-    issues: runtime.worldConfig.issues
+    issues: runtime.worldConfig.issues,
+    settings: result.settings,
+    rollTypeOverrides: result.rollTypeOverrides,
+    optionalRules: composeOptionalRules(runtime),
+    rollTypeSettings: composeRollTypeSettings(runtime, result.rollTypeOverrides)
   }
 }

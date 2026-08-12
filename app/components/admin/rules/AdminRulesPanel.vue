@@ -1,15 +1,18 @@
 <script setup lang="ts">
-// Game Admin Rules tab -- read-only. See .github/docs/architecture/
-// rules-package-infrastructure.md §5 Infra 8. Everything displayed comes
-// exclusively from GET /api/worlds/:id/rules/summary
+// Game Admin Rules tab -- Infrastructure Commit 9. See .github/docs/
+// architecture/rules-package-infrastructure.md §5 Infra 8/9. Everything
+// displayed comes exclusively from GET /api/worlds/:id/rules/summary
 // (server/utils/world-runtime-service.ts's summarizeWorldRuntime); this
 // component and its children never construct a Registry, a
-// DependencyGraph, or resolve World Configuration themselves -- they only
-// render whatever that one endpoint returns.
+// DependencyGraph, or resolve World Configuration themselves. Editing
+// (activation, optional rules, roll types) always writes through the
+// already-existing endpoints and then re-fetches this same summary --
+// see loadSummary below, the only place `summary` is ever assigned.
 
 import AdminRulesEmptyState from './AdminRulesEmptyState.vue'
 import AdminRulesBrokenState from './AdminRulesBrokenState.vue'
 import AdminRulesReadyState from './AdminRulesReadyState.vue'
+import AdminRulesActivationPanel from './AdminRulesActivationPanel.vue'
 import { classifyRulesSummary } from './rulesSummary'
 
 const props = defineProps<{
@@ -22,6 +25,11 @@ const summary = ref<any | null>(null)
 const summaryPending = ref(false)
 const summaryError = ref('')
 
+// The one place `summary` is ever written. Called on mount, on manual
+// Refresh, and after every successful activation/config-save (via
+// `@activated`/`@changed` below) -- never applied optimistically, so this
+// is always a real round-trip to the server, per this commit's own CONFIG
+// section ("No optimistic updates. Always refresh from the server").
 async function loadSummary() {
   if (!worldId.value) return
 
@@ -45,10 +53,15 @@ async function loadSummary() {
 watch(worldId, loadSummary, { immediate: true })
 
 const state = computed(() => classifyRulesSummary(summary.value))
+
+// Activation must offer switching from EVERY state (unconfigured, broken,
+// ready) -- only the ready state has a packageId/version to prefill.
+const currentPackageId = computed(() => (state.value === 'ready' ? summary.value?.packageId : undefined))
+const currentPackageVersion = computed(() => (state.value === 'ready' ? summary.value?.packageVersion : undefined))
 </script>
 
 <template>
-  <section class="mt-6">
+  <section class="mt-6 grid gap-5">
     <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -59,9 +72,8 @@ const state = computed(() => classifyRulesSummary(summary.value))
             Active Rules Package
           </h2>
           <p class="mt-2 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
-            Read-only view of this World's Rules Engine runtime -- the same
-            summary the Character Sheet will eventually read. Activation and
-            editing land in a future commit.
+            This World's Rules Engine runtime -- the same summary the Character
+            Sheet will eventually read.
           </p>
         </div>
 
@@ -102,8 +114,18 @@ const state = computed(() => classifyRulesSummary(summary.value))
       <AdminRulesReadyState
         v-else
         class="mt-5"
+        :world-id="worldId"
         :summary="summary"
+        @changed="loadSummary"
       />
     </div>
+
+    <AdminRulesActivationPanel
+      v-if="!summaryPending && !summaryError"
+      :world-id="worldId"
+      :current-package-id="currentPackageId"
+      :current-package-version="currentPackageVersion"
+      @activated="loadSummary"
+    />
   </section>
 </template>

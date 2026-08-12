@@ -18,6 +18,7 @@ import {
   CURRENT_ENGINE_API_VERSION,
   clearRulesPackageCache,
   computeIntegrityHash,
+  listPublishedRulesPackages,
   loadPublishedPackage,
   satisfiesEngineApiVersion
 } from '../../../server/utils/rules-packages'
@@ -79,6 +80,83 @@ function buildRow(options: {
 beforeEach(() => {
   clearRulesPackageCache()
   directusServiceRequestMock.mockReset()
+})
+
+// Infrastructure Commit 9's own PACKAGE LIST section: "Return only
+// packageId, version, title, engineApiVersion. Do not expose manifest. Do
+// not expose definitions." -- verified below by asserting on the exact
+// object shape, not just a subset of expected keys.
+describe('listPublishedRulesPackages', () => {
+  it('maps published rows to exactly the four documented envelope fields', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(
+      directusListResponse([
+        { package_id: 'eldra.starter.generic-d20', version: '0.1.0', title: 'Eldra Generic d20 (Starter)', engine_api_version: '^1.0.0' }
+      ])
+    )
+
+    const result = await listPublishedRulesPackages()
+
+    expect(result).toEqual([
+      { packageId: 'eldra.starter.generic-d20', version: '0.1.0', title: 'Eldra Generic d20 (Starter)', engineApiVersion: '^1.0.0' }
+    ])
+  })
+
+  it('never exposes manifest or definitions, even if the row somehow carried them', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(
+      directusListResponse([
+        {
+          package_id: 'eldra.starter.generic-d20',
+          version: '0.1.0',
+          title: 'Starter',
+          engine_api_version: '^1.0.0',
+          manifest: { packageId: 'eldra.starter.generic-d20' },
+          definitions: [{ id: 'value:x' }]
+        }
+      ])
+    )
+
+    const result = await listPublishedRulesPackages()
+
+    expect(result[0]).not.toHaveProperty('manifest')
+    expect(result[0]).not.toHaveProperty('definitions')
+    expect(Object.keys(result[0]!).sort()).toEqual(['engineApiVersion', 'packageId', 'title', 'version'])
+  })
+
+  it('filters to status: published at the query level', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([]))
+
+    await listPublishedRulesPackages()
+
+    const [, options] = directusServiceRequestMock.mock.calls[0]!
+    expect(options.query.filter).toEqual({ status: { _eq: 'published' } })
+  })
+
+  it('requests only the four envelope columns, never manifest/definitions', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([]))
+
+    await listPublishedRulesPackages()
+
+    const [, options] = directusServiceRequestMock.mock.calls[0]!
+    expect(options.query.fields).toBe('package_id,version,title,engine_api_version')
+  })
+
+  it('returns an empty array when nothing is published', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([]))
+    expect(await listPublishedRulesPackages()).toEqual([])
+  })
+
+  it('lists multiple versions of the same package as separate entries', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(
+      directusListResponse([
+        { package_id: 'eldra.starter.generic-d20', version: '0.2.0', title: 'Starter', engine_api_version: '^1.0.0' },
+        { package_id: 'eldra.starter.generic-d20', version: '0.1.0', title: 'Starter', engine_api_version: '^1.0.0' }
+      ])
+    )
+
+    const result = await listPublishedRulesPackages()
+
+    expect(result.map((pkg) => pkg.version)).toEqual(['0.2.0', '0.1.0'])
+  })
 })
 
 describe('computeIntegrityHash', () => {

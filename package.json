@@ -23,7 +23,7 @@
     "@3d-dice/dice-box": "^1.1.4",
     "@iconify-json/lucide": "^1.2.98",
     "@iconify-json/simple-icons": "^1.2.74",
-    "@nuxt/ui": "^4.5.1",
+    "@nuxt/ui": "^4.10.0",
     "@tiptap/extension-color": "^3.23.1",
     "@tiptap/extension-highlight": "3.23.1",
     "@tiptap/extension-image": "^3.23.1",

@@ -73,17 +73,33 @@ export async function directusRequest(path: string, options: any = {}, event?: H
 // The field set EVERY "who am I" read must request, shared so the two
 // callers can never drift apart again.
 //
-// Directus returns a relational field (`role`) as a bare primary-key
-// string unless its subfields are named explicitly. `normalizeUser`
-// (app/composables/useAuth.ts) then turns that bare string into
-// `{ admin_access: false, app_access: false }` -- it does not throw, it
-// silently demotes an administrator to a non-admin. That is exactly what
-// happened when login.post.ts called `/users/me` without this list while
-// me.get.ts (below) requested it: an admin who had just logged in was
-// bounced out of /worlds/:id/admin by middleware/admin.ts until the next
-// full page load re-fetched the real role.
+// Two separate traps are encoded in this one string.
+//
+// 1. Directus returns a relational field (`role`) as a bare primary-key
+//    string unless its subfields are named explicitly. `normalizeUser`
+//    (app/composables/useAuth.ts) then cannot read anything off it.
+//
+// 2. `admin_access`/`app_access` live on `directus_policies`, NOT on
+//    `directus_roles`, as of Directus 11. Verified against the deployed
+//    instance (11.12.0): `GET /fields/directus_roles` lists no
+//    `admin_access`. Requesting `role.admin_access` anyway does not
+//    error -- Directus answers HTTP 200 and silently reduces the WHOLE
+//    selection to `{ id }`:
+//
+//      fields=id,email,role.id,role.name              -> full record
+//      fields=...,role.admin_access                   -> {"id":"..."}
+//
+//    That returned a user with no role at all, so `isAdmin` was false
+//    while `authenticated` stayed true, and middleware/admin.ts
+//    redirected every administrator out of /worlds/:id/admin to '/'.
+//
+// Policies are read from both the role and the user, because Directus 11
+// allows either to carry them. See app/utils/directusAccess.ts for the
+// matching read side.
 export const DIRECTUS_ME_FIELDS =
-  'id,email,first_name,last_name,role.id,role.name,role.admin_access,role.app_access'
+  'id,email,first_name,last_name,role.id,role.name,' +
+  'role.policies.policy.admin_access,role.policies.policy.app_access,' +
+  'policies.policy.admin_access,policies.policy.app_access'
 
 export async function fetchDirectusMe(event: H3Event) {
   return await directusRequest(

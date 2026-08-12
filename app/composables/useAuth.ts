@@ -1,3 +1,5 @@
+import { resolveAccessFlag } from '~/utils/directusAccess'
+
 type EldraUserRole = {
   id?: string
   name?: string
@@ -31,17 +33,30 @@ function normalizeUser(input: any): EldraUser | null {
   const user = input?.data ? input.data : input
   const role = user?.role?.data ? user.role.data : user?.role
 
+  // Access flags come from POLICIES in Directus 11, never from the role
+  // itself -- see app/utils/directusAccess.ts for the full reasoning and
+  // the silent-collapse behavior that made reading `role.admin_access`
+  // look like a working check. Derived into the existing
+  // `role.admin_access` shape so `isAdmin` and every other reader keep
+  // working unchanged; this fixes where the value comes FROM, not what
+  // the authorization model is.
+  const adminAccess = resolveAccessFlag(user, 'admin_access')
+  const appAccess = resolveAccessFlag(user, 'app_access')
+
   return {
     id: user?.id,
     email: user?.email,
     first_name: user?.first_name,
     last_name: user?.last_name,
-    role: role
+    // A user can hold policies directly, with no role at all, so grants
+    // must survive even when `role` is absent -- otherwise a roleless
+    // admin would normalize back to a non-admin.
+    role: role || adminAccess || appAccess
       ? {
           id: role?.id,
           name: role?.name,
-          admin_access: !!role?.admin_access,
-          app_access: !!role?.app_access
+          admin_access: adminAccess,
+          app_access: appAccess
         }
       : undefined
   }
@@ -75,9 +90,20 @@ export function useAuth() {
   })
 
   async function fetchMe() {
+    // On the server, `credentials: 'include'` means nothing and Nuxt does
+    // NOT forward the browser's Cookie header to an internal $fetch, so
+    // /api/auth/me sees no `eldra_session` and reports the user as
+    // unauthenticated. Route middleware runs during SSR, so without this
+    // forwarding every FULL page load of a guarded route (a refresh, or
+    // opening /worlds/:id/admin directly) bounced a logged-in user to
+    // /login. Client-side navigation was unaffected, which is why the
+    // failure only appeared on reload.
+    const headers = import.meta.server ? useRequestHeaders(['cookie']) : undefined
+
     const response = await $fetch<AuthMeResponse>('/api/auth/me', {
       method: 'GET',
-      credentials: 'include'
+      credentials: 'include',
+      headers
     })
 
     const user = normalizeUser(response?.user)

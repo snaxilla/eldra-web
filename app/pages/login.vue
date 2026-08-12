@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useAuth } from '~/composables/useAuth'
+import { safeRedirectTarget } from '~/utils/safeRedirect'
 definePageMeta({
   layout: false
 })
 
 const { login, state } = useAuth()
+const route = useRoute()
 
 const email = ref('')
 const password = ref('')
@@ -18,7 +20,11 @@ async function submit() {
   try {
     await login(email.value, password.value)
 
-    const target = state.value.user?.role?.admin_access ? '/admin' : '/'
+    // Return the user to whatever route sent them here (recorded by
+    // middleware/auth.ts or middleware/admin.ts). Falls back to the
+    // previous behavior when there is no redirect to honor.
+    const requested = safeRedirectTarget(route.query.redirect)
+    const target = requested || (state.value.user?.role?.admin_access ? '/admin' : '/')
     await navigateTo(target)
   } catch (error: any) {
     errorMessage.value =

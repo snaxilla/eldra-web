@@ -1,4 +1,4 @@
-import { directusRequest } from '../../utils/directus'
+import { DIRECTUS_ME_FIELDS, directusRequest } from '../../utils/directus'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -36,7 +36,12 @@ export default defineEventHandler(async (event) => {
     maxAge: 60 * 60 * 8
   })
 
-  const me = await directusRequest('/users/me', {
+  // `fields` is REQUIRED here: without it Directus returns `role` as a bare
+  // id string, which useAuth's normalizeUser silently reduces to
+  // `admin_access: false` -- demoting an administrator for the rest of the
+  // client session. Shares one field list with fetchDirectusMe so the two
+  // cannot diverge again (see DIRECTUS_ME_FIELDS).
+  const me = await directusRequest(`/users/me?fields=${DIRECTUS_ME_FIELDS}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`
     }

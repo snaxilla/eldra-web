@@ -70,9 +70,24 @@ export async function directusRequest(path: string, options: any = {}, event?: H
   })
 }
 
+// The field set EVERY "who am I" read must request, shared so the two
+// callers can never drift apart again.
+//
+// Directus returns a relational field (`role`) as a bare primary-key
+// string unless its subfields are named explicitly. `normalizeUser`
+// (app/composables/useAuth.ts) then turns that bare string into
+// `{ admin_access: false, app_access: false }` -- it does not throw, it
+// silently demotes an administrator to a non-admin. That is exactly what
+// happened when login.post.ts called `/users/me` without this list while
+// me.get.ts (below) requested it: an admin who had just logged in was
+// bounced out of /worlds/:id/admin by middleware/admin.ts until the next
+// full page load re-fetched the real role.
+export const DIRECTUS_ME_FIELDS =
+  'id,email,first_name,last_name,role.id,role.name,role.admin_access,role.app_access'
+
 export async function fetchDirectusMe(event: H3Event) {
   return await directusRequest(
-    '/users/me?fields=id,email,first_name,last_name,role.id,role.name,role.admin_access,role.app_access',
+    `/users/me?fields=${DIRECTUS_ME_FIELDS}`,
     { method: 'GET' },
     event
   )

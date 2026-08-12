@@ -1,5 +1,5 @@
 import { useAuth } from '~/composables/useAuth'
-export default defineNuxtRouteMiddleware(async () => {
+export default defineNuxtRouteMiddleware(async (to) => {
   const { state, fetchMe } = useAuth()
 
   if (!state.value.ready) {
@@ -7,6 +7,7 @@ export default defineNuxtRouteMiddleware(async () => {
   }
 
   if (!state.value.authenticated) {
-    return navigateTo('/login')
+    // Same return-path preservation as middleware/admin.ts.
+    return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
   }
 })

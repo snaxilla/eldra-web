@@ -57,6 +57,18 @@
 // 4. No writes. This module never imports or calls saveWorldRulesConfig --
 //    it is a read-only assembly path. Activation (the write that sets
 //    active_package_id/version/integrity) is explicitly a later commit.
+//
+// 5. (Added for Infra 8, the Game Admin Rules tab) `integrityHash` is
+//    surfaced on the ready branch of both `WorldRuntimeResult` and
+//    `WorldRulesSummary`. It is NOT a new fact this module computes --
+//    `loadPublishedPackage` already recomputes and verifies it on every
+//    call (rules-packages.ts); this only stops discarding a value that
+//    was already sitting in `packageResult.package.integrityHash`. The
+//    Rules Admin tab needs to display "Integrity" alongside Package/
+//    Version, and the task's own constraint ("everything displayed comes
+//    exclusively from GET /rules/summary") makes exposing the existing,
+//    already-verified value here the correct fix rather than a second
+//    endpoint or a client-side recomputation.
 
 import { loadPublishedPackage, type PublishedPackageLoadFailure } from './rules-packages'
 import { loadWorldRulesConfig } from './world-rules-config'
@@ -76,7 +88,7 @@ export type WorldRuntimeFailure =
 export type WorldRuntimeResult =
   | { configured: false }
   | ({ configured: true; ok: false } & WorldRuntimeFailure)
-  | { configured: true; ok: true; runtime: RuntimeRulesPackage }
+  | { configured: true; ok: true; runtime: RuntimeRulesPackage; integrityHash: string }
 
 // The canonical entry point for obtaining a World's active Rules Runtime.
 // Composes loadWorldRulesConfig -> loadPublishedPackage -> createWorldRuntime,
@@ -105,7 +117,7 @@ export async function getWorldRuntime(worldId: string | number): Promise<WorldRu
     return { configured: true, ok: false, stage: 'runtime-construction', failure }
   }
 
-  return { configured: true, ok: true, runtime: runtimeResult.runtimePackage }
+  return { configured: true, ok: true, runtime: runtimeResult.runtimePackage, integrityHash: packageResult.package.integrityHash }
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +141,7 @@ export type WorldRulesSummary =
       configured: true
       packageId: string
       packageVersion: string
+      integrityHash: string
       rollTypes: RuntimeRulesPackage['worldConfig']['rollTypes']
       bindingGaps: RuntimeRulesPackage['worldConfig']['gaps']
       unboundRecommendedRoles: RuntimeRulesPackage['worldConfig']['unboundRecommendedRoles']
@@ -153,6 +166,7 @@ export function summarizeWorldRuntime(result: WorldRuntimeResult): WorldRulesSum
     configured: true,
     packageId: runtime.packageId,
     packageVersion: runtime.packageVersion,
+    integrityHash: result.integrityHash,
     rollTypes: runtime.worldConfig.rollTypes,
     bindingGaps: runtime.worldConfig.gaps,
     unboundRecommendedRoles: runtime.worldConfig.unboundRecommendedRoles,

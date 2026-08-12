@@ -110,6 +110,7 @@ describe('getWorldRuntime -- configured and ready', () => {
     expect(result.runtime.registry.has('value:vitality')).toBe(true)
     expect(result.runtime.worldConfig.rollTypes.map((r) => r.id).sort()).toEqual(['check', 'luck'])
     expect(result.runtime.worldConfig.issues).toEqual([])
+    expect(result.integrityHash).toBe('sha256-abc')
   })
 
   it('passes stored.worldId (not the raw call argument) through to createWorldRuntime', async () => {
@@ -245,10 +246,11 @@ describe('summarizeWorldRuntime -- serialization', () => {
     const summary = summarizeWorldRuntime(result)
 
     expect(Object.keys(summary).sort()).toEqual(
-      ['bindingGaps', 'configured', 'issues', 'packageId', 'packageVersion', 'rollTypes', 'unboundRecommendedRoles'].sort()
+      ['bindingGaps', 'configured', 'integrityHash', 'issues', 'packageId', 'packageVersion', 'rollTypes', 'unboundRecommendedRoles'].sort()
     )
     expect((summary as any).packageId).toBe('eldra.starter.generic-d20')
     expect((summary as any).packageVersion).toBe('0.1.0')
+    expect((summary as any).integrityHash).toBe('sha256-abc')
     expect((summary as any).rollTypes.map((r: any) => r.id).sort()).toEqual(['check', 'luck'])
   })
 })

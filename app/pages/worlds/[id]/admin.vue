@@ -6,6 +6,7 @@ definePageMeta({
 
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 import AdminHomebrewForgePanel from '~/components/admin/homebrew/AdminHomebrewForgePanel.vue'
+import AdminRulesPanel from '~/components/admin/rules/AdminRulesPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +14,7 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
-const activePanel = ref<'overview' | 'party' | 'grants' | 'homebrew' | 'setup' | 'transfers' | 'relationships'>('overview')
+const activePanel = ref<'overview' | 'party' | 'grants' | 'homebrew' | 'rules' | 'setup' | 'transfers' | 'relationships'>('overview')
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
@@ -193,6 +194,7 @@ const panels = [
   { key: 'party', label: 'Party / Cast', icon: 'i-lucide-users' },
   { key: 'grants', label: 'Grants', icon: 'i-lucide-gift' },
   { key: 'homebrew', label: 'Homebrew', icon: 'i-lucide-flask-conical' },
+  { key: 'rules', label: 'Rules', icon: 'i-lucide-scale' },
   { key: 'setup', label: 'Page Setup', icon: 'i-lucide-sliders-horizontal' },
   { key: 'transfers', label: 'Transfers', icon: 'i-lucide-arrow-left-right' },
   { key: 'relationships', label: 'Relationships', icon: 'i-lucide-share-2' }
@@ -766,6 +768,11 @@ async function refreshAdmin() {
 
             <AdminHomebrewForgePanel
         v-else-if="activePanel === 'homebrew'"
+        :world-id="worldId"
+      />
+
+      <AdminRulesPanel
+        v-else-if="activePanel === 'rules'"
         :world-id="worldId"
       />
 

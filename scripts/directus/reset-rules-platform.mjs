@@ -139,13 +139,45 @@ async function fetchIds(collection, filter) {
   return (Array.isArray(res?.data) ? res.data : []).map((row) => row.id)
 }
 
-function chunk(array, size) {
+export function chunk(array, size) {
   const chunks = []
   for (let i = 0; i < array.length; i += size) chunks.push(array.slice(i, i + size))
   return chunks
 }
 
-const CHUNK_SIZE = 200
+export const CHUNK_SIZE = 200
+
+// BUG FIX (production run): step 3 built one `_in` filter containing all
+// ~1,476 doomed entity ids in a single GET request's query string.
+// Directus/its proxy rejected it with HTTP 431 "Request Header Fields Too
+// Large" -- a large `_in` array survives fine in a DELETE request BODY
+// (deleteByIds above already chunks those), but a GET's filter has to
+// travel in the URL, which has a much smaller practical ceiling.
+//
+// Fixes it by chunking `values` into batches of CHUNK_SIZE and issuing one
+// GET per batch, unioning the results -- same fetchIds/dxRequest, same
+// fail-fast (an error in any batch still throws, uncaught, exactly as
+// before), same resumability (this only affects the READ phase; no delete
+// happens until the caller's own deleteByIds runs on the result).
+//
+// `fields.length > 1` (entity_relationships: source_entity_id OR
+// target_entity_id) needs a Set, not a plain concat: a single row can be
+// found by more than one batch when its two reference fields fall into
+// different chunks (e.g. source_entity_id in batch 2, target_entity_id in
+// batch 5) -- returned as one id, not two, so deleteByIds's count (and
+// therefore `report`'s "deleted" number) stays accurate.
+export async function fetchIdsWhereAnyFieldIn(collection, fields, values) {
+  if (values.length === 0) return []
+
+  const found = new Set()
+  for (const batch of chunk(values, CHUNK_SIZE)) {
+    const filter =
+      fields.length === 1 ? { [fields[0]]: { _in: batch } } : { _or: fields.map((field) => ({ [field]: { _in: batch } })) }
+    const ids = await fetchIds(collection, filter)
+    for (const id of ids) found.add(id)
+  }
+  return [...found]
+}
 
 // Deletes exactly the ids passed in, in chunks, via Directus's bulk-delete-
 // by-primary-key-array endpoint (DELETE /items/:collection with a JSON
@@ -258,24 +290,14 @@ async function main() {
   })
 
   await step('3/9 entity_relationships referencing a doomed entity', async () => {
-    if (doomedEntityIds.length === 0) {
-      report('entity_relationships', 0)
-      return
-    }
-    const ids = await fetchIds('entity_relationships', {
-      _or: [{ source_entity_id: { _in: doomedEntityIds } }, { target_entity_id: { _in: doomedEntityIds } }]
-    })
+    const ids = await fetchIdsWhereAnyFieldIn('entity_relationships', ['source_entity_id', 'target_entity_id'], doomedEntityIds)
     const deleted = await deleteByIds('entity_relationships', ids)
     report('entity_relationships', deleted)
   })
 
   for (const [index, collection] of ENTITY_CHILD_COLLECTIONS.entries()) {
     await step(`${4 + index}/9 ${collection} belonging to a doomed entity`, async () => {
-      if (doomedEntityIds.length === 0) {
-        report(collection, 0)
-        return
-      }
-      const ids = await fetchIds(collection, { entity_id: { _in: doomedEntityIds } })
+      const ids = await fetchIdsWhereAnyFieldIn(collection, ['entity_id'], doomedEntityIds)
       const deleted = await deleteByIds(collection, ids)
       report(collection, deleted)
     })
@@ -297,11 +319,20 @@ async function main() {
   console.log('Rules Platform reset complete.')
 }
 
-main().catch((error) => {
-  console.error()
-  console.error(`RESET ABORTED: ${error?.message || error}`)
-  console.error('Fail-fast: no further steps were attempted.')
-  console.error('Re-run the script -- already-deleted rows will not be re-processed;')
-  console.error('it resumes at whichever step still has matching rows.')
-  process.exit(1)
-})
+// Guarded so this module can be imported (e.g. by
+// tests/scripts/directus/reset-rules-platform.test.ts, exercising
+// fetchIdsWhereAnyFieldIn's chunking/dedup behavior) without triggering a
+// real, destructive run as a side effect of the import itself. Running the
+// file directly (`node reset-rules-platform.mjs --confirm`) is unaffected
+// -- this condition is true in exactly that case. Matches the identical
+// precedent already established in publish-starter-package.mjs.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error()
+    console.error(`RESET ABORTED: ${error?.message || error}`)
+    console.error('Fail-fast: no further steps were attempted.')
+    console.error('Re-run the script -- already-deleted rows will not be re-processed;')
+    console.error('it resumes at whichever step still has matching rows.')
+    process.exit(1)
+  })
+}

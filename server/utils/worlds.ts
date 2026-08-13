@@ -1,21 +1,24 @@
 // Eldra World creation -- .github/docs/architecture/ownership-and-permissions.md
-// (Revision 2) §5.3/§10.1/§12 Phase 0. Worlds have historically been
+// (Revision 2) §5.3/§8.5/§10.1/§12 Phase 0+2. Worlds have historically been
 // created directly in the Directus admin UI -- the architecture doc's own
 // audit found no POST /api/worlds route at all (§2.5). This module is what
 // makes World creation an Eldra use case instead of a Directus one; it is
 // called from server/api/worlds/index.post.ts, which stays a thin route
 // per this codebase's established server/api -> server/utils split.
 //
-// TEMPORARY OWNERSHIP (architecture doc §12 Phase 0, §10.1): there is no
-// WorldMembership collection yet, so ownership is recorded the only way
-// the current schema supports -- the existing, previously-unpopulated
-// `worlds.owner_id` column (§2.5: "never written... the one existing world
-// has owner_id: null"), set to the creating Principal's accountId. This is
-// deliberately the SAME column Phase 2's real Membership model will read
-// to seed the first 'owner' row per world, so nothing about this decision
-// needs to be undone later, only supplemented -- exactly the "make
-// replacing the temporary owner model straightforward" requirement this
-// task was given.
+// OWNERSHIP (architecture doc §12 Phase 2, §8.5, §10.1): a new World's
+// owner is now recorded as a REAL world_memberships row (role: 'owner'),
+// via server/utils/world-memberships.ts's createOwnerMembership -- not
+// merely the `worlds.owner_id` column Phase 0 introduced. `owner_id` is
+// STILL written below, for compatibility, per this task's own instruction
+// ("retain owner_id only if required for compatibility... migration comes
+// later"): nothing currently reads it back out for an authorization
+// decision (server/utils/authorization.ts's resolvePrincipal reads
+// world_memberships, not worlds.owner_id), but removing the column write
+// now would be an unscoped, unrequested migration of every OTHER reader of
+// `GET /api/worlds`'s response shape (server/api/worlds/index.get.ts still
+// surfaces owner_id to the client). It stays until an explicitly-scoped
+// future task retires it.
 //
 // Rules Platform: NOT touched. No `world_rules_config` row is created here
 // -- absence is a legal, unconfigured state by that system's own design
@@ -24,6 +27,7 @@
 
 import { directusServiceRequest } from './directus'
 import { slugify } from './entity-factory'
+import { createOwnerMembership } from './world-memberships'
 
 export type WorldVisibility = 'private' | 'public'
 
@@ -105,7 +109,9 @@ export type CreateWorldInput = {
   description?: string | null
   systemKey?: string | null
   visibility?: string | null
-  // The Principal creating the World -- see TEMPORARY OWNERSHIP above.
+  // The Principal creating the World -- becomes both the `owner_id` column
+  // (compatibility, see OWNERSHIP above) and the real owner world_membership
+  // row created below.
   ownerAccountId: string
 }
 
@@ -135,5 +141,15 @@ export async function createWorld(input: CreateWorldInput): Promise<WorldRecord>
     }
   })
 
-  return normalizeWorld(res?.data ?? {})
+  const world = normalizeWorld(res?.data ?? {})
+
+  // Directus has no cross-collection transaction (established precedent:
+  // reset-rules-platform.mjs's own design notes), so this is not atomic
+  // with the write above -- if it throws, the World row exists without an
+  // owner membership, and the request fails loudly (500) rather than
+  // silently. That is the correct failure mode here: a World with no
+  // recorded owner is a state worth surfacing, not swallowing.
+  await createOwnerMembership(world.id, input.ownerAccountId)
+
+  return world
 }

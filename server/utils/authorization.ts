@@ -1,27 +1,35 @@
-// Phase 0 of .github/docs/architecture/ownership-and-permissions.md
-// (Revision 2) -- the server-side authorization enforcement skeleton. See
-// that document's §9 (Authorization), §11 (Enforcement), and §12 Phase 0
-// for the design this implements.
+// Phase 0 + Phase 2 of .github/docs/architecture/ownership-and-permissions.md
+// (Revision 2) -- the server-side authorization enforcement skeleton, plus
+// its real per-world Membership resolution. See that document's §9
+// (Authorization), §11 (Enforcement), §12 Phase 0, and §8.5/§12 Phase 2 for
+// the design this implements.
 //
-// TEMPORARY SINGLE-USER MODE (architecture doc §12 Phase 0, §8.7): Accounts,
-// WorldMemberships, and Invitations do not exist yet (§5, §12 Phase 1+).
-// Until they do, any authenticated Directus admin is treated as holding
-// every capability at every scope -- the "one effective administrator" the
-// current deployment actually has (architecture doc §2.7: all three live
-// Directus users are Administrators). This is NOT a permanent model. It
-// exists only to establish the enforcement SEAM -- can() / requireCapability()
-// -- so that Phase 2's real per-world Membership resolution replaces
-// resolvePrincipal's internals without changing a single call site that
-// already calls can() or requireCapability().
+// TEMPORARY SINGLE-USER MODE, NOW A FALLBACK (architecture doc §12 Phase 2):
+// Accounts, IdentityLinks, and Invitations still do not exist (§5, §12
+// Phase 1/3+ -- out of scope for this task). WorldMembership now does.
+// resolvePrincipal populates Principal.worldCapabilities from REAL
+// world_memberships rows (server/utils/world-memberships.ts), and can()
+// prefers that data whenever a membership row exists for the World in
+// question -- including when it grants LESS than an admin would otherwise
+// get, which is the point (architecture doc §8.1: Platform Admin must not
+// be a world superuser). `temporarySingleUserMode` now only fires as a
+// fallback for a World that has NO membership row at all for this Account
+// -- i.e. a World created before this collection existed. That gap closes
+// world-by-world as worlds are (re)created through server/utils/worlds.ts,
+// and closes entirely only once a future, explicitly-scoped migration
+// backfills membership rows from worlds.owner_id for every pre-existing
+// World (architecture doc §10.1, this task's own "migration comes later").
 //
-// WHAT THIS FILE DELIBERATELY DOES NOT DO (architecture doc Phase 0
-// NON-GOALS): no Accounts collection, no repositories, no per-world role
-// resolution, no OAuth. resolvePrincipal reads the Directus session
-// directly via server/utils/directus.ts, exactly as server/api/auth/me.get.ts
-// already does -- Directus remains the credential/session provider (§6.3).
-// Nothing below imports Directus's HTTP client into can(), which stays a
-// pure function with no I/O, matching the architecture doc's rule that
-// policy is domain logic and data access is a port (§9.1/§9.2).
+// WHAT THIS FILE DELIBERATELY DOES NOT DO (this task's own NON-GOALS): no
+// Accounts collection, no IdentityLinks, no OAuth, no Invitations, no
+// repository extraction, no entity/character ownership. resolvePrincipal
+// reads the Directus session directly via server/utils/directus.ts, exactly
+// as server/api/auth/me.get.ts already does -- Directus remains the
+// credential/session provider (§6.3). can() stays a pure function with no
+// I/O; the membership DATA it reads is fetched by resolvePrincipal (already
+// infrastructure-adjacent, per §9.3) before can() ever runs, matching the
+// architecture doc's rule that policy is domain logic and data access is a
+// port (§9.1/§9.2).
 
 // createError is imported explicitly (rather than relied on as a Nitro
 // auto-import, the convention server/utils/directus.ts uses) because this
@@ -32,6 +40,7 @@
 import { createError, type H3Event } from 'h3'
 import { fetchDirectusMe, getSessionToken } from './directus'
 import { resolveAccessFlag } from '../../app/utils/directusAccess'
+import { listMembershipsForAccount, type WorldMembershipRole } from './world-memberships'
 
 // ---------------------------------------------------------------------------
 // Capability -- the full vocabulary from the architecture doc §8.7. Declaring
@@ -109,6 +118,86 @@ const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
   'platform.breakglass.enter'
 ]
 
+const ALL_WORLD_CAPABILITIES: readonly WorldCapability[] = [
+  'world.read',
+  'world.settings.edit',
+  'world.delete',
+  'world.transfer_ownership',
+  'world.member.invite',
+  'world.member.remove',
+  'world.member.assign_role',
+  'world.rules.activate',
+  'world.rules.configure',
+  'world.content.bind_pack',
+  'world.entity.create',
+  'world.entity.edit',
+  'world.entity.delete',
+  'world.homebrew.manage',
+  'world.map.edit',
+  'world.scene.edit',
+  'world.timeline.edit',
+  'world.npc.manage',
+  'world.character.create',
+  'world.character.edit_own',
+  'world.character.edit_any',
+  'world.character.approve',
+  'world.grant.issue',
+  'world.roll.execute',
+  'world.roll.see_gm',
+  'world.roll.override',
+  'world.session.run'
+]
+
+// ---------------------------------------------------------------------------
+// Role -> capability bundles -- architecture doc §8.7's table, transcribed
+// exactly. Roles are the assignment primitive (what a WorldMembership row
+// stores); capabilities are the enforcement primitive (what can() checks).
+// This mapping is the ONLY place that ever changes when a role's bundle is
+// revised -- no enforcement site names a role.
+//
+// Kept in this file (not world-memberships.ts) because it is policy, not
+// persistence: it has no I/O and does not know Directus exists, the same
+// property can() itself has.
+// ---------------------------------------------------------------------------
+
+const GM_CAPABILITIES: readonly WorldCapability[] = ALL_WORLD_CAPABILITIES.filter(
+  (capability) => capability !== 'world.delete' && capability !== 'world.transfer_ownership'
+)
+
+const WORLDBUILDER_CAPABILITIES: readonly WorldCapability[] = [
+  'world.read',
+  'world.entity.create',
+  'world.entity.edit',
+  'world.entity.delete',
+  'world.homebrew.manage',
+  'world.map.edit',
+  'world.scene.edit',
+  'world.timeline.edit',
+  'world.npc.manage'
+]
+
+const PLAYER_CAPABILITIES: readonly WorldCapability[] = [
+  'world.read',
+  'world.character.create',
+  'world.character.edit_own',
+  'world.roll.execute'
+]
+
+const OBSERVER_CAPABILITIES: readonly WorldCapability[] = ['world.read']
+
+// Observer's `world.read` is unconditional here -- the "(public only)"
+// qualifier in §8.7's table is a data-visibility rule (§8.3's may_read),
+// layered on top of this capability, not a reason to withhold the
+// capability itself. Visibility enforcement is out of this task's scope
+// (NON-GOALS: no entity ownership).
+export const WORLD_ROLE_CAPABILITIES: Readonly<Record<WorldMembershipRole, readonly WorldCapability[]>> = {
+  owner: ALL_WORLD_CAPABILITIES,
+  gm: GM_CAPABILITIES,
+  worldbuilder: WORLDBUILDER_CAPABILITIES,
+  player: PLAYER_CAPABILITIES,
+  observer: OBSERVER_CAPABILITIES
+}
+
 // ---------------------------------------------------------------------------
 // Scope -- architecture doc §9.2/§9.4. A capability check is always against
 // ONE of these two shapes; there is no capability that means "everywhere."
@@ -117,20 +206,23 @@ const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
 export type Scope = { kind: 'platform' } | { kind: 'world'; worldId: string }
 
 // ---------------------------------------------------------------------------
-// Principal -- architecture doc §8.1/§9.3. `platformCapabilities` and
-// `worldCapabilities` are deliberately the two fields real Membership
-// resolution will populate in Phase 2; only HOW they get filled in changes,
-// not their shape or how can() reads them.
+// Principal -- architecture doc §8.1/§9.3. `worldCapabilities` is now
+// populated from REAL WorldMembership rows (Phase 2), keyed by worldId
+// (as a string, matching Scope.worldId's type). `temporarySingleUserMode`
+// no longer means "ignore worldCapabilities" -- see can() below -- it
+// means "if this World has no membership row for me at all, fall back to
+// full access" (architecture doc §12 Phase 2's own framing: temporary mode
+// as a fallback, not a bypass).
 // ---------------------------------------------------------------------------
 
 export type Principal = {
   accountId: string
   platformCapabilities: ReadonlySet<PlatformCapability>
   worldCapabilities: ReadonlyMap<string, ReadonlySet<WorldCapability>>
-  // true only under temporary single-user mode (§12 Phase 0) -- lets tests
-  // and future code distinguish "the placeholder policy" from real
-  // Membership-backed resolution, without can() special-casing anything
-  // other than this one flag.
+  // true only for an authenticated Directus admin -- lets tests and can()
+  // distinguish "the one effective administrator, with the Phase 2
+  // migration-gap fallback available" from an ordinary Account, without
+  // either of them special-casing anything other than this one flag.
   temporarySingleUserMode: boolean
 }
 
@@ -140,43 +232,60 @@ declare module 'h3' {
   }
 }
 
-// A Principal in temporary single-user mode holds every world capability at
-// every world, because there is no Membership model yet to say otherwise.
-// worldCapabilities therefore isn't populated per-world id -- can() reads
-// `temporarySingleUserMode` directly instead of pretending to enumerate
-// "every world that will ever exist."
-function buildTemporarySingleUserPrincipal(accountId: string): Principal {
+function buildPrincipal(
+  accountId: string,
+  worldCapabilities: ReadonlyMap<string, ReadonlySet<WorldCapability>>,
+  temporarySingleUserMode: boolean
+): Principal {
   return Object.freeze({
     accountId,
-    platformCapabilities: new Set(ALL_PLATFORM_CAPABILITIES),
-    worldCapabilities: new Map(),
-    temporarySingleUserMode: true
+    // Platform capabilities have no Membership equivalent in this task
+    // (no PlatformMembership concept exists or is planned -- §8.1's
+    // platform/world split is about AUTHORITY, not about there being two
+    // membership systems). An admin keeps the full platform set via
+    // temporarySingleUserMode's platform-scope branch in can(); a non-admin
+    // gets none, exactly as Phase 0 already had it.
+    platformCapabilities: temporarySingleUserMode ? new Set(ALL_PLATFORM_CAPABILITIES) : new Set<PlatformCapability>(),
+    worldCapabilities,
+    temporarySingleUserMode
   })
 }
 
-// An authenticated Directus user who is NOT an admin resolves to a
-// Principal with zero capabilities rather than null. This keeps
-// "authenticated, no rights" distinct from "not authenticated at all" --
-// the same distinction the architecture doc's may_read() model depends on
-// (§8.3) -- even though no non-admin Directus user exists on the live
-// instance today (§2.7).
-function buildPowerlessPrincipal(accountId: string): Principal {
-  return Object.freeze({
-    accountId,
-    platformCapabilities: new Set<PlatformCapability>(),
-    worldCapabilities: new Map<string, ReadonlySet<WorldCapability>>(),
-    temporarySingleUserMode: false
-  })
+// Every world_memberships row for this Account, mapped through
+// WORLD_ROLE_CAPABILITIES. Isolated in its own function (rather than
+// inlined into resolvePrincipal) so its one failure mode -- the
+// world_memberships collection not yet existing in a given environment,
+// per CLAUDE.md's Deployment Checklist ("nothing runs schema migrations
+// automatically") -- has a single, clearly-named place to degrade instead
+// of crashing every authenticated request.
+async function resolveWorldCapabilities(accountId: string): Promise<Map<string, ReadonlySet<WorldCapability>>> {
+  let memberships: Awaited<ReturnType<typeof listMembershipsForAccount>>
+
+  try {
+    memberships = await listMembershipsForAccount(accountId)
+  } catch {
+    // Degrade to "no memberships known" rather than failing
+    // authentication outright. temporarySingleUserMode's fallback in
+    // can() covers admins during this gap; a non-admin simply gets zero
+    // world capabilities, matching Phase 0's behavior exactly.
+    return new Map()
+  }
+
+  const result = new Map<string, ReadonlySet<WorldCapability>>()
+  for (const membership of memberships) {
+    result.set(membership.worldId, new Set(WORLD_ROLE_CAPABILITIES[membership.role]))
+  }
+  return result
 }
 
 // ---------------------------------------------------------------------------
 // resolvePrincipal -- architecture doc §9.3. Infrastructure-adjacent by
-// necessity (it reads an H3Event and a session cookie), but everything it
-// DECIDES is delegated: whether a session is valid comes from Directus
-// (§6.3, unchanged from today); WHO gets which capabilities is temporary-
-// single-user policy, isolated in the two builders above so Phase 2 can
-// replace their internals without this function's signature or call sites
-// changing.
+// necessity (it reads an H3Event, a session cookie, and now World
+// Membership rows), but everything it DECIDES is delegated: whether a
+// session is valid comes from Directus (§6.3, unchanged from today); which
+// capabilities a World grants comes from WORLD_ROLE_CAPABILITIES (pure,
+// above); WHO is the temporary-single-user fallback is exactly the same
+// admin check Phase 0 already had.
 // ---------------------------------------------------------------------------
 
 export async function resolvePrincipal(event: H3Event): Promise<Principal | null> {
@@ -199,13 +308,16 @@ export async function resolvePrincipal(event: H3Event): Promise<Principal | null
     return null
   }
 
+  const worldCapabilities = await resolveWorldCapabilities(accountId)
   const isAdmin = resolveAccessFlag(user, 'admin_access')
-  return isAdmin ? buildTemporarySingleUserPrincipal(accountId) : buildPowerlessPrincipal(accountId)
+
+  return buildPrincipal(accountId, worldCapabilities, isAdmin)
 }
 
 // ---------------------------------------------------------------------------
-// can -- architecture doc §9.2. Pure: no I/O, no H3Event, no Directus. This
-// is the function Phase 2's real Membership data plugs into unchanged.
+// can -- architecture doc §9.2. Pure: no I/O, no H3Event, no Directus. The
+// membership data it reads off `principal` was already resolved by
+// resolvePrincipal before can() ever runs.
 // ---------------------------------------------------------------------------
 
 export function can(principal: Principal | null, capability: Capability, scope: Scope): boolean {
@@ -213,18 +325,34 @@ export function can(principal: Principal | null, capability: Capability, scope: 
     return false
   }
 
-  if (principal.temporarySingleUserMode) {
-    // The one effective administrator: every capability, every scope,
-    // until real Membership rows exist to say otherwise.
-    return true
-  }
-
   if (scope.kind === 'platform') {
+    // No WorldMembership equivalent exists for platform scope (see
+    // buildPrincipal) -- this branch is unchanged from Phase 0.
+    if (principal.temporarySingleUserMode) {
+      return true
+    }
     return principal.platformCapabilities.has(capability as PlatformCapability)
   }
 
   const worldCapabilities = principal.worldCapabilities.get(scope.worldId)
-  return worldCapabilities?.has(capability as WorldCapability) ?? false
+
+  if (worldCapabilities) {
+    // A real membership row exists for this World -- it is authoritative,
+    // even for the temporary-single-user admin, even when it grants LESS
+    // than admin status would otherwise imply. This is what makes Platform
+    // Admin not a world superuser (architecture doc §8.1): once a World
+    // has an explicit membership for this Account, that membership decides
+    // access to it, full stop.
+    return worldCapabilities.has(capability as WorldCapability)
+  }
+
+  // No membership row exists for this World at all -- the Phase 2
+  // migration gap (a World created before world_memberships existed, or
+  // before this Account had a row in it). Fall back to full access ONLY
+  // for the temporary single-user admin, exactly as Phase 0 behaved for
+  // every World. A non-admin Account with no membership row is denied, as
+  // it always was.
+  return principal.temporarySingleUserMode
 }
 
 // ---------------------------------------------------------------------------

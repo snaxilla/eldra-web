@@ -39,6 +39,14 @@ import { resolveAccessFlag } from '../../app/utils/directusAccess'
 // individual capabilities) at the route level, is what lets a future route
 // call requireCapability(principal, 'world.rules.activate', scope) without
 // this file changing shape.
+//
+// `platform.world.create` is the one addition beyond §8.7's own table: the
+// architecture doc names "create a world" as an action a bare Account may
+// take (§5.3) but its capability table only ever enumerated
+// platform.world.list/.delete, not .create. Completing that pair is a
+// naming-consistent gap fix, not a new capability namespace -- flagged here
+// since it is the one place this task touched the vocabulary rather than
+// just consuming it.
 // ---------------------------------------------------------------------------
 
 export type PlatformCapability =
@@ -49,6 +57,7 @@ export type PlatformCapability =
   | 'platform.contentpack.install'
   | 'platform.contentpack.publish'
   | 'platform.contentpack.remove'
+  | 'platform.world.create'
   | 'platform.world.list'
   | 'platform.world.delete'
   | 'platform.settings.manage'
@@ -93,6 +102,7 @@ const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
   'platform.contentpack.install',
   'platform.contentpack.publish',
   'platform.contentpack.remove',
+  'platform.world.create',
   'platform.world.list',
   'platform.world.delete',
   'platform.settings.manage',

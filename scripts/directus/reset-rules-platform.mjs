@@ -17,6 +17,24 @@
 // which executes before any Directus call of any kind.
 //
 // ---------------------------------------------------------------------------
+// --purge-monsters (opt-in, follow-up to the reset above)
+// ---------------------------------------------------------------------------
+// The reset above intentionally preserves `enemy`/`monster` entities and
+// their `entity_actions`/`entity_statblocks`/`monster_profiles` rows --
+// legacy 5e monster imports that survive the Rules Platform reset by
+// design (see DOOMED_ENTITY_TYPES below, which never included them).
+//
+// --purge-monsters is a SEPARATE, OPT-IN follow-up step that additionally
+// deletes exactly that surviving monster content, once its own operator
+// decides it's time to clear it for a re-import through the new pipeline.
+// It runs AFTER the steps above, reuses the same transport/batching/
+// fail-fast/resumability machinery, and touches nothing else -- run:
+//   DIRECTUS_TOKEN=... node scripts/directus/reset-rules-platform.mjs --confirm --purge-monsters
+//
+// Without this flag, the script's behavior is byte-for-byte identical to
+// before this flag existed.
+//
+// ---------------------------------------------------------------------------
 // WHY THIS ORDER, AND WHY IT IS "SAFE AGAINST PARTIAL EXECUTION"
 // ---------------------------------------------------------------------------
 // Directus's REST API has no cross-collection transaction this script can
@@ -246,27 +264,57 @@ const DOOMED_ENTITY_TYPES = [
 // Each is a 1:1 or many:1 detail/child table keyed by `entity_id`.
 const ENTITY_CHILD_COLLECTIONS = ['block_instances', 'entity_actions', 'entity_statblocks', 'monster_profiles']
 
-// Collections/data this script MUST NOT touch, restated here (not just in
-// the header) as a literal list so a future edit to this file has
-// something concrete to diff against: locations, enemies/monsters, worlds,
-// maps, map_pins, scene_layer_objects, events, eras, articles,
-// world_page_presentations, app_settings, rules_packages, world_rules_config.
-// None of these collections appears anywhere below this comment.
+// Collections/data this script MUST NOT touch UNLESS --purge-monsters is
+// passed, restated here (not just in the header) as a literal list so a
+// future edit to this file has something concrete to diff against:
+// locations, worlds, maps, map_pins, scene_layer_objects, events, eras,
+// articles, world_page_presentations, app_settings, rules_packages,
+// world_rules_config. None of these collections appears anywhere below
+// this comment, with or without --purge-monsters. `enemy`/`monster`
+// entities and their entity_actions/entity_statblocks/monster_profiles
+// rows are the ONE exception, and only when --purge-monsters is passed --
+// see below.
+
+// The two entity_type values --purge-monsters additionally removes. Never
+// touched by the base reset above (DOOMED_ENTITY_TYPES does not include
+// either) -- this is a deliberately separate list, not an addition to it.
+export const MONSTER_ENTITY_TYPES = ['enemy', 'monster']
+
+// Child collections deleted for a monster entity when --purge-monsters is
+// passed, in the order this task specified: entity_actions ->
+// entity_statblocks -> monster_profiles. Deliberately does NOT include
+// block_instances -- this task's ORDER/RESPONSIBILITY sections list only
+// these three, and enemy/monster entities were confirmed (during the base
+// reset's post-run verification) to hold no block_instances rows worth
+// touching here.
+export const MONSTER_CHILD_COLLECTIONS = ['entity_actions', 'entity_statblocks', 'monster_profiles']
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+// Exported (in addition to being invoked below via the entry-point guard)
+// so tests/scripts/directus/reset-rules-platform.test.ts can exercise the
+// full --purge-monsters orchestration against a mocked `fetch`, the same
+// way fetchIdsWhereAnyFieldIn already is -- importing this does not run it;
+// only the guard at the bottom of this file does that, and only when the
+// file is executed directly.
+export async function main() {
   assertPreconditions()
+
+  const purgeMonsters = process.argv.includes('--purge-monsters')
+  const totalSteps = purgeMonsters ? 14 : 9
 
   console.log('RULES PLATFORM RESET -- DESTRUCTIVE, CONFIRMED')
   console.log(`Directus : ${DIRECTUS_URL}`)
   console.log(`Started  : ${new Date().toISOString()}`)
+  if (purgeMonsters) {
+    console.log('Mode     : --purge-monsters enabled -- legacy enemy/monster content will ALSO be deleted')
+  }
 
   // Snapshot the doomed entity id set ONCE. Every later step reads this
   // frozen array, never a fresh query -- see file header, safety property 1.
-  const doomedEntityIds = await step('0/9 resolve doomed entity ids', async () => {
+  const doomedEntityIds = await step(`0/${totalSteps} resolve doomed entity ids`, async () => {
     const ids = await fetchIds('entities', { entity_type: { _in: DOOMED_ENTITY_TYPES } })
     console.log(`  entity_type in [${DOOMED_ENTITY_TYPES.join(', ')}]`)
     console.log(`  resolved ${ids.length} doomed entity ids`)
@@ -277,42 +325,68 @@ async function main() {
   // block_instances -> entity_actions -> entity_statblocks ->
   // monster_profiles -> character_sheets -> entities.
 
-  await step('1/9 character_sheet_inventory (wholesale)', async () => {
+  await step(`1/${totalSteps} character_sheet_inventory (wholesale)`, async () => {
     const ids = await fetchIds('character_sheet_inventory')
     const deleted = await deleteByIds('character_sheet_inventory', ids)
     report('character_sheet_inventory', deleted)
   })
 
-  await step('2/9 character_sheet_inventory_transfers (wholesale)', async () => {
+  await step(`2/${totalSteps} character_sheet_inventory_transfers (wholesale)`, async () => {
     const ids = await fetchIds('character_sheet_inventory_transfers')
     const deleted = await deleteByIds('character_sheet_inventory_transfers', ids)
     report('character_sheet_inventory_transfers', deleted)
   })
 
-  await step('3/9 entity_relationships referencing a doomed entity', async () => {
+  await step(`3/${totalSteps} entity_relationships referencing a doomed entity`, async () => {
     const ids = await fetchIdsWhereAnyFieldIn('entity_relationships', ['source_entity_id', 'target_entity_id'], doomedEntityIds)
     const deleted = await deleteByIds('entity_relationships', ids)
     report('entity_relationships', deleted)
   })
 
   for (const [index, collection] of ENTITY_CHILD_COLLECTIONS.entries()) {
-    await step(`${4 + index}/9 ${collection} belonging to a doomed entity`, async () => {
+    await step(`${4 + index}/${totalSteps} ${collection} belonging to a doomed entity`, async () => {
       const ids = await fetchIdsWhereAnyFieldIn(collection, ['entity_id'], doomedEntityIds)
       const deleted = await deleteByIds(collection, ids)
       report(collection, deleted)
     })
   }
 
-  await step('8/9 character_sheets (wholesale)', async () => {
+  await step(`8/${totalSteps} character_sheets (wholesale)`, async () => {
     const ids = await fetchIds('character_sheets')
     const deleted = await deleteByIds('character_sheets', ids)
     report('character_sheets', deleted)
   })
 
-  await step('9/9 entities (doomed entity_type values)', async () => {
+  await step(`9/${totalSteps} entities (doomed entity_type values)`, async () => {
     const deleted = await deleteByIds('entities', doomedEntityIds)
     report('entities', deleted)
   })
+
+  // --purge-monsters: everything below this line only runs with the flag.
+  // Same snapshot-then-children-then-parent shape as the base reset above,
+  // on a completely separate id set (MONSTER_ENTITY_TYPES), so it cannot
+  // interact with or re-touch anything the base reset already deleted.
+  if (purgeMonsters) {
+    const monsterEntityIds = await step(`10/${totalSteps} resolve monster entity ids (--purge-monsters)`, async () => {
+      const ids = await fetchIds('entities', { entity_type: { _in: MONSTER_ENTITY_TYPES } })
+      console.log(`  entity_type in [${MONSTER_ENTITY_TYPES.join(', ')}]`)
+      console.log(`  resolved ${ids.length} monster entity ids`)
+      return Object.freeze(ids)
+    })
+
+    for (const [index, collection] of MONSTER_CHILD_COLLECTIONS.entries()) {
+      await step(`${11 + index}/${totalSteps} ${collection} belonging to a monster entity (--purge-monsters)`, async () => {
+        const ids = await fetchIdsWhereAnyFieldIn(collection, ['entity_id'], monsterEntityIds)
+        const deleted = await deleteByIds(collection, ids)
+        report(collection, deleted)
+      })
+    }
+
+    await step(`14/${totalSteps} entities (monster entity_type values) (--purge-monsters)`, async () => {
+      const deleted = await deleteByIds('entities', monsterEntityIds)
+      report('entities', deleted)
+    })
+  }
 
   console.log()
   console.log(`Total rows deleted: ${runningTotal}`)

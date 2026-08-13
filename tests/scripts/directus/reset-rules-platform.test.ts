@@ -179,3 +179,190 @@ describe('fetchIdsWhereAnyFieldIn -- the HTTP 431 fix', () => {
     expect(second).toEqual([]) // no stale/cached result carried over
   })
 })
+
+// ---------------------------------------------------------------------------
+// --purge-monsters (opt-in follow-up flag)
+// ---------------------------------------------------------------------------
+// These tests exercise main() itself, not just the chunking helper above,
+// because --purge-monsters is an orchestration-level change (an extra
+// conditional block of steps appended after the existing nine). `main` is
+// dynamically re-imported per test (vi.resetModules + await import) rather
+// than using the static import at the top of this file, for two reasons:
+// (1) DIRECTUS_TOKEN is read from process.env at module-evaluation time
+//     into a top-level const, so it must be stubbed *before* the module
+//     body runs; (2) `runningTotal` is module-level mutable state that
+//     must not leak between test cases.
+
+function jsonResponseFor(data: unknown) {
+  return jsonResponse({ data })
+}
+
+// A single reusable fetch mock for main()'s full orchestration. It never
+// asserts anything itself -- it just answers the two entity_type lookups
+// the script can make (doomed types via 'character', monster types via
+// 'enemy') and returns no rows for every other lookup, so deletion steps
+// with no ids simply issue zero DELETE calls. Assertions live in each test,
+// inspecting `mock.calls` afterwards.
+function makeMainFetchMock({ doomedIds = [1, 2], monsterIds = [100, 101] } = {}) {
+  return vi.fn(async (url: string, init?: { method?: string }) => {
+    if (init?.method === 'DELETE') return jsonResponseFor([])
+
+    const parsed = new URL(url)
+    const collection = parsed.pathname.replace('/items/', '')
+    const filterParam = parsed.searchParams.get('filter')
+    const filter = filterParam ? JSON.parse(filterParam) : null
+
+    if (collection === 'entities' && filter?.entity_type?._in?.includes('character')) {
+      return jsonResponseFor(doomedIds.map((id) => ({ id })))
+    }
+    if (collection === 'entities' && filter?.entity_type?._in?.includes('enemy')) {
+      return jsonResponseFor(monsterIds.map((id) => ({ id })))
+    }
+    return jsonResponseFor([])
+  })
+}
+
+async function importFreshScript() {
+  vi.stubEnv('DIRECTUS_TOKEN', 'test-token')
+  vi.resetModules()
+  return import('../../../scripts/directus/reset-rules-platform.mjs')
+}
+
+async function runMain(argvExtra: string[], fetchMockForMain: ReturnType<typeof vi.fn>) {
+  const mod = await importFreshScript()
+  vi.stubGlobal('fetch', fetchMockForMain)
+
+  const originalArgv = process.argv
+  process.argv = [...originalArgv, ...argvExtra]
+  const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+  let logged = ''
+  try {
+    await mod.main()
+    // Captured before mockRestore(), which clears .mock.calls as part of
+    // restoring the original console.log -- reading it after would always
+    // see an empty call list.
+    logged = logSpy.mock.calls.flat().join('\n')
+  } finally {
+    process.argv = originalArgv
+    logSpy.mockRestore()
+  }
+
+  return { mod, logged }
+}
+
+describe('main() -- --purge-monsters flag', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('default behavior is unchanged: without the flag, monster entities are never resolved or deleted', async () => {
+    const fetchMockForMain = makeMainFetchMock()
+    const { logged } = await runMain(['--confirm'], fetchMockForMain)
+
+    const entityTypeFilters = fetchMockForMain.mock.calls
+      .map(([url]: [string]) => new URL(url).searchParams.get('filter'))
+      .filter((f): f is string => Boolean(f))
+      .map((f) => JSON.parse(f))
+      .filter((f) => f.entity_type)
+
+    expect(entityTypeFilters).toHaveLength(1) // only the base doomed-types resolution
+    expect(entityTypeFilters[0].entity_type._in).not.toContain('enemy')
+    expect(entityTypeFilters[0].entity_type._in).not.toContain('monster')
+
+    expect(logged).not.toContain('--purge-monsters enabled')
+    expect(logged).not.toContain('9/14') // proves the run used the 9-step (not 14-step) denominator
+    expect(logged).toContain('9/9 entities')
+  })
+
+  it('with --purge-monsters, additionally resolves monster entities and deletes their child collections, in order', async () => {
+    const fetchMockForMain = makeMainFetchMock({ monsterIds: [100, 101, 102] })
+    const { mod, logged } = await runMain(['--confirm', '--purge-monsters'], fetchMockForMain)
+
+    const filters = fetchMockForMain.mock.calls
+      .map(([url]: [string]) => new URL(url).searchParams.get('filter'))
+      .filter((f): f is string => Boolean(f))
+      .map((f) => JSON.parse(f))
+
+    const monsterTypeFilter = filters.find((f) => f.entity_type?._in?.includes('enemy'))
+    expect(monsterTypeFilter?.entity_type._in).toEqual(mod.MONSTER_ENTITY_TYPES)
+
+    for (const collection of mod.MONSTER_CHILD_COLLECTIONS) {
+      const queried = fetchMockForMain.mock.calls.some(
+        ([url]: [string]) => new URL(url).pathname === `/items/${collection}`
+      )
+      expect(queried).toBe(true)
+    }
+
+    // Base reset deletes 'entities' once (doomed ids); --purge-monsters
+    // deletes 'entities' a second time (monster ids) -- same collection,
+    // two separate steps, exactly as specified.
+    const deleteEntitiesCalls = fetchMockForMain.mock.calls.filter(
+      ([url, init]: [string, { method?: string }]) => new URL(url).pathname === '/items/entities' && init?.method === 'DELETE'
+    )
+    expect(deleteEntitiesCalls).toHaveLength(2)
+
+    expect(logged).toContain('--purge-monsters enabled')
+    expect(logged).toContain('14/14 entities')
+  })
+
+  it('batching still applies to --purge-monsters: a large monster id set is chunked per collection', async () => {
+    const manyMonsterIds = Array.from({ length: 450 }, (_, i) => 1000 + i) // 3 chunks at CHUNK_SIZE=200
+    const fetchMockForMain = makeMainFetchMock({ monsterIds: manyMonsterIds })
+    const { mod } = await runMain(['--confirm', '--purge-monsters'], fetchMockForMain)
+
+    const expectedChunks = Math.ceil(manyMonsterIds.length / mod.CHUNK_SIZE)
+    for (const collection of mod.MONSTER_CHILD_COLLECTIONS) {
+      // entity_actions/entity_statblocks/monster_profiles are ALSO queried
+      // by the base reset's own ENTITY_CHILD_COLLECTIONS pass (against the
+      // default doomedIds [1, 2], one small unbatched request) -- isolate
+      // the --purge-monsters pass by its id range (manyMonsterIds starts at
+      // 1000) so this test measures only the batching this task added.
+      const getCalls = fetchMockForMain.mock.calls.filter(([url, init]: [string, { method?: string } | undefined]) => {
+        if (new URL(url).pathname !== `/items/${collection}` || init?.method === 'DELETE') return false
+        const filter = JSON.parse(new URL(url).searchParams.get('filter')!)
+        return (filter.entity_id?._in ?? []).some((id: number) => id >= 1000)
+      })
+      expect(getCalls).toHaveLength(expectedChunks)
+      for (const [url] of getCalls as [string][]) {
+        const filter = JSON.parse(new URL(url).searchParams.get('filter')!)
+        expect(filter.entity_id._in.length).toBeLessThanOrEqual(mod.CHUNK_SIZE)
+      }
+    }
+  })
+
+  it('never touches Rules Platform or other preserved collections, with or without --purge-monsters', async () => {
+    const preserved = [
+      'worlds',
+      'maps',
+      'map_pins',
+      'scene_layer_objects',
+      'events',
+      'eras',
+      'articles',
+      'world_page_presentations',
+      'app_settings',
+      'rules_packages',
+      'world_rules_config'
+    ]
+
+    for (const argvExtra of [['--confirm'], ['--confirm', '--purge-monsters']]) {
+      const fetchMockForMain = makeMainFetchMock()
+      await runMain(argvExtra, fetchMockForMain)
+
+      for (const [url] of fetchMockForMain.mock.calls as [string][]) {
+        const collection = new URL(url).pathname.replace('/items/', '')
+        expect(preserved).not.toContain(collection)
+      }
+
+      const entityTypeFilters = fetchMockForMain.mock.calls
+        .map(([url]: [string]) => new URL(url).searchParams.get('filter'))
+        .filter((f): f is string => Boolean(f))
+        .map((f) => JSON.parse(f))
+        .filter((f) => f.entity_type)
+
+      for (const f of entityTypeFilters) {
+        expect(f.entity_type._in).not.toContain('location')
+      }
+    }
+  })
+})

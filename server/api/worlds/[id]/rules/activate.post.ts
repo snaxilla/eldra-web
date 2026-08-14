@@ -9,6 +9,7 @@
 
 import { activateWorldRulesPackage } from '../../../../utils/world-rules-activation'
 import type { PublishedPackageLoadFailure } from '../../../../utils/rules-packages'
+import { requireCapability } from '../../../../utils/authorization'
 
 function statusForPackageLoadFailure(failure: PublishedPackageLoadFailure): { statusCode: number; statusMessage: string } {
   switch (failure.stage) {
@@ -38,6 +39,12 @@ export default defineEventHandler(async (event) => {
   if (!worldId) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world id' })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.rules.activate', { kind: 'world', worldId })
 
   const body = await readBody(event)
   const packageId = typeof body?.packageId === 'string' ? body.packageId.trim() : ''

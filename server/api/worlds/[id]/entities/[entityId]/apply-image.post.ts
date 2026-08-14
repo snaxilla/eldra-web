@@ -1,3 +1,5 @@
+import { requireCapability } from '../../../../../utils/authorization'
+
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
@@ -42,6 +44,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world or entity id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.entity.edit', { kind: 'world', worldId: String(worldId) })
 
   const parts = await readMultipartFormData(event)
 

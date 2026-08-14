@@ -1,4 +1,5 @@
 import { dxFetch, slugify } from '../../../../utils/entity-factory'
+import { requireCapability } from '../../../../utils/authorization'
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -1365,6 +1366,13 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Character name is required'
       })
     }
+
+    const principal = event.context.principal ?? null
+    if (!principal) {
+      throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+    }
+    // The guided builder always creates a PC (entity_type: 'pc' below).
+    requireCapability(principal, 'world.character.create', { kind: 'world', worldId })
 
     const level = Math.min(20, Math.max(1, Number(body?.level || 1)))
     const classEntityId = integerOrNull(body?.classEntityId)

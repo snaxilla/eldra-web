@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../../../utils/directus'
+import { requireCapability } from '../../../../../utils/authorization'
 
 async function deleteMany(collection: string, entityId: string) {
   const res = await directusServiceRequest(`/items/${collection}`, {
@@ -33,6 +34,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id or entity id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.entity.delete', { kind: 'world', worldId })
 
   const entityRes = await directusServiceRequest(`/items/entities/${entityId}`, {
     method: 'GET',

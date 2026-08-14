@@ -1,6 +1,7 @@
 import { createHomebrewDraft } from '../../../../utils/homebrew'
 import { directusServiceRequest } from '../../../../utils/directus'
 import { persistHomebrewEnemyStructuredRowsForDraft } from '../../../../utils/homebrew/enemy-persistence'
+import { requireCapability } from '../../../../utils/authorization'
 
 function cleanText(value: any) {
   return String(value ?? '').trim()
@@ -52,6 +53,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.homebrew.manage', { kind: 'world', worldId })
 
   let result = await createHomebrewDraft(worldId, body || {})
   result = await attachDraftImage(result, body || {})

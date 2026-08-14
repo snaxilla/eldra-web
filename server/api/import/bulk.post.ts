@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join, basename } from 'node:path'
 
 import { persistImportedEntities } from '../../utils/import-save'
+import { requireCapability } from '../../utils/authorization'
 
 import { preview5eToolsSpells } from '../../../app/lib/importers/5etools-spells'
 import { preview5eToolsItems } from '../../../app/lib/importers/5etools-items'
@@ -184,6 +185,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing worldId or dataset'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.content.bind_pack', { kind: 'world', worldId: String(worldId) })
 
   if (!['spells', 'items', 'backgrounds', 'feats', 'species', 'classes'].includes(dataset)) {
     throw createError({

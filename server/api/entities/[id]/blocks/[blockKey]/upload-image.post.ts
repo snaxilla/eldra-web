@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../../../utils/directus'
+import { requireCapability } from '../../../../../utils/authorization'
 
 function getDirectusUrl() {
   const url = process.env.NUXT_PUBLIC_DIRECTUS_URL || ''
@@ -21,6 +22,23 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'entity id and blockKey are required'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+
+  const entityForAuth = await directusServiceRequest(`/items/entities/${entityId}`, {
+    method: 'GET',
+    query: { fields: 'id,world_id' }
+  })
+
+  const worldId = String(entityForAuth?.data?.world_id || '')
+  if (!worldId) {
+    throw createError({ statusCode: 404, statusMessage: `Entity ${entityId} not found` })
+  }
+
+  requireCapability(principal, 'world.entity.edit', { kind: 'world', worldId })
 
   const parts = await readMultipartFormData(event)
 

@@ -1,3 +1,5 @@
+import { requireCapability } from '../../../../../utils/authorization'
+
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
@@ -36,6 +38,7 @@ async function dxFetch(path: string, options: RequestInit = {}) {
 }
 
 export default defineEventHandler(async (event) => {
+  const worldId = String(getRouterParam(event, 'id') || '')
   const mapId = String(getRouterParam(event, 'mapId') || '')
   const body = await readBody(event)
 
@@ -45,6 +48,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing map id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.map.edit', { kind: 'world', worldId })
 
   const parentMapId =
     body?.parentMapId === undefined ||

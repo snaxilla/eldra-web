@@ -1,4 +1,6 @@
 import { createPin } from '../../utils/map-pins'
+import { directusServiceRequest } from '../../utils/directus'
+import { requireCapability } from '../../utils/authorization'
 
 function normalizeEntityId(value: any): number | null {
   if (value === undefined || value === null || value === '' || value === 'null') return null
@@ -17,6 +19,24 @@ export default defineEventHandler(async (event) => {
   if (!body?.mapId || body.x == null || body.y == null) {
     throw createError({ statusCode: 400, statusMessage: 'Missing required fields: mapId, x, y' })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+
+  // map-pins routes are not nested under worlds/[id] -- resolve worldId via
+  // the pin's map, same lookup server/utils/map-data.ts's
+  // setDefaultWorldMapByMapId already does.
+  const mapRes = await directusServiceRequest(`/items/maps/${body.mapId}`, {
+    method: 'GET',
+    query: { fields: 'id,world' }
+  })
+  const worldId = String(mapRes?.data?.world || '')
+  if (!worldId) {
+    throw createError({ statusCode: 404, statusMessage: 'Map not found' })
+  }
+  requireCapability(principal, 'world.map.edit', { kind: 'world', worldId })
 
   return await createPin({
     mapId: String(body.mapId),

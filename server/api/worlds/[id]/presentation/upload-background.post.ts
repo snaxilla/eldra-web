@@ -1,3 +1,5 @@
+import { requireCapability } from '../../../../utils/authorization'
+
 function baseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
@@ -7,6 +9,21 @@ function token() {
 }
 
 export default defineEventHandler(async (event) => {
+  const worldId = String(getRouterParam(event, 'id') || '')
+
+  if (!worldId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Missing world id'
+    })
+  }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.settings.edit', { kind: 'world', worldId })
+
   const parts = await readMultipartFormData(event)
 
   if (!parts?.length) {

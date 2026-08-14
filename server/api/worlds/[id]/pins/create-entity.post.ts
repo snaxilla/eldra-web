@@ -1,3 +1,5 @@
+import { requireCapability } from '../../../../utils/authorization'
+
 function directusBaseUrl() {
   return (process.env.DIRECTUS_URL || process.env.NUXT_PUBLIC_DIRECTUS_URL || '').replace(/\/$/, '')
 }
@@ -78,6 +80,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing required fields: world id and title'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.entity.create', { kind: 'world', worldId: String(worldId) })
 
   const entityType = normalizeEntityType(pinType)
   const slugBase = slugify(title) || `entity-${Date.now()}`

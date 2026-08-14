@@ -1,5 +1,6 @@
 import { preview5eToolsClasses } from '../../../../../app/lib/importers'
 import { persistImportedEntities } from '../../../../utils/import-save'
+import { requireCapability } from '../../../../utils/authorization'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -14,6 +15,12 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'worldId is required'
       })
     }
+
+    const principal = event.context.principal ?? null
+    if (!principal) {
+      throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+    }
+    requireCapability(principal, 'world.content.bind_pack', { kind: 'world', worldId: String(worldId) })
 
     if (typeof payload === 'string') {
       payload = JSON.parse(payload)

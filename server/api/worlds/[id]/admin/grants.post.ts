@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../../utils/directus'
+import { requireCapability } from '../../../../utils/authorization'
 import { broadcastInventoryTransferRealtimeEvent } from '../../../../utils/inventory-transfer-realtime-bridge'
 import {
   createInventoryItemForSheet,
@@ -193,6 +194,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'World id and target entity id are required'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.grant.issue', { kind: 'world', worldId })
 
   const targetSheet = await loadActiveCharacterSheet(worldId, targetEntityId)
 

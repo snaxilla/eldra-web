@@ -1,4 +1,5 @@
 import { createEntityRecord, uploadImageToDirectus, dxFetch } from '../../../../utils/entity-factory'
+import { requireCapability } from '../../../../utils/authorization'
 
 function clampCreateCharacterLevel(value: any) {
   const parsed = Number(value)
@@ -45,6 +46,16 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Character name is required'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(
+    principal,
+    characterType === 'pc' ? 'world.character.create' : 'world.npc.manage',
+    { kind: 'world', worldId }
+  )
 
   const imagePart = parts.find((p) => p.name === 'image' && p.type && String(p.type).startsWith('image/'))
   const imageId = imagePart ? await uploadImageToDirectus(imagePart) : null

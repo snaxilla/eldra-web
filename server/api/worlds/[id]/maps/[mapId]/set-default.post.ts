@@ -1,4 +1,5 @@
 import { setDefault } from '../../../../../utils/directus-maps'
+import { requireCapability } from '../../../../../utils/authorization'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -11,6 +12,12 @@ export default defineEventHandler(async (event) => {
         statusMessage: 'Missing world id or map id'
       })
     }
+
+    const principal = event.context.principal ?? null
+    if (!principal) {
+      throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+    }
+    requireCapability(principal, 'world.map.edit', { kind: 'world', worldId })
 
     await setDefault(worldId, mapId)
 

@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../../utils/directus'
+import { requireCapability } from '../../../../utils/authorization'
 
 function cleanText(value: any) {
   return String(value ?? '')
@@ -209,6 +210,15 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  // Read-only lookup despite being POST-shaped (mention payloads can be
+  // long) -- gated at world.read so Players can still use @mention
+  // autocomplete while composing content.
+  requireCapability(principal, 'world.read', { kind: 'world', worldId: String(worldId) })
 
   const body = await readBody(event).catch(() => ({}))
   const mentions = Array.from(new Set(

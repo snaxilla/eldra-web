@@ -1,4 +1,12 @@
+import { requireCapability } from '../../utils/authorization'
+
 export default defineEventHandler(async (event) => {
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'platform.settings.manage', { kind: 'platform' })
+
   const config = useRuntimeConfig()
   const baseUrl = String(config.public.directusUrl).replace(/\/$/, '')
   const token = String(config.directusToken || '')

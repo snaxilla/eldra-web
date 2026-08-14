@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../../../utils/directus'
+import { requireCapability } from '../../../../../utils/authorization'
 
 export default defineEventHandler(async (event) => {
   const worldId = Number(getRouterParam(event, 'id') || 0)
@@ -10,6 +11,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id or enemy id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.npc.manage', { kind: 'world', worldId: String(worldId) })
 
   const existing = await directusServiceRequest(`/items/entities/${enemyId}`, {
     method: 'GET',

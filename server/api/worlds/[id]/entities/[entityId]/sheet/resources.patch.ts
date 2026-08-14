@@ -1,4 +1,5 @@
 import { dxFetch } from '../../../../../../utils/entity-factory'
+import { requireCapability } from '../../../../../../utils/authorization'
 
 function asObject(value: any) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -64,6 +65,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world or entity id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.character.edit_any', { kind: 'world', worldId })
 
   const sheet = await findActiveSheet(worldId, entityId)
 

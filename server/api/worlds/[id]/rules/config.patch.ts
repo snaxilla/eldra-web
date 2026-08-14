@@ -10,6 +10,7 @@
 // server/utils/world-rules-activation.ts.
 
 import { updateWorldRulesConfig } from '../../../../utils/world-rules-activation'
+import { requireCapability } from '../../../../utils/authorization'
 
 function plainObjectOrUndefined(value: unknown): Record<string, any> | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : undefined
@@ -21,6 +22,12 @@ export default defineEventHandler(async (event) => {
   if (!worldId) {
     throw createError({ statusCode: 400, statusMessage: 'Missing world id' })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.rules.configure', { kind: 'world', worldId })
 
   const body = await readBody(event)
   const settings = plainObjectOrUndefined(body?.settings)

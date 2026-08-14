@@ -1,4 +1,5 @@
 import { createWorldMap, uploadDirectusFile } from '../../../utils/map-data'
+import { requireCapability } from '../../../utils/authorization'
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
@@ -9,6 +10,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.map.edit', { kind: 'world', worldId })
 
   const parts = await readMultipartFormData(event)
 

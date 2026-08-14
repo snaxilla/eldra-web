@@ -1,4 +1,5 @@
 import { directusServiceRequest } from '../../../../../utils/directus'
+import { requireCapability } from '../../../../../utils/authorization'
 
 function cleanText(value: any) {
   return String(value || '').trim()
@@ -120,6 +121,12 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Missing world or file id'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(principal, 'world.entity.edit', { kind: 'world', worldId })
 
   const usage = await collectWorldFileUsage(worldId, fileId)
 

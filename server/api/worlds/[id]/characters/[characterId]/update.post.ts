@@ -1,4 +1,17 @@
 import { dxFetch, uploadImageToDirectus } from '../../../../../utils/entity-factory'
+import { requireCapability } from '../../../../../utils/authorization'
+
+// Ownership is not tracked on entities yet (no accountId on EldraEntity), so
+// `world.character.edit_own` cannot be checked against real ownership --
+// deliberately conservative until it lands. NPC-type edits still require
+// world.npc.manage; anything touching a PC (either side of a type change)
+// requires world.character.edit_any, which owner/gm always have alongside
+// npc.manage, so this is the strictly safer choice whenever a reclassification
+// is involved.
+function capabilityForCharacterMutation(existingType: string, requestedType: string) {
+  const isNpcType = (type: string) => type === 'npc' || type === 'npc_sheet'
+  return isNpcType(existingType) && isNpcType(requestedType) ? 'world.npc.manage' as const : 'world.character.edit_any' as const
+}
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
@@ -41,7 +54,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const existingJson = await dxFetch(`/items/entities/${characterId}?fields=id,world_id,image`)
+  const existingJson = await dxFetch(`/items/entities/${characterId}?fields=id,world_id,image,entity_type`)
   const existing = existingJson?.data || null
 
   if (!existing || String(existing.world_id) !== String(worldId)) {
@@ -50,6 +63,16 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Character not found in this world'
     })
   }
+
+  const principal = event.context.principal ?? null
+  if (!principal) {
+    throw createError({ statusCode: 401, statusMessage: 'Authentication required' })
+  }
+  requireCapability(
+    principal,
+    capabilityForCharacterMutation(String(existing.entity_type || ''), characterType),
+    { kind: 'world', worldId }
+  )
 
   const imagePart = parts.find((p) => p.name === 'image' && p.type && String(p.type).startsWith('image/'))
   let imageId = existing?.image ? String(existing.image) : null

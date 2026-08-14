@@ -4,14 +4,15 @@
 // and this task's own SCOPE/UI sections.
 //
 // Deliberately simple, per this task's own instruction ("Keep UI
-// intentionally simple. No search optimization. No invitation flow."):
-// one component, no sub-panels, no autocomplete. Adding a member takes a
-// raw accountId (an existing Directus user id) -- there is no Accounts
-// collection or lookup-by-email to search against yet (NON-GOALS: no
-// Accounts, no IdentityLinks, no email). Every write re-fetches the member
-// list from the server afterward rather than updating optimistically,
-// matching the same "always refresh from the server" convention
-// AdminRulesPanel.vue already established.
+// intentionally simple... No invitation flow."): one component, no
+// sub-panels. Adding a member goes through search-and-select
+// (GET /api/accounts/search) rather than a raw accountId textbox -- see
+// this task's own OBJECTIVE: "The UI should operate on human identity. Not
+// storage identity." The uuid a search result carries is never rendered;
+// it only ever round-trips from selectedAccount straight into the POST
+// body. Every write re-fetches the member list from the server afterward
+// rather than updating optimistically, matching the same "always refresh
+// from the server" convention AdminRulesPanel.vue already established.
 
 const props = defineProps<{
   worldId: string | number
@@ -28,13 +29,30 @@ type Member = {
   createdAt: string | null
 }
 
+type AccountSearchResult = {
+  accountId: string
+  displayName: string
+}
+
 const ASSIGNABLE_ROLES = ['gm', 'worldbuilder', 'player', 'observer'] as const
 
 const members = ref<Member[]>([])
 const membersPending = ref(false)
 const membersError = ref('')
 
-const newAccountId = ref('')
+// Account search-and-select state. selectedAccount is the ONLY thing
+// addMember() reads to identify who is being added -- searchQuery/searchResults
+// exist purely to help a human FIND that value; neither is ever sent to
+// the server.
+const searchQuery = ref('')
+const searchResults = ref<AccountSearchResult[]>([])
+const searchPending = ref(false)
+const searchError = ref('')
+const searchAttempted = ref(false)
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const selectedAccount = ref<AccountSearchResult | null>(null)
+
 const newRole = ref<(typeof ASSIGNABLE_ROLES)[number]>('player')
 const addPending = ref(false)
 const addError = ref('')
@@ -70,12 +88,64 @@ function formatJoined(createdAt: string | null) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString()
 }
 
-async function addMember() {
-  const accountId = newAccountId.value.trim()
-  if (!accountId) {
-    addError.value = 'Account ID is required.'
+// Debounced, not "autocomplete" -- no ranking, no keyboard navigation, no
+// caching, no highlighting. Just enough to avoid firing a request on every
+// keystroke, per this task's own NON-GOALS ("No autocomplete optimization").
+function onSearchInput() {
+  selectedAccount.value = null // typing again invalidates a prior selection
+  searchAttempted.value = false
+  searchError.value = ''
+
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+
+  const q = searchQuery.value.trim()
+  if (!q) {
+    searchResults.value = []
     return
   }
+
+  searchDebounceTimer = setTimeout(() => runSearch(q), 250)
+}
+
+async function runSearch(q: string) {
+  searchPending.value = true
+  searchError.value = ''
+
+  try {
+    const response = await $fetch<{ accounts: AccountSearchResult[] }>('/api/accounts/search', {
+      query: { q }
+    })
+    searchResults.value = response.accounts || []
+  } catch (error: any) {
+    searchResults.value = []
+    searchError.value = error?.data?.statusMessage || error?.data?.message || error?.message || 'Search failed.'
+  } finally {
+    searchPending.value = false
+    searchAttempted.value = true
+  }
+}
+
+// The uuid inside `account` is never displayed -- see selectedAccount's
+// own declaration comment. Selecting clears the query/results so the
+// chosen account's name is the only thing left on screen.
+function selectAccount(account: AccountSearchResult) {
+  selectedAccount.value = account
+  searchResults.value = []
+  searchQuery.value = ''
+  searchAttempted.value = false
+}
+
+function clearSelection() {
+  selectedAccount.value = null
+}
+
+async function addMember() {
+  if (!selectedAccount.value) {
+    addError.value = 'Search for and select an account first.'
+    return
+  }
+
+  const accountId = selectedAccount.value.accountId
 
   addPending.value = true
   addError.value = ''
@@ -85,7 +155,7 @@ async function addMember() {
       method: 'POST',
       body: { accountId, role: newRole.value }
     })
-    newAccountId.value = ''
+    selectedAccount.value = null
     newRole.value = 'player'
     await loadMembers()
   } catch (error: any) {
@@ -269,19 +339,75 @@ async function removeMember(member: Member) {
         Add Member
       </div>
       <p class="mt-2 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
-        Add an existing account by its account ID. There is no invitation
-        flow yet -- the account must already exist.
+        Search for an existing account by name. There is no invitation flow
+        yet -- the account must already exist.
       </p>
 
       <div class="mt-4 flex flex-wrap items-end gap-3">
-        <div class="flex flex-col gap-1">
-          <label class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Account ID</label>
-          <input
-            v-model="newAccountId"
-            type="text"
-            placeholder="Account ID"
-            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.8)] px-3 py-2 text-sm text-[#fff7df]"
+        <div class="flex min-w-[220px] flex-col gap-1">
+          <label class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Account</label>
+
+          <!-- A selection has been made: show the chosen account's name,
+               never its id, with a way to search again. -->
+          <div
+            v-if="selectedAccount"
+            class="flex items-center justify-between gap-3 border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.8)] px-3 py-2 text-sm text-[#fff7df]"
           >
+            <span>{{ selectedAccount.displayName }}</span>
+            <button
+              type="button"
+              class="text-xs uppercase tracking-[0.15em] text-[#9f9278] hover:text-[#fff7df]"
+              @click="clearSelection"
+            >
+              Change
+            </button>
+          </div>
+
+          <!-- No selection yet: search field + results. -->
+          <div
+            v-else
+            class="relative"
+          >
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search by name..."
+              class="w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.8)] px-3 py-2 text-sm text-[#fff7df]"
+              @input="onSearchInput"
+            >
+
+            <div
+              v-if="searchPending"
+              class="mt-1 text-xs text-[#9f9278]"
+            >
+              Searching...
+            </div>
+
+            <ul
+              v-else-if="searchResults.length"
+              class="absolute z-10 mt-1 w-full border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.96)]"
+            >
+              <li
+                v-for="account in searchResults"
+                :key="account.accountId"
+              >
+                <button
+                  type="button"
+                  class="block w-full px-3 py-2 text-left text-sm text-[#fff7df] hover:bg-[rgba(201,164,90,0.15)]"
+                  @click="selectAccount(account)"
+                >
+                  {{ account.displayName }}
+                </button>
+              </li>
+            </ul>
+
+            <div
+              v-else-if="searchAttempted && searchQuery.trim()"
+              class="mt-1 text-xs text-[#9f9278]"
+            >
+              No accounts found.
+            </div>
+          </div>
         </div>
 
         <div class="flex flex-col gap-1">
@@ -303,12 +429,19 @@ async function removeMember(member: Member) {
         <button
           type="button"
           class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-xs font-semibold text-[#fff7df] disabled:opacity-50"
-          :disabled="addPending"
+          :disabled="addPending || !selectedAccount"
           @click="addMember"
         >
           Add Member
         </button>
       </div>
+
+      <p
+        v-if="searchError"
+        class="mt-3 text-xs text-red-300"
+      >
+        {{ searchError }}
+      </p>
 
       <p
         v-if="addError"

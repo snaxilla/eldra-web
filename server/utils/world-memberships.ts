@@ -41,6 +41,7 @@
 // this module is meant to be unit-tested directly under plain Vitest.
 import { createError } from 'h3'
 import { directusServiceRequest } from './directus'
+import { formatAccountDisplayName } from './accounts'
 
 // The five roles ownership-and-permissions.md §8.5/§8.7 defines. Kept as a
 // plain union (not a Directus enum) matching this project's existing
@@ -166,6 +167,10 @@ export type WorldMemberSummary = WorldMembershipRecord & { displayName: string }
 // already is, the same identity Principal.accountId already carries
 // (server/utils/authorization.ts). This is a display-only convenience: no
 // authorization decision anywhere reads a display name.
+//
+// formatAccountDisplayName is shared with server/utils/accounts.ts's
+// searchAccounts so a member looks identical whether you are viewing an
+// existing roster row or searching for one to add.
 async function resolveDisplayNames(accountIds: string[]): Promise<Map<string, string>> {
   if (accountIds.length === 0) {
     return new Map()
@@ -182,10 +187,7 @@ async function resolveDisplayNames(accountIds: string[]): Promise<Map<string, st
 
   const names = new Map<string, string>()
   for (const row of Array.isArray(res?.data) ? res.data : []) {
-    const first = String(row?.first_name ?? '').trim()
-    const last = String(row?.last_name ?? '').trim()
-    const full = `${first} ${last}`.trim()
-    names.set(String(row?.id ?? ''), full || String(row?.email ?? '').trim() || String(row?.id ?? ''))
+    names.set(String(row?.id ?? ''), formatAccountDisplayName(row))
   }
   return names
 }

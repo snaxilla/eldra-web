@@ -1,4 +1,4 @@
-import { DIRECTUS_ME_FIELDS, directusRequest } from '../../utils/directus'
+import { DIRECTUS_ME_FIELDS, directusRequest, setSessionCookies } from '../../utils/directus'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -20,6 +20,17 @@ export default defineEventHandler(async (event) => {
     loginResponse?.data?.access_token ||
     loginResponse?.access_token
 
+  // Previously discarded -- the actual regression this fixes. Directus's
+  // access tokens default to a 15-minute TTL, and nothing renewed one
+  // once it expired, because the refresh_token Directus already returns
+  // here was never captured or stored. server/api/auth/logout.post.ts and
+  // server/api/auth/me.get.ts both already read/delete an `eldra_refresh`
+  // cookie that this handler alone is responsible for ever setting -- see
+  // server/utils/directus.ts's refreshDirectusSession for the other half.
+  const refreshToken =
+    loginResponse?.data?.refresh_token ||
+    loginResponse?.refresh_token
+
   if (!accessToken) {
     throw createError({
       statusCode: 401,
@@ -27,14 +38,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // 🔥 FIXED COOKIE CONFIG
-  setCookie(event, 'eldra_session', accessToken, {
-    httpOnly: true,
-    secure: false,          // 👈 KEY CHANGE
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 8
-  })
+  setSessionCookies(event, accessToken, refreshToken)
 
   // `fields` is REQUIRED here: without it Directus returns `role` as a bare
   // id string, which useAuth's normalizeUser silently reduces to

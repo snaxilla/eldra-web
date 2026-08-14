@@ -1,7 +1,33 @@
 <script setup lang="ts">
 import WorldCreateModal from '~/components/world/WorldCreateModal.vue'
+import { useAuth } from '~/composables/useAuth'
 
-const { data: worlds, refresh: refreshWorlds } = await useFetch('/api/worlds')
+// GET /api/worlds is intentionally still gated by the Phase 0 deny-by-default
+// middleware (server/middleware/authorize.ts) -- it stays that way; see this
+// task's own ISSUE 1 ("Do NOT make GET /api/worlds public"). An anonymous
+// visitor must never even ATTEMPT that request, so auth state is resolved
+// FIRST, and the fetch below only ever fires when it's already known to
+// succeed. Same `if (!state.value.ready) await fetchMe()` sequencing
+// app/middleware/auth.ts and app/plugins/auth-init.client.ts already use --
+// fetchMe() forwards the incoming request's cookie during SSR (useAuth.ts),
+// so this resolves correctly on the very first server-rendered response,
+// not just after client-side hydration.
+const { state, fetchMe } = useAuth()
+
+if (!state.value.ready) {
+  await fetchMe()
+}
+
+const isAuthenticated = computed(() => state.value.authenticated)
+
+// `immediate: isAuthenticated.value` is read once, here, after the await
+// above -- not reactively -- so this never issues the request for a
+// signed-out visitor (no 401 round-trip, no "attempt" at all), while still
+// calling useFetch unconditionally (consistent composable usage, SSR-safe
+// hydration) rather than skipping the call itself.
+const { data: worlds, refresh: refreshWorlds } = await useFetch('/api/worlds', {
+  immediate: isAuthenticated.value
+})
 
 const createWorldOpen = ref(false)
 
@@ -35,7 +61,10 @@ async function onWorldCreated(world: { id: string | number; slug: string }) {
   <div class="relative min-h-[calc(100vh-3.5rem)]">
     <WorldChooserThpace />
 
-    <div class="relative z-10 space-y-12 lg:space-y-16">
+    <div
+      v-if="isAuthenticated"
+      class="relative z-10 space-y-12 lg:space-y-16"
+    >
       <section class="relative overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(4,9,22,0.40)] shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-sm">
         <div class="relative px-8 py-16 sm:px-10 lg:px-14 lg:py-20">
           <div class="max-w-5xl">
@@ -192,7 +221,64 @@ async function onWorldCreated(world: { id: string | number; slug: string }) {
       </section>
     </div>
 
+    <!--
+      Signed-out experience -- this task's own ISSUE 1/SIGNED-OUT EXPERIENCE.
+      GET /api/worlds stays protected (never called above when
+      !isAuthenticated, per the script's `immediate` guard); this section
+      exists specifically so the page says WHY nothing is shown, instead of
+      falling through to the authenticated branch's "No worlds yet" empty
+      state, which would misleadingly imply zero Worlds exist rather than
+      "you are not signed in."  No World metadata, no Create World entry
+      point -- both require an authenticated session this visitor doesn't
+      have.
+    -->
+    <div
+      v-else
+      class="relative z-10 flex min-h-[calc(100vh-3.5rem)] items-center justify-center"
+    >
+      <section class="relative w-full max-w-2xl overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(4,9,22,0.40)] px-8 py-16 text-center shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:px-14 sm:py-20">
+        <div class="text-[12px] uppercase tracking-[0.42em] text-sky-300/90">
+          Eldra Cosmos
+        </div>
+
+        <h1 class="mt-5 text-5xl font-semibold tracking-tight text-white sm:text-6xl">
+          Welcome to Eldra
+        </h1>
+
+        <p class="mt-7 text-lg leading-9 text-slate-200">
+          Worlds are private by default. Sign in to continue into the realms
+          you're part of.
+        </p>
+
+        <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
+          <NuxtLink
+            to="/login"
+            class="inline-flex items-center gap-2 rounded-full border border-sky-300/25 bg-sky-400/15 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-400/25"
+          >
+            <UIcon
+              name="i-lucide-log-in"
+              class="h-4 w-4"
+            />
+            <span>Sign In</span>
+          </NuxtLink>
+
+          <button
+            type="button"
+            disabled
+            class="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-slate-400 opacity-50"
+          >
+            <UIcon
+              name="i-lucide-user-plus"
+              class="h-4 w-4"
+            />
+            <span>Create Account (coming soon)</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
     <WorldCreateModal
+      v-if="isAuthenticated"
       v-model:open="createWorldOpen"
       @created="onWorldCreated"
     />

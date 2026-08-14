@@ -7,6 +7,7 @@ definePageMeta({
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 import AdminHomebrewForgePanel from '~/components/admin/homebrew/AdminHomebrewForgePanel.vue'
 import AdminRulesPanel from '~/components/admin/rules/AdminRulesPanel.vue'
+import AdminMembersPanel from '~/components/admin/members/AdminMembersPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,7 +15,7 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
-const activePanel = ref<'overview' | 'party' | 'grants' | 'homebrew' | 'rules' | 'setup' | 'transfers' | 'relationships'>('overview')
+const activePanel = ref<'overview' | 'party' | 'members' | 'grants' | 'homebrew' | 'rules' | 'setup' | 'transfers' | 'relationships'>('overview')
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
@@ -192,6 +193,7 @@ const healthCards = computed(() => [
 const panels = [
   { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
   { key: 'party', label: 'Party / Cast', icon: 'i-lucide-users' },
+  { key: 'members', label: 'Members', icon: 'i-lucide-shield-check' },
   { key: 'grants', label: 'Grants', icon: 'i-lucide-gift' },
   { key: 'homebrew', label: 'Homebrew', icon: 'i-lucide-flask-conical' },
   { key: 'rules', label: 'Rules', icon: 'i-lucide-scale' },
@@ -773,6 +775,11 @@ async function refreshAdmin() {
 
       <AdminRulesPanel
         v-else-if="activePanel === 'rules'"
+        :world-id="worldId"
+      />
+
+      <AdminMembersPanel
+        v-else-if="activePanel === 'members'"
         :world-id="worldId"
       />
 

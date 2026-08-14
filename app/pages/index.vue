@@ -1,5 +1,9 @@
 <script setup lang="ts">
-const { data: worlds } = await useFetch('/api/worlds')
+import WorldCreateModal from '~/components/world/WorldCreateModal.vue'
+
+const { data: worlds, refresh: refreshWorlds } = await useFetch('/api/worlds')
+
+const createWorldOpen = ref(false)
 
 function worldHref(world: any) {
   return `/worlds/${world.id}`
@@ -15,6 +19,15 @@ function worldSubtitle(world: any) {
     world?.description ||
     'A distinct realm within the Eldra cosmos, waiting to be explored.'
   )
+}
+
+// On success: refresh the World list (so a later back-navigation to this
+// page already shows it, per this task's own ON SUCCESS requirement), then
+// navigate straight into the new World. navigateTo is client-side routing
+// -- no page refresh, no full reload.
+async function onWorldCreated(world: { id: string | number; slug: string }) {
+  await refreshWorlds()
+  await navigateTo(worldHref(world))
 }
 </script>
 
@@ -40,7 +53,7 @@ function worldSubtitle(world: any) {
               continue building, playing, or running the story inside it.
             </p>
 
-            <div class="mt-9 flex flex-wrap gap-3">
+            <div class="mt-9 flex flex-wrap items-center gap-3">
               <div class="rounded-full border border-sky-300/20 bg-sky-400/10 px-4 py-2 text-sm text-sky-100 backdrop-blur">
                 Shared universe
               </div>
@@ -50,6 +63,18 @@ function worldSubtitle(world: any) {
               <div class="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 text-sm text-slate-100 backdrop-blur">
                 Play · Run · Build
               </div>
+
+              <button
+                type="button"
+                class="ml-1 inline-flex items-center gap-2 rounded-full border border-sky-300/25 bg-sky-400/15 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-400/25"
+                @click="createWorldOpen = true"
+              >
+                <UIcon
+                  name="i-lucide-plus"
+                  class="h-4 w-4"
+                />
+                <span>Create World</span>
+              </button>
             </div>
           </div>
         </div>
@@ -151,9 +176,26 @@ function worldSubtitle(world: any) {
           <p class="mt-4 text-base leading-8 text-slate-300">
             Create your first world and open a new realm for players, lore, characters, and maps.
           </p>
+
+          <button
+            type="button"
+            class="mt-7 inline-flex items-center gap-2 rounded-full border border-sky-300/25 bg-sky-400/15 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-400/25"
+            @click="createWorldOpen = true"
+          >
+            <UIcon
+              name="i-lucide-plus"
+              class="h-4 w-4"
+            />
+            <span>Create World</span>
+          </button>
         </div>
       </section>
     </div>
+
+    <WorldCreateModal
+      v-model:open="createWorldOpen"
+      @created="onWorldCreated"
+    />
 
     <a
       href="https://github.com/ImBaedin/Thpace"

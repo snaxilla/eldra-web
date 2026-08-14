@@ -1,15 +1,39 @@
+// Username Login task: accepts `username` (a Player's username OR an
+// existing administrator's real email -- see resolveLoginEmail's own
+// comment for how the two are told apart) rather than requiring `email`
+// directly. `body?.email` is still accepted as a fallback identifier key
+// -- there is exactly one caller of this route today (app/composables/useAuth.ts,
+// updated in the same commit to send `username`), so this is pure defensive
+// slack, not a real second contract to maintain.
+//
+// Nothing below this point changed: resolveLoginEmail runs BEFORE the
+// unchanged Directus call and never throws (see its own comment), so
+// there is no new error path -- a resolved-but-wrong email fails through
+// the exact same uncaught-and-unwrapped `/auth/login` rejection a bad
+// email already did before this task, which is what keeps "unknown
+// username" and "incorrect password" behaving exactly like today's failed
+// login without this file adding any new try/catch.
+//
+// createError/defineEventHandler/readBody are imported explicitly (the
+// same reason server/middleware/authorize.ts does) so this route is
+// directly unit-testable under plain Vitest.
+import { createError, defineEventHandler, readBody } from 'h3'
 import { DIRECTUS_ME_FIELDS, directusRequest, setSessionCookies } from '../../utils/directus'
+import { resolveLoginEmail } from '../../utils/players'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { email, password } = body
+  const identifier = typeof body?.username === 'string' ? body.username : typeof body?.email === 'string' ? body.email : ''
+  const password = body?.password
 
-  if (!email || !password) {
+  if (!identifier || !password) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Email and password are required'
+      statusMessage: 'Username and password are required'
     })
   }
+
+  const email = resolveLoginEmail(identifier)
 
   const loginResponse = await directusRequest('/auth/login', {
     method: 'POST',

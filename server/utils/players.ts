@@ -28,13 +28,14 @@
 // outside this module and server/utils/accounts.ts's shared
 // formatAccountDisplayName ever constructs or parses this address.
 //
-// NOT YET WIRED: signing in as a newly created Player through the existing
-// login form (server/api/auth/login.post.ts, app/pages/login.vue) still
-// expects a real `email`, unchanged by this task. This task's own SCOPE
-// stops at "Add Player to World" and never mentions the login page -- a
-// created Player exists and can be added to Worlds today; letting them
-// actually sign in with their username is a separate, not-yet-scoped
-// follow-up (see this task's own Project Knowledge Review Q4).
+// USERNAME LOGIN (Username Login task): server/api/auth/login.post.ts
+// imports resolveLoginEmail (below) rather than re-deriving the
+// username-to-email rule itself -- "There must be exactly one canonical
+// implementation" (that task's own SERVER section). Existing
+// administrators, created before this module existed, still sign in with
+// a real email; resolveLoginEmail is what lets ONE identifier field accept
+// either shape without the login route knowing anything about the
+// synthesized-address convention.
 
 import { createError } from 'h3'
 import { directusServiceRequest } from './directus'
@@ -61,6 +62,31 @@ export function normalizeUsername(raw: string): string {
 
 export function isValidUsername(username: string): boolean {
   return USERNAME_PATTERN.test(username)
+}
+
+// Resolves whatever a caller typed into the login form's single identifier
+// field to the real Directus email `/auth/login` needs -- the ONE place
+// this decision is made (this task's own SERVER section: "Do NOT duplicate
+// username -> email translation. There must be exactly one canonical
+// implementation."). A value containing "@" is assumed to already BE a
+// real email -- an existing administrator, created before this module
+// existed, signing in exactly as they always have -- and passes through
+// unchanged (trimmed only; no case-folding, since Directus's own stored
+// value was never case-folded either and changing that now would be a
+// real, unrequested behavior change for those accounts). Anything else is
+// assumed to be a Player's username and is converted via usernameToEmail.
+//
+// Deliberately never throws: an unresolvable/unknown identifier is not
+// this function's problem to detect. It always produces SOME email-shaped
+// string and lets Directus's own `/auth/login` be the single source of
+// truth for whether it corresponds to a real account -- an unknown
+// username therefore fails exactly the same way an unknown email already
+// does today (this task's own ERROR HANDLING section: "Unknown username
+// and incorrect password should behave exactly like today's failed
+// login"), with no new error path for anything to leak through.
+export function resolveLoginEmail(identifier: string): string {
+  const trimmed = String(identifier ?? '').trim()
+  return trimmed.includes('@') ? trimmed : usernameToEmail(normalizeUsername(trimmed))
 }
 
 async function usernameExists(username: string): Promise<boolean> {

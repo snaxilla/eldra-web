@@ -18,7 +18,7 @@ vi.mock('../../../server/utils/directus', () => ({
   directusServiceRequest: directusServiceRequestMock
 }))
 
-import { createPlayer, isValidUsername, normalizeUsername, usernameToEmail } from '../../../server/utils/players'
+import { createPlayer, isValidUsername, normalizeUsername, resolveLoginEmail, usernameToEmail } from '../../../server/utils/players'
 
 function jsonResponse(data: unknown) {
   return { data }
@@ -49,6 +49,33 @@ describe('normalizeUsername / isValidUsername / usernameToEmail -- pure', () => 
     // rejects several IANA reserved/special-use TLDs (.internal, .local,
     // .invalid) specifically -- this is not an arbitrary placeholder.
     expect(usernameToEmail('silverhand')).toBe('silverhand@players.eldra.app')
+  })
+})
+
+describe('resolveLoginEmail -- the single canonical username/email login resolution', () => {
+  it('resolves a bare username to its synthesized Directus email', () => {
+    expect(resolveLoginEmail('silverhand')).toBe('silverhand@players.eldra.app')
+  })
+
+  it('normalizes (trims + lowercases) a username before resolving, same as createPlayer does', () => {
+    expect(resolveLoginEmail('  Silverhand  ')).toBe('silverhand@players.eldra.app')
+  })
+
+  it('passes a real email straight through, unchanged -- existing administrators are unaffected', () => {
+    expect(resolveLoginEmail('admin@example.com')).toBe('admin@example.com')
+  })
+
+  it('does NOT case-fold a real email -- no new behavior for existing administrator accounts', () => {
+    expect(resolveLoginEmail('Admin@Example.com')).toBe('Admin@Example.com')
+  })
+
+  it('trims whitespace around a real email without altering its case', () => {
+    expect(resolveLoginEmail('  admin@example.com  ')).toBe('admin@example.com')
+  })
+
+  it('never throws -- an unknown identifier is Directus\'s own /auth/login to reject, not this function\'s', () => {
+    expect(() => resolveLoginEmail('')).not.toThrow()
+    expect(() => resolveLoginEmail('totally-unknown-user')).not.toThrow()
   })
 })
 

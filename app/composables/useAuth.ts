@@ -115,10 +115,14 @@ export function useAuth() {
     return state.value
   }
 
-  async function login(email: string, password: string) {
+  // `username` accepts a Player's username OR an existing administrator's
+  // real email -- server/utils/players.ts's resolveLoginEmail (called from
+  // server/api/auth/login.post.ts) is what tells the two apart. This
+  // composable does not need to know which one it was handed.
+  async function login(username: string, password: string) {
     const response = await $fetch<LoginResponse>('/api/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: { username, password },
       credentials: 'include'
     })
 

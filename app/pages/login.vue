@@ -8,7 +8,12 @@ definePageMeta({
 const { login, state } = useAuth()
 const route = useRoute()
 
-const email = ref('')
+// Accepts a Player's username OR an existing administrator's real email --
+// see server/utils/players.ts's resolveLoginEmail for how the server tells
+// the two apart. Named `username` (not `email`) throughout, per Username
+// Login's own LOGIN UX section: "The page should speak entirely in terms
+// of Username. No Directus terminology. No email terminology."
+const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
@@ -18,7 +23,7 @@ async function submit() {
   loading.value = true
 
   try {
-    await login(email.value, password.value)
+    await login(username.value, password.value)
 
     // Return the user to whatever route sent them here (recorded by
     // middleware/auth.ts or middleware/admin.ts). Falls back to the
@@ -49,19 +54,23 @@ async function submit() {
             Eldra Login
           </h1>
           <p class="mt-2 text-sm text-slate-400">
-            Sign in with your Directus account.
+            Sign in to continue.
           </p>
         </div>
 
         <form class="space-y-4" @submit.prevent="submit">
           <div>
-            <label class="mb-2 block text-sm text-slate-300">Email</label>
+            <!-- "Username or Email": existing administrators still sign in
+                 with a real email (Username Login's own REGRESSION section
+                 permits this label specifically to avoid stranding them);
+                 a Player created through Eldra only ever has a username. -->
+            <label class="mb-2 block text-sm text-slate-300">Username or Email</label>
             <input
-              v-model="email"
-              type="email"
+              v-model="username"
+              type="text"
               autocomplete="username"
               class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-slate-500"
-              placeholder="you@example.com"
+              placeholder="Username"
               required
             />
           </div>

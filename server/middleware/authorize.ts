@@ -40,6 +40,20 @@ import { resolvePrincipal } from '../utils/authorization'
 // /api/auth/** does not silently become public by accident.
 export const PUBLIC_API_ROUTES = new Set(['/api/auth/login', '/api/auth/logout', '/api/auth/me'])
 
+// Nuxt/Nitro modules that register their own server routes under /api/**
+// (a naming convention this app's own routes never use) -- e.g.
+// @nuxt/icon's server bundle, which serves icon data from
+// /api/_nuxt_icon/:collection (verified: node_modules/@nuxt/icon/dist/module.mjs's
+// own default, `$default: "/api/_nuxt_icon"`). server/middleware/* runs for
+// EVERY request Nitro handles, regardless of which module registered the
+// underlying route, so this middleware's original blanket "starts with
+// /api/" check was gating icon data behind a login it has nothing to do
+// with -- a leading underscore is the existing Nuxt ecosystem convention
+// module authors already use to mark a route as internal/not
+// application-owned, so it is what this exclusion keys on rather than a
+// hardcoded list of module paths that would need updating per module.
+const INTERNAL_API_PREFIXES = ['/api/_']
+
 export function isApiRoute(pathname: string): boolean {
   return pathname.startsWith('/api/')
 }
@@ -48,12 +62,17 @@ export function isPublicApiRoute(pathname: string): boolean {
   return PUBLIC_API_ROUTES.has(pathname)
 }
 
+export function isInternalApiRoute(pathname: string): boolean {
+  return INTERNAL_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
+
 // True exactly for the requests this middleware must deny absent a
-// resolved Principal: under /api/, not on the public allowlist. Exported
-// standalone so "which paths are protected" is testable as pure string
-// logic, independent of constructing an H3Event.
+// resolved Principal: under /api/, not on the public allowlist, and not a
+// Nuxt/Nitro-module-internal route this application never owned in the
+// first place. Exported standalone so "which paths are protected" is
+// testable as pure string logic, independent of constructing an H3Event.
 export function requiresAuthentication(pathname: string): boolean {
-  return isApiRoute(pathname) && !isPublicApiRoute(pathname)
+  return isApiRoute(pathname) && !isPublicApiRoute(pathname) && !isInternalApiRoute(pathname)
 }
 
 export default defineEventHandler(async (event: H3Event) => {

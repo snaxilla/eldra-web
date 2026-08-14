@@ -296,7 +296,20 @@ export async function resolvePrincipal(event: H3Event): Promise<Principal | null
 
   let user: any
   try {
-    user = await fetchDirectusMe(event)
+    const response = await fetchDirectusMe(event)
+    // Directus wraps single-item responses in a `data` envelope
+    // (`{ data: { id, email, role, policies, ... } }`) -- fetchDirectusMe
+    // returns that envelope AS-IS, unwrapped, exactly like
+    // server/api/auth/me.get.ts's own `user` field does. Every other
+    // consumer of this exact shape already unwraps it this same way:
+    // server/api/auth/login.post.ts's `me?.data || me`, and
+    // app/composables/useAuth.ts's `normalizeUser`
+    // (`input?.data ? input.data : input`). This file was the one place
+    // that read `user.id` directly on the STILL-WRAPPED envelope, where
+    // `id` actually lives at `user.data.id` -- so `accountId` was always
+    // undefined and resolvePrincipal always returned null, for every real
+    // Directus response, regardless of session validity. THE regression.
+    user = response?.data ?? response
   } catch {
     // Expired/invalid session token -- the same failure
     // server/api/auth/me.get.ts already treats as "not authenticated."

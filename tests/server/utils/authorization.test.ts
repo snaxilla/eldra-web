@@ -36,29 +36,41 @@ import type { WorldMembershipRecord } from '../../../server/utils/world-membersh
 // it directly, so an empty object stands in for a real H3Event here.
 const fakeEvent = {} as any
 
+// Directus wraps every /users/me response in a `{ data: {...} }` envelope
+// -- these mocks return that SAME wrapped shape deliberately, matching
+// what fetchDirectusMe actually returns in production. An earlier version
+// of these fixtures returned the unwrapped fields directly, which let
+// resolvePrincipal's missing `response?.data ?? response` unwrap (fixed
+// below) pass 900+ tests while being completely broken against a real
+// Directus response -- see the dedicated regression test in the
+// 'resolvePrincipal -- Directus response envelope' describe block below.
 function directusAdminUser(overrides: Record<string, any> = {}) {
   return {
-    id: 'admin-account-1',
-    email: 'admin@example.com',
-    role: {
-      id: 'role-admin',
-      name: 'Administrator',
-      policies: [{ policy: { admin_access: true, app_access: true } }]
-    },
-    ...overrides
+    data: {
+      id: 'admin-account-1',
+      email: 'admin@example.com',
+      role: {
+        id: 'role-admin',
+        name: 'Administrator',
+        policies: [{ policy: { admin_access: true, app_access: true } }]
+      },
+      ...overrides
+    }
   }
 }
 
 function directusNonAdminUser(overrides: Record<string, any> = {}) {
   return {
-    id: 'player-account-1',
-    email: 'player@example.com',
-    role: {
-      id: 'role-public',
-      name: 'Public',
-      policies: [{ policy: { admin_access: false, app_access: true } }]
-    },
-    ...overrides
+    data: {
+      id: 'player-account-1',
+      email: 'player@example.com',
+      role: {
+        id: 'role-public',
+        name: 'Public',
+        policies: [{ policy: { admin_access: false, app_access: true } }]
+      },
+      ...overrides
+    }
   }
 }
 
@@ -201,6 +213,47 @@ describe('resolvePrincipal', () => {
     const principal = await resolvePrincipal(fakeEvent)
 
     expect(principal!.temporarySingleUserMode).toBe(true)
+  })
+})
+
+describe('resolvePrincipal -- Directus response envelope (regression)', () => {
+  // Directus wraps single-item responses in `{ data: {...} }`. fetchDirectusMe
+  // returns that envelope as-is; resolvePrincipal previously read `user.id`
+  // directly on the STILL-WRAPPED object instead of `user.data.id`, so
+  // `accountId` was always undefined and resolvePrincipal always returned
+  // null for every real Directus response -- authenticated or not, expired
+  // token or fresh. Every other consumer of this exact shape already
+  // unwrapped it correctly (server/api/auth/login.post.ts's `me?.data || me`,
+  // app/composables/useAuth.ts's `normalizeUser`), which is why this was a
+  // resolvePrincipal-only defect. These two tests pin both the real shape
+  // and the defensive fallback so this cannot silently regress again.
+  it('unwraps a real Directus-shaped { data: {...} } response', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue({
+      data: {
+        id: 'account-wrapped',
+        role: { policies: [{ policy: { admin_access: true } }] }
+      }
+    })
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).not.toBeNull()
+    expect(principal!.accountId).toBe('account-wrapped')
+    expect(principal!.temporarySingleUserMode).toBe(true)
+  })
+
+  it('also tolerates an already-unwrapped response (defensive fallback, not the shape Directus actually sends)', async () => {
+    getSessionTokenMock.mockReturnValue('token')
+    fetchDirectusMeMock.mockResolvedValue({
+      id: 'account-flat',
+      role: { policies: [{ policy: { admin_access: true } }] }
+    })
+
+    const principal = await resolvePrincipal(fakeEvent)
+
+    expect(principal).not.toBeNull()
+    expect(principal!.accountId).toBe('account-flat')
   })
 })
 

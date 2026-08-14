@@ -20,7 +20,7 @@ vi.mock('../../../server/utils/authorization', () => ({
   resolvePrincipal: resolvePrincipalMock
 }))
 
-import authorize, { isApiRoute, isPublicApiRoute, requiresAuthentication } from '../../../server/middleware/authorize'
+import authorize, { isApiRoute, isInternalApiRoute, isPublicApiRoute, requiresAuthentication } from '../../../server/middleware/authorize'
 import type { Principal } from '../../../server/utils/authorization'
 
 // getRequestURL (h3) reads event.node.req.originalUrl (falling back to
@@ -78,11 +78,44 @@ describe('isApiRoute / isPublicApiRoute / requiresAuthentication -- pure routing
     // protected automatically, not by remembering to add them somewhere.
     expect(requiresAuthentication('/api/some/brand-new/route')).toBe(true)
   })
+
+  // REGRESSION: @nuxt/icon serves icon data from /api/_nuxt_icon/:collection
+  // (node_modules/@nuxt/icon/dist/module.mjs's own default,
+  // `$default: "/api/_nuxt_icon"`) -- a Nuxt-module-internal route this
+  // application never owned, but the original blanket "starts with /api/"
+  // check gated it behind a login anyway, since server/middleware/* runs
+  // for every request Nitro handles regardless of which module registered
+  // the route. A leading underscore is the Nuxt ecosystem's own convention
+  // for "internal, not application-owned," which is what isInternalApiRoute
+  // keys on.
+  it('Nuxt/Nitro-module-internal routes (leading underscore) are excluded from the API surface entirely', () => {
+    expect(isInternalApiRoute('/api/_nuxt_icon/lucide.json')).toBe(true)
+    expect(isInternalApiRoute('/api/_nuxt_icon/simple-icons.json')).toBe(true)
+    expect(isInternalApiRoute('/api/worlds')).toBe(false)
+  })
+
+  it('internal routes never require authentication, even though they are under /api/', () => {
+    expect(requiresAuthentication('/api/_nuxt_icon/lucide.json')).toBe(false)
+  })
+
+  it('an application route that merely CONTAINS an underscore deeper in the path is unaffected -- only a /api/_ prefix is excluded', () => {
+    expect(isInternalApiRoute('/api/worlds/my_world/entities')).toBe(false)
+    expect(requiresAuthentication('/api/worlds/my_world/entities')).toBe(true)
+  })
 })
 
 describe('the middleware itself', () => {
   it('passes through page/asset requests without resolving a principal at all', async () => {
     const event = fakeEvent('/worlds/1')
+
+    await authorize(event)
+
+    expect(resolvePrincipalMock).not.toHaveBeenCalled()
+    expect(event.context.principal).toBeUndefined()
+  })
+
+  it('passes through Nuxt-icon-style internal routes without resolving a principal (regression)', async () => {
+    const event = fakeEvent('/api/_nuxt_icon/lucide.json')
 
     await authorize(event)
 

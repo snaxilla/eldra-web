@@ -118,7 +118,13 @@ const ALL_PLATFORM_CAPABILITIES: readonly PlatformCapability[] = [
   'platform.breakglass.enter'
 ]
 
-const ALL_WORLD_CAPABILITIES: readonly WorldCapability[] = [
+// Exported so a route can compute "every capability this Principal holds
+// in this World" (Beta Zero audit, Issue 2 -- the Build workspace needs to
+// ask can() the same question for a small set of capabilities, not
+// re-derive role/membership logic of its own) by filtering this list
+// through can(), rather than the route inventing its own enumeration that
+// could drift from the real vocabulary.
+export const ALL_WORLD_CAPABILITIES: readonly WorldCapability[] = [
   'world.read',
   'world.settings.edit',
   'world.delete',

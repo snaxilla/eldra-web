@@ -39,6 +39,28 @@ function toggleWorkspaceSidebar() {
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
+// Beta Zero audit, Issue 2: `mode` is a single global useState key shared
+// across every World the app renders in this client session, not scoped to
+// the current worldId. Without this guard, a GM/Worldbuilder who leaves
+// Build mode on and then navigates into a World where they are only a
+// Player would carry 'build' over, and every `mode === 'build'` panel
+// throughout the workspace would render for them despite the toggle itself
+// being hidden below. `world.capabilities` (server/api/worlds/[id]/index.get.ts)
+// is the real, server-computed capability set for this Principal in THIS
+// world -- the same can() every enforcement route already asks, not a
+// client-side re-derivation of role/membership logic. `world.entity.edit`
+// is the existing capability every worldbuilding role (owner/gm/worldbuilder)
+// holds and no Player/Observer holds, per WORLD_ROLE_CAPABILITIES -- there is
+// no dedicated "may enter Build mode" capability in the vocabulary, and the
+// task's own IMPORTANT section forbids inventing one.
+const canBuild = computed(() => Array.isArray(world.value?.capabilities) && world.value.capabilities.includes('world.entity.edit'))
+
+watch(canBuild, (allowed) => {
+  if (!allowed && mode.value === 'build') {
+    mode.value = 'play'
+  }
+}, { immediate: true })
+
 const pageKey = computed(() => {
   const parts = String(route.path || '').split('/').filter(Boolean)
   const worldIndex = parts.findIndex(p => p === 'worlds')
@@ -126,6 +148,7 @@ const backgroundImageUrl = computed(() => {
         :world="world"
         :collapsed="leftCollapsed"
         :mode="mode"
+        :can-build="canBuild"
         @toggle-collapse="toggleWorkspaceSidebar"
         @set-mode="mode = $event"
       />

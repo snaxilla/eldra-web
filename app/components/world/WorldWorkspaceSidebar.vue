@@ -3,6 +3,12 @@ const props = defineProps<{
   world: any
   collapsed: boolean
   mode: 'play' | 'build'
+  // Beta Zero audit, Issue 2: whether the current Principal holds the
+  // capability that gates Build mode for this World (computed server-side
+  // in server/api/worlds/[id]/index.get.ts via the real can(), passed down
+  // from world-workspace.vue -- this component makes no permission decision
+  // of its own, it only renders what it is told).
+  canBuild: boolean
 }>()
 
 const emit = defineEmits<{
@@ -71,6 +77,7 @@ const navItems = computed(() => [
         </button>
 
         <button
+          v-if="canBuild"
           class="inline-flex h-10 w-10 items-center justify-center rounded-none border text-sm transition"
           :class="mode === 'build'
             ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'
@@ -155,6 +162,7 @@ const navItems = computed(() => [
           </button>
 
           <button
+            v-if="canBuild"
             class="eldra-sidebar-mode flex-1 rounded-none border px-3 py-2 text-sm transition"
             :class="mode === 'build'
               ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#f5e7bd]'

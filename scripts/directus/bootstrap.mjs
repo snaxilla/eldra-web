@@ -20,7 +20,9 @@ const SCRIPTS = [
   'create-scene-layer-objects-schema.mjs',
   'create-rules-packages-schema.mjs',
   'create-world-rules-config-schema.mjs',
-  'create-world-memberships-schema.mjs'
+  'create-world-memberships-schema.mjs',
+  'create-content-packs-schema.mjs',
+  'create-world-content-pack-bindings-schema.mjs'
 ]
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url))

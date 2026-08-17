@@ -1,15 +1,27 @@
-// Content Pack Loader.
+// Content Pack Persistence.
 // Content Packs are the Gameplay Content sibling of Rules Packages'
 // Mechanics -- see .github/docs/architecture/ownership-and-permissions.md
 // (Revision 2) §7 and server/utils/rules-packages.ts, whose shape this
 // module deliberately mirrors: persistence + loading + listing + integrity
 // verification for one global, immutable, versioned collection.
 //
-// This is Infrastructure Phase 1 ONLY: persistence, loading, and World
-// binding (see world-content-packs.ts / world-content-pack-binding.ts). It
-// does NOT implement importing, content resolution, or Character Sheet
-// integration -- `content` is an opaque JSON payload nothing here
-// interprets.
+// Infrastructure Phase 1 covered persistence, loading, and World binding
+// (see world-content-packs.ts / world-content-pack-binding.ts) -- `content`
+// was opaque, and nothing wrote a row. Content Pack Publishing (Phase 2)
+// adds the write path (publishContentPackRelease below), called by
+// server/utils/content-pack-publishing.ts's pipeline, invoked from a Nitro
+// API route -- unlike rules_packages' publish-starter-package.mjs, this
+// does NOT need to be a standalone script (Content Pack publishing runs
+// from the existing importer's Nitro routes, which already have
+// `directusServiceRequest` available), so the write path lives directly in
+// this module -- the same "load + save together" shape
+// world-rules-config.ts already uses, rather than rules-packages.ts's
+// load-only shape.
+//
+// This module still does NOT implement content resolution or Character
+// Sheet integration -- `content` remains an opaque JSON payload nothing
+// here interprets, even on the write path: publishContentPackRelease
+// stores exactly what it is given.
 //
 // ---------------------------------------------------------------------------
 // DESIGN DECISIONS
@@ -51,6 +63,20 @@
 //        integrity-verified. The only loader a future World binding
 //        (world-content-pack-binding.ts) or content resolver may trust as
 //        "safe to use".
+//
+// 7. (Phase 2) publishContentPackRelease performs ZERO validation of its
+//    own -- validation ("can this become a Content Pack?") is
+//    content-pack-publishing.ts's job, exactly mirroring how
+//    activateWorldRulesPackage performs zero of its own verification
+//    because loadPublishedPackage already did it (world-rules-
+//    activation.ts design decision 1). This function's only two
+//    responsibilities are: refuse a duplicate (package_id, version) --
+//    published rows are immutable, mirroring publish-starter-package.mjs's
+//    "a duplicate published (package_id, version) aborts... insert-only" --
+//    and compute+store the integrity hash via the SAME
+//    computeContentIntegrityHash this module's loaders already verify
+//    against, so a pack this function just published is guaranteed to pass
+//    loadPublishedContentPack's own integrity check on the very next read.
 
 import { createHash } from 'node:crypto'
 import { canonicalize } from '../../app/lib/rules/canonicalize'
@@ -142,6 +168,30 @@ export type ContentPackListing = {
   title: string
   contentSchemaVersion: number
 }
+
+// PUBLISH (Phase 2). Everything publishContentPackRelease needs to insert
+// one row -- already-validated, already-built by the caller (content-pack-
+// publishing.ts). This module never invents any of these values.
+export type ContentPackPublishInput = {
+  packageId: string
+  version: string
+  title: string
+  contentSchemaVersion: number
+  licenseId: string | null
+  manifest: ContentPackManifest
+  content: ContentPackEntry[]
+}
+
+export type ContentPackPublishFailure = {
+  stage: 'already-exists'
+  packageId: string
+  version: string
+  status: string
+}
+
+export type ContentPackPublishResult =
+  | { ok: true; package: LoadedContentPack }
+  | ({ ok: false } & ContentPackPublishFailure)
 
 // ---------------------------------------------------------------------------
 // Cache -- exactly one Map, holding parsed FULL package documents. Manifest-
@@ -336,5 +386,75 @@ export async function loadPublishedContentPack(
   }
 
   contentPackCache.set(key, loaded)
+  return { ok: true, package: loaded }
+}
+
+// Inserts one published content_packs row -- design decision 7. Refuses
+// (writes nothing) if a row for (packageId, version) already exists,
+// regardless of its status -- published rows are immutable, and this
+// phase never writes drafts (mirrors rules_packages' "V1 only ever writes
+// published" -- there is no draft workflow to resume here either).
+export async function publishContentPackRelease(
+  input: ContentPackPublishInput
+): Promise<ContentPackPublishResult> {
+  const existingRes: any = await directusServiceRequest(`/items/${COLLECTION}`, {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { package_id: { _eq: input.packageId } },
+          { version: { _eq: input.version } }
+        ]
+      },
+      limit: 1,
+      fields: 'status'
+    }
+  })
+
+  const existing = Array.isArray(existingRes?.data) ? existingRes.data[0] : null
+  if (existing) {
+    return {
+      ok: false,
+      stage: 'already-exists',
+      packageId: input.packageId,
+      version: input.version,
+      status: String(existing.status ?? '')
+    }
+  }
+
+  const integrityHash = computeContentIntegrityHash(input.content)
+  const now = new Date().toISOString()
+
+  await directusServiceRequest(`/items/${COLLECTION}`, {
+    method: 'POST',
+    body: {
+      package_id: input.packageId,
+      version: input.version,
+      status: 'published',
+      content_schema_version: input.contentSchemaVersion,
+      title: input.title,
+      integrity_hash: integrityHash,
+      license_id: input.licenseId,
+      created_at: now,
+      manifest: input.manifest,
+      content: input.content
+    }
+  })
+
+  const loaded: LoadedContentPack = {
+    packageId: input.packageId,
+    version: input.version,
+    manifest: input.manifest,
+    content: input.content,
+    integrityHash
+  }
+
+  // Pre-populate the load cache with the exact object just published --
+  // same referential-stability property loadPublishedContentPack's own
+  // cache-hit test already relies on, so a caller that publishes and then
+  // immediately loads never pays for a redundant round trip or a
+  // redundant integrity recomputation.
+  contentPackCache.set(cacheKey(input.packageId, input.version, integrityHash), loaded)
+
   return { ok: true, package: loaded }
 }

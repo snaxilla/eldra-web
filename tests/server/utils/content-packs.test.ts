@@ -20,7 +20,8 @@ import {
   computeContentIntegrityHash,
   listPublishedContentPacks,
   loadContentPackManifest,
-  loadPublishedContentPack
+  loadPublishedContentPack,
+  publishContentPackRelease
 } from '../../../server/utils/content-packs'
 import type { ContentPackEntry, ContentPackManifest } from '../../../server/utils/content-packs'
 
@@ -404,5 +405,206 @@ describe('loadPublishedContentPack -- cache behavior', () => {
     expect(v1.package).not.toBe(v2.package)
     expect(v1.package.version).toBe('1.0.0')
     expect(v2.package.version).toBe('2.0.0')
+  })
+})
+
+// A minimal in-memory stand-in for Directus supporting exactly the two
+// request shapes publishContentPackRelease issues: a GET filtered by
+// package_id+version (existence check), and a POST that creates a row --
+// mirrors world-content-packs.test.ts's own fake-store approach.
+function createFakeContentPacksStore(initialRows: Record<string, any>[] = []) {
+  const rows: Record<string, any>[] = initialRows.map((row) => ({ ...row }))
+  let nextId = 1
+
+  directusServiceRequestMock.mockImplementation(async (_path: string, options: any = {}) => {
+    const method = options.method || 'GET'
+
+    if (method === 'GET') {
+      const clauses: any[] = options.query?.filter?._and ?? (options.query?.filter ? [options.query.filter] : [])
+      const matched = rows.filter((row) =>
+        clauses.every((clause: any) => {
+          const [field] = Object.keys(clause)
+          return row[field] === clause[field]._eq
+        })
+      )
+      return { data: options.query?.limit && options.query.limit > 0 ? matched.slice(0, options.query.limit) : matched }
+    }
+
+    if (method === 'POST') {
+      const created = { id: String(nextId++), ...options.body }
+      rows.push(created)
+      return { data: created }
+    }
+
+    throw new Error(`createFakeContentPacksStore: unhandled method ${method}`)
+  })
+
+  return rows
+}
+
+describe('publishContentPackRelease -- new pack', () => {
+  it('inserts a published row with computed integrity', async () => {
+    clearContentPackCache()
+    const rows = createFakeContentPacksStore([])
+    const content: ContentPackEntry[] = [{ id: 'item:torch' }]
+    const testManifest = manifest()
+
+    const result = await publishContentPackRelease({
+      packageId: 'eldra.srd-5.1',
+      version: '1.0.0',
+      title: 'SRD 5.1',
+      contentSchemaVersion: 1,
+      licenseId: 'CC-BY-4.0',
+      manifest: testManifest,
+      content
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.package.integrityHash).toBe(computeContentIntegrityHash(content))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('published')
+    expect(rows[0].integrity_hash).toBe(computeContentIntegrityHash(content))
+    expect(rows[0].package_id).toBe('eldra.srd-5.1')
+    expect(rows[0].version).toBe('1.0.0')
+  })
+
+  it('populates the load cache so an immediate load is a cache hit', async () => {
+    clearContentPackCache()
+    createFakeContentPacksStore([])
+    const content: ContentPackEntry[] = [{ id: 'item:torch' }]
+
+    const published = await publishContentPackRelease({
+      packageId: 'eldra.srd-5.1',
+      version: '1.0.0',
+      title: 'SRD 5.1',
+      contentSchemaVersion: 1,
+      licenseId: 'CC-BY-4.0',
+      manifest: manifest({ packageId: 'eldra.srd-5.1', version: '1.0.0' }),
+      content
+    })
+    expect(published.ok).toBe(true)
+    if (!published.ok) return
+
+    // Referential identity (`toBe`, not `toEqual`) is the real assertion
+    // here: the fake store's GET would also succeed on a real fetch (the
+    // POST body it recorded is a complete row), so only object identity
+    // distinguishes "served from cache" from "fetched again".
+    const loaded = await loadPublishedContentPack('eldra.srd-5.1', '1.0.0')
+    expect(loaded.ok).toBe(true)
+    if (!loaded.ok) return
+    expect(loaded.package).toBe(published.package)
+  })
+})
+
+describe('publishContentPackRelease -- duplicate rejection', () => {
+  it('refuses a duplicate published (packageId, version) and writes nothing', async () => {
+    clearContentPackCache()
+    const rows = createFakeContentPacksStore([
+      { id: 'r1', package_id: 'eldra.srd-5.1', version: '1.0.0', status: 'published' }
+    ])
+
+    const result = await publishContentPackRelease({
+      packageId: 'eldra.srd-5.1',
+      version: '1.0.0',
+      title: 'SRD 5.1',
+      contentSchemaVersion: 1,
+      licenseId: 'CC-BY-4.0',
+      manifest: manifest({ packageId: 'eldra.srd-5.1', version: '1.0.0' }),
+      content: [{ id: 'item:torch' }]
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('already-exists')
+    expect(result.status).toBe('published')
+    expect(rows).toHaveLength(1)
+  })
+
+  it('a different version of the same packageId is allowed', async () => {
+    clearContentPackCache()
+    const rows = createFakeContentPacksStore([
+      { id: 'r1', package_id: 'eldra.srd-5.1', version: '1.0.0', status: 'published' }
+    ])
+
+    const result = await publishContentPackRelease({
+      packageId: 'eldra.srd-5.1',
+      version: '2.0.0',
+      title: 'SRD 5.1',
+      contentSchemaVersion: 1,
+      licenseId: 'CC-BY-4.0',
+      manifest: manifest({ packageId: 'eldra.srd-5.1', version: '2.0.0' }),
+      content: [{ id: 'item:torch' }]
+    })
+
+    expect(result.ok).toBe(true)
+    expect(rows).toHaveLength(2)
+  })
+})
+
+describe('publish -> list/load/manifest round trip (versioning, listing, loading)', () => {
+  it('a published pack is immediately visible to listing, manifest loading, and full loading', async () => {
+    clearContentPackCache()
+    const rows = createFakeContentPacksStore([])
+    const content: ContentPackEntry[] = [{ id: 'item:torch' }, { id: 'item:rope' }]
+    const testManifest = manifest({ packageId: 'eldra.srd-5.1', title: 'SRD 5.1' })
+
+    const published = await publishContentPackRelease({
+      packageId: 'eldra.srd-5.1',
+      version: '1.0.0',
+      title: 'SRD 5.1',
+      contentSchemaVersion: 1,
+      licenseId: 'CC-BY-4.0',
+      manifest: testManifest,
+      content
+    })
+    expect(published.ok).toBe(true)
+
+    const listed = await listPublishedContentPacks()
+    expect(listed).toEqual([
+      { packageId: 'eldra.srd-5.1', version: '1.0.0', title: 'SRD 5.1', contentSchemaVersion: 1 }
+    ])
+
+    const loadedManifest = await loadContentPackManifest('eldra.srd-5.1', '1.0.0')
+    expect(loadedManifest.ok).toBe(true)
+    if (loadedManifest.ok) expect(loadedManifest.manifest.title).toBe('SRD 5.1')
+
+    const loadedFull = await loadPublishedContentPack('eldra.srd-5.1', '1.0.0')
+    expect(loadedFull.ok).toBe(true)
+    if (loadedFull.ok) {
+      expect(loadedFull.package.content).toEqual(content)
+      expect(loadedFull.package.integrityHash).toBe(computeContentIntegrityHash(content))
+    }
+  })
+
+  it('publishing a second version leaves the first version independently loadable (versioning)', async () => {
+    clearContentPackCache()
+    createFakeContentPacksStore([])
+
+    await publishContentPackRelease({
+      packageId: 'eldra.srd-5.1',
+      version: '1.0.0',
+      title: 'SRD 5.1',
+      contentSchemaVersion: 1,
+      licenseId: 'CC-BY-4.0',
+      manifest: manifest({ packageId: 'eldra.srd-5.1', version: '1.0.0' }),
+      content: [{ id: 'item:torch' }]
+    })
+
+    await publishContentPackRelease({
+      packageId: 'eldra.srd-5.1',
+      version: '1.1.0',
+      title: 'SRD 5.1',
+      contentSchemaVersion: 1,
+      licenseId: 'CC-BY-4.0',
+      manifest: manifest({ packageId: 'eldra.srd-5.1', version: '1.1.0' }),
+      content: [{ id: 'item:torch' }, { id: 'item:lantern' }]
+    })
+
+    const v1 = await loadPublishedContentPack('eldra.srd-5.1', '1.0.0')
+    const v11 = await loadPublishedContentPack('eldra.srd-5.1', '1.1.0')
+
+    expect(v1.ok && v1.package.content).toHaveLength(1)
+    expect(v11.ok && v11.package.content).toHaveLength(2)
   })
 })

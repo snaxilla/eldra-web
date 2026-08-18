@@ -1,7 +1,9 @@
 <script setup lang="ts">
-// Game Admin "Content Packs" tab -- the Content Pack Binding UI. See
-// server/utils/world-content-pack-binding.ts (binding business logic,
-// reused unchanged -- see BEHAVIOR below) and
+// Game Admin "Content Packs" tab -- the Content Pack Binding UI, now
+// preceded by the Content Pack Builder Preview (AdminContentPackBuilderPanel,
+// rendered first below -- Import -> Preview -> Curate, this tab's own
+// pipeline order). See server/utils/world-content-pack-binding.ts (binding
+// business logic, reused unchanged -- see BEHAVIOR below) and
 // .github/docs/architecture/ownership-and-permissions.md (Revision 2) §7.5
 // ("installing a pack is a Platform action; binding one to a world is a
 // World action").
@@ -30,6 +32,8 @@
 // them out; this capability check covers the narrower case of an
 // authenticated admin viewing a World where they hold a role short of
 // Owner/GM.
+
+import AdminContentPackBuilderPanel from './AdminContentPackBuilderPanel.vue'
 
 const props = defineProps<{
   worldId: string | number
@@ -184,6 +188,7 @@ async function refreshAll() {
 
 <template>
   <section class="mt-6 grid gap-5">
+    <AdminContentPackBuilderPanel />
     <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>

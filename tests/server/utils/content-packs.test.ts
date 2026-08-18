@@ -75,7 +75,21 @@ beforeEach(() => {
 })
 
 describe('listPublishedContentPacks', () => {
-  it('maps published rows to exactly the four documented envelope fields', async () => {
+  it('maps published rows to exactly the five documented envelope fields, including license_id (Content Pack Binding UI)', async () => {
+    directusServiceRequestMock.mockResolvedValueOnce(
+      directusListResponse([
+        { package_id: 'eldra.srd-5.1', version: '1.0.0', title: 'SRD 5.1', content_schema_version: 1, license_id: 'OGL-1.0a' }
+      ])
+    )
+
+    const result = await listPublishedContentPacks()
+
+    expect(result).toEqual([
+      { packageId: 'eldra.srd-5.1', version: '1.0.0', title: 'SRD 5.1', contentSchemaVersion: 1, licenseId: 'OGL-1.0a' }
+    ])
+  })
+
+  it('licenseId is null, never a crash, when the row has none', async () => {
     directusServiceRequestMock.mockResolvedValueOnce(
       directusListResponse([
         { package_id: 'eldra.srd-5.1', version: '1.0.0', title: 'SRD 5.1', content_schema_version: 1 }
@@ -84,9 +98,7 @@ describe('listPublishedContentPacks', () => {
 
     const result = await listPublishedContentPacks()
 
-    expect(result).toEqual([
-      { packageId: 'eldra.srd-5.1', version: '1.0.0', title: 'SRD 5.1', contentSchemaVersion: 1 }
-    ])
+    expect(result[0]!.licenseId).toBeNull()
   })
 
   it('never exposes manifest or content, even if the row somehow carried them', async () => {
@@ -97,6 +109,7 @@ describe('listPublishedContentPacks', () => {
           version: '1.0.0',
           title: 'SRD 5.1',
           content_schema_version: 1,
+          license_id: 'OGL-1.0a',
           manifest: { packageId: 'eldra.srd-5.1' },
           content: [{ id: 'item:x' }]
         }
@@ -107,7 +120,7 @@ describe('listPublishedContentPacks', () => {
 
     expect(result[0]).not.toHaveProperty('manifest')
     expect(result[0]).not.toHaveProperty('content')
-    expect(Object.keys(result[0]!).sort()).toEqual(['contentSchemaVersion', 'packageId', 'title', 'version'])
+    expect(Object.keys(result[0]!).sort()).toEqual(['contentSchemaVersion', 'licenseId', 'packageId', 'title', 'version'])
   })
 
   it('filters to status: published at the query level', async () => {
@@ -119,13 +132,13 @@ describe('listPublishedContentPacks', () => {
     expect(options.query.filter).toEqual({ status: { _eq: 'published' } })
   })
 
-  it('requests only the four envelope columns, never manifest/content', async () => {
+  it('requests only the five envelope columns, never manifest/content', async () => {
     directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([]))
 
     await listPublishedContentPacks()
 
     const [, options] = directusServiceRequestMock.mock.calls[0]!
-    expect(options.query.fields).toBe('package_id,version,title,content_schema_version')
+    expect(options.query.fields).toBe('package_id,version,title,content_schema_version,license_id')
   })
 
   it('returns an empty array when nothing is published', async () => {
@@ -562,7 +575,7 @@ describe('publish -> list/load/manifest round trip (versioning, listing, loading
 
     const listed = await listPublishedContentPacks()
     expect(listed).toEqual([
-      { packageId: 'eldra.srd-5.1', version: '1.0.0', title: 'SRD 5.1', contentSchemaVersion: 1 }
+      { packageId: 'eldra.srd-5.1', version: '1.0.0', title: 'SRD 5.1', contentSchemaVersion: 1, licenseId: 'CC-BY-4.0' }
     ])
 
     const loadedManifest = await loadContentPackManifest('eldra.srd-5.1', '1.0.0')

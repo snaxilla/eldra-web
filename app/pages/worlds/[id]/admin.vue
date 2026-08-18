@@ -8,6 +8,7 @@ import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawe
 import AdminHomebrewForgePanel from '~/components/admin/homebrew/AdminHomebrewForgePanel.vue'
 import AdminRulesPanel from '~/components/admin/rules/AdminRulesPanel.vue'
 import AdminMembersPanel from '~/components/admin/members/AdminMembersPanel.vue'
+import AdminContentPacksPanel from '~/components/admin/content-packs/AdminContentPacksPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,7 +16,7 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
-const activePanel = ref<'overview' | 'party' | 'members' | 'grants' | 'homebrew' | 'rules' | 'setup' | 'transfers' | 'relationships'>('overview')
+const activePanel = ref<'overview' | 'party' | 'members' | 'grants' | 'homebrew' | 'rules' | 'content-packs' | 'setup' | 'transfers' | 'relationships'>('overview')
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
@@ -197,6 +198,7 @@ const panels = [
   { key: 'grants', label: 'Grants', icon: 'i-lucide-gift' },
   { key: 'homebrew', label: 'Homebrew', icon: 'i-lucide-flask-conical' },
   { key: 'rules', label: 'Rules', icon: 'i-lucide-scale' },
+  { key: 'content-packs', label: 'Content Packs', icon: 'i-lucide-package-2' },
   { key: 'setup', label: 'Page Setup', icon: 'i-lucide-sliders-horizontal' },
   { key: 'transfers', label: 'Transfers', icon: 'i-lucide-arrow-left-right' },
   { key: 'relationships', label: 'Relationships', icon: 'i-lucide-share-2' }
@@ -775,6 +777,11 @@ async function refreshAdmin() {
 
       <AdminRulesPanel
         v-else-if="activePanel === 'rules'"
+        :world-id="worldId"
+      />
+
+      <AdminContentPacksPanel
+        v-else-if="activePanel === 'content-packs'"
         :world-id="worldId"
       />
 

@@ -167,6 +167,13 @@ export type ContentPackListing = {
   version: string
   title: string
   contentSchemaVersion: number
+  // Added for the Game Admin "Content Packs" tab's Bind list (Content Pack
+  // Binding UI task) -- the same license_id column publishContentPackRelease
+  // already writes (design decision 7's own payload), just not previously
+  // selected by this listing query. Still METADATA only (design decision 6):
+  // the row's own `license_id` column, never the manifest's embedded
+  // license object.
+  licenseId: string | null
 }
 
 // PUBLISH (Phase 2). Everything publishContentPackRelease needs to insert
@@ -262,7 +269,7 @@ export async function listPublishedContentPacks(): Promise<ContentPackListing[]>
     method: 'GET',
     query: {
       filter: { status: { _eq: 'published' } },
-      fields: 'package_id,version,title,content_schema_version',
+      fields: 'package_id,version,title,content_schema_version,license_id',
       sort: ['package_id', '-version'],
       limit: -1
     }
@@ -273,7 +280,8 @@ export async function listPublishedContentPacks(): Promise<ContentPackListing[]>
     packageId: String(row.package_id ?? ''),
     version: String(row.version ?? ''),
     title: String(row.title ?? ''),
-    contentSchemaVersion: Number(row.content_schema_version ?? 0)
+    contentSchemaVersion: Number(row.content_schema_version ?? 0),
+    licenseId: row.license_id ?? null
   }))
 }
 

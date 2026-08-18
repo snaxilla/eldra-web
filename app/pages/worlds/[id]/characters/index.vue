@@ -644,8 +644,15 @@ onBeforeUnmount(() => {
             <div class="flex flex-col gap-3 sm:flex-row">
 
               <NuxtLink
-                :to="`/worlds/${worldId}/characters/builder`"
+                :to="`/worlds/${worldId}/characters/create-v2`"
                 class="rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] px-4 py-2.5 text-sm font-semibold text-[#fff7df] transition hover:bg-[rgba(201,164,90,0.22)]"
+              >
+                Create Character
+              </NuxtLink>
+
+              <NuxtLink
+                :to="`/worlds/${worldId}/characters/builder`"
+                class="rounded-none border border-[rgba(201,164,90,0.24)] px-4 py-2.5 text-sm font-semibold text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)]"
               >
                 Guided PC Builder
               </NuxtLink>

@@ -61,8 +61,24 @@
 // curated selection and identity fields stay exactly as they were so a
 // rejected attempt (e.g. wrong Version) can simply be corrected and
 // resubmitted without re-curating from scratch.
+//
+// GAME SYSTEM / CONTENT SOURCE: replaces the old single "Import Source"
+// dropdown (this task's own OBJECTIVE). Both selectors are driven entirely
+// by app/lib/content-sources/registry.ts -- this component names no game
+// system, no book, and no importer of its own; it iterates whatever the
+// registry contains. "Generate Preview" reads its target URL from the
+// selected Content Source's own `previewEndpoint`, so a second source
+// becoming real later (registry: `status: 'available'` + a real endpoint)
+// needs no change here. Sources without a working preview render disabled
+// with a "Coming Soon" badge, never omitted -- a GM should see the full
+// shape of what Eldra will eventually support, not just what works today.
 
-type ImportSource = 'srd-5.1'
+import {
+  GAME_SYSTEM_REGISTRY,
+  firstAvailableContentSource,
+  getGameSystem,
+  type ContentSourceDefinition
+} from '~/lib/content-sources/registry'
 
 type PreviewEntry = {
   externalId: string
@@ -79,7 +95,7 @@ type PreviewCategory = {
 }
 
 type PreviewResult =
-  | { available: true; source: ImportSource; categories: PreviewCategory[]; totalEntries: number; warnings: string[] }
+  | { available: true; source: string; categories: PreviewCategory[]; totalEntries: number; warnings: string[] }
   | { available: false; reason: string; message: string }
 
 type PublishSuccess = {
@@ -113,7 +129,32 @@ function emptySelection(): Record<CategoryKey, Set<string>> {
   }
 }
 
-const selectedSource = ref<ImportSource>('srd-5.1')
+const gameSystems = GAME_SYSTEM_REGISTRY
+
+const selectedGameSystemKey = ref<string>(gameSystems[0]?.key ?? '')
+const selectedContentSourceKey = ref<string>(firstAvailableContentSource(selectedGameSystemKey.value)?.key ?? '')
+
+const selectedGameSystem = computed(() => getGameSystem(selectedGameSystemKey.value))
+const contentSourcesForSystem = computed(() => selectedGameSystem.value?.contentSources ?? [])
+const selectedContentSource = computed<ContentSourceDefinition | null>(
+  () => contentSourcesForSystem.value.find((source) => source.key === selectedContentSourceKey.value) ?? null
+)
+
+// Switching Game System (or the initial mount) always lands on that
+// system's first available Content Source -- a disabled/"Coming Soon"
+// source can never end up silently selected.
+watch(
+  selectedGameSystemKey,
+  (key) => {
+    selectedContentSourceKey.value = firstAvailableContentSource(key)?.key ?? ''
+  },
+  { immediate: true }
+)
+
+function selectContentSource(source: ContentSourceDefinition) {
+  if (source.status !== 'available') return
+  selectedContentSourceKey.value = source.key
+}
 
 const previewPending = ref(false)
 const previewError = ref('')
@@ -122,6 +163,10 @@ const previewResult = ref<PreviewResult | null>(null)
 const selection = ref<Record<CategoryKey, Set<string>>>(emptySelection())
 
 async function generatePreview() {
+  if (!selectedContentSource.value || selectedContentSource.value.status !== 'available' || !selectedContentSource.value.previewEndpoint) {
+    return
+  }
+
   previewPending.value = true
   previewError.value = ''
   previewResult.value = null
@@ -133,7 +178,7 @@ async function generatePreview() {
   publishError.value = ''
 
   try {
-    const response = await $fetch<PreviewResult>('/api/content-packs/preview/srd-5-1')
+    const response = await $fetch<PreviewResult>(selectedContentSource.value.previewEndpoint)
     previewResult.value = response
 
     if (response.available) {
@@ -150,6 +195,8 @@ async function generatePreview() {
     previewPending.value = false
   }
 }
+
+const canGeneratePreview = computed(() => !previewPending.value && selectedContentSource.value?.status === 'available')
 
 function categoryEntries(key: CategoryKey): PreviewEntry[] {
   if (!previewResult.value?.available) return []
@@ -295,13 +342,17 @@ async function publish() {
 
     <div class="mt-5 flex flex-wrap items-end gap-3">
       <label class="flex flex-col gap-1">
-        <span class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Import Source</span>
+        <span class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Game System</span>
         <select
-          v-model="selectedSource"
+          v-model="selectedGameSystemKey"
           class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.8)] px-3 py-2 text-sm text-[#fff7df]"
         >
-          <option value="srd-5.1">
-            5etools SRD 5.1
+          <option
+            v-for="system in gameSystems"
+            :key="system.key"
+            :value="system.key"
+          >
+            {{ system.label }}
           </option>
         </select>
       </label>
@@ -309,7 +360,7 @@ async function publish() {
       <button
         type="button"
         class="eldra-button rounded-none px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
-        :disabled="previewPending"
+        :disabled="!canGeneratePreview"
         @click="generatePreview"
       >
         {{ previewPending ? 'Generating…' : 'Generate Preview' }}
@@ -323,11 +374,39 @@ async function publish() {
       </span>
     </div>
 
+    <div class="mt-3 flex flex-col gap-1">
+      <span class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Content Source</span>
+      <div class="flex flex-wrap gap-2">
+        <button
+          v-for="source in contentSourcesForSystem"
+          :key="source.key"
+          type="button"
+          class="flex items-center gap-2 rounded-none border px-3 py-2 text-sm transition"
+          :class="source.key === selectedContentSourceKey
+            ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
+            : source.status === 'available'
+              ? 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'
+              : 'cursor-not-allowed border-[rgba(201,164,90,0.12)] bg-[rgba(20,17,12,0.4)] text-[#6b6250] opacity-60'"
+          :disabled="source.status !== 'available'"
+          :aria-pressed="source.key === selectedContentSourceKey"
+          @click="selectContentSource(source)"
+        >
+          {{ source.label }}
+          <span
+            v-if="source.status !== 'available'"
+            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-[#9f9278]"
+          >
+            Coming Soon
+          </span>
+        </button>
+      </div>
+    </div>
+
     <div
       v-if="previewPending"
       class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-6 text-sm text-[#9f9278]"
     >
-      Generating preview from the 5etools SRD 5.1 dataset...
+      Generating preview from {{ selectedContentSource?.label || 'the selected Content Source' }}...
     </div>
 
     <div
@@ -366,7 +445,7 @@ async function publish() {
         v-if="!previewResult.totalEntries"
         class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.20)] p-6 text-sm text-[#9f9278]"
       >
-        No entries were found for this Import Source.
+        No entries were found for this Content Source.
       </div>
 
       <div

@@ -6,7 +6,10 @@
 // reads World Entities (GET /api/worlds/:id/entities) for its
 // species/class/background options -- this page never calls that endpoint
 // or any /entities route. Selection only: no ability scores, no equipment,
-// no rules evaluation, no sheet -- this is not the Character Sheet.
+// no rules evaluation, no sheet -- this is not the Character Sheet. On
+// success this navigates to Character Sheet V2
+// (characters/[characterId]/sheet-v2.vue) -- this flow's own natural next
+// step, rendering exactly what was just recorded via the Assembly endpoint.
 
 definePageMeta({
   layout: 'world-workspace'
@@ -90,7 +93,7 @@ async function createCharacter() {
   createErrorMessage.value = ''
 
   try {
-    await $fetch(`/api/worlds/${worldId.value}/characters/create-v2`, {
+    const created = await $fetch<{ id?: string | number }>(`/api/worlds/${worldId.value}/characters/create-v2`, {
       method: 'POST',
       body: {
         title: name.value.trim(),
@@ -100,7 +103,14 @@ async function createCharacter() {
       }
     })
 
-    await navigateTo(`/worlds/${worldId.value}/characters`)
+    // Character Sheet V2 (sheet-v2.vue) is this flow's own natural next
+    // step -- it renders exactly what was just recorded. Falls back to the
+    // roster if the create response carries no id for some reason.
+    if (created?.id) {
+      await navigateTo(`/worlds/${worldId.value}/characters/${created.id}/sheet-v2`)
+    } else {
+      await navigateTo(`/worlds/${worldId.value}/characters`)
+    }
   } catch (error: any) {
     createErrorMessage.value =
       error?.data?.statusMessage ||

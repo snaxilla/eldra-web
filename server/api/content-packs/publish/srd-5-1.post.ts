@@ -5,17 +5,27 @@
 // (Content Packs re-derived from provenance/campaign-stability/licensing).
 // This route IS the "first SRD Content Pack publication workflow"
 // milestone: it walks the same local 5etools dataset the existing importer
-// already reads (mirrors server/api/import/bulk.post.ts's own DATA_ROOT/
-// file-discovery logic exactly, duplicated rather than imported since that
-// file exports nothing -- see SCOPE below for why duplicating ~60 lines of
-// already-proven logic was preferred over refactoring a working, unrelated
-// route), runs the SAME preview parsers (app/lib/importers) filtered to
-// SRD-flagged entries only, converts through the existing adapter
+// already reads, runs the SAME preview parsers (app/lib/importers) filtered
+// to SRD-flagged entries only, converts through the existing adapter
 // (content-pack-5etools-adapter.ts), and publishes through the existing
 // pipeline (content-pack-publishing.ts's publishContentPack). It does not
 // bind the pack to any World, does not implement content resolution, and
 // touches no world/character/entity/permission code -- this is the
 // Platform-level "produce the pack" half only.
+//
+// DATASET TRAVERSAL: the dataset root, file-discovery, and SRD-filter
+// logic this route needs is shared with preview/srd-5-1.get.ts and
+// publish/srd-5-1-curated.post.ts via
+// server/utils/content-sources/dnd5e/5etools-dataset.ts (Step 1 of
+// .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence, §12) -- previously three independently
+// maintained, byte-identical copies of the same ~60-130 lines; see that
+// module's own header for what was and wasn't moved. This route keeps its
+// own local `DATASETS` constant below: its six-dataset iteration order
+// (spells, items, backgrounds, feats, species, classes) has always
+// differed from the other two routes' order, so it was never actually
+// duplicated code and was not moved -- only the truly identical helpers
+// were.
 //
 // WHY A NITRO ROUTE, NOT A SCRIPT (unlike scripts/directus/publish-starter-
 // package.mjs, the Rules Package precedent): that script reimplements its
@@ -60,138 +70,22 @@
 // for a platform operation with this blast radius.
 
 import { createError, defineEventHandler } from 'h3'
-import { readdir, readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
 
-import { preview5eToolsBackgrounds } from '../../../../app/lib/importers/5etools-backgrounds'
-import { preview5eToolsClasses } from '../../../../app/lib/importers/5etools-classes'
-import { preview5eToolsFeats } from '../../../../app/lib/importers/5etools-feats'
-import { preview5eToolsItems } from '../../../../app/lib/importers/5etools-items'
-import { preview5eToolsSpecies } from '../../../../app/lib/importers/5etools-species'
-import { preview5eToolsSpells } from '../../../../app/lib/importers/5etools-spells'
-import type { EldraImportPreviewResult } from '../../../../app/lib/importers/types'
 import { requireCapability } from '../../../utils/authorization'
 import { toContentPublicationCandidates } from '../../../utils/content-pack-5etools-adapter'
+import {
+  getPreviewFn,
+  loadSrd51DatasetEntries,
+  type DatasetKey
+} from '../../../utils/content-sources/dnd5e/5etools-dataset'
 import { publishContentPack, type ContentPublicationCandidate } from '../../../utils/content-pack-publishing'
 
-const DATA_ROOT = '/opt/eldra/datasets/5etools-src/data'
-
-type DatasetKey = 'spells' | 'items' | 'backgrounds' | 'feats' | 'species' | 'classes'
-
+// See this file's header DATASET TRAVERSAL note for why this stays a
+// local constant rather than the shared module's own `DATASETS`.
 const DATASETS: readonly DatasetKey[] = ['spells', 'items', 'backgrounds', 'feats', 'species', 'classes']
 
 const PACKAGE_ID = 'eldra.content.srd-5.1'
 const VERSION = '1.0.0'
-
-function getPreviewFn(dataset: DatasetKey): (payload: any) => EldraImportPreviewResult {
-  switch (dataset) {
-    case 'spells': return preview5eToolsSpells
-    case 'items': return preview5eToolsItems
-    case 'backgrounds': return preview5eToolsBackgrounds
-    case 'feats': return preview5eToolsFeats
-    case 'species': return preview5eToolsSpecies
-    case 'classes': return preview5eToolsClasses
-  }
-}
-
-function getCollectionKeys(dataset: DatasetKey): string[] {
-  switch (dataset) {
-    case 'spells': return ['spell']
-    case 'items': return ['item', 'baseitem', 'magicvariant']
-    case 'backgrounds': return ['background']
-    case 'feats': return ['feat']
-    case 'species': return ['race', 'species']
-    case 'classes': return ['class']
-  }
-}
-
-// Identical predicate to server/api/import/bulk.post.ts's fileLooksRelevant
-// -- same dataset, same file layout, deliberately not re-derived.
-function fileLooksRelevant(dataset: DatasetKey, filePath: string): boolean {
-  const name = basename(filePath).toLowerCase()
-  const normalized = filePath.toLowerCase()
-
-  switch (dataset) {
-    case 'spells':
-      return normalized.includes('/spells/') && name.endsWith('.json')
-    case 'classes':
-      return normalized.includes('/class/') && name.endsWith('.json')
-    case 'items':
-      return (name.startsWith('items') || normalized.includes('/items/') || name.includes('item')) && name.endsWith('.json')
-    case 'backgrounds':
-      return name.includes('background') && name.endsWith('.json')
-    case 'feats':
-      return name.includes('feat') && name.endsWith('.json')
-    case 'species':
-      return (name.includes('race') || name.includes('species')) && name.endsWith('.json')
-  }
-}
-
-async function walkJsonFiles(root: string, dataset: DatasetKey, out: string[] = []): Promise<string[]> {
-  const entries = await readdir(root, { withFileTypes: true })
-
-  for (const entry of entries) {
-    const full = join(root, entry.name)
-
-    if (entry.isDirectory()) {
-      await walkJsonFiles(full, dataset, out)
-      continue
-    }
-
-    if (!entry.isFile() || !entry.name.endsWith('.json')) {
-      continue
-    }
-
-    if (fileLooksRelevant(dataset, full)) {
-      out.push(full)
-    }
-  }
-
-  return out
-}
-
-function extractEntitiesFromJson(parsed: any, dataset: DatasetKey): any[] {
-  const keys = getCollectionKeys(dataset)
-  const found: any[] = []
-
-  for (const key of keys) {
-    if (Array.isArray(parsed?.[key])) {
-      found.push(...parsed[key])
-    }
-    if (Array.isArray(parsed?.data?.[key])) {
-      found.push(...parsed.data[key])
-    }
-  }
-
-  return found
-}
-
-// SRD 5.1 flag only -- never `srd52` (the 2024/CC-BY revision). See this
-// file's header SRD FILTER note.
-function isSrd51Entry(entry: any): boolean {
-  return Boolean(entry && typeof entry === 'object' && entry.srd)
-}
-
-async function loadSrd51DatasetEntries(dataset: DatasetKey): Promise<any[]> {
-  const files = await walkJsonFiles(DATA_ROOT, dataset)
-  const rows: any[] = []
-
-  for (const file of files) {
-    try {
-      const raw = await readFile(file, 'utf8')
-      const parsed = JSON.parse(raw)
-      const extracted = extractEntitiesFromJson(parsed, dataset).filter(isSrd51Entry)
-
-      if (extracted.length) {
-        rows.push(...extracted)
-      }
-    } catch {
-      // ignore bad/irrelevant files -- same tolerance import/bulk.post.ts already has
-    }
-  }
-
-  return rows
-}
 
 export default defineEventHandler(async (event) => {
   const principal = event.context.principal ?? null

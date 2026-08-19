@@ -15,17 +15,15 @@
 // publishContentPack orchestration (content-pack-publishing.ts) the
 // milestone route already uses, unchanged. It regenerates the SAME full
 // candidate list preview/srd-5-1.get.ts would (same importers, same SRD
-// filter, same adapter -- see that file's own duplication note; this is a
-// third copy of the same ~130 lines of dataset-loading logic, for the same
-// reason: touching preview/srd-5-1.get.ts or publish/srd-5-1.post.ts here
-// risked reading as a redesign of either, which this task explicitly
-// forbids). The only new step this route adds is filtering each category's
-// regenerated candidates down to the externalIds the client says were
-// selected, BEFORE calling publishContentPack -- the selection is the
-// caller's INTENT, never their DATA: `title`/`sourceBook`/`data` are always
-// re-derived from disk here, never trusted from the request body, so a
-// tampered client payload can at most publish a different SUBSET of the
-// real dataset, never fabricated content.
+// filter, same adapter -- both now via the shared
+// server/utils/content-sources/dnd5e/5etools-dataset.ts module, see its
+// own header). The only new step this route adds is filtering each
+// category's regenerated candidates down to the externalIds the client
+// says were selected, BEFORE calling publishContentPack -- the selection
+// is the caller's INTENT, never their DATA: `title`/`sourceBook`/`data`
+// are always re-derived from disk here, never trusted from the request
+// body, so a tampered client payload can at most publish a different
+// SUBSET of the real dataset, never fabricated content.
 //
 // PACKAGE NAME: the Builder UI collects one identity field, "Package
 // Name" -- there is no separate title/description input (this task's own
@@ -52,146 +50,17 @@
 // unchanged, untouched, and never invoked from here.
 
 import { createError, defineEventHandler, readBody } from 'h3'
-import { readdir, readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
 
-import { preview5eToolsBackgrounds } from '../../../../app/lib/importers/5etools-backgrounds'
-import { preview5eToolsClasses } from '../../../../app/lib/importers/5etools-classes'
-import { preview5eToolsFeats } from '../../../../app/lib/importers/5etools-feats'
-import { preview5eToolsItems } from '../../../../app/lib/importers/5etools-items'
-import { preview5eToolsSpecies } from '../../../../app/lib/importers/5etools-species'
-import { preview5eToolsSpells } from '../../../../app/lib/importers/5etools-spells'
-import type { EldraImportPreviewResult } from '../../../../app/lib/importers/types'
 import { requireCapability } from '../../../utils/authorization'
 import { toContentPublicationCandidates } from '../../../utils/content-pack-5etools-adapter'
+import {
+  CATEGORY_LABELS,
+  DATASETS,
+  getPreviewFn,
+  loadSrd51DatasetEntries,
+  type DatasetKey
+} from '../../../utils/content-sources/dnd5e/5etools-dataset'
 import { publishContentPack, type ContentPublicationCandidate } from '../../../utils/content-pack-publishing'
-
-const DATA_ROOT = '/opt/eldra/datasets/5etools-src/data'
-
-type DatasetKey = 'species' | 'classes' | 'backgrounds' | 'feats' | 'items' | 'spells'
-
-// Same display/category order as preview/srd-5-1.get.ts -- the Builder
-// panel's selection object is keyed identically.
-const DATASETS: readonly DatasetKey[] = ['species', 'classes', 'backgrounds', 'feats', 'items', 'spells']
-
-const CATEGORY_LABELS: Record<DatasetKey, string> = {
-  species: 'Species',
-  classes: 'Classes',
-  backgrounds: 'Backgrounds',
-  feats: 'Feats',
-  items: 'Items',
-  spells: 'Spells'
-}
-
-function getPreviewFn(dataset: DatasetKey): (payload: any) => EldraImportPreviewResult {
-  switch (dataset) {
-    case 'species': return preview5eToolsSpecies
-    case 'classes': return preview5eToolsClasses
-    case 'backgrounds': return preview5eToolsBackgrounds
-    case 'feats': return preview5eToolsFeats
-    case 'items': return preview5eToolsItems
-    case 'spells': return preview5eToolsSpells
-  }
-}
-
-function getCollectionKeys(dataset: DatasetKey): string[] {
-  switch (dataset) {
-    case 'species': return ['race', 'species']
-    case 'classes': return ['class']
-    case 'backgrounds': return ['background']
-    case 'feats': return ['feat']
-    case 'items': return ['item', 'baseitem', 'magicvariant']
-    case 'spells': return ['spell']
-  }
-}
-
-// Identical predicate to preview/srd-5-1.get.ts's and publish/srd-5-1.post.ts's
-// own fileLooksRelevant -- same dataset, same file layout.
-function fileLooksRelevant(dataset: DatasetKey, filePath: string): boolean {
-  const name = basename(filePath).toLowerCase()
-  const normalized = filePath.toLowerCase()
-
-  switch (dataset) {
-    case 'spells':
-      return normalized.includes('/spells/') && name.endsWith('.json')
-    case 'classes':
-      return normalized.includes('/class/') && name.endsWith('.json')
-    case 'items':
-      return (name.startsWith('items') || normalized.includes('/items/') || name.includes('item')) && name.endsWith('.json')
-    case 'backgrounds':
-      return name.includes('background') && name.endsWith('.json')
-    case 'feats':
-      return name.includes('feat') && name.endsWith('.json')
-    case 'species':
-      return (name.includes('race') || name.includes('species')) && name.endsWith('.json')
-  }
-}
-
-async function walkJsonFiles(root: string, dataset: DatasetKey, out: string[] = []): Promise<string[]> {
-  const entries = await readdir(root, { withFileTypes: true })
-
-  for (const entry of entries) {
-    const full = join(root, entry.name)
-
-    if (entry.isDirectory()) {
-      await walkJsonFiles(full, dataset, out)
-      continue
-    }
-
-    if (!entry.isFile() || !entry.name.endsWith('.json')) {
-      continue
-    }
-
-    if (fileLooksRelevant(dataset, full)) {
-      out.push(full)
-    }
-  }
-
-  return out
-}
-
-function extractEntitiesFromJson(parsed: any, dataset: DatasetKey): any[] {
-  const keys = getCollectionKeys(dataset)
-  const found: any[] = []
-
-  for (const key of keys) {
-    if (Array.isArray(parsed?.[key])) {
-      found.push(...parsed[key])
-    }
-    if (Array.isArray(parsed?.data?.[key])) {
-      found.push(...parsed.data[key])
-    }
-  }
-
-  return found
-}
-
-// SRD 5.1 flag only -- never `srd52` (the 2024/CC-BY revision). See
-// publish/srd-5-1.post.ts's own SRD FILTER note; unchanged here.
-function isSrd51Entry(entry: any): boolean {
-  return Boolean(entry && typeof entry === 'object' && entry.srd)
-}
-
-async function loadSrd51DatasetEntries(dataset: DatasetKey): Promise<any[]> {
-  const files = await walkJsonFiles(DATA_ROOT, dataset)
-  const rows: any[] = []
-
-  for (const file of files) {
-    try {
-      const raw = await readFile(file, 'utf8')
-      const parsed = JSON.parse(raw)
-      const extracted = extractEntitiesFromJson(parsed, dataset).filter(isSrd51Entry)
-
-      if (extracted.length) {
-        rows.push(...extracted)
-      }
-    } catch {
-      // ignore bad/irrelevant files -- same tolerance the other two routes have
-    }
-  }
-
-  return rows
-}
 
 function readSelectionFor(body: any, dataset: DatasetKey): Set<string> {
   const raw = body?.selection?.[dataset]

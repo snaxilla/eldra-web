@@ -42,12 +42,25 @@
 // exactly what the GM is currently looking at. Publishing never binds --
 // there is no bind action here (world-content-pack-binding.ts's own
 // separate flow, AdminContentPacksPanel.vue's existing Bind table, owns
-// that). On success this emits `published` so the parent panel can refresh
-// its Published Content Packs list (the same "always re-fetch, never
+// that).
+//
+// AFTER SUCCESS (this task's own AFTER SUCCESS section): the Preview,
+// the selection, and the Package Name/Version fields are ALL cleared
+// immediately -- the Builder returns to its pre-Preview state, ready to
+// author another pack, rather than leaving a stale (now-published)
+// selection on screen. The one thing that survives that reset is the
+// success confirmation itself (`publishResult`, rendered near the top of
+// the template independently of `previewResult` for exactly this reason)
+// so the GM still sees what was published. This emits `published` so the
+// parent panel can refresh its
+// Published Content Packs list (the same "always re-fetch, never
 // optimistic" convention every admin panel in this codebase already
-// follows), then clears the Package Name/Version fields so a second
-// publish under the same identity can't happen by an accidental double
-// click.
+// follows) -- that refresh is what makes the new pack "immediately appear
+// below," not any local list-splicing here. A FAILED publish (including a
+// duplicate-version 409) deliberately does NOT clear anything -- the GM's
+// curated selection and identity fields stay exactly as they were so a
+// rejected attempt (e.g. wrong Version) can simply be corrected and
+// resubmitted without re-curating from scratch.
 
 type ImportSource = 'srd-5.1'
 
@@ -113,6 +126,11 @@ async function generatePreview() {
   previewError.value = ''
   previewResult.value = null
   selection.value = emptySelection()
+  // A fresh preview starts a fresh authoring cycle -- any confirmation or
+  // error left over from a previous publish attempt no longer applies to
+  // what's about to be shown.
+  publishResult.value = null
+  publishError.value = ''
 
   try {
     const response = await $fetch<PreviewResult>('/api/content-packs/preview/srd-5-1')
@@ -190,6 +208,19 @@ const canPublish = computed(() =>
   packageVersion.value.trim() !== ''
 )
 
+// Surfaced next to the Publish button so a disabled button always explains
+// itself (this task's own VALIDATION section: "Display clear validation
+// messages") -- purely descriptive of the same three conditions
+// `canPublish` already checks, never a second source of truth for whether
+// publishing is actually allowed.
+const validationMessages = computed(() => {
+  const messages: string[] = []
+  if (totalSelected.value === 0) messages.push('Select at least one entry to publish.')
+  if (!packageName.value.trim()) messages.push('Enter a Package Name.')
+  if (!packageVersion.value.trim()) messages.push('Enter a Version.')
+  return messages
+})
+
 async function publish() {
   if (!previewResult.value?.available) return
 
@@ -219,8 +250,16 @@ async function publish() {
       }
     })
     publishResult.value = response
+
+    // AFTER SUCCESS: return the Builder to its pre-Preview state -- see
+    // this file's header PUBLISH note. `publishResult` itself is the one
+    // exception, rendered independently of `previewResult` so the
+    // confirmation survives this reset.
+    previewResult.value = null
+    selection.value = emptySelection()
     packageName.value = ''
     packageVersion.value = ''
+
     emit('published')
   } catch (error: any) {
     publishError.value =
@@ -245,6 +284,13 @@ async function publish() {
           Generate a preview of what a Content Pack would contain, then choose exactly which entries to keep. Nothing is saved or published from this screen.
         </p>
       </div>
+    </div>
+
+    <div
+      v-if="publishResult"
+      class="mt-5 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100"
+    >
+      Published <strong>{{ publishResult.packageId }}@{{ publishResult.version }}</strong> with {{ Object.values(publishResult.counts).reduce((a, b) => a + b, 0) }} entries. Integrity: {{ publishResult.integrityHash }}. It now appears in the Published Content Packs list below -- bind it to a World from there when you're ready.
     </div>
 
     <div class="mt-5 flex flex-wrap items-end gap-3">
@@ -425,16 +471,28 @@ async function publish() {
           </label>
         </div>
 
-        <div class="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs uppercase tracking-[0.15em] text-[#d8ceb8]">
-          <span
-            v-for="key in CATEGORY_KEYS"
-            :key="key"
-          >
-            {{ CATEGORY_LABELS[key] }}: {{ selectedCount(key) }}
-          </span>
-          <span class="font-semibold text-[#fff7df]">
-            Total Entries: {{ totalSelected }}
-          </span>
+        <div class="mt-4 max-w-xs text-sm">
+          <div class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+            Selected
+          </div>
+          <dl class="mt-2 space-y-1">
+            <div
+              v-for="key in CATEGORY_KEYS"
+              :key="key"
+              class="flex items-center justify-between gap-3"
+            >
+              <dt class="text-[#d8ceb8]">
+                {{ CATEGORY_LABELS[key] }}
+              </dt>
+              <dd class="text-[#fff7df]">
+                {{ selectedCount(key) }}
+              </dd>
+            </div>
+          </dl>
+          <div class="mt-2 flex items-center justify-between gap-3 border-t border-[rgba(201,164,90,0.24)] pt-2 font-semibold">
+            <span class="text-[#9f9278]">Total Entries</span>
+            <span class="text-[#fff7df]">{{ totalSelected }}</span>
+          </div>
         </div>
 
         <button
@@ -446,18 +504,23 @@ async function publish() {
           {{ publishPending ? 'Publishing…' : `Publish ${totalSelected} ${totalSelected === 1 ? 'Entry' : 'Entries'}` }}
         </button>
 
+        <ul
+          v-if="validationMessages.length"
+          class="mt-2 list-disc pl-4 text-xs text-[#9f9278]"
+        >
+          <li
+            v-for="message in validationMessages"
+            :key="message"
+          >
+            {{ message }}
+          </li>
+        </ul>
+
         <div
           v-if="publishError"
           class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200"
         >
           {{ publishError }}
-        </div>
-
-        <div
-          v-if="publishResult"
-          class="mt-4 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100"
-        >
-          Published <strong>{{ publishResult.packageId }}@{{ publishResult.version }}</strong> with {{ Object.values(publishResult.counts).reduce((a, b) => a + b, 0) }} entries. Integrity: {{ publishResult.integrityHash }}. Bind it to a World from the list below.
         </div>
       </div>
     </template>

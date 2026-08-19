@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // Game Admin "Content Packs" tab -- the Content Pack Binding UI, now
-// preceded by the Content Pack Builder Preview (AdminContentPackBuilderPanel,
-// rendered first below -- Import -> Preview -> Curate, this tab's own
-// pipeline order). See server/utils/world-content-pack-binding.ts (binding
-// business logic, reused unchanged -- see BEHAVIOR below) and
+// preceded by the Content Pack Builder (AdminContentPackBuilderPanel,
+// rendered first below -- Import -> Preview -> Curate -> Publish, this
+// tab's own pipeline order; Publish is a Platform action performed inside
+// that child component, not here). See
+// server/utils/world-content-pack-binding.ts (binding business logic,
+// reused unchanged -- see BEHAVIOR below) and
 // .github/docs/architecture/ownership-and-permissions.md (Revision 2) §7.5
 // ("installing a pack is a Platform action; binding one to a world is a
 // World action").
@@ -17,7 +19,10 @@
 // integrity check) and persistence. Matching AdminRulesPanel.vue/
 // AdminMembersPanel.vue's own established convention, nothing here updates
 // its local idea of "what's bound" optimistically: every successful
-// Bind/Unbind re-fetches the bound-packs list from the server (loadBoundPacks).
+// Bind/Unbind re-fetches the bound-packs list from the server
+// (loadBoundPacks) -- and the same applies to the child's `published`
+// event, handled by re-running loadPublishedPacks rather than splicing a
+// pack into local state.
 //
 // AUTHORIZATION: Bind/Unbind controls render only when the current
 // Principal's capabilities for this World (GET /api/worlds/:id, the exact
@@ -188,7 +193,7 @@ async function refreshAll() {
 
 <template>
   <section class="mt-6 grid gap-5">
-    <AdminContentPackBuilderPanel />
+    <AdminContentPackBuilderPanel @published="loadPublishedPacks" />
     <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>

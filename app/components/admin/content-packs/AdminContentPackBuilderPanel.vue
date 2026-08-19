@@ -25,14 +25,29 @@
 // definition, only contains entries someone already decided belong in it.
 //
 // AUTHORIZATION: no capability check inside this component itself -- the
-// one privileged action (GET /api/content-packs/preview/srd-5-1) is gated
-// server-side on platform.contentpack.publish, and the parent
+// two privileged actions (GET /api/content-packs/preview/srd-5-1,
+// POST /api/content-packs/publish/srd-5-1-curated) are gated server-side
+// on platform.contentpack.publish, and the parent
 // (AdminContentPacksPanel.vue) already knows how to ask
 // GET /api/worlds/:id for canBindPacks; that capability governs binding,
 // not previewing/publishing (a Platform action, not a World one -- see
 // server/api/content-packs/publish/srd-5-1.post.ts's own AUTHORIZATION
-// note). A 403 from the preview endpoint surfaces through this
-// component's ordinary error state like any other fetch failure.
+// note). A 403 from either endpoint surfaces through this component's
+// ordinary error state like any other fetch failure.
+//
+// PUBLISH: calls the new POST /api/content-packs/publish/srd-5-1-curated
+// with the CURRENT selection (this component's own `selection` state,
+// converted to plain arrays) plus the Package Name/Version fields below --
+// it never re-fetches a preview first, so what gets published is always
+// exactly what the GM is currently looking at. Publishing never binds --
+// there is no bind action here (world-content-pack-binding.ts's own
+// separate flow, AdminContentPacksPanel.vue's existing Bind table, owns
+// that). On success this emits `published` so the parent panel can refresh
+// its Published Content Packs list (the same "always re-fetch, never
+// optimistic" convention every admin panel in this codebase already
+// follows), then clears the Package Name/Version fields so a second
+// publish under the same identity can't happen by an accidental double
+// click.
 
 type ImportSource = 'srd-5.1'
 
@@ -53,6 +68,24 @@ type PreviewCategory = {
 type PreviewResult =
   | { available: true; source: ImportSource; categories: PreviewCategory[]; totalEntries: number; warnings: string[] }
   | { available: false; reason: string; message: string }
+
+type PublishSuccess = {
+  packageId: string
+  version: string
+  integrityHash: string
+  counts: Record<CategoryKey, number>
+}
+
+const emit = defineEmits<{ published: [] }>()
+
+const CATEGORY_LABELS: Record<CategoryKey, string> = {
+  species: 'Species',
+  classes: 'Classes',
+  backgrounds: 'Backgrounds',
+  feats: 'Feats',
+  items: 'Items',
+  spells: 'Spells'
+}
 
 const CATEGORY_KEYS: CategoryKey[] = ['species', 'classes', 'backgrounds', 'feats', 'items', 'spells']
 
@@ -133,6 +166,69 @@ function selectedCount(key: CategoryKey) {
 
 const totalSelected = computed(() => CATEGORY_KEYS.reduce((sum, key) => sum + selectedCount(key), 0))
 const totalAvailable = computed(() => (previewResult.value?.available ? previewResult.value.totalEntries : 0))
+
+// ---------------------------------------------------------------------------
+// Publish -- the curated selection above becomes exactly what is published.
+// ---------------------------------------------------------------------------
+
+const packageName = ref('')
+const packageVersion = ref('')
+
+const publishPending = ref(false)
+const publishError = ref('')
+const publishResult = ref<PublishSuccess | null>(null)
+
+// Mirrors (never replaces) the server's own validateContentPackForPublication
+// checks -- purely so the button can't be clicked in a state guaranteed to
+// fail; the server remains the sole source of truth for whether a publish
+// is actually valid (this task's own instruction: "Do NOT invent a second
+// validator").
+const canPublish = computed(() =>
+  !publishPending.value &&
+  totalSelected.value > 0 &&
+  packageName.value.trim() !== '' &&
+  packageVersion.value.trim() !== ''
+)
+
+async function publish() {
+  if (!previewResult.value?.available) return
+
+  publishPending.value = true
+  publishError.value = ''
+  publishResult.value = null
+
+  const selectionPayload: Record<CategoryKey, string[]> = {
+    species: [],
+    classes: [],
+    backgrounds: [],
+    feats: [],
+    items: [],
+    spells: []
+  }
+  for (const key of CATEGORY_KEYS) {
+    selectionPayload[key] = Array.from(selection.value[key])
+  }
+
+  try {
+    const response = await $fetch<PublishSuccess>('/api/content-packs/publish/srd-5-1-curated', {
+      method: 'POST',
+      body: {
+        packageId: packageName.value.trim(),
+        version: packageVersion.value.trim(),
+        selection: selectionPayload
+      }
+    })
+    publishResult.value = response
+    packageName.value = ''
+    packageVersion.value = ''
+    emit('published')
+  } catch (error: any) {
+    publishError.value =
+      error?.data?.statusMessage || error?.data?.message || error?.message || 'Failed to publish the Content Pack.'
+  } finally {
+    publishPending.value = false
+  }
+}
 </script>
 
 <template>
@@ -298,6 +394,71 @@ const totalAvailable = computed(() => (previewResult.value?.available ? previewR
             </li>
           </ul>
         </section>
+      </div>
+
+      <div class="mt-6 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(8,17,27,0.42)] p-4">
+        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+          Publish
+        </div>
+        <p class="mt-2 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
+          Publishing creates a new Content Pack containing exactly the entries currently checked above. Unchecked entries are never included. Publishing does not bind this pack to any World.
+        </p>
+
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 sm:max-w-xl">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Package Name</span>
+            <input
+              v-model="packageName"
+              type="text"
+              placeholder="e.g. eldra.content.srd-5.1-curated"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.8)] px-3 py-2 text-sm text-[#fff7df]"
+            >
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Version</span>
+            <input
+              v-model="packageVersion"
+              type="text"
+              placeholder="e.g. 1.0.0"
+              class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.8)] px-3 py-2 text-sm text-[#fff7df]"
+            >
+          </label>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs uppercase tracking-[0.15em] text-[#d8ceb8]">
+          <span
+            v-for="key in CATEGORY_KEYS"
+            :key="key"
+          >
+            {{ CATEGORY_LABELS[key] }}: {{ selectedCount(key) }}
+          </span>
+          <span class="font-semibold text-[#fff7df]">
+            Total Entries: {{ totalSelected }}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="eldra-button mt-4 rounded-none px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+          :disabled="!canPublish"
+          @click="publish"
+        >
+          {{ publishPending ? 'Publishing…' : `Publish ${totalSelected} ${totalSelected === 1 ? 'Entry' : 'Entries'}` }}
+        </button>
+
+        <div
+          v-if="publishError"
+          class="mt-4 rounded-none border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200"
+        >
+          {{ publishError }}
+        </div>
+
+        <div
+          v-if="publishResult"
+          class="mt-4 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100"
+        >
+          Published <strong>{{ publishResult.packageId }}@{{ publishResult.version }}</strong> with {{ Object.values(publishResult.counts).reduce((a, b) => a + b, 0) }} entries. Integrity: {{ publishResult.integrityHash }}. Bind it to a World from the list below.
+        </div>
       </div>
     </template>
   </div>

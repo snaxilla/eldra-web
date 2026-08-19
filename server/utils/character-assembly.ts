@@ -1,0 +1,198 @@
+// Character Assembly -- Phase 1.
+// Bridges Character Creation V2 (server/api/worlds/[id]/characters/create-v2.post.ts)
+// and the future Character Sheet V2. See this task's own OBJECTIVE:
+// "Character Creation currently records only Species/Class/Background...
+// This phase assembles those choices into one resolved character model."
+//
+// INPUT/OUTPUT (this task's own GOAL): Character choices (the persisted
+// `catalogue_selection` block_instances row create-v2.post.ts already
+// writes) + the World Content Catalogue (world-content-catalogue.ts) ->
+// one resolved Character Blueprint. This module performs exactly that
+// composition and nothing else.
+//
+// ---------------------------------------------------------------------------
+// DESIGN DECISIONS
+// ---------------------------------------------------------------------------
+// 1. NO RULES, NO GAMEPLAY -- this task's own NON-GOALS forbid ability
+//    scores, features, spellcasting, equipment, and progression. This
+//    module answers exactly one question per choice: "does this reference
+//    still resolve against the World's CURRENT catalogue, and if so, to
+//    what entry?" It never reads inside a catalogue entry's `data` (mirrors
+//    world-content-catalogue.ts's own design decision 1 -- entries here
+//    carry identity + provenance only, never mechanics) and never merges,
+//    derives, or computes anything beyond that single resolution.
+//
+// 2. RE-VERIFICATION, NOT TRUST -- the persisted `catalogue_selection`
+//    block is a SNAPSHOT taken at character-creation time
+//    (create-v2.post.ts's own denormalized ContentCatalogueEntry objects,
+//    keyed by (packageId, slug)). This module re-resolves each choice's
+//    (packageId, slug) against the CURRENT catalogue rather than replaying
+//    the stale snapshot verbatim -- a bound Content Pack may since have
+//    been unbound, repinned, or had an entry removed. Mirrors
+//    create-v2.post.ts's own "never trust a client-submitted choice at
+//    face value" posture, one layer later: here it is "never trust a
+//    PERSISTED choice to still be valid," for the same reason.
+//
+// 3. MISSING CONTENT IS REPORTED, NEVER A CRASH -- a choice that no longer
+//    resolves is returned as a `missing` slot with a human-readable
+//    reason, never thrown. Same "absence is legal, and must stay visible"
+//    posture world-content-runtime.ts's own design decision 1 already
+//    established for a broken pack binding, generalized one layer up to a
+//    single choice. A slot whose OWN pack failed to load (present in
+//    `catalogue.packs` with `ok:false`) reports that specifically, distinct
+//    from a merely-renamed/removed entry inside a pack that loaded fine --
+//    so a caller can tell "your Content Pack is broken" apart from "this
+//    pick isn't offered anymore."
+//
+// 4. Reads `entities`/`block_instances` directly via directusServiceRequest,
+//    the same boundary create-v2.post.ts's own dxFetch (entity-factory.ts)
+//    already uses -- no new Directus access pattern introduced. Only the
+//    fields this module actually needs are requested (id/world_id/title
+//    for the entity; data only for the block), matching
+//    entities/[entityId].get.ts's own scoped-fields convention.
+//
+// 5. No capability check on this read -- matching GET /api/worlds/:id/content,
+//    GET /api/worlds/:id/catalogue, and GET /api/worlds/:id/entities/:entityId's
+//    own shared precedent: reading a World's configuration/content is not
+//    gated the way writing it is.
+
+import { directusServiceRequest } from './directus'
+import { getWorldContentCatalogue, type ContentCatalogueEntry } from './world-content-catalogue'
+import type { WorldContentPackResolution } from './world-content-runtime'
+
+const CATALOGUE_SELECTION_BLOCK_KEY = 'catalogue_selection'
+
+type StoredChoiceRef = {
+  packageId?: unknown
+  slug?: unknown
+}
+
+export type CharacterAssemblySlot =
+  | { status: 'resolved'; entry: ContentCatalogueEntry }
+  | { status: 'missing'; packageId: string; slug: string; reason: string }
+
+export type CharacterAssemblyBlueprint = {
+  worldId: string
+  characterId: string
+  characterTitle: string
+  species: CharacterAssemblySlot
+  class: CharacterAssemblySlot
+  background: CharacterAssemblySlot
+  packs: WorldContentPackResolution[]
+}
+
+export type CharacterAssemblyResult =
+  | { available: true; blueprint: CharacterAssemblyBlueprint }
+  | { available: false; reason: 'character-not-found' }
+  | { available: false; reason: 'no-catalogue-selection'; message: string }
+
+function extractRef(value: unknown): StoredChoiceRef | null {
+  if (!value || typeof value !== 'object') return null
+  return value as StoredChoiceRef
+}
+
+// Resolves one choice against its category's CURRENT catalogue entries --
+// see design decisions 2 and 3. `label` is only ever used inside a
+// human-readable `reason` string, never as a lookup key.
+function resolveSlot(
+  ref: StoredChoiceRef | null,
+  category: readonly ContentCatalogueEntry[],
+  packs: readonly WorldContentPackResolution[],
+  label: string
+): CharacterAssemblySlot {
+  const packageId = typeof ref?.packageId === 'string' ? ref.packageId : ''
+  const slug = typeof ref?.slug === 'string' ? ref.slug : ''
+
+  if (!packageId || !slug) {
+    return { status: 'missing', packageId, slug, reason: `No ${label} was recorded for this character` }
+  }
+
+  const found = category.find((entry) => entry.packageId === packageId && entry.slug === slug)
+  if (found) {
+    return { status: 'resolved', entry: found }
+  }
+
+  const brokenPack = packs.find((pack) => pack.packageId === packageId && !pack.ok)
+  if (brokenPack) {
+    return {
+      status: 'missing',
+      packageId,
+      slug,
+      reason: `The Content Pack '${packageId}' this ${label} choice depends on failed to load`
+    }
+  }
+
+  return {
+    status: 'missing',
+    packageId,
+    slug,
+    reason: `'${slug}' is no longer offered by '${packageId}' in this World's current Content Catalogue`
+  }
+}
+
+// The canonical entry point for this module. Composes one entity read, one
+// block_instances read, and getWorldContentCatalogue -- no other I/O.
+export async function assembleCharacter(
+  worldId: string | number,
+  characterId: string | number
+): Promise<CharacterAssemblyResult> {
+  // A non-existent entity id is reported by Directus as a 403 (its item-
+  // level permission check runs before existence is known), not a 200 with
+  // an empty `data` -- so a thrown request, not just an empty result, means
+  // "not found" here. Caught broadly (network errors included) for the
+  // same reason: this module's whole contract is "never throws," and a
+  // failed lookup is exactly as much "not found" as an empty one.
+  let entity: any = null
+  try {
+    const entityRes: any = await directusServiceRequest(`/items/entities/${characterId}`, {
+      method: 'GET',
+      query: { fields: 'id,world_id,title' }
+    })
+    entity = entityRes?.data || null
+  } catch {
+    entity = null
+  }
+
+  if (!entity || String(entity.world_id) !== String(worldId)) {
+    return { available: false, reason: 'character-not-found' }
+  }
+
+  const blockRes: any = await directusServiceRequest('/items/block_instances', {
+    method: 'GET',
+    query: {
+      filter: {
+        _and: [
+          { entity_id: { _eq: Number(characterId) } },
+          { block_key: { _eq: CATALOGUE_SELECTION_BLOCK_KEY } }
+        ]
+      },
+      limit: 1,
+      fields: 'data'
+    }
+  })
+
+  const block = Array.isArray(blockRes?.data) ? blockRes.data[0] : null
+  const selection = block?.data && typeof block.data === 'object' ? block.data : null
+
+  if (!selection) {
+    return {
+      available: false,
+      reason: 'no-catalogue-selection',
+      message: 'This character has no recorded Species/Class/Background choices to assemble -- it may have been created outside the catalogue-driven Character Creation flow.'
+    }
+  }
+
+  const catalogue = await getWorldContentCatalogue(worldId)
+
+  const blueprint: CharacterAssemblyBlueprint = {
+    worldId: String(worldId),
+    characterId: String(characterId),
+    characterTitle: String(entity.title || ''),
+    species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species'),
+    class: resolveSlot(extractRef(selection.class), catalogue.classes, catalogue.packs, 'Class'),
+    background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),
+    packs: catalogue.packs
+  }
+
+  return { available: true, blueprint }
+}

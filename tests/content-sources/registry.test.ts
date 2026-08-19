@@ -1,13 +1,13 @@
-// Unit tests for app/lib/content-sources/registry.ts -- the Content Source
-// Registry (Game System -> Content Source). Pure data + pure functions, no
-// mocks needed.
+// Unit tests for app/lib/content-sources/registry.ts -- the Content
+// Source Registry (Game System -> Source Collection). Pure data + pure
+// functions, no mocks needed.
 
 import { describe, expect, it } from 'vitest'
 import {
   GAME_SYSTEM_REGISTRY,
-  firstAvailableContentSource,
-  getContentSource,
+  firstAvailableCollection,
   getGameSystem,
+  getSourceCollection,
   listGameSystems
 } from '../../app/lib/content-sources/registry'
 
@@ -24,38 +24,50 @@ describe('Content Source Registry', () => {
     expect(getGameSystem('pathfinder')).toBeUndefined()
   })
 
-  it('SRD 5.1 is the only available Content Source, with a real preview endpoint', () => {
-    const srd = getContentSource('dnd5e', 'srd-5.1')
+  it('SRD 5.1 carries identity/license/book domain facts, and no status or previewEndpoint field', () => {
+    const srd = getSourceCollection('dnd5e', 'srd-5.1')
     expect(srd).toMatchObject({
       key: 'srd-5.1',
       label: 'SRD 5.1',
-      status: 'available',
-      previewEndpoint: '/api/content-packs/preview/srd-5-1'
+      suggestedPackageId: 'eldra.content.srd-5.1',
+      license: { id: 'OGL-1.0a' }
     })
+    expect(srd?.books).toHaveLength(1)
+    expect(srd?.books[0]).toMatchObject({ code: 'SRD5.1' })
+    expect(srd).not.toHaveProperty('status')
+    expect(srd).not.toHaveProperty('previewEndpoint')
   })
 
-  it('every other Phase 1 Content Source is listed but disabled (coming-soon, no preview endpoint)', () => {
-    const comingSoonKeys = ['phb-2014', 'dmg', 'mm', 'xge', 'tce', 'ftd']
+  it('every other Phase 1 Source Collection is listed with real domain facts, none of them a status/previewEndpoint field', () => {
+    const otherKeys = ['phb-2014', 'dmg', 'mm', 'xge', 'tce', 'ftd']
 
-    for (const key of comingSoonKeys) {
-      const source = getContentSource('dnd5e', key)
-      expect(source, `expected a registered source for '${key}'`).toBeTruthy()
-      expect(source?.status).toBe('coming-soon')
-      expect(source?.previewEndpoint).toBeUndefined()
+    for (const key of otherKeys) {
+      const collection = getSourceCollection('dnd5e', key)
+      expect(collection, `expected a registered collection for '${key}'`).toBeTruthy()
+      expect(collection?.license.id).toBe('proprietary')
+      expect(collection?.books.length).toBeGreaterThan(0)
+      expect(collection?.suggestedPackageId).toBe(`eldra.content.${key}`)
+      expect(collection).not.toHaveProperty('status')
+      expect(collection).not.toHaveProperty('previewEndpoint')
     }
 
     const system = getGameSystem('dnd5e')
-    expect(system?.contentSources).toHaveLength(1 + comingSoonKeys.length)
+    expect(system?.collections).toHaveLength(1 + otherKeys.length)
   })
 
-  it('getContentSource returns undefined for an unknown source or an unknown game system', () => {
-    expect(getContentSource('dnd5e', 'does-not-exist')).toBeUndefined()
-    expect(getContentSource('pathfinder', 'srd-5.1')).toBeUndefined()
+  it('getSourceCollection returns undefined for an unknown collection or an unknown game system', () => {
+    expect(getSourceCollection('dnd5e', 'does-not-exist')).toBeUndefined()
+    expect(getSourceCollection('pathfinder', 'srd-5.1')).toBeUndefined()
   })
 
-  it('firstAvailableContentSource picks SRD 5.1 for dnd5e and undefined for an unknown system', () => {
-    expect(firstAvailableContentSource('dnd5e')?.key).toBe('srd-5.1')
-    expect(firstAvailableContentSource('pathfinder')).toBeUndefined()
+  it('firstAvailableCollection picks the first collection the caller marks available', () => {
+    expect(firstAvailableCollection('dnd5e', (key) => key === 'srd-5.1')?.key).toBe('srd-5.1')
+    expect(firstAvailableCollection('dnd5e', (key) => key === 'ftd')?.key).toBe('ftd')
+    expect(firstAvailableCollection('pathfinder', () => true)).toBeUndefined()
+  })
+
+  it('firstAvailableCollection falls back to the first collection at all when nothing is available', () => {
+    expect(firstAvailableCollection('dnd5e', () => false)?.key).toBe('srd-5.1')
   })
 
   it('the registry itself is exported read-only-shaped (no mutation helpers)', () => {

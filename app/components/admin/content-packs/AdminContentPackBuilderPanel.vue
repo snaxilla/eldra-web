@@ -62,23 +62,52 @@
 // rejected attempt (e.g. wrong Version) can simply be corrected and
 // resubmitted without re-curating from scratch.
 //
-// GAME SYSTEM / CONTENT SOURCE: replaces the old single "Import Source"
-// dropdown (this task's own OBJECTIVE). Both selectors are driven entirely
-// by app/lib/content-sources/registry.ts -- this component names no game
-// system, no book, and no importer of its own; it iterates whatever the
-// registry contains. "Generate Preview" reads its target URL from the
-// selected Content Source's own `previewEndpoint`, so a second source
-// becoming real later (registry: `status: 'available'` + a real endpoint)
-// needs no change here. Sources without a working preview render disabled
+// GAME SYSTEM / SOURCE COLLECTION: both selectors are driven by
+// app/lib/content-sources/registry.ts for identity/labels/ordering --
+// this component names no game system and no book of its own, it iterates
+// whatever the registry contains. As of Step 3 of
+// .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence (§12), the registry no longer carries `status`
+// or `previewEndpoint` (see that document's §2.5/§2.6/§6.3 and
+// registry.ts's own design decision 2) -- those were plumbing/
+// availability facts, and availability is now fetched once from
+// GET /api/content-sources (server-derived: a provider must be
+// registered AND report its dataset reachable) rather than hand-set in
+// the registry. `PREVIEW_ENDPOINTS` below remains a small Builder-local
+// map from collection key to its concrete preview route -- this component
+// still names the one working route directly (exactly as it always named
+// `/api/content-packs/publish/srd-5-1-curated` directly for Publish);
+// generalizing that into key-driven/generic routing is Step 4, explicitly
+// out of scope here. Sources without a working preview render disabled
 // with a "Coming Soon" badge, never omitted -- a GM should see the full
 // shape of what Eldra will eventually support, not just what works today.
 
 import {
   GAME_SYSTEM_REGISTRY,
-  firstAvailableContentSource,
+  firstAvailableCollection,
   getGameSystem,
-  type ContentSourceDefinition
+  type SourceCollectionDefinition
 } from '~/lib/content-sources/registry'
+
+// The one route this Builder currently knows how to call for a preview,
+// keyed by Source Collection -- see this file's header GAME SYSTEM /
+// SOURCE COLLECTION note for why this stays a local map rather than a
+// generic/derived route.
+const PREVIEW_ENDPOINTS: Record<string, string> = {
+  'srd-5.1': '/api/content-packs/preview/srd-5-1'
+}
+
+type ContentSourceAvailability =
+  | { available: true }
+  | { available: false; reason: string; message: string }
+
+type ContentSourcesResponse = {
+  systems: {
+    key: string
+    label: string
+    collections: { key: string; label: string; availability: ContentSourceAvailability }[]
+  }[]
+}
 
 type PreviewEntry = {
   externalId: string
@@ -131,28 +160,76 @@ function emptySelection(): Record<CategoryKey, Set<string>> {
 
 const gameSystems = GAME_SYSTEM_REGISTRY
 
+// ---------------------------------------------------------------------------
+// Availability -- fetched once from GET /api/content-sources (Step 3),
+// never read off the registry. See this file's header GAME SYSTEM /
+// SOURCE COLLECTION note.
+// ---------------------------------------------------------------------------
+
+const availabilityBySystem = ref<Record<string, Record<string, boolean>>>({})
+const availabilityLoaded = ref(false)
+const availabilityError = ref('')
+
+function isCollectionAvailable(gameSystemKey: string, collectionKey: string): boolean {
+  return Boolean(availabilityBySystem.value[gameSystemKey]?.[collectionKey])
+}
+
+async function loadAvailability() {
+  try {
+    const response = await $fetch<ContentSourcesResponse>('/api/content-sources')
+    const next: Record<string, Record<string, boolean>> = {}
+    for (const system of response.systems) {
+      const collectionAvailability: Record<string, boolean> = {}
+      for (const collection of system.collections) {
+        collectionAvailability[collection.key] = collection.availability.available
+      }
+      next[system.key] = collectionAvailability
+    }
+    availabilityBySystem.value = next
+  } catch (error: any) {
+    availabilityError.value =
+      error?.data?.statusMessage || error?.data?.message || error?.message || 'Failed to load Content Source availability.'
+  } finally {
+    availabilityLoaded.value = true
+  }
+}
+
+onMounted(loadAvailability)
+
 const selectedGameSystemKey = ref<string>(gameSystems[0]?.key ?? '')
-const selectedContentSourceKey = ref<string>(firstAvailableContentSource(selectedGameSystemKey.value)?.key ?? '')
+const selectedContentSourceKey = ref<string>(
+  firstAvailableCollection(selectedGameSystemKey.value, (key) => isCollectionAvailable(selectedGameSystemKey.value, key))?.key ?? ''
+)
 
 const selectedGameSystem = computed(() => getGameSystem(selectedGameSystemKey.value))
-const contentSourcesForSystem = computed(() => selectedGameSystem.value?.contentSources ?? [])
-const selectedContentSource = computed<ContentSourceDefinition | null>(
+const contentSourcesForSystem = computed(() => selectedGameSystem.value?.collections ?? [])
+const selectedContentSource = computed<SourceCollectionDefinition | null>(
   () => contentSourcesForSystem.value.find((source) => source.key === selectedContentSourceKey.value) ?? null
 )
 
 // Switching Game System (or the initial mount) always lands on that
-// system's first available Content Source -- a disabled/"Coming Soon"
-// source can never end up silently selected.
+// system's first available Source Collection -- a disabled/"Coming Soon"
+// source can never end up silently selected. Re-runs once availability
+// finishes loading too (`availabilityLoaded`), since the initial pick
+// above happens before the fetch resolves and everything reads as
+// unavailable until then -- see the fallback-to-first-entry behavior
+// `firstAvailableCollection` itself documents.
 watch(
   selectedGameSystemKey,
   (key) => {
-    selectedContentSourceKey.value = firstAvailableContentSource(key)?.key ?? ''
+    selectedContentSourceKey.value = firstAvailableCollection(key, (collectionKey) => isCollectionAvailable(key, collectionKey))?.key ?? ''
   },
   { immediate: true }
 )
 
-function selectContentSource(source: ContentSourceDefinition) {
-  if (source.status !== 'available') return
+watch(availabilityLoaded, (loaded) => {
+  if (!loaded) return
+  const key = selectedGameSystemKey.value
+  selectedContentSourceKey.value = firstAvailableCollection(key, (collectionKey) => isCollectionAvailable(key, collectionKey))?.key ?? ''
+})
+
+function selectContentSource(source: SourceCollectionDefinition) {
+  if (!isCollectionAvailable(selectedGameSystemKey.value, source.key)) return
   selectedContentSourceKey.value = source.key
 }
 
@@ -163,7 +240,8 @@ const previewResult = ref<PreviewResult | null>(null)
 const selection = ref<Record<CategoryKey, Set<string>>>(emptySelection())
 
 async function generatePreview() {
-  if (!selectedContentSource.value || selectedContentSource.value.status !== 'available' || !selectedContentSource.value.previewEndpoint) {
+  const previewEndpoint = selectedContentSource.value ? PREVIEW_ENDPOINTS[selectedContentSource.value.key] : undefined
+  if (!selectedContentSource.value || !isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key) || !previewEndpoint) {
     return
   }
 
@@ -178,7 +256,7 @@ async function generatePreview() {
   publishError.value = ''
 
   try {
-    const response = await $fetch<PreviewResult>(selectedContentSource.value.previewEndpoint)
+    const response = await $fetch<PreviewResult>(previewEndpoint)
     previewResult.value = response
 
     if (response.available) {
@@ -196,7 +274,13 @@ async function generatePreview() {
   }
 }
 
-const canGeneratePreview = computed(() => !previewPending.value && selectedContentSource.value?.status === 'available')
+const canGeneratePreview = computed(
+  () =>
+    !previewPending.value &&
+    !!selectedContentSource.value &&
+    isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key) &&
+    !!PREVIEW_ENDPOINTS[selectedContentSource.value.key]
+)
 
 function categoryEntries(key: CategoryKey): PreviewEntry[] {
   if (!previewResult.value?.available) return []
@@ -340,6 +424,13 @@ async function publish() {
       Published <strong>{{ publishResult.packageId }}@{{ publishResult.version }}</strong> with {{ Object.values(publishResult.counts).reduce((a, b) => a + b, 0) }} entries. Integrity: {{ publishResult.integrityHash }}. It now appears in the Published Content Packs list below -- bind it to a World from there when you're ready.
     </div>
 
+    <div
+      v-if="availabilityError"
+      class="mt-5 rounded-none border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200"
+    >
+      {{ availabilityError }} Content Source availability could not be checked -- all sources show as unavailable until this succeeds.
+    </div>
+
     <div class="mt-5 flex flex-wrap items-end gap-3">
       <label class="flex flex-col gap-1">
         <span class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">Game System</span>
@@ -384,16 +475,16 @@ async function publish() {
           class="flex items-center gap-2 rounded-none border px-3 py-2 text-sm transition"
           :class="source.key === selectedContentSourceKey
             ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
-            : source.status === 'available'
+            : isCollectionAvailable(selectedGameSystemKey, source.key)
               ? 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'
               : 'cursor-not-allowed border-[rgba(201,164,90,0.12)] bg-[rgba(20,17,12,0.4)] text-[#6b6250] opacity-60'"
-          :disabled="source.status !== 'available'"
+          :disabled="!isCollectionAvailable(selectedGameSystemKey, source.key)"
           :aria-pressed="source.key === selectedContentSourceKey"
           @click="selectContentSource(source)"
         >
           {{ source.label }}
           <span
-            v-if="source.status !== 'available'"
+            v-if="!isCollectionAvailable(selectedGameSystemKey, source.key)"
             class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.08)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-[#9f9278]"
           >
             Coming Soon

@@ -11,19 +11,21 @@
 // the Preview UI (AdminContentPackBuilderPanel.vue), under a
 // GM-supplied packageId/version.
 //
-// REUSE, NOT A SECOND PUBLISHER: this route calls the SAME
-// publishContentPack orchestration (content-pack-publishing.ts) the
-// milestone route already uses, unchanged. It regenerates the SAME full
-// candidate list preview/srd-5-1.get.ts would (same importers, same SRD
-// filter, same adapter -- both now via the shared
-// server/utils/content-sources/dnd5e/5etools-dataset.ts module, see its
-// own header). The only new step this route adds is filtering each
-// category's regenerated candidates down to the externalIds the client
-// says were selected, BEFORE calling publishContentPack -- the selection
-// is the caller's INTENT, never their DATA: `title`/`sourceBook`/`data`
-// are always re-derived from disk here, never trusted from the request
-// body, so a tampered client payload can at most publish a different
-// SUBSET of the real dataset, never fabricated content.
+// PROVIDER: dataset access, the SRD 5.1 membership predicate, category
+// loading, importer wiring, and adapter invocation all live behind
+// `srd51Provider` (server/utils/content-sources/dnd5e/srd-5-1.ts) as of
+// Step 2 of .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence (§12) -- this route no longer touches the
+// dataset directly. It regenerates the SAME full candidate list
+// preview/srd-5-1.get.ts would (same provider, hence same importers, same
+// SRD filter, same adapter). The only new step this route adds is
+// filtering each category's regenerated candidates down to the
+// externalIds the client says were selected, BEFORE calling
+// publishContentPack -- the selection is the caller's INTENT, never their
+// DATA: `title`/`sourceBook`/`data` are always re-derived from the
+// provider here, never trusted from the request body, so a tampered
+// client payload can at most publish a different SUBSET of the real
+// dataset, never fabricated content.
 //
 // PACKAGE NAME: the Builder UI collects one identity field, "Package
 // Name" -- there is no separate title/description input (this task's own
@@ -52,18 +54,11 @@
 import { createError, defineEventHandler, readBody } from 'h3'
 
 import { requireCapability } from '../../../utils/authorization'
-import { toContentPublicationCandidates } from '../../../utils/content-pack-5etools-adapter'
-import {
-  CATEGORY_LABELS,
-  DATASETS,
-  getPreviewFn,
-  loadSrd51DatasetEntries,
-  type DatasetKey
-} from '../../../utils/content-sources/dnd5e/5etools-dataset'
+import { srd51Provider } from '../../../utils/content-sources/dnd5e/srd-5-1'
 import { publishContentPack, type ContentPublicationCandidate } from '../../../utils/content-pack-publishing'
 
-function readSelectionFor(body: any, dataset: DatasetKey): Set<string> {
-  const raw = body?.selection?.[dataset]
+function readSelectionFor(body: any, categoryKey: string): Set<string> {
+  const raw = body?.selection?.[categoryKey]
   if (!Array.isArray(raw)) return new Set()
   return new Set(raw.filter((value): value is string => typeof value === 'string'))
 }
@@ -81,31 +76,26 @@ export default defineEventHandler(async (event) => {
 
   const candidates: ContentPublicationCandidate[] = []
   const warnings: string[] = []
-  const counts: Record<DatasetKey, number> = {
-    species: 0,
-    classes: 0,
-    backgrounds: 0,
-    feats: 0,
-    items: 0,
-    spells: 0
+  const counts: Record<string, number> = {}
+  for (const category of srd51Provider.categories) {
+    counts[category.key] = 0
   }
 
-  for (const dataset of DATASETS) {
-    const selectedIds = readSelectionFor(body, dataset)
+  for (const category of srd51Provider.categories) {
+    const selectedIds = readSelectionFor(body, category.key)
     if (selectedIds.size === 0) continue
 
     try {
-      const rows = await loadSrd51DatasetEntries(dataset)
-      const preview = getPreviewFn(dataset)(rows)
-      warnings.push(...preview.warnings.map((message) => `[${CATEGORY_LABELS[dataset]}] ${message}`))
+      const { candidates: categoryCandidates, warnings: categoryWarnings } = await srd51Provider.loadCategory(category.key)
+      warnings.push(...categoryWarnings.map((message) => `[${category.label}] ${message}`))
 
-      const selected = toContentPublicationCandidates(preview).filter((candidate) => selectedIds.has(candidate.externalId))
-      counts[dataset] = selected.length
+      const selected = categoryCandidates.filter((candidate) => selectedIds.has(candidate.externalId))
+      counts[category.key] = selected.length
       candidates.push(...selected)
     } catch (error: any) {
       // One category's regeneration failing never fails the whole publish
       // -- mirrors preview/srd-5-1.get.ts's own per-category isolation.
-      warnings.push(`[${CATEGORY_LABELS[dataset]}] Failed to regenerate selected entries: ${error?.message || 'unknown error'}`)
+      warnings.push(`[${category.label}] Failed to regenerate selected entries: ${error?.message || 'unknown error'}`)
     }
   }
 
@@ -121,8 +111,8 @@ export default defineEventHandler(async (event) => {
     },
     origin: {
       kind: 'translated',
-      adapterId: '5etools-json',
-      sourceId: 'srd-5.1'
+      adapterId: srd51Provider.adapterId,
+      sourceId: srd51Provider.collectionKey
     },
     candidates,
     warnings

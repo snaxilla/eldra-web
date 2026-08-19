@@ -13,19 +13,20 @@
 // touches no world/character/entity/permission code -- this is the
 // Platform-level "produce the pack" half only.
 //
-// DATASET TRAVERSAL: the dataset root, file-discovery, and SRD-filter
-// logic this route needs is shared with preview/srd-5-1.get.ts and
-// publish/srd-5-1-curated.post.ts via
-// server/utils/content-sources/dnd5e/5etools-dataset.ts (Step 1 of
-// .github/docs/architecture/content-source-architecture.md's
-// Implementation Sequence, §12) -- previously three independently
-// maintained, byte-identical copies of the same ~60-130 lines; see that
-// module's own header for what was and wasn't moved. This route keeps its
-// own local `DATASETS` constant below: its six-dataset iteration order
-// (spells, items, backgrounds, feats, species, classes) has always
-// differed from the other two routes' order, so it was never actually
-// duplicated code and was not moved -- only the truly identical helpers
-// were.
+// PROVIDER: dataset access, the SRD 5.1 membership predicate, category
+// loading, importer wiring, and adapter invocation all live behind
+// `srd51Provider` (server/utils/content-sources/dnd5e/srd-5-1.ts) as of
+// Step 2 of .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence (§12) -- this route no longer touches the
+// dataset directly. This route keeps its own local `CATEGORY_KEYS` below:
+// its six-category iteration order (spells, items, backgrounds, feats,
+// species, classes) has always differed from the other two routes' order
+// (see Step 1's own note, carried forward), so it doesn't iterate
+// `srd51Provider.categories` -- it calls `srd51Provider.loadCategory` once
+// per key in its own order instead. Order only affects the arrangement of
+// entries within the published pack's content array and this route's own
+// warnings array, never correctness, and preserving it keeps this step
+// byte-for-byte behavior-equivalent with what was already published.
 //
 // WHY A NITRO ROUTE, NOT A SCRIPT (unlike scripts/directus/publish-starter-
 // package.mjs, the Rules Package precedent): that script reimplements its
@@ -55,12 +56,13 @@
 // fields on every entry -- verified directly against the dataset on disk:
 // spells-xphb.json's (2024 revision) entries all carry `srd52` and never
 // `srd`; spells-phb.json's (2014) entries carry `srd`. Filtering on `srd`
-// truthy alone therefore selects exactly SRD 5.1 content with no risk of
-// pulling in 2024-revision duplicates, and no need to also filter by
-// filename/source code. Spot-checked against real SRD 5.1 content: exactly
-// one SRD feat (Grappler), one SRD background (Acolyte), the nine core PHB
-// species, and the twelve core classes -- all well-known, correct facts
-// about the real SRD 5.1's sparse feat/background list.
+// truthy alone (srd51Provider's membership predicate) therefore selects
+// exactly SRD 5.1 content with no risk of pulling in 2024-revision
+// duplicates, and no need to also filter by filename/source code.
+// Spot-checked against real SRD 5.1 content: exactly one SRD feat
+// (Grappler), one SRD background (Acolyte), the nine core PHB species,
+// and the twelve core classes -- all well-known, correct facts about the
+// real SRD 5.1's sparse feat/background list.
 //
 // AUTHORIZATION: gated on `platform.contentpack.publish` -- this is a
 // Platform-scoped write (installs a new global, immutable Content Pack
@@ -72,17 +74,12 @@
 import { createError, defineEventHandler } from 'h3'
 
 import { requireCapability } from '../../../utils/authorization'
-import { toContentPublicationCandidates } from '../../../utils/content-pack-5etools-adapter'
-import {
-  getPreviewFn,
-  loadSrd51DatasetEntries,
-  type DatasetKey
-} from '../../../utils/content-sources/dnd5e/5etools-dataset'
+import { srd51Provider } from '../../../utils/content-sources/dnd5e/srd-5-1'
 import { publishContentPack, type ContentPublicationCandidate } from '../../../utils/content-pack-publishing'
 
-// See this file's header DATASET TRAVERSAL note for why this stays a
-// local constant rather than the shared module's own `DATASETS`.
-const DATASETS: readonly DatasetKey[] = ['spells', 'items', 'backgrounds', 'feats', 'species', 'classes']
+// See this file's header PROVIDER note for why this stays a local
+// constant rather than iterating `srd51Provider.categories`' own order.
+const CATEGORY_KEYS: readonly string[] = ['spells', 'items', 'backgrounds', 'feats', 'species', 'classes']
 
 const PACKAGE_ID = 'eldra.content.srd-5.1'
 const VERSION = '1.0.0'
@@ -96,7 +93,7 @@ export default defineEventHandler(async (event) => {
 
   const candidates: ContentPublicationCandidate[] = []
   const warnings: string[] = []
-  const counts: Record<DatasetKey, number> = {
+  const counts: Record<string, number> = {
     spells: 0,
     items: 0,
     backgrounds: 0,
@@ -105,13 +102,12 @@ export default defineEventHandler(async (event) => {
     classes: 0
   }
 
-  for (const dataset of DATASETS) {
-    const rows = await loadSrd51DatasetEntries(dataset)
-    const preview = getPreviewFn(dataset)(rows)
+  for (const categoryKey of CATEGORY_KEYS) {
+    const { candidates: categoryCandidates, warnings: categoryWarnings } = await srd51Provider.loadCategory(categoryKey)
 
-    counts[dataset] = preview.items.length
-    warnings.push(...preview.warnings.map((message) => `[${dataset}] ${message}`))
-    candidates.push(...toContentPublicationCandidates(preview))
+    counts[categoryKey] = categoryCandidates.length
+    warnings.push(...categoryWarnings.map((message) => `[${categoryKey}] ${message}`))
+    candidates.push(...categoryCandidates)
   }
 
   const result = await publishContentPack({
@@ -126,8 +122,8 @@ export default defineEventHandler(async (event) => {
     },
     origin: {
       kind: 'translated',
-      adapterId: '5etools-json',
-      sourceId: 'srd-5.1'
+      adapterId: srd51Provider.adapterId,
+      sourceId: srd51Provider.collectionKey
     },
     candidates,
     warnings

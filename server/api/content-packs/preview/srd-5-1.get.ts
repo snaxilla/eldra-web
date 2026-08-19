@@ -11,14 +11,13 @@
 // content-packs.ts. This route's only job is to let a GM see what
 // publishing would produce before it happens.
 //
-// DATASET TRAVERSAL: the dataset root, file-discovery, and SRD-filter
-// logic this route needs is shared with publish/srd-5-1.post.ts and
-// publish/srd-5-1-curated.post.ts via
-// server/utils/content-sources/dnd5e/5etools-dataset.ts (Step 1 of
-// .github/docs/architecture/content-source-architecture.md's
-// Implementation Sequence, §12) -- previously three independently
-// maintained, byte-identical copies of the same ~130 lines; see that
-// module's own header for what was and wasn't moved.
+// PROVIDER: dataset access, the SRD 5.1 membership predicate, category
+// loading, importer wiring, and adapter invocation all live behind
+// `srd51Provider` (server/utils/content-sources/dnd5e/srd-5-1.ts) as of
+// Step 2 of .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence (§12) -- this route no longer touches the
+// dataset directly. It owns exactly HTTP, authorization, and response
+// shaping, per that document's own responsibility split.
 //
 // CURATION HAPPENS ENTIRELY CLIENT-SIDE: this route runs once per preview
 // request and returns the full candidate list for all six categories.
@@ -36,8 +35,9 @@
 // shipping `data` to a surface that only needs to identify and present.
 //
 // FAILURE MODES (this task's own EMPTY STATES section):
-//   - Dataset missing entirely (DATA_ROOT itself unreadable) -> the whole
-//     response reports `available: false, reason: 'dataset-missing'`.
+//   - Dataset missing entirely (the provider's dataset root unreadable)
+//     -> the whole response reports `available: false, reason:
+//     'dataset-missing'`, using the provider's own message.
 //   - One category's importer throws (malformed JSON, unexpected shape)
 //     -> caught per-category; that category reports zero entries plus a
 //     warning, the other five are unaffected. Never fails the whole
@@ -55,18 +55,9 @@
 // player/GM-facing feature of its own. No new capability is invented.
 
 import { createError, defineEventHandler } from 'h3'
-import { readdir } from 'node:fs/promises'
 
 import { requireCapability } from '../../../utils/authorization'
-import { toContentPublicationCandidates } from '../../../utils/content-pack-5etools-adapter'
-import {
-  CATEGORY_LABELS,
-  DATA_ROOT,
-  DATASETS,
-  getPreviewFn,
-  loadSrd51DatasetEntries,
-  type DatasetKey
-} from '../../../utils/content-sources/dnd5e/5etools-dataset'
+import { srd51Provider } from '../../../utils/content-sources/dnd5e/srd-5-1'
 
 // ---------------------------------------------------------------------------
 // Response shaping -- presentation-only. See this file's header "WHAT IS
@@ -80,7 +71,7 @@ type ContentPackPreviewEntry = {
 }
 
 type ContentPackPreviewCategory = {
-  key: DatasetKey
+  key: string
   label: string
   entries: ContentPackPreviewEntry[]
 }
@@ -106,18 +97,16 @@ export default defineEventHandler(async (event): Promise<ContentPackPreviewResul
   }
   requireCapability(principal, 'platform.contentpack.publish', { kind: 'platform' })
 
-  // Confirms the dataset root itself is reachable before attempting any
-  // per-category work -- see this file's header FAILURE MODES note.
-  // Per-file failures inside loadSrd51DatasetEntries are already tolerated
-  // there; this only guards the one failure that would otherwise abort
-  // every category identically (the root directory itself missing).
-  try {
-    await readdir(DATA_ROOT)
-  } catch {
+  // See this file's header FAILURE MODES note -- per-category failures
+  // inside srd51Provider.loadCategory are tolerated below; this only
+  // guards the one failure that would otherwise abort every category
+  // identically (the dataset root itself missing).
+  const availability = await srd51Provider.checkAvailability()
+  if (!availability.available) {
     return {
       available: false,
       reason: 'dataset-missing',
-      message: 'The 5etools SRD 5.1 dataset is not available on this server. Nothing can be previewed until it is installed.'
+      message: availability.message
     }
   }
 
@@ -125,26 +114,25 @@ export default defineEventHandler(async (event): Promise<ContentPackPreviewResul
   const warnings: string[] = []
   let totalEntries = 0
 
-  for (const dataset of DATASETS) {
+  for (const category of srd51Provider.categories) {
     try {
-      const rows = await loadSrd51DatasetEntries(dataset)
-      const preview = getPreviewFn(dataset)(rows)
+      const { candidates, warnings: categoryWarnings } = await srd51Provider.loadCategory(category.key)
 
-      warnings.push(...preview.warnings.map((message) => `[${CATEGORY_LABELS[dataset]}] ${message}`))
+      warnings.push(...categoryWarnings.map((message) => `[${category.label}] ${message}`))
 
-      const entries = toContentPublicationCandidates(preview).map((candidate) => ({
+      const entries = candidates.map((candidate) => ({
         externalId: candidate.externalId,
         title: candidate.title,
         sourceBook: candidate.sourceBook
       }))
 
       totalEntries += entries.length
-      categories.push({ key: dataset, label: CATEGORY_LABELS[dataset], entries })
+      categories.push({ key: category.key, label: category.label, entries })
     } catch (error: any) {
       // One category's importer failing never fails the whole preview --
       // see this file's header FAILURE MODES note.
-      warnings.push(`[${CATEGORY_LABELS[dataset]}] Failed to generate preview: ${error?.message || 'unknown error'}`)
-      categories.push({ key: dataset, label: CATEGORY_LABELS[dataset], entries: [] })
+      warnings.push(`[${category.label}] Failed to generate preview: ${error?.message || 'unknown error'}`)
+      categories.push({ key: category.key, label: category.label, entries: [] })
     }
   }
 

@@ -7,12 +7,18 @@
 // below is moved, not rewritten -- this is a zero-behavior-change
 // extraction.
 //
-// This is deliberately NOT the Source Collection Provider abstraction the
-// architecture doc designs in its §5.2/§5.3 -- no SourceCollectionProvider
-// type, no membership-predicate parameter, no registration array. It is
-// only the dataset-access primitives those three routes duplicated. The
-// provider abstraction is a later step (§12 Step 2), gated on this
-// extraction landing first.
+// Step 2 (server/utils/content-sources/dnd5e/5etools-collection.ts) adds
+// the one piece of generality this module didn't yet have: `isSrd51Entry`
+// was the only membership predicate `loadSrd51DatasetEntries` could use.
+// `loadDatasetEntries` below generalizes that predicate to an arbitrary
+// `(entry) => boolean`, which is what lets the same file-walk/parse/extract
+// pipeline serve a future collection (e.g. XPHB) without a second copy of
+// the loop -- `loadSrd51DatasetEntries` itself is now a thin wrapper over
+// it and its behavior is unchanged.
+//
+// This module still does NOT define SourceCollectionProvider, categories,
+// or registration -- those live in 5etools-collection.ts and are what
+// actually turns this into the provider abstraction.
 //
 // server/api/import/bulk.post.ts's own independent fileLooksRelevant copy
 // is intentionally left alone -- it belongs to a different subsystem (the
@@ -143,7 +149,14 @@ export function isSrd51Entry(entry: any): boolean {
   return Boolean(entry && typeof entry === 'object' && entry.srd)
 }
 
-export async function loadSrd51DatasetEntries(dataset: DatasetKey): Promise<any[]> {
+// Generic membership-filtered entry loader -- the primitive Step 2's
+// provider factory needs. Walks the dataset, parses each relevant file,
+// extracts the collection's rows, and keeps only entries the caller's own
+// `membership` predicate accepts. `loadSrd51DatasetEntries` below is this
+// function with `isSrd51Entry` as that predicate; a future collection
+// (e.g. XPHB, predicate `entry.source === 'XPHB'`) is this function with a
+// different predicate, not a new copy of the loop.
+export async function loadDatasetEntries(dataset: DatasetKey, membership: (entry: any) => boolean): Promise<any[]> {
   const files = await walkJsonFiles(DATA_ROOT, dataset)
   const rows: any[] = []
 
@@ -151,7 +164,7 @@ export async function loadSrd51DatasetEntries(dataset: DatasetKey): Promise<any[
     try {
       const raw = await readFile(file, 'utf8')
       const parsed = JSON.parse(raw)
-      const extracted = extractEntitiesFromJson(parsed, dataset).filter(isSrd51Entry)
+      const extracted = extractEntitiesFromJson(parsed, dataset).filter(membership)
 
       if (extracted.length) {
         rows.push(...extracted)
@@ -162,4 +175,8 @@ export async function loadSrd51DatasetEntries(dataset: DatasetKey): Promise<any[
   }
 
   return rows
+}
+
+export async function loadSrd51DatasetEntries(dataset: DatasetKey): Promise<any[]> {
+  return loadDatasetEntries(dataset, isSrd51Entry)
 }

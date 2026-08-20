@@ -30,24 +30,27 @@
 // definition, only contains entries someone already decided belong in it.
 //
 // AUTHORIZATION: no capability check inside this component itself -- the
-// two privileged actions (the generic preview route,
-// POST /api/content-packs/publish/srd-5-1-curated) are gated server-side
-// on platform.contentpack.publish, and the parent
-// (AdminContentPacksPanel.vue) already knows how to ask
+// two privileged actions (the generic preview route, the generic publish
+// route) are gated server-side on platform.contentpack.publish, and the
+// parent (AdminContentPacksPanel.vue) already knows how to ask
 // GET /api/worlds/:id for canBindPacks; that capability governs binding,
-// not previewing/publishing (a Platform action, not a World one -- see
-// server/api/content-packs/publish/srd-5-1.post.ts's own AUTHORIZATION
-// note). A 403 from either endpoint surfaces through this component's
-// ordinary error state like any other fetch failure.
+// not previewing/publishing (a Platform action, not a World one). A 403
+// from either endpoint surfaces through this component's ordinary error
+// state like any other fetch failure.
 //
-// PUBLISH: calls the new POST /api/content-packs/publish/srd-5-1-curated
-// with the CURRENT selection (this component's own `selection` state,
-// converted to plain arrays) plus the Package Name/Version fields below --
-// it never re-fetches a preview first, so what gets published is always
-// exactly what the GM is currently looking at. Publishing never binds --
-// there is no bind action here (world-content-pack-binding.ts's own
-// separate flow, AdminContentPacksPanel.vue's existing Bind table, owns
-// that).
+// PUBLISH: as of Step 5 of
+// .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence (§12), calls the generic
+// POST /api/content-packs/publish with { gameSystemKey, collectionKey,
+// packageId, version, selection } -- the two selected keys plus the
+// CURRENT selection (this component's own `selection` state, converted to
+// plain arrays) and the Package Name/Version fields below. This is the
+// last place this component ever named a concrete publish route: it never
+// posts to a source-specific URL, and it never re-fetches a preview first,
+// so what gets published is always exactly what the GM is currently
+// looking at. Publishing never binds -- there is no bind action here
+// (world-content-pack-binding.ts's own separate flow,
+// AdminContentPacksPanel.vue's existing Bind table, owns that).
 //
 // AFTER SUCCESS (this task's own AFTER SUCCESS section): the Preview,
 // the selection, and the Package Name/Version fields are ALL cleared
@@ -73,18 +76,17 @@
 // whatever the registry contains. Availability is fetched once from
 // GET /api/content-sources (server-derived: a provider must be
 // registered AND report its dataset reachable), never hand-set in the
-// registry (Step 3). As of Step 4 of
-// .github/docs/architecture/content-source-architecture.md's
-// Implementation Sequence (§12), "Generate Preview" no longer names any
-// concrete route either: `previewEndpointFor` below derives
-// GET /api/content-sources/[gameSystemKey]/[collectionKey]/preview
-// purely from the two selected keys. This is the last place this
-// component ever named SRD, 5etools, a provider, or a dataset path --
-// see that route's own header for how it resolves (gameSystemKey,
-// collectionKey) into a provider server-side. Sources without a working
-// preview render disabled with a "Coming Soon" badge, never omitted -- a
-// GM should see the full shape of what Eldra will eventually support,
-// not just what works today.
+// registry (Step 3). "Generate Preview" (Step 4) and "Publish" (Step 5)
+// no longer name any concrete route either: `previewEndpointFor` below
+// derives GET /api/content-sources/[gameSystemKey]/[collectionKey]/preview
+// purely from the two selected keys, and `publish()` posts the same two
+// keys as plain body fields to POST /api/content-packs/publish. This
+// component never names SRD, 5etools, a provider, or a dataset path
+// anywhere -- see those routes' own headers for how each resolves
+// (gameSystemKey, collectionKey) into a provider server-side. Sources
+// without a working preview render disabled with a "Coming Soon" badge,
+// never omitted -- a GM should see the full shape of what Eldra will
+// eventually support, not just what works today.
 
 import {
   GAME_SYSTEM_REGISTRY,
@@ -356,7 +358,7 @@ const validationMessages = computed(() => {
 })
 
 async function publish() {
-  if (!previewResult.value?.available) return
+  if (!previewResult.value?.available || !selectedContentSource.value) return
 
   publishPending.value = true
   publishError.value = ''
@@ -375,9 +377,11 @@ async function publish() {
   }
 
   try {
-    const response = await $fetch<PublishSuccess>('/api/content-packs/publish/srd-5-1-curated', {
+    const response = await $fetch<PublishSuccess>('/api/content-packs/publish', {
       method: 'POST',
       body: {
+        gameSystemKey: selectedGameSystemKey.value,
+        collectionKey: selectedContentSource.value.key,
         packageId: packageName.value.trim(),
         version: packageVersion.value.trim(),
         selection: selectionPayload

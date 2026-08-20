@@ -7,17 +7,18 @@
 // Checklist). A one-line array edit here is the deliberate cost of
 // avoiding that.
 //
-// SRD 5.1 is the only entry -- this step implements no other provider.
-// getProvider/listProviders are not called by anything yet (the three
-// SRD routes still import `srd51Provider` directly, since generic
-// key-driven routing is explicitly out of scope for this step); they
-// exist because the architecture doc's own Step 2 file list names this
-// module, and Step 3's generic routes are the first real caller.
+// Registering a new Source Collection is exactly this: one import and one
+// array entry. `xphbProvider` (Player's Handbook 2024) was added as the
+// architecture's own acceptance test (§12 Step 8) and required no change
+// to this module beyond those two lines -- getProvider/listProviders,
+// both generic routes, the preview builder, the publish orchestrator, and
+// the Builder are all untouched by it.
 
 import { srd51Provider } from './dnd5e/srd-5-1'
+import { xphbProvider } from './dnd5e/xphb'
 import type { SourceCollectionProvider } from './types'
 
-const PROVIDERS: readonly SourceCollectionProvider[] = [srd51Provider]
+const PROVIDERS: readonly SourceCollectionProvider[] = [srd51Provider, xphbProvider]
 
 export function getProvider(gameSystemKey: string, collectionKey: string): SourceCollectionProvider | undefined {
   return PROVIDERS.find((provider) => provider.gameSystemKey === gameSystemKey && provider.collectionKey === collectionKey)

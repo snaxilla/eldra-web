@@ -80,12 +80,43 @@ export function getCollectionKeys(dataset: DatasetKey): string[] {
   }
 }
 
+// 5etools ships Foundry VTT companion exports alongside its own content,
+// inside the same tree and under names this module's per-category matchers
+// would otherwise accept: `foundry-races.json`, `foundry-feats.json`,
+// `foundry-items.json` at the root, plus `class/foundry.json` and
+// `spells/foundry.json`. Their entries carry a real `source` (e.g. 'XPHB')
+// but a completely different, Foundry-specific body (`advancement`,
+// `activities`, `effects[].foundryId`, `migrationVersion`) with none of the
+// fields app/lib/importers/* reads -- so they parse "successfully" into
+// entries whose every field is blank.
+//
+// This never affected SRD 5.1 because no Foundry entry carries an `srd`
+// flag, so `isSrd51Entry` excluded them for free. A source-code membership
+// predicate (`entry.source === 'XPHB'`) does NOT, which is how these files
+// first became visible. Excluding them here rather than in any one
+// collection's membership predicate is deliberate: a Foundry export is
+// relevant to NO category and NO collection, which is exactly the question
+// this function exists to answer -- and fixing it here means every current
+// and future collection gets the fix once, instead of each one re-deriving
+// a `!entry.migrationVersion`-style workaround.
+//
+// Verified against the dataset: excluding these removes 0 SRD 5.1 rows in
+// every category (Foundry files contribute srd=0 everywhere) and 380
+// spurious rows from XPHB.
+function isFoundryCompanionFile(filePath: string): boolean {
+  return basename(filePath).toLowerCase().startsWith('foundry')
+}
+
 // Identical predicate previously duplicated across all three content-pack
 // routes (server/api/import/bulk.post.ts keeps its own separate copy --
-// see this file's header).
+// see this file's header), plus the Foundry-companion exclusion above.
 export function fileLooksRelevant(dataset: DatasetKey, filePath: string): boolean {
   const name = basename(filePath).toLowerCase()
   const normalized = filePath.toLowerCase()
+
+  if (isFoundryCompanionFile(filePath)) {
+    return false
+  }
 
   switch (dataset) {
     case 'spells':
@@ -147,6 +178,21 @@ export function extractEntitiesFromJson(parsed: any, dataset: DatasetKey): any[]
 // the-dataset reasoning; unchanged here.
 export function isSrd51Entry(entry: any): boolean {
   return Boolean(entry && typeof entry === 'object' && entry.srd)
+}
+
+// Entry-level source-code membership -- the general form the architecture
+// doc's §2.3 requires ("Collection membership is an entry-level predicate,
+// never a file filter"), verified against this dataset: PHB and XPHB share
+// `class/class-*.json` and `items.json`, so a file-name filter would
+// silently publish the wrong book.
+//
+// Deliberately keyed on `source`, not `edition`: measured against the real
+// dataset, `edition: 'one'` is present on XPHB species/classes/backgrounds
+// but ABSENT on XPHB feats (0 of 77), spells (0 of 391), and most items
+// (0 of 123 in items.json) -- so `edition` identifies a ruleset revision,
+// not a book, and cannot select a collection on its own.
+export function isEntryFromSource(sourceCode: string): (entry: any) => boolean {
+  return (entry: any) => Boolean(entry && typeof entry === 'object' && entry.source === sourceCode)
 }
 
 // Generic membership-filtered entry loader -- the primitive Step 2's

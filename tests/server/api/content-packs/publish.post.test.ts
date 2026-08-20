@@ -49,20 +49,37 @@ const FIXTURE_FILES: Record<string, string> = {
   [`${DATA_ROOT}/backgrounds.json`]: JSON.stringify({
     background: [{ name: 'Acolyte', source: 'PHB', srd: true, entries: ['You served in a temple.'] }]
   }),
+  // races.json / items.json / class-*.json realistically hold BOTH the 2014
+  // and 2024 books' entries in one array -- so these fixtures carry an XPHB
+  // sibling alongside each PHB entry. They are invisible to SRD 5.1 (no
+  // `srd` flag) and prove the generic route publishes a second collection
+  // from the same files without any route or publisher change.
   [`${DATA_ROOT}/races.json`]: JSON.stringify({
-    race: [{ name: 'Human', source: 'PHB', srd: true, entries: ['Versatile.'] }]
+    race: [
+      { name: 'Human', source: 'PHB', srd: true, entries: ['Versatile.'] },
+      { name: 'Human', source: 'XPHB', edition: 'one', entries: ['Versatile (2024).'] }
+    ]
   }),
   [`${DATA_ROOT}/items.json`]: JSON.stringify({
-    item: [{ name: 'Potion of Healing', source: 'PHB', srd: true, entries: ['Restores hit points.'] }]
+    item: [
+      { name: 'Potion of Healing', source: 'PHB', srd: true, entries: ['Restores hit points.'] },
+      { name: 'Potion of Healing', source: 'XPHB', entries: ['Restores hit points (2024).'] }
+    ]
   }),
   [`${DATA_ROOT}/class/class-fighter.json`]: JSON.stringify({
-    class: [{ name: 'Fighter', source: 'PHB', srd: true, hd: { faces: 10 } }]
+    class: [
+      { name: 'Fighter', source: 'PHB', srd: true, hd: { faces: 10 } },
+      { name: 'Fighter', source: 'XPHB', edition: 'one', hd: { faces: 10 }, primaryAbility: [{ str: true }] }
+    ]
+  }),
+  [`${DATA_ROOT}/spells/spells-xphb.json`]: JSON.stringify({
+    spell: [{ name: 'Fire Bolt', source: 'XPHB', level: 0, entries: ['A mote of fire (2024).'] }]
   })
 }
 
 const FIXTURE_DIRS: Record<string, string[]> = {
   [DATA_ROOT]: ['spells', 'feats.json', 'backgrounds.json', 'races.json', 'items.json', 'class'],
-  [`${DATA_ROOT}/spells`]: ['spells-phb.json'],
+  [`${DATA_ROOT}/spells`]: ['spells-phb.json', 'spells-xphb.json'],
   [`${DATA_ROOT}/class`]: ['class-fighter.json']
 }
 
@@ -283,6 +300,64 @@ describe('POST /api/content-packs/publish', () => {
 
     expect(result.published).toBe(true)
     expect(result.packageId).toBe('eldra.content.my-custom-srd')
+  })
+
+  // ---------------------------------------------------------------------
+  // The architecture's acceptance test (content-source-architecture.md §12
+  // Step 8): publishing a SECOND collection through this same route, with
+  // no change to the route, the publisher, or the Builder.
+  // ---------------------------------------------------------------------
+
+  it('publishes a different collection (XPHB) through the identical route, with that collection\'s own registry metadata', async () => {
+    const result = await callHandler({
+      gameSystemKey: 'dnd5e',
+      collectionKey: 'xphb',
+      packageId: 'eldra.content.xphb-test',
+      version: '1.0.0',
+      selection: {
+        species: ['Human__XPHB'],
+        classes: ['Fighter__XPHB'],
+        items: ['item__Potion of Healing__XPHB'],
+        spells: ['Fire Bolt__XPHB']
+      }
+    })
+
+    expect(result.published).toBe(true)
+    expect(result.counts).toMatchObject({ species: 1, classes: 1, items: 1, spells: 1, backgrounds: 0, feats: 0 })
+
+    const row = packStore[0]
+    // Metadata comes from the XPHB registry entry, not SRD's and not a
+    // hardcoded literal -- the whole point of Step 5's registry integration.
+    expect(row.title).toBe("Player's Handbook (2024)")
+    expect(row.license_id).toBe('proprietary')
+    expect(row.manifest).toMatchObject({
+      title: "Player's Handbook (2024)",
+      license: { id: 'proprietary' },
+      origin: { kind: 'translated', adapterId: '5etools-json', sourceId: 'xphb' }
+    })
+
+    // Every published entry is genuinely XPHB -- no PHB sibling leaked in
+    // from the files the two books share.
+    expect(row.content.map((c: any) => c.sourceBook)).toEqual(['Human__XPHB', 'Fighter__XPHB', 'item__Potion of Healing__XPHB', 'Fire Bolt__XPHB'].map(() => 'XPHB'))
+  })
+
+  it('SRD 5.1 and XPHB produce distinct identities, so both can be published and coexist', async () => {
+    await callHandler(baseBody({ packageId: 'eldra.content.srd-both', version: '1.0.0' }))
+    await callHandler({
+      gameSystemKey: 'dnd5e',
+      collectionKey: 'xphb',
+      packageId: 'eldra.content.xphb-both',
+      version: '1.0.0',
+      selection: { classes: ['Fighter__XPHB'] }
+    })
+
+    expect(packStore).toHaveLength(2)
+    const srdFighter = packStore[0].content.find((c: any) => c.title === 'Fighter')
+    const xphbFighter = packStore[1].content.find((c: any) => c.title === 'Fighter')
+
+    expect(srdFighter.title).toBe(xphbFighter.title)
+    expect(srdFighter.slug).not.toBe(xphbFighter.slug)
+    expect(srdFighter.externalId).not.toBe(xphbFighter.externalId)
   })
 
   it('computes real integrity over exactly the published (curated) content', async () => {

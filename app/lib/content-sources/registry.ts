@@ -47,13 +47,15 @@
 //    is not decorative: ownership-and-permissions.md §7.2.3 makes license
 //    metadata legally load-bearing for a published Content Pack.
 //
-// 4. Six of the seven listed collections have no registered provider yet
-//    (server/utils/content-sources' PROVIDERS array has exactly one entry,
-//    SRD 5.1) -- they are listed anyway so a GM can see the full shape of
+// 4. Two of the eight listed collections have a registered provider
+//    (server/utils/content-sources' PROVIDERS array: SRD 5.1 and XPHB);
+//    the other six are listed anyway so a GM can see the full shape of
 //    what Eldra will eventually support, per design decision 1's own
-//    "no Builder code changes required" test. `available` is computed
-//    entirely by the absence of a matching provider, never by a field on
-//    these entries -- design decision 2.
+//    "no Builder code changes required" test -- which XPHB proved
+//    literally: adding it changed this file and one provider file, and no
+//    Builder code at all. `available` is computed entirely by the absence
+//    of a matching provider, never by a field on these entries -- design
+//    decision 2.
 //
 // 5. No publish-side route/endpoint wiring here, still. This registry
 //    describes collection identity/licensing/labels only; which routes
@@ -122,6 +124,20 @@ export const GAME_SYSTEM_REGISTRY: readonly GameSystemDefinition[] = [
           attribution: 'System Reference Document 5.1. Copyright Wizards of the Coast LLC.'
         },
         suggestedPackageId: 'eldra.content.srd-5.1'
+      },
+      {
+        key: 'xphb',
+        label: "Player's Handbook (2024)",
+        description: "The 2024 revision of the Dungeons & Dragons Player's Handbook.",
+        books: [{ code: 'XPHB', title: "Player's Handbook", publisher: 'Wizards of the Coast', year: 2024 }],
+        // NOT freely licensed -- unlike SRD 5.1 (OGL-1.0a) and the 2024
+        // SRD 5.2 (CC-BY-4.0), the 2024 Player's Handbook is neither. See
+        // the architecture doc's §9: a `proprietary` entry makes the pack
+        // TECHNICALLY publishable, which is exactly why whether to ship it
+        // is a deliberate product/legal decision rather than an
+        // architectural one. Recorded honestly here; not decided here.
+        license: { id: 'proprietary' },
+        suggestedPackageId: 'eldra.content.xphb'
       },
       {
         key: 'phb-2014',

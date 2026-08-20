@@ -6,8 +6,13 @@
 // the existing Published/Bound sections, so the page reads top-to-bottom
 // in pipeline order.
 //
-// BEHAVIOR: calls GET /api/content-packs/preview/srd-5-1 exactly once per
-// "Generate Preview" click. Publishes nothing, binds nothing -- there is
+// BEHAVIOR: calls the generic
+// GET /api/content-sources/[gameSystemKey]/[collectionKey]/preview
+// (derived from the two selected keys as of Step 4 of
+// .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence -- see this file's own GAME SYSTEM / SOURCE
+// COLLECTION note below) exactly once per "Generate Preview" click.
+// Publishes nothing, binds nothing -- there is
 // no Publish button here at all (this task's own NON-GOALS: "Do NOT
 // implement Publishing"). Checkbox/Select All/Deselect All state lives
 // entirely in this component; nothing is ever sent back to the server
@@ -25,7 +30,7 @@
 // definition, only contains entries someone already decided belong in it.
 //
 // AUTHORIZATION: no capability check inside this component itself -- the
-// two privileged actions (GET /api/content-packs/preview/srd-5-1,
+// two privileged actions (the generic preview route,
 // POST /api/content-packs/publish/srd-5-1-curated) are gated server-side
 // on platform.contentpack.publish, and the parent
 // (AdminContentPacksPanel.vue) already knows how to ask
@@ -65,22 +70,21 @@
 // GAME SYSTEM / SOURCE COLLECTION: both selectors are driven by
 // app/lib/content-sources/registry.ts for identity/labels/ordering --
 // this component names no game system and no book of its own, it iterates
-// whatever the registry contains. As of Step 3 of
-// .github/docs/architecture/content-source-architecture.md's
-// Implementation Sequence (§12), the registry no longer carries `status`
-// or `previewEndpoint` (see that document's §2.5/§2.6/§6.3 and
-// registry.ts's own design decision 2) -- those were plumbing/
-// availability facts, and availability is now fetched once from
+// whatever the registry contains. Availability is fetched once from
 // GET /api/content-sources (server-derived: a provider must be
-// registered AND report its dataset reachable) rather than hand-set in
-// the registry. `PREVIEW_ENDPOINTS` below remains a small Builder-local
-// map from collection key to its concrete preview route -- this component
-// still names the one working route directly (exactly as it always named
-// `/api/content-packs/publish/srd-5-1-curated` directly for Publish);
-// generalizing that into key-driven/generic routing is Step 4, explicitly
-// out of scope here. Sources without a working preview render disabled
-// with a "Coming Soon" badge, never omitted -- a GM should see the full
-// shape of what Eldra will eventually support, not just what works today.
+// registered AND report its dataset reachable), never hand-set in the
+// registry (Step 3). As of Step 4 of
+// .github/docs/architecture/content-source-architecture.md's
+// Implementation Sequence (§12), "Generate Preview" no longer names any
+// concrete route either: `previewEndpointFor` below derives
+// GET /api/content-sources/[gameSystemKey]/[collectionKey]/preview
+// purely from the two selected keys. This is the last place this
+// component ever named SRD, 5etools, a provider, or a dataset path --
+// see that route's own header for how it resolves (gameSystemKey,
+// collectionKey) into a provider server-side. Sources without a working
+// preview render disabled with a "Coming Soon" badge, never omitted -- a
+// GM should see the full shape of what Eldra will eventually support,
+// not just what works today.
 
 import {
   GAME_SYSTEM_REGISTRY,
@@ -89,12 +93,11 @@ import {
   type SourceCollectionDefinition
 } from '~/lib/content-sources/registry'
 
-// The one route this Builder currently knows how to call for a preview,
-// keyed by Source Collection -- see this file's header GAME SYSTEM /
-// SOURCE COLLECTION note for why this stays a local map rather than a
-// generic/derived route.
-const PREVIEW_ENDPOINTS: Record<string, string> = {
-  'srd-5.1': '/api/content-packs/preview/srd-5-1'
+// Purely derived from the two selected keys -- no source, provider, or
+// dataset name is ever named here. See this file's header GAME SYSTEM /
+// SOURCE COLLECTION note.
+function previewEndpointFor(gameSystemKey: string, collectionKey: string): string {
+  return `/api/content-sources/${encodeURIComponent(gameSystemKey)}/${encodeURIComponent(collectionKey)}/preview`
 }
 
 type ContentSourceAvailability =
@@ -240,10 +243,11 @@ const previewResult = ref<PreviewResult | null>(null)
 const selection = ref<Record<CategoryKey, Set<string>>>(emptySelection())
 
 async function generatePreview() {
-  const previewEndpoint = selectedContentSource.value ? PREVIEW_ENDPOINTS[selectedContentSource.value.key] : undefined
-  if (!selectedContentSource.value || !isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key) || !previewEndpoint) {
+  if (!selectedContentSource.value || !isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key)) {
     return
   }
+
+  const previewEndpoint = previewEndpointFor(selectedGameSystemKey.value, selectedContentSource.value.key)
 
   previewPending.value = true
   previewError.value = ''
@@ -278,8 +282,7 @@ const canGeneratePreview = computed(
   () =>
     !previewPending.value &&
     !!selectedContentSource.value &&
-    isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key) &&
-    !!PREVIEW_ENDPOINTS[selectedContentSource.value.key]
+    isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key)
 )
 
 function categoryEntries(key: CategoryKey): PreviewEntry[] {

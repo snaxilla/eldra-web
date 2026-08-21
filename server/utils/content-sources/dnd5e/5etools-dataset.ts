@@ -38,7 +38,24 @@ import type { EldraImportPreviewResult } from '../../../../app/lib/importers/typ
 
 export const DATA_ROOT = '/opt/eldra/datasets/5etools-src/data'
 
-export type DatasetKey = 'species' | 'classes' | 'backgrounds' | 'feats' | 'items' | 'spells'
+// `monsters` is a full member of this union -- bestiary files are located,
+// filtered, and key-extracted by exactly the same per-dataset machinery
+// every other category uses (fileLooksRelevant/getCollectionKeys/
+// walkJsonFiles), which is what lets monsters inherit the Foundry-companion
+// exclusion below for free instead of re-deriving it.
+//
+// It is deliberately NOT a member of `DATASETS`. That constant is what the
+// existing providers map over to build their category lists (srd51Provider,
+// xphbProvider; xdmgProvider uses its own narrower list), so appending
+// 'monsters' there would silently graft a monsters category onto every
+// existing collection. A collection that wants monsters declares that
+// category explicitly -- see 5etools-collection.ts's `loadCandidates` hook.
+//
+// The two functions monsters genuinely cannot share are guarded rather than
+// silently wrong: `getPreviewFn` and `loadDatasetEntries` both throw for
+// 'monsters' (see each). Monsters flow through loadMonsterDatasetEntries +
+// content-pack-monsters-adapter.ts instead.
+export type DatasetKey = 'species' | 'classes' | 'backgrounds' | 'feats' | 'items' | 'spells' | 'monsters'
 
 // Display order matches preview/srd-5-1.get.ts's and
 // publish/srd-5-1-curated.post.ts's own shared order (Species, Classes,
@@ -47,6 +64,8 @@ export type DatasetKey = 'species' | 'classes' | 'backgrounds' | 'feats' | 'item
 // order and keeps its own local constant for that reason (see that
 // file's own note) -- that ordering was never actually duplicated, so it
 // was not moved here.
+//
+// 'monsters' is intentionally absent -- see the DatasetKey note above.
 export const DATASETS: readonly DatasetKey[] = ['species', 'classes', 'backgrounds', 'feats', 'items', 'spells']
 
 export const CATEGORY_LABELS: Record<DatasetKey, string> = {
@@ -55,7 +74,8 @@ export const CATEGORY_LABELS: Record<DatasetKey, string> = {
   backgrounds: 'Backgrounds',
   feats: 'Feats',
   items: 'Items',
-  spells: 'Spells'
+  spells: 'Spells',
+  monsters: 'Monsters'
 }
 
 export function getPreviewFn(dataset: DatasetKey): (payload: any) => EldraImportPreviewResult {
@@ -66,6 +86,14 @@ export function getPreviewFn(dataset: DatasetKey): (payload: any) => EldraImport
     case 'feats': return preview5eToolsFeats
     case 'items': return preview5eToolsItems
     case 'spells': return preview5eToolsSpells
+    case 'monsters':
+      // preview5eToolsMonsters does NOT return EldraImportPreviewResult --
+      // that shape mismatch is the entire reason
+      // content-pack-monsters-adapter.ts exists. Throwing here keeps this
+      // function's return type honest and turns any attempt to run monsters
+      // through the default per-category pipeline into a loud failure
+      // rather than a cast that would fail later, further away.
+      throw new Error("getPreviewFn: 'monsters' has no EldraImportPreviewResult parser -- use content-pack-monsters-adapter.ts's toMonsterContentPublicationCandidates")
   }
 }
 
@@ -77,6 +105,7 @@ export function getCollectionKeys(dataset: DatasetKey): string[] {
     case 'feats': return ['feat']
     case 'items': return ['item', 'baseitem', 'magicvariant']
     case 'spells': return ['spell']
+    case 'monsters': return ['monster']
   }
 }
 
@@ -131,6 +160,16 @@ export function fileLooksRelevant(dataset: DatasetKey, filePath: string): boolea
       return name.includes('feat') && name.endsWith('.json')
     case 'species':
       return (name.includes('race') || name.includes('species')) && name.endsWith('.json')
+    case 'monsters':
+      // Both file families in bestiary/ -- `bestiary-*.json` (keyed
+      // `monster`) and `fluff-bestiary-*.json` (keyed `monsterFluff`) --
+      // because loadMonsterDatasetEntries joins them and therefore needs a
+      // single walk that returns both. bestiary/ also holds index.json,
+      // fluff-index.json, legendarygroups.json and template.json; none of
+      // those carry a `monster` or `monsterFluff` key, so they contribute
+      // zero rows without needing their own exclusion. bestiary/foundry.json
+      // is already excluded by the Foundry-companion rule above.
+      return normalized.includes('/bestiary/') && name.endsWith('.json')
   }
 }
 
@@ -202,7 +241,16 @@ export function isEntryFromSource(sourceCode: string): (entry: any) => boolean {
 // function with `isSrd51Entry` as that predicate; a future collection
 // (e.g. XPHB, predicate `entry.source === 'XPHB'`) is this function with a
 // different predicate, not a new copy of the loop.
+//
+// 'monsters' is rejected rather than served: this loader extracts ONE key
+// per file, so it would silently return stat blocks with no fluff joined --
+// a wrong result rather than a failure. loadMonsterDatasetEntries does the
+// two-key join instead.
 export async function loadDatasetEntries(dataset: DatasetKey, membership: (entry: any) => boolean): Promise<any[]> {
+  if (dataset === 'monsters') {
+    throw new Error("loadDatasetEntries: 'monsters' requires the bestiary/fluff join -- use loadMonsterDatasetEntries")
+  }
+
   const files = await walkJsonFiles(DATA_ROOT, dataset)
   const rows: any[] = []
 
@@ -225,4 +273,64 @@ export async function loadDatasetEntries(dataset: DatasetKey, membership: (entry
 
 export async function loadSrd51DatasetEntries(dataset: DatasetKey): Promise<any[]> {
   return loadDatasetEntries(dataset, isSrd51Entry)
+}
+
+// ---------------------------------------------------------------------------
+// Bestiary (monsters). A real `DatasetKey` -- file location, the Foundry
+// exclusion, and key extraction all come from the shared machinery above --
+// but NOT a member of `DATASETS`, so no existing provider gains a monsters
+// category (see the DatasetKey note at the top of this file).
+//
+// What monsters genuinely cannot share is the LOADER: descriptions and
+// images live in a separate file family (`fluff-bestiary-*.json`, keyed
+// `monsterFluff`) from the stat block (`bestiary-*.json`, keyed `monster`),
+// joined by (name, source). loadDatasetEntries extracts one key per file
+// and so cannot express that join -- which is why it throws for 'monsters'
+// and this loader exists instead.
+
+function normalizeSourceCode(value: any): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function monsterFluffKey(name: any, source: any): string {
+  return `${String(name || '').trim().toLowerCase()}|${normalizeSourceCode(source)}`
+}
+
+// Walks every bestiary file exactly once, collecting `monsterFluff` rows
+// into a (name, source) map alongside `monster` rows kept by `membership` --
+// then joins fluff onto each kept monster as `.fluff` (preview5eToolsMonsters
+// already reads `monster.fluff` as its own fallback join, so this requires
+// no importer change). The join happens after the full walk completes, so
+// file processing order never matters -- a monster's fluff file can be
+// walked before OR after its stat-block file.
+export async function loadMonsterDatasetEntries(membership: (entry: any) => boolean): Promise<any[]> {
+  const files = await walkJsonFiles(DATA_ROOT, 'monsters')
+  const fluffByKey = new Map<string, any>()
+  const monsters: any[] = []
+
+  for (const file of files) {
+    try {
+      const raw = await readFile(file, 'utf8')
+      const parsed = JSON.parse(raw)
+
+      if (Array.isArray(parsed?.monsterFluff)) {
+        for (const fluff of parsed.monsterFluff) {
+          if (fluff?.name) {
+            fluffByKey.set(monsterFluffKey(fluff.name, fluff.source), fluff)
+          }
+        }
+      }
+
+      if (Array.isArray(parsed?.monster)) {
+        monsters.push(...parsed.monster.filter(membership))
+      }
+    } catch {
+      // ignore bad/irrelevant files -- same tolerance loadDatasetEntries has
+    }
+  }
+
+  return monsters.map((monster) => ({
+    ...monster,
+    fluff: fluffByKey.get(monsterFluffKey(monster?.name, monster?.source)) ?? monster?.fluff ?? null
+  }))
 }

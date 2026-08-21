@@ -6,8 +6,8 @@
 // WorldContentEntry[]>`, keyed by whatever string an adapter happened to
 // write, `data` untouched). This module is the first consumer: it turns
 // that into STRONGLY-TYPED gameplay catalogues -- one named collection per
-// category (species/classes/backgrounds/feats/items/spells) -- so a future
-// gameplay system reads `catalogue.species`, never
+// category (species/classes/backgrounds/feats/items/spells/monsters) -- so
+// a future gameplay system reads `catalogue.species`, never
 // `resolved.byEntityType['species']` with a string literal and an `as`
 // cast.
 //
@@ -38,15 +38,18 @@
 //    level/school/rarity -- all of that lives inside `data` and is
 //    therefore explicitly deferred, not merely unbuilt.
 //
-// 2. Six FIXED, named collections, not a generic Record -- the entire value
-//    this module adds over the runtime's own `byEntityType`. An entityType
-//    the current 5etools adapter never produces (i.e. not one of
-//    species/class/background/feat/item/spell -- see app/lib/importers'
+// 2. SEVEN FIXED, named collections, not a generic Record -- the entire
+//    value this module adds over the runtime's own `byEntityType`. An
+//    entityType none of the 5etools adapters produce (i.e. not one of
+//    species/class/background/feat/item/spell/enemy -- see app/lib/importers'
 //    preview5eTools* functions, the only entityType producers that exist)
-//    is not collected into any of the six typed arrays. This mirrors the
-//    runtime's own "do not redesign" posture: the six categories are
-//    exactly what IMPLEMENT asks for, not a speculative extensible
-//    registry.
+//    is not collected into any of the seven typed arrays. This mirrors the
+//    runtime's own "do not redesign" posture: closed, not a speculative
+//    extensible registry. `enemy` (not `monster`) is the literal
+//    preview5eToolsMonsters actually writes -- see
+//    content-pack-monsters-adapter.ts's own design decision 3 for why that
+//    mismatch against app/lib/systems/dnd5e.ts's `entityType: 'monster'`
+//    registration is deliberately left unresolved here.
 //
 // 3. Per-pack resolution status (`packs`) is threaded through unmodified
 //    from resolveWorldContent -- a broken binding must stay visible to a
@@ -90,6 +93,7 @@ export type BackgroundCatalogueEntry = ContentCatalogueEntry
 export type FeatCatalogueEntry = ContentCatalogueEntry
 export type ItemCatalogueEntry = ContentCatalogueEntry
 export type SpellCatalogueEntry = ContentCatalogueEntry
+export type MonsterCatalogueEntry = ContentCatalogueEntry
 
 export type WorldGameplayCatalogue = {
   worldId: string
@@ -100,19 +104,21 @@ export type WorldGameplayCatalogue = {
   feats: FeatCatalogueEntry[]
   items: ItemCatalogueEntry[]
   spells: SpellCatalogueEntry[]
+  monsters: MonsterCatalogueEntry[]
 }
 
 // The exact, closed entityType -> catalogue-collection mapping -- see
 // design decision 2. Keyed by the literal strings app/lib/importers'
 // preview5eTools* functions already write (verified directly against each:
-// 'species', 'class', 'background', 'feat', 'item', 'spell').
+// 'species', 'class', 'background', 'feat', 'item', 'spell', 'enemy').
 const ENTITY_TYPE_TO_CATEGORY: Record<string, keyof Omit<WorldGameplayCatalogue, 'worldId' | 'packs'>> = {
   species: 'species',
   class: 'classes',
   background: 'backgrounds',
   feat: 'feats',
   item: 'items',
-  spell: 'spells'
+  spell: 'spells',
+  enemy: 'monsters'
 }
 
 function toCatalogueEntry(entry: WorldContentEntry): ContentCatalogueEntry {
@@ -146,7 +152,8 @@ export async function getWorldContentCatalogue(worldId: string | number): Promis
     backgrounds: [],
     feats: [],
     items: [],
-    spells: []
+    spells: [],
+    monsters: []
   }
 
   for (const entry of resolved.entries) {

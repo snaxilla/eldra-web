@@ -20,6 +20,23 @@
 // rows, running the right preview parser, adapting into
 // ContentPublicationCandidate[] -- is identical regardless of which
 // predicate is passed in.
+//
+// ESCAPE HATCH -- `loadCandidates` (optional, per category): every category
+// so far (species/classes/backgrounds/feats/items/spells, across three
+// collections) shares one importer output contract
+// (EldraImportPreviewResult) and flows through the default
+// loadDatasetEntries -> getPreviewFn -> toContentPublicationCandidates
+// pipeline below unchanged. Monsters do not: preview5eToolsMonsters returns
+// a bespoke shape with no `externalId`, and its content is joined from TWO
+// file families (bestiary stat blocks + fluff), which loadDatasetEntries's
+// single-array-per-file extraction cannot express (see
+// 5etools-dataset.ts's own "Bestiary (monsters)" section and
+// content-pack-monsters-adapter.ts). Rather than force monsters through a
+// pipeline built for a different shape, or fork a second provider factory
+// (duplicating everything this one already does), a category may supply
+// `loadCandidates` to REPLACE the three default steps for itself alone --
+// every other category on every existing provider is unaffected, since
+// this is purely additive to FiveEToolsCategoryDefinition.
 
 import { readdir } from 'node:fs/promises'
 
@@ -30,7 +47,11 @@ import { DATA_ROOT, getPreviewFn, loadDatasetEntries, type DatasetKey } from './
 type FiveEToolsCategoryDefinition = {
   key: string
   label: string
-  datasetKey: DatasetKey
+  datasetKey?: DatasetKey
+  // See this file's header ESCAPE HATCH note. When present, this replaces
+  // loadDatasetEntries/getPreviewFn/toContentPublicationCandidates for this
+  // one category; `datasetKey` is not read.
+  loadCandidates?: (membership: (entry: any) => boolean) => Promise<SourceCategoryLoadResult>
 }
 
 export type FiveEToolsCollectionInput = {
@@ -67,6 +88,14 @@ export function create5eToolsCollectionProvider(input: FiveEToolsCollectionInput
     const category = categoriesByKey.get(categoryKey)
     if (!category) {
       throw new Error(`Unknown category '${categoryKey}' for content source '${input.collectionKey}'`)
+    }
+
+    if (category.loadCandidates) {
+      return category.loadCandidates(input.membership)
+    }
+
+    if (!category.datasetKey) {
+      throw new Error(`Category '${categoryKey}' for content source '${input.collectionKey}' has neither datasetKey nor loadCandidates`)
     }
 
     const rows = await loadDatasetEntries(category.datasetKey, input.membership)

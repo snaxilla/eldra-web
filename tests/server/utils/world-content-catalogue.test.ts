@@ -64,7 +64,8 @@ describe('getWorldContentCatalogue', () => {
         entry({ entityType: 'feat', title: 'Grappler', slug: 'grappler' }),
         entry({ entityType: 'background', title: 'Acolyte', slug: 'acolyte' }),
         entry({ entityType: 'species', title: 'Human', slug: 'human' }),
-        entry({ entityType: 'class', title: 'Fighter', slug: 'fighter' })
+        entry({ entityType: 'class', title: 'Fighter', slug: 'fighter' }),
+        entry({ entityType: 'enemy', title: 'Goblin', slug: 'goblin' })
       ]
     }))
 
@@ -76,7 +77,25 @@ describe('getWorldContentCatalogue', () => {
     expect(catalogue.backgrounds.map((e) => e.title)).toEqual(['Acolyte'])
     expect(catalogue.species.map((e) => e.title)).toEqual(['Human'])
     expect(catalogue.classes.map((e) => e.title)).toEqual(['Fighter'])
+    expect(catalogue.monsters.map((e) => e.title)).toEqual(['Goblin'])
     expect(catalogue.packs).toEqual([{ ok: true, packageId: 'eldra.content.srd-5.1', version: '1.0.0', title: 'SRD 5.1', entryCount: 6 }])
+  })
+
+  it('maps the "enemy" entityType (what preview5eToolsMonsters actually writes) into catalogue.monsters', async () => {
+    // Deliberately NOT 'monster' -- app/lib/systems/dnd5e.ts registers the
+    // entityType as 'monster', but the importer that actually produces
+    // monster candidates (preview5eToolsMonsters) writes 'enemy'. This test
+    // pins the mapping to the literal that is actually produced; see
+    // content-pack-monsters-adapter.ts's own design decision 3 for why that
+    // mismatch is deliberately left unresolved rather than papered over
+    // here.
+    resolveWorldContentMock.mockResolvedValue(resolved({
+      entries: [entry({ entityType: 'enemy', title: 'Owlbear', slug: 'owlbear' })]
+    }))
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.monsters.map((e) => e.title)).toEqual(['Owlbear'])
   })
 
   it('exposes only presentation-ready fields per entry -- identity and provenance, never `data`', async () => {
@@ -144,7 +163,8 @@ describe('getWorldContentCatalogue', () => {
       backgrounds: [],
       feats: [],
       items: [],
-      spells: []
+      spells: [],
+      monsters: []
     })
   })
 
@@ -169,7 +189,11 @@ describe('getWorldContentCatalogue', () => {
     expect(catalogue.spells[0].packageId).toBe('eldra.content.srd-5.1')
   })
 
-  it('an entityType outside the six known categories is silently excluded from every typed collection', async () => {
+  it('an entityType outside the known categories is silently excluded from every typed collection -- including "monster" itself, which is never produced', async () => {
+    // 'monster' (singular, no 's') is app/lib/systems/dnd5e.ts's registered
+    // entityType -- NOT what any importer actually writes (that's 'enemy',
+    // covered above), so it must map to nothing, same as any other unknown
+    // string.
     resolveWorldContentMock.mockResolvedValue(resolved({
       entries: [
         entry({ entityType: 'monster', title: 'Goblin', slug: 'goblin' }),
@@ -186,7 +210,8 @@ describe('getWorldContentCatalogue', () => {
       ...catalogue.backgrounds,
       ...catalogue.feats,
       ...catalogue.items,
-      ...catalogue.spells
+      ...catalogue.spells,
+      ...catalogue.monsters
     ]
     expect(allEntries.find((e) => e.title === 'Goblin')).toBeUndefined()
   })

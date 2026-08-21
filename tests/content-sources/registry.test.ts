@@ -39,14 +39,14 @@ describe('Content Source Registry', () => {
   })
 
   it('every other Phase 1 Source Collection is listed with real domain facts, none of them a status/previewEndpoint field', () => {
-    // `xphb` and `xdmg` are here rather than in the SRD-shaped assertions
-    // above because they share this group's domain facts (proprietary
-    // license, no free republication right -- see the architecture doc's
-    // §9) even though, unlike the rest of this list, they now have a
-    // registered provider. Availability is derived server-side and is
-    // deliberately not a registry fact, so having a provider changes
-    // nothing here.
-    const otherKeys = ['xphb', 'phb-2014', 'xdmg', 'dmg', 'mm', 'xge', 'tce', 'ftd']
+    // `xphb`, `xdmg`, and `xmm` are here rather than in the SRD-shaped
+    // assertions above because they share this group's domain facts
+    // (proprietary license, no free republication right -- see the
+    // architecture doc's §9) even though, unlike the rest of this list,
+    // they now have a registered provider. Availability is derived
+    // server-side and is deliberately not a registry fact, so having a
+    // provider changes nothing here.
+    const otherKeys = ['xphb', 'phb-2014', 'xdmg', 'dmg', 'xmm', 'mm', 'xge', 'tce', 'ftd']
 
     for (const key of otherKeys) {
       const collection = getSourceCollection('dnd5e', key)

@@ -47,15 +47,17 @@
 //    is not decorative: ownership-and-permissions.md §7.2.3 makes license
 //    metadata legally load-bearing for a published Content Pack.
 //
-// 4. Three of the nine listed collections have a registered provider
-//    (server/utils/content-sources' PROVIDERS array: SRD 5.1, XPHB, and
-//    XDMG); the other six are listed anyway so a GM can see the full shape
-//    of what Eldra will eventually support, per design decision 1's own
-//    "no Builder code changes required" test -- which XPHB proved
-//    literally, and XDMG proved again: each addition changed this file and
-//    one provider file, and no Builder code at all. `available` is
-//    computed entirely by the absence of a matching provider, never by a
-//    field on these entries -- design decision 2.
+// 4. Four of the ten listed collections have a registered provider
+//    (server/utils/content-sources' PROVIDERS array: SRD 5.1, XPHB, XDMG,
+//    and XMM); the other six are listed anyway so a GM can see the full
+//    shape of what Eldra will eventually support, per design decision 1's
+//    own "no Builder code changes required" test -- which XPHB proved
+//    literally, XDMG proved again, and XMM proved a third time (also the
+//    first collection to declare a 'monsters' category, proving Monster
+//    Content Publication integrates the same way): each addition changed
+//    this file and one provider file, and no Builder code at all.
+//    `available` is computed entirely by the absence of a matching
+//    provider, never by a field on these entries -- design decision 2.
 //
 // 5. No publish-side route/endpoint wiring here, still. This registry
 //    describes collection identity/licensing/labels only; which routes
@@ -163,6 +165,17 @@ export const GAME_SYSTEM_REGISTRY: readonly GameSystemDefinition[] = [
         books: [{ code: 'DMG', title: "Dungeon Master's Guide", publisher: 'Wizards of the Coast', year: 2014 }],
         license: { id: 'proprietary' },
         suggestedPackageId: 'eldra.content.dmg'
+      },
+      {
+        key: 'xmm',
+        label: 'Monster Manual (2025)',
+        description: 'The 2025 revision of the Dungeons & Dragons Monster Manual.',
+        books: [{ code: 'XMM', title: 'Monster Manual', publisher: 'Wizards of the Coast', year: 2025 }],
+        // NOT freely licensed -- same status as xphb/xdmg above, and for
+        // the same reason (architecture doc §9): recorded honestly, not a
+        // decision made here.
+        license: { id: 'proprietary' },
+        suggestedPackageId: 'eldra.content.xmm'
       },
       {
         key: 'mm',

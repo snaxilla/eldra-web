@@ -16,14 +16,19 @@
 // Guide 2024) is the second acceptance test and required the same two
 // lines, nothing more -- see xdmg.ts's own header for why its category
 // list is shorter than XPHB's (one populated category, measured against
-// the dataset, not five artificial empty ones).
+// the dataset, not five artificial empty ones). `xmmProvider` (Monster
+// Manual 2025) is the third -- again the same two lines, and the first
+// collection to actually declare a 'monsters' category (via xmm.ts's own
+// `loadCandidates` hook), proving Monster Content Publication integrates
+// here exactly like every other category.
 
 import { srd51Provider } from './dnd5e/srd-5-1'
 import { xdmgProvider } from './dnd5e/xdmg'
+import { xmmProvider } from './dnd5e/xmm'
 import { xphbProvider } from './dnd5e/xphb'
 import type { SourceCollectionProvider } from './types'
 
-const PROVIDERS: readonly SourceCollectionProvider[] = [srd51Provider, xphbProvider, xdmgProvider]
+const PROVIDERS: readonly SourceCollectionProvider[] = [srd51Provider, xphbProvider, xdmgProvider, xmmProvider]
 
 export function getProvider(gameSystemKey: string, collectionKey: string): SourceCollectionProvider | undefined {
   return PROVIDERS.find((provider) => provider.gameSystemKey === gameSystemKey && provider.collectionKey === collectionKey)

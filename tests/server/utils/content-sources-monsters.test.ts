@@ -8,12 +8,12 @@
 // `loadCandidates` per-category escape hatch on create5eToolsCollectionProvider
 // (server/utils/content-sources/dnd5e/5etools-collection.ts).
 //
-// NON-GOAL, deliberately: no xmmProvider is registered anywhere here, and
-// nothing in this file touches server/utils/content-sources/index.ts or
-// app/lib/content-sources/registry.ts -- registering an actual XMM Source
-// Collection is explicitly out of scope for this task. These tests prove
-// the plumbing works in isolation, the same way srd51Provider's dataset
-// helpers were provable before any route ever called them.
+// The plumbing tests below prove the mechanics in isolation, the same way
+// srd51Provider's dataset helpers were provable before any route ever
+// called them. The final `describe('xmmProvider', ...)` block exercises the
+// REAL, registered Monster Manual (2025) collection
+// (server/utils/content-sources/dnd5e/xmm.ts) end-to-end against this same
+// fixture, proving the plumbing and the actual collection agree.
 //
 // Same mocking split as content-sources-providers.test.ts: only
 // `node:fs/promises` is mocked (standing in for the on-disk dataset); every
@@ -102,6 +102,8 @@ import { DATA_ROOT as DATASET_ROOT, isEntryFromSource, loadDatasetEntries, loadM
 import { toMonsterContentPublicationCandidates } from '../../../server/utils/content-pack-monsters-adapter'
 import { create5eToolsCollectionProvider } from '../../../server/utils/content-sources/dnd5e/5etools-collection'
 import { validateContentPackForPublication } from '../../../server/utils/content-pack-publishing'
+import { xmmProvider } from '../../../server/utils/content-sources/dnd5e/xmm'
+import { getProvider } from '../../../server/utils/content-sources'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -291,5 +293,41 @@ describe('create5eToolsCollectionProvider -- optional loadCandidates hook', () =
     })
 
     await expect(provider.loadCategory('spells')).rejects.toThrow(/unknown category/i)
+  })
+})
+
+describe('xmmProvider -- the real, registered Monster Manual (2025) collection', () => {
+  it('is registered and resolvable by (gameSystemKey, collectionKey)', () => {
+    expect(getProvider('dnd5e', 'xmm')).toBe(xmmProvider)
+    expect(xmmProvider.gameSystemKey).toBe('dnd5e')
+    expect(xmmProvider.collectionKey).toBe('xmm')
+    expect(xmmProvider.adapterId).toBe('5etools-json')
+  })
+
+  it('declares exactly one category -- monsters', () => {
+    expect(xmmProvider.categories.map((c) => c.key)).toEqual(['monsters'])
+  })
+
+  it('loadCategory("monsters") produces the same fluff-joined, Foundry-excluded candidate the plumbing tests above prove in isolation', async () => {
+    const { candidates, warnings } = await xmmProvider.loadCategory('monsters')
+
+    expect(warnings).toEqual([])
+    expect(candidates).toHaveLength(1)
+
+    const [goblin] = candidates
+    expect(goblin.title).toBe('Goblin')
+    expect(goblin.sourceBook).toBe('XMM')
+    expect(goblin.externalId).toBe('Goblin__XMM')
+    expect(goblin).not.toHaveProperty('_monsterData')
+
+    const result = validateContentPackForPublication(
+      { packageId: 'eldra.content.xmm', version: '1.0.0', title: 'Monster Manual (2025)', license: { id: 'proprietary' } },
+      candidates
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  it('rejects a category key it never declared', async () => {
+    await expect(xmmProvider.loadCategory('spells')).rejects.toThrow(/unknown category/i)
   })
 })

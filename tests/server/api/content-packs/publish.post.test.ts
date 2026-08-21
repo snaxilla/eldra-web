@@ -63,7 +63,8 @@ const FIXTURE_FILES: Record<string, string> = {
   [`${DATA_ROOT}/items.json`]: JSON.stringify({
     item: [
       { name: 'Potion of Healing', source: 'PHB', srd: true, entries: ['Restores hit points.'] },
-      { name: 'Potion of Healing', source: 'XPHB', entries: ['Restores hit points (2024).'] }
+      { name: 'Potion of Healing', source: 'XPHB', entries: ['Restores hit points (2024).'] },
+      { name: '+1 Rod of the Pact Keeper', source: 'XDMG', entries: ['A rod for pact magic.'] }
     ]
   }),
   [`${DATA_ROOT}/class/class-fighter.json`]: JSON.stringify({
@@ -339,6 +340,34 @@ describe('POST /api/content-packs/publish', () => {
     // Every published entry is genuinely XPHB -- no PHB sibling leaked in
     // from the files the two books share.
     expect(row.content.map((c: any) => c.sourceBook)).toEqual(['Human__XPHB', 'Fighter__XPHB', 'item__Potion of Healing__XPHB', 'Fire Bolt__XPHB'].map(() => 'XPHB'))
+  })
+
+  it('publishes a single-category collection (XDMG) through the identical route -- the acceptance test for a provider that only populates one of the six categories', async () => {
+    const result = await callHandler({
+      gameSystemKey: 'dnd5e',
+      collectionKey: 'xdmg',
+      packageId: 'eldra.content.xdmg-test',
+      version: '1.0.0',
+      selection: { items: ['item__+1 Rod of the Pact Keeper__XDMG'] }
+    })
+
+    expect(result.published).toBe(true)
+    // Only 'items' appears -- xdmgProvider never declared the other five,
+    // so publishContentSourceSelection never iterates them (see publish.ts's
+    // own "counts seeded from provider.categories" behavior).
+    expect(result.counts).toEqual({ items: 1 })
+
+    const row = packStore[0]
+    expect(row.title).toBe("Dungeon Master's Guide (2024)")
+    expect(row.license_id).toBe('proprietary')
+    expect(row.manifest).toMatchObject({
+      title: "Dungeon Master's Guide (2024)",
+      license: { id: 'proprietary' },
+      origin: { kind: 'translated', adapterId: '5etools-json', sourceId: 'xdmg' }
+    })
+    expect(row.content).toHaveLength(1)
+    expect(row.content[0].title).toBe('+1 Rod of the Pact Keeper')
+    expect(row.content[0].sourceBook).toBe('XDMG')
   })
 
   it('SRD 5.1 and XPHB produce distinct identities, so both can be published and coexist', async () => {

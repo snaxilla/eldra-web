@@ -38,7 +38,8 @@ const FIXTURE_FILES: Record<string, string> = {
     item: [
       { name: 'Longsword', source: 'PHB', srd: true, page: 149 },
       { name: 'Longsword', source: 'XPHB', page: 215 },
-      { name: 'Bag of Holding', source: 'DMG', page: 153 }
+      { name: 'Bag of Holding', source: 'DMG', page: 153 },
+      { name: '+1 Rod of the Pact Keeper', source: 'XDMG', page: 232 }
     ]
   }),
   [`${DATA_ROOT}/races.json`]: JSON.stringify({
@@ -89,6 +90,7 @@ vi.mock('node:fs/promises', () => ({
 }))
 
 import { srd51Provider } from '../../../server/utils/content-sources/dnd5e/srd-5-1'
+import { xdmgProvider } from '../../../server/utils/content-sources/dnd5e/xdmg'
 import { xphbProvider } from '../../../server/utils/content-sources/dnd5e/xphb'
 import { fileLooksRelevant, isEntryFromSource } from '../../../server/utils/content-sources/dnd5e/5etools-dataset'
 import { getProvider } from '../../../server/utils/content-sources'
@@ -169,6 +171,33 @@ describe('xphbProvider', () => {
     const { candidates } = await xphbProvider.loadCategory('items')
     expect(candidates.map((c) => c.sourceBook)).toEqual(['XPHB'])
     expect(candidates.map((c) => c.title)).not.toContain('Bag of Holding')
+    expect(candidates.map((c) => c.title)).not.toContain('+1 Rod of the Pact Keeper')
+  })
+})
+
+describe('xdmgProvider', () => {
+  it('is registered and resolvable by (gameSystemKey, collectionKey)', () => {
+    expect(getProvider('dnd5e', 'xdmg')).toBe(xdmgProvider)
+    expect(xdmgProvider.gameSystemKey).toBe('dnd5e')
+    expect(xdmgProvider.collectionKey).toBe('xdmg')
+    expect(xdmgProvider.adapterId).toBe('5etools-json')
+  })
+
+  it('declares only the categories XDMG actually populates -- items, not the other five', () => {
+    // Measured against the real dataset (xdmg.ts's own header): XDMG has
+    // zero species/classes/backgrounds/feats/spells entries. The provider
+    // must reflect that rather than declaring artificial empty categories.
+    expect(xdmgProvider.categories.map((c) => c.key)).toEqual(['items'])
+  })
+
+  it('selects only the XDMG entry from items.json, which it shares with PHB/XPHB/DMG', async () => {
+    const { candidates } = await xdmgProvider.loadCategory('items')
+    expect(candidates.map((c) => c.title)).toEqual(['+1 Rod of the Pact Keeper'])
+    expect(candidates[0].sourceBook).toBe('XDMG')
+  })
+
+  it('rejects a category it never declared', async () => {
+    await expect(xdmgProvider.loadCategory('spells')).rejects.toThrow(/unknown category/i)
   })
 })
 

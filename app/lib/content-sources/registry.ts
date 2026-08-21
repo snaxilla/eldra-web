@@ -47,15 +47,15 @@
 //    is not decorative: ownership-and-permissions.md §7.2.3 makes license
 //    metadata legally load-bearing for a published Content Pack.
 //
-// 4. Two of the eight listed collections have a registered provider
-//    (server/utils/content-sources' PROVIDERS array: SRD 5.1 and XPHB);
-//    the other six are listed anyway so a GM can see the full shape of
-//    what Eldra will eventually support, per design decision 1's own
+// 4. Three of the nine listed collections have a registered provider
+//    (server/utils/content-sources' PROVIDERS array: SRD 5.1, XPHB, and
+//    XDMG); the other six are listed anyway so a GM can see the full shape
+//    of what Eldra will eventually support, per design decision 1's own
 //    "no Builder code changes required" test -- which XPHB proved
-//    literally: adding it changed this file and one provider file, and no
-//    Builder code at all. `available` is computed entirely by the absence
-//    of a matching provider, never by a field on these entries -- design
-//    decision 2.
+//    literally, and XDMG proved again: each addition changed this file and
+//    one provider file, and no Builder code at all. `available` is
+//    computed entirely by the absence of a matching provider, never by a
+//    field on these entries -- design decision 2.
 //
 // 5. No publish-side route/endpoint wiring here, still. This registry
 //    describes collection identity/licensing/labels only; which routes
@@ -145,6 +145,17 @@ export const GAME_SYSTEM_REGISTRY: readonly GameSystemDefinition[] = [
         books: [{ code: 'PHB', title: "Player's Handbook", publisher: 'Wizards of the Coast', year: 2014 }],
         license: { id: 'proprietary' },
         suggestedPackageId: 'eldra.content.phb-2014'
+      },
+      {
+        key: 'xdmg',
+        label: "Dungeon Master's Guide (2024)",
+        description: "The 2024 revision of the Dungeons & Dragons Dungeon Master's Guide.",
+        books: [{ code: 'XDMG', title: "Dungeon Master's Guide", publisher: 'Wizards of the Coast', year: 2024 }],
+        // NOT freely licensed -- same status as xphb above, and for the
+        // same reason (architecture doc §9): recorded honestly, not a
+        // decision made here.
+        license: { id: 'proprietary' },
+        suggestedPackageId: 'eldra.content.xdmg'
       },
       {
         key: 'dmg',

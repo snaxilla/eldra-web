@@ -1,15 +1,73 @@
 <script setup lang="ts">
-// Character Creation V2 -- the first Character Creation workflow driven
-// entirely by the World Content Catalogue (GET /api/worlds/:id/catalogue).
-// See server/api/worlds/[id]/characters/create-v2.post.ts for the save
-// side. Deliberately separate from characters/builder.vue (V1), which
-// reads World Entities (GET /api/worlds/:id/entities) for its
-// species/class/background options -- this page never calls that endpoint
-// or any /entities route. Selection only: no ability scores, no equipment,
-// no rules evaluation, no sheet -- this is not the Character Sheet. On
-// success this navigates to Character Sheet V2
-// (characters/[characterId]/sheet-v2.vue) -- this flow's own natural next
-// step, rendering exactly what was just recorded via the Assembly endpoint.
+// Character Builder V2 -- Eldra's canonical Character Builder, Phase 1
+// (Name + Species + Class + Background).
+//
+// DATA: consumes ONLY GET /api/worlds/:id/catalogue -- the live World
+// Content Catalogue produced by the approved Content Platform
+// (server/utils/world-content-catalogue.ts). There is no fixture, no
+// hardcoded species/class/background list, and no /entities call anywhere
+// in this file; every option a player can pick came from a Content Pack a
+// GM actually published and bound. Saving goes to
+// POST /api/worlds/:id/characters/create-v2, which re-verifies every choice
+// against its own copy of that same catalogue by (packageId, slug) and
+// never trusts what this page sends beyond those two fields.
+//
+// ---------------------------------------------------------------------------
+// ADAPTIVE, NOT RESPONSIVE-AS-AN-AFTERTHOUGHT
+// ---------------------------------------------------------------------------
+// This is one feature-complete application with two LAYOUTS, not a desktop
+// app that degrades. The functional core -- the same option pickers, the
+// same search, the same validation, the same submit -- is shared verbatim
+// between them; only arrangement differs, and only because desktop has room
+// to show simultaneously what a phone shows sequentially:
+//
+//   compact (phone / small tablet / any coarse pointer under 1366px)
+//     one step at a time, full-bleed cards, progress rail at the top,
+//     sticky bottom action bar within thumb reach.
+//
+//   roomy (laptop / desktop / large fine-pointer tablet)
+//     every step on screen at once in two columns, with a persistent live
+//     summary beside them; no stepper, because nothing needs hiding.
+//
+// NOTHING IS GATED BY LAYOUT. The progress rail is a set of buttons, so a
+// phone user can jump to any step at any time exactly as a desktop user can
+// scroll to any section -- "Next" is a convenience, never a lock. No feature,
+// field, or control exists on one layout and not the other.
+//
+// The breakpoint heuristic (width < 768, or a coarse pointer at <= 1366)
+// deliberately matches the one app/pages/worlds/[id]/entities/[entityId]/sheet.vue
+// already uses, so the two character surfaces agree about what "compact"
+// means. It is intentionally pointer-aware rather than width-only: an iPad
+// in landscape is 1024px wide but is still a touch device and still wants
+// large targets.
+//
+// WHAT THE CATALOGUE CAN AND CANNOT SHOW: ContentCatalogueEntry carries
+// identity + provenance only -- title, slug, sourceBook, packageId -- because
+// world-content-catalogue.ts deliberately never reads inside a pack entry's
+// opaque `data`. There is therefore no description, trait summary, or icon
+// available to render for any option, and this page does not invent one.
+// Surfacing real descriptions is a Content Platform change (a catalogue-level
+// summary derived from `data`), not a Builder change, and is the main
+// dependency for Phase 2.
+
+import CharacterBuilderOptionPicker from '~/components/characters/builder/CharacterBuilderOptionPicker.vue'
+import {
+  CHOICE_KEYS,
+  STEP_KEYS,
+  STEP_LABELS,
+  emptyDraft,
+  findOptionByKey,
+  isDraftComplete,
+  isStepComplete,
+  missingRequirements,
+  nextStep,
+  optionKey,
+  previousStep,
+  toCreatePayload,
+  type BuilderCatalogueEntry,
+  type BuilderChoiceKey,
+  type BuilderStepKey
+} from '~/components/characters/builder/characterBuilderSelection'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -18,94 +76,135 @@ definePageMeta({
 const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
 
-type CatalogueEntry = {
-  packageId: string
-  packageVersion: string
-  systemKey: string
-  title: string
-  slug: string
-  externalId: string
-  provider: string
-  sourceBook?: string
-  sourcePage?: string
-}
-
 type WorldCatalogue = {
   worldId: string
   packs: Array<{ ok: boolean; packageId: string; version: string }>
-  species: CatalogueEntry[]
-  classes: CatalogueEntry[]
-  backgrounds: CatalogueEntry[]
-  feats: CatalogueEntry[]
-  items: CatalogueEntry[]
-  spells: CatalogueEntry[]
+  species: BuilderCatalogueEntry[]
+  classes: BuilderCatalogueEntry[]
+  backgrounds: BuilderCatalogueEntry[]
 }
 
 const { data: catalogue, pending: catalogueLoading, error: catalogueError } = await useFetch<WorldCatalogue>(
   () => `/api/worlds/${worldId.value}/catalogue`
 )
 
-// Every option below comes from the fetched catalogue -- nothing here is a
-// literal list of species/classes/backgrounds.
-const speciesOptions = computed(() => catalogue.value?.species ?? [])
-const classOptions = computed(() => catalogue.value?.classes ?? [])
-const backgroundOptions = computed(() => catalogue.value?.backgrounds ?? [])
+const optionsFor = computed<Record<BuilderChoiceKey, BuilderCatalogueEntry[]>>(() => ({
+  species: catalogue.value?.species ?? [],
+  class: catalogue.value?.classes ?? [],
+  background: catalogue.value?.backgrounds ?? []
+}))
 
 const hasAnyBoundPack = computed(() => (catalogue.value?.packs?.length ?? 0) > 0)
-const catalogueIsEmpty = computed(() =>
-  !catalogueLoading.value &&
-  speciesOptions.value.length === 0 &&
-  classOptions.value.length === 0 &&
-  backgroundOptions.value.length === 0
+const catalogueIsEmpty = computed(
+  () => !catalogueLoading.value && CHOICE_KEYS.every((key) => optionsFor.value[key].length === 0)
 )
 
-const name = ref('')
-const selectedSpeciesSlug = ref('')
-const selectedClassSlug = ref('')
-const selectedBackgroundSlug = ref('')
+// ---------------------------------------------------------------------------
+// Adaptive layout -- see this file's header.
+// ---------------------------------------------------------------------------
 
-const selectedSpecies = computed(() => speciesOptions.value.find((entry) => entry.slug === selectedSpeciesSlug.value) ?? null)
-const selectedClass = computed(() => classOptions.value.find((entry) => entry.slug === selectedClassSlug.value) ?? null)
-const selectedBackground = computed(() => backgroundOptions.value.find((entry) => entry.slug === selectedBackgroundSlug.value) ?? null)
+const viewportWidth = ref(0)
+const pointerCoarse = ref(false)
 
-const canCreate = computed(() =>
-  Boolean(name.value.trim() && selectedSpecies.value && selectedClass.value && selectedBackground.value)
+function updateViewport() {
+  if (!import.meta.client) return
+  viewportWidth.value = window.innerWidth || 0
+  pointerCoarse.value = window.matchMedia?.('(pointer: coarse)').matches || false
+}
+
+onMounted(() => {
+  updateViewport()
+  window.addEventListener('resize', updateViewport)
+  window.addEventListener('orientationchange', updateViewport)
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+  window.removeEventListener('resize', updateViewport)
+  window.removeEventListener('orientationchange', updateViewport)
+})
+
+// Defaults to the roomy layout during SSR / before measurement, then
+// corrects on mount. Both layouts render the same controls, so a brief
+// pre-hydration mismatch changes arrangement only, never capability.
+const compact = computed(() => {
+  const width = viewportWidth.value
+  if (!width) return false
+  return width < 768 || (pointerCoarse.value && width <= 1366)
+})
+
+// ---------------------------------------------------------------------------
+// Draft state
+// ---------------------------------------------------------------------------
+
+const draft = reactive(emptyDraft())
+const activeStep = ref<BuilderStepKey>('identity')
+
+// The picker speaks in composite (packageId::slug) keys -- never bare slugs,
+// which can collide across packs. See characterBuilderSelection.ts.
+const selectedKeys = computed<Record<BuilderChoiceKey, string>>(() => ({
+  species: optionKey(draft.species),
+  class: optionKey(draft.class),
+  background: optionKey(draft.background)
+}))
+
+function chooseOption(key: BuilderChoiceKey, value: string) {
+  draft[key] = findOptionByKey(optionsFor.value[key], value)
+}
+
+const steps = computed(() =>
+  STEP_KEYS.map((key) => ({
+    key,
+    label: STEP_LABELS[key],
+    complete: isStepComplete(draft, key)
+  }))
 )
+
+const complete = computed(() => isDraftComplete(draft))
+const outstanding = computed(() => missingRequirements(draft))
+
+const summaryRows = computed(() =>
+  CHOICE_KEYS.map((key) => ({
+    key,
+    label: STEP_LABELS[key],
+    entry: draft[key]
+  }))
+)
+
+function goTo(step: BuilderStepKey) {
+  activeStep.value = step
+}
+
+function goNext() {
+  const next = nextStep(activeStep.value)
+  if (next) activeStep.value = next
+}
+
+function goBack() {
+  const previous = previousStep(activeStep.value)
+  if (previous) activeStep.value = previous
+}
+
+// ---------------------------------------------------------------------------
+// Create
+// ---------------------------------------------------------------------------
 
 const creating = ref(false)
 const createErrorMessage = ref('')
 
-function selectionPayload(entry: CatalogueEntry) {
-  return {
-    packageId: entry.packageId,
-    slug: entry.slug,
-    title: entry.title,
-    externalId: entry.externalId
-  }
-}
-
 async function createCharacter() {
-  if (!canCreate.value || creating.value) {
-    return
-  }
+  const payload = toCreatePayload(draft)
+  if (!payload || creating.value) return
 
   creating.value = true
   createErrorMessage.value = ''
 
   try {
-    const created = await $fetch<{ id?: string | number }>(`/api/worlds/${worldId.value}/characters/create-v2`, {
-      method: 'POST',
-      body: {
-        title: name.value.trim(),
-        species: selectionPayload(selectedSpecies.value!),
-        class: selectionPayload(selectedClass.value!),
-        background: selectionPayload(selectedBackground.value!)
-      }
-    })
+    const created = await $fetch<{ id?: string | number }>(
+      `/api/worlds/${worldId.value}/characters/create-v2`,
+      { method: 'POST', body: payload }
+    )
 
-    // Character Sheet V2 (sheet-v2.vue) is this flow's own natural next
-    // step -- it renders exactly what was just recorded. Falls back to the
-    // roster if the create response carries no id for some reason.
     if (created?.id) {
       await navigateTo(`/worlds/${worldId.value}/characters/${created.id}/sheet-v2`)
     } else {
@@ -113,9 +212,7 @@ async function createCharacter() {
     }
   } catch (error: any) {
     createErrorMessage.value =
-      error?.data?.statusMessage ||
-      error?.statusMessage ||
-      'Failed to create character'
+      error?.data?.statusMessage || error?.statusMessage || 'Failed to create character'
   } finally {
     creating.value = false
   }
@@ -124,14 +221,25 @@ async function createCharacter() {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <div class="mx-auto max-w-2xl px-6 py-10">
-      <div class="eldra-kicker text-xs">Character Creation</div>
-      <h1 class="eldra-title mt-2 text-3xl font-semibold">Create Character</h1>
-      <p class="mt-2 text-sm text-[#d8ceb8]">
+    <div
+      class="mx-auto px-4 pb-32 pt-8 sm:px-6"
+      :class="compact ? 'max-w-2xl' : 'max-w-6xl'"
+    >
+      <div class="eldra-kicker text-xs">
+        Character Builder
+      </div>
+      <h1 class="eldra-title mt-2 text-2xl font-semibold sm:text-3xl">
+        Create Character
+      </h1>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
         Choose a Species, Class, and Background from this World's bound Content Packs.
       </p>
 
-      <div v-if="catalogueLoading" class="mt-8 text-sm text-[#9f9278]">
+      <!-- States ---------------------------------------------------------- -->
+      <div
+        v-if="catalogueLoading"
+        class="mt-8 text-sm text-[#9f9278]"
+      >
         Loading the World's Content Catalogue…
       </div>
 
@@ -154,87 +262,268 @@ async function createCharacter() {
         </template>
       </div>
 
-      <form v-else class="mt-8 space-y-6" @submit.prevent="createCharacter">
-        <div>
-          <label class="mb-2 block text-sm text-[#d8ceb8]">Character Name</label>
-          <input
-            v-model="name"
-            type="text"
-            required
-            placeholder="Character name"
-            class="w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-2.5 text-sm text-[#fff7df] outline-none focus:border-[rgba(201,164,90,0.58)]"
-          />
-        </div>
-
-        <div>
-          <label class="mb-2 block text-sm text-[#d8ceb8]">Species</label>
-          <select
-            v-model="selectedSpeciesSlug"
-            required
-            :disabled="speciesOptions.length === 0"
-            class="w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-2.5 text-sm text-[#fff7df] outline-none focus:border-[rgba(201,164,90,0.58)]"
+      <!-- ================================================================ -->
+      <!-- COMPACT: one step at a time + sticky action bar                   -->
+      <!-- ================================================================ -->
+      <template v-else-if="compact">
+        <!-- Progress rail: buttons, so any step is reachable at any time. -->
+        <nav
+          aria-label="Builder steps"
+          class="mt-6 flex gap-1.5 overflow-x-auto pb-1"
+        >
+          <button
+            v-for="step in steps"
+            :key="step.key"
+            type="button"
+            class="flex min-h-11 shrink-0 items-center gap-1.5 rounded-none border px-3 text-xs font-semibold uppercase tracking-[0.12em] transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+            :class="activeStep === step.key
+              ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.18)] text-[#fff7df]'
+              : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] text-[#9f9278]'"
+            :aria-current="activeStep === step.key ? 'step' : undefined"
+            @click="goTo(step.key)"
           >
-            <option value="" disabled>
-              {{ speciesOptions.length === 0 ? 'No Species available' : 'Choose a Species' }}
-            </option>
-            <option v-for="entry in speciesOptions" :key="`${entry.packageId}:${entry.slug}`" :value="entry.slug">
-              {{ entry.title }}
-            </option>
-          </select>
-        </div>
+            <span
+              v-if="step.complete"
+              aria-hidden="true"
+            >✓</span>
+            {{ step.label }}
+            <span class="sr-only">{{ step.complete ? '(complete)' : '(incomplete)' }}</span>
+          </button>
+        </nav>
 
-        <div>
-          <label class="mb-2 block text-sm text-[#d8ceb8]">Class</label>
-          <select
-            v-model="selectedClassSlug"
-            required
-            :disabled="classOptions.length === 0"
-            class="w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-2.5 text-sm text-[#fff7df] outline-none focus:border-[rgba(201,164,90,0.58)]"
+        <section class="mt-5">
+          <div v-if="activeStep === 'identity'">
+            <label
+              for="character-name-compact"
+              class="mb-2 block text-sm font-semibold text-[#d8ceb8]"
+            >Character Name</label>
+            <input
+              id="character-name-compact"
+              v-model="draft.name"
+              type="text"
+              autocomplete="off"
+              placeholder="Character name"
+              class="min-h-12 w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-3 text-base text-[#fff7df] outline-none focus-visible:border-[rgba(201,164,90,0.58)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.35)]"
+            >
+          </div>
+
+          <div
+            v-for="key in CHOICE_KEYS"
+            v-show="activeStep === key"
+            :key="key"
           >
-            <option value="" disabled>
-              {{ classOptions.length === 0 ? 'No Classes available' : 'Choose a Class' }}
-            </option>
-            <option v-for="entry in classOptions" :key="`${entry.packageId}:${entry.slug}`" :value="entry.slug">
-              {{ entry.title }}
-            </option>
-          </select>
-        </div>
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+              {{ STEP_LABELS[key] }}
+            </h2>
+            <CharacterBuilderOptionPicker
+              :label="STEP_LABELS[key]"
+              :name="`builder-${key}`"
+              :options="optionsFor[key]"
+              :model-value="selectedKeys[key]"
+              compact
+              @update:model-value="(value: string) => chooseOption(key, value)"
+            />
+          </div>
 
-        <div>
-          <label class="mb-2 block text-sm text-[#d8ceb8]">Background</label>
-          <select
-            v-model="selectedBackgroundSlug"
-            required
-            :disabled="backgroundOptions.length === 0"
-            class="w-full rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-2.5 text-sm text-[#fff7df] outline-none focus:border-[rgba(201,164,90,0.58)]"
-          >
-            <option value="" disabled>
-              {{ backgroundOptions.length === 0 ? 'No Backgrounds available' : 'Choose a Background' }}
-            </option>
-            <option v-for="entry in backgroundOptions" :key="`${entry.packageId}:${entry.slug}`" :value="entry.slug">
-              {{ entry.title }}
-            </option>
-          </select>
-        </div>
+          <div v-if="activeStep === 'review'">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+              Review
+            </h2>
+            <dl class="grid gap-2">
+              <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-3">
+                <dt class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                  Name
+                </dt>
+                <dd class="mt-1 text-base text-[#fff7df]">
+                  {{ draft.name.trim() || '—' }}
+                </dd>
+              </div>
+              <div
+                v-for="row in summaryRows"
+                :key="row.key"
+                class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-3"
+              >
+                <dt class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                  {{ row.label }}
+                </dt>
+                <dd class="mt-1 text-base text-[#fff7df]">
+                  {{ row.entry?.title || '—' }}
+                  <span
+                    v-if="row.entry"
+                    class="mt-0.5 block text-xs text-[#9f9278]"
+                  >
+                    <template v-if="row.entry.sourceBook">{{ row.entry.sourceBook }} · </template>{{ row.entry.packageId }}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </section>
 
-        <p v-if="createErrorMessage" class="rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">
+        <p
+          v-if="createErrorMessage"
+          class="mt-4 rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
+        >
           {{ createErrorMessage }}
         </p>
 
-        <div class="flex items-center gap-3">
-          <button
-            type="submit"
-            class="eldra-button rounded-none px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="!canCreate || creating"
-          >
-            {{ creating ? 'Creating…' : 'Create' }}
-          </button>
+        <!-- Sticky bottom bar: primary actions within thumb reach. -->
+        <div class="fixed inset-x-0 bottom-0 z-20 border-t border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.96)] px-4 py-3 backdrop-blur">
+          <div class="mx-auto flex max-w-2xl items-center gap-2">
+            <button
+              type="button"
+              class="min-h-12 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] px-4 text-sm font-semibold text-[#d8ceb8] disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+              :disabled="!previousStep(activeStep)"
+              @click="goBack"
+            >
+              Back
+            </button>
 
-          <NuxtLink :to="`/worlds/${worldId}/characters`" class="text-sm text-[#9f9278] hover:text-[#d8ceb8]">
-            Cancel
-          </NuxtLink>
+            <button
+              v-if="activeStep !== 'review'"
+              type="button"
+              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+              @click="goNext"
+            >
+              Next
+            </button>
+
+            <button
+              v-else
+              type="button"
+              class="eldra-button min-h-12 flex-1 rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+              :disabled="!complete || creating"
+              @click="createCharacter"
+            >
+              {{ creating ? 'Creating…' : 'Create Character' }}
+            </button>
+          </div>
+          <ul
+            v-if="activeStep === 'review' && outstanding.length"
+            class="mx-auto mt-2 max-w-2xl list-disc pl-5 text-xs text-[#9f9278]"
+          >
+            <li
+              v-for="message in outstanding"
+              :key="message"
+            >
+              {{ message }}
+            </li>
+          </ul>
         </div>
-      </form>
+      </template>
+
+      <!-- ================================================================ -->
+      <!-- ROOMY: everything at once + persistent summary                    -->
+      <!-- ================================================================ -->
+      <template v-else>
+        <div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+          <div class="min-w-0 space-y-8">
+            <section>
+              <label
+                for="character-name"
+                class="mb-2 block text-sm font-semibold text-[#d8ceb8]"
+              >Character Name</label>
+              <input
+                id="character-name"
+                v-model="draft.name"
+                type="text"
+                autocomplete="off"
+                placeholder="Character name"
+                class="min-h-11 w-full max-w-md rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.6)] px-4 py-2.5 text-sm text-[#fff7df] outline-none focus-visible:border-[rgba(201,164,90,0.58)] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.35)]"
+              >
+            </section>
+
+            <section
+              v-for="key in CHOICE_KEYS"
+              :key="key"
+            >
+              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+                {{ STEP_LABELS[key] }}
+              </h2>
+              <CharacterBuilderOptionPicker
+                :label="STEP_LABELS[key]"
+                :name="`builder-${key}`"
+                :options="optionsFor[key]"
+                :model-value="selectedKeys[key]"
+                @update:model-value="(value: string) => chooseOption(key, value)"
+              />
+            </section>
+          </div>
+
+          <!-- Persistent summary: desktop's extra room used to show state
+               continuously that compact shows on its Review step. -->
+          <aside class="lg:sticky lg:top-8">
+            <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+              <h2 class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+                Summary
+              </h2>
+
+              <dl class="mt-3 space-y-3 text-sm">
+                <div>
+                  <dt class="text-xs uppercase tracking-[0.16em] text-[#9f9278]">
+                    Name
+                  </dt>
+                  <dd class="mt-0.5 text-[#fff7df]">
+                    {{ draft.name.trim() || '—' }}
+                  </dd>
+                </div>
+                <div
+                  v-for="row in summaryRows"
+                  :key="row.key"
+                >
+                  <dt class="text-xs uppercase tracking-[0.16em] text-[#9f9278]">
+                    {{ row.label }}
+                  </dt>
+                  <dd class="mt-0.5 text-[#fff7df]">
+                    {{ row.entry?.title || '—' }}
+                    <span
+                      v-if="row.entry"
+                      class="mt-0.5 block text-xs text-[#9f9278]"
+                    >
+                      <template v-if="row.entry.sourceBook">{{ row.entry.sourceBook }} · </template>{{ row.entry.packageId }}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+
+              <button
+                type="button"
+                class="eldra-button mt-5 min-h-11 w-full rounded-none px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+                :disabled="!complete || creating"
+                @click="createCharacter"
+              >
+                {{ creating ? 'Creating…' : 'Create Character' }}
+              </button>
+
+              <ul
+                v-if="outstanding.length"
+                class="mt-2 list-disc pl-5 text-xs text-[#9f9278]"
+              >
+                <li
+                  v-for="message in outstanding"
+                  :key="message"
+                >
+                  {{ message }}
+                </li>
+              </ul>
+
+              <p
+                v-if="createErrorMessage"
+                class="mt-3 rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
+              >
+                {{ createErrorMessage }}
+              </p>
+
+              <NuxtLink
+                :to="`/worlds/${worldId}/characters`"
+                class="mt-3 inline-block text-sm text-[#9f9278] hover:text-[#d8ceb8]"
+              >
+                Cancel
+              </NuxtLink>
+            </div>
+          </aside>
+        </div>
+      </template>
     </div>
   </div>
 </template>

@@ -94,6 +94,15 @@ import {
   getGameSystem,
   type SourceCollectionDefinition
 } from '~/lib/content-sources/registry'
+import {
+  countSelected,
+  replaceCategorySelection,
+  selectionFromCategories,
+  selectionToPayload,
+  toggleEntrySelection,
+  totalSelected as totalSelectedInSelection,
+  type PreviewEntrySelection
+} from './contentPackBuilderSelection'
 
 // Purely derived from the two selected keys -- no source, provider, or
 // dataset name is ever named here. See this file's header GAME SYSTEM /
@@ -120,10 +129,12 @@ type PreviewEntry = {
   sourceBook?: string
 }
 
-type CategoryKey = 'species' | 'classes' | 'backgrounds' | 'feats' | 'items' | 'spells'
-
+// Category key is whatever a Source Collection Provider declares -- see
+// contentPackBuilderSelection.ts's own header. No fixed union: SRD 5.1 and
+// XPHB happen to share six category keys today, but XMM (monsters-only) or
+// a future Pathfinder provider are free to declare any others.
 type PreviewCategory = {
-  key: CategoryKey
+  key: string
   label: string
   entries: PreviewEntry[]
 }
@@ -136,32 +147,10 @@ type PublishSuccess = {
   packageId: string
   version: string
   integrityHash: string
-  counts: Record<CategoryKey, number>
+  counts: Record<string, number>
 }
 
 const emit = defineEmits<{ published: [] }>()
-
-const CATEGORY_LABELS: Record<CategoryKey, string> = {
-  species: 'Species',
-  classes: 'Classes',
-  backgrounds: 'Backgrounds',
-  feats: 'Feats',
-  items: 'Items',
-  spells: 'Spells'
-}
-
-const CATEGORY_KEYS: CategoryKey[] = ['species', 'classes', 'backgrounds', 'feats', 'items', 'spells']
-
-function emptySelection(): Record<CategoryKey, Set<string>> {
-  return {
-    species: new Set(),
-    classes: new Set(),
-    backgrounds: new Set(),
-    feats: new Set(),
-    items: new Set(),
-    spells: new Set()
-  }
-}
 
 const gameSystems = GAME_SYSTEM_REGISTRY
 
@@ -242,7 +231,7 @@ const previewPending = ref(false)
 const previewError = ref('')
 const previewResult = ref<PreviewResult | null>(null)
 
-const selection = ref<Record<CategoryKey, Set<string>>>(emptySelection())
+const selection = ref<PreviewEntrySelection>({})
 
 async function generatePreview() {
   if (!selectedContentSource.value || !isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key)) {
@@ -254,7 +243,7 @@ async function generatePreview() {
   previewPending.value = true
   previewError.value = ''
   previewResult.value = null
-  selection.value = emptySelection()
+  selection.value = {}
   // A fresh preview starts a fresh authoring cycle -- any confirmation or
   // error left over from a previous publish attempt no longer applies to
   // what's about to be shown.
@@ -266,11 +255,7 @@ async function generatePreview() {
     previewResult.value = response
 
     if (response.available) {
-      const next = emptySelection()
-      for (const category of response.categories) {
-        next[category.key] = new Set(category.entries.map((entry) => entry.externalId))
-      }
-      selection.value = next
+      selection.value = selectionFromCategories(response.categories)
     }
   } catch (error: any) {
     previewError.value =
@@ -287,38 +272,32 @@ const canGeneratePreview = computed(
     isCollectionAvailable(selectedGameSystemKey.value, selectedContentSource.value.key)
 )
 
-function categoryEntries(key: CategoryKey): PreviewEntry[] {
+function categoryEntries(key: string): PreviewEntry[] {
   if (!previewResult.value?.available) return []
   return previewResult.value.categories.find((category) => category.key === key)?.entries ?? []
 }
 
-function isSelected(key: CategoryKey, externalId: string) {
-  return selection.value[key].has(externalId)
+function isSelected(key: string, externalId: string) {
+  return selection.value[key]?.has(externalId) ?? false
 }
 
-function toggleEntry(key: CategoryKey, externalId: string) {
-  const next = new Set(selection.value[key])
-  if (next.has(externalId)) {
-    next.delete(externalId)
-  } else {
-    next.add(externalId)
-  }
-  selection.value = { ...selection.value, [key]: next }
+function toggleEntry(key: string, externalId: string) {
+  selection.value = toggleEntrySelection(selection.value, key, externalId)
 }
 
-function selectAll(key: CategoryKey) {
-  selection.value = { ...selection.value, [key]: new Set(categoryEntries(key).map((entry) => entry.externalId)) }
+function selectAll(key: string) {
+  selection.value = replaceCategorySelection(selection.value, key, categoryEntries(key).map((entry) => entry.externalId))
 }
 
-function deselectAll(key: CategoryKey) {
-  selection.value = { ...selection.value, [key]: new Set() }
+function deselectAll(key: string) {
+  selection.value = replaceCategorySelection(selection.value, key, [])
 }
 
-function selectedCount(key: CategoryKey) {
-  return selection.value[key].size
+function selectedCount(key: string) {
+  return countSelected(selection.value, key)
 }
 
-const totalSelected = computed(() => CATEGORY_KEYS.reduce((sum, key) => sum + selectedCount(key), 0))
+const totalSelected = computed(() => totalSelectedInSelection(selection.value))
 const totalAvailable = computed(() => (previewResult.value?.available ? previewResult.value.totalEntries : 0))
 
 // ---------------------------------------------------------------------------
@@ -364,17 +343,7 @@ async function publish() {
   publishError.value = ''
   publishResult.value = null
 
-  const selectionPayload: Record<CategoryKey, string[]> = {
-    species: [],
-    classes: [],
-    backgrounds: [],
-    feats: [],
-    items: [],
-    spells: []
-  }
-  for (const key of CATEGORY_KEYS) {
-    selectionPayload[key] = Array.from(selection.value[key])
-  }
+  const selectionPayload = selectionToPayload(selection.value)
 
   try {
     const response = await $fetch<PublishSuccess>('/api/content-packs/publish', {
@@ -394,7 +363,7 @@ async function publish() {
     // exception, rendered independently of `previewResult` so the
     // confirmation survives this reset.
     previewResult.value = null
-    selection.value = emptySelection()
+    selection.value = {}
     packageName.value = ''
     packageVersion.value = ''
 
@@ -551,31 +520,31 @@ async function publish() {
         class="mt-5 grid gap-4 lg:grid-cols-2"
       >
         <section
-          v-for="key in CATEGORY_KEYS"
-          :key="key"
+          v-for="category in previewResult.categories"
+          :key="category.key"
           class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.42)] p-4"
         >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
-              {{ previewResult.categories.find((c) => c.key === key)?.label }}
-              <span class="ml-1 text-[#9f9278]">({{ selectedCount(key) }}/{{ categoryEntries(key).length }})</span>
+              {{ category.label }}
+              <span class="ml-1 text-[#9f9278]">({{ selectedCount(category.key) }}/{{ category.entries.length }})</span>
             </h3>
 
             <div
-              v-if="categoryEntries(key).length"
+              v-if="category.entries.length"
               class="flex gap-2 text-[10px] uppercase tracking-[0.15em]"
             >
               <button
                 type="button"
                 class="border border-[rgba(201,164,90,0.24)] px-2 py-1 text-[#d8ceb8] hover:text-[#fff7df]"
-                @click="selectAll(key)"
+                @click="selectAll(category.key)"
               >
                 Select All
               </button>
               <button
                 type="button"
                 class="border border-[rgba(201,164,90,0.24)] px-2 py-1 text-[#d8ceb8] hover:text-[#fff7df]"
-                @click="deselectAll(key)"
+                @click="deselectAll(category.key)"
               >
                 Deselect All
               </button>
@@ -583,7 +552,7 @@ async function publish() {
           </div>
 
           <div
-            v-if="!categoryEntries(key).length"
+            v-if="!category.entries.length"
             class="mt-3 text-xs text-[#9f9278]"
           >
             No entries in this category.
@@ -594,19 +563,19 @@ async function publish() {
             class="mt-3 max-h-72 overflow-y-auto pr-1"
           >
             <li
-              v-for="entry in categoryEntries(key)"
+              v-for="entry in category.entries"
               :key="entry.externalId"
               class="flex items-center gap-2 border-b border-[rgba(201,164,90,0.10)] py-1.5 last:border-b-0"
             >
               <input
-                :id="`entry-${key}-${entry.externalId}`"
+                :id="`entry-${category.key}-${entry.externalId}`"
                 type="checkbox"
-                :checked="isSelected(key, entry.externalId)"
+                :checked="isSelected(category.key, entry.externalId)"
                 class="h-4 w-4 shrink-0"
-                @change="toggleEntry(key, entry.externalId)"
+                @change="toggleEntry(category.key, entry.externalId)"
               >
               <label
-                :for="`entry-${key}-${entry.externalId}`"
+                :for="`entry-${category.key}-${entry.externalId}`"
                 class="min-w-0 flex-1 cursor-pointer text-sm text-[#fff7df]"
               >
                 {{ entry.title }}
@@ -654,15 +623,15 @@ async function publish() {
           </div>
           <dl class="mt-2 space-y-1">
             <div
-              v-for="key in CATEGORY_KEYS"
-              :key="key"
+              v-for="category in previewResult.categories"
+              :key="category.key"
               class="flex items-center justify-between gap-3"
             >
               <dt class="text-[#d8ceb8]">
-                {{ CATEGORY_LABELS[key] }}
+                {{ category.label }}
               </dt>
               <dd class="text-[#fff7df]">
-                {{ selectedCount(key) }}
+                {{ selectedCount(category.key) }}
               </dd>
             </div>
           </dl>

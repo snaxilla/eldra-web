@@ -55,13 +55,20 @@ function selectionRef(entry: ReturnType<typeof catalogueEntry>) {
   return { ...entry }
 }
 
-function mockEntityAndBlock(entity: any, blockData: any) {
+// Phase 3: the single block_instances read now returns BOTH blocks, told
+// apart by `block_key` -- so rows carry one. `abilityBlockData` is optional
+// and defaults to absent, which is the state every character created before
+// Phase 3 is genuinely in.
+function mockEntityAndBlock(entity: any, blockData: any, abilityBlockData: any = null) {
   directusServiceRequestMock.mockImplementation(async (path: string) => {
     if (path === '/items/entities/42') {
       return { data: entity }
     }
     if (path === '/items/block_instances') {
-      return { data: blockData ? [{ data: blockData }] : [] }
+      const rows: any[] = []
+      if (blockData) rows.push({ block_key: 'catalogue_selection', data: blockData })
+      if (abilityBlockData) rows.push({ block_key: 'ability_scores', data: abilityBlockData })
+      return { data: rows }
     }
     throw new Error(`Unexpected Directus path in test: ${path}`)
   })
@@ -94,6 +101,8 @@ describe('assembleCharacter', () => {
     expect(result.blueprint.class).toEqual({ status: 'resolved', entry: catalogue.classes[0] })
     expect(result.blueprint.background).toEqual({ status: 'resolved', entry: catalogue.backgrounds[0] })
     expect(result.blueprint.packs).toEqual(catalogue.packs)
+    // No ability_scores block in this fixture -- absent, never defaulted.
+    expect(result.blueprint.abilityScores).toBeNull()
   })
 
   it('reports character-not-found for an entity that does not exist', async () => {
@@ -211,5 +220,102 @@ describe('assembleCharacter', () => {
     if (!result.available) return
     expect(result.blueprint.species).toMatchObject({ status: 'missing', packageId: '', slug: '' })
     expect((result.blueprint.species as any).reason).toMatch(/No Species was recorded/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Builder / Character Sheet Phase 3 -- ability scores.
+// ---------------------------------------------------------------------------
+// Phase 1 excluded ability scores from the blueprint entirely. Phase 3 adds
+// them in the narrowest way: PASSED THROUGH from the character's own record,
+// resolved against nothing, interpreted by no one. These tests pin both the
+// pass-through and the fact that nothing is derived from it.
+
+describe('assembleCharacter -- ability scores', () => {
+  const SCORES = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+
+  function selectionFor(catalogue: ReturnType<typeof fullCatalogue>) {
+    return {
+      species: selectionRef(catalogue.species[0]),
+      class: selectionRef(catalogue.classes[0]),
+      background: selectionRef(catalogue.backgrounds[0])
+    }
+  }
+
+  it('carries stored ability scores through verbatim', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      selectionFor(catalogue),
+      { method: 'point-buy', scores: SCORES }
+    )
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    expect(result.blueprint.abilityScores).toEqual({ method: 'point-buy', scores: SCORES })
+  })
+
+  it('derives NOTHING from the scores -- no modifier, save, skill, HP, or initiative appears', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      selectionFor(catalogue),
+      { method: 'manual', scores: SCORES }
+    )
+
+    const result = await assembleCharacter('5', '42')
+    if (!result.available) throw new Error('expected an available blueprint')
+
+    const stored = result.blueprint.abilityScores!
+    expect(Object.keys(stored).sort()).toEqual(['method', 'scores'])
+    expect(JSON.stringify(stored)).not.toMatch(/modifier|save|skill|hitPoint|initiative|armorClass/i)
+  })
+
+  it('reports null for a character that has no ability_scores block -- every pre-Phase-3 character', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock({ id: 42, world_id: 5, title: 'Aria' }, selectionFor(catalogue))
+
+    const result = await assembleCharacter('5', '42')
+    if (!result.available) throw new Error('expected an available blueprint')
+
+    expect(result.blueprint.abilityScores).toBeNull()
+  })
+
+  it('degrades an unreadable stored record to null rather than rendering half a row', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      selectionFor(catalogue),
+      { method: 'manual', scores: { str: 15, dex: 14 } }
+    )
+
+    const result = await assembleCharacter('5', '42')
+    if (!result.available) throw new Error('expected an available blueprint')
+
+    expect(result.blueprint.abilityScores).toBeNull()
+    // ...and the catalogue choices are unaffected by the bad neighbour.
+    expect(result.blueprint.species.status).toBe('resolved')
+  })
+
+  it('reads both blocks in ONE Directus round trip', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      selectionFor(catalogue),
+      { method: 'manual', scores: SCORES }
+    )
+
+    await assembleCharacter('5', '42')
+
+    const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
+    expect(blockCalls).toHaveLength(1)
+    expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual(['catalogue_selection', 'ability_scores'])
   })
 })

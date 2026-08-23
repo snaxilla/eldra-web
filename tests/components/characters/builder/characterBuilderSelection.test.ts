@@ -24,9 +24,20 @@ import {
   optionKey,
   previousStep,
   toCreatePayload,
+  activeAssignment,
+  draftAbilityScores,
+  isAbilityStepComplete,
+  switchAbilityMethod,
   type BuilderCatalogueEntry,
   type CharacterBuilderDraft
 } from '../../../../app/components/characters/builder/characterBuilderSelection'
+import {
+  defaultAssignmentForMethod,
+  filledAssignment,
+  normalizeStoredAbilityScores,
+  pointBuyRemaining,
+  type AbilityScoreAssignment
+} from '../../../../app/lib/characters/ability-scores'
 
 function entry(overrides: Partial<BuilderCatalogueEntry> = {}): BuilderCatalogueEntry {
   return {
@@ -55,8 +66,18 @@ const XPHB_ELF = entry({ title: 'Elf', slug: 'elf-xphb', externalId: 'Elf__XPHB'
 const XPHB_FIGHTER = entry({ title: 'Fighter', slug: 'fighter-xphb', externalId: 'Fighter__XPHB' })
 const XPHB_ACOLYTE = entry({ title: 'Acolyte', slug: 'acolyte-xphb', externalId: 'Acolyte__XPHB' })
 
+const STANDARD_ARRAY_ASSIGNMENT: AbilityScoreAssignment = {
+  str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8
+}
+
 function completeDraft(): CharacterBuilderDraft {
-  return { name: 'Aria', species: XPHB_HUMAN, class: XPHB_FIGHTER, background: XPHB_ACOLYTE }
+  const draft = emptyDraft()
+  draft.name = 'Aria'
+  draft.species = XPHB_HUMAN
+  draft.class = XPHB_FIGHTER
+  draft.background = XPHB_ACOLYTE
+  draft.abilities.byMethod['standard-array'] = { ...STANDARD_ARRAY_ASSIGNMENT }
+  return draft
 }
 
 describe('optionKey -- composite identity', () => {
@@ -173,7 +194,8 @@ describe('validation', () => {
       'Enter a character name.',
       'Choose a Species.',
       'Choose a Class.',
-      'Choose a Background.'
+      'Choose a Background.',
+      'Finish assigning ability scores.'
     ])
   })
 
@@ -199,6 +221,7 @@ describe('validation', () => {
     expect(isStepComplete(draft, 'identity')).toBe(true)
     expect(isStepComplete(draft, 'species')).toBe(true)
     expect(isStepComplete(draft, 'class')).toBe(false)
+    expect(isStepComplete(draft, 'abilities')).toBe(false)
     expect(isStepComplete(draft, 'review')).toBe(false)
   })
 })
@@ -209,7 +232,14 @@ describe('toCreatePayload', () => {
       title: 'Aria',
       species: { packageId: 'eldra.content.xphb', slug: 'human-xphb' },
       class: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' },
-      background: { packageId: 'eldra.content.xphb', slug: 'acolyte-xphb' }
+      background: { packageId: 'eldra.content.xphb', slug: 'acolyte-xphb' },
+      // Ability scores are sent IN FULL, unlike the three catalogue choices:
+      // there is no catalogue to re-resolve them against, because they are
+      // the player's own data rather than a reference to published content.
+      abilities: {
+        method: 'standard-array',
+        scores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+      }
     })
   })
 
@@ -226,13 +256,80 @@ describe('toCreatePayload', () => {
     expect(toCreatePayload(emptyDraft())).toBeNull()
     expect(toCreatePayload({ ...completeDraft(), background: null })).toBeNull()
   })
+
+  it('refuses to build a payload when only the ability scores are unfinished', () => {
+    const draft = completeDraft()
+    draft.abilities.byMethod['standard-array'] = defaultAssignmentForMethod('standard-array')
+
+    expect(toCreatePayload(draft)).toBeNull()
+    expect(missingRequirements(draft)).toEqual(['Finish assigning ability scores.'])
+  })
+})
+
+describe('ability scores (Phase 3)', () => {
+  it('a new draft starts on Standard Array with nothing assigned', () => {
+    const draft = emptyDraft()
+
+    expect(draft.abilities.method).toBe('standard-array')
+    expect(isAbilityStepComplete(draft)).toBe(false)
+    expect(draftAbilityScores(draft)).toBeNull()
+  })
+
+  it('yields the six numbers once the active method is finished', () => {
+    expect(draftAbilityScores(completeDraft())).toEqual({
+      str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8
+    })
+  })
+
+  it('keeps each method\'s own work, so leaving one and returning restores it', () => {
+    const draft = emptyDraft()
+    switchAbilityMethod(draft, 'point-buy')
+    draft.abilities.byMethod['point-buy'].str = 15
+
+    switchAbilityMethod(draft, 'manual')
+    expect(draft.abilities.method).toBe('manual')
+
+    switchAbilityMethod(draft, 'point-buy')
+    expect(draft.abilities.byMethod['point-buy'].str).toBe(15)
+  })
+
+  it('seeds a pristine method from the current one when it can represent those numbers', () => {
+    const draft = completeDraft()
+    // The standard array is also a legal 27-point buy.
+    switchAbilityMethod(draft, 'point-buy')
+
+    expect(activeAssignment(draft)).toEqual(STANDARD_ARRAY_ASSIGNMENT)
+  })
+
+  it('does NOT seed a method that cannot represent the current numbers', () => {
+    const draft = emptyDraft()
+    draft.abilities.method = 'manual'
+    draft.abilities.byMethod.manual = filledAssignment(18)
+
+    switchAbilityMethod(draft, 'point-buy')
+
+    // 18 is unbuyable; Point Buy opens at its own floor rather than clamping.
+    expect(activeAssignment(draft)).toEqual(defaultAssignmentForMethod('point-buy'))
+    // ...and the manual work is untouched.
+    expect(draft.abilities.byMethod.manual).toEqual(filledAssignment(18))
+  })
+
+  it('never overwrites a method the player has already worked in', () => {
+    const draft = completeDraft()
+    draft.abilities.byMethod['point-buy'] = filledAssignment(12)
+
+    switchAbilityMethod(draft, 'point-buy')
+
+    expect(activeAssignment(draft)).toEqual(filledAssignment(12))
+  })
 })
 
 describe('step navigation', () => {
   it('walks the full step order forwards and backwards', () => {
-    expect(STEP_KEYS).toEqual(['identity', 'species', 'class', 'background', 'review'])
+    expect(STEP_KEYS).toEqual(['identity', 'species', 'class', 'background', 'abilities', 'review'])
     expect(nextStep('identity')).toBe('species')
-    expect(nextStep('background')).toBe('review')
+    expect(nextStep('background')).toBe('abilities')
+    expect(nextStep('abilities')).toBe('review')
     expect(previousStep('species')).toBe('identity')
   })
 
@@ -243,5 +340,47 @@ describe('step navigation', () => {
 
   it('CHOICE_KEYS covers exactly the three catalogue-backed steps', () => {
     expect(CHOICE_KEYS).toEqual(['species', 'class', 'background'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// End-to-end: Builder draft -> create payload -> server validator.
+// ---------------------------------------------------------------------------
+// Every module in this path is the REAL one -- the Builder's draft logic, the
+// payload builder, and the server-side validator the create route and
+// PUT .../abilities both call. This is the test that would catch the two
+// halves drifting apart, which is exactly what putting the ability-score
+// domain in app/lib/characters/ (shared by client and server) exists to
+// prevent.
+
+describe('ability scores round-trip from Builder to server', () => {
+  it('a completed draft produces a payload the server validator accepts unchanged', () => {
+    const payload = toCreatePayload(completeDraft())!
+
+    const stored = normalizeStoredAbilityScores(payload.abilities)
+
+    expect(stored).toEqual(payload.abilities)
+    // What persists is the six numbers and their provenance -- nothing else.
+    expect(Object.keys(stored!).sort()).toEqual(['method', 'scores'])
+  })
+
+  it('a point-buy draft round-trips with its budget intact and its method preserved', () => {
+    const draft = completeDraft()
+    // The standard array is also a legal 27-point buy, so it carries over.
+    switchAbilityMethod(draft, 'point-buy')
+
+    expect(pointBuyRemaining(activeAssignment(draft))).toBe(0)
+
+    const payload = toCreatePayload(draft)!
+    expect(payload.abilities.method).toBe('point-buy')
+    expect(normalizeStoredAbilityScores(payload.abilities)).toEqual(payload.abilities)
+  })
+
+  it('an unfinished ability step blocks the payload entirely -- the server is never asked', () => {
+    const draft = completeDraft()
+    switchAbilityMethod(draft, 'roll')
+
+    expect(isAbilityStepComplete(draft)).toBe(false)
+    expect(toCreatePayload(draft)).toBeNull()
   })
 })

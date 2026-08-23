@@ -49,6 +49,15 @@
 //    fields are load-bearing when the server provably ignores them.
 
 import type { PresentationEntry } from '~/lib/content-presentation'
+import {
+  defaultAssignmentForMethod,
+  isCompleteForMethod,
+  seedAssignmentForMethod,
+  toAbilityScores,
+  type AbilityScoreAssignment,
+  type AbilityScoreMethod,
+  type AbilityScores
+} from '~/lib/characters/ability-scores'
 
 export type BuilderCatalogueEntry = {
   packageId: string
@@ -69,29 +78,90 @@ export type BuilderCatalogueEntry = {
 
 export type BuilderChoiceKey = 'species' | 'class' | 'background'
 
+// Phase 3. One assignment PER METHOD, not one shared assignment -- this is
+// mechanism 1 of app/lib/characters/ability-scores.ts's "Carrying work
+// across a method switch": leaving Point Buy and coming back must restore
+// exactly what was there, which is free if each method owns its own state
+// and impossible if they share one.
+export type CharacterAbilityDraft = {
+  method: AbilityScoreMethod
+  byMethod: Record<AbilityScoreMethod, AbilityScoreAssignment>
+}
+
 export type CharacterBuilderDraft = {
   name: string
   species: BuilderCatalogueEntry | null
   class: BuilderCatalogueEntry | null
   background: BuilderCatalogueEntry | null
+  abilities: CharacterAbilityDraft
 }
 
-export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'review'
+export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'abilities' | 'review'
 
 export const CHOICE_KEYS: readonly BuilderChoiceKey[] = ['species', 'class', 'background']
 
-export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'review']
+export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'abilities', 'review']
 
 export const STEP_LABELS: Record<BuilderStepKey, string> = {
   identity: 'Name',
   species: 'Species',
   class: 'Class',
   background: 'Background',
+  abilities: 'Ability Scores',
   review: 'Review'
 }
 
+export function emptyAbilityDraft(): CharacterAbilityDraft {
+  return {
+    // Standard Array first: it is the method the 2024 book leads with, and
+    // the one that needs no explanation to a new player.
+    method: 'standard-array',
+    byMethod: {
+      'standard-array': defaultAssignmentForMethod('standard-array'),
+      'point-buy': defaultAssignmentForMethod('point-buy'),
+      manual: defaultAssignmentForMethod('manual'),
+      roll: defaultAssignmentForMethod('roll')
+    }
+  }
+}
+
 export function emptyDraft(): CharacterBuilderDraft {
-  return { name: '', species: null, class: null, background: null }
+  return { name: '', species: null, class: null, background: null, abilities: emptyAbilityDraft() }
+}
+
+// The assignment the player is currently editing.
+export function activeAssignment(draft: CharacterBuilderDraft): AbilityScoreAssignment {
+  return draft.abilities.byMethod[draft.abilities.method]
+}
+
+// Switching methods. Mechanism 2 of ability-scores.ts's own note: a method
+// opened for the FIRST time is seeded from what the player already built,
+// when it can represent those numbers honestly; a method with work already
+// in it is left exactly as the player left it.
+export function switchAbilityMethod(draft: CharacterBuilderDraft, method: AbilityScoreMethod): void {
+  const previous = activeAssignment(draft)
+  const target = draft.abilities.byMethod[method]
+  const targetIsPristine = shallowEqualAssignment(target, defaultAssignmentForMethod(method))
+
+  if (targetIsPristine) {
+    draft.abilities.byMethod[method] = seedAssignmentForMethod(method, previous)
+  }
+
+  draft.abilities.method = method
+}
+
+function shallowEqualAssignment(a: AbilityScoreAssignment, b: AbilityScoreAssignment): boolean {
+  return (Object.keys(b) as Array<keyof AbilityScoreAssignment>).every((key) => a[key] === b[key])
+}
+
+export function isAbilityStepComplete(draft: CharacterBuilderDraft): boolean {
+  return isCompleteForMethod(draft.abilities.method, activeAssignment(draft))
+}
+
+// The six numbers to persist, or null when the step is not finished.
+export function draftAbilityScores(draft: CharacterBuilderDraft): AbilityScores | null {
+  if (!isAbilityStepComplete(draft)) return null
+  return toAbilityScores(activeAssignment(draft))
 }
 
 // The composite identity -- see design decision 1. `::` is not a legal
@@ -169,12 +239,15 @@ export function isNameComplete(draft: CharacterBuilderDraft): boolean {
 
 export function isStepComplete(draft: CharacterBuilderDraft, step: BuilderStepKey): boolean {
   if (step === 'identity') return isNameComplete(draft)
+  if (step === 'abilities') return isAbilityStepComplete(draft)
   if (step === 'review') return isDraftComplete(draft)
   return isChoiceComplete(draft, step)
 }
 
 export function isDraftComplete(draft: CharacterBuilderDraft): boolean {
-  return isNameComplete(draft) && CHOICE_KEYS.every((key) => isChoiceComplete(draft, key))
+  return isNameComplete(draft)
+    && CHOICE_KEYS.every((key) => isChoiceComplete(draft, key))
+    && isAbilityStepComplete(draft)
 }
 
 // Human-readable list of what is still outstanding. Mirrors (never
@@ -188,6 +261,7 @@ export function missingRequirements(draft: CharacterBuilderDraft): string[] {
   for (const key of CHOICE_KEYS) {
     if (!isChoiceComplete(draft, key)) missing.push(`Choose a ${STEP_LABELS[key]}.`)
   }
+  if (!isAbilityStepComplete(draft)) missing.push('Finish assigning ability scores.')
   return missing
 }
 
@@ -196,11 +270,20 @@ export type CharacterCreatePayload = {
   species: { packageId: string; slug: string }
   class: { packageId: string; slug: string }
   background: { packageId: string; slug: string }
+  // Phase 3. Unlike the three catalogue choices -- which the save route
+  // re-resolves and therefore reads only (packageId, slug) from -- ability
+  // scores have no catalogue to re-resolve against. They ARE the player's
+  // data, so they are sent in full and the server validates shape/bounds
+  // rather than looking anything up.
+  abilities: { method: AbilityScoreMethod; scores: AbilityScores }
 }
 
 // See design decision 3 -- only the two fields the save route actually reads.
 export function toCreatePayload(draft: CharacterBuilderDraft): CharacterCreatePayload | null {
   if (!isDraftComplete(draft)) return null
+
+  const scores = draftAbilityScores(draft)
+  if (!scores) return null
 
   const ref = (entry: BuilderCatalogueEntry) => ({ packageId: entry.packageId, slug: entry.slug })
 
@@ -208,7 +291,8 @@ export function toCreatePayload(draft: CharacterBuilderDraft): CharacterCreatePa
     title: draft.name.trim(),
     species: ref(draft.species!),
     class: ref(draft.class!),
-    background: ref(draft.background!)
+    background: ref(draft.background!),
+    abilities: { method: draft.abilities.method, scores }
   }
 }
 

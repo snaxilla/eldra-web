@@ -65,13 +65,32 @@
 // GET /api/worlds/:id/catalogue (server/utils/world-content-catalogue.ts ->
 // app/lib/content-presentation); no field name from any game system appears
 // anywhere in this file.
+//
+// ---------------------------------------------------------------------------
+// PHASE 3: ABILITY SCORES
+// ---------------------------------------------------------------------------
+// A fifth step, between Background and Review, rendered by the SAME editor
+// the standalone ability-editing page uses
+// (~/components/characters/builder/CharacterAbilityScoreEditor.vue), and
+// summarised on Review by the SAME read-only panel the Character Sheet
+// renders (~/components/characters/CharacterAbilityScoresPanel.vue). This
+// page owns no ability-score logic of its own: method switching, point-buy
+// budgeting, and completeness all live in the pure modules
+// (characterBuilderSelection.ts -> app/lib/characters/ability-scores.ts) and
+// are unit-tested there.
+//
+// Nothing here computes a modifier, save, skill, or hit point from a score.
+// Those belong to the Rules Engine, which this page does not import.
 
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
-import CharacterBuilderOptionPicker from '~/components/characters/builder/CharacterBuilderOptionPicker.vue'
+import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
+import CharacterAbilityScoreEditor from '~/components/characters/builder/CharacterAbilityScoreEditor.vue'
 import {
   CHOICE_KEYS,
   STEP_KEYS,
   STEP_LABELS,
+  activeAssignment,
+  draftAbilityScores,
   emptyDraft,
   findOptionByKey,
   isDraftComplete,
@@ -80,11 +99,14 @@ import {
   nextStep,
   optionKey,
   previousStep,
+  switchAbilityMethod,
   toCreatePayload,
   type BuilderCatalogueEntry,
   type BuilderChoiceKey,
   type BuilderStepKey
 } from '~/components/characters/builder/characterBuilderSelection'
+import CharacterBuilderOptionPicker from '~/components/characters/builder/CharacterBuilderOptionPicker.vue'
+import type { AbilityKey, AbilityScoreMethod } from '~/lib/characters/ability-scores'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -167,6 +189,21 @@ const selectedKeys = computed<Record<BuilderChoiceKey, string>>(() => ({
 
 function chooseOption(key: BuilderChoiceKey, value: string) {
   draft[key] = findOptionByKey(optionsFor.value[key], value)
+}
+
+// ---------------------------------------------------------------------------
+// Ability scores (Phase 3) -- state only; all logic is in the pure modules.
+// ---------------------------------------------------------------------------
+
+const abilityAssignment = computed(() => activeAssignment(draft))
+const abilityScores = computed(() => draftAbilityScores(draft))
+
+function chooseAbilityMethod(method: AbilityScoreMethod) {
+  switchAbilityMethod(draft, method)
+}
+
+function setAbility(key: AbilityKey, value: number | null) {
+  draft.abilities.byMethod[draft.abilities.method][key] = value
 }
 
 const steps = computed(() =>
@@ -364,6 +401,18 @@ async function createCharacter() {
             </div>
           </div>
 
+          <div v-if="activeStep === 'abilities'">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+              {{ STEP_LABELS.abilities }}
+            </h2>
+            <CharacterAbilityScoreEditor
+              :method="draft.abilities.method"
+              :assignment="abilityAssignment"
+              @update:method="chooseAbilityMethod"
+              @update:ability="setAbility"
+            />
+          </div>
+
           <div v-if="activeStep === 'review'">
             <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
               Review
@@ -396,6 +445,17 @@ async function createCharacter() {
                 </dd>
               </div>
             </dl>
+
+            <!-- The same read-only panel the Character Sheet renders. -->
+            <div class="mt-4 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-3">
+              <div class="mb-2 text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                {{ STEP_LABELS.abilities }}
+              </div>
+              <CharacterAbilityScoresPanel
+                :scores="abilityScores"
+                empty-message="Not assigned yet."
+              />
+            </div>
 
             <!-- Everything chosen, explained, before the Create button is
                  reachable. The roomy layout does not need this: it shows all
@@ -538,6 +598,18 @@ async function createCharacter() {
                 </div>
               </div>
             </section>
+
+            <section>
+              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+                {{ STEP_LABELS.abilities }}
+              </h2>
+              <CharacterAbilityScoreEditor
+                :method="draft.abilities.method"
+                :assignment="abilityAssignment"
+                @update:method="chooseAbilityMethod"
+                @update:ability="setAbility"
+              />
+            </section>
           </div>
 
           <!-- Persistent summary: desktop's extra room used to show state
@@ -575,6 +647,16 @@ async function createCharacter() {
                   </dd>
                 </div>
               </dl>
+
+              <div class="mt-4 border-t border-[rgba(201,164,90,0.14)] pt-3">
+                <div class="mb-2 text-xs uppercase tracking-[0.16em] text-[#9f9278]">
+                  {{ STEP_LABELS.abilities }}
+                </div>
+                <CharacterAbilityScoresPanel
+                  :scores="abilityScores"
+                  empty-message="Not assigned yet."
+                />
+              </div>
 
               <button
                 type="button"

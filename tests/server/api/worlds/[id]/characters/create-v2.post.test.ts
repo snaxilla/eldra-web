@@ -9,10 +9,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-const { getWorldContentCatalogueMock, createEntityRecordMock, dxFetchMock } = vi.hoisted(() => ({
+const { getWorldContentCatalogueMock, createEntityRecordMock, dxFetchMock, saveCharacterAbilityScoresMock } = vi.hoisted(() => ({
   getWorldContentCatalogueMock: vi.fn(),
   createEntityRecordMock: vi.fn(),
-  dxFetchMock: vi.fn()
+  dxFetchMock: vi.fn(),
+  saveCharacterAbilityScoresMock: vi.fn()
 }))
 
 vi.mock('../../../../../../server/utils/world-content-catalogue', () => ({
@@ -22,6 +23,10 @@ vi.mock('../../../../../../server/utils/world-content-catalogue', () => ({
 vi.mock('../../../../../../server/utils/entity-factory', () => ({
   createEntityRecord: createEntityRecordMock,
   dxFetch: dxFetchMock
+}))
+
+vi.mock('../../../../../../server/utils/character-ability-scores', () => ({
+  saveCharacterAbilityScores: saveCharacterAbilityScoresMock
 }))
 
 import handler from '../../../../../../server/api/worlds/[id]/characters/create-v2.post'
@@ -99,6 +104,8 @@ beforeEach(() => {
   createEntityRecordMock.mockReset()
   dxFetchMock.mockReset()
   dxFetchMock.mockResolvedValue({ data: {} })
+  saveCharacterAbilityScoresMock.mockReset()
+  saveCharacterAbilityScoresMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
 })
 
 describe('POST /api/worlds/:id/characters/create-v2', () => {
@@ -231,5 +238,71 @@ describe('POST /api/worlds/:id/characters/create-v2', () => {
       'systemKey',
       'title'
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Builder / Character Sheet Phase 3 -- ability scores.
+// ---------------------------------------------------------------------------
+// `abilities` is OPTIONAL on this route by design (see the handler's own
+// PHASE 3 note): the Builder requires it before enabling Create, but the API
+// must stay able to create a character that has no scores yet, because
+// characters predating Phase 3 exist and PUT .../abilities is how any of
+// them acquire scores. Optional never means "may be garbage", which the
+// rejection tests below pin down.
+
+describe('POST /api/worlds/:id/characters/create-v2 -- ability scores', () => {
+  const SCORES = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+
+  function bodyWith(abilities?: unknown) {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    createEntityRecordMock.mockResolvedValue({ id: 42, title: 'Aria' })
+
+    const body: Record<string, unknown> = {
+      title: 'Aria',
+      species: selectionOf(catalogue.species[0]),
+      class: selectionOf(catalogue.classes[0]),
+      background: selectionOf(catalogue.backgrounds[0])
+    }
+    if (abilities !== undefined) body.abilities = abilities
+    return body
+  }
+
+  it('persists valid ability scores through the ability-score util', async () => {
+    const result = await handler(fakeEvent('5', playerPrincipal(), bodyWith({ method: 'standard-array', scores: SCORES })))
+
+    expect(saveCharacterAbilityScoresMock).toHaveBeenCalledWith(42, { method: 'standard-array', scores: SCORES })
+    expect(result).toMatchObject({ abilityScores: { method: 'standard-array', scores: SCORES } })
+  })
+
+  it('creates a character with NO scores when abilities is absent -- the pre-Phase-3 shape', async () => {
+    const result = await handler(fakeEvent('5', playerPrincipal(), bodyWith()))
+
+    expect(saveCharacterAbilityScoresMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ id: 42, abilityScores: null })
+  })
+
+  it('rejects a malformed abilities payload with a 400 and creates NOTHING', async () => {
+    const body = bodyWith({ method: 'manual', scores: { str: 15, dex: 14 } })
+
+    await expect(handler(fakeEvent('5', playerPrincipal(), body))).rejects.toMatchObject({ statusCode: 400 })
+
+    // Validated before the entity is written, so a bad payload cannot leave
+    // a half-built character behind.
+    expect(createEntityRecordMock).not.toHaveBeenCalled()
+    expect(saveCharacterAbilityScoresMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects out-of-bounds scores', async () => {
+    const body = bodyWith({ method: 'manual', scores: { ...SCORES, str: 99 } })
+    await expect(handler(fakeEvent('5', playerPrincipal(), body))).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('stores the scores verbatim -- nothing derived is written alongside them', async () => {
+    await handler(fakeEvent('5', playerPrincipal(), bodyWith({ method: 'point-buy', scores: SCORES })))
+
+    const [, stored] = saveCharacterAbilityScoresMock.mock.calls[0]
+    expect(stored).toEqual({ method: 'point-buy', scores: SCORES })
   })
 })

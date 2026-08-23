@@ -35,6 +35,25 @@
 // read it -- "Do NOT modify the existing Character Sheet" is satisfied by
 // construction, not by care taken elsewhere.
 //
+// PHASE 3 -- ABILITY SCORES. `abilities` is accepted here but is OPTIONAL,
+// and the asymmetry with the Builder (which requires it before enabling
+// Create) is deliberate rather than an oversight:
+//
+//   The Builder is a guided creation flow. Finishing a character without
+//   ability scores is not a workflow it should encourage, so its own
+//   `missingRequirements` lists them and Create stays disabled until they
+//   are assigned.
+//
+//   The API must be able to represent a character that HAS no scores,
+//   because characters created before Phase 3 exist and are valid, and
+//   because PUT .../abilities exists precisely so scores can be assigned
+//   later. Rejecting a scoreless create would make this route stricter than
+//   the data model it writes into, and would break the "create now, score at
+//   the table" path without buying any integrity.
+//
+// A malformed `abilities` payload IS rejected -- optional means "may be
+// absent", never "may be garbage".
+//
 // AUTHORIZATION: gated on `world.character.create`, the same capability
 // server/api/worlds/[id]/characters/create.post.ts and .../builder.post.ts
 // already require for creating a `pc` -- this route always creates a `pc`
@@ -45,6 +64,8 @@ import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { requireCapability } from '../../../../utils/authorization'
 import { getWorldContentCatalogue, type ContentCatalogueEntry } from '../../../../utils/world-content-catalogue'
 import { createEntityRecord, dxFetch } from '../../../../utils/entity-factory'
+import { saveCharacterAbilityScores } from '../../../../utils/character-ability-scores'
+import { normalizeStoredAbilityScores } from '../../../../../app/lib/characters/ability-scores'
 
 type CatalogueSelectionInput = {
   packageId?: unknown
@@ -131,6 +152,18 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Validated BEFORE the entity is created, so a malformed payload cannot
+  // leave a half-built character behind (Directus offers no cross-collection
+  // transaction -- ordering is how consistency is expressed here).
+  const abilityScores = body?.abilities == null ? null : normalizeStoredAbilityScores(body.abilities)
+
+  if (body?.abilities != null && !abilityScores) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Ability scores must be six whole numbers (str, dex, con, int, wis, cha), each between 1 and 30'
+    })
+  }
+
   const created = await createEntityRecord({
     worldId,
     title,
@@ -152,12 +185,17 @@ export default defineEventHandler(async (event) => {
         }
       })
     }).catch(() => null)
+
+    if (abilityScores) {
+      await saveCharacterAbilityScores(created.id, abilityScores).catch(() => null)
+    }
   }
 
   return {
     ...created,
     species,
     class: characterClass,
-    background
+    background,
+    abilityScores
   }
 })

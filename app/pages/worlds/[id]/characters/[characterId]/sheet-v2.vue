@@ -34,8 +34,33 @@
 // This page still holds no concept of Content Packs' internals, 5etools, or
 // `data` -- `entry.presentation` arrives already resolved from the assembly
 // endpoint, which gets it from the World Content Catalogue.
+//
+// ---------------------------------------------------------------------------
+// PHASE 3: IDENTITY AND ABILITY SCORES
+// ---------------------------------------------------------------------------
+// The placeholder identity section (a bare title and a sentence explaining
+// the page) is replaced by a real one: Name, then Species / Class /
+// Background at a glance, then the six ability scores.
+//
+// VALUES ONLY. This page displays what the character HAS and derives nothing
+// from it -- no modifier beside a score, no saving throw, no skill bonus, no
+// armour class, no hit points, no initiative. Every one of those is the Rules
+// Engine's (app/lib/rules/**), which this page does not import and must not
+// reimplement. When they arrive, they arrive as data.
+//
+// The Sheet DISPLAYS; the Builder EDITS. There is no inline editing here --
+// the ability scores link out to the Builder's own editing surface
+// (.../[characterId]/abilities), which is also the path by which a character
+// created before Phase 3 acquires scores at all.
+//
+// The identity summary is composed inline rather than extracted into a
+// component: it is used by exactly this one page. The ability scores ARE
+// extracted (CharacterAbilityScoresPanel), because the Builder's review step
+// renders the same panel -- the same test ContentPresentationPanel passed.
 
+import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
+import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
 import type { PresentationEntry } from '~/lib/content-presentation'
 
 definePageMeta({
@@ -74,6 +99,9 @@ type AssemblyBlueprint = {
   species: AssemblySlot
   class: AssemblySlot
   background: AssemblySlot
+  // null for every character created before Phase 3 -- a real state, shown
+  // as "not assigned yet" with a link to assign them, never as an error.
+  abilityScores: StoredAbilityScores | null
 }
 
 type AssemblyResponse =
@@ -118,6 +146,18 @@ const sections = computed(() => {
     slot: current[key]
   }))
 })
+
+// The at-a-glance identity line. Reads a resolved slot's title, or says the
+// choice is missing -- it never falls back to a blank, because "this
+// character's Species no longer resolves" is information, not an empty cell.
+const identityRows = computed(() =>
+  sections.value.map((section) => ({
+    key: section.key,
+    label: section.label,
+    value: section.slot.status === 'resolved' ? section.slot.entry.title : 'Missing',
+    missing: section.slot.status !== 'resolved'
+  }))
+)
 </script>
 
 <template>
@@ -127,14 +167,35 @@ const sections = computed(() => {
          keeps those same cards readable with no horizontal scroll. -->
     <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
       <div class="eldra-kicker text-xs">
-        Character Sheet · V2 (Inspection)
+        Character Sheet
       </div>
-      <h1 class="eldra-title mt-2 text-3xl font-semibold">
+      <h1 class="eldra-title mt-2 break-words text-3xl font-semibold">
         {{ blueprint?.characterTitle || 'Character Sheet' }}
       </h1>
-      <p class="mt-2 max-w-2xl text-sm text-[#d8ceb8]">
-        A read-only view of this character's assembled Species, Class, and Background, resolved live against this World's current Content Catalogue.
-      </p>
+
+      <!-- Identity at a glance: who this character is, in one line on a
+           phone-friendly wrapping list. The full Species/Class/Background
+           detail cards follow further down. -->
+      <dl
+        v-if="blueprint"
+        class="mt-3 flex flex-wrap gap-x-6 gap-y-2"
+      >
+        <div
+          v-for="row in identityRows"
+          :key="row.key"
+          class="min-w-0"
+        >
+          <dt class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+            {{ row.label }}
+          </dt>
+          <dd
+            class="break-words text-base font-semibold"
+            :class="row.missing ? 'text-red-300' : 'text-[#fff7df]'"
+          >
+            {{ row.value }}
+          </dd>
+        </div>
+      </dl>
 
       <NuxtLink
         :to="`/worlds/${worldId}/characters`"
@@ -168,6 +229,30 @@ const sections = computed(() => {
         v-else-if="blueprint"
         class="mt-8 grid gap-4"
       >
+        <!-- Ability Scores. Values only -- nothing on this page derives a
+             modifier, save, skill, AC, HP, or initiative from them. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Ability Scores
+            </div>
+            <!-- The Sheet displays; the Builder edits. -->
+            <NuxtLink
+              :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
+              class="text-sm text-[#9f9278] underline-offset-4 hover:text-[#d8ceb8] hover:underline"
+            >
+              {{ blueprint.abilityScores ? 'Edit' : 'Assign' }}
+            </NuxtLink>
+          </div>
+
+          <div class="mt-3">
+            <CharacterAbilityScoresPanel
+              :scores="blueprint.abilityScores?.scores ?? null"
+              empty-message="No ability scores have been assigned yet. Use Assign above to set them."
+            />
+          </div>
+        </section>
+
         <section
           v-for="section in sections"
           :key="section.key"

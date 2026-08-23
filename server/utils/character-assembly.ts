@@ -13,14 +13,24 @@
 // ---------------------------------------------------------------------------
 // DESIGN DECISIONS
 // ---------------------------------------------------------------------------
-// 1. NO RULES, NO GAMEPLAY -- this task's own NON-GOALS forbid ability
-//    scores, features, spellcasting, equipment, and progression. This
-//    module answers exactly one question per choice: "does this reference
-//    still resolve against the World's CURRENT catalogue, and if so, to
-//    what entry?" It never reads inside a catalogue entry's `data` (mirrors
-//    world-content-catalogue.ts's own design decision 1 -- entries here
-//    carry identity + provenance only, never mechanics) and never merges,
+// 1. NO RULES, NO GAMEPLAY. This module answers exactly one question per
+//    catalogue choice: "does this reference still resolve against the
+//    World's CURRENT catalogue, and if so, to what entry?" It never merges,
 //    derives, or computes anything beyond that single resolution.
+//
+//    PHASE 1 additionally excluded ability scores entirely, as that phase's
+//    own NON-GOALS required. CHARACTER BUILDER / SHEET PHASE 3 lifts that
+//    exclusion in the narrowest possible way: the blueprint now also carries
+//    the character's STORED ability scores, passed through verbatim.
+//
+//    That is not a softening of the rule above, because ability scores are
+//    PLAYER DATA, not mechanics -- they resolve against nothing, are read
+//    from the character's own record, and nothing here interprets them. No
+//    modifier, save, skill, hit point, or initiative is computed from them
+//    in this module or in anything it calls; that remains exclusively the
+//    Rules Engine's (app/lib/rules/**), which this module still neither
+//    imports nor duplicates. What Phase 1 forbade was DERIVING gameplay from
+//    scores, and that is still forbidden.
 //
 // 2. RE-VERIFICATION, NOT TRUST -- the persisted `catalogue_selection`
 //    block is a SNAPSHOT taken at character-creation time
@@ -58,6 +68,8 @@
 
 import { directusServiceRequest } from './directus'
 import { getWorldContentCatalogue, type ContentCatalogueEntry } from './world-content-catalogue'
+import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
+import { normalizeStoredAbilityScores, type StoredAbilityScores } from '../../app/lib/characters/ability-scores'
 import type { WorldContentPackResolution } from './world-content-runtime'
 
 const CATALOGUE_SELECTION_BLOCK_KEY = 'catalogue_selection'
@@ -78,6 +90,11 @@ export type CharacterAssemblyBlueprint = {
   species: CharacterAssemblySlot
   class: CharacterAssemblySlot
   background: CharacterAssemblySlot
+  // Phase 3. `null` when this character has no scores recorded -- true of
+  // every character created before Phase 3, and a first-class state the
+  // Sheet renders rather than an error. Never derived, never defaulted to
+  // a row of 10s: absent means absent.
+  abilityScores: StoredAbilityScores | null
   packs: WorldContentPackResolution[]
 }
 
@@ -157,22 +174,34 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
+  // Both blocks in ONE query rather than two round trips -- they differ only
+  // by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
+  // `fields` because the rows now have to be told apart.
   const blockRes: any = await directusServiceRequest('/items/block_instances', {
     method: 'GET',
     query: {
       filter: {
         _and: [
           { entity_id: { _eq: Number(characterId) } },
-          { block_key: { _eq: CATALOGUE_SELECTION_BLOCK_KEY } }
+          { block_key: { _in: [CATALOGUE_SELECTION_BLOCK_KEY, ABILITY_SCORES_BLOCK_KEY] } }
         ]
       },
-      limit: 1,
-      fields: 'data'
+      limit: 2,
+      fields: 'block_key,data'
     }
   })
 
-  const block = Array.isArray(blockRes?.data) ? blockRes.data[0] : null
+  const blocks: any[] = Array.isArray(blockRes?.data) ? blockRes.data : []
+  const findBlock = (key: string) => blocks.find((row) => row?.block_key === key) ?? null
+
+  const block = findBlock(CATALOGUE_SELECTION_BLOCK_KEY)
   const selection = block?.data && typeof block.data === 'object' ? block.data : null
+
+  // Re-validated on read, not trusted: a record hand-edited in the Directus
+  // admin into an unreadable shape degrades to "no scores yet" rather than
+  // rendering a broken row. Same posture design decision 3 takes for a
+  // choice that no longer resolves.
+  const abilityScores = normalizeStoredAbilityScores(findBlock(ABILITY_SCORES_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -191,6 +220,7 @@ export async function assembleCharacter(
     species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species'),
     class: resolveSlot(extractRef(selection.class), catalogue.classes, catalogue.packs, 'Class'),
     background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),
+    abilityScores,
     packs: catalogue.packs
   }
 

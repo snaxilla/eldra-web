@@ -41,15 +41,32 @@
 // in landscape is 1024px wide but is still a touch device and still wants
 // large targets.
 //
-// WHAT THE CATALOGUE CAN AND CANNOT SHOW: ContentCatalogueEntry carries
-// identity + provenance only -- title, slug, sourceBook, packageId -- because
-// world-content-catalogue.ts deliberately never reads inside a pack entry's
-// opaque `data`. There is therefore no description, trait summary, or icon
-// available to render for any option, and this page does not invent one.
-// Surfacing real descriptions is a Content Platform change (a catalogue-level
-// summary derived from `data`), not a Builder change, and is the main
-// dependency for Phase 2.
+// ---------------------------------------------------------------------------
+// TEACHING, NOT JUST CHOOSING (Phase 2)
+// ---------------------------------------------------------------------------
+// A player must never have to leave the Builder to understand what they are
+// selecting. Each choice therefore renders a live preview -- the resolved
+// presentation model for the currently selected option -- directly beneath
+// its picker, on BOTH layouts.
+//
+// Beneath the picker, not in a modal, a drawer, or a linked page: selecting
+// a Species and reading about it are one continuous act, and every mechanism
+// that interrupts it (a dialog to dismiss, a route to come back from) makes
+// comparing two options cost more than it should. The preview simply appears
+// where the choice was made, and changing the radio changes it in place.
+//
+// The preview is the SAME component the Character Sheet renders
+// (~/components/characters/ContentPresentationPanel.vue) against the SAME
+// models, so what a player learns here reads identically on the sheet
+// afterwards.
+//
+// This page still knows nothing about 5etools, Content Packs, or `data`.
+// `entry.presentation` arrives already resolved from
+// GET /api/worlds/:id/catalogue (server/utils/world-content-catalogue.ts ->
+// app/lib/content-presentation); no field name from any game system appears
+// anywhere in this file.
 
+import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import CharacterBuilderOptionPicker from '~/components/characters/builder/CharacterBuilderOptionPicker.vue'
 import {
   CHOICE_KEYS,
@@ -323,6 +340,28 @@ async function createCharacter() {
               compact
               @update:model-value="(value: string) => chooseOption(key, value)"
             />
+
+            <!-- Live preview: the selected option, explained in place.
+                 Same component, same models the Character Sheet renders. -->
+            <div class="mt-5">
+              <h3 class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                About this {{ STEP_LABELS[key] }}
+              </h3>
+              <div class="eldra-ornate-panel eldra-frame-corners mt-2 min-w-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-4 backdrop-blur">
+                <ContentPresentationPanel
+                  v-if="draft[key]"
+                  :entry="draft[key]?.presentation"
+                  context="preview"
+                  :empty-message="`This Content Pack publishes no further details for this ${STEP_LABELS[key].toLowerCase()}.`"
+                />
+                <p
+                  v-else
+                  class="text-sm text-[#9f9278]"
+                >
+                  Choose a {{ STEP_LABELS[key].toLowerCase() }} above to see what it is and what it grants.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div v-if="activeStep === 'review'">
@@ -357,6 +396,35 @@ async function createCharacter() {
                 </dd>
               </div>
             </dl>
+
+            <!-- Everything chosen, explained, before the Create button is
+                 reachable. The roomy layout does not need this: it shows all
+                 three previews beside the picker simultaneously. -->
+            <div class="mt-5 grid gap-4">
+              <div
+                v-for="row in summaryRows"
+                :key="`review-${row.key}`"
+                class="eldra-ornate-panel eldra-frame-corners min-w-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-4 backdrop-blur"
+              >
+                <h3 class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                  {{ row.label }}
+                </h3>
+                <div class="mt-2">
+                  <ContentPresentationPanel
+                    v-if="row.entry"
+                    :entry="row.entry.presentation"
+                    context="preview"
+                    :empty-message="`This Content Pack publishes no further details for this ${row.label.toLowerCase()}.`"
+                  />
+                  <p
+                    v-else
+                    class="text-sm text-[#9f9278]"
+                  >
+                    No {{ row.label.toLowerCase() }} chosen yet.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -447,6 +515,28 @@ async function createCharacter() {
                 :model-value="selectedKeys[key]"
                 @update:model-value="(value: string) => chooseOption(key, value)"
               />
+
+              <!-- Live preview: the selected option, explained in place.
+                   Same component, same models the Character Sheet renders. -->
+              <div class="mt-5">
+                <h3 class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                  About this {{ STEP_LABELS[key] }}
+                </h3>
+                <div class="eldra-ornate-panel eldra-frame-corners mt-2 min-w-0 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-4 backdrop-blur">
+                  <ContentPresentationPanel
+                    v-if="draft[key]"
+                    :entry="draft[key]?.presentation"
+                    context="preview"
+                    :empty-message="`This Content Pack publishes no further details for this ${STEP_LABELS[key].toLowerCase()}.`"
+                  />
+                  <p
+                    v-else
+                    class="text-sm text-[#9f9278]"
+                  >
+                    Choose a {{ STEP_LABELS[key].toLowerCase() }} above to see what it is and what it grants.
+                  </p>
+                </div>
+              </div>
             </section>
           </div>
 

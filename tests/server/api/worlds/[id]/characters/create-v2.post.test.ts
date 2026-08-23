@@ -188,4 +188,48 @@ describe('POST /api/worlds/:id/characters/create-v2', () => {
     expect(dxFetchMock).toHaveBeenCalledTimes(1)
     expect(result).toMatchObject({ id: 42, title: 'Aria' })
   })
+
+  it('never persists the catalogue entry\'s presentation model into the character record', async () => {
+    // ContentCatalogueEntry grew a `presentation` field in Character
+    // Builder/Sheet Phase 2. Persisting the entry verbatim would have written
+    // a rendered presentation snapshot per choice into every character, which
+    // character-assembly.ts never reads -- it re-resolves by (packageId, slug)
+    // against the CURRENT catalogue. The stored shape is pinned instead.
+    const presentation = {
+      kind: 'species',
+      name: 'Human',
+      description: [],
+      facts: [{ label: 'Speed', value: '30 ft.' }],
+      sections: [],
+      notes: []
+    }
+    const catalogue = fullCatalogue({
+      species: [{ ...catalogueEntry({ title: 'Human', slug: 'human' }), presentation }]
+    })
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    createEntityRecordMock.mockResolvedValue({ id: 42, title: 'Aria' })
+
+    await handler(fakeEvent('5', playerPrincipal(), {
+      title: 'Aria',
+      species: selectionOf(catalogue.species[0]),
+      class: selectionOf(catalogue.classes[0]),
+      background: selectionOf(catalogue.backgrounds[0])
+    }))
+
+    const blockCall = dxFetchMock.mock.calls.find(([path]) => path === '/items/block_instances')
+    const stored = JSON.parse(blockCall![1].body).data
+
+    expect(stored.species).not.toHaveProperty('presentation')
+    expect(Object.keys(stored.species).sort()).toEqual([
+      'externalId',
+      'packageId',
+      'packageVersion',
+      'provider',
+      'slug',
+      'sourceBook',
+      'sourcePage',
+      'systemKey',
+      'title'
+    ])
+  })
 })

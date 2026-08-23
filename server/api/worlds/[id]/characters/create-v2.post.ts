@@ -71,6 +71,33 @@ function findInCatalogue(
   return entries.find((entry) => entry.packageId === packageId && entry.slug === slug) ?? null
 }
 
+// What the `catalogue_selection` block actually stores.
+//
+// ContentCatalogueEntry gained a `presentation` model in Character
+// Builder/Sheet Phase 2 (see server/utils/world-content-catalogue.ts's own
+// design decision 1). Persisting a whole ContentCatalogueEntry verbatim
+// would therefore have started writing a ~2.5KB rendered presentation
+// snapshot per choice into every character, for nothing: character-assembly.ts
+// re-resolves each choice against the CURRENT catalogue by (packageId, slug)
+// and never replays this snapshot's other fields (its own design decision 2).
+//
+// Pinning the stored shape explicitly keeps the persisted record exactly
+// what it was before Phase 2, and stops it drifting again the next time the
+// catalogue type grows a field.
+function toStoredChoice(entry: ContentCatalogueEntry) {
+  return {
+    packageId: entry.packageId,
+    packageVersion: entry.packageVersion,
+    systemKey: entry.systemKey,
+    title: entry.title,
+    slug: entry.slug,
+    externalId: entry.externalId,
+    provider: entry.provider,
+    sourceBook: entry.sourceBook,
+    sourcePage: entry.sourcePage
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
 
@@ -119,9 +146,9 @@ export default defineEventHandler(async (event) => {
         label: 'Catalogue Selection',
         sort: 10,
         data: {
-          species,
-          class: characterClass,
-          background
+          species: toStoredChoice(species),
+          class: toStoredChoice(characterClass),
+          background: toStoredChoice(background)
         }
       })
     }).catch(() => null)

@@ -12,6 +12,31 @@
 // ability scores, equipment, spellcasting, actions, notes, or editing (this
 // task's own NON-GOALS) -- just Name/Species/Class/Background, rendered
 // exactly as Assembly resolved them, including "missing" when it did not.
+//
+// ---------------------------------------------------------------------------
+// PHASE 2: THE SAME MODELS THE BUILDER SHOWED
+// ---------------------------------------------------------------------------
+// Each resolved slot's placeholder card (source book + package id, and
+// nothing else) is replaced by the resolved presentation model the Content
+// Pack publishes, rendered through the SAME component the Character Builder
+// previews with (~/components/characters/ContentPresentationPanel.vue).
+//
+// Builder and Sheet are two contexts on one model, not two renderings of one
+// idea: what a player read while choosing a Species is exactly what they read
+// afterwards on the sheet, down to the wording, because it is the same
+// component fed by the same resolver.
+//
+// Provenance stays on the card and does NOT move into the panel: which pack
+// and version an entry resolved through is a fact about this character's
+// binding, not about the Species, and it is what makes a later "missing"
+// state intelligible.
+//
+// This page still holds no concept of Content Packs' internals, 5etools, or
+// `data` -- `entry.presentation` arrives already resolved from the assembly
+// endpoint, which gets it from the World Content Catalogue.
+
+import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
+import type { PresentationEntry } from '~/lib/content-presentation'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -31,6 +56,11 @@ type CatalogueEntry = {
   provider: string
   sourceBook?: string
   sourcePage?: string
+  // Optional and nullable for the same reasons the catalogue's own field is
+  // -- a pack from a system with no resolver, or an entry whose published
+  // `data` could not be read. The sheet still renders identity and
+  // provenance in that case; it never fails.
+  presentation?: PresentationEntry | null
 }
 
 type AssemblySlot =
@@ -92,7 +122,10 @@ const sections = computed(() => {
 
 <template>
   <div class="h-full overflow-y-auto bg-transparent">
-    <div class="mx-auto max-w-3xl px-6 py-10">
+    <!-- max-w-4xl rather than 3xl: the cards now carry trait prose and
+         two-column fact grids, not two lines of provenance. px-4 on phones
+         keeps those same cards readable with no horizontal scroll. -->
+    <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
       <div class="eldra-kicker text-xs">
         Character Sheet · V2 (Inspection)
       </div>
@@ -145,24 +178,29 @@ const sections = computed(() => {
           </div>
 
           <template v-if="section.slot.status === 'resolved'">
-            <div class="mt-2 text-xl font-semibold text-white">
+            <!-- When the pack publishes details, the panel supplies the name
+                 and source line itself; the bare title is the fallback for an
+                 entry that resolved but carries no presentation model. -->
+            <div
+              v-if="!section.slot.entry.presentation"
+              class="mt-2 break-words text-xl font-semibold text-white"
+            >
               {{ section.slot.entry.title }}
             </div>
-            <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt class="text-[#9f9278]">
-                Source Book
-              </dt>
-              <dd class="text-[#d8ceb8]">
-                {{ section.slot.entry.sourceBook || '—' }}
-              </dd>
 
-              <dt class="text-[#9f9278]">
-                Package
-              </dt>
-              <dd class="text-[#d8ceb8]">
-                {{ section.slot.entry.packageId }}@{{ section.slot.entry.packageVersion }}
-              </dd>
-            </dl>
+            <div class="mt-2">
+              <ContentPresentationPanel
+                :entry="section.slot.entry.presentation"
+                context="detail"
+                :empty-message="`This Content Pack publishes no further details for this ${section.label.toLowerCase()}.`"
+              />
+            </div>
+
+            <!-- Which bound pack this choice resolved through -- a fact about
+                 this character, not about the Species/Class/Background. -->
+            <p class="mt-4 break-words border-t border-[rgba(201,164,90,0.14)] pt-3 text-xs text-[#6f6754]">
+              Resolved from {{ section.slot.entry.packageId }}@{{ section.slot.entry.packageVersion }}
+            </p>
           </template>
 
           <template v-else>

@@ -23,19 +23,32 @@
 //    lookup here goes through `optionKey`.
 //
 // 2. WHAT AN OPTION CAN SHOW IS BOUNDED BY THE CATALOGUE, NOT BY TASTE.
-//    ContentCatalogueEntry carries identity + provenance only (title, slug,
-//    externalId, sourceBook, sourcePage, packageId, packageVersion) -- see
-//    server/utils/world-content-catalogue.ts's own design decision 1, which
-//    deliberately never reads inside `data`. There is no description, no
-//    trait list, and no icon available to render, and inventing one here
-//    would mean either fabricating content or breaching that boundary.
-//    `searchText` therefore indexes exactly the fields that exist.
+//    ContentCatalogueEntry carried identity + provenance ONLY through Phase
+//    1 -- no description, no trait list, nothing to teach a player what an
+//    option was. Phase 2 changed that: species/class/background entries now
+//    also carry a resolved `presentation` model
+//    (app/lib/content-presentation), and the Builder renders it beside the
+//    picker so a choice can be understood before it is made.
+//
+//    The rule itself is unchanged, and still binding: an option shows what
+//    the CATALOGUE publishes and nothing else. Nothing here fabricates a
+//    description, and nothing here reads a 5etools field -- the resolver
+//    already turned `data` into `description`/`facts`/`sections` before this
+//    module or the picker ever sees it.
+//
+//    `searchText` deliberately still indexes only title/sourceBook/packageId.
+//    Full-text search across trait prose would make "fire" match half of
+//    every category and turn a precise picker into a fuzzy one; that is a
+//    product decision to take deliberately, not a side effect of presentation
+//    data becoming available.
 //
 // 3. THE SUBMIT PAYLOAD SENDS ONLY (packageId, slug). The save route reads
 //    only those two fields off each choice and re-looks-up everything else
 //    from its own catalogue copy, explicitly so a tampered client cannot
 //    substitute a title or externalId. Sending more would imply the extra
 //    fields are load-bearing when the server provably ignores them.
+
+import type { PresentationEntry } from '~/lib/content-presentation'
 
 export type BuilderCatalogueEntry = {
   packageId: string
@@ -47,6 +60,11 @@ export type BuilderCatalogueEntry = {
   provider: string
   sourceBook?: string
   sourcePage?: string
+  // Resolved server-side by server/utils/world-content-catalogue.ts. Optional
+  // because a pack from a system with no resolver, or an entry whose `data`
+  // could not be read, legitimately has none -- the Builder stays usable and
+  // simply has less to teach.
+  presentation?: PresentationEntry | null
 }
 
 export type BuilderChoiceKey = 'species' | 'class' | 'background'

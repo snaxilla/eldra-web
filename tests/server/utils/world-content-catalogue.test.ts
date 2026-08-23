@@ -98,7 +98,7 @@ describe('getWorldContentCatalogue', () => {
     expect(catalogue.monsters.map((e) => e.title)).toEqual(['Owlbear'])
   })
 
-  it('exposes only presentation-ready fields per entry -- identity and provenance, never `data`', async () => {
+  it('exposes only identity and provenance for a category with no presentation model -- never `data`', async () => {
     resolveWorldContentMock.mockResolvedValue(resolved({
       entries: [entry({ entityType: 'spell' })]
     }))
@@ -214,5 +214,111 @@ describe('getWorldContentCatalogue', () => {
       ...catalogue.monsters
     ]
     expect(allEntries.find((e) => e.title === 'Goblin')).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Builder / Character Sheet Phase 2 -- presentation resolution.
+// ---------------------------------------------------------------------------
+// The resolver itself is NOT mocked: app/lib/content-presentation is pure,
+// so running it for real is both cheap and the only way these tests can
+// prove the wiring (category -> kind) is right rather than merely present.
+// The resolver's own behaviour is covered in
+// tests/lib/content-presentation/dnd5e.test.ts.
+
+describe('getWorldContentCatalogue -- presentation models', () => {
+  const speciesData = {
+    name: 'Dwarf',
+    source: 'XPHB',
+    page: 188,
+    creatureTypes: ['humanoid'],
+    size: ['M'],
+    speed: 30,
+    darkvision: 120,
+    entries: [{ type: 'entries', name: 'Stonecunning', entries: ['You gain {@sense Tremorsense|XPHB}.'] }]
+  }
+
+  it('resolves a presentation model for species, classes and backgrounds', async () => {
+    resolveWorldContentMock.mockResolvedValue(resolved({
+      entries: [
+        entry({ entityType: 'species', title: 'Dwarf', data: speciesData }),
+        entry({ entityType: 'class', title: 'Fighter', data: { name: 'Fighter', source: 'XPHB', hd: { number: 1, faces: 10 } } }),
+        entry({ entityType: 'background', title: 'Acolyte', data: { name: 'Acolyte', source: 'XPHB', skillProficiencies: [{ insight: true, religion: true }] } })
+      ]
+    }))
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.species[0]!.presentation).toMatchObject({ kind: 'species', name: 'Dwarf' })
+    expect(catalogue.classes[0]!.presentation).toMatchObject({ kind: 'class', name: 'Fighter' })
+    expect(catalogue.backgrounds[0]!.presentation).toMatchObject({ kind: 'background', name: 'Acolyte' })
+  })
+
+  it('maps each category to its OWN kind -- a class never resolves as a species', async () => {
+    resolveWorldContentMock.mockResolvedValue(resolved({
+      entries: [entry({ entityType: 'class', title: 'Fighter', data: { name: 'Fighter', hd: { faces: 10 } } })]
+    }))
+
+    const catalogue = await getWorldContentCatalogue('5')
+    const presentation = catalogue.classes[0]!.presentation!
+
+    expect(presentation.kind).toBe('class')
+    expect(presentation.facts.map((fact) => fact.label)).toContain('Hit Die')
+  })
+
+  it('translates `data` without ever exposing it', async () => {
+    resolveWorldContentMock.mockResolvedValue(resolved({
+      entries: [entry({ entityType: 'species', title: 'Dwarf', data: speciesData })]
+    }))
+
+    const [species] = (await getWorldContentCatalogue('5')).species
+
+    expect(species).not.toHaveProperty('data')
+    // Markup resolved on the way through -- no consumer ever sees a raw tag.
+    expect(JSON.stringify(species)).not.toContain('{@')
+    expect(species!.presentation!.sections[0]!.paragraphs[0]).toBe('You gain Tremorsense.')
+  })
+
+  it('leaves feats, items, spells and monsters unresolved -- no reader, no cost', async () => {
+    resolveWorldContentMock.mockResolvedValue(resolved({
+      entries: [
+        entry({ entityType: 'feat', title: 'Alert' }),
+        entry({ entityType: 'item', title: 'Longsword' }),
+        entry({ entityType: 'spell', title: 'Fire Bolt' }),
+        entry({ entityType: 'enemy', title: 'Owlbear' })
+      ]
+    }))
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    for (const collection of [catalogue.feats, catalogue.items, catalogue.spells, catalogue.monsters]) {
+      expect(collection[0]).not.toHaveProperty('presentation')
+    }
+  })
+
+  it('degrades a single unreadable entry to presentation: null, leaving its siblings intact', async () => {
+    resolveWorldContentMock.mockResolvedValue(resolved({
+      entries: [
+        entry({ entityType: 'species', title: 'Broken', slug: 'broken', data: 'not an object' as never }),
+        entry({ entityType: 'species', title: 'Dwarf', slug: 'dwarf', data: speciesData })
+      ]
+    }))
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.species[0]!.presentation).toBeNull()
+    expect(catalogue.species[0]!.title).toBe('Broken')
+    expect(catalogue.species[1]!.presentation).toMatchObject({ name: 'Dwarf' })
+  })
+
+  it('resolves to null for a pack from a game system Eldra cannot present yet', async () => {
+    resolveWorldContentMock.mockResolvedValue(resolved({
+      entries: [entry({ entityType: 'species', systemKey: 'pf2e', title: 'Goblin', data: { name: 'Goblin' } })]
+    }))
+
+    const catalogue = await getWorldContentCatalogue('5')
+
+    expect(catalogue.species[0]!.presentation).toBeNull()
+    expect(catalogue.species[0]!.title).toBe('Goblin')
   })
 })

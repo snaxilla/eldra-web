@@ -24,19 +24,35 @@
 // ---------------------------------------------------------------------------
 // DESIGN DECISIONS
 // ---------------------------------------------------------------------------
-// 1. Every catalogue entry carries ONLY fields already normalized at the
+// 1. Every catalogue entry carries the fields already normalized at the
 //    envelope level by content-pack-5etools-adapter.ts (systemKey/title/
 //    slug/externalId/provider/sourceBook/sourcePage) plus which bound pack
-//    it came from (packageId/packageVersion). This is deliberately the same
-//    field set world-content-runtime.ts's own WorldContentSummaryEntry
-//    already exposes -- "interpret only the fields required to identify
-//    and present entries" is satisfied by identity + provenance alone. No
-//    field is ever read out of `data`: doing so would require per-category
-//    interpretation of 5etools' own (widely different, mechanically rich)
-//    JSON shapes, which is exactly the "gameplay mechanics"/"compute rules"
-//    line this phase must not cross. A short description, an icon, a
-//    level/school/rarity -- all of that lives inside `data` and is
-//    therefore explicitly deferred, not merely unbuilt.
+//    it came from (packageId/packageVersion).
+//
+//    PHASE 1 additionally refused to read anything out of `data`, because
+//    doing so would have required per-category interpretation of 5etools'
+//    own (widely different, mechanically rich) JSON shapes -- explicitly
+//    deferred, not merely unbuilt. CHARACTER BUILDER / CHARACTER SHEET
+//    PHASE 2 CLOSES THAT DEFERRAL, and this is the module where it closes:
+//    species/classes/backgrounds entries now also carry a `presentation`
+//    model.
+//
+//    The line Phase 1 drew is preserved rather than erased. This module
+//    still performs NO interpretation itself: it delegates to
+//    app/lib/content-presentation (a pure, system-keyed resolver) and stores
+//    what comes back. All knowledge of 5etools field names lives there, in
+//    exactly one place, and the catalogue remains a module that knows only
+//    which CATEGORY an entry belongs to. And what the resolver produces is
+//    still not mechanics -- it restates information the pack already
+//    publishes (Speed, Hit Die, Darkvision) without computing movement, hit
+//    points, or vision. "Do NOT interpret gameplay mechanics. Do NOT compute
+//    rules." is unchanged and still holds.
+//
+//    Only the three character-facing categories resolve a presentation
+//    model. Feats, items, spells, and monsters deliberately do not: no
+//    surface consumes them yet, and resolving 391 spells on every catalogue
+//    read would be cost with no reader. They are a later phase, and adding
+//    them is one line in PRESENTATION_KIND_BY_CATEGORY below.
 //
 // 2. SEVEN FIXED, named collections, not a generic Record -- the entire
 //    value this module adds over the runtime's own `byEntityType`. An
@@ -63,6 +79,7 @@
 //    (GET /api/worlds/:id/content and GET /api/worlds/:id/content-packs's
 //    shared precedent: reading is not gated the way writing is).
 
+import { resolveContentPresentation, type PresentationEntry, type PresentationKind } from '../../app/lib/content-presentation'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
 
 // ---------------------------------------------------------------------------
@@ -80,6 +97,12 @@ export type ContentCatalogueEntry = {
   provider: string
   sourceBook?: string
   sourcePage?: string
+  // Present only for species/classes/backgrounds -- see design decision 1.
+  // `null` (rather than absent) means the category IS presentable but this
+  // particular entry could not be resolved: an unreadable `data` payload, or
+  // a pack from a game system Eldra has no resolver for. Consumers render
+  // identity and provenance and say so, never an error.
+  presentation?: PresentationEntry | null
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -111,7 +134,9 @@ export type WorldGameplayCatalogue = {
 // design decision 2. Keyed by the literal strings app/lib/importers'
 // preview5eTools* functions already write (verified directly against each:
 // 'species', 'class', 'background', 'feat', 'item', 'spell', 'enemy').
-const ENTITY_TYPE_TO_CATEGORY: Record<string, keyof Omit<WorldGameplayCatalogue, 'worldId' | 'packs'>> = {
+type CatalogueCategory = keyof Omit<WorldGameplayCatalogue, 'worldId' | 'packs'>
+
+const ENTITY_TYPE_TO_CATEGORY: Record<string, CatalogueCategory> = {
   species: 'species',
   class: 'classes',
   background: 'backgrounds',
@@ -121,8 +146,18 @@ const ENTITY_TYPE_TO_CATEGORY: Record<string, keyof Omit<WorldGameplayCatalogue,
   enemy: 'monsters'
 }
 
-function toCatalogueEntry(entry: WorldContentEntry): ContentCatalogueEntry {
-  return {
+// Which catalogue categories resolve a presentation model, and as which
+// kind. Keyed by CATALOGUE CATEGORY (not entityType) so it reads against
+// WorldGameplayCatalogue's own field names. See design decision 1 for why
+// this is deliberately three entries and not seven.
+const PRESENTATION_KIND_BY_CATEGORY: Partial<Record<CatalogueCategory, PresentationKind>> = {
+  species: 'species',
+  classes: 'class',
+  backgrounds: 'background'
+}
+
+function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory): ContentCatalogueEntry {
+  const base: ContentCatalogueEntry = {
     packageId: entry.packageId,
     packageVersion: entry.packageVersion,
     systemKey: entry.systemKey,
@@ -133,6 +168,25 @@ function toCatalogueEntry(entry: WorldContentEntry): ContentCatalogueEntry {
     sourceBook: entry.sourceBook,
     sourcePage: entry.sourcePage
   }
+
+  const kind = PRESENTATION_KIND_BY_CATEGORY[category]
+  if (!kind) {
+    return base
+  }
+
+  // `data` is read here and NOWHERE else in this module -- and it is handed
+  // straight to the resolver rather than inspected. One malformed entry must
+  // never take down a World's whole catalogue, so a throwing resolver
+  // degrades this entry to `presentation: null` and leaves the other 37
+  // intact. Same "absence is legal, and must stay visible" posture design
+  // decision 3 applies to a broken pack binding.
+  try {
+    base.presentation = resolveContentPresentation(entry.systemKey, kind, entry.data)
+  } catch {
+    base.presentation = null
+  }
+
+  return base
 }
 
 // The canonical entry point for this consumer layer. Composes
@@ -162,7 +216,7 @@ export async function getWorldContentCatalogue(worldId: string | number): Promis
       continue
     }
 
-    catalogue[category].push(toCatalogueEntry(entry))
+    catalogue[category].push(toCatalogueEntry(entry, category))
   }
 
   return catalogue

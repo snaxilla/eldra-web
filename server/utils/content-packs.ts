@@ -80,6 +80,7 @@
 
 import { createHash } from 'node:crypto'
 import { canonicalize } from '../../app/lib/rules/canonicalize'
+import type { RulesVocabularyId } from '../../app/lib/rules/types'
 import { directusServiceRequest } from './directus'
 
 const COLLECTION = 'content_packs'
@@ -117,6 +118,27 @@ export type ContentPackLicense = {
   attribution?: string
 }
 
+// rules-package-architecture.md §9.1 -- Step 1. The Rules Vocabulary this
+// pack's content is authored AGAINST; the counterpart to a Rules Package's
+// own `provides.vocabulary`.
+//
+// PER-PACK, not per-entry (§18.4, Decision 4): one declaration, one place
+// to check at bind time, and a mismatch raises a single Binding Gap against
+// the pack rather than one per entry. A per-entry override is reserved for
+// a pack that legitimately spans two vocabularies -- imaginable, no current
+// use case, and free to add later.
+//
+// The type is imported from the Rules Engine, which is the correct
+// direction and already-established here (this module imports
+// `canonicalize` from the same place). A vocabulary is a RULES concept --
+// the Rules Package provides it, content merely names it -- so it is
+// defined there. §8.3's one-way rule permits content to depend on rules and
+// forbids the reverse; a type-only import is the lightest possible form of
+// that dependency, and is erased at runtime.
+export type ContentPackTargets = {
+  vocabulary: RulesVocabularyId
+}
+
 export type ContentPackManifest = {
   packageId: string
   version: string
@@ -128,6 +150,16 @@ export type ContentPackManifest = {
   authors?: ContentPackAuthor[]
   license: ContentPackLicense
   integrity?: string
+  // OPTIONAL, and it must stay optional: every already-published pack
+  // (XPHB, XDMG, XMM) has no `targets`, and each must keep loading, binding,
+  // and resolving unchanged. A pack with none declares no rules
+  // compatibility and simply participates in no check -- which is the
+  // correct reading of "content that presents but does not mechanise"
+  // (§8.2 rule 4).
+  //
+  // Cannot affect any existing integrity hash: computeContentIntegrityHash
+  // below hashes `content` (the entries) and never the manifest.
+  targets?: ContentPackTargets
 }
 
 // Opaque in this phase -- no importer or content-resolution consumer

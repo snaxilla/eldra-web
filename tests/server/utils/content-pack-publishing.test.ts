@@ -194,6 +194,34 @@ describe('buildContentPackManifest', () => {
     expect(manifest.origin).toEqual({ kind: 'translated', adapterId: '5etools-json' })
   })
 
+  // rules-package-architecture.md §9.1 / Decision 4 -- Step 1.
+  it('does not invent a rules vocabulary when the caller supplies none', () => {
+    // Every already-published pack (XPHB, XDMG, XMM) was published without
+    // one and must keep loading and binding unchanged.
+    const manifest = buildContentPackManifest({
+      packageId: 'eldra.content.xphb',
+      version: '1.0.0',
+      title: "Player's Handbook (2024)",
+      license: { id: 'proprietary' }
+    })
+
+    expect(manifest.targets).toBeUndefined()
+  })
+
+  it('carries a caller-supplied rules vocabulary through unchanged, once per pack', () => {
+    const manifest = buildContentPackManifest({
+      packageId: 'eldra.content.xphb',
+      version: '1.0.0',
+      title: "Player's Handbook (2024)",
+      license: { id: 'proprietary' },
+      targets: { vocabulary: 'dnd5e.2024' }
+    })
+
+    // Per-pack, not per-entry (Decision 4): one declaration, one place to
+    // check at bind time.
+    expect(manifest.targets).toEqual({ vocabulary: 'dnd5e.2024' })
+  })
+
   it('defaults contentSchemaVersion to 1 when not supplied', () => {
     const manifest = buildContentPackManifest({
       packageId: 'eldra.srd-5.1',

@@ -95,6 +95,152 @@ export type SemanticRole =
   | 'level'
   | 'proficiency'
 
+// ---------------------------------------------------------------------------
+// Rule Categories (rules-package-architecture.md §6) -- Step 1
+// ---------------------------------------------------------------------------
+// A Rule Category is DESCRIPTIVE TAXONOMY. The engine ignores it entirely:
+// it never changes how a Definition evaluates, never appears in the
+// dependency graph, and never gates an expression. It answers four
+// questions the engine cannot (§6.1) -- where a Definition lives in the
+// authoring tree, which sheet region renders it, which parts of a system a
+// package has implemented, and what a Character Builder must ask about.
+//
+// NOT a Semantic Role, and the two must never be merged (§6.2). A Semantic
+// Role says "this Definition IS the thing Core calls vitality" -- one
+// Definition per role, declared in the manifest, consumed by Core features
+// that degrade visibly when it is unbound. A Category says "this Definition
+// BELONGS TO the Skills area" -- many Definitions per category, declared on
+// each Definition, consumed by authoring/layout/reporting. Nothing degrades
+// when a category is absent; only organisation is lost.
+//
+// Closed and engine-versioned, for the same reason SemanticRole is (§6.4):
+// a free-form tag cannot answer "does this package implement resting?",
+// which is exactly what a GM evaluating a package asks and what a
+// completeness report must diff against. Adding a category is a minor
+// engine version and cannot break an existing package, because carrying one
+// is optional. Packages keep free-form `tags` for their own finer taxonomy
+// -- categories are the shared vocabulary, tags are the package's private
+// one.
+export type RuleCategory =
+  | 'core.abilities'
+  | 'core.proficiency'
+  | 'core.skills'
+  | 'core.saves'
+  | 'core.defenses'
+  | 'core.health'
+  | 'progression'
+  | 'character.creation'
+  | 'combat'
+  | 'movement'
+  | 'conditions'
+  | 'spellcasting'
+  | 'equipment'
+  | 'resting'
+  | 'death'
+  | 'currency'
+  | 'downtime'
+  | 'environment'
+
+// The registry, in §6.3's declared order -- which is authoring order (the
+// order a package is built in and a sheet reads top to bottom), not
+// alphabetical. Consumers that enumerate categories should preserve it.
+export const RULE_CATEGORIES: readonly RuleCategory[] = [
+  'core.abilities',
+  'core.proficiency',
+  'core.skills',
+  'core.saves',
+  'core.defenses',
+  'core.health',
+  'progression',
+  'character.creation',
+  'combat',
+  'movement',
+  'conditions',
+  'spellcasting',
+  'equipment',
+  'resting',
+  'death',
+  'currency',
+  'downtime',
+  'environment'
+]
+
+// §6.3's first eight: the subset a package must populate before a Character
+// Sheet can render anything meaningful, and therefore the scope of the
+// first authored package (§19 Step 3). A named subset rather than a
+// comment because it is a real boundary later steps are measured against.
+export const CORE_CHARACTER_RULE_CATEGORIES: readonly RuleCategory[] = [
+  'core.abilities',
+  'core.proficiency',
+  'core.skills',
+  'core.saves',
+  'core.defenses',
+  'core.health',
+  'progression',
+  'character.creation'
+]
+
+// Human-readable names for the registry. Labels live here rather than in a
+// UI module because the registry is closed and engine-versioned -- a
+// consumer that could enumerate categories but not name them could not
+// build the coverage report §6.4 is the whole justification for.
+export const RULE_CATEGORY_LABELS: Record<RuleCategory, string> = {
+  'core.abilities': 'Ability Scores',
+  'core.proficiency': 'Proficiency',
+  'core.skills': 'Skills',
+  'core.saves': 'Saving Throws',
+  'core.defenses': 'Defenses',
+  'core.health': 'Health',
+  progression: 'Progression',
+  'character.creation': 'Character Creation',
+  combat: 'Combat',
+  movement: 'Movement',
+  conditions: 'Conditions',
+  spellcasting: 'Spellcasting',
+  equipment: 'Equipment',
+  resting: 'Resting',
+  death: 'Death',
+  currency: 'Currency',
+  downtime: 'Downtime',
+  environment: 'Environment'
+}
+
+// ---------------------------------------------------------------------------
+// Rules Vocabulary (rules-package-architecture.md §9) -- Step 1
+// ---------------------------------------------------------------------------
+// A stable identifier naming a SHARED SET OF DEFINITION IDs. A Rules
+// Package `provides` exactly one; a Content Pack `targets` one
+// (ContentPackManifest, server/utils/content-packs.ts). It is what turns
+// `systemKey` from the decorative field rules-engine.md §2.3 recorded into
+// a live seam: `systemKey: 'dnd5e'` is too coarse to distinguish a 2014
+// from a 2024 package, which share almost no Definition IDs.
+//
+// A vocabulary is a COMPATIBILITY PROMISE, not an identity (§9.2): "I define
+// the IDs that `dnd5e.2024` names." Several packages may provide the same
+// one -- that is the point, and it is what lets a GM fork the rules without
+// orphaning their entire content catalogue.
+//
+// DELIBERATELY NOT VERSIONED (§9.4). `dnd5e.2024` is a name, never a range:
+// Definition IDs are already opaque and permanent, and changing one is a
+// breaking change requiring a migration step (ADR-004) -- that guarantee IS
+// the compatibility contract, and a second version axis on top of it would
+// duplicate it and then disagree with it. A vocabulary that genuinely breaks
+// gets a NEW NAME, and the mismatch surfaces as an ordinary Binding Gap.
+// Renaming is loud; version-range arithmetic is quiet.
+//
+// Left as a plain `string`, matching `packageId`: shape validation is
+// Package Validation's job, not the type's (see the manifest note below on
+// why this commit adds no validation at all).
+export type RulesVocabularyId = string
+
+// §9.1. Its own object rather than a bare `vocabulary` field so the
+// package's outward-facing compatibility surface has one home to grow in --
+// mirroring how `origin` groups provenance rather than spreading five
+// fields across the manifest.
+export type RulesPackageProvides = {
+  vocabulary: RulesVocabularyId
+}
+
 // §11.8: draft is a mutable workspace; published is immutable and the only
 // status that can be bound to a campaign or evaluated.
 export type PackageStatus = 'draft' | 'published'
@@ -499,6 +645,27 @@ export type EvaluationResult = {
 // Summary.
 // ---------------------------------------------------------------------------
 
+// rules-package-architecture.md §6 -- Step 1. Every identified Definition
+// may carry exactly one Rule Category.
+//
+// Applied by intersection rather than by repeating the field on all seven
+// union members, for the reason repetition always loses: seven independently
+// maintained copies of one optional field drift. `ModifierDefinition` below
+// already establishes the intersection pattern in this file
+// (`ModifierSpec & { id, kind }`), and `kind` remains a working
+// discriminant through it.
+//
+// Deliberately NOT applied to `ModifierSpec`: a spec authored inline inside
+// a SourceDefinition carries no identity of its own (§16.10) and is part of
+// its Source, so it has nothing to categorize independently. Only the
+// standalone, identified `ModifierDefinition` gets one.
+//
+// Optional, always. A Definition with no category is legal and complete --
+// categories organise, they never gate (§6.1).
+export type DefinitionCategorization = {
+  category?: RuleCategory
+}
+
 export type ValueStorage = 'stored' | 'derived'
 
 export type ValueConstraints = {
@@ -510,7 +677,7 @@ export type ValueConstraints = {
 // §12.1: attributes, skills, saves, defenses, and derived values are all
 // this one type -- the difference is `storage`, `tags`, and whether
 // `formula` is present. There is no separate AttributeDefinition.
-export type ValueDefinition = {
+export type ValueDefinition = DefinitionCategorization & {
   id: DefinitionId
   kind: 'value'
   valueType: RuleValueType
@@ -529,7 +696,7 @@ export type ValueDefinition = {
 // architecture's own worked proof-package examples author it directly with
 // its own `id`/`kind`, and this commit's contract must be able to represent
 // those examples faithfully.
-export type ResourceDefinition = {
+export type ResourceDefinition = DefinitionCategorization & {
   id: DefinitionId
   kind: 'resource'
   label?: string
@@ -553,7 +720,7 @@ export type CollectionSlotDefinition = {
 // collection items are addressable by modifiers/expressions, sheets render
 // them as repeating structures, and items need per-item identity stable
 // across reordering -- the same reasoning as Scene Graph Layer Objects.
-export type CollectionDefinition = {
+export type CollectionDefinition = DefinitionCategorization & {
   id: DefinitionId
   kind: 'collection'
   label?: string
@@ -603,7 +770,7 @@ export type ModifierSpec =
 // ModifierSpec above for why revision 2's optionality was removed. This is
 // a BREAKING change to a field no shipped package uses (no package format
 // has ever shipped).
-export type ModifierDefinition = ModifierSpec & {
+export type ModifierDefinition = ModifierSpec & DefinitionCategorization & {
   id: DefinitionId
   kind: 'modifier'
 }
@@ -635,7 +802,7 @@ export type SourceSuppression = {
   tags?: string[]
 }
 
-export type SourceDefinition = {
+export type SourceDefinition = DefinitionCategorization & {
   id: DefinitionId
   kind: 'source'
   label?: string
@@ -688,7 +855,7 @@ export type RollDegree = {
   when: Expression
 }
 
-export type RollSpec = {
+export type RollSpec = DefinitionCategorization & {
   id: DefinitionId
   kind: 'roll'
   label?: string
@@ -744,7 +911,7 @@ export type ActionPresentation = {
   title?: string
 }
 
-export type ActionDefinition = {
+export type ActionDefinition = DefinitionCategorization & {
   id: DefinitionId
   kind: 'action'
   label?: string
@@ -852,7 +1019,39 @@ export type RulesPackageManifest = {
   requiredTraits?: RequiredTraitDeclaration[]
   optionalRules?: OptionalRuleDeclaration[]
   rollTypes?: RollTypeDeclaration[]
+  // rules-package-architecture.md §9.1 -- the vocabulary this package
+  // PROVIDES; the compatibility key a Content Pack's `targets` is matched
+  // against at bind time.
+  //
+  // OPTIONAL, and it must stay optional: `packages/eldra-generic-d20`
+  // declares none and must keep loading unchanged (§Compatibility). A
+  // package with no `provides` simply participates in no content
+  // compatibility check -- absence is legal, exactly as it is for
+  // `semanticRoles`.
+  provides?: RulesPackageProvides
+  // rules-package-architecture.md §6.4/§15.2 -- declared COVERAGE, not a
+  // constraint. It is what lets Game Admin answer "does this package
+  // implement resting?" before activation, and what a completeness report
+  // diffs the package's actual Definitions against. Nothing enforces that a
+  // declared category contains Definitions, or that a Definition's category
+  // appears here.
+  categories?: readonly RuleCategory[]
 }
+
+// NOTE ON VALIDATION, for all of the above.
+//
+// `provides`, `categories`, and `DefinitionCategorization.category` are
+// TYPE-ONLY in this commit. Nothing validates that a `provides.vocabulary`
+// is well-formed, that a declared `category` appears in `categories`, or
+// that a package's categories match the Definitions it ships.
+//
+// That is the same shape every other manifest declaration landed in --
+// `modifierTypes`, `requiredTraits`, `optionalRules`, and `rollTypes` were
+// each added here with an explicit "type-only in this commit" note and
+// picked up validation later. `validatePackage` (package-validation.ts)
+// reads exactly four manifest fields and has no unknown-field rejection, so
+// adding these three changes no validation outcome for any existing
+// package: they are additive in the strongest sense.
 
 // ---------------------------------------------------------------------------
 // Package Validation results (§16.14, Revision 3 Package Validation commit)

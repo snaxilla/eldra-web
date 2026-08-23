@@ -82,7 +82,7 @@
 //    fact, not this module's; a caller that wants an `origin` recorded
 //    passes it through as part of the manifest input.
 
-import { publishContentPackRelease, type ContentPackManifest, type ContentPackEntry, type ContentPackLicense, type ContentPackOrigin, type LoadedContentPack } from './content-packs'
+import { publishContentPackRelease, type ContentPackManifest, type ContentPackEntry, type ContentPackLicense, type ContentPackOrigin, type ContentPackTargets, type LoadedContentPack } from './content-packs'
 
 // ---------------------------------------------------------------------------
 // The publication contract -- Eldra-owned, not an importer's shape.
@@ -225,6 +225,11 @@ export type ContentPackManifestInput = {
   // decision 6) -- the adapter/route that knows which importer produced
   // these candidates is the one place that knows what `origin` should say.
   origin?: ContentPackOrigin
+  // rules-package-architecture.md §9.1 -- Step 1. Caller-supplied for
+  // exactly the reason `origin` is: which Rules Vocabulary a pack's content
+  // was authored against is a fact the publishing route knows and this
+  // module does not. Optional; omitted by every caller today.
+  targets?: ContentPackTargets
 }
 
 // Pure. `status` is NEVER caller-suppliable -- design decision 6.
@@ -237,7 +242,8 @@ export function buildContentPackManifest(input: ContentPackManifestInput): Conte
     origin: input.origin,
     title: input.title,
     description: input.description,
-    license: input.license
+    license: input.license,
+    targets: input.targets
   }
 }
 

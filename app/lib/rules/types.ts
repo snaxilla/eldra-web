@@ -638,11 +638,11 @@ export type EvaluationResult = {
 // ---------------------------------------------------------------------------
 // Definitions (§12) -- the five primitives (Value, Collection, Modifier,
 // Action, Roll) plus Source and Resource, which have concrete worked JSON
-// shapes elsewhere in the architecture. Table, Progression, and ChoiceSet
-// are named as "kept" supporting types (§12.2) but no shape for any of the
-// three appears anywhere in the architecture document -- they are
-// deliberately NOT modeled here rather than invented; see the commit
-// Summary.
+// shapes elsewhere in the architecture, plus Table, Progression, and
+// ChoiceSet (rules-package-architecture.md §7.4-§7.6, specified and added
+// in Step 2 -- previously named as "kept" supporting types in §12.2 but
+// left unshaped here, since no shape appeared anywhere in the architecture
+// document until that later commit specified one).
 // ---------------------------------------------------------------------------
 
 // rules-package-architecture.md §6 -- Step 1. Every identified Definition
@@ -923,9 +923,154 @@ export type ActionDefinition = DefinitionCategorization & {
   presentation?: ActionPresentation
 }
 
-// The nine authorable kinds this commit can represent. Table, Progression,
-// and ChoiceSet are deliberately absent -- see the block comment above this
-// section.
+// ---------------------------------------------------------------------------
+// Table (rules-package-architecture.md §7.4) -- Step 2
+// ---------------------------------------------------------------------------
+// "A formula that must be reverse-engineered from a printed table should be
+// authored as the table" (§7.2) -- a Table is a keyed lookup, never a
+// computed expression, kept a distinct Definition kind rather than sugar
+// over Value for the same reason ValueDefinition itself is not sugar over
+// Collection: a resolved cell is what gets referenced, and forcing a table
+// into a formula would produce an expression a reviewer cannot check
+// against the book by reading it.
+//
+// TYPE-ONLY in this commit, exactly like Table's siblings below. Nothing
+// resolves a `key` against `rows`, nothing reads `default` when a lookup
+// misses, and no Expression may reference a Table yet -- that is the
+// evaluator's job (§Step 2 IMPORTANT: "Do NOT implement evaluation logic
+// for these kinds"), a later step.
+export type TableMatchMode = 'exact' | 'range' | 'enum'
+
+// §7.4: "match is declared rather than inferred -- a range table and an
+// enum table are read differently and guessing is how off-by-one errors
+// enter."
+export type TableKeyDeclaration = {
+  valueType: RuleValueType
+  match: TableMatchMode
+}
+
+export type TableColumnDefinition = {
+  key: string
+  valueType: RuleValueType
+}
+
+// A row's shape depends on `key.match` (min/max for 'range'; a bare `key`
+// value for 'exact'/'enum') plus one entry per declared column -- genuinely
+// PACKAGE-AUTHORED content ("authored content, not this document's
+// business," §7.4), so this stays exactly as open as
+// CollectionInstanceItem is for the identical reason, rather than modeling
+// match-specific row shapes as a discriminated union Step 2 has no mandate
+// to design.
+export type TableRow = Record<string, RuleValue>
+
+export type TableDefinition = DefinitionCategorization & {
+  id: DefinitionId
+  kind: 'table'
+  label?: string
+  key: TableKeyDeclaration
+  columns: TableColumnDefinition[]
+  rows: TableRow[]
+  // §7.4: MANDATORY -- preserves the engine's existing "every value has a
+  // zero" invariant (§14.4) rather than introducing a null path the day a
+  // lookup is actually implemented.
+  default: TableRow
+}
+
+// ---------------------------------------------------------------------------
+// Progression (rules-package-architecture.md §7.5) -- Step 2
+// ---------------------------------------------------------------------------
+// A Table with two additions: a declared key axis (`keyedBy` -- what
+// advances) and grant semantics (`rows[].grants`/`.sets` -- what arriving
+// at a row DOES). Kept a distinct kind rather than sugar over Table because
+// the two reach the engine through different paths once evaluation exists:
+// a Table resolves to a value through expression evaluation; a Progression
+// changes an actor's active set of Sources through the dynamic Source
+// overlay (§16.8, source-overlay.ts) -- collapsing them would put grant
+// semantics inside expression evaluation, exactly the boundary §7.1 keeps
+// clean.
+//
+// TYPE-ONLY in this commit. `keyedBy` is typed `DefinitionId` because it
+// names a real Value Definition (e.g. `value:level`) -- but nothing
+// resolves it, nothing walks `rows` to find the active one, and nothing
+// applies a `grants`/`sets` entry. `grants`/`sets` therefore contribute NO
+// edges to the dependency graph yet either (dependency-graph.ts's own new
+// cases for this kind return no edges) -- deriving "a Progression row
+// grants this Source" into a graph edge is deciding what a Progression
+// MEANS, which is consumption, and Step 2 explicitly does not consume these
+// kinds.
+export type ProgressionRow = {
+  // Compared against `keyedBy`'s resolved value once evaluation exists;
+  // usually a number (a level), but left as RuleValue since nothing here
+  // constrains it to match `keyedBy`'s own declared valueType.
+  at: RuleValue
+  grants?: DefinitionId[]
+  sets?: Record<DefinitionId, RuleValue>
+}
+
+export type ProgressionDefinition = DefinitionCategorization & {
+  id: DefinitionId
+  kind: 'progression'
+  label?: string
+  keyedBy: DefinitionId
+  rows: ProgressionRow[]
+}
+
+// ---------------------------------------------------------------------------
+// Choice Set (rules-package-architecture.md §7.6) -- Step 2
+// ---------------------------------------------------------------------------
+// "The one form that is never evaluated." A Choice Set is a question asked
+// of a person, whose answer becomes stored state -- it therefore has no
+// evaluation story to defer the way Table/Progression do; it was never
+// going to be evaluated in the first place. That does not exempt it from
+// Step 2's own boundary: nothing here resolves a `from` selector, nothing
+// counts against `count`, and nothing writes to `writesTo`. It exists as a
+// shape a package can declare and the registry can index -- resolving a
+// Choice Set into an actual prompt is Character Builder work (§12.2), not
+// this commit's.
+//
+// Selector kinds are a CLOSED SET (§7.6: "for the same reason the modifier
+// phase set is closed: an open selector language is a second expression
+// language with none of the first one's safety properties"). `explicit`'s
+// `ids` field is this document's own reasonable reading of the contrast the
+// architecture draws ("a selector, not a literal list") -- the literal-list
+// case needs a place to put the list. `fromContentFacet` carries no fields
+// yet: Rules Facets are not designed until rules-package-architecture.md
+// §8 is implemented (Step 3+), so anything more here would be inventing a
+// shape ahead of the concept it describes.
+export type ChoiceSetSelector =
+  | { kind: 'explicit'; ids: DefinitionId[] }
+  | { kind: 'definitionsInCategory'; category: RuleCategory }
+  | { kind: 'fromContentFacet' }
+
+export type ChoiceSetDefinition = DefinitionCategorization & {
+  id: DefinitionId
+  kind: 'choiceSet'
+  label?: string
+  prompt: string
+  // Expression | RuleValue mirrors every other "formula or literal" field
+  // in this file (e.g. RollSuccessRule.threshold) rather than the
+  // architecture doc's own illustrative `{ expression: "..." }` JSON
+  // sketch, for internal consistency -- Expression's real shape ({text,
+  // ast}) is already how every other Expression-bearing field here is
+  // typed.
+  count: Expression | RuleValue
+  from: ChoiceSetSelector
+  distinct?: boolean
+  // A DefinitionId TEMPLATE ("value:skill.{selected}.proficient"), not
+  // itself a resolvable DefinitionId -- deliberately typed `string`, not
+  // `DefinitionId`, so nothing that treats a `DefinitionId` as "a real,
+  // existing Definition to look up" (dependency-graph.ts, reference-
+  // validation.ts) is tempted to try. Resolving the template against a
+  // choice is evaluation work, out of scope here.
+  writesTo: string
+}
+
+// The Definition kinds this commit can represent -- the five primitives
+// (§12.1: Value, Collection, Modifier, Action, Roll) plus Source and
+// Resource (concrete worked JSON shapes elsewhere in the architecture),
+// plus Table, Progression, and ChoiceSet as of Step 2 (rules-package-
+// architecture.md §7.4-§7.6) -- ten in total. Purely additive to this
+// union: every existing member is unchanged.
 export type Definition =
   | ValueDefinition
   | ResourceDefinition
@@ -934,6 +1079,9 @@ export type Definition =
   | ActionDefinition
   | RollSpec
   | SourceDefinition
+  | TableDefinition
+  | ProgressionDefinition
+  | ChoiceSetDefinition
 
 // ---------------------------------------------------------------------------
 // Package manifest (§11.2, §11.8, §11.9)

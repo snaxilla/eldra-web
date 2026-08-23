@@ -281,10 +281,23 @@ function computeDefinition(definitionId: DefinitionId, session: EvaluationSessio
     case 'roll':
       return evaluateExpression(asRuleExpressionNode(definition.dice), session, definitionId)
 
+    // Step 2 (rules-package-architecture.md §7.4-§7.6): Table, Progression,
+    // and ChoiceSet join this same "not evaluable as a single RuleValue"
+    // fallback that Collection/Modifier/Source/Action already use -- none
+    // of those four resolve to one value either (a Collection has items, an
+    // Action is invoked, not evaluated). This is NOT new evaluation logic;
+    // it is the minimal, behavior-preserving case TypeScript's exhaustiveness
+    // check on `definition.kind` requires now that the Definition union has
+    // grown, and it changes nothing about how any EXISTING kind evaluates.
+    // Attempting to evaluate one of these three kinds today returns a
+    // RulesError, exactly as attempting to evaluate a Source already does.
     case 'collection':
     case 'modifier':
     case 'source':
     case 'action':
+    case 'table':
+    case 'progression':
+    case 'choiceSet':
     case undefined:
       return evaluationError(
         definitionId,

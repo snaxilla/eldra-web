@@ -380,6 +380,26 @@ function collectStructuralEdges(id: DefinitionId, definition: Definition, regist
     case 'roll':
       return []
 
+    // Step 2 (rules-package-architecture.md §7.4-§7.6): Table, Progression,
+    // and ChoiceSet are added to the Definition union but NOT wired into
+    // structural edge extraction. Table has no DefinitionId-typed field at
+    // all. Progression's `rows[].grants`/`.sets` and ChoiceSet's
+    // `from`/`writesTo` genuinely name other Definitions -- but turning
+    // those into graph edges means deciding what a grant or a write MEANS
+    // (does a Progression row depend on what it grants, or the reverse? does
+    // a ChoiceSet's `from` selector even resolve to specific ids before a
+    // package is bound?), which is consumption, not extraction, and Step 2's
+    // own IMPORTANT section is explicit: "Nothing should consume them yet."
+    // Returning no edges here is the direct, load-bearing consequence of
+    // that boundary, not an oversight -- deferred to whichever step actually
+    // implements evaluation for these kinds, mirroring this file's own
+    // precedent (design decision 6) of never inventing an edge "merely
+    // because two definitions reference each other."
+    case 'table':
+    case 'progression':
+    case 'choiceSet':
+      return []
+
     case 'modifier':
       return [
         {
@@ -501,6 +521,17 @@ export function collectExpressions(definition: Definition): Expression[] {
     case 'resource':
       return isExpression(definition.max) ? [definition.max] : []
     case 'collection':
+      return []
+    // Step 2: symmetrical with collectStructuralEdges above. ChoiceSet's
+    // `count` may itself hold an Expression (types.ts), but nothing walks
+    // into it here -- extracting it would make Reference/Type Validation
+    // (package-validation.ts, which composes this function's output) start
+    // checking a field nothing yet evaluates, which is exactly the
+    // premature validation Step 2's own scope excludes. Table and
+    // Progression have no Expression-typed fields at all.
+    case 'table':
+    case 'progression':
+    case 'choiceSet':
       return []
     case 'modifier':
       return collectModifierExpressions(definition)

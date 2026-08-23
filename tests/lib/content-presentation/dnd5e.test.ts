@@ -137,6 +137,17 @@ describe('resolveDnd5ePresentation -- species (XPHB)', () => {
     expect(resolved.description).toEqual(['Dwarves were raised from the earth.'])
     expect(resolved.notes).toEqual([])
   })
+
+  it('reads the REAL fluff-races.json join (fixture: fluff join follow-up task) for Dwarf', () => {
+    // Verified: species fluff never carries a `name` on its entries wrapper
+    // (unlike class fluff below), so this needed no resolver change -- this
+    // test is the proof, not just a claim.
+    const withFluff = { ...xphb.species.Dwarf, fluff: xphb.fluff.species.Dwarf }
+    const resolved = resolveDnd5ePresentation('species', withFluff)!
+
+    expect(resolved.description[0]).toContain('Dwarves were raised from the earth in the elder days')
+    expect(resolved.notes).toEqual([])
+  })
 })
 
 describe('resolveDnd5ePresentation -- class (XPHB)', () => {
@@ -199,6 +210,22 @@ describe('resolveDnd5ePresentation -- class (XPHB)', () => {
     expect(equipment.paragraphs[0]).toContain('20 Arrows')
     expect(equipment.paragraphs[0]).not.toContain('{@')
   })
+
+  it('reads the REAL class fluff join (fixture: fluff join follow-up task) WITHOUT leaking the "Fighter:" label', () => {
+    // The regression this guards: class fluff's own wrapper is
+    // {type:'section', name:'Fighter', entries:[...]} -- the SAME
+    // {name, entries} shape flattenEntries otherwise treats as a labelled
+    // fact ("Label: body"). Reading it naively would have rendered
+    // description as ["Fighter: <every paragraph joined into one line>"],
+    // losing paragraph breaks and repeating the card's own heading.
+    const withFluff = { ...xphb.classes.Fighter, fluff: xphb.fluff.classes.Fighter }
+    const resolved = resolveDnd5ePresentation('class', withFluff)!
+
+    expect(resolved.description.length).toBeGreaterThan(1)
+    expect(resolved.description[0]).not.toMatch(/^Fighter:/)
+    expect(resolved.description.every((paragraph) => !paragraph.startsWith('Fighter:'))).toBe(true)
+    expect(resolved.description[0]).toContain('Fighters rule many battlefields')
+  })
 })
 
 describe('resolveDnd5ePresentation -- background (XPHB)', () => {
@@ -222,6 +249,17 @@ describe('resolveDnd5ePresentation -- background (XPHB)', () => {
     const acolyte = resolveDnd5ePresentation('background', xphb.backgrounds.Acolyte)!
 
     expect(acolyte.sections.map((item) => item.title)).toEqual(['Equipment'])
+  })
+
+  it('reads the REAL background fluff join (fixture: fluff join follow-up task) for Acolyte', () => {
+    // Background fluff never carries a `name` on its entries array (unlike
+    // class fluff) -- verified against every XPHB row -- so this needed no
+    // resolver change; this test is the proof.
+    const withFluff = { ...xphb.backgrounds.Acolyte, fluff: xphb.fluff.backgrounds.Acolyte }
+    const resolved = resolveDnd5ePresentation('background', withFluff)!
+
+    expect(resolved.description[0]).toContain('You devoted yourself to service in a temple')
+    expect(resolved.notes).toEqual([])
   })
 })
 

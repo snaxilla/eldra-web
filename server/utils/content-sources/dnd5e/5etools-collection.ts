@@ -42,7 +42,7 @@ import { readdir } from 'node:fs/promises'
 
 import { toContentPublicationCandidates } from '../../content-pack-5etools-adapter'
 import type { SourceAvailability, SourceCategory, SourceCategoryLoadResult, SourceCollectionProvider } from '../types'
-import { DATA_ROOT, getPreviewFn, loadDatasetEntries, type DatasetKey } from './5etools-dataset'
+import { DATA_ROOT, getPreviewFn, isFluffJoinDatasetKey, loadDatasetEntries, loadDatasetEntriesWithFluff, type DatasetKey } from './5etools-dataset'
 
 type FiveEToolsCategoryDefinition = {
   key: string
@@ -98,7 +98,16 @@ export function create5eToolsCollectionProvider(input: FiveEToolsCollectionInput
       throw new Error(`Category '${categoryKey}' for content source '${input.collectionKey}' has neither datasetKey nor loadCandidates`)
     }
 
-    const rows = await loadDatasetEntries(category.datasetKey, input.membership)
+    // Species/classes/backgrounds carry a fluff join (descriptive prose) for
+    // every collection that reaches this default pipeline -- SRD 5.1, XPHB,
+    // and any future book -- with no change to either provider's own file.
+    // See 5etools-dataset.ts's "Character-facing fluff joins" section for
+    // why this is a category-level property (a species row needs the same
+    // kind of join regardless of which book it came from), not a
+    // per-collection one. Every other dataset key is unaffected.
+    const rows = isFluffJoinDatasetKey(category.datasetKey)
+      ? await loadDatasetEntriesWithFluff(category.datasetKey, input.membership)
+      : await loadDatasetEntries(category.datasetKey, input.membership)
     const preview = getPreviewFn(category.datasetKey)(rows)
     const candidates = toContentPublicationCandidates(preview)
 

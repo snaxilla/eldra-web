@@ -334,3 +334,107 @@ export async function loadMonsterDatasetEntries(membership: (entry: any) => bool
     fluff: fluffByKey.get(monsterFluffKey(monster?.name, monster?.source)) ?? monster?.fluff ?? null
   }))
 }
+
+// ---------------------------------------------------------------------------
+// Character-facing fluff joins (species/classes/backgrounds). Content
+// Presentation Resolver Phase 2's own follow-up task: the resolver
+// (app/lib/content-presentation/dnd5e.ts) already reads a `.fluff` property
+// if a published row carries one, exactly the shape
+// loadMonsterDatasetEntries above already attaches -- but until this
+// section, nothing ever attached it for species/classes/backgrounds, so
+// every Character Builder/Sheet description rendered as "not published."
+//
+// SAME ARCHITECTURAL IDEA AS MONSTERS, DELIBERATELY NOT THE SAME CODE. The
+// monster loader needed its own dedicated `fileLooksRelevant` branch
+// (`/bestiary/`) because nothing already walked that directory for a
+// different purpose. Species/classes/backgrounds don't need one: verified
+// against the real dataset, the EXISTING per-category `fileLooksRelevant`
+// patterns already walk each category's fluff sibling as a side effect of
+// their own (coarser, substring-based) file matching --
+// `fileLooksRelevant('species', 'fluff-races.json')`,
+// `('backgrounds', 'fluff-backgrounds.json')`, and
+// `('classes', 'class/fluff-class-*.json')` are all already `true` today.
+// So `loadDatasetEntriesWithFluff` below reuses `walkJsonFiles(DATA_ROOT,
+// dataset)` UNCHANGED -- one pass, not a second directory walk -- and adds
+// only the fluff-array extraction monsters already pioneered.
+//
+// THE JOIN KEY, PER CATEGORY, MEASURED AGAINST THE REAL DATASET:
+//   species      races.json's `race` rows      <-> fluff-races.json's `raceFluff`
+//   classes      class/class-*.json's `class`   <-> class/fluff-class-*.json's `classFluff`
+//   backgrounds  backgrounds.json's `background`<-> fluff-backgrounds.json's `backgroundFluff`
+// All three join by (name, source), same as monsters -- a fluff row never
+// carries `srd`/`srd52`/`source`-based membership of its own (verified: 0 of
+// 10 XPHB raceFluff, 0 of 12 XPHB classFluff, 0 of 16 XPHB backgroundFluff
+// rows carry any collection-membership flag), so fluff is collected
+// unconditionally into the map and joined onto already membership-filtered
+// main rows -- exactly monsters' own order of operations, for the same
+// reason: a fluff row has no collection identity of its own to filter by.
+export type FluffJoinDatasetKey = 'species' | 'classes' | 'backgrounds'
+
+const FLUFF_JOIN_DATASET_KEYS: readonly FluffJoinDatasetKey[] = ['species', 'classes', 'backgrounds']
+
+const FLUFF_ARRAY_KEY: Record<FluffJoinDatasetKey, string> = {
+  species: 'raceFluff',
+  classes: 'classFluff',
+  backgrounds: 'backgroundFluff'
+}
+
+export function isFluffJoinDatasetKey(key: DatasetKey | undefined): key is FluffJoinDatasetKey {
+  return FLUFF_JOIN_DATASET_KEYS.includes(key as FluffJoinDatasetKey)
+}
+
+// A distinct function from loadMonsterDatasetEntries's own private
+// `monsterFluffKey`/`normalizeSourceCode` -- not a shared extraction of
+// them. Behaviourally identical (trim + lowercase both parts), but kept
+// separate on purpose: the monster loader and its tests must see a
+// byte-for-byte unchanged file, so nothing this task adds may touch it,
+// even to deduplicate three lines of key-building.
+function fluffJoinKey(name: unknown, source: unknown): string {
+  return `${String(name || '').trim().toLowerCase()}|${String(source || '').trim().toLowerCase()}`
+}
+
+// Walks a category's dataset ONCE -- the same walk loadDatasetEntries already
+// performs for it -- collecting the category's fluff array (see
+// FLUFF_ARRAY_KEY) into a (name, source) map alongside the membership-kept
+// main rows, then joins fluff onto each kept row as `.fluff`, mirroring
+// loadMonsterDatasetEntries's own join exactly. A row with no matching fluff
+// gets `.fluff: null` (never a missing property) -- the resolver's
+// `readDescription` already treats null and absent identically, but setting
+// it explicitly keeps this loader's output shape uniform regardless of
+// whether any fluff was found anywhere in the walk.
+export async function loadDatasetEntriesWithFluff(
+  dataset: FluffJoinDatasetKey,
+  membership: (entry: any) => boolean
+): Promise<any[]> {
+  const files = await walkJsonFiles(DATA_ROOT, dataset)
+  const fluffArrayKey = FLUFF_ARRAY_KEY[dataset]
+  const fluffByKey = new Map<string, any>()
+  const rows: any[] = []
+
+  for (const file of files) {
+    try {
+      const raw = await readFile(file, 'utf8')
+      const parsed = JSON.parse(raw)
+
+      if (Array.isArray(parsed?.[fluffArrayKey])) {
+        for (const fluff of parsed[fluffArrayKey]) {
+          if (fluff?.name) {
+            fluffByKey.set(fluffJoinKey(fluff.name, fluff.source), fluff)
+          }
+        }
+      }
+
+      const extracted = extractEntitiesFromJson(parsed, dataset).filter(membership)
+      if (extracted.length) {
+        rows.push(...extracted)
+      }
+    } catch {
+      // ignore bad/irrelevant files -- same tolerance loadDatasetEntries has
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    fluff: fluffByKey.get(fluffJoinKey(row?.name, row?.source)) ?? row?.fluff ?? null
+  }))
+}

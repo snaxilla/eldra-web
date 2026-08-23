@@ -27,20 +27,27 @@
 // dropped:
 //
 //   1. DESCRIPTIONS. All 10 species / 12 classes / 16 backgrounds carry
-//      `hasFluff: true`, but the descriptive prose lives in a SEPARATE file
+//      `hasFluff: true`; the descriptive prose lives in a SEPARATE file
 //      family (fluff-races.json, fluff-backgrounds.json,
-//      class/fluff-class-*.json) that the publisher's dataset loader never
-//      extracts -- getCollectionKeys('species') returns ['race','species'],
-//      so only the stat entry is published. Monsters already solve exactly
-//      this split via loadMonsterDatasetEntries' fluff join; species,
-//      classes, and backgrounds do not have one yet. Closing it is a Content
-//      Platform change plus a pack republish, NOT something a resolver can
-//      do -- the bytes are not in the pack.
+//      class/fluff-class-*.json). As of
+//      server/utils/content-sources/dnd5e/5etools-dataset.ts's
+//      `loadDatasetEntriesWithFluff` (Content Presentation Resolver fluff
+//      join follow-up), the provider joins that prose onto each row as
+//      `.fluff` BEFORE publication, the same way `loadMonsterDatasetEntries`
+//      already does for monsters -- so a freshly published pack carries it.
 //
-//      `readDescription` below therefore reads a `fluff` join if a pack ever
-//      publishes one (the same `.fluff` property the monster loader already
-//      attaches), and reports the absence otherwise. No resolver change will
-//      be needed the day that join ships.
+//      `readDescription` below reads that `.fluff` join (present or absent)
+//      -- this file needed exactly one change to consume it correctly:
+//      class fluff's `{type:'section', name:<className>, entries:[...]}`
+//      wrapper is excluded from `flattenEntries`' name+entries label-join
+//      branch (see that function's own comment), because a class's fluff
+//      name duplicates its own card heading rather than labelling a fact.
+//      Species and background fluff needed no such change.
+//
+//      A pack published BEFORE the join existed still has no `.fluff` on its
+//      rows -- `readDescription` reports the absence exactly as before, and
+//      a republish is what picks up the join, not a resolver or Builder/Sheet
+//      change (see the fluff-join task's own POST-DEPLOY note).
 //
 //   2. CLASS FEATURE TEXT. `classFeatures` holds REFERENCE strings
 //      ("Fighting Style|Fighter|XPHB|1"); the prose lives in sibling
@@ -145,7 +152,21 @@ function flattenEntries(value: unknown, out: string[] = []): string[] {
   // {type:'item', name:'Skill Proficiencies:', entry:'...'} -- the shape 2024
   // backgrounds use for their printed summary list. The name is a label for
   // the body, so the two are joined rather than emitted as two paragraphs.
-  if (node.name && (node.entry || node.entries)) {
+  //
+  // {type:'section', name:'Fighter', entries:[...]} is a DIFFERENT thing
+  // wearing the same {name, entries} shape, and must NOT take this branch --
+  // measured against every XPHB and PHB class fluff row (fluff-class-*.json's
+  // `classFluff`), the wrapper's `name` is always the class's own name, not a
+  // label for its body. Joining it here would both prefix every class
+  // description with a redundant "Fighter: " (the name is already the card's
+  // own heading) and collapse every paragraph into one string, losing the
+  // paragraph breaks a description needs. `type: 'section'` is 5etools' own
+  // marker for exactly this "whole-document top-level wrapper" case, so it is
+  // excluded here and falls through to a plain flatten of `entries` instead.
+  // Species and background fluff rows never carry a name at this level
+  // (verified: 0 of 10 XPHB raceFluff, 0 of 16 XPHB backgroundFluff), so this
+  // exclusion changes nothing for them -- it exists for classes.
+  if (node.name && (node.entry || node.entries) && node.type !== 'section') {
     const label = cleanText(node.name).replace(/:\s*$/, '')
     const body = flattenEntries(node.entry ?? node.entries, []).join(' ')
     if (label && body) out.push(`${label}: ${body}`)

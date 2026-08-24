@@ -19,10 +19,12 @@
     "directus:create-content-packs": "node scripts/directus/create-content-packs-schema.mjs",
     "directus:create-world-content-pack-bindings": "node scripts/directus/create-world-content-pack-bindings-schema.mjs",
     "directus:bootstrap": "node scripts/directus/bootstrap.mjs",
-    "directus:publish-starter-package": "node scripts/directus/publish-starter-package.mjs"
+    "directus:publish-starter-package": "node scripts/directus/publish-starter-package.mjs",
+    "directus:publish-rules-package": "node scripts/directus/publish-rules-package.mjs"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
+    "@fontsource/public-sans": "5.3.0",
     "@iconify-json/lucide": "^1.2.98",
     "@iconify-json/simple-icons": "^1.2.74",
     "@nuxt/ui": "^4.10.0",

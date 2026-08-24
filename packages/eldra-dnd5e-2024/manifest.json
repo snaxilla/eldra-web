@@ -1,0 +1,31 @@
+{
+  "packageId": "eldra.rules.dnd5e-2024",
+  "version": "0.1.0",
+  "status": "draft",
+  "engineApiVersion": "^1.0.0",
+  "stateSchemaVersion": 1,
+  "title": "D&D 2024 Core Character Rules",
+  "description": "The Core Character Rules for the 2024 ruleset: abilities and their modifiers, proficiency bonus, saving throws, skills, hit point slots, level advancement, and character-creation constraints. Mechanics only -- this package defines the slots and the laws, never the content that fills them. It contains no species, classes, backgrounds, spells, items, or monsters, and is publishable and evaluable with no Content Pack bound.",
+  "authors": [{ "name": "Eldra" }],
+  "license": {
+    "id": "CC-BY-4.0",
+    "attribution": "This work includes material from the System Reference Document 5.2, available under the Creative Commons Attribution 4.0 International License. Mechanical declarations in this package are expressed in original wording; no descriptive text is reproduced."
+  },
+  "capabilities": [],
+  "dependencies": [],
+  "provides": { "vocabulary": "dnd5e.2024" },
+  "categories": [
+    "core.abilities",
+    "core.proficiency",
+    "core.skills",
+    "core.saves",
+    "core.health",
+    "progression",
+    "character.creation"
+  ],
+  "semanticRoles": {
+    "level": "value:level",
+    "proficiency": "value:proficiency_bonus",
+    "vitality": "value:hit_points.current"
+  }
+}

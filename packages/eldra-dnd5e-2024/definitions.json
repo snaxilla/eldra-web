@@ -1,0 +1,1262 @@
+[
+  {
+    "id": "value:ability.str",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 10,
+    "constraints": {
+      "min": 1,
+      "max": 30
+    },
+    "visibility": "public",
+    "label": "Strength",
+    "tags": [
+      "ability"
+    ]
+  },
+  {
+    "id": "value:ability.dex",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 10,
+    "constraints": {
+      "min": 1,
+      "max": 30
+    },
+    "visibility": "public",
+    "label": "Dexterity",
+    "tags": [
+      "ability"
+    ]
+  },
+  {
+    "id": "value:ability.con",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 10,
+    "constraints": {
+      "min": 1,
+      "max": 30
+    },
+    "visibility": "public",
+    "label": "Constitution",
+    "tags": [
+      "ability"
+    ]
+  },
+  {
+    "id": "value:ability.int",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 10,
+    "constraints": {
+      "min": 1,
+      "max": 30
+    },
+    "visibility": "public",
+    "label": "Intelligence",
+    "tags": [
+      "ability"
+    ]
+  },
+  {
+    "id": "value:ability.wis",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 10,
+    "constraints": {
+      "min": 1,
+      "max": 30
+    },
+    "visibility": "public",
+    "label": "Wisdom",
+    "tags": [
+      "ability"
+    ]
+  },
+  {
+    "id": "value:ability.cha",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 10,
+    "constraints": {
+      "min": 1,
+      "max": 30
+    },
+    "visibility": "public",
+    "label": "Charisma",
+    "tags": [
+      "ability"
+    ]
+  },
+  {
+    "id": "value:ability.str.mod",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Strength Modifier",
+    "tags": [
+      "ability-modifier",
+      "ability:str"
+    ],
+    "formula": {
+      "text": "floor((@value:ability.str - 10) / 2)"
+    }
+  },
+  {
+    "id": "value:ability.dex.mod",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Dexterity Modifier",
+    "tags": [
+      "ability-modifier",
+      "ability:dex"
+    ],
+    "formula": {
+      "text": "floor((@value:ability.dex - 10) / 2)"
+    }
+  },
+  {
+    "id": "value:ability.con.mod",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Constitution Modifier",
+    "tags": [
+      "ability-modifier",
+      "ability:con"
+    ],
+    "formula": {
+      "text": "floor((@value:ability.con - 10) / 2)"
+    }
+  },
+  {
+    "id": "value:ability.int.mod",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Intelligence Modifier",
+    "tags": [
+      "ability-modifier",
+      "ability:int"
+    ],
+    "formula": {
+      "text": "floor((@value:ability.int - 10) / 2)"
+    }
+  },
+  {
+    "id": "value:ability.wis.mod",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Wisdom Modifier",
+    "tags": [
+      "ability-modifier",
+      "ability:wis"
+    ],
+    "formula": {
+      "text": "floor((@value:ability.wis - 10) / 2)"
+    }
+  },
+  {
+    "id": "value:ability.cha.mod",
+    "kind": "value",
+    "category": "core.abilities",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Charisma Modifier",
+    "tags": [
+      "ability-modifier",
+      "ability:cha"
+    ],
+    "formula": {
+      "text": "floor((@value:ability.cha - 10) / 2)"
+    }
+  },
+  {
+    "id": "value:level",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 1,
+    "constraints": {
+      "min": 1,
+      "max": 20
+    },
+    "visibility": "public",
+    "label": "Level",
+    "tags": [
+      "progression"
+    ]
+  },
+  {
+    "id": "value:experience_points",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Experience Points",
+    "tags": [
+      "progression"
+    ]
+  },
+  {
+    "id": "table:advancement.experience",
+    "kind": "table",
+    "category": "progression",
+    "label": "Experience Points to Level",
+    "key": {
+      "valueType": "number",
+      "match": "range"
+    },
+    "columns": [
+      {
+        "key": "level",
+        "valueType": "number"
+      }
+    ],
+    "rows": [
+      {
+        "min": 0,
+        "level": 1,
+        "max": 299
+      },
+      {
+        "min": 300,
+        "level": 2,
+        "max": 899
+      },
+      {
+        "min": 900,
+        "level": 3,
+        "max": 2699
+      },
+      {
+        "min": 2700,
+        "level": 4,
+        "max": 6499
+      },
+      {
+        "min": 6500,
+        "level": 5,
+        "max": 13999
+      },
+      {
+        "min": 14000,
+        "level": 6,
+        "max": 22999
+      },
+      {
+        "min": 23000,
+        "level": 7,
+        "max": 33999
+      },
+      {
+        "min": 34000,
+        "level": 8,
+        "max": 47999
+      },
+      {
+        "min": 48000,
+        "level": 9,
+        "max": 63999
+      },
+      {
+        "min": 64000,
+        "level": 10,
+        "max": 84999
+      },
+      {
+        "min": 85000,
+        "level": 11,
+        "max": 99999
+      },
+      {
+        "min": 100000,
+        "level": 12,
+        "max": 119999
+      },
+      {
+        "min": 120000,
+        "level": 13,
+        "max": 139999
+      },
+      {
+        "min": 140000,
+        "level": 14,
+        "max": 164999
+      },
+      {
+        "min": 165000,
+        "level": 15,
+        "max": 194999
+      },
+      {
+        "min": 195000,
+        "level": 16,
+        "max": 224999
+      },
+      {
+        "min": 225000,
+        "level": 17,
+        "max": 264999
+      },
+      {
+        "min": 265000,
+        "level": 18,
+        "max": 304999
+      },
+      {
+        "min": 305000,
+        "level": 19,
+        "max": 354999
+      },
+      {
+        "min": 355000,
+        "level": 20
+      }
+    ],
+    "default": {
+      "level": 1
+    }
+  },
+  {
+    "id": "value:proficiency_bonus",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Proficiency Bonus",
+    "tags": [
+      "proficiency"
+    ],
+    "formula": {
+      "text": "2 + floor((@value:level - 1) / 4)"
+    }
+  },
+  {
+    "id": "value:save.str.proficient",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Strength Save Proficiency",
+    "tags": [
+      "save-proficiency",
+      "ability:str"
+    ]
+  },
+  {
+    "id": "value:save.dex.proficient",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Dexterity Save Proficiency",
+    "tags": [
+      "save-proficiency",
+      "ability:dex"
+    ]
+  },
+  {
+    "id": "value:save.con.proficient",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Constitution Save Proficiency",
+    "tags": [
+      "save-proficiency",
+      "ability:con"
+    ]
+  },
+  {
+    "id": "value:save.int.proficient",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Intelligence Save Proficiency",
+    "tags": [
+      "save-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:save.wis.proficient",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Wisdom Save Proficiency",
+    "tags": [
+      "save-proficiency",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:save.cha.proficient",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Charisma Save Proficiency",
+    "tags": [
+      "save-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:save.str.bonus",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Strength Save",
+    "tags": [
+      "save",
+      "ability:str"
+    ],
+    "formula": {
+      "text": "@value:ability.str.mod + if(@value:save.str.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:save.dex.bonus",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Dexterity Save",
+    "tags": [
+      "save",
+      "ability:dex"
+    ],
+    "formula": {
+      "text": "@value:ability.dex.mod + if(@value:save.dex.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:save.con.bonus",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Constitution Save",
+    "tags": [
+      "save",
+      "ability:con"
+    ],
+    "formula": {
+      "text": "@value:ability.con.mod + if(@value:save.con.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:save.int.bonus",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Intelligence Save",
+    "tags": [
+      "save",
+      "ability:int"
+    ],
+    "formula": {
+      "text": "@value:ability.int.mod + if(@value:save.int.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:save.wis.bonus",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Wisdom Save",
+    "tags": [
+      "save",
+      "ability:wis"
+    ],
+    "formula": {
+      "text": "@value:ability.wis.mod + if(@value:save.wis.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:save.cha.bonus",
+    "kind": "value",
+    "category": "core.saves",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Charisma Save",
+    "tags": [
+      "save",
+      "ability:cha"
+    ],
+    "formula": {
+      "text": "@value:ability.cha.mod + if(@value:save.cha.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.acrobatics.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Acrobatics Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:dex"
+    ]
+  },
+  {
+    "id": "value:skill.animal_handling.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Animal Handling Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:skill.arcana.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Arcana Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.athletics.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Athletics Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:str"
+    ]
+  },
+  {
+    "id": "value:skill.deception.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Deception Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:skill.history.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "History Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.insight.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Insight Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:skill.intimidation.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Intimidation Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:skill.investigation.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Investigation Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.medicine.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Medicine Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:skill.nature.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Nature Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.perception.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Perception Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:skill.performance.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Performance Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:skill.persuasion.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Persuasion Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:skill.religion.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Religion Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.sleight_of_hand.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Sleight of Hand Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:dex"
+    ]
+  },
+  {
+    "id": "value:skill.stealth.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Stealth Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:dex"
+    ]
+  },
+  {
+    "id": "value:skill.survival.proficient",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Survival Proficiency",
+    "tags": [
+      "skill-proficiency",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:skill.acrobatics.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Acrobatics",
+    "tags": [
+      "skill",
+      "ability:dex"
+    ],
+    "formula": {
+      "text": "@value:ability.dex.mod + if(@value:skill.acrobatics.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.animal_handling.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Animal Handling",
+    "tags": [
+      "skill",
+      "ability:wis"
+    ],
+    "formula": {
+      "text": "@value:ability.wis.mod + if(@value:skill.animal_handling.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.arcana.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Arcana",
+    "tags": [
+      "skill",
+      "ability:int"
+    ],
+    "formula": {
+      "text": "@value:ability.int.mod + if(@value:skill.arcana.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.athletics.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Athletics",
+    "tags": [
+      "skill",
+      "ability:str"
+    ],
+    "formula": {
+      "text": "@value:ability.str.mod + if(@value:skill.athletics.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.deception.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Deception",
+    "tags": [
+      "skill",
+      "ability:cha"
+    ],
+    "formula": {
+      "text": "@value:ability.cha.mod + if(@value:skill.deception.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.history.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "History",
+    "tags": [
+      "skill",
+      "ability:int"
+    ],
+    "formula": {
+      "text": "@value:ability.int.mod + if(@value:skill.history.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.insight.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Insight",
+    "tags": [
+      "skill",
+      "ability:wis"
+    ],
+    "formula": {
+      "text": "@value:ability.wis.mod + if(@value:skill.insight.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.intimidation.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Intimidation",
+    "tags": [
+      "skill",
+      "ability:cha"
+    ],
+    "formula": {
+      "text": "@value:ability.cha.mod + if(@value:skill.intimidation.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.investigation.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Investigation",
+    "tags": [
+      "skill",
+      "ability:int"
+    ],
+    "formula": {
+      "text": "@value:ability.int.mod + if(@value:skill.investigation.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.medicine.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Medicine",
+    "tags": [
+      "skill",
+      "ability:wis"
+    ],
+    "formula": {
+      "text": "@value:ability.wis.mod + if(@value:skill.medicine.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.nature.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Nature",
+    "tags": [
+      "skill",
+      "ability:int"
+    ],
+    "formula": {
+      "text": "@value:ability.int.mod + if(@value:skill.nature.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.perception.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Perception",
+    "tags": [
+      "skill",
+      "ability:wis"
+    ],
+    "formula": {
+      "text": "@value:ability.wis.mod + if(@value:skill.perception.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.performance.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Performance",
+    "tags": [
+      "skill",
+      "ability:cha"
+    ],
+    "formula": {
+      "text": "@value:ability.cha.mod + if(@value:skill.performance.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.persuasion.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Persuasion",
+    "tags": [
+      "skill",
+      "ability:cha"
+    ],
+    "formula": {
+      "text": "@value:ability.cha.mod + if(@value:skill.persuasion.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.religion.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Religion",
+    "tags": [
+      "skill",
+      "ability:int"
+    ],
+    "formula": {
+      "text": "@value:ability.int.mod + if(@value:skill.religion.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.sleight_of_hand.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Sleight of Hand",
+    "tags": [
+      "skill",
+      "ability:dex"
+    ],
+    "formula": {
+      "text": "@value:ability.dex.mod + if(@value:skill.sleight_of_hand.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.stealth.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Stealth",
+    "tags": [
+      "skill",
+      "ability:dex"
+    ],
+    "formula": {
+      "text": "@value:ability.dex.mod + if(@value:skill.stealth.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:skill.survival.bonus",
+    "kind": "value",
+    "category": "core.skills",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Survival",
+    "tags": [
+      "skill",
+      "ability:wis"
+    ],
+    "formula": {
+      "text": "@value:ability.wis.mod + if(@value:skill.survival.proficient, @value:proficiency_bonus, 0)"
+    }
+  },
+  {
+    "id": "value:hit_points.current",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Hit Points",
+    "tags": [
+      "health"
+    ]
+  },
+  {
+    "id": "value:hit_points.max",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Hit Point Maximum",
+    "tags": [
+      "health"
+    ]
+  },
+  {
+    "id": "value:hit_points.temp",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Temporary Hit Points",
+    "tags": [
+      "health"
+    ]
+  },
+  {
+    "id": "value:ability.point_buy_budget",
+    "kind": "value",
+    "category": "character.creation",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Point Buy Budget",
+    "tags": [
+      "character-creation"
+    ],
+    "formula": {
+      "text": "27"
+    }
+  },
+  {
+    "id": "table:ability.point_buy_cost",
+    "kind": "table",
+    "category": "character.creation",
+    "label": "Point Buy Cost by Score",
+    "key": {
+      "valueType": "number",
+      "match": "exact"
+    },
+    "columns": [
+      {
+        "key": "cost",
+        "valueType": "number"
+      }
+    ],
+    "rows": [
+      {
+        "key": 8,
+        "cost": 0
+      },
+      {
+        "key": 9,
+        "cost": 1
+      },
+      {
+        "key": 10,
+        "cost": 2
+      },
+      {
+        "key": 11,
+        "cost": 3
+      },
+      {
+        "key": 12,
+        "cost": 4
+      },
+      {
+        "key": 13,
+        "cost": 5
+      },
+      {
+        "key": 14,
+        "cost": 7
+      },
+      {
+        "key": 15,
+        "cost": 9
+      }
+    ],
+    "default": {
+      "cost": 0
+    }
+  },
+  {
+    "id": "table:ability.standard_array",
+    "kind": "table",
+    "category": "character.creation",
+    "label": "Standard Array",
+    "key": {
+      "valueType": "number",
+      "match": "exact"
+    },
+    "columns": [
+      {
+        "key": "score",
+        "valueType": "number"
+      }
+    ],
+    "rows": [
+      {
+        "key": 1,
+        "score": 15
+      },
+      {
+        "key": 2,
+        "score": 14
+      },
+      {
+        "key": 3,
+        "score": 13
+      },
+      {
+        "key": 4,
+        "score": 12
+      },
+      {
+        "key": 5,
+        "score": 10
+      },
+      {
+        "key": 6,
+        "score": 8
+      }
+    ],
+    "default": {
+      "score": 10
+    }
+  },
+  {
+    "id": "choice:skill.proficiency",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Skill Proficiencies",
+    "prompt": "Choose your skill proficiencies.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "writesTo": "value:skill.{selected}.proficient"
+  }
+]

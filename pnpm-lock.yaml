@@ -11,6 +11,9 @@ importers:
       '@3d-dice/dice-box':
         specifier: ^1.1.4
         version: 1.1.4(babylonjs-gltf2interface@5.57.1)
+      '@fontsource/public-sans':
+        specifier: 5.3.0
+        version: 5.3.0
       '@iconify-json/lucide':
         specifier: ^1.2.98
         version: 1.2.98
@@ -690,6 +693,9 @@ packages:
 
   '@floating-ui/vue@1.1.11':
     resolution: {integrity: sha512-HzHKCNVxnGS35r9fCHBc3+uCnjw9IWIlCPL683cGgM9Kgj2BiAl8x1mS7vtvP6F9S/e/q4O6MApwSHj8hNLGfw==}
+
+  '@fontsource/public-sans@5.3.0':
+    resolution: {integrity: sha512-kjODI0S3zdv0mBYCIQ8TbBayaiqszpc2UbhJiO3bjIqVVXzcWfHSt2o3WBCLOY3juaGaQoy4MoWCcgmfI5hCuA==}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -6485,6 +6491,8 @@ snapshots:
     transitivePeerDependencies:
       - '@vue/composition-api'
       - vue
+
+  '@fontsource/public-sans@5.3.0': {}
 
   '@humanfs/core@0.19.1': {}
 

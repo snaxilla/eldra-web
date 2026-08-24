@@ -83,6 +83,7 @@
 //    passes it through as part of the manifest input.
 
 import { publishContentPackRelease, type ContentPackManifest, type ContentPackEntry, type ContentPackLicense, type ContentPackOrigin, type ContentPackTargets, type LoadedContentPack } from './content-packs'
+import type { RulesFacet } from '../../app/lib/content-rules'
 
 // ---------------------------------------------------------------------------
 // The publication contract -- Eldra-owned, not an importer's shape.
@@ -103,6 +104,18 @@ export type ContentPublicationCandidate = {
   sourceBook?: string
   sourcePage?: string
   data: unknown
+  // rules-package-architecture.md §8.2 -- Step 4. What choosing this entry
+  // does mechanically, in the Rules Vocabulary the pack declares
+  // (`ContentPackManifest.targets.vocabulary`). Definition IDs and literals
+  // only; never a formula, never a 5etools field name.
+  //
+  // OPTIONAL, and absent on every already-published pack. A candidate with
+  // no facet presents but does not mechanise (§8.2 rule 4) -- which is
+  // exactly what every pack published before this step is.
+  //
+  // Published WITH the pack and therefore covered by its integrity hash,
+  // because a character is built against a specific facet version (§8.5).
+  rulesFacet?: RulesFacet
 }
 
 // ---------------------------------------------------------------------------

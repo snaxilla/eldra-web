@@ -40,6 +40,7 @@
 
 import { readdir } from 'node:fs/promises'
 
+import { findRulesFacet } from '../../../../app/lib/content-rules'
 import { toContentPublicationCandidates } from '../../content-pack-5etools-adapter'
 import type { SourceAvailability, SourceCategory, SourceCategoryLoadResult, SourceCollectionProvider } from '../types'
 import { DATA_ROOT, getPreviewFn, isFluffJoinDatasetKey, loadDatasetEntries, loadDatasetEntriesWithFluff, type DatasetKey } from './5etools-dataset'
@@ -56,6 +57,19 @@ type FiveEToolsCategoryDefinition = {
 
 export type FiveEToolsCollectionInput = {
   collectionKey: string
+  // rules-package-architecture.md §9.1 -- Step 4/5. The Rules Vocabulary
+  // this collection's content is authored against. When set, every
+  // candidate this provider produces is looked up in that vocabulary's
+  // hand-authored facet corpus (app/lib/content-rules) and, if a facet
+  // exists, carries it into publication.
+  //
+  // OPTIONAL: SRD 5.1, XDMG, and XMM declare none and are unaffected -- they
+  // publish exactly the candidates they published before Step 4.
+  //
+  // This is the one place a facet is attached, and it is publication-time by
+  // construction (§8.2 rule 3): a provider only ever runs during preview and
+  // publish, never at evaluation.
+  vocabulary?: string
   // Human name of the collection (e.g. "SRD 5.1"), used only to compose
   // the dataset-missing message -- never surfaced as a route/response
   // shape decision, which stays with the caller per this module's own
@@ -63,6 +77,24 @@ export type FiveEToolsCollectionInput = {
   label: string
   membership: (entry: any) => boolean
   categories: readonly FiveEToolsCategoryDefinition[]
+}
+
+// Looks each candidate up in the collection's vocabulary corpus by
+// (entityType, slug) and attaches the facet when one is authored. A
+// candidate with no facet is returned UNCHANGED -- not with
+// `rulesFacet: undefined` -- so a collection that declares no vocabulary,
+// or a category the corpus does not cover, publishes byte-identical
+// candidates to before Step 4.
+function attachRulesFacets(
+  candidates: SourceCategoryLoadResult['candidates'],
+  vocabulary: string | undefined
+): SourceCategoryLoadResult['candidates'] {
+  if (!vocabulary) return candidates
+
+  return candidates.map((candidate) => {
+    const facet = findRulesFacet(vocabulary, candidate.entityType, candidate.slug)
+    return facet ? { ...candidate, rulesFacet: facet } : candidate
+  })
 }
 
 export function create5eToolsCollectionProvider(input: FiveEToolsCollectionInput): SourceCollectionProvider {
@@ -109,7 +141,7 @@ export function create5eToolsCollectionProvider(input: FiveEToolsCollectionInput
       ? await loadDatasetEntriesWithFluff(category.datasetKey, input.membership)
       : await loadDatasetEntries(category.datasetKey, input.membership)
     const preview = getPreviewFn(category.datasetKey)(rows)
-    const candidates = toContentPublicationCandidates(preview)
+    const candidates = attachRulesFacets(toContentPublicationCandidates(preview), input.vocabulary)
 
     return { candidates, warnings: preview.warnings }
   }

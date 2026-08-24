@@ -80,6 +80,7 @@
 //    shared precedent: reading is not gated the way writing is).
 
 import { resolveContentPresentation, type PresentationEntry, type PresentationKind } from '../../app/lib/content-presentation'
+import type { RulesFacet } from '../../app/lib/content-rules'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
 
 // ---------------------------------------------------------------------------
@@ -103,6 +104,15 @@ export type ContentCatalogueEntry = {
   // a pack from a game system Eldra has no resolver for. Consumers render
   // identity and provenance and say so, never an error.
   presentation?: PresentationEntry | null
+  // rules-package-architecture.md §8 -- Step 4. Carried through from the
+  // published entry VERBATIM: unlike `presentation`, which this module
+  // computes on every read, a facet is a published fact and this layer only
+  // relays it. Absent on every pack published before Step 4.
+  //
+  // This is what the Character -> ActorState bridge reads, and the ONLY
+  // thing it reads about content. `data` is never exposed here and the
+  // bridge never sees it (§8.4).
+  rulesFacet?: RulesFacet
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -167,6 +177,15 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
     provider: entry.provider,
     sourceBook: entry.sourceBook,
     sourcePage: entry.sourcePage
+  }
+
+  // Relayed, not computed -- see the field's own note above. Assigned only
+  // when the published entry actually carries one, so an entry with no facet
+  // keeps exactly the key set it had before Step 4 rather than gaining a
+  // `rulesFacet: undefined`. That matters at this scale: a bound XMM pack is
+  // thousands of entries, and none of them will ever have a facet.
+  if (entry.rulesFacet) {
+    base.rulesFacet = entry.rulesFacet
   }
 
   const kind = PRESENTATION_KIND_BY_CATEGORY[category]

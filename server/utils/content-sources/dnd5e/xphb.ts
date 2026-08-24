@@ -30,6 +30,11 @@ import { CATEGORY_LABELS, DATASETS, isEntryFromSource } from './5etools-dataset'
 export const xphbProvider = create5eToolsCollectionProvider({
   collectionKey: 'xphb',
   label: "Player's Handbook (2024)",
+  // rules-package-architecture.md Step 5. XPHB is the first -- and, today,
+  // only -- collection whose content carries hand-authored Rules Facets, so
+  // it is the only provider that names a vocabulary. Adding one to another
+  // collection is this one line plus a corpus in app/lib/content-rules.
+  vocabulary: 'dnd5e.2024',
   membership: isEntryFromSource('XPHB'),
   categories: DATASETS.map((key) => ({ key, label: CATEGORY_LABELS[key], datasetKey: key }))
 })

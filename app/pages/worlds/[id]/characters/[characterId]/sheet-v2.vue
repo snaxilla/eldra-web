@@ -36,6 +36,28 @@
 // endpoint, which gets it from the World Content Catalogue.
 //
 // ---------------------------------------------------------------------------
+// RULES ENGINE INTEGRATION (rules-package-architecture.md §13.1)
+// ---------------------------------------------------------------------------
+// The ability score panel is replaced by DERIVED output: ability modifiers,
+// proficiency bonus, and saving throw / skill proficiencies, all read from
+// GET /api/worlds/:id/characters/:characterId/derived.
+//
+// NOT ONE OF THOSE NUMBERS IS COMPUTED HERE. This page performs no
+// arithmetic at all -- it fetches a projection and renders it. The engine
+// calculated every value; the bridge supplied every input; this file chose
+// only where things sit on screen.
+//
+// It also names no ability, skill, or Definition ID. It selects which
+// CATEGORIES to render (§13.2: "Sheet regions address Rule Categories"),
+// which is the agnostic vocabulary -- a package that declares no
+// `core.skills` definitions simply produces no skills region, with no
+// configuration and no per-system code.
+//
+// Two absences are legal and rendered as such, never as errors: a World with
+// no Rules Package activated, and a package that is activated but broken.
+// Those are distinct states and the sheet says which.
+//
+// ---------------------------------------------------------------------------
 // PHASE 3: IDENTITY AND ABILITY SCORES
 // ---------------------------------------------------------------------------
 // The placeholder identity section (a bare title and a sentence explaining
@@ -59,6 +81,8 @@
 // renders the same panel -- the same test ContentPresentationPanel passed.
 
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
+import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
+import { DERIVED_SHEET_REGIONS, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
 import type { PresentationEntry } from '~/lib/content-presentation'
@@ -129,6 +153,34 @@ const errorMessage = computed(() => {
   }
   return 'Could not load this character. Try again shortly.'
 })
+
+// ---------------------------------------------------------------------------
+// Derived values -- fetched, never computed. See this file's header.
+// ---------------------------------------------------------------------------
+
+const { data: derivedResponse, pending: derivedPending } = await useFetch<DerivedCharacterResponse>(
+  () => `/api/worlds/${worldId.value}/characters/${characterId.value}/derived`
+)
+
+const derived = computed(() => (derivedResponse.value?.available ? derivedResponse.value.derived : null))
+
+// Why derived values are unavailable, when they are. "No rules activated"
+// and "the activated rules are broken" are different problems with different
+// fixes, so they are never collapsed into one message.
+const derivedUnavailable = computed(() => {
+  const response = derivedResponse.value
+  if (!response || response.available) return ''
+  return response.message || 'Derived values are unavailable for this character.'
+})
+
+// Which regions to render is a category-level decision, declared once in
+// characterDerivedValues.ts -- see the header for why category rather than
+// Definition ID is what keeps this page game-agnostic.
+const derivedRegions = computed(() =>
+  DERIVED_SHEET_REGIONS
+    .map((region) => ({ ...region, entries: derived.value?.byCategory?.[region.category] ?? [] }))
+    .filter((region) => region.entries.length > 0)
+)
 
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
@@ -250,6 +302,65 @@ const identityRows = computed(() =>
               :scores="blueprint.abilityScores?.scores ?? null"
               empty-message="No ability scores have been assigned yet. Use Assign above to set them."
             />
+          </div>
+        </section>
+
+        <!-- Derived by the Rules Engine. Every value below was computed by
+             the evaluator from this character's data and the World's active
+             Rules Package; nothing on this page calculates. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+              Derived
+            </div>
+            <p
+              v-if="derived"
+              class="break-words text-xs text-[#6f6754]"
+            >
+              {{ derived.packageId }}@{{ derived.packageVersion }}
+            </p>
+          </div>
+
+          <p
+            v-if="derivedPending"
+            class="mt-3 text-sm text-[#9f9278]"
+          >
+            Evaluating this character against the World's rules…
+          </p>
+
+          <p
+            v-else-if="!derived"
+            class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+          >
+            {{ derivedUnavailable }}
+          </p>
+
+          <div
+            v-else
+            class="mt-3 grid gap-5"
+          >
+            <div
+              v-for="region in derivedRegions"
+              :key="region.category"
+              class="min-w-0"
+            >
+              <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+                {{ region.label }}
+              </h3>
+              <CharacterDerivedPanel :entries="region.entries" />
+            </div>
+
+            <!-- Declared by a Class or Background, answered by nobody yet.
+                 Stated rather than silently omitted, because "you still have
+                 skills to choose" is information a player needs. -->
+            <p
+              v-if="derived.pendingChoices.length"
+              class="text-xs leading-5 text-[#6f6754]"
+            >
+              {{ derived.pendingChoices.length }} proficiency
+              {{ derived.pendingChoices.length === 1 ? 'choice is' : 'choices are' }}
+              still outstanding. Choosing them is not available yet, so those proficiencies show as unselected.
+            </p>
           </div>
         </section>
 

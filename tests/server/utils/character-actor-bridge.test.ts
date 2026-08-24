@@ -1,0 +1,352 @@
+// End-to-end tests for the Character -> ActorState -> Rules Engine chain --
+// rules-package-architecture.md Steps 5 and 6.
+//
+// This is the test the cancelled Character Phase 4 could not write, because
+// the Rules Package it needed did not exist. It now runs the WHOLE chain
+// with nothing mocked below the bridge:
+//
+//   a Bobbert-shaped blueprint (Species + Class + Background + scores)
+//     -> the REAL hand-authored XPHB Rules Facets (app/lib/content-rules)
+//     -> the REAL bridge
+//     -> the REAL packages/eldra-dnd5e-2024 loaded from disk
+//     -> the REAL evaluator
+//
+// If any link is wrong, the numbers come out wrong here.
+
+import { readFileSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
+
+import { findRulesFacet } from '../../../app/lib/content-rules'
+import { DND5E_2024_RULES_FACETS } from '../../../app/lib/content-rules/dnd5e-2024'
+import { DependencyGraph } from '../../../app/lib/rules/dependency-graph'
+import { EvaluationSession } from '../../../app/lib/rules/evaluation-session'
+import { evaluate } from '../../../app/lib/rules/evaluator'
+import { parseExpression } from '../../../app/lib/rules/parser'
+import { RulesRegistry } from '../../../app/lib/rules/registry'
+import type { Definition, RuleValue, RulesPackageManifest } from '../../../app/lib/rules/types'
+import { buildActorState } from '../../../server/utils/character-actor-bridge'
+import type { CharacterAssemblyBlueprint, CharacterAssemblySlot } from '../../../server/utils/character-assembly'
+
+const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
+
+function hydrate(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(hydrate)
+  if (node && typeof node === 'object') {
+    const record = node as Record<string, unknown>
+    if (typeof record.text === 'string' && !record.ast) {
+      const parsed = parseExpression(record.text)
+      if (!parsed.ok) throw new Error(`Failed to parse: ${record.text}`)
+      return { text: record.text, ast: parsed.ast }
+    }
+    return Object.fromEntries(Object.entries(record).map(([k, v]) => [k, hydrate(v)]))
+  }
+  return node
+}
+
+function loadRulesPackage() {
+  const manifest = JSON.parse(readFileSync(`${PACKAGE_DIR}/manifest.json`, 'utf8')) as RulesPackageManifest
+  const definitions = hydrate(JSON.parse(readFileSync(`${PACKAGE_DIR}/definitions.json`, 'utf8'))) as Definition[]
+  return { manifest, definitions }
+}
+
+// A resolved catalogue slot carrying the REAL authored facet for that slug.
+function slot(entityType: string, slug: string): CharacterAssemblySlot {
+  const facet = findRulesFacet('dnd5e.2024', entityType, slug)
+  return {
+    status: 'resolved',
+    entry: {
+      packageId: 'eldra.content.xphb',
+      packageVersion: '1.0.0',
+      systemKey: 'dnd5e',
+      title: slug,
+      slug,
+      externalId: slug,
+      provider: '5etools-json',
+      ...(facet ? { rulesFacet: facet } : {})
+    }
+  }
+}
+
+function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): CharacterAssemblyBlueprint {
+  return {
+    worldId: '5',
+    characterId: '42',
+    characterTitle: 'Bobbert',
+    species: slot('species', 'human-xphb'),
+    class: slot('class', 'fighter-xphb'),
+    background: slot('background', 'acolyte-xphb'),
+    abilityScores: {
+      method: 'standard-array',
+      scores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+    },
+    packs: [],
+    ...overrides
+  }
+}
+
+function derive(bp: CharacterAssemblyBlueprint) {
+  const { manifest, definitions } = loadRulesPackage()
+  const registry = RulesRegistry.create(manifest, definitions)
+  if (!registry.ok) throw new Error('registry failed')
+  const graph = DependencyGraph.build(registry.registry)
+  if (!graph.ok) throw new Error('graph failed')
+
+  const bridged = buildActorState({
+    blueprint: bp,
+    packageId: manifest.packageId,
+    packageVersion: manifest.version,
+    stateSchemaVersion: manifest.stateSchemaVersion,
+    knownDefinition: (id) => registry.registry.has(id)
+  })
+
+  const session = new EvaluationSession(registry.registry, graph.graph, bridged.actorState, {})
+  return {
+    bridged,
+    value: (id: string): RuleValue => evaluate(id, session)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 5 -- the authored facets
+// ---------------------------------------------------------------------------
+
+describe('the hand-authored XPHB Rules Facets', () => {
+  it('every id in every facet resolves against the real Rules Package', () => {
+    // The load-bearing test for §8.2 rule 1. A facet naming an id the
+    // package does not declare is an unresolved reference -- and renaming a
+    // Definition on either side must fail here, loudly, rather than
+    // degrading into a grant that silently does nothing.
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    expect(registry.ok).toBe(true)
+    if (!registry.ok) return
+
+    const ids: string[] = []
+    for (const byType of Object.values(DND5E_2024_RULES_FACETS)) {
+      for (const facet of Object.values(byType)) {
+        for (const grant of facet.grants ?? []) ids.push(grant.set)
+        for (const choice of facet.choices ?? []) {
+          ids.push(choice.choiceSet)
+          for (const option of choice.from ?? []) ids.push(option)
+        }
+        for (const source of facet.sources ?? []) ids.push(source)
+        if (facet.progression) ids.push(facet.progression)
+      }
+    }
+
+    // Every id the corpus names must exist in the package. This is the
+    // assertion that fails the day either side renames a Definition.
+    const unique = [...new Set(ids)]
+    for (const id of unique) {
+      expect(registry.registry.has(id), `facet references unknown Definition '${id}'`).toBe(true)
+    }
+
+    // ...and the corpus genuinely exercises the package's surface, rather
+    // than resolving trivially because it names almost nothing. Between
+    // them the facets reach every save, every skill, and the ChoiceSet.
+    for (const ability of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
+      expect(unique).toContain(`value:save.${ability}.proficient`)
+    }
+    expect(unique.filter((id) => id.startsWith('value:skill.'))).toHaveLength(18)
+    expect(unique).toContain('choice:skill.proficiency')
+  })
+
+  it('covers all twelve classes and all sixteen backgrounds', () => {
+    const classes = ['barbarian', 'bard', 'cleric', 'druid', 'fighter', 'monk',
+      'paladin', 'ranger', 'rogue', 'sorcerer', 'warlock', 'wizard']
+    for (const name of classes) {
+      const facet = findRulesFacet('dnd5e.2024', 'class', `${name}-xphb`)
+      expect(facet, name).not.toBeNull()
+      // Every 2024 class grants exactly two saving throws and offers one
+      // skill choice.
+      expect(facet!.grants).toHaveLength(2)
+      expect(facet!.choices).toHaveLength(1)
+    }
+
+    const backgrounds = ['acolyte', 'artisan', 'charlatan', 'criminal', 'entertainer',
+      'farmer', 'guard', 'guide', 'hermit', 'merchant', 'noble', 'sage', 'sailor',
+      'scribe', 'soldier', 'wayfarer']
+    for (const name of backgrounds) {
+      const facet = findRulesFacet('dnd5e.2024', 'background', `${name}-xphb`)
+      expect(facet, name).not.toBeNull()
+      expect(facet!.grants).toHaveLength(2)
+    }
+  })
+
+  it('contains no expressions, no formulas, and no 5etools field names', () => {
+    // §8.2 rule 2, enforced structurally rather than by care.
+    const source = readFileSync('app/lib/content-rules/dnd5e-2024.ts', 'utf8')
+    const body = source.slice(source.indexOf('export const'))
+
+    expect(body).not.toContain('@value:')
+    expect(body).not.toContain('floor(')
+    expect(body).not.toContain('text:')
+    expect(body).not.toContain('startingProficiencies')
+    expect(body).not.toContain('skillProficiencies')
+  })
+
+  it('returns null for an unknown vocabulary rather than throwing', () => {
+    expect(findRulesFacet('pf2e', 'class', 'fighter-xphb')).toBeNull()
+    expect(findRulesFacet(undefined, 'class', 'fighter-xphb')).toBeNull()
+    expect(findRulesFacet('dnd5e.2024', 'class', 'no-such-class')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Step 6 -- the bridge
+// ---------------------------------------------------------------------------
+
+describe('the bridge translates, and only translates', () => {
+  it('maps ability scores onto the package\'s own Definition IDs', () => {
+    const { bridged } = derive(blueprint())
+    expect(bridged.actorState.values['value:ability.str']).toBe(15)
+    expect(bridged.actorState.values['value:ability.cha']).toBe(8)
+  })
+
+  it('computes nothing -- no modifier or bonus appears in the ActorState', () => {
+    // The whole point: the bridge supplies inputs. STR 15 is present; the
+    // +2 modifier it implies is nowhere, because deriving it is the
+    // engine's job.
+    const { bridged } = derive(blueprint())
+    const serialized = JSON.stringify(bridged.actorState)
+
+    expect(serialized).not.toContain('.mod')
+    expect(serialized).not.toContain('.bonus')
+    expect(serialized).not.toContain('proficiency_bonus')
+  })
+
+  it('leaves absent ability scores absent rather than defaulting them', () => {
+    // The package already declares each ability's default; letting the
+    // engine apply it keeps one source of that number instead of two.
+    const { bridged, value } = derive(blueprint({ abilityScores: null }))
+    expect(bridged.actorState.values['value:ability.str']).toBeUndefined()
+    expect(value('value:ability.str')).toBe(10)
+  })
+
+  it('applies class-granted saving throw proficiencies', () => {
+    const { bridged } = derive(blueprint())
+    // Fighter grants STR and CON saves.
+    expect(bridged.actorState.values['value:save.str.proficient']).toBe(true)
+    expect(bridged.actorState.values['value:save.con.proficient']).toBe(true)
+    expect(bridged.actorState.values['value:save.dex.proficient']).toBeUndefined()
+  })
+
+  it('applies background-granted skill proficiencies', () => {
+    const { bridged } = derive(blueprint())
+    // Acolyte grants Insight and Religion.
+    expect(bridged.actorState.values['value:skill.insight.proficient']).toBe(true)
+    expect(bridged.actorState.values['value:skill.religion.proficient']).toBe(true)
+  })
+
+  it('reports unanswered choices instead of resolving them', () => {
+    const { bridged } = derive(blueprint())
+    // Human offers 1 skill of any; Fighter offers 2 from its list.
+    expect(bridged.pendingChoices.map((choice) => choice.slot)).toEqual(['species', 'class'])
+    expect(bridged.pendingChoices.find((choice) => choice.slot === 'class')?.count).toBe(2)
+    // ...and none of them silently became a proficiency.
+    expect(bridged.actorState.choices).toEqual({})
+  })
+
+  it('surfaces a grant naming an unknown Definition instead of writing it', () => {
+    const bp = blueprint()
+    bp.class = {
+      status: 'resolved',
+      entry: {
+        packageId: 'p', packageVersion: '1', systemKey: 'dnd5e', title: 'x',
+        slug: 'x', externalId: 'x', provider: 'test',
+        rulesFacet: { grants: [{ set: 'value:does.not.exist', to: true }] }
+      }
+    }
+
+    const { bridged } = derive(bp)
+    expect(bridged.unresolvedGrants).toEqual(['value:does.not.exist'])
+    expect(bridged.actorState.values['value:does.not.exist']).toBeUndefined()
+  })
+
+  it('produces a byte-identical ActorState on every build -- no randomness', () => {
+    expect(JSON.stringify(derive(blueprint()).bridged.actorState))
+      .toBe(JSON.stringify(derive(blueprint()).bridged.actorState))
+  })
+
+  it('tolerates a character whose content no longer resolves', () => {
+    const missing: CharacterAssemblySlot = {
+      status: 'missing', packageId: 'p', slug: 's', reason: 'gone'
+    }
+    const { bridged, value } = derive(blueprint({ class: missing, background: missing }))
+
+    // Ability scores still bridge; nothing throws; nothing is granted.
+    expect(bridged.actorState.values['value:ability.str']).toBe(15)
+    expect(bridged.actorState.values['value:save.str.proficient']).toBeUndefined()
+    expect(value('value:ability.str.mod')).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The whole chain -- Bobbert's real numbers
+// ---------------------------------------------------------------------------
+
+describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
+  it('derives ability modifiers from the standard array', () => {
+    const { value } = derive(blueprint())
+    // 15/14/13/12/10/8 -> +2/+2/+1/+1/+0/-1
+    expect(value('value:ability.str.mod')).toBe(2)
+    expect(value('value:ability.dex.mod')).toBe(2)
+    expect(value('value:ability.con.mod')).toBe(1)
+    expect(value('value:ability.int.mod')).toBe(1)
+    expect(value('value:ability.wis.mod')).toBe(0)
+    expect(value('value:ability.cha.mod')).toBe(-1)
+  })
+
+  it('derives the proficiency bonus from level', () => {
+    expect(derive(blueprint()).value('value:proficiency_bonus')).toBe(2)
+  })
+
+  it('derives saving throw proficiencies from the Class facet', () => {
+    const { value } = derive(blueprint())
+    // Fighter: STR and CON.
+    expect(value('value:save.str.proficient')).toBe(true)
+    expect(value('value:save.con.proficient')).toBe(true)
+    expect(value('value:save.dex.proficient')).toBe(false)
+    expect(value('value:save.wis.proficient')).toBe(false)
+  })
+
+  it('derives skill proficiencies from the Background facet', () => {
+    const { value } = derive(blueprint())
+    // Acolyte: Insight and Religion.
+    expect(value('value:skill.insight.proficient')).toBe(true)
+    expect(value('value:skill.religion.proficient')).toBe(true)
+    // Not chosen, so not proficient -- correct, not convenient.
+    expect(value('value:skill.athletics.proficient')).toBe(false)
+  })
+
+  it('a different Class changes the derived saves, with no code change anywhere', () => {
+    // The proof that the mechanics live in data: swapping one slug moves the
+    // proficiencies, because the facet did, not because anything branched.
+    const { value } = derive(blueprint({ class: slot('class', 'wizard-xphb') }))
+    // Wizard: INT and WIS.
+    expect(value('value:save.int.proficient')).toBe(true)
+    expect(value('value:save.wis.proficient')).toBe(true)
+    expect(value('value:save.str.proficient')).toBe(false)
+  })
+
+  it('no derived value is stored -- the ActorState holds only inputs', () => {
+    // The invariant the whole architecture rests on (ADR-003). Everything in
+    // `values` is either a player decision (an ability score) or a content
+    // grant (a proficiency flag). Not one entry is something the engine
+    // computed.
+    const { bridged } = derive(blueprint())
+    const stored = Object.keys(bridged.actorState.values)
+
+    for (const id of stored) {
+      const isAbilityScore = /^value:ability\.(str|dex|con|int|wis|cha)$/.test(id)
+      const isProficiencyFlag = id.endsWith('.proficient')
+      expect(isAbilityScore || isProficiencyFlag, `unexpected stored value '${id}'`).toBe(true)
+    }
+
+    // ...and the derived values the sheet will show exist only in the
+    // engine's output, never in the state that produced them.
+    expect(stored).not.toContain('value:ability.str.mod')
+    expect(stored).not.toContain('value:proficiency_bonus')
+    expect(stored).not.toContain('value:save.str.bonus')
+  })
+})

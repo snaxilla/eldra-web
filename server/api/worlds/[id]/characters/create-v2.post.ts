@@ -65,6 +65,12 @@ import { requireCapability } from '../../../../utils/authorization'
 import { getWorldContentCatalogue, type ContentCatalogueEntry } from '../../../../utils/world-content-catalogue'
 import { createEntityRecord, dxFetch } from '../../../../utils/entity-factory'
 import { saveCharacterAbilityScores } from '../../../../utils/character-ability-scores'
+import { saveCharacterRulesChoices } from '../../../../utils/character-rules-choices'
+import {
+  emptyStoredRulesChoices,
+  toResolvableChoice,
+  validateChoiceSelection
+} from '../../../../../app/lib/characters/rules-choices'
 import { normalizeStoredAbilityScores } from '../../../../../app/lib/characters/ability-scores'
 
 type CatalogueSelectionInput = {
@@ -164,6 +170,49 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // ChoiceSet answers, validated against the facets of the three entries
+  // JUST resolved from the catalogue -- never against the request. A client
+  // may send any ids at all; only an answer that validly answers a question
+  // this character's own content actually asks is accepted.
+  //
+  // Optional, exactly as `abilities` is: a character may be created with its
+  // choices still outstanding, and the standalone proficiencies page exists
+  // precisely so they can be answered later. Absent means outstanding, which
+  // is a legal state the Sheet already reports.
+  const declaredChoices = [
+    ...(species.rulesFacet?.choices ?? []).map((choice) => toResolvableChoice('species', choice)),
+    ...(characterClass.rulesFacet?.choices ?? []).map((choice) => toResolvableChoice('class', choice)),
+    ...(background.rulesFacet?.choices ?? []).map((choice) => toResolvableChoice('background', choice))
+  ]
+
+  const rulesChoices = emptyStoredRulesChoices()
+  const rawSelections = body?.choices?.selections
+
+  if (rawSelections != null) {
+    if (typeof rawSelections !== 'object' || Array.isArray(rawSelections)) {
+      throw createError({ statusCode: 400, statusMessage: '`choices.selections` must be an object' })
+    }
+
+    for (const [key, value] of Object.entries(rawSelections as Record<string, unknown>)) {
+      const choice = declaredChoices.find((candidate) => candidate.key === key)
+
+      if (!choice) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `This character's content declares no choice "${key}"`
+        })
+      }
+
+      const validation = validateChoiceSelection(choice, value)
+
+      if (!validation.ok) {
+        throw createError({ statusCode: 400, statusMessage: `${key}: ${validation.reason}` })
+      }
+
+      rulesChoices.selections[key] = validation.selected
+    }
+  }
+
   const created = await createEntityRecord({
     worldId,
     title,
@@ -189,6 +238,10 @@ export default defineEventHandler(async (event) => {
     if (abilityScores) {
       await saveCharacterAbilityScores(created.id, abilityScores).catch(() => null)
     }
+
+    if (Object.keys(rulesChoices.selections).length > 0) {
+      await saveCharacterRulesChoices(created.id, rulesChoices).catch(() => null)
+    }
   }
 
   return {
@@ -196,6 +249,7 @@ export default defineEventHandler(async (event) => {
     species,
     class: characterClass,
     background,
-    abilityScores
+    abilityScores,
+    rulesChoices
   }
 })

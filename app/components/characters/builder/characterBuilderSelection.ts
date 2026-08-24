@@ -58,6 +58,15 @@ import {
   type AbilityScoreMethod,
   type AbilityScores
 } from '~/lib/characters/ability-scores'
+import {
+  emptyStoredRulesChoices,
+  selectionsFor,
+  toResolvableChoice,
+  validateChoiceSelection,
+  type ResolvableChoice,
+  type StoredRulesChoices
+} from '~/lib/characters/rules-choices'
+import type { RulesFacet } from '~/lib/content-rules'
 
 export type BuilderCatalogueEntry = {
   packageId: string
@@ -74,6 +83,11 @@ export type BuilderCatalogueEntry = {
   // could not be read, legitimately has none -- the Builder stays usable and
   // simply has less to teach.
   presentation?: PresentationEntry | null
+  // rules-package-architecture.md §8. Relayed verbatim by
+  // GET /api/worlds/:id/catalogue. Absent on content that mechanises
+  // nothing, which is legal and common -- the Builder simply asks no
+  // questions for it.
+  rulesFacet?: RulesFacet
 }
 
 export type BuilderChoiceKey = 'species' | 'class' | 'background'
@@ -94,19 +108,30 @@ export type CharacterBuilderDraft = {
   class: BuilderCatalogueEntry | null
   background: BuilderCatalogueEntry | null
   abilities: CharacterAbilityDraft
+  // Answers to the ChoiceSets the chosen content declares, keyed
+  // `slot:choiceSetId`. Held as the SAME StoredRulesChoices shape the server
+  // persists and the bridge reads, so the draft needs no translation on
+  // submit and no second shape can drift from the first.
+  choices: StoredRulesChoices
 }
 
-export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'abilities' | 'review'
+export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'proficiencies' | 'abilities' | 'review'
 
 export const CHOICE_KEYS: readonly BuilderChoiceKey[] = ['species', 'class', 'background']
 
-export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'abilities', 'review']
+// Proficiencies sits AFTER the three content choices and before abilities,
+// because the questions it asks are declared BY those choices -- there is
+// nothing to ask until a Class is picked. It is a real step even when it is
+// empty (see isStepComplete): a step that appears and disappears as a
+// player changes Class would make the progress rail jump under their thumb.
+export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'proficiencies', 'abilities', 'review']
 
 export const STEP_LABELS: Record<BuilderStepKey, string> = {
   identity: 'Name',
   species: 'Species',
   class: 'Class',
   background: 'Background',
+  proficiencies: 'Proficiencies',
   abilities: 'Ability Scores',
   review: 'Review'
 }
@@ -126,7 +151,14 @@ export function emptyAbilityDraft(): CharacterAbilityDraft {
 }
 
 export function emptyDraft(): CharacterBuilderDraft {
-  return { name: '', species: null, class: null, background: null, abilities: emptyAbilityDraft() }
+  return {
+    name: '',
+    species: null,
+    class: null,
+    background: null,
+    abilities: emptyAbilityDraft(),
+    choices: emptyStoredRulesChoices()
+  }
 }
 
 // The assignment the player is currently editing.
@@ -229,6 +261,85 @@ export function hasAmbiguousTitles(options: readonly BuilderCatalogueEntry[]): b
   return false
 }
 
+// The questions this draft is currently being asked, in slot order --
+// derived from whatever content is selected RIGHT NOW, never stored. Change
+// the Class and this list changes with it, which is what makes "changing the
+// Class changes the available choices" true by construction rather than by
+// an invalidation step someone has to remember to run.
+export function declaredChoices(draft: CharacterBuilderDraft): ResolvableChoice[] {
+  const out: ResolvableChoice[] = []
+
+  for (const key of CHOICE_KEYS) {
+    const facet = draft[key]?.rulesFacet
+    if (!facet?.choices) continue
+
+    for (const choice of facet.choices) {
+      out.push(toResolvableChoice(key, choice))
+    }
+  }
+
+  return out
+}
+
+export function choiceSelections(draft: CharacterBuilderDraft, key: string): string[] {
+  return selectionsFor(draft.choices, key)
+}
+
+// Records an answer, and PRUNES answers to questions no longer being asked.
+//
+// Pruning here rather than on submit is deliberate: a player who picks
+// Fighter, chooses two Fighter skills, then switches to Wizard must not
+// carry two Fighter-only skills into a Wizard character. The stale key would
+// fail server validation anyway, but failing at the end of a form is a worse
+// experience than never holding invalid state at all.
+export function setChoiceSelections(
+  draft: CharacterBuilderDraft,
+  key: string,
+  selected: readonly string[]
+): void {
+  draft.choices.selections[key] = [...selected]
+  pruneChoices(draft)
+}
+
+// Drops answers that the CURRENT questions no longer accept, in both ways
+// that can happen:
+//
+//   1. the question is gone entirely (a Class that declared a choice was
+//      swapped for one that declares none) -- the key is removed
+//   2. the question remains but its OPTIONS changed (Fighter -> Wizard: both
+//      declare choice:skill.proficiency on the class slot, so the key is
+//      identical, but Athletics is not on the Wizard's list) -- the options
+//      that are no longer offered are removed, and any that still are stay
+//
+// Case 2 is the one that bites: leaving a stale answer in place would leave
+// the draft holding two picks for a two-pick question, so the picker would
+// consider itself full and DISABLE every option the new Class actually
+// offers -- a player unable to choose anything, with no visible reason.
+export function pruneChoices(draft: CharacterBuilderDraft): void {
+  const live = new Map(declaredChoices(draft).map((choice) => [choice.key, choice]))
+
+  for (const key of Object.keys(draft.choices.selections)) {
+    const choice = live.get(key)
+
+    if (!choice) {
+      delete draft.choices.selections[key]
+      continue
+    }
+
+    draft.choices.selections[key] = (draft.choices.selections[key] ?? [])
+      .filter((option) => choice.options.includes(option))
+  }
+}
+
+// True when every declared question is validly answered. Vacuously true when
+// nothing declares a choice -- a World whose content carries no facets has
+// no proficiency step to complete, and must not be blocked by one.
+export function isProficiencyStepComplete(draft: CharacterBuilderDraft): boolean {
+  return declaredChoices(draft).every(
+    (choice) => validateChoiceSelection(choice, choiceSelections(draft, choice.key)).ok
+  )
+}
+
 export function isChoiceComplete(draft: CharacterBuilderDraft, key: BuilderChoiceKey): boolean {
   return Boolean(draft[key])
 }
@@ -239,6 +350,7 @@ export function isNameComplete(draft: CharacterBuilderDraft): boolean {
 
 export function isStepComplete(draft: CharacterBuilderDraft, step: BuilderStepKey): boolean {
   if (step === 'identity') return isNameComplete(draft)
+  if (step === 'proficiencies') return isProficiencyStepComplete(draft)
   if (step === 'abilities') return isAbilityStepComplete(draft)
   if (step === 'review') return isDraftComplete(draft)
   return isChoiceComplete(draft, step)
@@ -247,6 +359,7 @@ export function isStepComplete(draft: CharacterBuilderDraft, step: BuilderStepKe
 export function isDraftComplete(draft: CharacterBuilderDraft): boolean {
   return isNameComplete(draft)
     && CHOICE_KEYS.every((key) => isChoiceComplete(draft, key))
+    && isProficiencyStepComplete(draft)
     && isAbilityStepComplete(draft)
 }
 
@@ -260,6 +373,12 @@ export function missingRequirements(draft: CharacterBuilderDraft): string[] {
   if (!isNameComplete(draft)) missing.push('Enter a character name.')
   for (const key of CHOICE_KEYS) {
     if (!isChoiceComplete(draft, key)) missing.push(`Choose a ${STEP_LABELS[key]}.`)
+  }
+  for (const choice of declaredChoices(draft)) {
+    const validation = validateChoiceSelection(choice, choiceSelections(draft, choice.key))
+    if (!validation.ok) {
+      missing.push(`${STEP_LABELS[choice.slot as BuilderChoiceKey] ?? choice.slot}: ${validation.reason}`)
+    }
   }
   if (!isAbilityStepComplete(draft)) missing.push('Finish assigning ability scores.')
   return missing
@@ -276,6 +395,12 @@ export type CharacterCreatePayload = {
   // data, so they are sent in full and the server validates shape/bounds
   // rather than looking anything up.
   abilities: { method: AbilityScoreMethod; scores: AbilityScores }
+  // The player's ChoiceSet answers. Like ability scores -- and unlike the
+  // three catalogue refs -- these ARE the player's data, so they are sent in
+  // full. The server still re-derives the questions from the character's own
+  // facets and validates every answer against them; sending them does not
+  // make them trusted.
+  choices: StoredRulesChoices
 }
 
 // See design decision 3 -- only the two fields the save route actually reads.
@@ -292,7 +417,8 @@ export function toCreatePayload(draft: CharacterBuilderDraft): CharacterCreatePa
     species: ref(draft.species!),
     class: ref(draft.class!),
     background: ref(draft.background!),
-    abilities: { method: draft.abilities.method, scores }
+    abilities: { method: draft.abilities.method, scores },
+    choices: { selections: { ...draft.choices.selections } }
   }
 }
 

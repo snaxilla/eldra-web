@@ -46,6 +46,7 @@ import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import type { RuleCategory, RulesError, RuleValue } from '../../app/lib/rules/types'
 import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
 import { buildActorState, type PendingChoice } from './character-actor-bridge'
+import type { ResolvableChoice } from '../../app/lib/characters/rules-choices'
 import { getWorldRuntime } from './world-runtime-service'
 
 // Mirrors evaluator.ts's and modifier-pipeline.ts's own `isRulesError`
@@ -78,6 +79,20 @@ export type DerivedValue = {
   error?: string
 }
 
+// A declared choice with the labels a surface needs to render it. The
+// labels come from the ACTIVE PACKAGE's own Definitions -- the prompt from
+// the ChoiceSet, each option's from the Value it names -- so no consumer
+// ever has to turn a Definition id into English, and no game vocabulary
+// reaches a Vue file.
+export type PresentableChoice = ResolvableChoice & {
+  prompt: string
+  label?: string
+  answered: boolean
+  selected: string[]
+  options: string[]
+  optionLabels: Record<string, string>
+}
+
 export type DerivedCharacter = {
   worldId: string
   characterId: string
@@ -88,7 +103,10 @@ export type DerivedCharacter = {
   // Definitions simply has no key -- the sheet then renders no region for
   // it, which is the visible degradation §13.2 describes.
   byCategory: Partial<Record<RuleCategory, DerivedValue[]>>
-  // Declared by a facet, answered by nobody yet (see the bridge's header).
+  // EVERY choice the current facets declare, with labels and current
+  // answers -- what an editing surface renders.
+  choices: PresentableChoice[]
+  // Declared by a facet and not yet validly answered. A subset of `choices`.
   pendingChoices: PendingChoice[]
   // Facet-granted ids the active package does not declare (§8.2 rule 1).
   unresolvedGrants: string[]
@@ -147,12 +165,46 @@ export async function getDerivedCharacter(
 
   const { registry, dependencyGraph, worldConfig, packageId, packageVersion } = runtime.runtime
 
+  // Both lookups read the ACTIVE package's registry, so a choice is
+  // resolved against the rules the World is actually running -- not against
+  // whatever was current when the answer was stored.
+  const choiceSetFor = (id: string) => {
+    const definition = registry.getById(id)
+    return definition && definition.kind === 'choiceSet' ? definition : null
+  }
+
   const bridged = buildActorState({
     blueprint: assembly.blueprint,
     packageId,
     packageVersion,
     stateSchemaVersion: runtime.runtime.manifest.stateSchemaVersion,
-    knownDefinition: (id) => registry.has(id)
+    knownDefinition: (id) => registry.has(id),
+    rulesChoices: assembly.blueprint.rulesChoices,
+    lookupChoiceSet: choiceSetFor
+  })
+
+  // Labels are looked up ONCE per definition here rather than per consumer.
+  const labelFor = (id: string): string | undefined => registry.getById(id)?.label
+
+  const choices: PresentableChoice[] = bridged.declaredChoices.map((choice) => {
+    const choiceSet = choiceSetFor(choice.choiceSetId)
+    const optionLabels: Record<string, string> = {}
+
+    for (const option of choice.options) {
+      const label = labelFor(option)
+      if (label) optionLabels[option] = label
+    }
+
+    const selected = bridged.actorState.choices[choice.key]
+
+    return {
+      ...choice,
+      prompt: choiceSet?.prompt ?? 'Choose your options.',
+      label: choiceSet?.label,
+      answered: Array.isArray(selected),
+      selected: Array.isArray(selected) ? (selected as string[]) : [],
+      optionLabels
+    }
   })
 
   // ONE session for the whole projection, so the evaluator's own memo cache
@@ -196,6 +248,7 @@ export async function getDerivedCharacter(
       packageId,
       packageVersion,
       byCategory,
+      choices,
       pendingChoices: bridged.pendingChoices,
       unresolvedGrants: bridged.unresolvedGrants
     }

@@ -12,14 +12,19 @@ import { describe, expect, it } from 'vitest'
 import {
   CHOICE_KEYS,
   STEP_KEYS,
+  choiceSelections,
+  declaredChoices,
   emptyDraft,
   filterOptions,
   findOptionByKey,
   hasAmbiguousTitles,
   isSelectionHidden,
   isDraftComplete,
+  isProficiencyStepComplete,
   isStepComplete,
   missingRequirements,
+  pruneChoices,
+  setChoiceSelections,
   nextStep,
   optionKey,
   previousStep,
@@ -239,7 +244,11 @@ describe('toCreatePayload', () => {
       abilities: {
         method: 'standard-array',
         scores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
-      }
+      },
+      // ChoiceSet answers travel the same way and for the same reason: they
+      // are the player's decisions, not a reference to published content.
+      // Empty here because the fixture's entries carry no Rules Facet.
+      choices: { selections: {} }
     })
   })
 
@@ -326,9 +335,14 @@ describe('ability scores (Phase 3)', () => {
 
 describe('step navigation', () => {
   it('walks the full step order forwards and backwards', () => {
-    expect(STEP_KEYS).toEqual(['identity', 'species', 'class', 'background', 'abilities', 'review'])
+    // Proficiencies sits after the three content choices, because the
+    // questions it asks are declared BY those choices.
+    expect(STEP_KEYS).toEqual([
+      'identity', 'species', 'class', 'background', 'proficiencies', 'abilities', 'review'
+    ])
     expect(nextStep('identity')).toBe('species')
-    expect(nextStep('background')).toBe('abilities')
+    expect(nextStep('background')).toBe('proficiencies')
+    expect(nextStep('proficiencies')).toBe('abilities')
     expect(nextStep('abilities')).toBe('review')
     expect(previousStep('species')).toBe('identity')
   })
@@ -382,5 +396,199 @@ describe('ability scores round-trip from Builder to server', () => {
 
     expect(isAbilityStepComplete(draft)).toBe(false)
     expect(toCreatePayload(draft)).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Proficiency choices -- the questions the chosen content asks
+// ---------------------------------------------------------------------------
+
+const ATHLETICS = 'value:skill.athletics.proficient'
+const PERCEPTION = 'value:skill.perception.proficient'
+const ARCANA = 'value:skill.arcana.proficient'
+
+const CLASS_KEY = 'class:choice:skill.proficiency'
+
+// A Class facet shaped exactly like the authored corpus's Fighter.
+const FIGHTER_WITH_SKILLS = entry({
+  title: 'Fighter',
+  slug: 'fighter-xphb',
+  externalId: 'Fighter__XPHB',
+  rulesFacet: {
+    grants: [{ set: 'value:save.str.proficient', to: true }],
+    choices: [{
+      choiceSet: 'choice:skill.proficiency',
+      count: 2,
+      from: [ATHLETICS, PERCEPTION, 'value:skill.survival.proficient']
+    }]
+  }
+})
+
+const WIZARD_WITH_SKILLS = entry({
+  title: 'Wizard',
+  slug: 'wizard-xphb',
+  externalId: 'Wizard__XPHB',
+  rulesFacet: {
+    choices: [{
+      choiceSet: 'choice:skill.proficiency',
+      count: 2,
+      from: [ARCANA, 'value:skill.history.proficient', 'value:skill.insight.proficient']
+    }]
+  }
+})
+
+function fighterDraft(): CharacterBuilderDraft {
+  const draft = completeDraft()
+  draft.class = FIGHTER_WITH_SKILLS
+  return draft
+}
+
+describe('declaredChoices', () => {
+  it('asks nothing when the chosen content carries no Rules Facet', () => {
+    expect(declaredChoices(completeDraft())).toEqual([])
+  })
+
+  it('asks what the chosen Class declares, keyed by slot', () => {
+    expect(declaredChoices(fighterDraft())).toEqual([{
+      key: CLASS_KEY,
+      slot: 'class',
+      choiceSetId: 'choice:skill.proficiency',
+      count: 2,
+      options: [ATHLETICS, PERCEPTION, 'value:skill.survival.proficient']
+    }])
+  })
+
+  it('is derived from the CURRENT selection -- changing Class changes the question', () => {
+    const draft = fighterDraft()
+    expect(declaredChoices(draft)[0]!.options).toContain(ATHLETICS)
+
+    draft.class = WIZARD_WITH_SKILLS
+    expect(declaredChoices(draft)[0]!.options).not.toContain(ATHLETICS)
+    expect(declaredChoices(draft)[0]!.options).toContain(ARCANA)
+  })
+})
+
+describe('answering a choice', () => {
+  it('records exactly what was ticked', () => {
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+    expect(choiceSelections(draft, CLASS_KEY)).toEqual([ATHLETICS, PERCEPTION])
+  })
+
+  it('computes nothing -- the draft holds ids, never a bonus or a boolean map', () => {
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+    expect(draft.choices).toEqual({ selections: { [CLASS_KEY]: [ATHLETICS, PERCEPTION] } })
+  })
+
+  it('is incomplete until the required count is met', () => {
+    const draft = fighterDraft()
+    expect(isProficiencyStepComplete(draft)).toBe(false)
+
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS])
+    expect(isProficiencyStepComplete(draft)).toBe(false)
+
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+    expect(isProficiencyStepComplete(draft)).toBe(true)
+  })
+
+  it('is vacuously complete when nothing asks a question', () => {
+    // A World whose content carries no facets must not be blocked by a step
+    // that has nothing in it.
+    expect(isProficiencyStepComplete(completeDraft())).toBe(true)
+  })
+
+  it('blocks the whole draft while a declared choice is unanswered', () => {
+    const draft = fighterDraft()
+    expect(isDraftComplete(draft)).toBe(false)
+    expect(missingRequirements(draft).join(' ')).toMatch(/Choose exactly 2/)
+
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+    expect(isDraftComplete(draft)).toBe(true)
+    expect(missingRequirements(draft)).toEqual([])
+  })
+
+  it('marks the step complete only when every choice is answered', () => {
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+    expect(isStepComplete(draft, 'proficiencies')).toBe(true)
+  })
+})
+
+describe('changing the Class discards answers it no longer asks for', () => {
+  it('prunes options the new Class does not offer, even though the KEY is identical', () => {
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+
+    draft.class = WIZARD_WITH_SKILLS
+    pruneChoices(draft)
+
+    // Both declare choice:skill.proficiency on the class slot, so the key
+    // survives -- but neither Fighter pick is on the Wizard's list, so
+    // neither is carried over. Without this the draft would still hold two
+    // picks for a two-pick question and the picker would disable every
+    // option the Wizard actually offers.
+    expect(choiceSelections(draft, CLASS_KEY)).toEqual([])
+    expect(isProficiencyStepComplete(draft)).toBe(false)
+  })
+
+  it('keeps an option the new Class still offers', () => {
+    const SHARED = entry({
+      title: 'Ranger',
+      slug: 'ranger-xphb',
+      externalId: 'Ranger__XPHB',
+      rulesFacet: {
+        choices: [{
+          choiceSet: 'choice:skill.proficiency',
+          count: 2,
+          from: [ATHLETICS, ARCANA]
+        }]
+      }
+    })
+
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+
+    draft.class = SHARED
+    pruneChoices(draft)
+
+    // Athletics is on both lists and is kept; Perception is not and is not.
+    expect(choiceSelections(draft, CLASS_KEY)).toEqual([ATHLETICS])
+  })
+
+  it('drops an answer entirely when the new Class asks nothing', () => {
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+
+    draft.class = XPHB_FIGHTER  // no facet at all
+    pruneChoices(draft)
+
+    expect(draft.choices.selections).toEqual({})
+    expect(isProficiencyStepComplete(draft)).toBe(true)
+  })
+})
+
+describe('toCreatePayload carries the answers', () => {
+  it('sends the selections the player made', () => {
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+
+    expect(toCreatePayload(draft)?.choices).toEqual({
+      selections: { [CLASS_KEY]: [ATHLETICS, PERCEPTION] }
+    })
+  })
+
+  it('refuses to build a payload while a declared choice is unanswered', () => {
+    expect(toCreatePayload(fighterDraft())).toBeNull()
+  })
+
+  it('copies rather than aliasing the draft, so a later edit cannot mutate a sent payload', () => {
+    const draft = fighterDraft()
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, PERCEPTION])
+
+    const payload = toCreatePayload(draft)!
+    setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, 'value:skill.survival.proficient'])
+
+    expect(payload.choices.selections[CLASS_KEY]).toEqual([ATHLETICS, PERCEPTION])
   })
 })

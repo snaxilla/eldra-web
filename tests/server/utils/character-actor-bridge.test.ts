@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
+import { choiceKey } from '../../../app/lib/characters/rules-choices'
 import { findRulesFacet } from '../../../app/lib/content-rules'
 import { DND5E_2024_RULES_FACETS } from '../../../app/lib/content-rules/dnd5e-2024'
 import { DependencyGraph } from '../../../app/lib/rules/dependency-graph'
@@ -79,6 +80,7 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
       method: 'standard-array',
       scores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
     },
+    rulesChoices: null,
     packs: [],
     ...overrides
   }
@@ -96,7 +98,13 @@ function derive(bp: CharacterAssemblyBlueprint) {
     packageId: manifest.packageId,
     packageVersion: manifest.version,
     stateSchemaVersion: manifest.stateSchemaVersion,
-    knownDefinition: (id) => registry.registry.has(id)
+    knownDefinition: (id) => registry.registry.has(id),
+    // Exactly what server/utils/character-derived.ts supplies in production.
+    rulesChoices: bp.rulesChoices,
+    lookupChoiceSet: (id) => {
+      const definition = registry.registry.getById(id)
+      return definition && definition.kind === 'choiceSet' ? definition : null
+    }
   })
 
   const session = new EvaluationSession(registry.registry, graph.graph, bridged.actorState, {})
@@ -247,6 +255,18 @@ describe('the bridge translates, and only translates', () => {
     expect(bridged.actorState.choices).toEqual({})
   })
 
+  it('declares every choice, answered or not, with the key an answer is stored under', () => {
+    const { bridged } = derive(blueprint())
+    expect(bridged.declaredChoices.map((choice) => choice.key)).toEqual([
+      'species:choice:skill.proficiency',
+      'class:choice:skill.proficiency'
+    ])
+    // The pending records carry the same key, so a surface that wants to
+    // ANSWER one never has to reconstruct it.
+    expect(bridged.pendingChoices.map((choice) => choice.key))
+      .toEqual(bridged.declaredChoices.map((choice) => choice.key))
+  })
+
   it('surfaces a grant naming an unknown Definition instead of writing it', () => {
     const bp = blueprint()
     bp.class = {
@@ -348,5 +368,202 @@ describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
     expect(stored).not.toContain('value:ability.str.mod')
     expect(stored).not.toContain('value:proficiency_bonus')
     expect(stored).not.toContain('value:save.str.bonus')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Proficiency choice resolution -- Builder -> ActorState -> Rules Engine
+// ---------------------------------------------------------------------------
+
+const CLASS_SKILLS = choiceKey('class', 'choice:skill.proficiency')
+const SPECIES_SKILLS = choiceKey('species', 'choice:skill.proficiency')
+
+// Two of the nine skills the Fighter facet actually offers.
+const ATHLETICS = 'value:skill.athletics.proficient'
+const PERCEPTION = 'value:skill.perception.proficient'
+
+function withClassSkills(...selected: string[]) {
+  return blueprint({ rulesChoices: { selections: { [CLASS_SKILLS]: selected } } })
+}
+
+describe('Bobbert chooses two class skills', () => {
+  it('stores the answer in ActorState.choices, verbatim', () => {
+    const { bridged } = derive(withClassSkills(ATHLETICS, PERCEPTION))
+    expect(bridged.actorState.choices).toEqual({ [CLASS_SKILLS]: [ATHLETICS, PERCEPTION] })
+  })
+
+  it('the Rules Engine derives proficiency from the answer', () => {
+    const { value } = derive(withClassSkills(ATHLETICS, PERCEPTION))
+    expect(value(ATHLETICS)).toBe(true)
+    expect(value(PERCEPTION)).toBe(true)
+  })
+
+  it('unselected skills stay unproficient', () => {
+    const { value } = derive(withClassSkills(ATHLETICS, PERCEPTION))
+    expect(value('value:skill.survival.proficient')).toBe(false)
+    expect(value('value:skill.acrobatics.proficient')).toBe(false)
+  })
+
+  it('the derived BONUS gains the proficiency bonus -- computed by the engine, not the bridge', () => {
+    const { bridged, value } = derive(withClassSkills(ATHLETICS, PERCEPTION))
+
+    // str 15 -> +2 mod, proficiency bonus 2, so a proficient Athletics is 4
+    // and an unproficient Acrobatics is dex 14 -> +2 with nothing added.
+    expect(value('value:proficiency_bonus')).toBe(2)
+    expect(value('value:skill.athletics.bonus')).toBe(4)
+    expect(value('value:skill.acrobatics.bonus')).toBe(2)
+
+    // ...and NONE of those numbers is in the ActorState. The bridge stored a
+    // boolean; every total came from the evaluator.
+    expect(bridged.actorState.values['value:skill.athletics.bonus']).toBeUndefined()
+    expect(bridged.actorState.values['value:proficiency_bonus']).toBeUndefined()
+  })
+
+  it('an answered choice is no longer outstanding', () => {
+    const { bridged } = derive(withClassSkills(ATHLETICS, PERCEPTION))
+    // The Species choice is still unanswered; the Class one is not.
+    expect(bridged.pendingChoices.map((choice) => choice.key)).toEqual([SPECIES_SKILLS])
+  })
+
+  it('answering every choice leaves nothing outstanding', () => {
+    const { bridged } = derive(blueprint({
+      rulesChoices: {
+        selections: {
+          [CLASS_SKILLS]: [ATHLETICS, PERCEPTION],
+          [SPECIES_SKILLS]: ['value:skill.arcana.proficient']
+        }
+      }
+    }))
+    expect(bridged.pendingChoices).toEqual([])
+    expect(derive(blueprint({
+      rulesChoices: {
+        selections: {
+          [CLASS_SKILLS]: [ATHLETICS, PERCEPTION],
+          [SPECIES_SKILLS]: ['value:skill.arcana.proficient']
+        }
+      }
+    })).value('value:skill.arcana.proficient')).toBe(true)
+  })
+
+  it('a choice does not disturb the proficiencies the Class GRANTS outright', () => {
+    const { value } = derive(withClassSkills(ATHLETICS, PERCEPTION))
+    expect(value('value:save.str.proficient')).toBe(true)
+    expect(value('value:save.con.proficient')).toBe(true)
+    expect(value('value:save.dex.proficient')).toBe(false)
+  })
+})
+
+describe('changing the Class changes the available choices', () => {
+  it('offers a different option list, with no code change anywhere', () => {
+    const fighter = derive(blueprint()).bridged.declaredChoices
+      .find((choice) => choice.slot === 'class')!
+    const wizard = derive(blueprint({ class: slot('class', 'wizard-xphb') })).bridged.declaredChoices
+      .find((choice) => choice.slot === 'class')!
+
+    expect(fighter.options).toContain(ATHLETICS)
+    expect(wizard.options).not.toContain(ATHLETICS)
+    expect(wizard.options).toContain('value:skill.arcana.proficient')
+  })
+
+  it('an answer that the new Class does not offer is refused, not partially applied', () => {
+    // The player answered as a Fighter and then switched to Wizard. Athletics
+    // is not on the Wizard list, so the whole answer reverts to outstanding.
+    const { bridged, value } = derive(blueprint({
+      class: slot('class', 'wizard-xphb'),
+      rulesChoices: { selections: { [CLASS_SKILLS]: [ATHLETICS, PERCEPTION] } }
+    }))
+
+    expect(value(ATHLETICS)).toBe(false)
+    expect(value(PERCEPTION)).toBe(false)
+    expect(bridged.pendingChoices.map((choice) => choice.key)).toContain(CLASS_SKILLS)
+    expect(bridged.actorState.choices[CLASS_SKILLS]).toBeUndefined()
+  })
+})
+
+describe('invalid selections are rejected', () => {
+  it('rejects an option the Class never offered', () => {
+    // Arcana is not on the Fighter's list.
+    const { bridged, value } = derive(withClassSkills('value:skill.arcana.proficient', ATHLETICS))
+    expect(value('value:skill.arcana.proficient')).toBe(false)
+    // ...and the VALID half of the answer is not applied either: a partly
+    // honoured answer is a character nobody can explain.
+    expect(value(ATHLETICS)).toBe(false)
+    expect(bridged.pendingChoices.map((choice) => choice.key)).toContain(CLASS_SKILLS)
+  })
+
+  it('rejects too few and too many', () => {
+    expect(derive(withClassSkills(ATHLETICS)).value(ATHLETICS)).toBe(false)
+    expect(
+      derive(withClassSkills(ATHLETICS, PERCEPTION, 'value:skill.survival.proficient')).value(ATHLETICS)
+    ).toBe(false)
+  })
+
+  it('rejects the same skill twice', () => {
+    expect(derive(withClassSkills(ATHLETICS, ATHLETICS)).value(ATHLETICS)).toBe(false)
+  })
+
+  it('rejects an answer to a choice this character is not asked', () => {
+    const { bridged } = derive(blueprint({
+      rulesChoices: { selections: { 'background:choice:skill.proficiency': [ATHLETICS] } }
+    }))
+    // Acolyte declares no ChoiceSet, so the stored key answers nothing and
+    // contributes nothing.
+    expect(bridged.actorState.choices['background:choice:skill.proficiency']).toBeUndefined()
+    expect(bridged.actorState.values[ATHLETICS]).toBeUndefined()
+  })
+
+  it('produces a byte-identical ActorState on every build, answers included', () => {
+    const bp = withClassSkills(ATHLETICS, PERCEPTION)
+    expect(JSON.stringify(derive(bp).bridged.actorState))
+      .toBe(JSON.stringify(derive(bp).bridged.actorState))
+  })
+})
+
+describe('the authored corpus and the package agree about ChoiceSets', () => {
+  it('every offered option matches the ChoiceSet\'s own writesTo pattern', () => {
+    // The mechanism rests on this agreement: the package declares WHERE an
+    // answer is written ("value:skill.{selected}.proficient") and the content
+    // declares WHICH options are offered. If a facet ever offered an id that
+    // did not fit that shape, resolveChoiceTarget would substitute rather
+    // than pass through and silently target a Definition nobody declared.
+    const { definitions } = loadRulesPackage()
+    const choiceSet = definitions.find((definition) => definition.kind === 'choiceSet')
+    expect(choiceSet).toBeDefined()
+
+    const [prefix, suffix] = (choiceSet as any).writesTo.split('{selected}')
+    const offered = new Set<string>()
+
+    for (const byType of Object.values(DND5E_2024_RULES_FACETS)) {
+      for (const facet of Object.values(byType)) {
+        for (const choice of facet.choices ?? []) {
+          for (const option of choice.from ?? []) offered.add(option)
+        }
+      }
+    }
+
+    expect(offered.size).toBeGreaterThan(0)
+    for (const option of offered) {
+      expect(option.startsWith(prefix) && option.endsWith(suffix)).toBe(true)
+    }
+  })
+
+  it('every offered option is a Definition the Rules Package actually declares', () => {
+    // §8.2 rule 1: a facet naming an id the package does not define is an
+    // unresolved reference. An option nobody can resolve is a choice that
+    // does nothing when picked.
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    if (!registry.ok) throw new Error('registry failed')
+
+    for (const byType of Object.values(DND5E_2024_RULES_FACETS)) {
+      for (const facet of Object.values(byType)) {
+        for (const choice of facet.choices ?? []) {
+          expect(registry.registry.has(choice.choiceSet)).toBe(true)
+          for (const option of choice.from ?? []) {
+            expect(registry.registry.has(option)).toBe(true)
+          }
+        }
+      }
+    }
   })
 })

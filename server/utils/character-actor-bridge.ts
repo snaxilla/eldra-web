@@ -54,20 +54,44 @@
 // today because nothing declares one, not because it is unimplemented.
 //
 // ---------------------------------------------------------------------------
-// WHAT IS NOT TRANSLATED, AND WHY
+// CHOICES: THE ANSWER IS TRANSLATED, THE CONSEQUENCE IS NOT COMPUTED
 // ---------------------------------------------------------------------------
-// `facet.choices` are declarations of questions, not answers. The answer to
-// "choose two skills from your class list" is stored player data that no
-// surface collects yet -- the Character Builder has no proficiency step (an
-// explicit non-goal of the phase that built it). So choices are REPORTED on
-// the result for a future consumer, and contribute nothing to
-// `ActorState.choices`, which stays empty. The visible consequence is
-// correct rather than convenient: a Fighter's two saving throws are
-// proficient because the class grants them outright, and its two chosen
-// skills are not, because nobody has chosen them.
+// `facet.choices` are declarations of QUESTIONS ("choose two skills from
+// your class list"). The ANSWERS are stored player data, collected by the
+// Builder and persisted under the `rules_choices` block.
+//
+// This module joins the two. For every choice a facet declares it looks for
+// a stored answer, and:
+//
+//   answered validly  -> the answer is recorded in `ActorState.choices`, and
+//                        each selected Definition is set in `values`
+//   not answered, or
+//   no longer valid   -> reported in `pendingChoices`, and nothing is set
+//
+// Setting `values[selected] = true` is the SAME operation a facet grant
+// already performs, reached through the ChoiceSet's own `writesTo`
+// declaration (§7.6: "writesTo makes the effect of a choice declarative").
+// It is not a computed consequence: no bonus, modifier, or total is produced
+// here. `value:skill.athletics.bonus` is still derived by the evaluator from
+// `value:skill.athletics.proficient`, exactly as it is for a granted
+// proficiency -- this module only reports which box the player ticked.
+//
+// A stored answer is NEVER trusted to still fit its question. It is
+// re-validated on every read against the facet that is current NOW, because
+// repinning a Content Pack can turn a valid answer into an invalid one with
+// nothing having edited it. An answer that no longer fits reverts to
+// outstanding rather than being partially applied.
 
 import type { CharacterAssemblyBlueprint, CharacterAssemblySlot } from './character-assembly'
 import type { RulesFacet, RulesFacetChoice } from '../../app/lib/content-rules'
+import {
+  resolveChoiceTarget,
+  selectionsFor,
+  toResolvableChoice,
+  validateChoiceSelection,
+  type ResolvableChoice,
+  type StoredRulesChoices
+} from '../../app/lib/characters/rules-choices'
 import { ABILITY_KEYS } from '../../app/lib/characters/ability-scores'
 import type { ActorState, RuleValue, SourceInstance } from '../../app/lib/rules/types'
 
@@ -94,11 +118,21 @@ export type PendingChoice = RulesFacetChoice & {
   // Which slot's facet declared it -- a choice is meaningless without
   // knowing whether the Class or the Background is asking.
   slot: ActorBridgeSlotKey
+  // The identity an answer is stored under, `slot:choiceSetId`. Carried on
+  // the pending record so a consumer that wants to ANSWER this choice does
+  // not have to reconstruct the key and risk disagreeing about its shape.
+  key: string
 }
 
 export type ActorBridgeResult = {
   actorState: ActorState
-  // Every choice declared by a facet and not yet answered (see the header).
+  // EVERY choice the current facets declare, answered or not, in slot order
+  // -- the question list an editing surface renders. Separate from
+  // `pendingChoices` because an editor must show answered choices too (so
+  // they can be changed), while a "still outstanding" notice must not.
+  declaredChoices: ResolvableChoice[]
+  // Every choice declared by a facet and not yet validly answered (see the
+  // header). A subset of `declaredChoices`.
   pendingChoices: PendingChoice[]
   // Facet-granted Definition IDs that the ACTIVE Rules Package does not
   // declare. §8.2 rule 1: an unresolved reference is surfaced, never a
@@ -118,6 +152,16 @@ export type ActorBridgeInput = {
   // written into `values` -- so a facet naming a renamed Definition surfaces
   // as a diagnostic rather than as a value nothing will ever read.
   knownDefinition?: (id: string) => boolean
+  // The player's stored answers, or null when none were recorded. Absent
+  // answers are not an error: every choice simply reads as outstanding.
+  rulesChoices?: StoredRulesChoices | null
+  // Resolves a ChoiceSet id to its `writesTo` template. Optional because
+  // this module stays pure and registry-free; `character-derived.ts` supplies
+  // it from the active package. Without it, a selected option is taken to BE
+  // its own target -- which is what the authored corpus produces anyway,
+  // since a facet's `from` is typed `DefinitionId[]` (see
+  // resolveChoiceTarget).
+  lookupChoiceSet?: (id: string) => { writesTo: string } | null | undefined
 }
 
 function facetFor(slot: CharacterAssemblySlot): RulesFacet | null {
@@ -137,8 +181,10 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
   const { blueprint } = input
   const values: Record<string, RuleValue> = {}
   const sources: SourceInstance[] = []
+  const declaredChoices: ResolvableChoice[] = []
   const pendingChoices: PendingChoice[] = []
   const unresolvedGrants: string[] = []
+  const answeredChoices: Record<string, RuleValue> = {}
 
   // --- Ability scores: the player's own data, copied verbatim ------------
   // Absent scores are left absent rather than defaulted to 10 here. The
@@ -180,7 +226,38 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     }
 
     for (const choice of facet.choices ?? []) {
-      pendingChoices.push({ ...choice, slot: slotKey })
+      // Shared with the Builder so both ask the identical question -- see
+      // toResolvableChoice. A facet with no `from` offers nothing, which
+      // validates as answerable only at count 0: correct, not a special case.
+      const resolvable = toResolvableChoice(slotKey, choice)
+      const key = resolvable.key
+      declaredChoices.push(resolvable)
+
+      const validation = validateChoiceSelection(resolvable, selectionsFor(input.rulesChoices, key))
+
+      if (!validation.ok) {
+        pendingChoices.push({ ...choice, slot: slotKey, key })
+        continue
+      }
+
+      // The answer itself -- the player's decision, recorded verbatim.
+      answeredChoices[key] = [...validation.selected]
+
+      // ...and what the ChoiceSet says that answer MEANS. Still not a
+      // computed value: this sets the same boolean a facet grant sets, and
+      // every number derived from it is the evaluator's work.
+      const writesTo = input.lookupChoiceSet?.(choice.choiceSet)?.writesTo
+
+      for (const selected of validation.selected) {
+        const target = writesTo ? resolveChoiceTarget(writesTo, selected) : selected
+
+        if (input.knownDefinition && !input.knownDefinition(target)) {
+          unresolvedGrants.push(target)
+          continue
+        }
+
+        values[target] = true
+      }
     }
   }
 
@@ -191,10 +268,11 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     stateSchemaVersion: input.stateSchemaVersion,
     values,
     collections: {},
-    // Empty by design, not by omission -- see the header's note on choices.
-    choices: {},
+    // The player's answers, keyed `slot:choiceSetId`. Empty when nothing has
+    // been chosen yet, which is a legal state rather than an omission.
+    choices: answeredChoices,
     sources
   }
 
-  return { actorState, pendingChoices, unresolvedGrants }
+  return { actorState, declaredChoices, pendingChoices, unresolvedGrants }
 }

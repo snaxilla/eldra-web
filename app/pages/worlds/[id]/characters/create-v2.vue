@@ -81,6 +81,25 @@
 //
 // Nothing here computes a modifier, save, skill, or hit point from a score.
 // Those belong to the Rules Engine, which this page does not import.
+//
+// ---------------------------------------------------------------------------
+// PROFICIENCIES: THE FIRST QUESTION THE CONTENT ASKS
+// ---------------------------------------------------------------------------
+// A sixth step, between Background and Ability Scores, rendering the
+// ChoiceSets the chosen content declares -- "choose two skills from your
+// class list."
+//
+// The step is DECLARED BY DATA, not by this file. Which questions appear,
+// how many picks each takes, and which options are offered all come from the
+// selected entry's Rules Facet (relayed by GET /api/worlds/:id/catalogue);
+// the prompt and the option labels come from the World's active Rules
+// Package (GET /api/worlds/:id/rules/choice-options). This page contains no
+// skill name and no rule -- pick a different Class and the questions change
+// with no code change, which is the whole point.
+//
+// It stores ONLY what was ticked. Nothing here decides that a ticked skill
+// is proficient, and nothing computes a bonus from it: that is the bridge's
+// and the evaluator's work, on the next read of the character.
 
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
@@ -90,6 +109,8 @@ import {
   STEP_KEYS,
   STEP_LABELS,
   activeAssignment,
+  choiceSelections,
+  declaredChoices,
   draftAbilityScores,
   emptyDraft,
   findOptionByKey,
@@ -99,6 +120,8 @@ import {
   nextStep,
   optionKey,
   previousStep,
+  pruneChoices,
+  setChoiceSelections,
   switchAbilityMethod,
   toCreatePayload,
   type BuilderCatalogueEntry,
@@ -106,6 +129,7 @@ import {
   type BuilderStepKey
 } from '~/components/characters/builder/characterBuilderSelection'
 import CharacterBuilderOptionPicker from '~/components/characters/builder/CharacterBuilderOptionPicker.vue'
+import CharacterChoiceSetPicker from '~/components/characters/builder/CharacterChoiceSetPicker.vue'
 import type { AbilityKey, AbilityScoreMethod } from '~/lib/characters/ability-scores'
 
 definePageMeta({
@@ -205,6 +229,44 @@ function chooseAbilityMethod(method: AbilityScoreMethod) {
 function setAbility(key: AbilityKey, value: number | null) {
   draft.abilities.byMethod[draft.abilities.method][key] = value
 }
+
+// ---------------------------------------------------------------------------
+// Proficiencies -- state only; every rule lives in the pure module.
+// ---------------------------------------------------------------------------
+
+// Prompts and option labels for the World's active Rules Package. A World
+// with no package activated returns `available: false`, and the step simply
+// shows nothing to answer -- the Builder stays usable either way.
+const { data: choiceOptions } = await useFetch<{
+  available: boolean
+  choiceSets?: Record<string, { prompt: string; label?: string }>
+  optionLabels?: Record<string, string>
+}>(() => `/api/worlds/${worldId.value}/rules/choice-options`)
+
+const optionLabels = computed(() => choiceOptions.value?.optionLabels ?? {})
+
+const proficiencyChoices = computed(() => declaredChoices(draft))
+
+function promptFor(choiceSetId: string): string {
+  return choiceOptions.value?.choiceSets?.[choiceSetId]?.prompt || 'Choose your options.'
+}
+
+function selectionsFor(key: string): string[] {
+  return choiceSelections(draft, key)
+}
+
+function chooseSelections(key: string, selected: string[]) {
+  setChoiceSelections(draft, key, selected)
+}
+
+// Changing Species/Class/Background changes which questions are asked, so
+// answers to questions that are no longer asked are dropped immediately --
+// see pruneChoices. Watching the three refs rather than pruning inside
+// chooseOption keeps this true no matter how a selection changes.
+watch(
+  () => CHOICE_KEYS.map((key) => optionKey(draft[key])).join('|'),
+  () => pruneChoices(draft)
+)
 
 const steps = computed(() =>
   STEP_KEYS.map((key) => ({
@@ -398,6 +460,35 @@ async function createCharacter() {
                   Choose a {{ STEP_LABELS[key].toLowerCase() }} above to see what it is and what it grants.
                 </p>
               </div>
+            </div>
+          </div>
+
+          <div v-if="activeStep === 'proficiencies'">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+              {{ STEP_LABELS.proficiencies }}
+            </h2>
+            <p
+              v-if="!proficiencyChoices.length"
+              class="text-sm leading-6 text-[#9f9278]"
+            >
+              The Species, Class, and Background you chose ask no proficiency
+              questions, so there is nothing to answer here.
+            </p>
+
+            <div
+              v-else
+              class="grid gap-6"
+            >
+              <CharacterChoiceSetPicker
+                v-for="choice in proficiencyChoices"
+                :key="choice.key"
+                :choice="choice"
+                :selected="selectionsFor(choice.key)"
+                :prompt="promptFor(choice.choiceSetId)"
+                :option-labels="optionLabels"
+                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+              />
             </div>
           </div>
 
@@ -597,6 +688,35 @@ async function createCharacter() {
                   </p>
                 </div>
               </div>
+            </section>
+
+            <section>
+              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+                {{ STEP_LABELS.proficiencies }}
+              </h2>
+            <p
+              v-if="!proficiencyChoices.length"
+              class="text-sm leading-6 text-[#9f9278]"
+            >
+              The Species, Class, and Background you chose ask no proficiency
+              questions, so there is nothing to answer here.
+            </p>
+
+            <div
+              v-else
+              class="grid gap-6"
+            >
+              <CharacterChoiceSetPicker
+                v-for="choice in proficiencyChoices"
+                :key="choice.key"
+                :choice="choice"
+                :selected="selectionsFor(choice.key)"
+                :prompt="promptFor(choice.choiceSetId)"
+                :option-labels="optionLabels"
+                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+              />
+            </div>
             </section>
 
             <section>

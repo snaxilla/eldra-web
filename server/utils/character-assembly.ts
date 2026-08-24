@@ -69,6 +69,8 @@
 import { directusServiceRequest } from './directus'
 import { getWorldContentCatalogue, type ContentCatalogueEntry } from './world-content-catalogue'
 import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
+import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
+import { normalizeStoredRulesChoices, type StoredRulesChoices } from '../../app/lib/characters/rules-choices'
 import { normalizeStoredAbilityScores, type StoredAbilityScores } from '../../app/lib/characters/ability-scores'
 import type { WorldContentPackResolution } from './world-content-runtime'
 
@@ -95,6 +97,16 @@ export type CharacterAssemblyBlueprint = {
   // Sheet renders rather than an error. Never derived, never defaulted to
   // a row of 10s: absent means absent.
   abilityScores: StoredAbilityScores | null
+  // The player's answers to ChoiceSets their chosen content declared.
+  // `null` when none were ever recorded -- true of every character created
+  // before proficiency choices existed, and a first-class state (the choice
+  // is simply still outstanding) rather than an error.
+  //
+  // Stored answers are NOT trusted to still fit their question: the bridge
+  // re-checks every one against the facets that are current at read time,
+  // because repinning a Content Pack can invalidate an answer that nothing
+  // edited.
+  rulesChoices: StoredRulesChoices | null
   packs: WorldContentPackResolution[]
 }
 
@@ -174,8 +186,8 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
-  // Both blocks in ONE query rather than two round trips -- they differ only
-  // by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
+  // All three blocks in ONE query rather than three round trips -- they
+  // differ only by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
   // `fields` because the rows now have to be told apart.
   const blockRes: any = await directusServiceRequest('/items/block_instances', {
     method: 'GET',
@@ -183,10 +195,10 @@ export async function assembleCharacter(
       filter: {
         _and: [
           { entity_id: { _eq: Number(characterId) } },
-          { block_key: { _in: [CATALOGUE_SELECTION_BLOCK_KEY, ABILITY_SCORES_BLOCK_KEY] } }
+          { block_key: { _in: [CATALOGUE_SELECTION_BLOCK_KEY, ABILITY_SCORES_BLOCK_KEY, RULES_CHOICES_BLOCK_KEY] } }
         ]
       },
-      limit: 2,
+      limit: 3,
       fields: 'block_key,data'
     }
   })
@@ -202,6 +214,7 @@ export async function assembleCharacter(
   // rendering a broken row. Same posture design decision 3 takes for a
   // choice that no longer resolves.
   const abilityScores = normalizeStoredAbilityScores(findBlock(ABILITY_SCORES_BLOCK_KEY)?.data ?? null)
+  const rulesChoices = normalizeStoredRulesChoices(findBlock(RULES_CHOICES_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -221,6 +234,7 @@ export async function assembleCharacter(
     class: resolveSlot(extractRef(selection.class), catalogue.classes, catalogue.packs, 'Class'),
     background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),
     abilityScores,
+    rulesChoices,
     packs: catalogue.packs
   }
 

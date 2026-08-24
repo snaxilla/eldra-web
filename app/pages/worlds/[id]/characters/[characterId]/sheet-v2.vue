@@ -350,16 +350,27 @@ const identityRows = computed(() =>
               <CharacterDerivedPanel :entries="region.entries" />
             </div>
 
-            <!-- Declared by a Class or Background, answered by nobody yet.
-                 Stated rather than silently omitted, because "you still have
-                 skills to choose" is information a player needs. -->
+            <!-- Declared by a Species, Class, or Background and not yet
+                 answered. Stated rather than silently omitted, because "you
+                 still have skills to choose" is information a player needs
+                 -- and it disappears on its own once they are answered,
+                 because `pendingChoices` is derived from the current answers
+                 rather than from a flag anything has to clear.
+                 The Sheet still renders; it does not edit. The link goes to
+                 the Builder-context page that does. -->
             <p
               v-if="derived.pendingChoices.length"
               class="text-xs leading-5 text-[#6f6754]"
             >
               {{ derived.pendingChoices.length }} proficiency
               {{ derived.pendingChoices.length === 1 ? 'choice is' : 'choices are' }}
-              still outstanding. Choosing them is not available yet, so those proficiencies show as unselected.
+              still outstanding, so those proficiencies show as unselected.
+              <NuxtLink
+                :to="`/worlds/${worldId}/characters/${characterId}/proficiencies`"
+                class="text-[#c9a45a] underline underline-offset-2 hover:text-[#f5e7bd]"
+              >
+                Choose them
+              </NuxtLink>.
             </p>
           </div>
         </section>

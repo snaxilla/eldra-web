@@ -75,12 +75,42 @@
 // (.../[characterId]/abilities), which is also the path by which a character
 // created before Phase 3 acquires scores at all.
 //
+// ---------------------------------------------------------------------------
+// INVENTORY -- THE FIRST V1 FEATURE ON THE NEW ARCHITECTURE
+// ---------------------------------------------------------------------------
+// V1's Inventory tab, rebuilt on Character Assembly rather than ported. Its
+// INFORMATION ARCHITECTURE is preserved (an add panel above a dense two-up
+// item grid, quantity/equipped/attuned per card); its PLUMBING is not. There
+// is no `character_sheets` row, no `character_sheet_inventory` table, no
+// runtime column probing, and no snapshotted 5etools payload: items are
+// `(packageId, slug)` references re-resolved against the World's catalogue on
+// every read, exactly as Species/Class/Background already are.
+//
+// Inventory is the ONE editable surface on this page, and deliberately so --
+// see CharacterInventoryPanel.vue's header. Picking something up happens at
+// the table, not in a character builder.
+//
+// This page still computes nothing. Every list change is decided by the pure
+// module (app/lib/characters/inventory.ts) and saved; no weight, capacity,
+// attunement limit, or armour class is calculated anywhere, because those are
+// Rule Category 13 (`equipment`) and belong to the Rules Engine.
+//
 // The identity summary is composed inline rather than extracted into a
 // component: it is used by exactly this one page. The ability scores ARE
 // extracted (CharacterAbilityScoresPanel), because the Builder's review step
 // renders the same panel -- the same test ContentPresentationPanel passed.
 
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
+import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
+import {
+  addInventoryItem,
+  changeInventoryQuantity,
+  removeInventoryItem,
+  toggleInventoryFlag,
+  type AssembledInventoryItem,
+  type InventoryFlag,
+  type StoredInventoryItem
+} from '~/lib/characters/inventory'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
 import { DERIVED_SHEET_REGIONS, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
@@ -126,6 +156,9 @@ type AssemblyBlueprint = {
   // null for every character created before Phase 3 -- a real state, shown
   // as "not assigned yet" with a link to assign them, never as an error.
   abilityScores: StoredAbilityScores | null
+  // Already joined to the World's catalogue by Character Assembly: each entry
+  // carries its resolved title and provenance, or an explicit 'missing'.
+  inventory: AssembledInventoryItem[]
 }
 
 type AssemblyResponse =
@@ -181,6 +214,118 @@ const derivedRegions = computed(() =>
     .map((region) => ({ ...region, entries: derived.value?.byCategory?.[region.category] ?? [] }))
     .filter((region) => region.entries.length > 0)
 )
+
+// ---------------------------------------------------------------------------
+// Inventory -- state and saving only; every decision is the pure module's
+// ---------------------------------------------------------------------------
+
+// Local working copy, seeded from Assembly. Held separately so a save that
+// fails leaves the player looking at what they asked for, with an error,
+// rather than silently snapping back.
+const inventoryItems = ref<AssembledInventoryItem[]>([])
+const inventorySaving = ref(false)
+const inventoryError = ref('')
+
+watch(
+  blueprint,
+  (value) => { inventoryItems.value = [...(value?.inventory ?? [])] },
+  { immediate: true }
+)
+
+// Item options for the add form. `lazy` so a World with a large bound
+// catalogue never delays the sheet itself -- the add form simply has nothing
+// to offer until it arrives, and custom items work regardless.
+const { data: catalogue } = await useFetch<{ items?: Array<{
+  packageId: string
+  packageVersion: string
+  title: string
+  slug: string
+  sourceBook?: string
+}> }>(() => `/api/worlds/${worldId.value}/catalogue`, { lazy: true })
+
+const inventoryOptions = computed(() => catalogue.value?.items ?? [])
+
+// The one place inventory reaches the server. Takes the STORED shape --
+// `AssembledInventoryItem` is a superset carrying resolved display fields,
+// and persisting those would be storing a copy of the catalogue, which is
+// exactly what this migration removes.
+async function persistInventory(next: AssembledInventoryItem[]) {
+  if (inventorySaving.value) return
+
+  const previous = inventoryItems.value
+  inventoryItems.value = next
+  inventorySaving.value = true
+  inventoryError.value = ''
+
+  try {
+    const items: StoredInventoryItem[] = next.map((item) => ({
+      instanceId: item.instanceId,
+      ...(item.ref ? { ref: item.ref } : { name: item.name }),
+      quantity: item.quantity,
+      equipped: item.equipped,
+      attuned: item.attuned,
+      ...(item.container ? { container: item.container } : {}),
+      ...(item.notes ? { notes: item.notes } : {})
+    }))
+
+    await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/inventory`, {
+      method: 'PUT',
+      body: { items }
+    })
+  } catch (saveError: any) {
+    inventoryItems.value = previous
+    inventoryError.value =
+      saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save inventory'
+  } finally {
+    inventorySaving.value = false
+  }
+}
+
+// Each handler applies a PURE function and saves the result. No branching, no
+// arithmetic, and no knowledge of what equipping something means.
+function onInventoryAdd(payload: {
+  ref?: { packageId: string; slug: string }
+  name?: string
+  quantity: number
+  notes?: string
+}) {
+  const added = addInventoryItem(inventoryItems.value, payload)
+  const entry = payload.ref
+    ? inventoryOptions.value.find(
+        (option) => option.packageId === payload.ref!.packageId && option.slug === payload.ref!.slug
+      )
+    : undefined
+
+  // The new row is decorated for display exactly as Assembly would have, so
+  // the card renders correctly before the next read rather than flashing an
+  // "unavailable" state for an item that is perfectly fine.
+  persistInventory(added.map((item, index) =>
+    index === added.length - 1
+      ? {
+          ...item,
+          status: payload.ref ? (entry ? 'resolved' : 'missing') : 'custom',
+          title: entry?.title || payload.name || 'Item',
+          ...(entry ? { entry } : {})
+        }
+      : (item as AssembledInventoryItem)
+  ) as AssembledInventoryItem[])
+}
+
+function onInventoryRemove(instanceId: string) {
+  persistInventory(removeInventoryItem(inventoryItems.value, instanceId) as AssembledInventoryItem[])
+}
+
+function onInventoryQuantity(payload: { instanceId: string; delta: number }) {
+  persistInventory(
+    changeInventoryQuantity(inventoryItems.value, payload.instanceId, payload.delta) as AssembledInventoryItem[]
+  )
+}
+
+function onInventoryFlag(payload: { instanceId: string; flag: InventoryFlag }) {
+  persistInventory(
+    toggleInventoryFlag(inventoryItems.value, payload.instanceId, payload.flag) as AssembledInventoryItem[]
+  )
+}
 
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
@@ -372,6 +517,27 @@ const identityRows = computed(() =>
                 Choose them
               </NuxtLink>.
             </p>
+          </div>
+        </section>
+
+        <!-- Inventory: the one editable region on this page. See the
+             file header and CharacterInventoryPanel.vue for why. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Inventory
+          </div>
+
+          <div class="mt-4">
+            <CharacterInventoryPanel
+              :items="inventoryItems"
+              :options="inventoryOptions"
+              :saving="inventorySaving"
+              :error-message="inventoryError"
+              @add="onInventoryAdd"
+              @remove="onInventoryRemove"
+              @change-quantity="onInventoryQuantity"
+              @toggle-flag="onInventoryFlag"
+            />
           </div>
         </section>
 

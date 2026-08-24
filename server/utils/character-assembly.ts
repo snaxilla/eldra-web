@@ -70,6 +70,13 @@ import { directusServiceRequest } from './directus'
 import { getWorldContentCatalogue, type ContentCatalogueEntry } from './world-content-catalogue'
 import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
 import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
+import { INVENTORY_BLOCK_KEY } from './character-inventory'
+import {
+  normalizeStoredInventory,
+  unresolvedItemLabel,
+  type AssembledInventoryItem,
+  type StoredInventoryItem
+} from '../../app/lib/characters/inventory'
 import { normalizeStoredRulesChoices, type StoredRulesChoices } from '../../app/lib/characters/rules-choices'
 import { normalizeStoredAbilityScores, type StoredAbilityScores } from '../../app/lib/characters/ability-scores'
 import type { WorldContentPackResolution } from './world-content-runtime'
@@ -84,6 +91,18 @@ type StoredChoiceRef = {
 export type CharacterAssemblySlot =
   | { status: 'resolved'; entry: ContentCatalogueEntry }
   | { status: 'missing'; packageId: string; slug: string; reason: string }
+
+// One carried item, joined to the catalogue. The stored decision (how many,
+// equipped, attuned, notes) is echoed verbatim; everything ABOUT the item --
+// its title, its source book, its pack -- comes from the catalogue entry it
+// resolved to, so repinning a Content Pack updates every character carrying
+// it rather than leaving each holding a private copy.
+//
+// The type itself is declared in app/lib/characters/inventory.ts, because the
+// Character Sheet renders it and `app/` must never import from `server/`.
+// This module produces it; the panel consumes it. Re-exported so callers
+// reading assembly types find it alongside the blueprint.
+export type { AssembledInventoryItem }
 
 export type CharacterAssemblyBlueprint = {
   worldId: string
@@ -107,6 +126,10 @@ export type CharacterAssemblyBlueprint = {
   // because repinning a Content Pack can invalidate an answer that nothing
   // edited.
   rulesChoices: StoredRulesChoices | null
+  // What this character carries, joined to the World's current catalogue.
+  // An empty list when nothing was ever recorded -- carrying nothing is a
+  // legal state, not an absent one, which is why this is [] and not null.
+  inventory: AssembledInventoryItem[]
   packs: WorldContentPackResolution[]
 }
 
@@ -159,6 +182,35 @@ function resolveSlot(
   }
 }
 
+// Joins stored inventory to the catalogue. Reuses resolveSlot's exact
+// resolution rule -- match on (packageId, slug), and treat a reference whose
+// pack is broken or absent as missing rather than as an error -- so an item
+// and a Species behave identically when their content goes away.
+function resolveInventory(
+  stored: readonly StoredInventoryItem[],
+  items: readonly ContentCatalogueEntry[],
+  packs: readonly WorldContentPackResolution[]
+): AssembledInventoryItem[] {
+  return stored.map((item) => {
+    if (!item.ref) {
+      return { ...item, status: 'custom', title: item.name || 'Item' }
+    }
+
+    const slot = resolveSlot(item.ref, items, packs, 'Item')
+
+    if (slot.status === 'resolved') {
+      return { ...item, status: 'resolved', title: slot.entry.title, entry: slot.entry }
+    }
+
+    return {
+      ...item,
+      status: 'missing',
+      title: unresolvedItemLabel(item.ref),
+      reason: slot.reason
+    }
+  })
+}
+
 // The canonical entry point for this module. Composes one entity read, one
 // block_instances read, and getWorldContentCatalogue -- no other I/O.
 export async function assembleCharacter(
@@ -186,7 +238,7 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
-  // All three blocks in ONE query rather than three round trips -- they
+  // All four blocks in ONE query rather than four round trips -- they
   // differ only by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
   // `fields` because the rows now have to be told apart.
   const blockRes: any = await directusServiceRequest('/items/block_instances', {
@@ -195,10 +247,19 @@ export async function assembleCharacter(
       filter: {
         _and: [
           { entity_id: { _eq: Number(characterId) } },
-          { block_key: { _in: [CATALOGUE_SELECTION_BLOCK_KEY, ABILITY_SCORES_BLOCK_KEY, RULES_CHOICES_BLOCK_KEY] } }
+          {
+            block_key: {
+              _in: [
+                CATALOGUE_SELECTION_BLOCK_KEY,
+                ABILITY_SCORES_BLOCK_KEY,
+                RULES_CHOICES_BLOCK_KEY,
+                INVENTORY_BLOCK_KEY
+              ]
+            }
+          }
         ]
       },
-      limit: 3,
+      limit: 4,
       fields: 'block_key,data'
     }
   })
@@ -215,6 +276,7 @@ export async function assembleCharacter(
   // choice that no longer resolves.
   const abilityScores = normalizeStoredAbilityScores(findBlock(ABILITY_SCORES_BLOCK_KEY)?.data ?? null)
   const rulesChoices = normalizeStoredRulesChoices(findBlock(RULES_CHOICES_BLOCK_KEY)?.data ?? null)
+  const storedInventory = normalizeStoredInventory(findBlock(INVENTORY_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -235,6 +297,7 @@ export async function assembleCharacter(
     background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),
     abilityScores,
     rulesChoices,
+    inventory: resolveInventory(storedInventory?.items ?? [], catalogue.items, catalogue.packs),
     packs: catalogue.packs
   }
 

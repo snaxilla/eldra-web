@@ -59,7 +59,12 @@ function selectionRef(entry: ReturnType<typeof catalogueEntry>) {
 // apart by `block_key` -- so rows carry one. `abilityBlockData` is optional
 // and defaults to absent, which is the state every character created before
 // Phase 3 is genuinely in.
-function mockEntityAndBlock(entity: any, blockData: any, abilityBlockData: any = null) {
+function mockEntityAndBlock(
+  entity: any,
+  blockData: any,
+  abilityBlockData: any = null,
+  inventoryBlockData: any = null
+) {
   directusServiceRequestMock.mockImplementation(async (path: string) => {
     if (path === '/items/entities/42') {
       return { data: entity }
@@ -68,6 +73,7 @@ function mockEntityAndBlock(entity: any, blockData: any, abilityBlockData: any =
       const rows: any[] = []
       if (blockData) rows.push({ block_key: 'catalogue_selection', data: blockData })
       if (abilityBlockData) rows.push({ block_key: 'ability_scores', data: abilityBlockData })
+      if (inventoryBlockData) rows.push({ block_key: 'inventory', data: inventoryBlockData })
       return { data: rows }
     }
     throw new Error(`Unexpected Directus path in test: ${path}`)
@@ -247,7 +253,11 @@ describe('assembleCharacter -- ability scores', () => {
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
       { id: 42, world_id: 5, title: 'Aria' },
-      selectionFor(catalogue),
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
       { method: 'point-buy', scores: SCORES }
     )
 
@@ -263,7 +273,11 @@ describe('assembleCharacter -- ability scores', () => {
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
       { id: 42, world_id: 5, title: 'Aria' },
-      selectionFor(catalogue),
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
       { method: 'manual', scores: SCORES }
     )
 
@@ -278,7 +292,11 @@ describe('assembleCharacter -- ability scores', () => {
   it('reports null for a character that has no ability_scores block -- every pre-Phase-3 character', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
-    mockEntityAndBlock({ id: 42, world_id: 5, title: 'Aria' }, selectionFor(catalogue))
+    mockEntityAndBlock({ id: 42, world_id: 5, title: 'Aria' }, {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      })
 
     const result = await assembleCharacter('5', '42')
     if (!result.available) throw new Error('expected an available blueprint')
@@ -291,7 +309,11 @@ describe('assembleCharacter -- ability scores', () => {
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
       { id: 42, world_id: 5, title: 'Aria' },
-      selectionFor(catalogue),
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
       { method: 'manual', scores: { str: 15, dex: 14 } }
     )
 
@@ -303,12 +325,16 @@ describe('assembleCharacter -- ability scores', () => {
     expect(result.blueprint.species.status).toBe('resolved')
   })
 
-  it('reads all three blocks in ONE Directus round trip', async () => {
+  it('reads all four blocks in ONE Directus round trip', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
       { id: 42, world_id: 5, title: 'Aria' },
-      selectionFor(catalogue),
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
       { method: 'manual', scores: SCORES }
     )
 
@@ -317,7 +343,131 @@ describe('assembleCharacter -- ability scores', () => {
     const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
     expect(blockCalls).toHaveLength(1)
     expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual([
-      'catalogue_selection', 'ability_scores', 'rules_choices'
+      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory'
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Inventory -- the first V1 feature on the new architecture
+// ---------------------------------------------------------------------------
+
+describe('assembleCharacter -- inventory', () => {
+  const LONGSWORD = catalogueEntry({ title: 'Longsword', slug: 'longsword', sourceBook: 'XPHB' })
+
+  function withItems(items: any[], catalogueItems: any[] = [LONGSWORD]) {
+    const catalogue = fullCatalogue({ items: catalogueItems } as any)
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
+      null,
+      { items }
+    )
+    return catalogue
+  }
+
+  it('is an empty list, never null, when nothing was ever recorded', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock({ id: 42, world_id: 5, title: 'Aria' }, {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      })
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.inventory).toEqual([])
+  })
+
+  it('resolves a reference against the catalogue and takes its title from there', async () => {
+    withItems([{
+      instanceId: 'item-1',
+      ref: { packageId: LONGSWORD.packageId, slug: 'longsword' },
+      quantity: 2,
+      equipped: true,
+      attuned: false
+    }])
+
+    const result = await assembleCharacter('5', '42')
+    const item = result.available ? result.blueprint.inventory[0] : null
+
+    expect(item).toMatchObject({ status: 'resolved', title: 'Longsword', quantity: 2, equipped: true })
+    expect(item?.entry?.sourceBook).toBe('XPHB')
+  })
+
+  it('reflects a repin rather than a stored copy -- the title follows the catalogue', async () => {
+    // The whole point of storing a reference instead of a snapshot: rename
+    // the published item and every character carrying it updates.
+    withItems(
+      [{ instanceId: 'item-1', ref: { packageId: LONGSWORD.packageId, slug: 'longsword' }, quantity: 1, equipped: false, attuned: false }],
+      [catalogueEntry({ title: 'Longsword, +1', slug: 'longsword', sourceBook: 'XDMG' })]
+    )
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.inventory[0]?.title).toBe('Longsword, +1')
+  })
+
+  it('reports a reference that no longer resolves instead of dropping it', async () => {
+    withItems(
+      [{ instanceId: 'item-1', ref: { packageId: LONGSWORD.packageId, slug: 'gone' }, quantity: 1, equipped: false, attuned: false }],
+      [LONGSWORD]
+    )
+
+    const result = await assembleCharacter('5', '42')
+    const item = result.available ? result.blueprint.inventory[0] : null
+
+    expect(item?.status).toBe('missing')
+    expect(item?.title).toContain('unavailable')
+    expect(item?.reason).toBeTruthy()
+  })
+
+  it('carries a custom item through with the name the player typed', async () => {
+    withItems([{ instanceId: 'item-1', name: 'Letter from the duke', quantity: 1, equipped: false, attuned: false }])
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.inventory[0]).toMatchObject({
+      status: 'custom',
+      title: 'Letter from the duke'
+    })
+  })
+
+  it('keeps custom items usable in a World with no item content bound', async () => {
+    withItems([{ instanceId: 'item-1', name: 'Rope', quantity: 1, equipped: false, attuned: false }], [])
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.inventory[0]?.status).toBe('custom')
+  })
+
+  it('derives nothing -- no weight, value, capacity, or armour class appears', async () => {
+    withItems([{
+      instanceId: 'item-1',
+      ref: { packageId: LONGSWORD.packageId, slug: 'longsword' },
+      quantity: 3,
+      equipped: true,
+      attuned: true
+    }])
+
+    const result = await assembleCharacter('5', '42')
+    const item: any = result.available ? result.blueprint.inventory[0] : {}
+
+    for (const derived of ['weight', 'totalWeight', 'value', 'cost', 'armorClass', 'ac', 'capacity']) {
+      expect(item[derived]).toBeUndefined()
+    }
+  })
+
+  it('re-validates the stored block rather than trusting it', async () => {
+    // One malformed row is dropped; the readable one survives.
+    withItems([
+      { instanceId: 'item-1', ref: { packageId: LONGSWORD.packageId, slug: 'longsword' }, quantity: 1, equipped: false, attuned: false },
+      { instanceId: 'item-2', quantity: 4 }
+    ])
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.inventory).toHaveLength(1)
   })
 })

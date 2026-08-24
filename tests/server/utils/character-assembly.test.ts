@@ -63,7 +63,8 @@ function mockEntityAndBlock(
   entity: any,
   blockData: any,
   abilityBlockData: any = null,
-  inventoryBlockData: any = null
+  inventoryBlockData: any = null,
+  notesBlockData: any = null
 ) {
   directusServiceRequestMock.mockImplementation(async (path: string) => {
     if (path === '/items/entities/42') {
@@ -74,6 +75,7 @@ function mockEntityAndBlock(
       if (blockData) rows.push({ block_key: 'catalogue_selection', data: blockData })
       if (abilityBlockData) rows.push({ block_key: 'ability_scores', data: abilityBlockData })
       if (inventoryBlockData) rows.push({ block_key: 'inventory', data: inventoryBlockData })
+      if (notesBlockData) rows.push({ block_key: 'notes', data: notesBlockData })
       return { data: rows }
     }
     throw new Error(`Unexpected Directus path in test: ${path}`)
@@ -325,7 +327,7 @@ describe('assembleCharacter -- ability scores', () => {
     expect(result.blueprint.species.status).toBe('resolved')
   })
 
-  it('reads all four blocks in ONE Directus round trip', async () => {
+  it('reads all five blocks in ONE Directus round trip', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
@@ -343,7 +345,7 @@ describe('assembleCharacter -- ability scores', () => {
     const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
     expect(blockCalls).toHaveLength(1)
     expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual([
-      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory'
+      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes'
     ])
   })
 })
@@ -469,5 +471,70 @@ describe('assembleCharacter -- inventory', () => {
 
     const result = await assembleCharacter('5', '42')
     expect(result.available && result.blueprint.inventory).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Notes -- the second V1 feature on the new architecture
+// ---------------------------------------------------------------------------
+
+describe('assembleCharacter -- notes', () => {
+  function withNotes(notesBlockData: any) {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
+      null,
+      null,
+      notesBlockData
+    )
+  }
+
+  it('is null, never an empty record, when nothing was ever recorded', async () => {
+    withNotes(null)
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.notes).toBeNull()
+  })
+
+  it('survives assembly unchanged -- notes resolve against nothing', async () => {
+    const stored = {
+      general: 'Reminder', appearance: 'Tall', personality: 'Blunt',
+      backstory: 'Port town', goals: 'Find the sword', secrets: 'Is a spy'
+    }
+    withNotes(stored)
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.notes).toEqual(stored)
+  })
+
+  it('re-validates the stored block rather than trusting it', async () => {
+    withNotes({ general: 'ok', appearance: 42 })
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.notes).toMatchObject({ general: 'ok', appearance: '' })
+  })
+
+  it('is independent of inventory and rules choices -- reading one does not disturb another', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
+      null,
+      { items: [] },
+      { general: 'present' }
+    )
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.notes?.general).toBe('present')
+    expect(result.available && result.blueprint.inventory).toEqual([])
   })
 })

@@ -95,6 +95,24 @@
 // attunement limit, or armour class is calculated anywhere, because those are
 // Rule Category 13 (`equipment`) and belong to the Rules Engine.
 //
+// ---------------------------------------------------------------------------
+// NOTES -- THE SECOND V1 FEATURE ON THE NEW ARCHITECTURE
+// ---------------------------------------------------------------------------
+// V1's Notes tab, reshaped rather than ported: six named fields (General,
+// Appearance, Personality, Backstory, Goals, Secrets) instead of an
+// open-ended card list, because that is the shape this feature was scoped
+// to. Persisted through Character Assembly's same block_instances pattern
+// Inventory established -- see server/utils/character-notes.ts.
+//
+// Notes resolve against nothing: no catalogue join, no Rules Engine call,
+// no derived value. They are the one piece of this page that is exactly what
+// was typed, both in and out.
+//
+// `secrets` is an ordinary field, not access-controlled -- see
+// character-notes.ts's own note on why: no real GM role exists yet to gate
+// it on, and labelling it GM-only here would promise privacy this platform
+// cannot enforce.
+
 // The identity summary is composed inline rather than extracted into a
 // component: it is used by exactly this one page. The ability scores ARE
 // extracted (CharacterAbilityScoresPanel), because the Builder's review step
@@ -102,6 +120,11 @@
 
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
+import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
+import {
+  emptyCharacterNotes,
+  type StoredCharacterNotes
+} from '~/lib/characters/character-notes'
 import {
   addInventoryItem,
   changeInventoryQuantity,
@@ -159,6 +182,9 @@ type AssemblyBlueprint = {
   // Already joined to the World's catalogue by Character Assembly: each entry
   // carries its resolved title and provenance, or an explicit 'missing'.
   inventory: AssembledInventoryItem[]
+  // `null` for every character created before this feature -- a real state,
+  // rendered as six empty fields, never as an error.
+  notes: StoredCharacterNotes | null
 }
 
 type AssemblyResponse =
@@ -325,6 +351,42 @@ function onInventoryFlag(payload: { instanceId: string; flag: InventoryFlag }) {
   persistInventory(
     toggleInventoryFlag(inventoryItems.value, payload.instanceId, payload.flag) as AssembledInventoryItem[]
   )
+}
+
+// ---------------------------------------------------------------------------
+// Notes -- state and saving only; the pure module owns the shape
+// ---------------------------------------------------------------------------
+
+const noteDraft = ref<StoredCharacterNotes>(emptyCharacterNotes())
+const notesSaving = ref(false)
+const notesError = ref('')
+
+watch(
+  blueprint,
+  (value) => { noteDraft.value = value?.notes ? { ...value.notes } : emptyCharacterNotes() },
+  { immediate: true }
+)
+
+async function saveNotes(next: StoredCharacterNotes) {
+  if (notesSaving.value) return
+
+  const previous = noteDraft.value
+  noteDraft.value = next
+  notesSaving.value = true
+  notesError.value = ''
+
+  try {
+    await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/notes`, {
+      method: 'PUT',
+      body: next
+    })
+  } catch (saveError: any) {
+    noteDraft.value = previous
+    notesError.value =
+      saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save notes'
+  } finally {
+    notesSaving.value = false
+  }
 }
 
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
@@ -537,6 +599,22 @@ const identityRows = computed(() =>
               @remove="onInventoryRemove"
               @change-quantity="onInventoryQuantity"
               @toggle-flag="onInventoryFlag"
+            />
+          </div>
+        </section>
+
+        <!-- Notes: also editable -- see CharacterNotesPanel.vue's header. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Notes
+          </div>
+
+          <div class="mt-4">
+            <CharacterNotesPanel
+              :notes="noteDraft"
+              :saving="notesSaving"
+              :error-message="notesError"
+              @save="saveNotes"
             />
           </div>
         </section>

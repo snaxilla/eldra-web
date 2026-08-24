@@ -71,6 +71,11 @@ import { getWorldContentCatalogue, type ContentCatalogueEntry } from './world-co
 import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
 import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
 import { INVENTORY_BLOCK_KEY } from './character-inventory'
+import { CHARACTER_NOTES_BLOCK_KEY } from './character-notes'
+import {
+  normalizeStoredCharacterNotes,
+  type StoredCharacterNotes
+} from '../../app/lib/characters/character-notes'
 import {
   normalizeStoredInventory,
   unresolvedItemLabel,
@@ -130,6 +135,12 @@ export type CharacterAssemblyBlueprint = {
   // An empty list when nothing was ever recorded -- carrying nothing is a
   // legal state, not an absent one, which is why this is [] and not null.
   inventory: AssembledInventoryItem[]
+  // Free text the player wrote about this character. `null` when nothing was
+  // ever recorded -- true of every character created before this feature --
+  // mirroring `abilityScores`' own null-means-absent convention. Resolves
+  // against nothing: unlike species/class/background/inventory, there is no
+  // catalogue reference to re-join on every read.
+  notes: StoredCharacterNotes | null
   packs: WorldContentPackResolution[]
 }
 
@@ -238,7 +249,7 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
-  // All four blocks in ONE query rather than four round trips -- they
+  // All five blocks in ONE query rather than five round trips -- they
   // differ only by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
   // `fields` because the rows now have to be told apart.
   const blockRes: any = await directusServiceRequest('/items/block_instances', {
@@ -253,13 +264,14 @@ export async function assembleCharacter(
                 CATALOGUE_SELECTION_BLOCK_KEY,
                 ABILITY_SCORES_BLOCK_KEY,
                 RULES_CHOICES_BLOCK_KEY,
-                INVENTORY_BLOCK_KEY
+                INVENTORY_BLOCK_KEY,
+                CHARACTER_NOTES_BLOCK_KEY
               ]
             }
           }
         ]
       },
-      limit: 4,
+      limit: 5,
       fields: 'block_key,data'
     }
   })
@@ -277,6 +289,7 @@ export async function assembleCharacter(
   const abilityScores = normalizeStoredAbilityScores(findBlock(ABILITY_SCORES_BLOCK_KEY)?.data ?? null)
   const rulesChoices = normalizeStoredRulesChoices(findBlock(RULES_CHOICES_BLOCK_KEY)?.data ?? null)
   const storedInventory = normalizeStoredInventory(findBlock(INVENTORY_BLOCK_KEY)?.data ?? null)
+  const notes = normalizeStoredCharacterNotes(findBlock(CHARACTER_NOTES_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -298,6 +311,7 @@ export async function assembleCharacter(
     abilityScores,
     rulesChoices,
     inventory: resolveInventory(storedInventory?.items ?? [], catalogue.items, catalogue.packs),
+    notes,
     packs: catalogue.packs
   }
 

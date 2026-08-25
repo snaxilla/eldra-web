@@ -1258,5 +1258,105 @@
     },
     "distinct": true,
     "writesTo": "value:skill.{selected}.proficient"
+  },
+  {
+    "id": "collection:equipment",
+    "kind": "collection",
+    "category": "equipment",
+    "label": "Equipment",
+    "itemSchema": [
+      {
+        "key": "category",
+        "valueType": "text",
+        "default": "gear"
+      },
+      {
+        "key": "equipped",
+        "valueType": "boolean",
+        "default": false
+      },
+      {
+        "key": "attuned",
+        "valueType": "boolean",
+        "default": false
+      }
+    ],
+    "slots": [
+      {
+        "id": "armor",
+        "capacity": 1
+      },
+      {
+        "id": "held",
+        "capacity": 2
+      }
+    ],
+    "tags": [
+      "equipment"
+    ]
+  },
+  {
+    "id": "value:equipment.attunement_max",
+    "kind": "value",
+    "category": "equipment",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 3,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Attunement Limit",
+    "tags": [
+      "equipment",
+      "attunement"
+    ]
+  },
+  {
+    "id": "value:equipment.attuned_count",
+    "kind": "value",
+    "category": "equipment",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Items Attuned",
+    "tags": [
+      "equipment",
+      "attunement"
+    ],
+    "formula": {
+      "text": "count(@collection:equipment[attuned])"
+    }
+  },
+  {
+    "id": "value:equipment.attunement_available",
+    "kind": "value",
+    "category": "equipment",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Attunement Slots Remaining",
+    "tags": [
+      "equipment",
+      "attunement"
+    ],
+    "formula": {
+      "text": "@value:equipment.attunement_max - @value:equipment.attuned_count"
+    }
+  },
+  {
+    "id": "value:equipment.equipped_count",
+    "kind": "value",
+    "category": "equipment",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Items Equipped",
+    "tags": [
+      "equipment"
+    ],
+    "formula": {
+      "text": "count(@collection:equipment[equipped])"
+    }
   }
 ]

@@ -82,7 +82,33 @@
 // nothing having edited it. An answer that no longer fits reverts to
 // outstanding rather than being partially applied.
 
-import type { CharacterAssemblyBlueprint, CharacterAssemblySlot } from './character-assembly'
+import type { AssembledInventoryItem, CharacterAssemblyBlueprint, CharacterAssemblySlot } from './character-assembly'
+// ---------------------------------------------------------------------------
+// EQUIPMENT: STORED DECISIONS BECOME A COLLECTION, NOTHING IS COMPUTED
+// ---------------------------------------------------------------------------
+// `blueprint.inventory` (server/utils/character-inventory.ts, Character
+// Assembly's catalogue join) is what a character carries and which of it is
+// equipped or attuned -- all three player decisions, stored verbatim. This
+// module's only job for them is the same one it already does for ability
+// scores: copy them into the shape the engine expects and stop.
+//
+// Every item is translated, resolved or not. `equipped`/`attuned` are facts
+// about what the player marked, independent of whether that item's Content
+// Pack still resolves -- a broken reference does not un-attune anything, the
+// same way losing your reading glasses does not un-read the book. What the
+// Rules Package does with these booleans (count them, compare against a
+// limit) is entirely its own authored content
+// (rules-package-architecture.md §7 -- the `collection:equipment`
+// CollectionDefinition and its Category 13 Values); this module knows only
+// the fixed key name the package's own vocabulary declares, exactly as
+// `abilityValueId` already hardcodes `value:ability.<key>`.
+//
+// `category` (armor / weapon / gear) is declared by the package's itemSchema
+// but is NOT populated here: it is a fact about the ITEM (content), and no
+// Rules Facet corpus for items exists yet (only species/class/background do
+// -- app/lib/content-rules/dnd5e-2024.ts). Every item is therefore written
+// with only `equipped`/`attuned`, and the collection's own `default: 'gear'`
+// covers the missing field until item facets exist to supply it.
 import type { RulesFacet, RulesFacetChoice } from '../../app/lib/content-rules'
 import {
   resolveChoiceTarget,
@@ -93,7 +119,7 @@ import {
   type StoredRulesChoices
 } from '../../app/lib/characters/rules-choices'
 import { ABILITY_KEYS } from '../../app/lib/characters/ability-scores'
-import type { ActorState, RuleValue, SourceInstance } from '../../app/lib/rules/types'
+import type { ActorState, CollectionInstanceItem, RuleValue, SourceInstance } from '../../app/lib/rules/types'
 
 // The three catalogue-backed slots, in the order their grants are applied.
 // Later wins on conflict. The order is Species -> Class -> Background
@@ -177,9 +203,27 @@ function abilityValueId(key: string): string {
   return `value:ability.${key}`
 }
 
+// The Rules Package's own collection id -- the equipment counterpart of
+// `abilityValueId` above. Fixed for the same reason: this is the package's
+// vocabulary, not a piece of content, so there is nothing to look up.
+const EQUIPMENT_COLLECTION_ID = 'collection:equipment'
+
+// Player decisions only. `category` is deliberately absent -- see the
+// header's note on why it has no source yet.
+function equipmentCollectionItems(inventory: readonly AssembledInventoryItem[]): CollectionInstanceItem[] {
+  return inventory.map((item) => ({
+    instanceId: item.instanceId,
+    equipped: item.equipped,
+    attuned: item.attuned
+  }))
+}
+
 export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
   const { blueprint } = input
   const values: Record<string, RuleValue> = {}
+  const collections: Record<string, CollectionInstanceItem[]> = {
+    [EQUIPMENT_COLLECTION_ID]: equipmentCollectionItems(blueprint.inventory)
+  }
   const sources: SourceInstance[] = []
   const declaredChoices: ResolvableChoice[] = []
   const pendingChoices: PendingChoice[] = []
@@ -267,7 +311,7 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     packageVersion: input.packageVersion,
     stateSchemaVersion: input.stateSchemaVersion,
     values,
-    collections: {},
+    collections,
     // The player's answers, keyed `slot:choiceSetId`. Empty when nothing has
     // been chosen yet, which is a legal state rather than an omission.
     choices: answeredChoices,

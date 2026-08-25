@@ -43,7 +43,7 @@
 
 import { evaluate } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
-import type { RuleCategory, RulesError, RuleValue } from '../../app/lib/rules/types'
+import type { CollectionSlotDefinition, RuleCategory, RulesError, RuleValue } from '../../app/lib/rules/types'
 import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
 import { buildActorState, type PendingChoice } from './character-actor-bridge'
 import type { ResolvableChoice } from '../../app/lib/characters/rules-choices'
@@ -64,6 +64,21 @@ function isRulesError(value: unknown): value is RulesError {
     'message' in value &&
     !('count' in value && 'faces' in value)
   )
+}
+
+// One declared Collection's metadata -- deliberately NOT its items (the
+// item flags -- equipped, attuned -- are already displayed by the caller's
+// own tracking surface, CharacterInventoryPanel.vue; showing them twice
+// through two different paths is what §11.3 calls a second source of
+// truth). Only what the PACKAGE declares about the collection: its slots.
+// Generic across any collection any package might declare, exactly as
+// `DerivedValue` is generic across any Value -- this module still names no
+// game, no `equipment`, no `armor`.
+export type DerivedCollection = {
+  id: string
+  label?: string
+  category: RuleCategory
+  slots: CollectionSlotDefinition[]
 }
 
 // One evaluated Definition. `value` is whatever the engine returned;
@@ -103,6 +118,11 @@ export type DerivedCharacter = {
   // Definitions simply has no key -- the sheet then renders no region for
   // it, which is the visible degradation §13.2 describes.
   byCategory: Partial<Record<RuleCategory, DerivedValue[]>>
+  // Every Collection the active package declares that has at least one
+  // slot -- a Collection with no slots has nothing spatial to show and is
+  // omitted, the same "nothing to render, nothing rendered" rule §13.2
+  // already applies to an empty category.
+  collections: DerivedCollection[]
   // EVERY choice the current facets declare, with labels and current
   // answers -- what an editing surface renders.
   choices: PresentableChoice[]
@@ -215,8 +235,23 @@ export async function getDerivedCharacter(
   })
 
   const byCategory: Partial<Record<RuleCategory, DerivedValue[]>> = {}
+  const collections: DerivedCollection[] = []
 
   for (const definition of registry.listAll()) {
+    if (definition.kind === 'collection') {
+      // Mirrors the `if (!category) continue` skip below for Values: an
+      // uncategorised Collection has no region to render into.
+      if (definition.category && definition.slots?.length) {
+        collections.push({
+          id: definition.id,
+          label: definition.label,
+          category: definition.category,
+          slots: definition.slots
+        })
+      }
+      continue
+    }
+
     if (definition.kind !== 'value') continue
 
     const category = definition.category
@@ -248,6 +283,7 @@ export async function getDerivedCharacter(
       packageId,
       packageVersion,
       byCategory,
+      collections,
       choices,
       pendingChoices: bridged.pendingChoices,
       unresolvedGrants: bridged.unresolvedGrants

@@ -557,6 +557,33 @@ const identityRows = computed(() =>
               <CharacterDerivedPanel :entries="region.entries" />
             </div>
 
+            <!-- Equipment Slots: declared by the active Rules Package's
+                 Collection metadata (registry.getById('collection:equipment')
+                 .slots), not computed here. No per-slot occupancy is shown --
+                 that needs an item to declare WHICH slot it fills, which
+                 needs a Rules Facet no item authors yet (see the actor
+                 bridge's header). What the package declares (which slots
+                 exist, and their capacity) is real Rules Engine output and
+                 is shown as such. -->
+            <div
+              v-for="collection in derived.collections"
+              :key="collection.id"
+              class="min-w-0"
+            >
+              <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+                {{ collection.label || 'Equipment Slots' }}
+              </h3>
+              <div class="flex flex-wrap gap-2">
+                <div
+                  v-for="equipmentSlot in collection.slots"
+                  :key="equipmentSlot.id"
+                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs capitalize"
+                >
+                  {{ equipmentSlot.id }} &middot; {{ equipmentSlot.capacity }}
+                </div>
+              </div>
+            </div>
+
             <!-- Declared by a Species, Class, or Background and not yet
                  answered. Stated rather than silently omitted, because "you
                  still have skills to choose" is information a player needs

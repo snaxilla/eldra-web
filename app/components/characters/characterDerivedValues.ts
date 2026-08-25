@@ -31,10 +31,25 @@ export type DerivedValue = {
   error?: string
 }
 
+// One declared Collection's SLOT metadata -- never its items. The item
+// flags (equipped, attuned) are already shown by CharacterInventoryPanel.vue,
+// which reads them from Character Assembly's own inventory join; showing
+// them a second time from this endpoint would be a second source of truth
+// for the same fact. This mirrors `server/utils/character-derived.ts`'s own
+// `DerivedCollection`, restated here for the same reason `DerivedValue` is:
+// app code must not import from server/utils.
+export type DerivedCollection = {
+  id: string
+  label?: string
+  category: RuleCategory
+  slots: Array<{ id: string; capacity: number }>
+}
+
 export type DerivedCharacterView = {
   packageId: string
   packageVersion: string
   byCategory: Partial<Record<RuleCategory, DerivedValue[]>>
+  collections: DerivedCollection[]
   pendingChoices: Array<{ slot: string; count: number }>
 }
 
@@ -54,5 +69,6 @@ export const DERIVED_SHEET_REGIONS: ReadonlyArray<{ category: RuleCategory; labe
   { category: 'core.abilities', label: 'Abilities' },
   { category: 'core.proficiency', label: 'Proficiency' },
   { category: 'core.saves', label: 'Saving Throws' },
-  { category: 'core.skills', label: 'Skills' }
+  { category: 'core.skills', label: 'Skills' },
+  { category: 'equipment', label: 'Equipment' }
 ]

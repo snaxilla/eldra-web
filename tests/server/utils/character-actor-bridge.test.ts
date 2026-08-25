@@ -26,7 +26,7 @@ import { parseExpression } from '../../../app/lib/rules/parser'
 import { RulesRegistry } from '../../../app/lib/rules/registry'
 import type { Definition, RuleValue, RulesPackageManifest } from '../../../app/lib/rules/types'
 import { buildActorState } from '../../../server/utils/character-actor-bridge'
-import type { CharacterAssemblyBlueprint, CharacterAssemblySlot } from '../../../server/utils/character-assembly'
+import type { AssembledInventoryItem, CharacterAssemblyBlueprint, CharacterAssemblySlot } from '../../../server/utils/character-assembly'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 
@@ -81,6 +81,8 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
       scores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
     },
     rulesChoices: null,
+    inventory: [],
+    notes: null,
     packs: [],
     ...overrides
   }
@@ -565,5 +567,141 @@ describe('the authored corpus and the package agree about ChoiceSets', () => {
         }
       }
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Equipment -- stored inventory decisions become a Collection
+// ---------------------------------------------------------------------------
+
+function inventoryItem(overrides: Partial<AssembledInventoryItem> = {}): AssembledInventoryItem {
+  return {
+    instanceId: 'item-1',
+    status: 'resolved',
+    title: 'Longsword',
+    quantity: 1,
+    equipped: false,
+    attuned: false,
+    ...overrides
+  }
+}
+
+describe('equipment: stored decisions translate, nothing is computed', () => {
+  it('writes an empty equipment collection when nothing is carried', () => {
+    const { bridged } = derive(blueprint())
+    expect(bridged.actorState.collections['collection:equipment']).toEqual([])
+  })
+
+  it('carries instanceId, equipped, and attuned into the collection verbatim', () => {
+    const bp = blueprint({
+      inventory: [
+        inventoryItem({ instanceId: 'item-1', equipped: true, attuned: false }),
+        inventoryItem({ instanceId: 'item-2', equipped: false, attuned: false })
+      ]
+    })
+
+    const { bridged } = derive(bp)
+    expect(bridged.actorState.collections['collection:equipment']).toEqual([
+      { instanceId: 'item-1', equipped: true, attuned: false },
+      { instanceId: 'item-2', equipped: false, attuned: false }
+    ])
+  })
+
+  it('carries a MISSING (unresolvable) item through unchanged -- attunement is a player fact, not a content fact', () => {
+    // A broken Content Pack reference does not un-attune the item: the
+    // player's decision does not depend on the reference still resolving.
+    const bp = blueprint({
+      inventory: [inventoryItem({ instanceId: 'item-1', status: 'missing', equipped: true, attuned: true })]
+    })
+
+    const { value } = derive(bp)
+    expect(value('value:equipment.equipped_count')).toBe(1)
+    expect(value('value:equipment.attuned_count')).toBe(1)
+  })
+
+  it('writes no `category` field -- no item facet corpus exists to supply one yet', () => {
+    const bp = blueprint({ inventory: [inventoryItem()] })
+    const { bridged } = derive(bp)
+    expect(bridged.actorState.collections['collection:equipment']![0]).not.toHaveProperty('category')
+  })
+
+  it('computes no total, count, or limit -- only equipped/attuned booleans are written', () => {
+    const bp = blueprint({
+      inventory: [
+        inventoryItem({ instanceId: 'item-1', equipped: true, attuned: true }),
+        inventoryItem({ instanceId: 'item-2', equipped: true, attuned: false })
+      ]
+    })
+
+    const { bridged } = derive(bp)
+    // Nothing named "count" or "max" or "attunement" appears in ActorState --
+    // those are the Rules Package's own derived Values, computed by the
+    // evaluator from this input, never by this module.
+    expect(Object.keys(bridged.actorState.values).some((id) => id.startsWith('value:equipment.'))).toBe(false)
+  })
+})
+
+describe('equipment: the Rules Engine resolves equipped state and attunement', () => {
+  function withEquipment(items: Array<{ equipped: boolean; attuned: boolean }>) {
+    return blueprint({
+      inventory: items.map((item, index) => inventoryItem({ instanceId: `item-${index + 1}`, ...item }))
+    })
+  }
+
+  it('an empty pack has zero equipped, zero attuned, full attunement remaining', () => {
+    const { value } = derive(blueprint())
+    expect(value('value:equipment.equipped_count')).toBe(0)
+    expect(value('value:equipment.attuned_count')).toBe(0)
+    expect(value('value:equipment.attunement_max')).toBe(3)
+    expect(value('value:equipment.attunement_available')).toBe(3)
+  })
+
+  it('counts equipped and attuned independently', () => {
+    const { value } = derive(withEquipment([
+      { equipped: true, attuned: true },
+      { equipped: true, attuned: false },
+      { equipped: false, attuned: false }
+    ]))
+
+    expect(value('value:equipment.equipped_count')).toBe(2)
+    expect(value('value:equipment.attuned_count')).toBe(1)
+  })
+
+  it('attunement available is derived FROM the max and the count, not stored', () => {
+    const { value } = derive(withEquipment([
+      { equipped: true, attuned: true },
+      { equipped: true, attuned: true }
+    ]))
+
+    expect(value('value:equipment.attunement_max')).toBe(3)
+    expect(value('value:equipment.attuned_count')).toBe(2)
+    expect(value('value:equipment.attunement_available')).toBe(1)
+  })
+
+  it('attunement available can go negative -- the engine reports the fact, it does not clamp or block it', () => {
+    // This task's non-goals exclude enforcement; the Rules Engine's job is
+    // to say what IS true, and a player over their limit is a true state.
+    const { value } = derive(withEquipment([
+      { equipped: true, attuned: true },
+      { equipped: true, attuned: true },
+      { equipped: true, attuned: true },
+      { equipped: true, attuned: true }
+    ]))
+
+    expect(value('value:equipment.attuned_count')).toBe(4)
+    expect(value('value:equipment.attunement_available')).toBe(-1)
+  })
+
+  it('declares the equipment Collection with its slots -- Rules Engine output, not Vue', () => {
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    if (!registry.ok) throw new Error('registry failed')
+
+    const collection = registry.registry.getById('collection:equipment')
+    expect(collection?.kind).toBe('collection')
+    expect((collection as any).slots).toEqual([
+      { id: 'armor', capacity: 1 },
+      { id: 'held', capacity: 2 }
+    ])
   })
 })

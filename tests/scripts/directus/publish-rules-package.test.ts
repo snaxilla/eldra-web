@@ -83,10 +83,16 @@ describe('package discovery', () => {
   it('reports id, version and title for each, so --list can teach what is publishable', () => {
     const dnd5e = listAuthoredPackages().find((entry: any) => entry.packageId === DND5E_ID)
 
+    // The version itself is not asserted against a literal: it is authored
+    // content this test does not own, and pinning it here means every
+    // content bump breaks a test about --list's OUTPUT SHAPE, not its
+    // content. That the manifest's own version round-trips is asserted below.
+    const { manifest } = loadAndValidatePackage(resolvePackageDir(DND5E_ID), deps)
+
     expect(dnd5e).toMatchObject({
       dirName: 'eldra-dnd5e-2024',
       packageId: DND5E_ID,
-      version: '0.1.0'
+      version: manifest.version
     })
     expect(dnd5e.title).toBeTruthy()
     expect(formatAuthoredPackages(listAuthoredPackages())).toContain('eldra-dnd5e-2024')
@@ -202,19 +208,23 @@ describe('versioning -- published releases are immutable', () => {
   })
 
   it('a different version of the same packageId publishes alongside the existing one', async () => {
-    // Simulates the author bumping manifest.version: same package_id, new
-    // version, both rows retained so existing world pins keep resolving.
+    // Simulates the author bumping manifest.version: same package_id, a
+    // DIFFERENT version derived from whatever the real manifest currently
+    // says (never a hardcoded literal, which would silently stop testing
+    // anything the day the real package's own version changes), both rows
+    // retained so existing world pins keep resolving.
     const directus = createFakeDirectus()
     const { manifest, definitions } = loadAndValidatePackage(resolvePackageDir(DND5E_ID), deps)
+    const bumpedVersion = `${manifest.version}-next`
 
     const first = buildPublishRow(manifest, definitions, deps)
     await directus.dx('/items/rules_packages', { method: 'POST', body: JSON.stringify(first) })
 
-    const bumped = buildPublishRow({ ...manifest, version: '0.2.0' }, definitions, deps)
+    const bumped = buildPublishRow({ ...manifest, version: bumpedVersion }, definitions, deps)
     await directus.dx('/items/rules_packages', { method: 'POST', body: JSON.stringify(bumped) })
 
     expect(directus.rows).toHaveLength(2)
-    expect(directus.rows.map((row: any) => row.version).sort()).toEqual(['0.1.0', '0.2.0'])
+    expect(directus.rows.map((row: any) => row.version).sort()).toEqual([bumpedVersion, manifest.version].sort())
     expect(new Set(directus.rows.map((row: any) => row.package_id)).size).toBe(1)
   })
 

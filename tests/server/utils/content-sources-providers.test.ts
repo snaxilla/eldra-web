@@ -173,6 +173,29 @@ describe('xphbProvider', () => {
     expect(candidates.map((c) => c.title)).not.toContain('Bag of Holding')
     expect(candidates.map((c) => c.title)).not.toContain('+1 Rod of the Pact Keeper')
   })
+
+  it('publishes Item Rules Facets through the SAME attachRulesFacets step species/classes/backgrounds already use -- no second mechanism', async () => {
+    // This suite's own fixture (this file's header) is deliberately minimal
+    // -- Longsword is its one item that also has an authored Rules Facet
+    // (dnd5e-2024.ts's `item` corpus), which is enough to prove the
+    // PUBLICATION PATH carries a facet through unchanged. The facet's own
+    // CONTENT (category/slot for armor, shields, every measured weapon) is
+    // exercised against the real, full corpus by
+    // tests/server/utils/character-actor-bridge.test.ts's "item facets"
+    // suite -- not duplicated here.
+    const { candidates } = await xphbProvider.loadCategory('items')
+
+    const longsword = candidates.find((c) => c.slug === 'longsword-xphb')
+    expect(longsword?.rulesFacet?.collectionFields).toEqual([
+      { collection: 'collection:equipment', fields: { category: 'weapon', slot: 'held' } }
+    ])
+
+    // Bag of Holding never reaches this collection (wrong book -- DMG), but
+    // even if it did, it would publish candidate-only: the corpus has no
+    // facet for it, and content with none presents but does not mechanise
+    // (§8.2 rule 4), same as a Species with no skill facet already does.
+    expect(candidates.map((c) => c.title)).not.toContain('Bag of Holding')
+  })
 })
 
 describe('xdmgProvider', () => {

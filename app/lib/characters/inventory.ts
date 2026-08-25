@@ -73,6 +73,8 @@
 // carrying capacity, no attunement limit. Those are Rules Engine output and
 // are this task's explicit non-goals.
 
+import type { RulesFacet } from '../content-rules'
+
 export type InventoryItemRef = {
   packageId: string
   slug: string
@@ -212,12 +214,22 @@ export function normalizeStoredInventory(value: unknown): StoredInventory | null
 // same reason characterBuilderSelection.ts declares its own
 // BuilderCatalogueEntry: the client needs the fields it renders, not the
 // server's whole type.
+//
+// `rulesFacet` is included for the same reason BuilderCatalogueEntry
+// includes it: Character Assembly relays the catalogue entry's facet
+// verbatim onto this field at runtime (server/utils/character-assembly.ts's
+// `resolveInventory` spreads the resolved `ContentCatalogueEntry`, which
+// already carries it) -- this type only needed widening to see what was
+// already there. `rulesFacet.collectionFields` is what makes an item's
+// Equipment category/slot/attunement-requirement Rules Engine output rather
+// than something this page would have to know a game to compute.
 export type InventoryCatalogueEntry = {
   packageId: string
   packageVersion: string
   title: string
   slug: string
   sourceBook?: string
+  rulesFacet?: RulesFacet
 }
 
 // 'resolved' -- the reference found its catalogue entry.

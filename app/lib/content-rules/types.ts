@@ -61,6 +61,32 @@ export type RulesFacetChoice = {
   from?: DefinitionId[]
 }
 
+// "This content, when it becomes a Collection item, sets these itemSchema
+// fields." The per-instance counterpart of `grants` -- needed because a
+// Collection item (rules-package-architecture.md §7; `CollectionInstanceItem`
+// in app/lib/rules/types.ts) has no Definition ID of its own for `grants` to
+// target. `grants` sets exactly one character-wide Value; two different
+// weapons a character carries need two different `category` values on two
+// different item instances, which one shared Definition ID could never
+// express -- `grants: [{ set: 'value:weapon.category', to: 'martial' }]`
+// on both a Longsword and a Dagger would collide on the very first
+// character who owns both.
+//
+// `collection` names the CollectionDefinition this content becomes an item
+// of (e.g. `collection:equipment`); `fields` are itemSchema keys the Rules
+// Package already declares for it. Scalars only, matching every other
+// facet operation -- see RulesFacetLiteral's own rule.
+//
+// Added for Equipment (rules-package-architecture.md §7's Collection kind
+// already existed; this is the first content type whose Rules Facet needs
+// to reach it). The mechanism is general: any future per-instance Content
+// (a known spell entering a `collection:spells`, say) uses the same field,
+// not a second one invented per Collection.
+export type RulesFacetCollectionFields = {
+  collection: DefinitionId
+  fields: Record<string, RulesFacetLiteral>
+}
+
 export type RulesFacet = {
   grants?: RulesFacetGrant[]
   choices?: RulesFacetChoice[]
@@ -70,6 +96,10 @@ export type RulesFacet = {
   // in the ActorState the bridge produces, which the engine's existing
   // dynamic Source overlay (§16.8) then picks up unchanged.
   sources?: DefinitionId[]
+  // See RulesFacetCollectionFields above. A list because content could in
+  // principle become items of more than one Collection at once, though
+  // nothing authored today needs more than one entry.
+  collectionFields?: RulesFacetCollectionFields[]
 }
 
 // The hand-authored facet corpus for one Rules Vocabulary, keyed first by

@@ -16,7 +16,14 @@
 import { DND5E_2024_RULES_FACETS } from './dnd5e-2024'
 import type { RulesFacet, RulesFacetCorpus } from './types'
 
-export type { RulesFacet, RulesFacetChoice, RulesFacetCorpus, RulesFacetGrant, RulesFacetLiteral } from './types'
+export type {
+  RulesFacet,
+  RulesFacetChoice,
+  RulesFacetCollectionFields,
+  RulesFacetCorpus,
+  RulesFacetGrant,
+  RulesFacetLiteral
+} from './types'
 
 const CORPORA: Record<string, RulesFacetCorpus> = {
   'dnd5e.2024': DND5E_2024_RULES_FACETS

@@ -18,10 +18,15 @@
 //     consequence belongs to the Rules Engine
 //
 // NO ARITHMETIC HAPPENS HERE. No total weight, no carrying capacity, no
-// attunement limit, no armour class. Those are Rule Category 13 (`equipment`)
-// and the active package declares none of it -- so this surface tracks what a
-// character carries and says nothing about what carrying it means. When a
-// package declares an inventory Collection, the meaning arrives as data.
+// attunement limit, no armour class -- those remain Rules Engine output
+// (the Equipment region of the Sheet's derived panel), never computed in
+// this file. The Category badge and "Requires Attunement" note below ARE
+// new: the active package's `collection:equipment` itemSchema, and the Item
+// Rules Facets that populate it, both now exist -- so this surface reads
+// `item.entry.rulesFacet.collectionFields` (the same field Character
+// Assembly already relays) and displays it verbatim. That is relaying data,
+// not deriving it: the facet already says "category: weapon"; this file
+// does not decide what a weapon is.
 //
 // ---------------------------------------------------------------------------
 // ALWAYS EDITABLE, UNLIKE THE REST OF THE SHEET
@@ -70,6 +75,30 @@ const emit = defineEmits<{
   'change-quantity': [{ instanceId: string; delta: number }]
   'toggle-flag': [{ instanceId: string; flag: 'equipped' | 'attuned' }]
 }>()
+
+// Read straight off the SAME `item.entry.rulesFacet` prop this component
+// already receives -- no new fetch, no derived value. This is what "if
+// Equipment metadata naturally becomes available, display it" means in
+// practice: `rulesFacet.collectionFields` reached AssembledInventoryItem
+// through Character Assembly's own catalogue join, and was simply not read
+// here until now.
+function collectionFieldsFor(item: AssembledInventoryItem) {
+  return item.entry?.rulesFacet?.collectionFields?.find(
+    (entry) => entry.collection === 'collection:equipment'
+  )?.fields
+}
+
+function equipmentCategory(item: AssembledInventoryItem): string {
+  const category = collectionFieldsFor(item)?.category
+  // 'gear' is the itemSchema's own declared default -- not worth a badge,
+  // since it is the common case (adventuring gear, tools) and would make
+  // every card noisier rather than more informative.
+  return typeof category === 'string' && category !== 'gear' ? category : ''
+}
+
+function requiresAttunement(item: AssembledInventoryItem): boolean {
+  return collectionFieldsFor(item)?.requiresAttunement === true
+}
 
 // --- Add form -------------------------------------------------------------
 
@@ -256,6 +285,16 @@ function submitAdd() {
               <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
                 <span>x{{ item.quantity }}</span>
                 <span v-if="item.container">Container: {{ item.container }}</span>
+                <!-- Category, when the item's Rules Facet naturally carries
+                     one -- Rules Engine output relayed as-is, not derived
+                     here. Absent for adventuring gear, custom items, and
+                     anything the corpus has no facet for, which is legal
+                     (§8.2 rule 4): the row simply says less about it. -->
+                <span
+                  v-if="equipmentCategory(item)"
+                  class="capitalize"
+                >{{ equipmentCategory(item) }}</span>
+                <span v-if="requiresAttunement(item)">Requires Attunement</span>
                 <!-- Provenance, exactly as the Sheet's content cards show it:
                      which pack an item came from is what makes a later
                      "unavailable" intelligible. -->

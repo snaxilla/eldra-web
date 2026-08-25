@@ -586,6 +586,28 @@ function inventoryItem(overrides: Partial<AssembledInventoryItem> = {}): Assembl
   }
 }
 
+// A resolved item carrying the REAL Rules Facet the corpus authors for
+// `slug`, exactly like `slot()` above does for species/class/background --
+// so these tests exercise the actual authored content, not a hand-typed
+// stand-in that could silently diverge from it.
+function inventoryItemWithFacet(slug: string, overrides: Partial<AssembledInventoryItem> = {}): AssembledInventoryItem {
+  const facet = findRulesFacet('dnd5e.2024', 'item', slug)
+  if (!facet) throw new Error(`no authored facet for item '${slug}' -- fixture is stale`)
+
+  return inventoryItem({
+    instanceId: slug,
+    title: slug,
+    entry: {
+      packageId: 'eldra.content.xphb',
+      packageVersion: '1.0.0',
+      title: slug,
+      slug,
+      rulesFacet: facet
+    },
+    ...overrides
+  })
+}
+
 describe('equipment: stored decisions translate, nothing is computed', () => {
   it('writes an empty equipment collection when nothing is carried', () => {
     const { bridged } = derive(blueprint())
@@ -601,9 +623,13 @@ describe('equipment: stored decisions translate, nothing is computed', () => {
     })
 
     const { bridged } = derive(bp)
+    // Every item also carries category/slot/requiresAttunement -- defaulted
+    // here because a custom item (this fixture's default status) has no
+    // facet to supply them. See the dedicated 'item facets' suite below for
+    // a resolved item whose facet overrides these.
     expect(bridged.actorState.collections['collection:equipment']).toEqual([
-      { instanceId: 'item-1', equipped: true, attuned: false },
-      { instanceId: 'item-2', equipped: false, attuned: false }
+      { instanceId: 'item-1', equipped: true, attuned: false, category: 'gear', slot: '', requiresAttunement: false },
+      { instanceId: 'item-2', equipped: false, attuned: false, category: 'gear', slot: '', requiresAttunement: false }
     ])
   })
 
@@ -619,10 +645,21 @@ describe('equipment: stored decisions translate, nothing is computed', () => {
     expect(value('value:equipment.attuned_count')).toBe(1)
   })
 
-  it('writes no `category` field -- no item facet corpus exists to supply one yet', () => {
+  it('defaults category/slot/requiresAttunement rather than leaving them absent', () => {
+    // Verified against the real evaluator (this task's own investigation):
+    // a Collection's declared itemSchema default is NOT applied for a
+    // genuinely missing field -- a `[key]` predicate over an absent key
+    // compares the predicate's own literal text instead, which is truthy
+    // for a non-empty string. Writing every field explicitly, defaulted to
+    // the same value the schema declares, is what keeps that from becoming
+    // a live bug the day a definition filters on any of them.
     const bp = blueprint({ inventory: [inventoryItem()] })
     const { bridged } = derive(bp)
-    expect(bridged.actorState.collections['collection:equipment']![0]).not.toHaveProperty('category')
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({
+      category: 'gear',
+      slot: '',
+      requiresAttunement: false
+    })
   })
 
   it('computes no total, count, or limit -- only equipped/attuned booleans are written', () => {
@@ -703,5 +740,116 @@ describe('equipment: the Rules Engine resolves equipped state and attunement', (
       { id: 'armor', capacity: 1 },
       { id: 'held', capacity: 2 }
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Item Rules Facets -- Equipment content becomes Collection field values
+// ---------------------------------------------------------------------------
+
+describe('item facets: content declares, the bridge relays, nothing is computed', () => {
+  it('a real Longsword\'s facet sets category and slot on its collection item', () => {
+    const bp = blueprint({ inventory: [inventoryItemWithFacet('longsword-xphb', { equipped: true })] })
+    const { bridged } = derive(bp)
+
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({
+      category: 'weapon',
+      slot: 'held',
+      requiresAttunement: false
+    })
+  })
+
+  it('a real Breastplate\'s facet sets category:armor, slot:armor', () => {
+    const bp = blueprint({ inventory: [inventoryItemWithFacet('breastplate-xphb')] })
+    const { bridged } = derive(bp)
+
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({
+      category: 'armor',
+      slot: 'armor'
+    })
+  })
+
+  it('a Shield is category:armor but slot:held -- it occupies a hand, not the armor slot', () => {
+    const bp = blueprint({ inventory: [inventoryItemWithFacet('shield-xphb')] })
+    const { bridged } = derive(bp)
+
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({
+      category: 'armor',
+      slot: 'held'
+    })
+  })
+
+  it('an item the corpus has no facet for (adventuring gear) reads as the schema default', () => {
+    // No XPHB item facet exists for a torch, a bedroll, etc -- confirmed by
+    // this NOT throwing findRulesFacet's own null branch, since this test
+    // deliberately does not use inventoryItemWithFacet (which would throw on
+    // a missing facet). A resolved item with no facet is legal (§8.2 rule 4).
+    const bp = blueprint({
+      inventory: [inventoryItem({
+        entry: { packageId: 'eldra.content.xphb', packageVersion: '1.0.0', title: 'Torch', slug: 'torch-xphb' }
+      })]
+    })
+
+    const { bridged } = derive(bp)
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({
+      category: 'gear',
+      slot: '',
+      requiresAttunement: false
+    })
+  })
+
+  it('the Rules Engine, not the bridge, counts equipped weapons -- computed with a real facet', () => {
+    const bp = blueprint({
+      inventory: [
+        inventoryItemWithFacet('longsword-xphb', { equipped: true }),
+        inventoryItemWithFacet('breastplate-xphb', { equipped: true }),
+        inventoryItemWithFacet('dagger-xphb', { equipped: false })
+      ]
+    })
+
+    const { value } = derive(bp)
+    // equipped_count only counts `equipped`, which is unaffected by category
+    // -- proving the two mechanisms (equipped tracking vs category facets)
+    // stay independent, exactly as the design intends.
+    expect(value('value:equipment.equipped_count')).toBe(2)
+  })
+
+  it('a custom item (no content reference at all) has no facet and reads as the schema default', () => {
+    const bp = blueprint({ inventory: [inventoryItem({ ref: undefined, entry: undefined, name: 'Duke\'s Letter' })] })
+    const { bridged } = derive(bp)
+
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({ category: 'gear', slot: '' })
+  })
+
+  it('a MISSING (unresolvable) item has no facet to read -- category/slot fall back to the default, not to whatever the item used to be', () => {
+    const bp = blueprint({
+      inventory: [inventoryItem({ status: 'missing', entry: undefined, ref: { packageId: 'gone', slug: 'longsword-xphb' } })]
+    })
+
+    const { bridged } = derive(bp)
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({ category: 'gear', slot: '' })
+  })
+
+  it('every authored item facet resolves against the real registry -- publish-time correctness, asserted here too', () => {
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    if (!registry.ok) throw new Error('registry failed')
+
+    const items = (DND5E_2024_RULES_FACETS as any).item as Record<string, { collectionFields?: Array<{ collection: string; fields: Record<string, unknown> }> }>
+    const declaredFields = new Set((registry.registry.getById('collection:equipment') as any).itemSchema.map((f: any) => f.key))
+
+    let checked = 0
+    for (const [itemSlug, facet] of Object.entries(items)) {
+      for (const entry of facet.collectionFields ?? []) {
+        expect(registry.registry.has(entry.collection)).toBe(true)
+        for (const key of Object.keys(entry.fields)) {
+          expect(declaredFields.has(key)).toBe(true)
+        }
+        checked++
+      }
+    }
+    // 52 measured weapon/armor XPHB items, verified against the real dataset
+    // when this corpus was authored.
+    expect(checked).toBe(52)
   })
 })

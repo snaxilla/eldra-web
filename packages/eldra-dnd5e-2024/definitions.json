@@ -1279,6 +1279,15 @@
         "key": "attuned",
         "valueType": "boolean",
         "default": false
+      },
+      {
+        "key": "slot",
+        "valueType": "text"
+      },
+      {
+        "key": "requiresAttunement",
+        "valueType": "boolean",
+        "default": false
       }
     ],
     "slots": [

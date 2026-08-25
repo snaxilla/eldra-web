@@ -103,13 +103,20 @@ import type { AssembledInventoryItem, CharacterAssemblyBlueprint, CharacterAssem
 // the fixed key name the package's own vocabulary declares, exactly as
 // `abilityValueId` already hardcodes `value:ability.<key>`.
 //
-// `category` (armor / weapon / gear) is declared by the package's itemSchema
-// but is NOT populated here: it is a fact about the ITEM (content), and no
-// Rules Facet corpus for items exists yet (only species/class/background do
-// -- app/lib/content-rules/dnd5e-2024.ts). Every item is therefore written
-// with only `equipped`/`attuned`, and the collection's own `default: 'gear'`
-// covers the missing field until item facets exist to supply it.
-import type { RulesFacet, RulesFacetChoice } from '../../app/lib/content-rules'
+// `category`/`slot`/`requiresAttunement` are facts about the ITEM
+// (content), not the player, so `equipped`/`attuned` alone are never the
+// whole story. They arrive via `entry.rulesFacet.collectionFields`
+// (app/lib/content-rules/types.ts's `RulesFacetCollectionFields`) --
+// exactly the same "content declares, bridge relays, engine evaluates"
+// shape a Class's `grants` already uses, just per-item instead of
+// per-character (see that type's own header for why `grants` cannot do
+// this job). An item with no facet -- adventuring gear, tools, anything
+// XPHB's own facet corpus has no entry for -- contributes none of these
+// three keys, and `equipmentCollectionItems` below writes the same default
+// every unfaceted item would otherwise be missing -- see that function's
+// own note on why the engine will NOT fill a missing field in from the
+// Collection's declared default on its own.
+import type { RulesFacet, RulesFacetChoice, RulesFacetLiteral } from '../../app/lib/content-rules'
 import {
   resolveChoiceTarget,
   selectionsFor,
@@ -208,14 +215,50 @@ function abilityValueId(key: string): string {
 // vocabulary, not a piece of content, so there is nothing to look up.
 const EQUIPMENT_COLLECTION_ID = 'collection:equipment'
 
-// Player decisions only. `category` is deliberately absent -- see the
-// header's note on why it has no source yet.
+// Reads the equipment-collection field values a resolved item's Rules Facet
+// declares -- `{}` for a custom item, a missing/broken reference, or a
+// resolved item whose facet declares no `collectionFields` entry naming
+// this collection (adventuring gear, tools: content with none presents but
+// does not mechanise, §8.2 rule 4).
+function collectionFieldsFor(
+  item: AssembledInventoryItem,
+  collectionId: string
+): Record<string, RulesFacetLiteral> {
+  if (item.status !== 'resolved') return {}
+
+  const facet = item.entry?.rulesFacet
+  const declared = facet?.collectionFields?.find((entry) => entry.collection === collectionId)
+  return declared?.fields ?? {}
+}
+
+// EVERY itemSchema field this collection declares is written EXPLICITLY on
+// every item, never left absent for the engine to fill in from the
+// Collection's own declared `default`. Verified directly against the
+// evaluator: a `[key]` / `[key = "x"]` predicate over a field genuinely
+// ABSENT from an item does not fall back to the schema default -- it falls
+// back to comparing the predicate's own literal operand as plain text
+// (evaluator.ts's literal-as-field-reference case checks only `key in
+// itemScope`, with no schema lookup on a miss). A boolean field's schema
+// default of `false` would therefore read as a truthy STRING if a future
+// definition ever filtered on it while the field was left unset -- the
+// opposite of the intended default. Writing every field here, defaulted to
+// the same value the schema declares, closes that gap before any real
+// definition exercises it.
 function equipmentCollectionItems(inventory: readonly AssembledInventoryItem[]): CollectionInstanceItem[] {
-  return inventory.map((item) => ({
-    instanceId: item.instanceId,
-    equipped: item.equipped,
-    attuned: item.attuned
-  }))
+  return inventory.map((item) => {
+    const facetFields = collectionFieldsFor(item, EQUIPMENT_COLLECTION_ID)
+
+    return {
+      instanceId: item.instanceId,
+      equipped: item.equipped,
+      attuned: item.attuned,
+      // Mirrors collection:equipment's own declared defaults (definitions.json).
+      category: 'gear',
+      slot: '',
+      requiresAttunement: false,
+      ...facetFields
+    }
+  })
 }
 
 export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {

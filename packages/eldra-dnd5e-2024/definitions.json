@@ -1524,5 +1524,39 @@
       "health",
       "death-saves"
     ]
+  },
+  {
+    "id": "value:hit_points.hit_die_average_roll",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Hit Die Average Roll",
+    "tags": [
+      "health",
+      "hit-dice",
+      "recovery"
+    ],
+    "formula": {
+      "text": "floor(@value:hit_points.hit_die_size / 2) + 1 + @value:ability.con.mod"
+    }
+  },
+  {
+    "id": "value:hit_points.long_rest_hit_dice_recovery",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Long Rest Hit Dice Recovery",
+    "tags": [
+      "health",
+      "hit-dice",
+      "recovery"
+    ],
+    "formula": {
+      "text": "ceil(@value:hit_points.hit_dice_max / 2)"
+    }
   }
 ]

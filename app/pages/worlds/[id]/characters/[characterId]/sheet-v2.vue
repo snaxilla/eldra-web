@@ -453,6 +453,34 @@ async function saveHealth(next: StoredCharacterHealth) {
   }
 }
 
+// Recovery -- the six named actions. A POST, not a PUT: this page sends
+// INTENT ({ type, amount? }); server/utils/character-recovery.ts decides
+// the resulting numbers (reading Maximum HP and the other Rules Engine
+// output each action needs) and returns the new authoritative state, which
+// replaces `healthDraft` directly -- no separate recompute here, and no
+// need to re-fetch `derived`, since none of these actions change Maximum
+// HP, Hit Dice total, or Hit Die size (all three come from Class/level/
+// Constitution, none of which Recovery touches).
+async function applyRecovery(action: { type: string; amount?: number }) {
+  if (healthSaving.value) return
+
+  healthSaving.value = true
+  healthError.value = ''
+
+  try {
+    const result = await $fetch<{ success: true; health: StoredCharacterHealth }>(
+      `/api/worlds/${worldId.value}/characters/${characterId.value}/recovery`,
+      { method: 'POST', body: action }
+    )
+    healthDraft.value = result.health
+  } catch (recoveryError: any) {
+    healthError.value =
+      recoveryError?.data?.statusMessage || recoveryError?.statusMessage || 'Failed to apply recovery action'
+  } finally {
+    healthSaving.value = false
+  }
+}
+
 // Read-only summaries only -- see this file's HEALTH header note on why
 // Current HP / Death Saves are never pulled from `derived` here.
 const maxHp = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.max'))
@@ -733,6 +761,7 @@ const identityRows = computed(() =>
               :saving="healthSaving"
               :error-message="healthError"
               @save="saveHealth"
+              @recovery="applyRecovery"
             />
           </div>
         </section>

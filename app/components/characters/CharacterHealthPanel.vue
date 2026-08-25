@@ -24,17 +24,40 @@
 // There is no Builder step for Health, and this task does not add one.
 //
 // ---------------------------------------------------------------------------
+// RECOVERY -- SIX ACTIONS, ONE SHARED SHAPE
+// ---------------------------------------------------------------------------
+// The Current/Temporary HP inputs above remain DIRECT correction (type a
+// new absolute number, save it verbatim) -- useful for GM fiat or fixing a
+// mistake, and unchanged by this addition. The six Recovery actions below
+// are different in kind: each applies a RULE (temp-then-current, capped at
+// Maximum HP, ...) that this component does not compute. Every one emits
+// `recovery` with a plain `{ type, amount? }` and lets the PAGE call
+// POST .../recovery, which is where server/utils/character-recovery.ts's
+// pure functions (app/lib/characters/health.ts) actually run. This file
+// still performs no arithmetic of its own beyond parsing the Amount field
+// into a number to pass along.
+//
+// `RecoveryActionType` is restated here, not imported from
+// server/utils/character-recovery.ts -- `app/` must never import from
+// `server/` (this file's own family already follows that rule for every
+// other server-side type it mirrors).
+//
+// ---------------------------------------------------------------------------
 // MOBILE
 // ---------------------------------------------------------------------------
 // Current/Temporary HP are plain number inputs (min-h-11, a mobile numeric
 // keypad is already "easy adjustment" for an arbitrary damage/heal amount).
-// Hit Dice spent uses +/-1 stepper buttons instead, matching
-// CharacterInventoryPanel's own quantity stepper -- spending is always one
-// die at a time, so a free-type field would be the wrong control for it.
-// Death save marks are three same-sized tap targets per row, not small
-// checkboxes -- large enough to hit reliably with a thumb mid-session.
+// The Recovery actions share ONE Amount field with two large buttons
+// (Apply Damage / Apply Healing) rather than two separate inputs, keeping
+// the panel compact on a phone. Hit Dice, Rest, and Death Save reset are
+// each one press -- no typing required for the actions used most often
+// mid-session. Every button stays at min-h-11 (44px), the same target size
+// CharacterInventoryPanel's own stepper buttons already use.
 
 import type { StoredCharacterHealth } from '~/lib/characters/health'
+
+export type RecoveryActionType =
+  | 'damage' | 'heal' | 'spend-hit-die' | 'short-rest' | 'long-rest' | 'reset-death-saves'
 
 const props = withDefaults(defineProps<{
   health: StoredCharacterHealth
@@ -51,6 +74,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   save: [StoredCharacterHealth]
+  recovery: [{ type: RecoveryActionType; amount?: number }]
 }>()
 
 // Local drafts for the two free-type fields, so typing never fights a prop
@@ -90,8 +114,12 @@ function commitTemporaryHp() {
   saveWith({ temporaryHp: next })
 }
 
-function adjustHitDiceSpent(delta: number) {
-  const next = props.health.hitDiceSpent + delta
+// Manual correction only -- decrements `hitDiceSpent` with NO healing
+// effect, for undoing a mistake or recording a die spent outside the app.
+// The real "spend a Hit Die" GAME ACTION (which also heals, by the Rules
+// Engine's own average-roll value) is `emitRecovery('spend-hit-die')` below.
+function restoreHitDieManually() {
+  const next = props.health.hitDiceSpent - 1
   if (next < 0) return
   saveWith({ hitDiceSpent: next })
 }
@@ -109,6 +137,31 @@ const hitDiceLabel = computed(() => {
   if (props.hitDieSize == null) return 'Hit Dice'
   return `Hit Dice (d${props.hitDieSize})`
 })
+
+function emitRecovery(type: RecoveryActionType, amount?: number) {
+  emit('recovery', amount === undefined ? { type } : { type, amount })
+}
+
+// --- Damage / Healing: one shared Amount field, two actions -------------
+
+const amountDraft = ref('')
+
+const parsedAmount = computed(() => {
+  const parsed = Math.trunc(Number(amountDraft.value))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+})
+
+function applyDamageAction() {
+  if (parsedAmount.value === null) return
+  emitRecovery('damage', parsedAmount.value)
+  amountDraft.value = ''
+}
+
+function applyHealingAction() {
+  if (parsedAmount.value === null) return
+  emitRecovery('heal', parsedAmount.value)
+  amountDraft.value = ''
+}
 </script>
 
 <template>
@@ -154,6 +207,41 @@ const hitDiceLabel = computed(() => {
           >
         </label>
       </div>
+
+      <!-- Recovery: Damage/Healing apply a RULE (temp-absorbs-first,
+           capped at Maximum HP) neither field above expresses -- see this
+           file's own RECOVERY header note. -->
+      <div class="mt-4 border-t border-[rgba(201,164,90,0.14)] pt-4">
+        <label class="block">
+          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Amount</span>
+          <input
+            v-model="amountDraft"
+            inputmode="numeric"
+            placeholder="0"
+            class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-lg font-semibold tabular-nums text-white"
+            :disabled="saving"
+          >
+        </label>
+
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            class="min-h-11 rounded-none border border-red-900/60 bg-red-950/20 px-3 text-sm font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-red-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="saving || parsedAmount === null"
+            @click="applyDamageAction"
+          >
+            Apply Damage
+          </button>
+          <button
+            type="button"
+            class="eldra-button min-h-11 rounded-none px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="saving || parsedAmount === null"
+            @click="applyHealingAction"
+          >
+            Apply Healing
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Hit Dice --------------------------------------------------------- -->
@@ -171,21 +259,51 @@ const hitDiceLabel = computed(() => {
             type="button"
             class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="saving || health.hitDiceSpent <= 0"
-            aria-label="Restore a Hit Die"
-            @click="adjustHitDiceSpent(-1)"
+            aria-label="Restore a Hit Die manually, without healing"
+            title="Manual correction -- restores a die without healing"
+            @click="restoreHitDieManually"
           >
             −
           </button>
-          <button
-            type="button"
-            class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="saving || (hitDiceAvailable != null && hitDiceAvailable <= 0)"
-            aria-label="Spend a Hit Die"
-            @click="adjustHitDiceSpent(1)"
-          >
-            +
-          </button>
         </div>
+      </div>
+
+      <!-- The real game action: spends a die AND heals by the Rules
+           Engine's own average-roll value (server/utils/character-recovery.ts).
+           Short Rest below performs the identical action -- see this file's
+           header and character-recovery.ts's own note on why. -->
+      <button
+        type="button"
+        class="eldra-button mt-3 min-h-11 w-full rounded-none px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="saving || (hitDiceAvailable != null && hitDiceAvailable <= 0)"
+        @click="emitRecovery('spend-hit-die')"
+      >
+        Spend Hit Die
+      </button>
+    </div>
+
+    <!-- Rest --------------------------------------------------------------- -->
+    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+      <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Rest</span>
+
+      <div class="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          class="min-h-11 rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="saving || (hitDiceAvailable != null && hitDiceAvailable <= 0)"
+          title="Spends one Hit Die -- identical to Spend Hit Die above"
+          @click="emitRecovery('short-rest')"
+        >
+          Short Rest
+        </button>
+        <button
+          type="button"
+          class="eldra-button min-h-11 rounded-none px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="saving"
+          @click="emitRecovery('long-rest')"
+        >
+          Long Rest
+        </button>
       </div>
     </div>
 
@@ -217,6 +335,15 @@ const hitDiceLabel = computed(() => {
           />
         </div>
       </div>
+
+      <button
+        type="button"
+        class="mt-4 min-h-11 w-full rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="saving || (health.deathSaves.successes === 0 && health.deathSaves.failures === 0)"
+        @click="emitRecovery('reset-death-saves')"
+      >
+        Reset Death Saves
+      </button>
     </div>
   </div>
 </template>

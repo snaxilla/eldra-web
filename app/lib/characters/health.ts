@@ -107,3 +107,105 @@ export function normalizeStoredCharacterHealth(value: unknown): StoredCharacterH
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Recovery -- pure, total mutations. Character Recovery System.
+// ---------------------------------------------------------------------------
+// Every function below takes the CURRENT stored health plus whatever Rules
+// Engine output it needs as an EXPLICIT PARAMETER, and returns a NEW record
+// -- never mutating its input, same discipline
+// app/lib/characters/inventory.ts's own "Mutations" section already
+// established. This is what keeps the module registry-free: it is told
+// "Maximum HP is 13" by its caller (server/utils/character-recovery.ts,
+// which reads it from getDerivedCharacter); it never asks the Rules Engine
+// itself.
+//
+// This split is the literal shape rules-package-architecture.md §13.2
+// draws one layer up: the ENGINE determines the NUMBER (how much a Hit Die
+// heals, what Maximum HP is, how many Hit Dice a Long Rest recovers); this
+// module determines the RESULT of applying a player action to stored state
+// using that number. Neither one does the other's job -- this module
+// performs no formula evaluation, and nothing in app/lib/rules/ is ever
+// asked to mutate anything.
+
+// Damage needs NO Rules Engine input at all: temporary HP absorbs first,
+// any remainder reduces current HP, both floored at zero. This is why
+// server/utils/character-recovery.ts can apply damage even to a character
+// in a World with no Rules Package activated -- see that module's own note.
+export function applyDamage(health: StoredCharacterHealth, amount: number): StoredCharacterHealth {
+  const incoming = nonNegativeInt(amount)
+  const absorbedByTemp = Math.min(health.temporaryHp, incoming)
+  const remaining = incoming - absorbedByTemp
+
+  return {
+    ...health,
+    temporaryHp: health.temporaryHp - absorbedByTemp,
+    currentHp: Math.max(0, health.currentHp - remaining)
+  }
+}
+
+// Healing needs Maximum HP -- gained hit points can never push Current HP
+// past it (§13.2: the one place Recovery reads a derived value to know
+// where to stop, never to decide what to store).
+export function applyHealing(
+  health: StoredCharacterHealth,
+  amount: number,
+  maxHp: number
+): StoredCharacterHealth {
+  const gained = nonNegativeInt(amount)
+  const ceiling = Math.max(0, nonNegativeInt(maxHp))
+
+  return {
+    ...health,
+    currentHp: Math.min(ceiling, health.currentHp + gained)
+  }
+}
+
+// Spending a Hit Die: one die moves from "available" to "spent", and the
+// character heals by that die's average roll (Constitution modifier
+// included) -- both numbers are Rules Engine output, supplied by the
+// caller. A no-op, not an error, when no die is available: the button that
+// calls this is disabled at that point, but the function itself stays a
+// pure "what would this produce" rather than a place that throws.
+export function spendHitDie(
+  health: StoredCharacterHealth,
+  hitDiceMax: number,
+  averageRoll: number,
+  maxHp: number
+): StoredCharacterHealth {
+  if (health.hitDiceSpent >= nonNegativeInt(hitDiceMax)) return { ...health }
+
+  return applyHealing(
+    { ...health, hitDiceSpent: health.hitDiceSpent + 1 },
+    averageRoll,
+    maxHp
+  )
+}
+
+// Long Rest: full heal, temporary HP cleared (RAW: unused temporary HP is
+// lost at the end of a long rest, not carried forward), spent Hit Dice
+// recovered up to the Rules Engine's own declared recovery amount (never
+// below zero spent), and Death Save marks cleared -- healing back to full
+// is what makes them moot, the same fact `resetDeathSaves` below expresses
+// as its own standalone action for the case where nothing else about
+// Health has changed.
+export function takeLongRest(
+  health: StoredCharacterHealth,
+  maxHp: number,
+  hitDiceRecovery: number
+): StoredCharacterHealth {
+  return {
+    currentHp: Math.max(0, nonNegativeInt(maxHp)),
+    temporaryHp: 0,
+    hitDiceSpent: Math.max(0, health.hitDiceSpent - nonNegativeInt(hitDiceRecovery)),
+    deathSaves: { successes: 0, failures: 0 }
+  }
+}
+
+// Independently available -- not folded into Long Rest alone, because a
+// future Recovery action (stabilization, a Medicine check -- both this
+// milestone's own NON-GOALS) will need to clear marks without also forcing
+// a full heal.
+export function resetDeathSaves(health: StoredCharacterHealth): StoredCharacterHealth {
+  return { ...health, deathSaves: { successes: 0, failures: 0 } }
+}

@@ -73,3 +73,22 @@ export const DERIVED_SHEET_REGIONS: ReadonlyArray<{ category: RuleCategory; labe
   { category: 'core.skills', label: 'Skills' },
   { category: 'equipment', label: 'Equipment' }
 ]
+
+// `core.health` is deliberately NOT one of the regions above. Unlike every
+// other category here, it mixes derived read-only summaries (Maximum HP,
+// Hit Dice total/available) with values that are ALSO independently
+// editable (Current HP, Temporary HP, Hit Dice spent, Death Saves) through
+// CharacterHealthPanel.vue. Rendering the whole category generically would
+// show the editable fields twice, through two different paths -- the exact
+// "second source of truth" `character-derived.ts`'s own `DerivedCollection`
+// note already warns against for Equipment's item list. This helper reads
+// ONLY the specific read-only summaries the Health panel needs, by id, and
+// nothing that panel already lets the player see (and change) directly.
+export function findDerivedNumber(
+  byCategory: Partial<Record<RuleCategory, DerivedValue[]>>,
+  category: RuleCategory,
+  id: string
+): number | null {
+  const entry = (byCategory[category] ?? []).find((candidate) => candidate.id === id)
+  return typeof entry?.value === 'number' ? entry.value : null
+}

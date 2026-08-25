@@ -83,6 +83,7 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
     rulesChoices: null,
     inventory: [],
     notes: null,
+    health: null,
     packs: [],
     ...overrides
   }
@@ -167,9 +168,10 @@ describe('the hand-authored XPHB Rules Facets', () => {
     for (const name of classes) {
       const facet = findRulesFacet('dnd5e.2024', 'class', `${name}-xphb`)
       expect(facet, name).not.toBeNull()
-      // Every 2024 class grants exactly two saving throws and offers one
-      // skill choice.
-      expect(facet!.grants).toHaveLength(2)
+      // Every 2024 class grants exactly two saving throws, one Hit Die size
+      // (the Health System's addition), and offers one skill choice.
+      expect(facet!.grants).toHaveLength(3)
+      expect(facet!.grants!.some((g) => g.set === 'value:hit_points.hit_die_size'), name).toBe(true)
       expect(facet!.choices).toHaveLength(1)
     }
 
@@ -354,15 +356,16 @@ describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
   it('no derived value is stored -- the ActorState holds only inputs', () => {
     // The invariant the whole architecture rests on (ADR-003). Everything in
     // `values` is either a player decision (an ability score) or a content
-    // grant (a proficiency flag). Not one entry is something the engine
-    // computed.
+    // grant (a proficiency flag, or -- since the Health System -- a Class's
+    // granted Hit Die size). Not one entry is something the engine computed.
     const { bridged } = derive(blueprint())
     const stored = Object.keys(bridged.actorState.values)
 
     for (const id of stored) {
       const isAbilityScore = /^value:ability\.(str|dex|con|int|wis|cha)$/.test(id)
       const isProficiencyFlag = id.endsWith('.proficient')
-      expect(isAbilityScore || isProficiencyFlag, `unexpected stored value '${id}'`).toBe(true)
+      const isHitDieGrant = id === 'value:hit_points.hit_die_size'
+      expect(isAbilityScore || isProficiencyFlag || isHitDieGrant, `unexpected stored value '${id}'`).toBe(true)
     }
 
     // ...and the derived values the sheet will show exist only in the
@@ -988,5 +991,139 @@ describe('Armor Class: equip -> Source -> derived AC', () => {
       })]
     })
     expect(derive(bp).value('value:defenses.armor_class')).toBe(14) // unarmored, dex +4
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Health System -- Maximum HP derived from a Class-granted Hit Die
+// ---------------------------------------------------------------------------
+// Full pipeline: Content (a real Class facet) -> Rules Facet (`grants`,
+// including hit_points.hit_die_size) -> ActorState.values (the bridge's own
+// translation) -> Rules Engine (the standard base/derived formula pipeline,
+// UNMODIFIED by this task) -> a derived Value. Every number below is
+// produced by `derive()`'s real registry/graph/evaluator.
+
+describe('Health System: stored decisions translate, Maximum HP derives', () => {
+  function withHealth(overrides: Partial<{
+    currentHp: number
+    temporaryHp: number
+    hitDiceSpent: number
+    deathSaves: { successes: number; failures: number }
+  }> = {}) {
+    return blueprint({
+      health: {
+        currentHp: 0,
+        temporaryHp: 0,
+        hitDiceSpent: 0,
+        deathSaves: { successes: 0, failures: 0 },
+        ...overrides
+      }
+    })
+  }
+
+  it('writes nothing to ActorState.values when health was never recorded', () => {
+    const { bridged } = derive(blueprint({ health: null }))
+    expect(bridged.actorState.values['value:hit_points.current']).toBeUndefined()
+    expect(bridged.actorState.values['value:hit_points.temp']).toBeUndefined()
+    expect(bridged.actorState.values['value:hit_points.hit_dice_spent']).toBeUndefined()
+    expect(bridged.actorState.values['value:death_saves.successes']).toBeUndefined()
+  })
+
+  it('copies current/temporary HP, hit dice spent, and death save marks verbatim', () => {
+    const bp = withHealth({ currentHp: 18, temporaryHp: 4, hitDiceSpent: 1, deathSaves: { successes: 2, failures: 1 } })
+    const { bridged } = derive(bp)
+
+    expect(bridged.actorState.values['value:hit_points.current']).toBe(18)
+    expect(bridged.actorState.values['value:hit_points.temp']).toBe(4)
+    expect(bridged.actorState.values['value:hit_points.hit_dice_spent']).toBe(1)
+    expect(bridged.actorState.values['value:death_saves.successes']).toBe(2)
+    expect(bridged.actorState.values['value:death_saves.failures']).toBe(1)
+  })
+
+  it('never writes Maximum HP -- there is no field for it to come from', () => {
+    const { bridged } = derive(withHealth({ currentHp: 10 }))
+    expect(bridged.actorState.values['value:hit_points.max']).toBeUndefined()
+  })
+
+  it('a real Class facet grants the Hit Die size the way it already grants save proficiencies', () => {
+    // Bobbert's default class is Fighter (d10) -- see slot('class', 'fighter-xphb').
+    const { bridged } = derive(blueprint())
+    expect(bridged.actorState.values['value:hit_points.hit_die_size']).toBe(10)
+  })
+
+  it('the Rules Engine derives Maximum HP from Hit Die size, Constitution, and level', () => {
+    // Fighter (d10) + CON 13 (+1 mod, the character's default), level 1.
+    const { value } = derive(blueprint())
+    expect(value('value:hit_points.max')).toBe(11)
+  })
+
+  it('a different Class changes Maximum HP -- same ability scores, different Hit Die', () => {
+    const fighterMax = derive(blueprint({ class: slot('class', 'fighter-xphb') })).value('value:hit_points.max')
+    const wizardMax = derive(blueprint({ class: slot('class', 'wizard-xphb') })).value('value:hit_points.max')
+
+    expect(fighterMax).toBe(11) // d10 + 1
+    expect(wizardMax).toBe(7)   // d6 + 1
+    expect(fighterMax).not.toBe(wizardMax)
+  })
+
+  it('Hit Dice available derives from level minus dice spent', () => {
+    const { value } = derive(withHealth({ hitDiceSpent: 0 }))
+    expect(value('value:hit_points.hit_dice_max')).toBe(1) // level 1
+    expect(value('value:hit_points.hit_dice_available')).toBe(1)
+  })
+
+  it('spending a hit die reduces availability, computed by the engine', () => {
+    const unspent = derive(withHealth({ hitDiceSpent: 0 })).value('value:hit_points.hit_dice_available')
+    const spent = derive(withHealth({ hitDiceSpent: 1 })).value('value:hit_points.hit_dice_available')
+
+    expect(unspent).toBe(1)
+    expect(spent).toBe(0)
+  })
+
+  it('no derived value is stored -- ActorState carries only the player\'s inputs and the Class grant', () => {
+    const { bridged } = derive(withHealth({ currentHp: 10 }))
+    const stored = Object.keys(bridged.actorState.values)
+
+    expect(stored).not.toContain('value:hit_points.max')
+    expect(stored).not.toContain('value:hit_points.hit_dice_max')
+    expect(stored).not.toContain('value:hit_points.hit_dice_available')
+  })
+
+  it('Maximum HP scales with level using the standard average-roll method', () => {
+    // Level is stored player data too (`value:level`), just not one this
+    // milestone's health block owns -- set directly on the fixture to
+    // exercise the level term of the formula. Fighter (d10) + CON 13
+    // (+1 mod): level 1 -> 11, level 5 -> 11 + 4*(avg 6 + 1) = 11 + 28 = 39.
+    const level1 = derive(blueprint()).value('value:hit_points.max')
+
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    if (!registry.ok) throw new Error('registry failed')
+    const graph = DependencyGraph.build(registry.registry)
+    if (!graph.ok) throw new Error('graph failed')
+
+    const bridged = buildActorState({
+      blueprint: blueprint(),
+      packageId: manifest.packageId,
+      packageVersion: manifest.version,
+      stateSchemaVersion: manifest.stateSchemaVersion,
+      knownDefinition: (id) => registry.registry.has(id)
+    })
+    bridged.actorState.values['value:level'] = 5
+
+    const session = new EvaluationSession(registry.registry, graph.graph, bridged.actorState, {})
+    const level5 = evaluate('value:hit_points.max', session)
+
+    expect(level1).toBe(11)
+    expect(level5).toBe(39)
+  })
+
+  it('death save marks persist independently of current/temporary HP', () => {
+    const bp = withHealth({ currentHp: 0, deathSaves: { successes: 1, failures: 2 } })
+    const { value } = derive(bp)
+
+    expect(value('value:death_saves.successes')).toBe(1)
+    expect(value('value:death_saves.failures')).toBe(2)
+    expect(value('value:hit_points.current')).toBe(0)
   })
 })

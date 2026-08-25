@@ -64,7 +64,8 @@ function mockEntityAndBlock(
   blockData: any,
   abilityBlockData: any = null,
   inventoryBlockData: any = null,
-  notesBlockData: any = null
+  notesBlockData: any = null,
+  healthBlockData: any = null
 ) {
   directusServiceRequestMock.mockImplementation(async (path: string) => {
     if (path === '/items/entities/42') {
@@ -76,6 +77,7 @@ function mockEntityAndBlock(
       if (abilityBlockData) rows.push({ block_key: 'ability_scores', data: abilityBlockData })
       if (inventoryBlockData) rows.push({ block_key: 'inventory', data: inventoryBlockData })
       if (notesBlockData) rows.push({ block_key: 'notes', data: notesBlockData })
+      if (healthBlockData) rows.push({ block_key: 'health', data: healthBlockData })
       return { data: rows }
     }
     throw new Error(`Unexpected Directus path in test: ${path}`)
@@ -327,7 +329,7 @@ describe('assembleCharacter -- ability scores', () => {
     expect(result.blueprint.species.status).toBe('resolved')
   })
 
-  it('reads all five blocks in ONE Directus round trip', async () => {
+  it('reads all six blocks in ONE Directus round trip', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
@@ -345,7 +347,7 @@ describe('assembleCharacter -- ability scores', () => {
     const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
     expect(blockCalls).toHaveLength(1)
     expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual([
-      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes'
+      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes', 'health'
     ])
   })
 })
@@ -536,5 +538,77 @@ describe('assembleCharacter -- notes', () => {
     const result = await assembleCharacter('5', '42')
     expect(result.available && result.blueprint.notes?.general).toBe('present')
     expect(result.available && result.blueprint.inventory).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Health -- the Health System's stored half
+// ---------------------------------------------------------------------------
+
+describe('assembleCharacter -- health', () => {
+  function withHealth(healthBlockData: any) {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
+      null,
+      null,
+      null,
+      healthBlockData
+    )
+  }
+
+  it('is null, never an empty record, when nothing was ever recorded', async () => {
+    withHealth(null)
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.health).toBeNull()
+  })
+
+  it('survives assembly unchanged -- health resolves against nothing', async () => {
+    const stored = { currentHp: 18, temporaryHp: 4, hitDiceSpent: 1, deathSaves: { successes: 0, failures: 1 } }
+    withHealth(stored)
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.health).toEqual(stored)
+  })
+
+  it('re-validates the stored block rather than trusting it', async () => {
+    withHealth({ currentHp: -5, temporaryHp: 2 })
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.health).toMatchObject({ currentHp: 0, temporaryHp: 2 })
+  })
+
+  it('is independent of notes and inventory -- reading one does not disturb another', async () => {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
+      null,
+      { items: [] },
+      { general: 'present' },
+      { currentHp: 9, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } }
+    )
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.health?.currentHp).toBe(9)
+    expect(result.available && result.blueprint.notes?.general).toBe('present')
+    expect(result.available && result.blueprint.inventory).toEqual([])
+  })
+
+  it('carries no maximum HP field -- maximum is derived, never stored here', async () => {
+    withHealth({ currentHp: 10 })
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.health).not.toHaveProperty('maxHp')
+    expect(result.available && result.blueprint.health).not.toHaveProperty('maximumHp')
   })
 })

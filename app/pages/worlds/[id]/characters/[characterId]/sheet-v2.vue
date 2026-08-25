@@ -112,6 +112,25 @@
 // character-notes.ts's own note on why: no real GM role exists yet to gate
 // it on, and labelling it GM-only here would promise privacy this platform
 // cannot enforce.
+//
+// ---------------------------------------------------------------------------
+// HEALTH -- THE SECOND GAMEPLAY-DERIVED SYSTEM, FOLLOWING ARMOR CLASS
+// ---------------------------------------------------------------------------
+// Same shape as Armor Class: Maximum HP, Hit Dice (total), and Hit Dice
+// Available are ALL Rules Engine output, read from
+// `derived.byCategory['core.health']` via `findDerivedNumber` -- never
+// computed here. Current HP, Temporary HP, Hit Dice spent, and Death Save
+// marks are the player's own stored data (server/utils/character-health.ts,
+// the same block_instances pattern every other player-data block uses),
+// edited directly on the Sheet -- Health is the second deliberate exception
+// to "the Sheet displays, the Builder edits" (Inventory was the first, for
+// the identical reason: it changes during play, not at creation).
+//
+// `findDerivedNumber` reads ONLY the three read-only summaries -- never
+// Current HP or Death Saves, which the player edits directly through
+// CharacterHealthPanel.vue. Rendering those through the generic
+// `core.health` region too would show the same fact twice, through two
+// different paths; see that helper's own note.
 
 // The identity summary is composed inline rather than extracted into a
 // component: it is used by exactly this one page. The ability scores ARE
@@ -121,10 +140,15 @@
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
+import CharacterHealthPanel from '~/components/characters/CharacterHealthPanel.vue'
 import {
   emptyCharacterNotes,
   type StoredCharacterNotes
 } from '~/lib/characters/character-notes'
+import {
+  emptyCharacterHealth,
+  type StoredCharacterHealth
+} from '~/lib/characters/health'
 import {
   addInventoryItem,
   changeInventoryQuantity,
@@ -135,7 +159,7 @@ import {
   type StoredInventoryItem
 } from '~/lib/characters/inventory'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
-import { DERIVED_SHEET_REGIONS, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
+import { DERIVED_SHEET_REGIONS, findDerivedNumber, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
 import type { PresentationEntry } from '~/lib/content-presentation'
@@ -185,6 +209,10 @@ type AssemblyBlueprint = {
   // `null` for every character created before this feature -- a real state,
   // rendered as six empty fields, never as an error.
   notes: StoredCharacterNotes | null
+  // `null` for every character created before the Health System. Maximum HP
+  // is deliberately absent here: it is Rules Engine output, read from
+  // `derived`, never from this blueprint.
+  health: StoredCharacterHealth | null
 }
 
 type AssemblyResponse =
@@ -388,6 +416,49 @@ async function saveNotes(next: StoredCharacterNotes) {
     notesSaving.value = false
   }
 }
+
+// ---------------------------------------------------------------------------
+// Health -- state and saving only; the pure module owns the shape
+// ---------------------------------------------------------------------------
+
+const healthDraft = ref<StoredCharacterHealth>(emptyCharacterHealth())
+const healthSaving = ref(false)
+const healthError = ref('')
+
+watch(
+  blueprint,
+  (value) => { healthDraft.value = value?.health ? { ...value.health } : emptyCharacterHealth() },
+  { immediate: true }
+)
+
+async function saveHealth(next: StoredCharacterHealth) {
+  if (healthSaving.value) return
+
+  const previous = healthDraft.value
+  healthDraft.value = next
+  healthSaving.value = true
+  healthError.value = ''
+
+  try {
+    await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/health`, {
+      method: 'PUT',
+      body: next
+    })
+  } catch (saveError: any) {
+    healthDraft.value = previous
+    healthError.value =
+      saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save health'
+  } finally {
+    healthSaving.value = false
+  }
+}
+
+// Read-only summaries only -- see this file's HEALTH header note on why
+// Current HP / Death Saves are never pulled from `derived` here.
+const maxHp = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.max'))
+const hitDiceMax = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_max'))
+const hitDiceAvailable = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_available'))
+const hitDieSize = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_die_size'))
 
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
@@ -642,6 +713,26 @@ const identityRows = computed(() =>
               :saving="notesSaving"
               :error-message="notesError"
               @save="saveNotes"
+            />
+          </div>
+        </section>
+
+        <!-- Health: also editable -- see CharacterHealthPanel.vue's header. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Health
+          </div>
+
+          <div class="mt-4">
+            <CharacterHealthPanel
+              :health="healthDraft"
+              :max-hp="maxHp"
+              :hit-dice-max="hitDiceMax"
+              :hit-dice-available="hitDiceAvailable"
+              :hit-die-size="hitDieSize"
+              :saving="healthSaving"
+              :error-message="healthError"
+              @save="saveHealth"
             />
           </div>
         </section>

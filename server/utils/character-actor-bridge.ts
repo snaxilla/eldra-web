@@ -301,6 +301,22 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     }
   }
 
+  // --- Health: the player's own data, copied verbatim ---------------------
+  // Same posture as ability scores immediately above: absent when nothing
+  // was ever recorded, rather than defaulted here, so the Value's own
+  // `default: 0` (definitions.json) is the one place that number lives.
+  // `hit_points.max` is NEVER written here -- it has no stored form to copy
+  // from (see health.ts's own header on why), only a formula the evaluator
+  // resolves from `hit_points.hit_die_size` (a Class grant, applied below,
+  // unchanged by this addition), `ability.con.mod`, and `level`.
+  if (blueprint.health) {
+    values['value:hit_points.current'] = blueprint.health.currentHp
+    values['value:hit_points.temp'] = blueprint.health.temporaryHp
+    values['value:hit_points.hit_dice_spent'] = blueprint.health.hitDiceSpent
+    values['value:death_saves.successes'] = blueprint.health.deathSaves.successes
+    values['value:death_saves.failures'] = blueprint.health.deathSaves.failures
+  }
+
   // --- Facet grants, sources, and choices --------------------------------
   for (const slotKey of SLOT_ORDER) {
     const facet = facetFor(blueprint[slotKey])

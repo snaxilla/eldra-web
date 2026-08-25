@@ -1106,16 +1106,15 @@
     "kind": "value",
     "category": "core.health",
     "valueType": "number",
-    "storage": "stored",
-    "default": 0,
-    "constraints": {
-      "min": 0
-    },
+    "storage": "derived",
     "visibility": "public",
     "label": "Hit Point Maximum",
     "tags": [
       "health"
-    ]
+    ],
+    "formula": {
+      "text": "@value:hit_points.hit_die_size + @value:ability.con.mod + (@value:level - 1) * (floor(@value:hit_points.hit_die_size / 2) + 1 + @value:ability.con.mod)"
+    }
   },
   {
     "id": "value:hit_points.temp",
@@ -1423,5 +1422,107 @@
     "formula": {
       "text": "10 + @value:ability.dex.mod"
     }
+  },
+  {
+    "id": "value:hit_points.hit_die_size",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Hit Die Size",
+    "tags": [
+      "health",
+      "hit-dice"
+    ]
+  },
+  {
+    "id": "value:hit_points.hit_dice_max",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Hit Dice",
+    "tags": [
+      "health",
+      "hit-dice"
+    ],
+    "formula": {
+      "text": "@value:level"
+    }
+  },
+  {
+    "id": "value:hit_points.hit_dice_spent",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Hit Dice Spent",
+    "tags": [
+      "health",
+      "hit-dice"
+    ]
+  },
+  {
+    "id": "value:hit_points.hit_dice_available",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Hit Dice Available",
+    "tags": [
+      "health",
+      "hit-dice"
+    ],
+    "formula": {
+      "text": "@value:hit_points.hit_dice_max - @value:hit_points.hit_dice_spent"
+    }
+  },
+  {
+    "id": "value:death_saves.successes",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0,
+      "max": 3
+    },
+    "visibility": "public",
+    "label": "Death Save Successes",
+    "tags": [
+      "health",
+      "death-saves"
+    ]
+  },
+  {
+    "id": "value:death_saves.failures",
+    "kind": "value",
+    "category": "core.health",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0,
+      "max": 3
+    },
+    "visibility": "public",
+    "label": "Death Save Failures",
+    "tags": [
+      "health",
+      "death-saves"
+    ]
   }
 ]

@@ -32,7 +32,14 @@
 // WHAT IS AUTHORED, AND WHAT IS DELIBERATELY ABSENT
 // ---------------------------------------------------------------------------
 // CLASSES grant two saving throw proficiencies outright, and offer a skill
-// choice. Both are in scope and both are authored.
+// choice. Both are in scope and both are authored. Each class's `grants`
+// now carries a THIRD entry: `value:hit_points.hit_die_size`, measured from
+// the real XPHB dataset's own `hd.faces` field (Barbarian 12, Fighter/
+// Paladin/Ranger 10, most others 8, Sorcerer/Wizard 6). This is the ONE
+// piece of a Class's mechanics `grants` was always able to express and
+// simply had no Definition to target until the Health System added
+// `hit_points.hit_die_size` -- unlike the ASI/Origin Feat gaps immediately
+// below, which remain gaps for their own, separate reasons.
 //
 // BACKGROUNDS grant two skill proficiencies outright. In the 2024 rules a
 // Background also grants an Ability Score Increase and an Origin Feat --
@@ -119,7 +126,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'barbarian-xphb': {
       grants: [
         { set: 'value:save.str.proficient', to: true },
-        { set: 'value:save.con.proficient', to: true }
+        { set: 'value:save.con.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 12 }
       ],
       choices: [
         {
@@ -139,7 +147,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'bard-xphb': {
       grants: [
         { set: 'value:save.dex.proficient', to: true },
-        { set: 'value:save.cha.proficient', to: true }
+        { set: 'value:save.cha.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 8 }
       ],
       choices: [
         {
@@ -171,7 +180,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'cleric-xphb': {
       grants: [
         { set: 'value:save.wis.proficient', to: true },
-        { set: 'value:save.cha.proficient', to: true }
+        { set: 'value:save.cha.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 8 }
       ],
       choices: [
         {
@@ -190,7 +200,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'druid-xphb': {
       grants: [
         { set: 'value:save.int.proficient', to: true },
-        { set: 'value:save.wis.proficient', to: true }
+        { set: 'value:save.wis.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 8 }
       ],
       choices: [
         {
@@ -212,7 +223,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'fighter-xphb': {
       grants: [
         { set: 'value:save.str.proficient', to: true },
-        { set: 'value:save.con.proficient', to: true }
+        { set: 'value:save.con.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 10 }
       ],
       choices: [
         {
@@ -235,7 +247,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'monk-xphb': {
       grants: [
         { set: 'value:save.str.proficient', to: true },
-        { set: 'value:save.dex.proficient', to: true }
+        { set: 'value:save.dex.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 8 }
       ],
       choices: [
         {
@@ -255,7 +268,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'paladin-xphb': {
       grants: [
         { set: 'value:save.wis.proficient', to: true },
-        { set: 'value:save.cha.proficient', to: true }
+        { set: 'value:save.cha.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 10 }
       ],
       choices: [
         {
@@ -275,7 +289,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'ranger-xphb': {
       grants: [
         { set: 'value:save.str.proficient', to: true },
-        { set: 'value:save.dex.proficient', to: true }
+        { set: 'value:save.dex.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 10 }
       ],
       choices: [
         {
@@ -297,7 +312,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'rogue-xphb': {
       grants: [
         { set: 'value:save.dex.proficient', to: true },
-        { set: 'value:save.int.proficient', to: true }
+        { set: 'value:save.int.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 8 }
       ],
       choices: [
         {
@@ -321,7 +337,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'sorcerer-xphb': {
       grants: [
         { set: 'value:save.con.proficient', to: true },
-        { set: 'value:save.cha.proficient', to: true }
+        { set: 'value:save.cha.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 6 }
       ],
       choices: [
         {
@@ -341,7 +358,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'warlock-xphb': {
       grants: [
         { set: 'value:save.wis.proficient', to: true },
-        { set: 'value:save.cha.proficient', to: true }
+        { set: 'value:save.cha.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 8 }
       ],
       choices: [
         {
@@ -362,7 +380,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'wizard-xphb': {
       grants: [
         { set: 'value:save.int.proficient', to: true },
-        { set: 'value:save.wis.proficient', to: true }
+        { set: 'value:save.wis.proficient', to: true },
+        { set: 'value:hit_points.hit_die_size', to: 6 }
       ],
       choices: [
         {

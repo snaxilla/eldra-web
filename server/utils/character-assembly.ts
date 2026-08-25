@@ -72,6 +72,11 @@ import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
 import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
 import { INVENTORY_BLOCK_KEY } from './character-inventory'
 import { CHARACTER_NOTES_BLOCK_KEY } from './character-notes'
+import { CHARACTER_HEALTH_BLOCK_KEY } from './character-health'
+import {
+  normalizeStoredCharacterHealth,
+  type StoredCharacterHealth
+} from '../../app/lib/characters/health'
 import {
   normalizeStoredCharacterNotes,
   type StoredCharacterNotes
@@ -141,6 +146,13 @@ export type CharacterAssemblyBlueprint = {
   // against nothing: unlike species/class/background/inventory, there is no
   // catalogue reference to re-join on every read.
   notes: StoredCharacterNotes | null
+  // Current HP, Temporary HP, Hit Dice spent, and Death Save marks. `null`
+  // when nothing was ever recorded -- true of every character created before
+  // the Health System, and a first-class state (the Sheet shows "not set
+  // yet"), never an error. Maximum HP is never carried here: it is derived
+  // by the Rules Engine from Hit Die size (Class-granted), Constitution, and
+  // level, and this blueprint's job is inputs only.
+  health: StoredCharacterHealth | null
   packs: WorldContentPackResolution[]
 }
 
@@ -249,7 +261,7 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
-  // All five blocks in ONE query rather than five round trips -- they
+  // All six blocks in ONE query rather than six round trips -- they
   // differ only by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
   // `fields` because the rows now have to be told apart.
   const blockRes: any = await directusServiceRequest('/items/block_instances', {
@@ -265,13 +277,14 @@ export async function assembleCharacter(
                 ABILITY_SCORES_BLOCK_KEY,
                 RULES_CHOICES_BLOCK_KEY,
                 INVENTORY_BLOCK_KEY,
-                CHARACTER_NOTES_BLOCK_KEY
+                CHARACTER_NOTES_BLOCK_KEY,
+                CHARACTER_HEALTH_BLOCK_KEY
               ]
             }
           }
         ]
       },
-      limit: 5,
+      limit: 6,
       fields: 'block_key,data'
     }
   })
@@ -290,6 +303,7 @@ export async function assembleCharacter(
   const rulesChoices = normalizeStoredRulesChoices(findBlock(RULES_CHOICES_BLOCK_KEY)?.data ?? null)
   const storedInventory = normalizeStoredInventory(findBlock(INVENTORY_BLOCK_KEY)?.data ?? null)
   const notes = normalizeStoredCharacterNotes(findBlock(CHARACTER_NOTES_BLOCK_KEY)?.data ?? null)
+  const health = normalizeStoredCharacterHealth(findBlock(CHARACTER_HEALTH_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -312,6 +326,7 @@ export async function assembleCharacter(
     rulesChoices,
     inventory: resolveInventory(storedInventory?.items ?? [], catalogue.items, catalogue.packs),
     notes,
+    health,
     packs: catalogue.packs
   }
 

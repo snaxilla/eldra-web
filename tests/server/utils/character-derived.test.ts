@@ -97,6 +97,7 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
     rulesChoices: null,
     inventory: [],
     notes: null,
+    health: null,
     packs: [],
     ...overrides
   }
@@ -236,5 +237,47 @@ describe('getDerivedCharacter -- Armor Class', () => {
 
     const ac = (result.derived.byCategory['core.defenses'] ?? []).find((entry) => entry.id === 'value:defenses.armor_class')
     expect(ac?.value).toBe(12)
+  })
+})
+
+describe('getDerivedCharacter -- Health System', () => {
+  it('surfaces Maximum HP under core.health, computed from a real Class Hit Die and Constitution', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        abilityScores: {
+          method: 'standard-array',
+          scores: { str: 10, dex: 10, con: 16, int: 10, wis: 10, cha: 10 }
+        },
+        health: { currentHp: 9, temporaryHp: 2, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } }
+      })
+    })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const health = result.derived.byCategory['core.health'] ?? []
+    const byId = Object.fromEntries(health.map((entry) => [entry.id, entry.value]))
+
+    // Fighter (d10) + CON 16 (+3 mod) = 13.
+    expect(byId['value:hit_points.max']).toBe(13)
+    expect(byId['value:hit_points.current']).toBe(9)
+    expect(byId['value:hit_points.temp']).toBe(2)
+    expect(byId['value:hit_points.hit_dice_max']).toBe(1)
+    expect(byId['value:hit_points.hit_dice_available']).toBe(1)
+  })
+
+  it('surfaces zeroed health when nothing was ever recorded', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint({ health: null }) })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const health = result.derived.byCategory['core.health'] ?? []
+    const byId = Object.fromEntries(health.map((entry) => [entry.id, entry.value]))
+    expect(byId['value:hit_points.current']).toBe(0)
+    expect(byId['value:death_saves.successes']).toBe(0)
   })
 })

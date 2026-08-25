@@ -180,3 +180,61 @@ describe('getDerivedCharacter -- collections', () => {
     expect(ids).not.toContain('collection:equipment')
   })
 })
+
+describe('getDerivedCharacter -- Armor Class', () => {
+  it('surfaces Armor Class under core.defenses, computed from a real equipped Breastplate', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        abilityScores: {
+          method: 'standard-array',
+          scores: { str: 10, dex: 18, con: 10, int: 10, wis: 10, cha: 10 }
+        },
+        inventory: [{
+          instanceId: 'item-1',
+          status: 'resolved',
+          title: 'Breastplate',
+          quantity: 1,
+          equipped: true,
+          attuned: false,
+          entry: {
+            packageId: 'eldra.content.xphb',
+            packageVersion: '1.0.0',
+            title: 'Breastplate',
+            slug: 'breastplate-xphb',
+            rulesFacet: findRulesFacet('dnd5e.2024', 'item', 'breastplate-xphb') ?? undefined
+          }
+        }]
+      })
+    })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const defenses = result.derived.byCategory['core.defenses'] ?? []
+    const ac = defenses.find((entry) => entry.id === 'value:defenses.armor_class')
+
+    expect(ac?.value).toBe(16) // 14 base + min(+4, cap 2)
+    expect(ac?.label).toBe('Armor Class')
+  })
+
+  it('surfaces the unarmored base when nothing is equipped', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        abilityScores: {
+          method: 'standard-array',
+          scores: { str: 10, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }
+        }
+      })
+    })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const ac = (result.derived.byCategory['core.defenses'] ?? []).find((entry) => entry.id === 'value:defenses.armor_class')
+    expect(ac?.value).toBe(12)
+  })
+})

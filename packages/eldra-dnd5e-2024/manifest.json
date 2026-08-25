@@ -1,11 +1,11 @@
 {
   "packageId": "eldra.rules.dnd5e-2024",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "status": "draft",
   "engineApiVersion": "^1.0.0",
   "stateSchemaVersion": 1,
   "title": "D&D 2024 Core Character Rules",
-  "description": "The Core Character Rules for the 2024 ruleset: abilities and their modifiers, proficiency bonus, saving throws, skills, hit point slots, level advancement, character-creation constraints, and Equipment Rules (an equipment collection with slot and attunement-requirement fields, equipment slots, equipped state, and attunement capacity). Mechanics only -- this package defines the slots and the laws, never the content that fills them. It contains no species, classes, backgrounds, spells, items, or monsters, and is publishable and evaluable with no Content Pack bound.",
+  "description": "The Core Character Rules for the 2024 ruleset: abilities and their modifiers, proficiency bonus, saving throws, skills, hit point slots, level advancement, character-creation constraints, Equipment Rules (an equipment collection with slot and attunement-requirement fields, equipment slots, equipped state, and attunement capacity), and Armor Class -- the first equipment-driven derived value, computed from an equipped armor Source via the standard Modifier pipeline. Mechanics only -- this package defines the slots and the laws, never the content that fills them. It contains no species, classes, backgrounds, spells, items, or monsters, and is publishable and evaluable with no Content Pack bound.",
   "authors": [{ "name": "Eldra" }],
   "license": {
     "id": "CC-BY-4.0",
@@ -22,7 +22,8 @@
     "core.health",
     "progression",
     "character.creation",
-    "equipment"
+    "equipment",
+    "core.defenses"
   ],
   "semanticRoles": {
     "level": "value:level",

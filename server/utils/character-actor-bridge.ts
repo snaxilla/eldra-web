@@ -116,6 +116,23 @@ import type { AssembledInventoryItem, CharacterAssemblyBlueprint, CharacterAssem
 // every unfaceted item would otherwise be missing -- see that function's
 // own note on why the engine will NOT fill a missing field in from the
 // Collection's declared default on its own.
+//
+// ARMOR carries a fourth, optional group through the exact same path:
+// `sourceRef`/`armorClass`/`dexCapMin`/`dexCapMax` -- code for THIS module
+// is unchanged for it, because `collectionFieldsFor`'s spread already
+// forwards whatever a facet declares, key-for-key, with no per-field
+// knowledge here of what any of them mean. `sourceRef` (a Definition ID
+// naming `source:equipment.armor`) is what makes the equipment Collection's
+// declared `sourceRefField` do anything at all: the engine's Source Overlay
+// (app/lib/rules/source-overlay.ts, unmodified) instantiates one
+// `ResolvedSourceInstance` per item whose `sourceRef` resolves, and the
+// Modifier that Source declares reads `armorClass`/`dexCapMin`/`dexCapMax`
+// straight back off the SAME item via `@source:<field>` -- see
+// dnd5e-2024.ts's own note on why `equipped` becomes the Modifier's
+// `condition` rather than something this bridge branches on: the toggle a
+// player already flips in Inventory is the ONLY thing that turns Armor
+// Class on or off, and this module never touches it beyond copying it
+// through.
 import type { RulesFacet, RulesFacetChoice, RulesFacetLiteral } from '../../app/lib/content-rules'
 import {
   resolveChoiceTarget,

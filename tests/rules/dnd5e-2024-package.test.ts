@@ -259,6 +259,14 @@ describe('the Rules / Content boundary', () => {
     // The commitment that makes this a Rules Package: it declares the slots,
     // never the things that fill them. If any of these ever appears, the
     // package has started absorbing a Content Pack's job.
+    //
+    // WORD-BOUNDARY matching, not bare substring: a legitimate mechanical
+    // field name can innocently CONTAIN one of these as a substring without
+    // naming it -- `armorClass` (Equipment Rules' own field, definitions.json)
+    // lowercases to `armorclass`, which contains the letters "orc" purely by
+    // where "armor" and "class" happen to join, with no relation to the Orc
+    // monster. A bare `.toContain('orc')` cannot tell that apart from an
+    // actual `"label": "Orc"`; `\borc\b` can.
     const serialized = JSON.stringify(loadPackage().definitions).toLowerCase()
 
     for (const forbidden of [
@@ -266,7 +274,7 @@ describe('the Rules / Content boundary', () => {
       'elf', 'dwarf', 'human', 'halfling', 'orc', 'tiefling', 'dragonborn',
       'fireball', 'longsword', 'goblin', 'acolyte', 'soldier'
     ]) {
-      expect(serialized).not.toContain(forbidden)
+      expect(serialized).not.toMatch(new RegExp(`\\b${forbidden}\\b`))
     }
   })
 

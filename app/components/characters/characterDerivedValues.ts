@@ -68,6 +68,7 @@ export type DerivedCharacterResponse =
 export const DERIVED_SHEET_REGIONS: ReadonlyArray<{ category: RuleCategory; label: string }> = [
   { category: 'core.abilities', label: 'Abilities' },
   { category: 'core.proficiency', label: 'Proficiency' },
+  { category: 'core.defenses', label: 'Defenses' },
   { category: 'core.saves', label: 'Saving Throws' },
   { category: 'core.skills', label: 'Skills' },
   { category: 'equipment', label: 'Equipment' }

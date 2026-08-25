@@ -82,6 +82,32 @@
 // as before: no `value:tool.*` Definition exists to name, and currency
 // (Category 16) is not part of this package (rules-package-architecture.md
 // §6.3).
+//
+// ---------------------------------------------------------------------------
+// ARMOR ALSO CARRIES A SOURCE -- the first equipment-driven derived value
+// ---------------------------------------------------------------------------
+// The 12 body armor items (not the Shield -- see below) additionally set
+// `sourceRef: 'source:equipment.armor'` plus the three numbers that Source's
+// one Modifier reads: `armorClass` (the item's own base AC), and
+// `dexCapMin`/`dexCapMax` (how much of the wearer's Dex modifier applies).
+// All three are measured, not authored per-item by judgment: `armorClass`
+// is the dataset's own `ac` field; `dexCapMin`/`dexCapMax` follow directly
+// from the SAME `LA`/`MA`/`HA` type code `category`/`slot` already used --
+// light armor applies Dex uncapped (`[-99, 99]`, sentinels standing in for
+// "no bound"), medium caps the BONUS at +2 but still applies a Dex PENALTY
+// in full (`[-99, 2]`), heavy applies no Dex at all in either direction
+// (`[0, 0]`) -- which is why `clamp()`, not a bare `min()`, is the formula's
+// own choice (source:equipment.armor in definitions.json): `min(dexMod, 2)`
+// would incorrectly let a heavy-armor wearer's negative Dex subtract from
+// their AC, when RAW heavy armor ignores Dex in both directions.
+//
+// The Shield is deliberately EXCLUDED from this. It is category:'armor' but
+// mechanically ADDS to whatever AC a character already has (a `phase:'add'`
+// modifier) rather than REPLACING it (`phase:'set'`, what every body armor
+// piece above declares) -- a genuinely different modifier shape this
+// package does not yet declare. Authoring one now would be "shield bonuses
+// beyond what the package can already express," which the task that added
+// this section named as explicitly out of scope.
 
 import type { RulesFacetCorpus } from './types'
 
@@ -519,7 +545,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 14,
+            dexCapMin: -99,
+            dexCapMax: 2
+          }
         }
       ]
     },
@@ -527,7 +560,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 16,
+            dexCapMin: 0,
+            dexCapMax: 0
+          }
         }
       ]
     },
@@ -535,7 +575,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 13,
+            dexCapMin: -99,
+            dexCapMax: 2
+          }
         }
       ]
     },
@@ -615,7 +662,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 15,
+            dexCapMin: -99,
+            dexCapMax: 2
+          }
         }
       ]
     },
@@ -647,7 +701,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 12,
+            dexCapMin: -99,
+            dexCapMax: 2
+          }
         }
       ]
     },
@@ -671,7 +732,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 11,
+            dexCapMin: -99,
+            dexCapMax: 99
+          }
         }
       ]
     },
@@ -743,7 +811,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 11,
+            dexCapMin: -99,
+            dexCapMax: 99
+          }
         }
       ]
     },
@@ -767,7 +842,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 18,
+            dexCapMin: 0,
+            dexCapMax: 0
+          }
         }
       ]
     },
@@ -799,7 +881,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 14,
+            dexCapMin: 0,
+            dexCapMax: 0
+          }
         }
       ]
     },
@@ -807,7 +896,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 14,
+            dexCapMin: -99,
+            dexCapMax: 2
+          }
         }
       ]
     },
@@ -871,7 +967,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 17,
+            dexCapMin: 0,
+            dexCapMax: 0
+          }
         }
       ]
     },
@@ -879,7 +982,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       collectionFields: [
         {
           collection: 'collection:equipment',
-          fields: { category: 'armor', slot: 'armor' }
+          fields: {
+            category: 'armor',
+            slot: 'armor',
+            sourceRef: 'source:equipment.armor',
+            armorClass: 12,
+            dexCapMin: -99,
+            dexCapMax: 99
+          }
         }
       ]
     },

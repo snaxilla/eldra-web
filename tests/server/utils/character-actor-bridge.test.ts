@@ -853,3 +853,140 @@ describe('item facets: content declares, the bridge relays, nothing is computed'
     expect(checked).toBe(52)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Armor Class -- the first equipment-driven gameplay consequence
+// ---------------------------------------------------------------------------
+// Full pipeline: Content (a real armor facet) -> Rules Facet
+// (`collectionFields`, including `sourceRef`) -> Equipment Collection (the
+// bridge's own translation) -> Rules Engine (Source Overlay + Modifier
+// pipeline, both UNMODIFIED by this task) -> a derived Value. Every number
+// below is produced by `derive()`'s real registry/graph/evaluator -- this
+// suite computes nothing of its own to compare against.
+
+describe('Armor Class: equip -> Source -> derived AC', () => {
+  function withAbilities(dex: number) {
+    return {
+      abilityScores: {
+        method: 'standard-array' as const,
+        scores: { str: 10, dex, con: 10, int: 10, wis: 10, cha: 10 }
+      }
+    }
+  }
+
+  it('unarmored AC is 10 + Dex modifier -- the Value\'s own base formula, no Source involved', () => {
+    const bp = blueprint({ ...withAbilities(14), inventory: [] })
+    expect(derive(bp).value('value:defenses.armor_class')).toBe(12)
+  })
+
+  it('equipping a real Breastplate emits a Source the engine resolves into a set-phase AC modifier', () => {
+    const bp = blueprint({
+      ...withAbilities(18), // +4 mod, medium armor caps the bonus at +2
+      inventory: [inventoryItemWithFacet('breastplate-xphb', { equipped: true })]
+    })
+
+    const { bridged, value } = derive(bp)
+
+    // The Actor Bridge's own contribution: the item carries `sourceRef`
+    // into the collection, unresolved by this module -- it is the ENGINE
+    // (session.sourceOverlay, built inside EvaluationSession, untouched by
+    // this task) that turns it into an active Source instance.
+    expect(bridged.actorState.collections['collection:equipment']![0]).toMatchObject({
+      sourceRef: 'source:equipment.armor',
+      armorClass: 14
+    })
+
+    // 14 (Breastplate base) + 2 (medium armor's Dex cap, not the full +4)
+    expect(value('value:defenses.armor_class')).toBe(16)
+  })
+
+  it('unequipping reverts to the unarmored base -- the SAME item, only `equipped` changes', () => {
+    const equippedAC = derive(blueprint({
+      ...withAbilities(14),
+      inventory: [inventoryItemWithFacet('breastplate-xphb', { equipped: true })]
+    })).value('value:defenses.armor_class')
+
+    const unequippedAC = derive(blueprint({
+      ...withAbilities(14),
+      inventory: [inventoryItemWithFacet('breastplate-xphb', { equipped: false })]
+    })).value('value:defenses.armor_class')
+
+    expect(equippedAC).toBe(16) // 14 + min(dex +2, cap 2)
+    expect(unequippedAC).toBe(12) // back to 10 + dex mod, armor contributes nothing
+  })
+
+  it('different armor produces a different Armor Class -- heavy armor ignores Dex entirely', () => {
+    const breastplateAC = derive(blueprint({
+      ...withAbilities(16), // +3 mod
+      inventory: [inventoryItemWithFacet('breastplate-xphb', { equipped: true })]
+    })).value('value:defenses.armor_class')
+
+    const chainMailAC = derive(blueprint({
+      ...withAbilities(16),
+      inventory: [inventoryItemWithFacet('chain-mail-xphb', { equipped: true })]
+    })).value('value:defenses.armor_class')
+
+    const leatherAC = derive(blueprint({
+      ...withAbilities(16),
+      inventory: [inventoryItemWithFacet('leather-armor-xphb', { equipped: true })]
+    })).value('value:defenses.armor_class')
+
+    expect(breastplateAC).toBe(16) // 14 + min(+3, cap 2)
+    expect(chainMailAC).toBe(16)   // 16 flat, heavy armor ignores Dex
+    expect(leatherAC).toBe(14)     // 11 + full +3, light armor has no cap
+    expect(new Set([breastplateAC, chainMailAC, leatherAC]).size).toBeGreaterThan(1)
+  })
+
+  it('heavy armor does not PENALIZE a negative Dex modifier -- clamp(), not a bare min()', () => {
+    // The exact edge case a naive `min(dexMod, 2)` formula would get wrong:
+    // heavy armor should apply NEITHER bonus NOR penalty from Dex.
+    const bp = blueprint({
+      ...withAbilities(6), // -2 modifier
+      inventory: [inventoryItemWithFacet('plate-armor-xphb', { equipped: true })]
+    })
+    expect(derive(bp).value('value:defenses.armor_class')).toBe(18) // flat, not 16
+  })
+
+  it('a Shield contributes nothing to Armor Class -- deliberately excluded (add-phase bonus is out of scope)', () => {
+    const bp = blueprint({
+      ...withAbilities(14),
+      inventory: [inventoryItemWithFacet('shield-xphb', { equipped: true })]
+    })
+    expect(derive(bp).value('value:defenses.armor_class')).toBe(12) // unarmored base, unaffected
+  })
+
+  it('a weapon (no sourceRef at all) does not affect Armor Class', () => {
+    const bp = blueprint({
+      ...withAbilities(14),
+      inventory: [inventoryItemWithFacet('longsword-xphb', { equipped: true })]
+    })
+    expect(derive(bp).value('value:defenses.armor_class')).toBe(12)
+  })
+
+  it('no derived value is stored -- ActorState carries only the item\'s own booleans and numbers', () => {
+    const bp = blueprint({
+      ...withAbilities(18),
+      inventory: [inventoryItemWithFacet('breastplate-xphb', { equipped: true })]
+    })
+    const { bridged } = derive(bp)
+
+    // The bridge writes exactly what the facet and the player declared --
+    // never an armor_class key, never a computed AC number, anywhere in
+    // ActorState.
+    expect(JSON.stringify(bridged.actorState.values)).not.toContain('armor_class')
+    expect(JSON.stringify(bridged.actorState.collections)).not.toContain('"armor_class"')
+    for (const item of bridged.actorState.collections['collection:equipment']!) {
+      expect(item).not.toHaveProperty('armor_class')
+    }
+  })
+
+  it('a MISSING (unresolvable) armor reference contributes nothing -- there is no facet left to read', () => {
+    const bp = blueprint({
+      ...withAbilities(18),
+      inventory: [inventoryItem({
+        status: 'missing', entry: undefined, ref: { packageId: 'gone', slug: 'breastplate-xphb' }, equipped: true
+      })]
+    })
+    expect(derive(bp).value('value:defenses.armor_class')).toBe(14) // unarmored, dex +4
+  })
+})

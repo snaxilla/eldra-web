@@ -1288,6 +1288,23 @@
         "key": "requiresAttunement",
         "valueType": "boolean",
         "default": false
+      },
+      {
+        "key": "sourceRef",
+        "valueType": "ref",
+        "refKind": "source"
+      },
+      {
+        "key": "armorClass",
+        "valueType": "number"
+      },
+      {
+        "key": "dexCapMin",
+        "valueType": "number"
+      },
+      {
+        "key": "dexCapMax",
+        "valueType": "number"
       }
     ],
     "slots": [
@@ -1302,7 +1319,8 @@
     ],
     "tags": [
       "equipment"
-    ]
+    ],
+    "sourceRefField": "sourceRef"
   },
   {
     "id": "value:equipment.attunement_max",
@@ -1366,6 +1384,44 @@
     ],
     "formula": {
       "text": "count(@collection:equipment[equipped])"
+    }
+  },
+  {
+    "id": "source:equipment.armor",
+    "kind": "source",
+    "category": "equipment",
+    "label": "Worn Armor",
+    "modifiers": [
+      {
+        "target": "value:defenses.armor_class",
+        "phase": "set",
+        "condition": {
+          "text": "@source:equipped"
+        },
+        "value": {
+          "text": "@source:armorClass + clamp(@value:ability.dex.mod, @source:dexCapMin, @source:dexCapMax)"
+        }
+      }
+    ],
+    "tags": [
+      "equipment",
+      "armor"
+    ]
+  },
+  {
+    "id": "value:defenses.armor_class",
+    "kind": "value",
+    "category": "core.defenses",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Armor Class",
+    "tags": [
+      "defenses",
+      "armor-class"
+    ],
+    "formula": {
+      "text": "10 + @value:ability.dex.mod"
     }
   }
 ]

@@ -98,6 +98,8 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
     inventory: [],
     notes: null,
     health: null,
+    spells: [],
+    expendedSlots: {},
     packs: [],
     ...overrides
   }
@@ -179,6 +181,47 @@ describe('getDerivedCharacter -- collections', () => {
 
     const ids = (result.derived.byCategory.equipment ?? []).map((entry) => entry.id)
     expect(ids).not.toContain('collection:equipment')
+  })
+})
+
+describe('getDerivedCharacter -- tables (Spellcasting System)', () => {
+  it('surfaces every Table the package declares with at least one row, package-wide -- not gated per character', async () => {
+    // Fighter is not a caster, and the assertion is exactly the point: a
+    // Table (like a Collection) describes what the ACTIVE PACKAGE declares,
+    // never something computed from this one character's data.
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint() })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    // Generic exposure, package-wide -- also surfaces the three Tables
+    // authored before the Spellcasting System (character.creation/
+    // progression reference data, never consumed until now that anything
+    // reads `derived.tables` at all). Not this task's scope to consume;
+    // asserted here only so the count is not a surprise.
+    const ids = result.derived.tables.map((table) => table.id).sort()
+    expect(ids).toEqual([
+      'table:ability.point_buy_cost',
+      'table:ability.standard_array',
+      'table:advancement.experience',
+      'table:spellcasting.slots_full',
+      'table:spellcasting.slots_half',
+      'table:spellcasting.slots_pact'
+    ])
+  })
+
+  it('carries the full rows -- reference data, not something evaluate() produced', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint() })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const fullTable = result.derived.tables.find((table) => table.id === 'table:spellcasting.slots_full')
+    expect(fullTable?.rows).toHaveLength(20)
+    expect(fullTable?.rows.find((row) => row.key === 5)).toMatchObject({ slot_1: 4, slot_2: 3, slot_3: 2 })
+    expect(fullTable?.category).toBe('spellcasting')
   })
 })
 
@@ -279,5 +322,49 @@ describe('getDerivedCharacter -- Health System', () => {
     const byId = Object.fromEntries(health.map((entry) => [entry.id, entry.value]))
     expect(byId['value:hit_points.current']).toBe(0)
     expect(byId['value:death_saves.successes']).toBe(0)
+  })
+})
+
+describe('getDerivedCharacter -- Spellcasting System', () => {
+  it('a Fighter (non-caster) has no spellcasting ability, and DC/attack bonus fall to their zero-mod baseline', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint() })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const spellcasting = result.derived.byCategory.spellcasting ?? []
+    const byId = Object.fromEntries(spellcasting.map((entry) => [entry.id, entry.value]))
+
+    expect(byId['value:spellcasting.is_caster']).toBe(false)
+    expect(byId['value:spellcasting.ability_mod']).toBe(0)
+  })
+
+  it('a Wizard derives Spellcasting Ability, Spell Save DC, and Spell Attack Bonus from Intelligence', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        class: slot('class', 'wizard-xphb'),
+        abilityScores: {
+          method: 'standard-array',
+          scores: { str: 8, dex: 10, con: 12, int: 18, wis: 10, cha: 10 }
+        }
+      })
+    })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const spellcasting = result.derived.byCategory.spellcasting ?? []
+    const byId = Object.fromEntries(spellcasting.map((entry) => [entry.id, entry.value]))
+
+    // INT 18 -> +4. Level defaults to 1 -> PB +2.
+    expect(byId['value:spellcasting.is_caster']).toBe(true)
+    expect(byId['value:spellcasting.ability.int']).toBe(true)
+    expect(byId['value:spellcasting.caster_type.full']).toBe(true)
+    expect(byId['value:spellcasting.ability_mod']).toBe(4)
+    expect(byId['value:spellcasting.save_dc']).toBe(14) // 8 + 2 + 4
+    expect(byId['value:spellcasting.attack_bonus']).toBe(6) // 2 + 4
   })
 })

@@ -1558,5 +1558,270 @@
     "formula": {
       "text": "ceil(@value:hit_points.hit_dice_max / 2)"
     }
+  },
+  {
+    "id": "value:spellcasting.ability.int",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Spellcasting Ability: Intelligence",
+    "tags": [
+      "spellcasting",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:spellcasting.ability.wis",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Spellcasting Ability: Wisdom",
+    "tags": [
+      "spellcasting",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:spellcasting.ability.cha",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Spellcasting Ability: Charisma",
+    "tags": [
+      "spellcasting",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:spellcasting.caster_type.full",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Full Caster",
+    "tags": [
+      "spellcasting",
+      "caster-type"
+    ]
+  },
+  {
+    "id": "value:spellcasting.caster_type.half",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Half Caster",
+    "tags": [
+      "spellcasting",
+      "caster-type"
+    ]
+  },
+  {
+    "id": "value:spellcasting.caster_type.pact",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Pact Caster",
+    "tags": [
+      "spellcasting",
+      "caster-type"
+    ]
+  },
+  {
+    "id": "value:spellcasting.is_caster",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "boolean",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Has Spellcasting",
+    "tags": [
+      "spellcasting"
+    ],
+    "formula": {
+      "text": "or(@value:spellcasting.ability.int, @value:spellcasting.ability.wis, @value:spellcasting.ability.cha)"
+    }
+  },
+  {
+    "id": "value:spellcasting.ability_mod",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Spellcasting Ability Modifier",
+    "tags": [
+      "spellcasting"
+    ],
+    "formula": {
+      "text": "if(@value:spellcasting.ability.int, @value:ability.int.mod, if(@value:spellcasting.ability.wis, @value:ability.wis.mod, if(@value:spellcasting.ability.cha, @value:ability.cha.mod, 0)))"
+    }
+  },
+  {
+    "id": "value:spellcasting.save_dc",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Spell Save DC",
+    "tags": [
+      "spellcasting"
+    ],
+    "formula": {
+      "text": "8 + @value:proficiency_bonus + @value:spellcasting.ability_mod"
+    }
+  },
+  {
+    "id": "value:spellcasting.attack_bonus",
+    "kind": "value",
+    "category": "spellcasting",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Spell Attack Bonus",
+    "tags": [
+      "spellcasting"
+    ],
+    "formula": {
+      "text": "@value:proficiency_bonus + @value:spellcasting.ability_mod"
+    }
+  },
+  {
+    "id": "table:spellcasting.slots_full",
+    "kind": "table",
+    "category": "spellcasting",
+    "label": "Spell Slots (Full Caster)",
+    "key": {
+      "valueType": "number",
+      "match": "exact"
+    },
+    "columns": [
+      { "key": "slot_1", "valueType": "number" },
+      { "key": "slot_2", "valueType": "number" },
+      { "key": "slot_3", "valueType": "number" },
+      { "key": "slot_4", "valueType": "number" },
+      { "key": "slot_5", "valueType": "number" },
+      { "key": "slot_6", "valueType": "number" },
+      { "key": "slot_7", "valueType": "number" },
+      { "key": "slot_8", "valueType": "number" },
+      { "key": "slot_9", "valueType": "number" }
+    ],
+    "rows": [
+      { "key": 1, "slot_1": 2, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 2, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 3, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 4, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 5, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 6, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 7, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 8, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 2, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 9, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 1, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 10, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 11, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 12, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
+      { "key": 13, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 0, "slot_9": 0 },
+      { "key": 14, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 0, "slot_9": 0 },
+      { "key": 15, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 0 },
+      { "key": 16, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 0 },
+      { "key": 17, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 1 },
+      { "key": 18, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 3, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 1 },
+      { "key": 19, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 3, "slot_6": 2, "slot_7": 1, "slot_8": 1, "slot_9": 1 },
+      { "key": 20, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 3, "slot_6": 2, "slot_7": 2, "slot_8": 1, "slot_9": 1 }
+    ],
+    "default": { "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 }
+  },
+  {
+    "id": "table:spellcasting.slots_half",
+    "kind": "table",
+    "category": "spellcasting",
+    "label": "Spell Slots (Half Caster)",
+    "key": {
+      "valueType": "number",
+      "match": "exact"
+    },
+    "columns": [
+      { "key": "slot_1", "valueType": "number" },
+      { "key": "slot_2", "valueType": "number" },
+      { "key": "slot_3", "valueType": "number" },
+      { "key": "slot_4", "valueType": "number" },
+      { "key": "slot_5", "valueType": "number" }
+    ],
+    "rows": [
+      { "key": 1, "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 2, "slot_1": 2, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 3, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 4, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 5, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 6, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 7, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 8, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
+      { "key": 9, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0, "slot_5": 0 },
+      { "key": 10, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0, "slot_5": 0 },
+      { "key": 11, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0, "slot_5": 0 },
+      { "key": 12, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0, "slot_5": 0 },
+      { "key": 13, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1, "slot_5": 0 },
+      { "key": 14, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1, "slot_5": 0 },
+      { "key": 15, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 2, "slot_5": 0 },
+      { "key": 16, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 2, "slot_5": 0 },
+      { "key": 17, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 1 },
+      { "key": 18, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 1 },
+      { "key": 19, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2 },
+      { "key": 20, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2 }
+    ],
+    "default": { "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 }
+  },
+  {
+    "id": "table:spellcasting.slots_pact",
+    "kind": "table",
+    "category": "spellcasting",
+    "label": "Pact Magic Slots",
+    "key": {
+      "valueType": "number",
+      "match": "exact"
+    },
+    "columns": [
+      { "key": "slots", "valueType": "number" },
+      { "key": "slot_level", "valueType": "number" }
+    ],
+    "rows": [
+      { "key": 1, "slots": 1, "slot_level": 1 },
+      { "key": 2, "slots": 2, "slot_level": 1 },
+      { "key": 3, "slots": 2, "slot_level": 2 },
+      { "key": 4, "slots": 2, "slot_level": 2 },
+      { "key": 5, "slots": 2, "slot_level": 3 },
+      { "key": 6, "slots": 2, "slot_level": 3 },
+      { "key": 7, "slots": 2, "slot_level": 4 },
+      { "key": 8, "slots": 2, "slot_level": 4 },
+      { "key": 9, "slots": 2, "slot_level": 5 },
+      { "key": 10, "slots": 2, "slot_level": 5 },
+      { "key": 11, "slots": 3, "slot_level": 5 },
+      { "key": 12, "slots": 3, "slot_level": 5 },
+      { "key": 13, "slots": 3, "slot_level": 5 },
+      { "key": 14, "slots": 3, "slot_level": 5 },
+      { "key": 15, "slots": 3, "slot_level": 5 },
+      { "key": 16, "slots": 3, "slot_level": 5 },
+      { "key": 17, "slots": 4, "slot_level": 5 },
+      { "key": 18, "slots": 4, "slot_level": 5 },
+      { "key": 19, "slots": 4, "slot_level": 5 },
+      { "key": 20, "slots": 4, "slot_level": 5 }
+    ],
+    "default": { "slots": 0, "slot_level": 0 }
   }
 ]

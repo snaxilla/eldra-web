@@ -45,11 +45,25 @@ export type DerivedCollection = {
   slots: Array<{ id: string; capacity: number }>
 }
 
+// The Table counterpart of DerivedCollection above -- see
+// server/utils/character-derived.ts's own `DerivedTable` for why rows are
+// exposed directly rather than through `evaluate()`. Restated here for the
+// same app/server boundary reason every other type in this file is.
+export type DerivedTable = {
+  id: string
+  label?: string
+  category: RuleCategory
+  key: { valueType: string; match: string }
+  columns: Array<{ key: string; valueType: string }>
+  rows: Array<Record<string, unknown>>
+}
+
 export type DerivedCharacterView = {
   packageId: string
   packageVersion: string
   byCategory: Partial<Record<RuleCategory, DerivedValue[]>>
   collections: DerivedCollection[]
+  tables: DerivedTable[]
   pendingChoices: Array<{ slot: string; count: number }>
 }
 
@@ -71,7 +85,8 @@ export const DERIVED_SHEET_REGIONS: ReadonlyArray<{ category: RuleCategory; labe
   { category: 'core.defenses', label: 'Defenses' },
   { category: 'core.saves', label: 'Saving Throws' },
   { category: 'core.skills', label: 'Skills' },
-  { category: 'equipment', label: 'Equipment' }
+  { category: 'equipment', label: 'Equipment' },
+  { category: 'spellcasting', label: 'Spellcasting' }
 ]
 
 // `core.health` is deliberately NOT one of the regions above. Unlike every
@@ -91,4 +106,18 @@ export function findDerivedNumber(
 ): number | null {
   const entry = (byCategory[category] ?? []).find((candidate) => candidate.id === id)
   return typeof entry?.value === 'number' ? entry.value : null
+}
+
+// Mirrors findDerivedNumber exactly, for a boolean Value -- the Spellcasting
+// System's `value:spellcasting.is_caster` (and any future per-character
+// derived flag a Sheet needs to read directly rather than render through the
+// generic `byCategory` region, the same "second source of truth" reasoning
+// findDerivedNumber's own note already gives for Health).
+export function findDerivedBoolean(
+  byCategory: Partial<Record<RuleCategory, DerivedValue[]>>,
+  category: RuleCategory,
+  id: string
+): boolean | null {
+  const entry = (byCategory[category] ?? []).find((candidate) => candidate.id === id)
+  return typeof entry?.value === 'boolean' ? entry.value : null
 }

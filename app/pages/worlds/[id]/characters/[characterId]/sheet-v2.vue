@@ -131,6 +131,30 @@
 // CharacterHealthPanel.vue. Rendering those through the generic
 // `core.health` region too would show the same fact twice, through two
 // different paths; see that helper's own note.
+//
+// ---------------------------------------------------------------------------
+// SPELLCASTING -- THE SECOND GAMEPLAY SYSTEM ON THE RULES ENGINE, THE SAME
+// SHAPE AS HEALTH
+// ---------------------------------------------------------------------------
+// Spellcasting Ability Modifier, Spell Save DC, and Spell Attack Bonus are
+// ALL Rules Engine output, read via `findDerivedNumber`/`findDerivedBoolean`
+// -- never computed here. Known/Prepared spells and expended slot counts are
+// the player's own stored data (server/utils/character-spellcasting.ts, the
+// same block_instances pattern every other player-data block uses), edited
+// directly on the Sheet for the identical reason Inventory and Health are.
+//
+// `slotLevels` (below) is the ONE piece of interpretation this page performs
+// for Spellcasting: which of the three Spell Slot progression Tables
+// (`derived.tables`) applies to THIS character, picked by reading the
+// `caster_type` boolean flags this file already hardcodes the Definition ids
+// of -- the same "the fixed key names the package's own vocabulary declares"
+// posture `findDerivedNumber('core.health', 'value:hit_points.max')`
+// immediately above already establishes for Health, one level up (a Table,
+// not a Value, because Spell Slot progression is not a formula -- see
+// packages/eldra-dnd5e-2024/README.md's own note on why `lookup()` is not
+// evaluated). This page still computes no NUMBER: it selects a row a Table
+// already declares and reads it, exactly as it already selects which
+// `derived.collections` entry is the equipment slots.
 
 // The identity summary is composed inline rather than extracted into a
 // component: it is used by exactly this one page. The ability scores ARE
@@ -141,6 +165,7 @@ import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilit
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
 import CharacterHealthPanel from '~/components/characters/CharacterHealthPanel.vue'
+import CharacterSpellcastingPanel from '~/components/characters/CharacterSpellcastingPanel.vue'
 import {
   emptyCharacterNotes,
   type StoredCharacterNotes
@@ -158,8 +183,18 @@ import {
   type InventoryFlag,
   type StoredInventoryItem
 } from '~/lib/characters/inventory'
+import {
+  addSpell,
+  expendSlot,
+  removeSpell,
+  restoreSlot,
+  toggleSpellFlag,
+  type AssembledSpellEntry,
+  type SpellFlag,
+  type StoredSpellEntry
+} from '~/lib/characters/spellcasting'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
-import { DERIVED_SHEET_REGIONS, findDerivedNumber, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
+import { DERIVED_SHEET_REGIONS, findDerivedBoolean, findDerivedNumber, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
 import type { PresentationEntry } from '~/lib/content-presentation'
@@ -213,6 +248,15 @@ type AssemblyBlueprint = {
   // is deliberately absent here: it is Rules Engine output, read from
   // `derived`, never from this blueprint.
   health: StoredCharacterHealth | null
+  // Already joined to the World's catalogue by Character Assembly, exactly
+  // as `inventory` is. Spellcasting Ability, Spell Save DC, Spell Attack
+  // Bonus, and Spell Slot progression are deliberately absent here -- all
+  // four are Rules Engine output, read from `derived`, never from this
+  // blueprint.
+  spells: AssembledSpellEntry[]
+  // How many of each spell level are currently expended -- resolves against
+  // nothing, copied through verbatim.
+  expendedSlots: Record<string, number>
 }
 
 type AssemblyResponse =
@@ -289,15 +333,20 @@ watch(
 // Item options for the add form. `lazy` so a World with a large bound
 // catalogue never delays the sheet itself -- the add form simply has nothing
 // to offer until it arrives, and custom items work regardless.
-const { data: catalogue } = await useFetch<{ items?: Array<{
+type CatalogueOption = {
   packageId: string
   packageVersion: string
   title: string
   slug: string
   sourceBook?: string
-}> }>(() => `/api/worlds/${worldId.value}/catalogue`, { lazy: true })
+}
+
+const { data: catalogue } = await useFetch<{ items?: CatalogueOption[]; spells?: CatalogueOption[] }>(
+  () => `/api/worlds/${worldId.value}/catalogue`, { lazy: true }
+)
 
 const inventoryOptions = computed(() => catalogue.value?.items ?? [])
+const spellOptions = computed(() => catalogue.value?.spells ?? [])
 
 // The one place inventory reaches the server. Takes the STORED shape --
 // `AssembledInventoryItem` is a superset carrying resolved display fields,
@@ -487,6 +536,149 @@ const maxHp = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 
 const hitDiceMax = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_max'))
 const hitDiceAvailable = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_available'))
 const hitDieSize = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_die_size'))
+
+// ---------------------------------------------------------------------------
+// Spellcasting -- state and saving only; every decision is the pure module's
+// ---------------------------------------------------------------------------
+
+const spellItems = ref<AssembledSpellEntry[]>([])
+const spellcastingExpendedSlots = ref<Record<string, number>>({})
+const spellcastingSaving = ref(false)
+const spellcastingError = ref('')
+
+watch(
+  blueprint,
+  (value) => {
+    spellItems.value = [...(value?.spells ?? [])]
+    spellcastingExpendedSlots.value = { ...(value?.expendedSlots ?? {}) }
+  },
+  { immediate: true }
+)
+
+// The one place Spellcasting reaches the server. Takes the STORED shape --
+// `AssembledSpellEntry` is a superset carrying resolved display fields, and
+// persisting those would be storing a copy of the catalogue, exactly as
+// `persistInventory` above already refuses to do.
+async function persistSpellcasting(nextSpells: AssembledSpellEntry[], nextExpendedSlots: Record<string, number>) {
+  if (spellcastingSaving.value) return
+
+  const previousSpells = spellItems.value
+  const previousSlots = spellcastingExpendedSlots.value
+  spellItems.value = nextSpells
+  spellcastingExpendedSlots.value = nextExpendedSlots
+  spellcastingSaving.value = true
+  spellcastingError.value = ''
+
+  try {
+    const spells: StoredSpellEntry[] = nextSpells.map((entry) => ({
+      instanceId: entry.instanceId,
+      ...(entry.ref ? { ref: entry.ref } : { name: entry.name }),
+      known: entry.known,
+      prepared: entry.prepared
+    }))
+
+    await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/spellcasting`, {
+      method: 'PUT',
+      body: { spells, expendedSlots: nextExpendedSlots }
+    })
+  } catch (saveError: any) {
+    spellItems.value = previousSpells
+    spellcastingExpendedSlots.value = previousSlots
+    spellcastingError.value =
+      saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save spellcasting'
+  } finally {
+    spellcastingSaving.value = false
+  }
+}
+
+// Each handler applies a PURE function and saves the result -- the same
+// shape the Inventory handlers above already use.
+function onSpellAdd(payload: { ref?: { packageId: string; slug: string }; name?: string }) {
+  const added = addSpell(spellItems.value, payload)
+  const entry = payload.ref
+    ? spellOptions.value.find(
+        (option) => option.packageId === payload.ref!.packageId && option.slug === payload.ref!.slug
+      )
+    : undefined
+
+  persistSpellcasting(added.map((item, index) =>
+    index === added.length - 1
+      ? {
+          ...item,
+          status: payload.ref ? (entry ? 'resolved' : 'missing') : 'custom',
+          title: entry?.title || payload.name || 'Spell',
+          ...(entry ? { entry } : {})
+        }
+      : (item as AssembledSpellEntry)
+  ) as AssembledSpellEntry[], spellcastingExpendedSlots.value)
+}
+
+function onSpellRemove(instanceId: string) {
+  persistSpellcasting(removeSpell(spellItems.value, instanceId) as AssembledSpellEntry[], spellcastingExpendedSlots.value)
+}
+
+function onSpellToggleFlag(payload: { instanceId: string; flag: SpellFlag }) {
+  persistSpellcasting(
+    toggleSpellFlag(spellItems.value, payload.instanceId, payload.flag) as AssembledSpellEntry[],
+    spellcastingExpendedSlots.value
+  )
+}
+
+function onExpendSlot(level: number) {
+  const max = slotLevels.value.find((row) => row.level === level)?.max ?? 0
+  persistSpellcasting(spellItems.value, expendSlot(spellcastingExpendedSlots.value, level, max))
+}
+
+function onRestoreSlot(level: number) {
+  persistSpellcasting(spellItems.value, restoreSlot(spellcastingExpendedSlots.value, level))
+}
+
+// Read-only summaries -- see this file's SPELLCASTING header note.
+const spellcastingIsCaster = computed(() => findDerivedBoolean(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.is_caster'))
+const spellcastingAbilityMod = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.ability_mod'))
+const spellcastingSaveDc = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.save_dc'))
+const spellcastingAttackBonus = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.attack_bonus'))
+
+const characterLevel = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'progression', 'value:level') ?? 1)
+
+// Which of the three Spell Slot progression Tables applies -- see this
+// file's SPELLCASTING header note on why this is the one piece of
+// interpretation the page performs itself.
+const SLOT_TABLE_BY_CASTER_TYPE: Record<'full' | 'half' | 'pact', string> = {
+  full: 'table:spellcasting.slots_full',
+  half: 'table:spellcasting.slots_half',
+  pact: 'table:spellcasting.slots_pact'
+}
+
+const slotLevels = computed(() => {
+  const byCategory = derived.value?.byCategory ?? {}
+  const casterType = (['full', 'half', 'pact'] as const).find((type) =>
+    findDerivedBoolean(byCategory, 'spellcasting', `value:spellcasting.caster_type.${type}`)
+  )
+  if (!casterType) return []
+
+  const table = derived.value?.tables?.find((entry) => entry.id === SLOT_TABLE_BY_CASTER_TYPE[casterType])
+  const row = table?.rows.find((candidate) => candidate.key === characterLevel.value)
+  if (!row) return []
+
+  // Pact Magic (`table:spellcasting.slots_pact`) declares `slots`/`slot_level`
+  // rather than one column per spell level -- every slot the character has
+  // shares that one level. Full/Half declare `slot_1`..`slot_9` directly.
+  if (casterType === 'pact') {
+    const level = Number(row.slot_level)
+    const max = Number(row.slots)
+    if (!level || !max) return []
+    return [{ level, max, expended: spellcastingExpendedSlots.value[String(level)] ?? 0 }]
+  }
+
+  const levels: { level: number; max: number; expended: number }[] = []
+  for (let level = 1; level <= 9; level++) {
+    const max = Number(row[`slot_${level}`] ?? 0)
+    if (max <= 0) continue
+    levels.push({ level, max, expended: spellcastingExpendedSlots.value[String(level)] ?? 0 })
+  }
+  return levels
+})
 
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
@@ -762,6 +954,33 @@ const identityRows = computed(() =>
               :error-message="healthError"
               @save="saveHealth"
               @recovery="applyRecovery"
+            />
+          </div>
+        </section>
+
+        <!-- Spellcasting: also editable -- see CharacterSpellcastingPanel.vue's
+             header. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Spellcasting
+          </div>
+
+          <div class="mt-4">
+            <CharacterSpellcastingPanel
+              :spells="spellItems"
+              :options="spellOptions"
+              :slot-levels="slotLevels"
+              :is-caster="spellcastingIsCaster"
+              :ability-mod="spellcastingAbilityMod"
+              :save-dc="spellcastingSaveDc"
+              :attack-bonus="spellcastingAttackBonus"
+              :saving="spellcastingSaving"
+              :error-message="spellcastingError"
+              @add="onSpellAdd"
+              @remove="onSpellRemove"
+              @toggle-flag="onSpellToggleFlag"
+              @expend-slot="onExpendSlot"
+              @restore-slot="onRestoreSlot"
             />
           </div>
         </section>

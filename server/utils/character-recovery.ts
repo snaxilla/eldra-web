@@ -40,18 +40,33 @@
 // when no package is active.
 //
 // ---------------------------------------------------------------------------
-// SHORT REST AND SPEND HIT DIE ARE THE SAME OPERATION
+// SHORT REST AND SPEND HIT DIE -- NO LONGER ALWAYS IDENTICAL
 // ---------------------------------------------------------------------------
-// A deliberate simplification, stated plainly rather than hidden: 5e's
-// Short Rest, reduced to what this package can currently express (no spell
-// slot recovery, no class features -- neither exists in this package yet),
-// IS spending a Hit Die. Both actions call `spendHitDie` unchanged. When a
-// future package declares short-rest-specific recovery (a Warlock's spell
-// slots, for one), Short Rest becomes its own action; nothing about
-// today's `spendHitDie` needs to change for that to happen.
+// Originally a deliberate simplification: 5e's Short Rest, reduced to what
+// this package could then express (no spell slot recovery, no class
+// features), WAS spending a Hit Die, and both actions called `spendHitDie`
+// unchanged. The Spellcasting System adds the first short-rest-specific
+// recovery this package can express -- Pact Magic (RAW: a Warlock's spell
+// slots return on a Short Rest, unlike every other caster's) -- so Short
+// Rest now ALSO resets a Pact caster's expended slots, which Spend Hit Die
+// never touches. For every character who is not a Pact caster (the common
+// case, and every character before this addition), the two remain
+// byte-identical in their effect, because there is no Pact Magic state for
+// the extra step to reset -- verified by this file's own tests.
+//
+// ---------------------------------------------------------------------------
+// LONG REST ALSO CLEARS EXPENDED SPELL SLOTS -- EVERY CASTER, EVERY TYPE
+// ---------------------------------------------------------------------------
+// RAW: a Long Rest restores all spent Spell Slots, full/half/pact alike, the
+// same "no caster type is special-cased" rule the three progression tables
+// already follow. Recovery now reads and writes a SECOND stored block for
+// this one action (`character-spellcasting.ts`, alongside `character-health.ts`)
+// -- still zero Rules Engine mutation, exactly as Health's own writes always
+// were; this is state Recovery orchestrates, not state the engine computes.
 
 import { assembleCharacter } from './character-assembly'
 import { loadCharacterHealth, saveCharacterHealth } from './character-health'
+import { loadCharacterSpellcasting, saveCharacterSpellcasting } from './character-spellcasting'
 import { getDerivedCharacter } from './character-derived'
 import {
   applyDamage,
@@ -62,6 +77,10 @@ import {
   takeLongRest,
   type StoredCharacterHealth
 } from '../../app/lib/characters/health'
+import {
+  emptyCharacterSpellcasting,
+  resetAllSlots
+} from '../../app/lib/characters/spellcasting'
 
 export type RecoveryAction =
   | { type: 'damage'; amount: number }
@@ -84,6 +103,7 @@ const MAX_HP_ID = 'value:hit_points.max'
 const HIT_DICE_MAX_ID = 'value:hit_points.hit_dice_max'
 const AVERAGE_ROLL_ID = 'value:hit_points.hit_die_average_roll'
 const LONG_REST_RECOVERY_ID = 'value:hit_points.long_rest_hit_dice_recovery'
+const PACT_CASTER_ID = 'value:spellcasting.caster_type.pact'
 
 function findNumber(derived: { byCategory: Record<string, Array<{ id: string; value?: unknown }>> }, id: string): number | null {
   for (const entries of Object.values(derived.byCategory)) {
@@ -91,6 +111,16 @@ function findNumber(derived: { byCategory: Record<string, Array<{ id: string; va
     if (entry) return typeof entry.value === 'number' ? entry.value : null
   }
   return null
+}
+
+// Mirrors findNumber exactly, for the one boolean Recovery needs (whether
+// this character is a Pact caster) rather than a number.
+function findBoolean(derived: { byCategory: Record<string, Array<{ id: string; value?: unknown }>> }, id: string): boolean {
+  for (const entries of Object.values(derived.byCategory)) {
+    const entry = entries.find((candidate) => candidate.id === id)
+    if (entry) return entry.value === true
+  }
+  return false
 }
 
 // Loads whatever `getDerivedCharacter` needs for an action's numbers,
@@ -103,7 +133,7 @@ async function loadRecoveryNumbers(
   worldId: string | number,
   characterId: string | number
 ): Promise<
-  | { ok: true; maxHp: number; hitDiceMax: number; averageRoll: number; longRestRecovery: number }
+  | { ok: true; maxHp: number; hitDiceMax: number; averageRoll: number; longRestRecovery: number; isPactCaster: boolean }
   | RecoveryFailure
 > {
   const result = await getDerivedCharacter(worldId, characterId)
@@ -128,7 +158,13 @@ async function loadRecoveryNumbers(
     }
   }
 
-  return { ok: true, maxHp, hitDiceMax, averageRoll, longRestRecovery }
+  // Absent rather than a hard failure when undeclared: a Rules Package with
+  // no `spellcasting` category (a non-D&D system, say) simply has no Pact
+  // casters, and Recovery should not refuse every rest over a value it
+  // does not need for Health.
+  const isPactCaster = findBoolean(result.derived, PACT_CASTER_ID)
+
+  return { ok: true, maxHp, hitDiceMax, averageRoll, longRestRecovery, isPactCaster }
 }
 
 // The canonical entry point. Loads current health (defaulting to "nothing
@@ -161,6 +197,10 @@ export async function applyRecoveryAction(
   }
 
   let next: StoredCharacterHealth
+  // Set only for 'short-rest' (a Pact caster) and 'long-rest' (everyone) --
+  // see this file's header. Every other action leaves spellcasting state
+  // completely untouched: no read, no write.
+  let resetSpellSlots = false
 
   switch (action.type) {
     case 'damage':
@@ -178,12 +218,21 @@ export async function applyRecoveryAction(
       break
     }
 
-    case 'spend-hit-die':
-    case 'short-rest': {
-      // Deliberately identical -- see this file's header.
+    case 'spend-hit-die': {
       const numbers = await loadRecoveryNumbers(worldId, characterId)
       if (!numbers.ok) return numbers
       next = spendHitDie(current, numbers.hitDiceMax, numbers.averageRoll, numbers.maxHp)
+      break
+    }
+
+    case 'short-rest': {
+      // Same Hit Die spend as 'spend-hit-die' above, plus -- for a Pact
+      // caster only -- Pact Magic slot recovery. See this file's header for
+      // why these two are no longer literally the same action.
+      const numbers = await loadRecoveryNumbers(worldId, characterId)
+      if (!numbers.ok) return numbers
+      next = spendHitDie(current, numbers.hitDiceMax, numbers.averageRoll, numbers.maxHp)
+      resetSpellSlots = numbers.isPactCaster
       break
     }
 
@@ -191,6 +240,7 @@ export async function applyRecoveryAction(
       const numbers = await loadRecoveryNumbers(worldId, characterId)
       if (!numbers.ok) return numbers
       next = takeLongRest(current, numbers.maxHp, numbers.longRestRecovery)
+      resetSpellSlots = true
       break
     }
 
@@ -198,6 +248,11 @@ export async function applyRecoveryAction(
       const exhaustive: never = action
       return exhaustive
     }
+  }
+
+  if (resetSpellSlots) {
+    const currentSpellcasting = (await loadCharacterSpellcasting(characterId)) ?? emptyCharacterSpellcasting()
+    await saveCharacterSpellcasting(characterId, { ...currentSpellcasting, expendedSlots: resetAllSlots() })
   }
 
   const saved = await saveCharacterHealth(characterId, next)

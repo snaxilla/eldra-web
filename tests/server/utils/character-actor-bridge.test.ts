@@ -165,13 +165,22 @@ describe('the hand-authored XPHB Rules Facets', () => {
   it('covers all twelve classes and all sixteen backgrounds', () => {
     const classes = ['barbarian', 'bard', 'cleric', 'druid', 'fighter', 'monk',
       'paladin', 'ranger', 'rogue', 'sorcerer', 'warlock', 'wizard']
+    // The eight 2024 spellcasting classes (Spellcasting System addition) --
+    // everyone else (Barbarian, Fighter, Monk, Rogue) grants no spellcasting
+    // ids at all.
+    const casters = new Set(['bard', 'cleric', 'druid', 'paladin', 'ranger', 'sorcerer', 'warlock', 'wizard'])
+
     for (const name of classes) {
       const facet = findRulesFacet('dnd5e.2024', 'class', `${name}-xphb`)
       expect(facet, name).not.toBeNull()
-      // Every 2024 class grants exactly two saving throws, one Hit Die size
-      // (the Health System's addition), and offers one skill choice.
-      expect(facet!.grants).toHaveLength(3)
+      // Every 2024 class grants exactly two saving throws and one Hit Die
+      // size (the Health System's addition); a caster grants two more
+      // (Spellcasting Ability, Caster Type -- the Spellcasting System's
+      // addition), and offers one skill choice.
+      expect(facet!.grants).toHaveLength(casters.has(name) ? 5 : 3)
       expect(facet!.grants!.some((g) => g.set === 'value:hit_points.hit_die_size'), name).toBe(true)
+      expect(facet!.grants!.some((g) => g.set.startsWith('value:spellcasting.ability.')), name).toBe(casters.has(name))
+      expect(facet!.grants!.some((g) => g.set.startsWith('value:spellcasting.caster_type.')), name).toBe(casters.has(name))
       expect(facet!.choices).toHaveLength(1)
     }
 

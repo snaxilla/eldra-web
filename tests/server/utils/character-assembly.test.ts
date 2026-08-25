@@ -65,7 +65,8 @@ function mockEntityAndBlock(
   abilityBlockData: any = null,
   inventoryBlockData: any = null,
   notesBlockData: any = null,
-  healthBlockData: any = null
+  healthBlockData: any = null,
+  spellcastingBlockData: any = null
 ) {
   directusServiceRequestMock.mockImplementation(async (path: string) => {
     if (path === '/items/entities/42') {
@@ -78,6 +79,7 @@ function mockEntityAndBlock(
       if (inventoryBlockData) rows.push({ block_key: 'inventory', data: inventoryBlockData })
       if (notesBlockData) rows.push({ block_key: 'notes', data: notesBlockData })
       if (healthBlockData) rows.push({ block_key: 'health', data: healthBlockData })
+      if (spellcastingBlockData) rows.push({ block_key: 'spellcasting', data: spellcastingBlockData })
       return { data: rows }
     }
     throw new Error(`Unexpected Directus path in test: ${path}`)
@@ -329,7 +331,7 @@ describe('assembleCharacter -- ability scores', () => {
     expect(result.blueprint.species.status).toBe('resolved')
   })
 
-  it('reads all six blocks in ONE Directus round trip', async () => {
+  it('reads all seven blocks in ONE Directus round trip', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
@@ -347,7 +349,7 @@ describe('assembleCharacter -- ability scores', () => {
     const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
     expect(blockCalls).toHaveLength(1)
     expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual([
-      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes', 'health'
+      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes', 'health', 'spellcasting'
     ])
   })
 })
@@ -610,5 +612,108 @@ describe('assembleCharacter -- health', () => {
     const result = await assembleCharacter('5', '42')
     expect(result.available && result.blueprint.health).not.toHaveProperty('maxHp')
     expect(result.available && result.blueprint.health).not.toHaveProperty('maximumHp')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Spellcasting -- the Spellcasting System's stored half
+// ---------------------------------------------------------------------------
+
+describe('assembleCharacter -- spellcasting', () => {
+  const FIREBALL = catalogueEntry({ title: 'Fireball', slug: 'fireball', sourceBook: 'XPHB' })
+
+  function withSpellcasting(spellcastingBlockData: any, catalogueSpells: any[] = [FIREBALL]) {
+    const catalogue = fullCatalogue({ spells: catalogueSpells } as any)
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      {
+        species: selectionRef(catalogue.species[0]),
+        class: selectionRef(catalogue.classes[0]),
+        background: selectionRef(catalogue.backgrounds[0])
+      },
+      null,
+      null,
+      null,
+      null,
+      spellcastingBlockData
+    )
+    return catalogue
+  }
+
+  it('is an empty spell list and no expended slots when nothing was ever recorded', async () => {
+    withSpellcasting(null)
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.spells).toEqual([])
+    expect(result.available && result.blueprint.expendedSlots).toEqual({})
+  })
+
+  it('resolves a spell reference against the catalogue and takes its title from there', async () => {
+    withSpellcasting({
+      spells: [{ instanceId: 'spell-1', ref: { packageId: FIREBALL.packageId, slug: 'fireball' }, known: true, prepared: true }]
+    })
+
+    const result = await assembleCharacter('5', '42')
+    const spell = result.available ? result.blueprint.spells[0] : null
+
+    expect(spell).toMatchObject({ status: 'resolved', title: 'Fireball', known: true, prepared: true })
+    expect(spell?.entry?.sourceBook).toBe('XPHB')
+  })
+
+  it('reports a spell reference that no longer resolves instead of dropping it', async () => {
+    withSpellcasting({
+      spells: [{ instanceId: 'spell-1', ref: { packageId: FIREBALL.packageId, slug: 'gone' }, known: true, prepared: false }]
+    }, [FIREBALL])
+
+    const result = await assembleCharacter('5', '42')
+    const spell = result.available ? result.blueprint.spells[0] : null
+
+    expect(spell?.status).toBe('missing')
+    expect(spell?.title).toContain('unavailable')
+    expect(spell?.reason).toBeTruthy()
+  })
+
+  it('carries a custom (homebrew) spell through with the name the player typed', async () => {
+    withSpellcasting({
+      spells: [{ instanceId: 'spell-1', name: 'Bramblewood Ward', known: true, prepared: false }]
+    })
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.spells[0]).toMatchObject({
+      status: 'custom',
+      title: 'Bramblewood Ward'
+    })
+  })
+
+  it('copies expended slot counts through verbatim -- they resolve against nothing', async () => {
+    withSpellcasting({ spells: [], expendedSlots: { 1: 2, 3: 1 } })
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.expendedSlots).toEqual({ 1: 2, 3: 1 })
+  })
+
+  it('derives nothing -- no ability, save DC, attack bonus, or slot maximum appears', async () => {
+    withSpellcasting({
+      spells: [{ instanceId: 'spell-1', ref: { packageId: FIREBALL.packageId, slug: 'fireball' }, known: true, prepared: true }]
+    })
+
+    const result = await assembleCharacter('5', '42')
+    const spell: any = result.available ? result.blueprint.spells[0] : {}
+
+    for (const derived of ['ability', 'saveDc', 'attackBonus', 'level', 'school']) {
+      expect(spell[derived]).toBeUndefined()
+    }
+  })
+
+  it('re-validates the stored block rather than trusting it', async () => {
+    // One malformed row is dropped; the readable one survives.
+    withSpellcasting({
+      spells: [
+        { instanceId: 'spell-1', ref: { packageId: FIREBALL.packageId, slug: 'fireball' }, known: true, prepared: false },
+        { instanceId: 'spell-2', known: true }
+      ]
+    })
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available && result.blueprint.spells).toHaveLength(1)
   })
 })

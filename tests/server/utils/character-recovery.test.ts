@@ -13,11 +13,16 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { assembleCharacterMock, getWorldRuntimeMock, loadHealthMock, saveHealthMock } = vi.hoisted(() => ({
+const {
+  assembleCharacterMock, getWorldRuntimeMock, loadHealthMock, saveHealthMock,
+  loadSpellcastingMock, saveSpellcastingMock
+} = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
   loadHealthMock: vi.fn(),
-  saveHealthMock: vi.fn()
+  saveHealthMock: vi.fn(),
+  loadSpellcastingMock: vi.fn(),
+  saveSpellcastingMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -31,6 +36,11 @@ vi.mock('../../../server/utils/world-runtime-service', () => ({
 vi.mock('../../../server/utils/character-health', () => ({
   loadCharacterHealth: loadHealthMock,
   saveCharacterHealth: saveHealthMock
+}))
+
+vi.mock('../../../server/utils/character-spellcasting', () => ({
+  loadCharacterSpellcasting: loadSpellcastingMock,
+  saveCharacterSpellcasting: saveSpellcastingMock
 }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
@@ -78,6 +88,8 @@ const FIGHTER_CON_16_BLUEPRINT = {
   inventory: [],
   notes: null,
   health: null,
+  spells: [],
+  expendedSlots: {},
   packs: []
 }
 
@@ -88,14 +100,26 @@ function baseEntry(slug: string) {
   }
 }
 
+// Warlock -- a Pact caster, the only class whose Short Rest recovers spell
+// slots (character-recovery.ts's own header). Otherwise identical to the
+// Fighter fixture above; only the class differs.
+const WARLOCK_BLUEPRINT = {
+  ...FIGHTER_CON_16_BLUEPRINT,
+  class: { status: 'resolved' as const, entry: { ...baseEntry('warlock-xphb'), rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'warlock-xphb') ?? undefined } }
+}
+
 beforeEach(() => {
   assembleCharacterMock.mockReset()
   getWorldRuntimeMock.mockReset()
   loadHealthMock.mockReset()
   saveHealthMock.mockReset()
+  loadSpellcastingMock.mockReset()
+  saveSpellcastingMock.mockReset()
 
   assembleCharacterMock.mockResolvedValue({ available: true, blueprint: FIGHTER_CON_16_BLUEPRINT })
   saveHealthMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
+  loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { 1: 2 } })
+  saveSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -172,7 +196,7 @@ describe('applyRecoveryAction -- heal (reads Maximum HP)', () => {
   })
 })
 
-describe('applyRecoveryAction -- spend-hit-die and short-rest (identical)', () => {
+describe('applyRecoveryAction -- spend-hit-die and short-rest (identical HP effect for a non-Pact character)', () => {
   it('spends a die and heals by the real average-roll value', async () => {
     loadHealthMock.mockResolvedValue({ currentHp: 5, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
 
@@ -219,6 +243,52 @@ describe('applyRecoveryAction -- long-rest', () => {
     expect(result.health.temporaryHp).toBe(0)
     expect(result.health.hitDiceSpent).toBe(0) // level 1 recovers ceil(1/2)=1, all of it
     expect(result.health.deathSaves).toEqual({ successes: 0, failures: 0 })
+  })
+
+  it('also clears every expended spell slot, for a non-caster same as anyone', async () => {
+    // Fighter is not a caster at all -- Long Rest resets slot state
+    // unconditionally regardless, the same "no caster type is special-cased"
+    // rule the three progression tables already follow.
+    loadHealthMock.mockResolvedValue({ currentHp: 5, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+
+    await applyRecoveryAction('5', '42', { type: 'long-rest' })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', expect.objectContaining({ expendedSlots: {} }))
+  })
+})
+
+describe('applyRecoveryAction -- spell slot recovery hooks (Short Rest, Pact Magic only)', () => {
+  it('short-rest does NOT touch spell slots for a non-Pact character', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 5, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+
+    await applyRecoveryAction('5', '42', { type: 'short-rest' })
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('short-rest DOES clear expended Pact Magic slots for a Warlock', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: WARLOCK_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 5, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+
+    await applyRecoveryAction('5', '42', { type: 'short-rest' })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', expect.objectContaining({ expendedSlots: {} }))
+  })
+
+  it('spend-hit-die never touches spell slots, even for a Warlock', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: WARLOCK_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 5, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+
+    await applyRecoveryAction('5', '42', { type: 'spend-hit-die' })
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('short-rest and spend-hit-die still produce identical HEALTH results for a non-Pact character', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 1, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    const spendResult = await applyRecoveryAction('5', '42', { type: 'spend-hit-die' })
+
+    loadHealthMock.mockResolvedValue({ currentHp: 1, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    const shortRestResult = await applyRecoveryAction('5', '42', { type: 'short-rest' })
+
+    expect(spendResult).toEqual(shortRestResult)
   })
 })
 

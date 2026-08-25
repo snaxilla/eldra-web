@@ -73,10 +73,17 @@ import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
 import { INVENTORY_BLOCK_KEY } from './character-inventory'
 import { CHARACTER_NOTES_BLOCK_KEY } from './character-notes'
 import { CHARACTER_HEALTH_BLOCK_KEY } from './character-health'
+import { CHARACTER_SPELLCASTING_BLOCK_KEY } from './character-spellcasting'
 import {
   normalizeStoredCharacterHealth,
   type StoredCharacterHealth
 } from '../../app/lib/characters/health'
+import {
+  normalizeStoredSpellcasting,
+  unresolvedSpellLabel,
+  type AssembledSpellEntry,
+  type StoredSpellEntry
+} from '../../app/lib/characters/spellcasting'
 import {
   normalizeStoredCharacterNotes,
   type StoredCharacterNotes
@@ -113,6 +120,13 @@ export type CharacterAssemblySlot =
 // This module produces it; the panel consumes it. Re-exported so callers
 // reading assembly types find it alongside the blueprint.
 export type { AssembledInventoryItem }
+
+// Same relationship as AssembledInventoryItem above, one type down: the
+// stored spellcasting decision (known/prepared) joined to the catalogue
+// entry it resolved to, or an explicit 'missing'/'custom' state. Declared in
+// app/lib/characters/spellcasting.ts for the identical "the Sheet renders
+// it, app/ must never import from server/" reason.
+export type { AssembledSpellEntry }
 
 export type CharacterAssemblyBlueprint = {
   worldId: string
@@ -153,6 +167,19 @@ export type CharacterAssemblyBlueprint = {
   // by the Rules Engine from Hit Die size (Class-granted), Constitution, and
   // level, and this blueprint's job is inputs only.
   health: StoredCharacterHealth | null
+  // What this character has learned/prepared, joined to the World's current
+  // spell catalogue -- the Spellcasting System's stored half. An empty list
+  // when nothing was ever recorded, mirroring `inventory`'s own "carrying
+  // nothing is legal" reading rather than `health`/`notes`' "never recorded"
+  // null (a spell list and an inventory are both collections that start
+  // empty by default; health and notes are single records that start
+  // altogether absent).
+  spells: AssembledSpellEntry[]
+  // How many of each slot level are currently spent. Copied through
+  // verbatim, exactly as `health`'s numbers are -- a slot count resolves
+  // against nothing, so there is no catalogue join for it to go through.
+  // `{}` (no key present) means every slot of every level is available.
+  expendedSlots: Record<string, number>
   packs: WorldContentPackResolution[]
 }
 
@@ -234,6 +261,36 @@ function resolveInventory(
   })
 }
 
+// Joins stored spells to the catalogue. Reuses resolveSlot's exact
+// resolution rule -- match on (packageId, slug), treat a reference whose
+// pack is broken or absent as missing -- exactly as resolveInventory does
+// one type up, for the identical reason: a spell and an item behave
+// identically when their content goes away.
+function resolveSpells(
+  stored: readonly StoredSpellEntry[],
+  spells: readonly ContentCatalogueEntry[],
+  packs: readonly WorldContentPackResolution[]
+): AssembledSpellEntry[] {
+  return stored.map((entry) => {
+    if (!entry.ref) {
+      return { ...entry, status: 'custom', title: entry.name || 'Spell' }
+    }
+
+    const slot = resolveSlot(entry.ref, spells, packs, 'Spell')
+
+    if (slot.status === 'resolved') {
+      return { ...entry, status: 'resolved', title: slot.entry.title, entry: slot.entry }
+    }
+
+    return {
+      ...entry,
+      status: 'missing',
+      title: unresolvedSpellLabel(entry.ref),
+      reason: slot.reason
+    }
+  })
+}
+
 // The canonical entry point for this module. Composes one entity read, one
 // block_instances read, and getWorldContentCatalogue -- no other I/O.
 export async function assembleCharacter(
@@ -278,13 +335,14 @@ export async function assembleCharacter(
                 RULES_CHOICES_BLOCK_KEY,
                 INVENTORY_BLOCK_KEY,
                 CHARACTER_NOTES_BLOCK_KEY,
-                CHARACTER_HEALTH_BLOCK_KEY
+                CHARACTER_HEALTH_BLOCK_KEY,
+                CHARACTER_SPELLCASTING_BLOCK_KEY
               ]
             }
           }
         ]
       },
-      limit: 6,
+      limit: 7,
       fields: 'block_key,data'
     }
   })
@@ -304,6 +362,7 @@ export async function assembleCharacter(
   const storedInventory = normalizeStoredInventory(findBlock(INVENTORY_BLOCK_KEY)?.data ?? null)
   const notes = normalizeStoredCharacterNotes(findBlock(CHARACTER_NOTES_BLOCK_KEY)?.data ?? null)
   const health = normalizeStoredCharacterHealth(findBlock(CHARACTER_HEALTH_BLOCK_KEY)?.data ?? null)
+  const spellcasting = normalizeStoredSpellcasting(findBlock(CHARACTER_SPELLCASTING_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -327,6 +386,8 @@ export async function assembleCharacter(
     inventory: resolveInventory(storedInventory?.items ?? [], catalogue.items, catalogue.packs),
     notes,
     health,
+    spells: resolveSpells(spellcasting?.spells ?? [], catalogue.spells, catalogue.packs),
+    expendedSlots: spellcasting?.expendedSlots ?? {},
     packs: catalogue.packs
   }
 

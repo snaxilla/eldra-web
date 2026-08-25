@@ -91,6 +91,32 @@
 // §6.3).
 //
 // ---------------------------------------------------------------------------
+// SPELLCASTING -- MEASURED, LIKE HIT DIE SIZE
+// ---------------------------------------------------------------------------
+// Eight of the twelve classes now carry two more `grants` entries:
+// `value:spellcasting.ability.<int|wis|cha>` (which ability powers this
+// class's spells) and `value:spellcasting.caster_type.<full|half|pact>`
+// (which of the three Spell Slot progression tables in definitions.json
+// applies). Both are measured, not judged, directly off the vendored XPHB
+// class dataset's own `spellcastingAbility` and `casterProgression` fields
+// (`"full"` -> full, `"artificer"` -> half [5etools' internal label for
+// that table shape], `"pact"` -> pact). Barbarian, Fighter, Monk, and Rogue
+// carry neither field in their base class JSON and grant nothing here --
+// confirmed non-casters at the base-class level (Eldritch Knight and
+// Arcane Trickster are subclass-only casters, not modeled by this package).
+//
+// DELIBERATELY NOT AUTHORED: how many spells each class may PREPARE or
+// KNOW at a given level. The vendored dataset's own `preparedSpellsProgression`
+// arrays exist for all eight casting classes, but do not reduce to the
+// closed-form "level + ability modifier" rule this task could verify by
+// test (they appear to assume some fixed ability-score progression already
+// baked in) -- authoring a formula from an unverified guess would be worse
+// than leaving the gap stated. A character's Known/Prepared spell lists are
+// therefore tracked with no enforced maximum this pass, the same "recorded
+// as a real gap rather than papered over" posture the ASI and Origin Feat
+// gaps above already take.
+//
+// ---------------------------------------------------------------------------
 // ARMOR ALSO CARRIES A SOURCE -- the first equipment-driven derived value
 // ---------------------------------------------------------------------------
 // The 12 body armor items (not the Shield -- see below) additionally set
@@ -148,7 +174,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.dex.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 8 }
+        { set: 'value:hit_points.hit_die_size', to: 8 },
+        { set: 'value:spellcasting.ability.cha', to: true },
+        { set: 'value:spellcasting.caster_type.full', to: true }
       ],
       choices: [
         {
@@ -181,7 +209,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 8 }
+        { set: 'value:hit_points.hit_die_size', to: 8 },
+        { set: 'value:spellcasting.ability.wis', to: true },
+        { set: 'value:spellcasting.caster_type.full', to: true }
       ],
       choices: [
         {
@@ -201,7 +231,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.int.proficient', to: true },
         { set: 'value:save.wis.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 8 }
+        { set: 'value:hit_points.hit_die_size', to: 8 },
+        { set: 'value:spellcasting.ability.wis', to: true },
+        { set: 'value:spellcasting.caster_type.full', to: true }
       ],
       choices: [
         {
@@ -269,7 +301,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 10 }
+        { set: 'value:hit_points.hit_die_size', to: 10 },
+        { set: 'value:spellcasting.ability.cha', to: true },
+        { set: 'value:spellcasting.caster_type.half', to: true }
       ],
       choices: [
         {
@@ -290,7 +324,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.str.proficient', to: true },
         { set: 'value:save.dex.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 10 }
+        { set: 'value:hit_points.hit_die_size', to: 10 },
+        { set: 'value:spellcasting.ability.wis', to: true },
+        { set: 'value:spellcasting.caster_type.half', to: true }
       ],
       choices: [
         {
@@ -338,7 +374,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.con.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 6 }
+        { set: 'value:hit_points.hit_die_size', to: 6 },
+        { set: 'value:spellcasting.ability.cha', to: true },
+        { set: 'value:spellcasting.caster_type.full', to: true }
       ],
       choices: [
         {
@@ -359,7 +397,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 8 }
+        { set: 'value:hit_points.hit_die_size', to: 8 },
+        { set: 'value:spellcasting.ability.cha', to: true },
+        { set: 'value:spellcasting.caster_type.pact', to: true }
       ],
       choices: [
         {
@@ -381,7 +421,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.int.proficient', to: true },
         { set: 'value:save.wis.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 6 }
+        { set: 'value:hit_points.hit_die_size', to: 6 },
+        { set: 'value:spellcasting.ability.int', to: true },
+        { set: 'value:spellcasting.caster_type.full', to: true }
       ],
       choices: [
         {

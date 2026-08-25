@@ -43,7 +43,15 @@
 
 import { evaluate } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
-import type { CollectionSlotDefinition, RuleCategory, RulesError, RuleValue } from '../../app/lib/rules/types'
+import type {
+  CollectionSlotDefinition,
+  RuleCategory,
+  RulesError,
+  RuleValue,
+  TableColumnDefinition,
+  TableKeyDeclaration,
+  TableRow
+} from '../../app/lib/rules/types'
 import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
 import { buildActorState, type PendingChoice } from './character-actor-bridge'
 import type { ResolvableChoice } from '../../app/lib/characters/rules-choices'
@@ -79,6 +87,25 @@ export type DerivedCollection = {
   label?: string
   category: RuleCategory
   slots: CollectionSlotDefinition[]
+}
+
+// A declared Table's full reference data -- rows included, unlike
+// DerivedCollection above. A Table carries no formula (evaluator.ts: "Table
+// is not modeled" -- `lookup()` parses but errors at evaluation time), so
+// there is no `evaluate()` output to attach a `value` to the way DerivedValue
+// does; the rows themselves ARE the output, meant to be read directly by a
+// consumer that knows what to do with them (the same "reference data a
+// consumer reads directly" role README.md already documents for
+// `table:advancement.experience`). This module still names no game and no
+// specific table: any package's Table surfaces here uniformly, exactly as
+// any package's Collection already does via `collections` above.
+export type DerivedTable = {
+  id: string
+  label?: string
+  category: RuleCategory
+  key: TableKeyDeclaration
+  columns: TableColumnDefinition[]
+  rows: TableRow[]
 }
 
 // One evaluated Definition. `value` is whatever the engine returned;
@@ -123,6 +150,13 @@ export type DerivedCharacter = {
   // omitted, the same "nothing to render, nothing rendered" rule §13.2
   // already applies to an empty category.
   collections: DerivedCollection[]
+  // Every Table the active package declares that has at least one row --
+  // the Table counterpart of `collections` immediately above, added for the
+  // Spellcasting System's Spell Slot progression tables (`lookup()` is not
+  // evaluated, so a consumer that needs a Table's rows -- which slot count
+  // applies at this character's level -- reads them from here directly,
+  // never through `evaluate()`).
+  tables: DerivedTable[]
   // EVERY choice the current facets declare, with labels and current
   // answers -- what an editing surface renders.
   choices: PresentableChoice[]
@@ -236,6 +270,7 @@ export async function getDerivedCharacter(
 
   const byCategory: Partial<Record<RuleCategory, DerivedValue[]>> = {}
   const collections: DerivedCollection[] = []
+  const tables: DerivedTable[] = []
 
   for (const definition of registry.listAll()) {
     if (definition.kind === 'collection') {
@@ -247,6 +282,22 @@ export async function getDerivedCharacter(
           label: definition.label,
           category: definition.category,
           slots: definition.slots
+        })
+      }
+      continue
+    }
+
+    if (definition.kind === 'table') {
+      // Mirrors the Collection branch immediately above: a Table with no
+      // rows has nothing for a consumer to read and is omitted.
+      if (definition.category && definition.rows?.length) {
+        tables.push({
+          id: definition.id,
+          label: definition.label,
+          category: definition.category,
+          key: definition.key,
+          columns: definition.columns,
+          rows: definition.rows
         })
       }
       continue
@@ -284,6 +335,7 @@ export async function getDerivedCharacter(
       packageVersion,
       byCategory,
       collections,
+      tables,
       choices,
       pendingChoices: bridged.pendingChoices,
       unresolvedGrants: bridged.unresolvedGrants

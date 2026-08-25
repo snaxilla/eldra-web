@@ -1,11 +1,11 @@
 {
   "packageId": "eldra.rules.dnd5e-2024",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "status": "draft",
   "engineApiVersion": "^1.0.0",
   "stateSchemaVersion": 1,
   "title": "D&D 2024 Core Character Rules",
-  "description": "The Core Character Rules for the 2024 ruleset: abilities and their modifiers, proficiency bonus, saving throws, skills, level advancement, character-creation constraints, Equipment Rules (an equipment collection with slot and attunement-requirement fields, equipment slots, equipped state, and attunement capacity), Armor Class (the first equipment-driven derived value), the Health System -- Hit Point Maximum derived from Hit Die size, Constitution, and level; Hit Dice availability derived from level and dice spent; Death Save tracking -- and the two derived values the Recovery System reads to apply its state mutations correctly: a Hit Die's average roll (for spending a Hit Die) and how many Hit Dice a Long Rest recovers. Mechanics only -- this package defines the slots and the laws, never the content that fills them. It contains no species, classes, backgrounds, spells, items, or monsters, and is publishable and evaluable with no Content Pack bound.",
+  "description": "The Core Character Rules for the 2024 ruleset: abilities and their modifiers, proficiency bonus, saving throws, skills, level advancement, character-creation constraints, Equipment Rules (an equipment collection with slot and attunement-requirement fields, equipment slots, equipped state, and attunement capacity), Armor Class (the first equipment-driven derived value), the Health System -- Hit Point Maximum derived from Hit Die size, Constitution, and level; Hit Dice availability derived from level and dice spent; Death Save tracking -- the two derived values the Recovery System reads to apply its state mutations correctly: a Hit Die's average roll (for spending a Hit Die) and how many Hit Dice a Long Rest recovers -- and the Spellcasting System: Spellcasting Ability (Intelligence, Wisdom, or Charisma, granted per-class), Spell Save DC, Spell Attack Bonus, and Spell Slot progression for full, half, and pact casters. Mechanics only -- this package defines the slots and the laws, never the content that fills them. It contains no species, classes, backgrounds, spells, items, or monsters, and is publishable and evaluable with no Content Pack bound.",
   "authors": [{ "name": "Eldra" }],
   "license": {
     "id": "CC-BY-4.0",
@@ -23,7 +23,8 @@
     "progression",
     "character.creation",
     "equipment",
-    "core.defenses"
+    "core.defenses",
+    "spellcasting"
   ],
   "semanticRoles": {
     "level": "value:level",

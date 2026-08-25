@@ -250,6 +250,78 @@ describe('proficiency is what adds the bonus -- the law the package exists to st
   })
 })
 
+describe('spellcasting ability indirection', () => {
+  it('reads whichever of the three ability flags is set, and none when none are', () => {
+    // No caster flag set at all -- the +0/false default a non-caster class
+    // (Fighter, Barbarian, Monk, Rogue) leaves every one of these at.
+    expect(evaluate('value:spellcasting.is_caster', sessionFor())).toBe(false)
+    expect(evaluate('value:spellcasting.ability_mod', sessionFor())).toBe(0)
+
+    // Wizard-shaped: INT flag set, INT 18 (+4). WIS/CHA are irrelevant.
+    expect(evaluate('value:spellcasting.ability_mod', sessionFor({
+      'value:spellcasting.ability.int': true, 'value:ability.int': 18, 'value:ability.wis': 20, 'value:ability.cha': 20
+    }))).toBe(4)
+
+    // Cleric-shaped: WIS flag set, WIS 16 (+3).
+    expect(evaluate('value:spellcasting.ability_mod', sessionFor({
+      'value:spellcasting.ability.wis': true, 'value:ability.wis': 16
+    }))).toBe(3)
+
+    // Warlock-shaped: CHA flag set, CHA 14 (+2).
+    expect(evaluate('value:spellcasting.ability_mod', sessionFor({
+      'value:spellcasting.ability.cha': true, 'value:ability.cha': 14
+    }))).toBe(2)
+  })
+
+  it('is_caster is true whenever any one ability flag is set', () => {
+    expect(evaluate('value:spellcasting.is_caster', sessionFor({ 'value:spellcasting.ability.wis': true }))).toBe(true)
+  })
+})
+
+describe('Spell Save DC and Spell Attack Bonus', () => {
+  it('DC is 8 + proficiency bonus + spellcasting ability modifier', () => {
+    // Level 9 -> PB +4. WIS 18 -> +4. DC = 8 + 4 + 4 = 16. Attack = 4 + 4 = 8.
+    const session = sessionFor({
+      'value:level': 9, 'value:spellcasting.ability.wis': true, 'value:ability.wis': 18
+    })
+    expect(evaluate('value:spellcasting.save_dc', session)).toBe(16)
+    expect(evaluate('value:spellcasting.attack_bonus', session)).toBe(8)
+  })
+})
+
+describe('spell slot progression tables (reference data -- read directly, never evaluated)', () => {
+  // These tables carry no formula (README: "table lookup is not evaluated
+  // yet"), so nothing above exercises them through `evaluate`. This proves
+  // the rows themselves are correct, the same way a consumer that reads
+  // TableDefinition.rows directly (never through the evaluator) will.
+  function rowFor(tableId: string, level: number) {
+    const { manifest, definitions } = loadPackage()
+    const built = RulesRegistry.create(manifest, definitions)
+    if (!built.ok) throw new Error('registry failed')
+    const table = built.registry.getById(tableId) as { rows: Array<Record<string, number>> }
+    return table.rows.find((row) => row.key === level)
+  }
+
+  it('full caster: level 5 is the iconic 4/3/2 row, level 20 is 4/3/3/3/3/2/2/1/1', () => {
+    expect(rowFor('table:spellcasting.slots_full', 5)).toMatchObject({ slot_1: 4, slot_2: 3, slot_3: 2, slot_4: 0 })
+    expect(rowFor('table:spellcasting.slots_full', 20)).toMatchObject({
+      slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 3, slot_5: 3, slot_6: 2, slot_7: 2, slot_8: 1, slot_9: 1
+    })
+  })
+
+  it('half caster: no slots at level 1, first slot at level 2, 5th-level slots only from level 17', () => {
+    expect(rowFor('table:spellcasting.slots_half', 1)).toMatchObject({ slot_1: 0 })
+    expect(rowFor('table:spellcasting.slots_half', 2)).toMatchObject({ slot_1: 2 })
+    expect(rowFor('table:spellcasting.slots_half', 17)).toMatchObject({ slot_4: 3, slot_5: 1 })
+  })
+
+  it('pact caster: slots and slot level both climb independently of the full/half tables', () => {
+    expect(rowFor('table:spellcasting.slots_pact', 1)).toEqual({ key: 1, slots: 1, slot_level: 1 })
+    expect(rowFor('table:spellcasting.slots_pact', 5)).toEqual({ key: 5, slots: 2, slot_level: 3 })
+    expect(rowFor('table:spellcasting.slots_pact', 17)).toEqual({ key: 17, slots: 4, slot_level: 5 })
+  })
+})
+
 // ---------------------------------------------------------------------------
 // 3. It respects its own boundaries
 // ---------------------------------------------------------------------------

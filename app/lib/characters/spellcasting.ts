@@ -46,6 +46,8 @@
 // character sheet that cannot record a homebrew spell is not usable at a
 // real table.
 
+import type { ContentAction } from '../content-actions'
+
 export type SpellRef = {
   packageId: string
   slug: string
@@ -185,6 +187,11 @@ export type SpellCatalogueEntry = {
   title: string
   slug: string
   sourceBook?: string
+  // Character Actions System addition -- relayed the same way
+  // InventoryCatalogueEntry's own `actions` field is (Character Assembly
+  // spreads the resolved catalogue entry verbatim). Every resolved spell
+  // carries exactly one.
+  actions?: ContentAction[]
 }
 
 export type AssembledSpellEntry = StoredSpellEntry & {

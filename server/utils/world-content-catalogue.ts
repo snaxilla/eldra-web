@@ -80,6 +80,7 @@
 //    shared precedent: reading is not gated the way writing is).
 
 import { resolveContentPresentation, type PresentationEntry, type PresentationKind } from '../../app/lib/content-presentation'
+import { resolveContentActions, type ContentAction, type ContentSourceCategory } from '../../app/lib/content-actions'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
 
@@ -113,6 +114,13 @@ export type ContentCatalogueEntry = {
   // thing it reads about content. `data` is never exposed here and the
   // bridge never sees it (§8.4).
   rulesFacet?: RulesFacet
+  // Character Actions System addition -- computed the SAME way
+  // `presentation` is (a pure resolver reads `data`, never `data` itself is
+  // exposed), for the two more categories (items, spells) Actions needs
+  // beyond the three `presentation` already covers. Absent when the
+  // resolver found none, mirroring `rulesFacet`'s own "assigned only when
+  // present" rule to keep an unfaceted entry's key set small.
+  actions?: ContentAction[]
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -166,6 +174,22 @@ const PRESENTATION_KIND_BY_CATEGORY: Partial<Record<CatalogueCategory, Presentat
   backgrounds: 'background'
 }
 
+// Which catalogue categories resolve Actions, and as which
+// ContentSourceCategory -- the Character Actions System's counterpart to
+// PRESENTATION_KIND_BY_CATEGORY above, five entries rather than three
+// because Items and Spells grant actions (a weapon attack, a spell) that
+// they never resolve a narrative `presentation` card for (design decision 1:
+// "no surface consumes them yet" no longer holds for Items/Spells now that
+// Actions does). Feats and Monsters resolve neither, for the same "no
+// surface consumes them yet" reason presentation still gives.
+const ACTION_CATEGORY_BY_CATALOGUE_CATEGORY: Partial<Record<CatalogueCategory, ContentSourceCategory>> = {
+  species: 'species',
+  classes: 'class',
+  backgrounds: 'background',
+  items: 'item',
+  spells: 'spell'
+}
+
 function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory): ContentCatalogueEntry {
   const base: ContentCatalogueEntry = {
     packageId: entry.packageId,
@@ -189,20 +213,34 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
   }
 
   const kind = PRESENTATION_KIND_BY_CATEGORY[category]
-  if (!kind) {
-    return base
+  if (kind) {
+    // `data` is read here and NOWHERE else in this module -- and it is
+    // handed straight to the resolver rather than inspected. One malformed
+    // entry must never take down a World's whole catalogue, so a throwing
+    // resolver degrades this entry to `presentation: null` and leaves the
+    // other 37 intact. Same "absence is legal, and must stay visible"
+    // posture design decision 3 applies to a broken pack binding.
+    try {
+      base.presentation = resolveContentPresentation(entry.systemKey, kind, entry.data)
+    } catch {
+      base.presentation = null
+    }
   }
 
-  // `data` is read here and NOWHERE else in this module -- and it is handed
-  // straight to the resolver rather than inspected. One malformed entry must
-  // never take down a World's whole catalogue, so a throwing resolver
-  // degrades this entry to `presentation: null` and leaves the other 37
-  // intact. Same "absence is legal, and must stay visible" posture design
-  // decision 3 applies to a broken pack binding.
-  try {
-    base.presentation = resolveContentPresentation(entry.systemKey, kind, entry.data)
-  } catch {
-    base.presentation = null
+  const actionCategory = ACTION_CATEGORY_BY_CATALOGUE_CATEGORY[category]
+  if (actionCategory) {
+    // Same posture as `presentation` immediately above: `data` read only
+    // here, a throwing resolver degrades this ONE entry to no actions
+    // (never null -- an empty list is already this module's "found none"
+    // shape) rather than breaking the catalogue.
+    try {
+      const resolved = resolveContentActions(entry.systemKey, actionCategory, entry.data)
+      if (resolved.length) base.actions = resolved
+    } catch {
+      // Degrades silently to no `actions` key, mirroring `rulesFacet`'s own
+      // "absent means none" reading -- there is no meaningful "broken"
+      // state to report for a list that is legitimately often empty.
+    }
   }
 
   return base

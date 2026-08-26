@@ -131,7 +131,13 @@ export function cleanText(value: unknown): string {
 // {type:'list'}, and {type:'item'}. Flattened to plain paragraphs -- this
 // layer renders prose, not a nested document tree, and a player reading a
 // species trait does not need the document structure preserved.
-function flattenEntries(value: unknown, out: string[] = []): string[] {
+//
+// Exported (Character Actions System addition) so app/lib/content-actions/
+// can reuse this exact, already-tested flattening logic for weapon/spell/
+// species-trait description text rather than re-implementing it -- the
+// "reuse existing primitives" this module's own header already establishes
+// for `cleanText`.
+export function flattenEntries(value: unknown, out: string[] = []): string[] {
   if (value === null || value === undefined) return out
 
   if (typeof value === 'string' || typeof value === 'number') {
@@ -210,7 +216,8 @@ function abilityLabel(code: string): string {
   return ABILITY_LABELS[String(code).toLowerCase()] ?? titleCase(code)
 }
 
-function asArray(value: unknown): unknown[] {
+// Exported for app/lib/content-actions/ -- see flattenEntries' own note.
+export function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
 }
 
@@ -268,7 +275,10 @@ function describeProficiencyGroup(group: unknown): string {
   return parts.filter(Boolean).join('; ')
 }
 
-function describeProficiencyGroups(value: unknown): string {
+// Exported for app/lib/content-actions/ -- Background actions read a
+// character's granted Origin Feat through this exact helper, see
+// flattenEntries' own note on why reuse rather than a second copy.
+export function describeProficiencyGroups(value: unknown): string {
   return asArray(value)
     .map(describeProficiencyGroup)
     .filter(Boolean)
@@ -323,7 +333,12 @@ function readDescription(raw: Record<string, unknown>): string[] {
 
 // Named prose blocks ({type:'entries', name, entries}) become sections.
 // Anonymous or empty blocks are skipped rather than rendered headless.
-function sectionsFromEntries(value: unknown): PresentationSection[] {
+//
+// Exported for app/lib/content-actions/ -- a Species' traits (Breath Weapon,
+// Darkvision, ...) are exactly these named blocks, and Actions surfaces the
+// SAME extraction the Species content card already renders rather than a
+// second reading of `entries`. See flattenEntries' own note.
+export function sectionsFromEntries(value: unknown): PresentationSection[] {
   const sections: PresentationSection[] = []
 
   for (const entry of asArray(value)) {
@@ -605,7 +620,10 @@ function resolveClass(raw: Record<string, unknown>): PresentationEntry {
 // {value: 800}) whose faithful rendering would mean interpreting currency
 // and item references. The printed line is both richer and already written
 // for a reader, so it is preferred wherever it exists.
-function readPrintedItem(raw: Record<string, unknown>, label: string): string {
+// Exported for app/lib/content-actions/ -- see describeProficiencyGroups'
+// own note; a Background's granted Origin Feat is read through this same
+// printed-summary-list reader.
+export function readPrintedItem(raw: Record<string, unknown>, label: string): string {
   for (const entry of asArray(raw.entries)) {
     for (const item of asArray((entry as Record<string, unknown>)?.items)) {
       const node = item as Record<string, unknown>

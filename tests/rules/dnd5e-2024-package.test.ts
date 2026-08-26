@@ -322,6 +322,24 @@ describe('spell slot progression tables (reference data -- read directly, never 
   })
 })
 
+describe('Melee and Ranged Attack Bonus (Character Actions System)', () => {
+  it('melee uses proficiency bonus plus Strength modifier', () => {
+    // Level 9 -> PB +4. STR 16 -> +3.
+    const session = sessionFor({ 'value:level': 9, 'value:ability.str': 16 })
+    expect(evaluate('value:combat.melee_attack_bonus', session)).toBe(7)
+  })
+
+  it('ranged uses proficiency bonus plus Dexterity modifier', () => {
+    // Level 5 -> PB +3. DEX 14 -> +2.
+    const session = sessionFor({ 'value:level': 5, 'value:ability.dex': 14 })
+    expect(evaluate('value:combat.ranged_attack_bonus', session)).toBe(5)
+  })
+
+  it('computed unconditionally, with no proficiency flag to gate it -- same posture as Spell Attack Bonus', () => {
+    expect(evaluate('value:combat.melee_attack_bonus', sessionFor())).toBe(2) // PB +2, STR mod +0
+  })
+})
+
 // ---------------------------------------------------------------------------
 // 3. It respects its own boundaries
 // ---------------------------------------------------------------------------

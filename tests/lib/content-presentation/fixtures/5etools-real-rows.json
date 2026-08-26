@@ -2574,6 +2574,256 @@
      ]
     }
    }
+  },
+  "items": {
+   "Longsword": {
+    "name": "Longsword",
+    "source": "XPHB",
+    "page": 215,
+    "srd52": true,
+    "basicRules2024": true,
+    "referenceSources": [
+     "HotB"
+    ],
+    "edition": "one",
+    "type": "M|XPHB",
+    "rarity": "none",
+    "weight": 3,
+    "value": 1500,
+    "weaponCategory": "martial",
+    "property": [
+     "V|XPHB"
+    ],
+    "mastery": [
+     "Sap|XPHB"
+    ],
+    "dmg1": "1d8",
+    "dmgType": "S",
+    "dmg2": "1d10",
+    "sword": true,
+    "weapon": true,
+    "hasFluffImages": true
+   },
+   "Dagger": {
+    "name": "Dagger",
+    "source": "XPHB",
+    "page": 215,
+    "srd52": true,
+    "basicRules2024": true,
+    "referenceSources": [
+     "DrDe-TFV",
+     "DrDe-TWoO"
+    ],
+    "edition": "one",
+    "type": "M|XPHB",
+    "rarity": "none",
+    "weight": 1,
+    "value": 200,
+    "weaponCategory": "simple",
+    "property": [
+     "F|XPHB",
+     "L|XPHB",
+     "T|XPHB"
+    ],
+    "mastery": [
+     "Nick|XPHB"
+    ],
+    "range": "20/60",
+    "dmg1": "1d4",
+    "dmgType": "P",
+    "dagger": true,
+    "weapon": true,
+    "hasFluffImages": true
+   },
+   "Longbow": {
+    "name": "Longbow",
+    "source": "XPHB",
+    "page": 215,
+    "srd52": true,
+    "basicRules2024": true,
+    "edition": "one",
+    "type": "R|XPHB",
+    "rarity": "none",
+    "weight": 2,
+    "value": 5000,
+    "weaponCategory": "martial",
+    "property": [
+     "A|XPHB",
+     "H|XPHB",
+     "2H|XPHB"
+    ],
+    "mastery": [
+     "Slow|XPHB"
+    ],
+    "range": "150/600",
+    "dmg1": "1d8",
+    "dmgType": "P",
+    "bow": true,
+    "weapon": true,
+    "ammoType": "arrow|xphb",
+    "hasFluffImages": true
+   }
+  },
+  "spells": {
+   "Fireball": {
+    "name": "Fireball",
+    "source": "XPHB",
+    "page": 274,
+    "srd52": true,
+    "basicRules2024": true,
+    "referenceSources": [
+     "DrDe-SD",
+     "FFotR",
+     "HotB",
+     "UtHftLH"
+    ],
+    "level": 3,
+    "school": "V",
+    "time": [
+     {
+      "number": 1,
+      "unit": "action"
+     }
+    ],
+    "range": {
+     "type": "point",
+     "distance": {
+      "type": "feet",
+      "amount": 150
+     }
+    },
+    "components": {
+     "v": true,
+     "s": true,
+     "m": "a ball of bat guano and sulfur"
+    },
+    "duration": [
+     {
+      "type": "instant"
+     }
+    ],
+    "entries": [
+     "A bright streak flashes from you to a point you choose within range and then blossoms with a low roar into a fiery explosion. Each creature in a 20-foot-radius {@variantrule Sphere [Area of Effect]|XPHB|Sphere} centered on that point makes a Dexterity saving throw, taking {@damage 8d6} Fire damage on a failed save or half as much damage on a successful one.",
+     "Flammable objects in the area that aren't being worn or carried start {@hazard burning|XPHB}."
+    ],
+    "entriesHigherLevel": [
+     {
+      "type": "entries",
+      "name": "Using a Higher-Level Spell Slot",
+      "entries": [
+       "The damage increases by {@scaledamage 8d6|3-9|1d6} for each spell slot level above 3."
+      ]
+     }
+    ],
+    "damageInflict": [
+     "fire"
+    ],
+    "savingThrow": [
+     "dexterity"
+    ],
+    "miscTags": [
+     "OBJ"
+    ],
+    "areaTags": [
+     "S"
+    ],
+    "hasFluffImages": true
+   },
+   "Cure Wounds": {
+    "name": "Cure Wounds",
+    "source": "XPHB",
+    "page": 259,
+    "srd52": true,
+    "basicRules2024": true,
+    "referenceSources": [
+     "UtHftLH"
+    ],
+    "level": 1,
+    "school": "A",
+    "time": [
+     {
+      "number": 1,
+      "unit": "action"
+     }
+    ],
+    "range": {
+     "type": "point",
+     "distance": {
+      "type": "touch"
+     }
+    },
+    "components": {
+     "v": true,
+     "s": true
+    },
+    "duration": [
+     {
+      "type": "instant"
+     }
+    ],
+    "entries": [
+     "A creature you touch regains a number of {@variantrule Hit Points|XPHB} equal to {@dice 2d8} plus your spellcasting ability modifier."
+    ],
+    "entriesHigherLevel": [
+     {
+      "type": "entries",
+      "name": "Using a Higher-Level Spell Slot",
+      "entries": [
+       "The healing increases by {@scaledice 2d8|1-9|2d8} for each spell slot level above 1."
+      ]
+     }
+    ],
+    "miscTags": [
+     "HL"
+    ],
+    "areaTags": [
+     "ST"
+    ]
+   },
+   "Shield": {
+    "name": "Shield",
+    "source": "XPHB",
+    "page": 316,
+    "srd52": true,
+    "basicRules2024": true,
+    "referenceSources": [
+     "UtHftLH"
+    ],
+    "level": 1,
+    "school": "A",
+    "time": [
+     {
+      "number": 1,
+      "unit": "reaction",
+      "condition": "which you take when you are hit by an attack roll or targeted by the Magic Missile spell"
+     }
+    ],
+    "range": {
+     "type": "point",
+     "distance": {
+      "type": "self"
+     }
+    },
+    "components": {
+     "v": true,
+     "s": true
+    },
+    "duration": [
+     {
+      "type": "timed",
+      "duration": {
+       "type": "round",
+       "amount": 1
+      }
+     }
+    ],
+    "entries": [
+     "An imperceptible barrier of magical force protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from {@spell Magic Missile|XPHB}."
+    ],
+    "miscTags": [
+     "MAC"
+    ]
+   }
   }
  },
  "srd51": {

@@ -155,6 +155,20 @@
 // evaluated). This page still computes no NUMBER: it selects a row a Table
 // already declares and reads it, exactly as it already selects which
 // `derived.collections` entry is the equipment slots.
+//
+// ---------------------------------------------------------------------------
+// ACTIONS -- "WHAT CAN MY CHARACTER DO?", A PROJECTION OF EVERYTHING ABOVE
+// ---------------------------------------------------------------------------
+// The Character Actions System. Fetched from its own endpoint
+// (GET .../actions, server/utils/character-actions.ts) rather than composed
+// on this page the way `slotLevels` is above -- Actions combines FIVE
+// sources (Species, Class, Background, equipped weapons, prepared spells)
+// and attaches Rules Engine numbers to each, which is real orchestration
+// work, not the single "pick a table row" selection `slotLevels` performs.
+// This page still computes nothing: it renders whatever the endpoint
+// already assembled. Read-only -- see CharacterActionsPanel.vue's own
+// header for why this is the one panel added by this task with no `@`
+// emits at all.
 
 // The identity summary is composed inline rather than extracted into a
 // component: it is used by exactly this one page. The ability scores ARE
@@ -194,6 +208,7 @@ import {
   type StoredSpellEntry
 } from '~/lib/characters/spellcasting'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
+import CharacterActionsPanel, { type CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import { DERIVED_SHEET_REGIONS, findDerivedBoolean, findDerivedNumber, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
@@ -680,6 +695,27 @@ const slotLevels = computed(() => {
   return levels
 })
 
+// ---------------------------------------------------------------------------
+// Actions -- fetched, never computed. Read-only: see
+// CharacterActionsPanel.vue's own header.
+// ---------------------------------------------------------------------------
+
+type ActionsResponse =
+  | { available: true; actions: CharacterAction[] }
+  | { available: false; reason: string; message?: string }
+
+const { data: actionsResponse, pending: actionsPending } = await useFetch<ActionsResponse>(
+  () => `/api/worlds/${worldId.value}/characters/${characterId.value}/actions`
+)
+
+const characterActions = computed(() => (actionsResponse.value?.available ? actionsResponse.value.actions : []))
+
+const actionsUnavailableMessage = computed(() => {
+  const response = actionsResponse.value
+  if (!response || response.available) return ''
+  return response.message || ''
+})
+
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
   class: 'Class',
@@ -981,6 +1017,22 @@ const identityRows = computed(() =>
               @toggle-flag="onSpellToggleFlag"
               @expend-slot="onExpendSlot"
               @restore-slot="onRestoreSlot"
+            />
+          </div>
+        </section>
+
+        <!-- Actions: "what can my character do?" -- read-only, no editing
+             surface. See CharacterActionsPanel.vue's own header for why. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Actions
+          </div>
+
+          <div class="mt-4">
+            <CharacterActionsPanel
+              :actions="characterActions"
+              :pending="actionsPending"
+              :error-message="actionsUnavailableMessage"
             />
           </div>
         </section>

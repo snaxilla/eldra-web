@@ -1788,6 +1788,38 @@
     "default": { "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 }
   },
   {
+    "id": "value:combat.melee_attack_bonus",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Melee Attack Bonus",
+    "tags": [
+      "combat",
+      "attack-bonus"
+    ],
+    "formula": {
+      "text": "@value:proficiency_bonus + @value:ability.str.mod"
+    }
+  },
+  {
+    "id": "value:combat.ranged_attack_bonus",
+    "kind": "value",
+    "category": "combat",
+    "valueType": "number",
+    "storage": "derived",
+    "visibility": "public",
+    "label": "Ranged Attack Bonus",
+    "tags": [
+      "combat",
+      "attack-bonus"
+    ],
+    "formula": {
+      "text": "@value:proficiency_bonus + @value:ability.dex.mod"
+    }
+  },
+  {
     "id": "table:spellcasting.slots_pact",
     "kind": "table",
     "category": "spellcasting",

@@ -109,6 +109,12 @@ describe('getWorldContentCatalogue', () => {
     expect(spell).not.toHaveProperty('data')
     expect(spell).not.toHaveProperty('entityType')
     expect(Object.keys(spell).sort()).toEqual([
+      // 'presentation' is absent -- spells have no PresentationKind (design
+      // decision 1's original three). 'actions' IS present: the Character
+      // Actions System resolves spell actions for the same category
+      // 'presentation' still does not cover -- see this file's own note on
+      // ACTION_CATEGORY_BY_CATALOGUE_CATEGORY.
+      'actions',
       'externalId',
       'packageId',
       'packageVersion',
@@ -128,7 +134,8 @@ describe('getWorldContentCatalogue', () => {
       externalId: 'Fire Bolt__PHB',
       provider: '5etools-json',
       sourceBook: 'PHB',
-      sourcePage: '211'
+      sourcePage: '211',
+      actions: [expect.objectContaining({ name: 'Fire Bolt', category: 'spell' })]
     })
   })
 
@@ -320,5 +327,58 @@ describe('getWorldContentCatalogue -- presentation models', () => {
 
     expect(catalogue.species[0]!.presentation).toBeNull()
     expect(catalogue.species[0]!.title).toBe('Goblin')
+  })
+
+  describe('actions (Character Actions System)', () => {
+    it('resolves a weapon item to a weapon action', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [entry({
+          entityType: 'item',
+          title: 'Longsword',
+          data: { name: 'Longsword', weapon: true, type: 'M|XPHB', weaponCategory: 'martial', dmg1: '1d8', dmgType: 'S' }
+        })]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.items[0]!.actions).toEqual([
+        expect.objectContaining({ name: 'Longsword', category: 'weapon', actionType: 'Melee Attack' })
+      ])
+    })
+
+    it('omits the `actions` key entirely for a non-weapon item -- an empty list is not stored', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [entry({ entityType: 'item', title: 'Rope', data: { name: 'Rope' } })]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.items[0]).not.toHaveProperty('actions')
+    })
+
+    it('a category with no ContentSourceCategory mapping (feats, monsters) never resolves actions', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [
+          entry({ entityType: 'feat', title: 'Alert', data: { name: 'Alert' } }),
+          entry({ entityType: 'enemy', title: 'Owlbear', data: { name: 'Owlbear' } })
+        ]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.feats[0]).not.toHaveProperty('actions')
+      expect(catalogue.monsters[0]).not.toHaveProperty('actions')
+    })
+
+    it('a broken data payload degrades this entry to no actions, never breaking the catalogue', async () => {
+      resolveWorldContentMock.mockResolvedValue(resolved({
+        entries: [
+          entry({ entityType: 'item', title: 'Bad', slug: 'bad', data: 'not-an-object' as any }),
+          entry({ entityType: 'item', title: 'Good', slug: 'good', data: { name: 'Good', weapon: true, type: 'M|XPHB', dmg1: '1d6', dmgType: 'B' } })
+        ]
+      }))
+
+      const catalogue = await getWorldContentCatalogue('5')
+      expect(catalogue.items).toHaveLength(2)
+      expect(catalogue.items[0]).not.toHaveProperty('actions')
+      expect(catalogue.items[1]!.actions).toHaveLength(1)
+    })
   })
 })

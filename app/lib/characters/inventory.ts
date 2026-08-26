@@ -74,6 +74,7 @@
 // are this task's explicit non-goals.
 
 import type { RulesFacet } from '../content-rules'
+import type { ContentAction } from '../content-actions'
 
 export type InventoryItemRef = {
   packageId: string
@@ -230,6 +231,12 @@ export type InventoryCatalogueEntry = {
   slug: string
   sourceBook?: string
   rulesFacet?: RulesFacet
+  // Character Actions System addition -- relayed the same way `rulesFacet`
+  // already is (Character Assembly spreads the resolved catalogue entry
+  // verbatim). A weapon item carries exactly one; a non-weapon item carries
+  // none. This is what lets an equipped weapon become a row on the Actions
+  // panel without this module knowing what a weapon is.
+  actions?: ContentAction[]
 }
 
 // 'resolved' -- the reference found its catalogue entry.

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   advanceTurn,
+  applyCondition,
   computeTurnOrder,
   emptyEncounterState,
   endEncounter,
@@ -16,7 +17,9 @@ import {
   leaveEncounter,
   normalizeStoredEncounterState,
   previousTurn,
+  removeCondition,
   setInitiative,
+  tickConditionDuration,
   type StoredEncounterState
 } from '../../../app/lib/encounters/encounter'
 
@@ -40,7 +43,7 @@ describe('normalizeStoredEncounterState', () => {
   })
 
   it('reads back a well-formed record unchanged', () => {
-    const stored = { status: 'active', round: 2, currentTurnCharacterId: '1', combatants: [{ characterId: '1', initiative: 15 }] }
+    const stored = { status: 'active', round: 2, currentTurnCharacterId: '1', combatants: [{ characterId: '1', initiative: 15, conditions: [] }] }
     expect(normalizeStoredEncounterState(stored)).toEqual(stored)
   })
 
@@ -57,7 +60,7 @@ describe('normalizeStoredEncounterState', () => {
       status: 'active', round: 1, currentTurnCharacterId: null,
       combatants: [{ characterId: '1', initiative: 10 }, { characterId: '1', initiative: 99 }]
     })
-    expect(result?.combatants).toEqual([{ characterId: '1', initiative: 10 }])
+    expect(result?.combatants).toEqual([{ characterId: '1', initiative: 10, conditions: [] }])
   })
 
   it('clamps round to a minimum of 1', () => {
@@ -104,7 +107,7 @@ describe('computeTurnOrder', () => {
 describe('joinEncounter', () => {
   it('adds a new combatant', () => {
     const result = joinEncounter(emptyEncounterState(), '1', 15)
-    expect(result.combatants).toEqual([{ characterId: '1', initiative: 15 }])
+    expect(result.combatants).toEqual([{ characterId: '1', initiative: 15, conditions: [] }])
   })
 
   it('the first joiner becomes the current turn', () => {
@@ -121,7 +124,7 @@ describe('joinEncounter', () => {
   it('is a no-op for a character already in the encounter', () => {
     const s = joinEncounter(emptyEncounterState(), '1', 15)
     const result = joinEncounter(s, '1', 99)
-    expect(result.combatants).toEqual([{ characterId: '1', initiative: 15 }])
+    expect(result.combatants).toEqual([{ characterId: '1', initiative: 15, conditions: [] }])
   })
 
   it('does not mutate the input state', () => {
@@ -178,7 +181,7 @@ describe('setInitiative', () => {
   it('overrides a combatant\'s initiative', () => {
     const s = joinEncounter(emptyEncounterState(), '1', 5)
     const result = setInitiative(s, '1', 25)
-    expect(result.combatants).toEqual([{ characterId: '1', initiative: 25 }])
+    expect(result.combatants).toEqual([{ characterId: '1', initiative: 25, conditions: [] }])
   })
 
   it('never touches currentTurnCharacterId -- reordering does not disturb whose turn it is', () => {
@@ -266,5 +269,118 @@ describe('endEncounter', () => {
     expect(result.status).toBe('ended')
     expect(result.round).toBe(3)
     expect(result.combatants).toEqual(s.combatants)
+  })
+
+  it('leaves every combatant\'s conditions exactly where they were -- see this module\'s own CONDITIONS note', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'poisoned', { duration: 3 })
+    const result = endEncounter(s)
+    expect(result.combatants[0]?.conditions).toEqual(s.combatants[0]?.conditions)
+  })
+})
+
+describe('applyCondition', () => {
+  it('adds a condition to the named combatant', () => {
+    const s = joinEncounter(emptyEncounterState(), 'a', 20)
+    const result = applyCondition(s, 'a', 'poisoned', { duration: 3, source: 'Giant Spider' })
+    expect(result.combatants[0]?.conditions).toEqual([
+      { id: 'condition-1', conditionId: 'poisoned', duration: 3, source: 'Giant Spider' }
+    ])
+  })
+
+  it('defaults duration to null (indefinite) and omits an absent source', () => {
+    const s = joinEncounter(emptyEncounterState(), 'a', 20)
+    const result = applyCondition(s, 'a', 'prone')
+    expect(result.combatants[0]?.conditions).toEqual([{ id: 'condition-1', conditionId: 'prone', duration: null }])
+  })
+
+  it('allows a second instance of the same condition -- no stacking rule invented', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'poisoned', { duration: 2 })
+    const result = applyCondition(s, 'a', 'poisoned', { duration: 5 })
+    expect(result.combatants[0]?.conditions).toHaveLength(2)
+    expect(result.combatants[0]?.conditions.map((c) => c.duration)).toEqual([2, 5])
+  })
+
+  it('is a no-op for a character not in the encounter', () => {
+    const s = joinEncounter(emptyEncounterState(), 'a', 20)
+    const result = applyCondition(s, 'ghost', 'poisoned')
+    expect(result.combatants[0]?.conditions).toEqual([])
+  })
+
+  it('is a no-op for an empty conditionId', () => {
+    const s = joinEncounter(emptyEncounterState(), 'a', 20)
+    const result = applyCondition(s, 'a', '  ')
+    expect(result.combatants[0]?.conditions).toEqual([])
+  })
+
+  it('does not mutate the input state', () => {
+    const s = joinEncounter(emptyEncounterState(), 'a', 20)
+    applyCondition(s, 'a', 'poisoned')
+    expect(s.combatants[0]?.conditions).toEqual([])
+  })
+})
+
+describe('removeCondition', () => {
+  it('removes the named condition instance', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'poisoned')
+    s = applyCondition(s, 'a', 'prone')
+    const result = removeCondition(s, 'a', 'condition-1')
+    expect(result.combatants[0]?.conditions.map((c) => c.conditionId)).toEqual(['prone'])
+  })
+
+  it('is a no-op for an unmatched condition instance id', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'poisoned')
+    const result = removeCondition(s, 'a', 'condition-99')
+    expect(result.combatants[0]?.conditions).toEqual(s.combatants[0]?.conditions)
+  })
+
+  it('is a no-op for a character not in the encounter', () => {
+    const s = joinEncounter(emptyEncounterState(), 'a', 20)
+    const result = removeCondition(s, 'ghost', 'condition-1')
+    expect(result).toEqual(s)
+  })
+})
+
+describe('tickConditionDuration', () => {
+  it('decrements by a negative delta, floored at zero', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'poisoned', { duration: 1 })
+    const result = tickConditionDuration(s, 'a', 'condition-1', -1)
+    expect(result.combatants[0]?.conditions[0]?.duration).toBe(0)
+
+    const resultBelowZero = tickConditionDuration(result, 'a', 'condition-1', -5)
+    expect(resultBelowZero.combatants[0]?.conditions[0]?.duration).toBe(0)
+  })
+
+  it('increments by a positive delta -- a DM correction, not just a countdown', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'exhaustion', { duration: 1 })
+    const result = tickConditionDuration(s, 'a', 'condition-1', 1)
+    expect(result.combatants[0]?.conditions[0]?.duration).toBe(2)
+  })
+
+  it('never removes the condition, even at zero -- no automation', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'poisoned', { duration: 0 })
+    const result = tickConditionDuration(s, 'a', 'condition-1', -1)
+    expect(result.combatants[0]?.conditions).toHaveLength(1)
+  })
+
+  it('is a no-op for an indefinite condition (duration null) -- nothing to count', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'prone') // duration defaults to null
+    const result = tickConditionDuration(s, 'a', 'condition-1', -1)
+    expect(result.combatants[0]?.conditions[0]?.duration).toBeNull()
+  })
+
+  it('does not mutate the input state', () => {
+    let s = joinEncounter(emptyEncounterState(), 'a', 20)
+    s = applyCondition(s, 'a', 'poisoned', { duration: 3 })
+    const before = JSON.parse(JSON.stringify(s))
+    tickConditionDuration(s, 'a', 'condition-1', -1)
+    expect(s).toEqual(before)
   })
 })

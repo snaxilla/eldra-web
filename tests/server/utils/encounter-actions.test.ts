@@ -14,13 +14,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   loadEncounterEntityMock, loadEncounterStateMock, saveEncounterStateMock,
-  getDerivedCharacterMock, createSeededRngMock
+  getDerivedCharacterMock, createSeededRngMock, getWorldRuntimeMock
 } = vi.hoisted(() => ({
   loadEncounterEntityMock: vi.fn(),
   loadEncounterStateMock: vi.fn(),
   saveEncounterStateMock: vi.fn(),
   getDerivedCharacterMock: vi.fn(),
-  createSeededRngMock: vi.fn()
+  createSeededRngMock: vi.fn(),
+  getWorldRuntimeMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/encounter-persistence', () => ({
@@ -40,10 +41,15 @@ vi.mock('../../../app/lib/rules/rng', () => ({
 
 // encounter-view.ts (real, unmocked -- these tests want its actual
 // turnOrder/currentCombatant computation exercised) resolves combatant
-// TITLES through entity-factory's dxFetch directly. Titles are not what
-// this file is testing, so a canned response is enough.
+// TITLES through entity-factory's dxFetch directly, and the condition
+// catalog through world-runtime-service's getWorldRuntime. Neither is what
+// this file is testing, so a canned/unconfigured response is enough.
 vi.mock('../../../server/utils/entity-factory', () => ({
   dxFetch: vi.fn().mockResolvedValue({ data: [] })
+}))
+
+vi.mock('../../../server/utils/world-runtime-service', () => ({
+  getWorldRuntime: getWorldRuntimeMock
 }))
 
 import { applyEncounterAction } from '../../../server/utils/encounter-actions'
@@ -71,11 +77,13 @@ beforeEach(() => {
   saveEncounterStateMock.mockReset()
   getDerivedCharacterMock.mockReset()
   createSeededRngMock.mockReset()
+  getWorldRuntimeMock.mockReset()
 
   loadEncounterEntityMock.mockResolvedValue(ENTITY)
   loadEncounterStateMock.mockResolvedValue(emptyEncounterState())
   saveEncounterStateMock.mockImplementation(async (_id: unknown, state: StoredEncounterState) => state)
   getDerivedCharacterMock.mockResolvedValue(derivedWithDexMod(2))
+  getWorldRuntimeMock.mockResolvedValue({ configured: false })
   mockRoll(15)
 })
 
@@ -130,7 +138,7 @@ describe('applyEncounterAction -- join', () => {
   it('persists the joined combatant', async () => {
     await applyEncounterAction('5', '7', { type: 'join', characterId: '1', initiative: 10 })
     expect(saveEncounterStateMock).toHaveBeenCalledWith('7', expect.objectContaining({
-      combatants: [{ characterId: '1', initiative: 10 }]
+      combatants: [{ characterId: '1', initiative: 10, conditions: [] }]
     }))
   })
 })
@@ -208,6 +216,88 @@ describe('applyEncounterAction -- end', () => {
     loadEncounterStateMock.mockResolvedValue({ ...joinEncounter(emptyEncounterState(), '1', 10), status: 'ended' })
 
     const result = await applyEncounterAction('5', '7', { type: 'advance' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('encounter-ended')
+  })
+})
+
+describe('applyEncounterAction -- apply-condition / remove-condition / tick-condition', () => {
+  it('applies a condition to a combatant', async () => {
+    loadEncounterStateMock.mockResolvedValue(joinEncounter(emptyEncounterState(), '1', 10))
+
+    const result = await applyEncounterAction('5', '7', {
+      type: 'apply-condition', characterId: '1', conditionId: 'poisoned', duration: 3, source: 'Giant Spider'
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.encounter.turnOrder[0]?.conditions).toEqual([
+      { id: 'condition-1', conditionId: 'poisoned', label: 'poisoned', duration: 3, source: 'Giant Spider' }
+    ])
+  })
+
+  it('reports not-in-encounter when applying to a character who never joined', async () => {
+    const result = await applyEncounterAction('5', '7', { type: 'apply-condition', characterId: 'ghost', conditionId: 'poisoned' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-in-encounter')
+  })
+
+  it('reports invalid-condition for an empty conditionId', async () => {
+    loadEncounterStateMock.mockResolvedValue(joinEncounter(emptyEncounterState(), '1', 10))
+
+    const result = await applyEncounterAction('5', '7', { type: 'apply-condition', characterId: '1', conditionId: '  ' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-condition')
+  })
+
+  it('removes a condition', async () => {
+    let s = joinEncounter(emptyEncounterState(), '1', 10)
+    s = { ...s, combatants: [{ ...s.combatants[0]!, conditions: [{ id: 'condition-1', conditionId: 'poisoned', duration: null }] }] }
+    loadEncounterStateMock.mockResolvedValue(s)
+
+    const result = await applyEncounterAction('5', '7', { type: 'remove-condition', characterId: '1', conditionInstanceId: 'condition-1' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.encounter.turnOrder[0]?.conditions).toEqual([])
+  })
+
+  it('reports condition-not-found for an unmatched condition instance id', async () => {
+    loadEncounterStateMock.mockResolvedValue(joinEncounter(emptyEncounterState(), '1', 10))
+
+    const result = await applyEncounterAction('5', '7', { type: 'remove-condition', characterId: '1', conditionInstanceId: 'condition-99' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('condition-not-found')
+  })
+
+  it('ticks a condition\'s duration', async () => {
+    let s = joinEncounter(emptyEncounterState(), '1', 10)
+    s = { ...s, combatants: [{ ...s.combatants[0]!, conditions: [{ id: 'condition-1', conditionId: 'poisoned', duration: 3 }] }] }
+    loadEncounterStateMock.mockResolvedValue(s)
+
+    const result = await applyEncounterAction('5', '7', { type: 'tick-condition', characterId: '1', conditionInstanceId: 'condition-1', delta: -1 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.encounter.turnOrder[0]?.conditions[0]?.duration).toBe(2)
+  })
+
+  it('reports condition-not-found when ticking an unmatched condition', async () => {
+    loadEncounterStateMock.mockResolvedValue(joinEncounter(emptyEncounterState(), '1', 10))
+
+    const result = await applyEncounterAction('5', '7', { type: 'tick-condition', characterId: '1', conditionInstanceId: 'condition-99', delta: -1 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('condition-not-found')
+  })
+
+  it('condition actions are blocked once the encounter has ended', async () => {
+    let s = joinEncounter(emptyEncounterState(), '1', 10)
+    s = { ...s, status: 'ended' }
+    loadEncounterStateMock.mockResolvedValue(s)
+
+    const result = await applyEncounterAction('5', '7', { type: 'apply-condition', characterId: '1', conditionId: 'poisoned' })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('encounter-ended')

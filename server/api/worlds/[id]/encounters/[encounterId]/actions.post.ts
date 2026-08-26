@@ -1,10 +1,14 @@
 // POST /api/worlds/:id/encounters/:encounterId/actions
-// { type: 'join'|'leave'|'set-initiative'|'advance'|'previous'|'end', ... }
+// { type: 'join'|'leave'|'set-initiative'|'advance'|'previous'|'end'
+//        |'apply-condition'|'remove-condition'|'tick-condition', ... }
 //
-// Encounter Management's six named operations, behind ONE route -- the same
-// "one POST route, one action-type union, all orchestration in a server
-// util" shape .../recovery.post.ts already established for
-// character-recovery.ts, applied here to encounter-actions.ts.
+// Encounter Management's operations, behind ONE route -- the same "one POST
+// route, one action-type union, all orchestration in a server util" shape
+// .../recovery.post.ts already established for character-recovery.ts,
+// applied here to encounter-actions.ts. The three Character Conditions
+// System actions (apply-condition/remove-condition/tick-condition) join the
+// same six Encounter Management already declared -- one more union member
+// each, not a second route.
 //
 // Thin by design: parse params -> validate the action shape -> call
 // server/utils/encounter-actions.ts -> translate its result into an HTTP
@@ -19,7 +23,8 @@ import { requireCapability } from '../../../../../utils/authorization'
 import { applyEncounterAction, type EncounterAction } from '../../../../../utils/encounter-actions'
 
 const ACTION_TYPES: readonly EncounterAction['type'][] = [
-  'join', 'leave', 'set-initiative', 'advance', 'previous', 'end'
+  'join', 'leave', 'set-initiative', 'advance', 'previous', 'end',
+  'apply-condition', 'remove-condition', 'tick-condition'
 ]
 
 function parseAction(body: unknown): EncounterAction | null {
@@ -49,6 +54,33 @@ function parseAction(body: unknown): EncounterAction | null {
     const initiative = Number(input.initiative)
     if (!characterId || !Number.isFinite(initiative)) return null
     return { type, characterId, initiative }
+  }
+
+  if (type === 'apply-condition') {
+    const characterId = typeof input.characterId === 'string' ? input.characterId : ''
+    const conditionId = typeof input.conditionId === 'string' ? input.conditionId : ''
+    if (!characterId || !conditionId) return null
+
+    const source = typeof input.source === 'string' ? input.source : undefined
+    if (input.duration === undefined) return { type, characterId, conditionId, ...(source ? { source } : {}) }
+    if (input.duration === null) return { type, characterId, conditionId, duration: null, ...(source ? { source } : {}) }
+    const duration = Number(input.duration)
+    if (!Number.isFinite(duration)) return null
+    return { type, characterId, conditionId, duration, ...(source ? { source } : {}) }
+  }
+
+  if (type === 'remove-condition') {
+    const characterId = typeof input.characterId === 'string' ? input.characterId : ''
+    const conditionInstanceId = typeof input.conditionInstanceId === 'string' ? input.conditionInstanceId : ''
+    return characterId && conditionInstanceId ? { type, characterId, conditionInstanceId } : null
+  }
+
+  if (type === 'tick-condition') {
+    const characterId = typeof input.characterId === 'string' ? input.characterId : ''
+    const conditionInstanceId = typeof input.conditionInstanceId === 'string' ? input.conditionInstanceId : ''
+    const delta = Number(input.delta)
+    if (!characterId || !conditionInstanceId || !Number.isFinite(delta)) return null
+    return { type, characterId, conditionInstanceId, delta }
   }
 
   return { type } as EncounterAction
@@ -82,8 +114,8 @@ export default defineEventHandler(async (event) => {
 
   if (!result.ok) {
     const statusCode =
-      result.reason === 'encounter-not-found' || result.reason === 'character-not-found' ? 404
-      : result.reason === 'invalid-initiative' ? 400
+      result.reason === 'encounter-not-found' || result.reason === 'character-not-found' || result.reason === 'condition-not-found' ? 404
+      : result.reason === 'invalid-initiative' || result.reason === 'invalid-condition' ? 400
       : 409
     throw createError({ statusCode, statusMessage: result.message })
   }

@@ -35,16 +35,39 @@
 // 0 rather than blocking the join entirely. This is a presentation-adjacent
 // convenience number, not HP math -- getting it approximately right when the
 // engine is unavailable is preferable to refusing to let combat start.
+//
+// ---------------------------------------------------------------------------
+// CONDITIONS ARE NEVER VALIDATED AGAINST THE RULES PACKAGE AT WRITE TIME
+// ---------------------------------------------------------------------------
+// Character Conditions System addition: `apply-condition`/`remove-condition`/
+// `tick-condition` are ALL pure state mutations (app/lib/encounters/encounter.ts's
+// own new functions), with no Rules Engine call in this module at all --
+// unlike Join, which needs the engine for an auto-rolled Dexterity modifier.
+// A `conditionId` is accepted as any non-empty string and stored verbatim,
+// never checked against the active Rules Package's `table:conditions.catalog`
+// (packages/eldra-dnd5e-2024/definitions.json). Two reasons, both already
+// established elsewhere in this codebase: (1) Initiative's own graceful
+// degradation above already means an Encounter must keep working with no
+// Rules Package active at all, and a hard validation gate here would
+// contradict that; (2) Inventory's own "an unresolved reference is SHOWN,
+// never rejected" posture (character-assembly.ts's `resolveInventory`) is
+// the precedent for exactly this situation -- catalog resolution belongs to
+// the READ side (server/utils/encounter-view.ts attaches a label when it
+// can), not a write-time gate that would block a DM from typing "Prone" the
+// moment before a Rules Package happens to be configured.
 
 import { randomBytes } from 'node:crypto'
 import {
   advanceTurn,
+  applyCondition,
   emptyEncounterState,
   endEncounter,
   joinEncounter,
   leaveEncounter,
   previousTurn,
+  removeCondition,
   setInitiative,
+  tickConditionDuration,
   type StoredEncounterState
 } from '../../app/lib/encounters/encounter'
 import { getDerivedCharacter } from './character-derived'
@@ -59,12 +82,17 @@ export type EncounterAction =
   | { type: 'advance' }
   | { type: 'previous' }
   | { type: 'end' }
+  | { type: 'apply-condition'; characterId: string; conditionId: string; duration?: number | null; source?: string }
+  | { type: 'remove-condition'; characterId: string; conditionInstanceId: string }
+  | { type: 'tick-condition'; characterId: string; conditionInstanceId: string; delta: number }
 
 export type EncounterActionResult =
   | { ok: true; encounter: EncounterView }
   | {
       ok: false
-      reason: 'encounter-not-found' | 'character-not-found' | 'not-in-encounter' | 'encounter-ended' | 'invalid-initiative'
+      reason:
+        | 'encounter-not-found' | 'character-not-found' | 'not-in-encounter' | 'encounter-ended'
+        | 'invalid-initiative' | 'condition-not-found' | 'invalid-condition'
       message: string
     }
 
@@ -161,6 +189,47 @@ export async function applyEncounterAction(
       next = current.status === 'ended' ? current : endEncounter(current)
       break
 
+    case 'apply-condition': {
+      if (!current.combatants.some((c) => c.characterId === action.characterId)) {
+        return { ok: false, reason: 'not-in-encounter', message: 'This character is not in the encounter' }
+      }
+      if (!action.conditionId.trim()) {
+        return { ok: false, reason: 'invalid-condition', message: 'conditionId is required' }
+      }
+      next = applyCondition(current, action.characterId, action.conditionId, {
+        duration: action.duration,
+        source: action.source
+      })
+      break
+    }
+
+    case 'remove-condition': {
+      const combatant = current.combatants.find((c) => c.characterId === action.characterId)
+      if (!combatant) {
+        return { ok: false, reason: 'not-in-encounter', message: 'This character is not in the encounter' }
+      }
+      if (!combatant.conditions.some((c) => c.id === action.conditionInstanceId)) {
+        return { ok: false, reason: 'condition-not-found', message: 'This condition is not active on this combatant' }
+      }
+      next = removeCondition(current, action.characterId, action.conditionInstanceId)
+      break
+    }
+
+    case 'tick-condition': {
+      const combatant = current.combatants.find((c) => c.characterId === action.characterId)
+      if (!combatant) {
+        return { ok: false, reason: 'not-in-encounter', message: 'This character is not in the encounter' }
+      }
+      if (!combatant.conditions.some((c) => c.id === action.conditionInstanceId)) {
+        return { ok: false, reason: 'condition-not-found', message: 'This condition is not active on this combatant' }
+      }
+      if (!Number.isFinite(action.delta)) {
+        return { ok: false, reason: 'invalid-condition', message: 'delta must be a number' }
+      }
+      next = tickConditionDuration(current, action.characterId, action.conditionInstanceId, action.delta)
+      break
+    }
+
     default: {
       const exhaustive: never = action
       return exhaustive
@@ -168,7 +237,7 @@ export async function applyEncounterAction(
   }
 
   const saved = await saveEncounterState(encounterId, next)
-  const view = await buildEncounterView(entity as EncounterEntity, saved)
+  const view = await buildEncounterView(worldId, entity as EncounterEntity, saved)
 
   return { ok: true, encounter: view }
 }

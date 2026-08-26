@@ -1788,6 +1788,37 @@
     "default": { "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 }
   },
   {
+    "id": "table:conditions.catalog",
+    "kind": "table",
+    "category": "conditions",
+    "label": "Conditions",
+    "key": {
+      "valueType": "text",
+      "match": "exact"
+    },
+    "columns": [
+      { "key": "label", "valueType": "text" }
+    ],
+    "rows": [
+      { "key": "blinded", "label": "Blinded" },
+      { "key": "charmed", "label": "Charmed" },
+      { "key": "deafened", "label": "Deafened" },
+      { "key": "exhaustion", "label": "Exhaustion" },
+      { "key": "frightened", "label": "Frightened" },
+      { "key": "grappled", "label": "Grappled" },
+      { "key": "incapacitated", "label": "Incapacitated" },
+      { "key": "invisible", "label": "Invisible" },
+      { "key": "paralyzed", "label": "Paralyzed" },
+      { "key": "petrified", "label": "Petrified" },
+      { "key": "poisoned", "label": "Poisoned" },
+      { "key": "prone", "label": "Prone" },
+      { "key": "restrained", "label": "Restrained" },
+      { "key": "stunned", "label": "Stunned" },
+      { "key": "unconscious", "label": "Unconscious" }
+    ],
+    "default": { "label": "" }
+  },
+  {
     "id": "value:combat.melee_attack_bonus",
     "kind": "value",
     "category": "combat",

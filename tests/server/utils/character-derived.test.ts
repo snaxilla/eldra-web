@@ -205,6 +205,7 @@ describe('getDerivedCharacter -- tables (Spellcasting System)', () => {
       'table:ability.point_buy_cost',
       'table:ability.standard_array',
       'table:advancement.experience',
+      'table:conditions.catalog',
       'table:spellcasting.slots_full',
       'table:spellcasting.slots_half',
       'table:spellcasting.slots_pact'

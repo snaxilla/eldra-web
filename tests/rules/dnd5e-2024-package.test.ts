@@ -340,6 +340,25 @@ describe('Melee and Ranged Attack Bonus (Character Actions System)', () => {
   })
 })
 
+describe('condition catalog (Character Conditions System, reference data -- never evaluated)', () => {
+  it('declares all fifteen SRD 2024 conditions, keyed by slug', () => {
+    const { manifest, definitions } = loadPackage()
+    const built = RulesRegistry.create(manifest, definitions)
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+
+    const table = built.registry.getById('table:conditions.catalog') as { rows: Array<{ key: string; label: string }> }
+    const keys = table.rows.map((row) => row.key).sort()
+
+    expect(keys).toEqual([
+      'blinded', 'charmed', 'deafened', 'exhaustion', 'frightened', 'grappled',
+      'incapacitated', 'invisible', 'paralyzed', 'petrified', 'poisoned',
+      'prone', 'restrained', 'stunned', 'unconscious'
+    ])
+    expect(table.rows.every((row) => row.label.length > 0)).toBe(true)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // 3. It respects its own boundaries
 // ---------------------------------------------------------------------------

@@ -768,14 +768,31 @@ async function onResolveAction(payload: { actionId: string; targetCharacterId: s
 // the DM's own encounter page does, and emits the same
 // { type: 'join' | 'leave' } intent to the same
 // POST .../encounters/:id/actions (server/utils/encounter-actions.ts).
+//
+// Character Conditions System addition: "Display: Active Conditions,
+// Duration, Source. Allow: Apply, Remove, Tick duration" (this task's own
+// CHARACTER SHEET section) -- scoped to THIS character's own conditions
+// within the selected encounter, the same apply/remove/tick intents the
+// DM's own encounter page sends, to the same action route.
 // ---------------------------------------------------------------------------
+
+type EncounterConditionView = {
+  id: string
+  conditionId: string
+  label: string
+  duration: number | null
+  source?: string
+}
 
 type EncounterCombatantView = {
   characterId: string
   characterTitle: string
   initiative: number
   isCurrentTurn: boolean
+  conditions: EncounterConditionView[]
 }
+
+type EncounterConditionOption = { id: string; label: string }
 
 type EncounterView = {
   id: string
@@ -784,6 +801,7 @@ type EncounterView = {
   round: number
   turnOrder: EncounterCombatantView[]
   currentCombatant: EncounterCombatantView | null
+  availableConditions: EncounterConditionOption[]
 }
 
 const { data: availableEncounters } = await useFetch<Array<{ id: string | number; title: string }>>(
@@ -840,6 +858,58 @@ async function joinOrLeaveEncounter(type: 'join' | 'leave') {
   } finally {
     encounterPending.value = false
   }
+}
+
+// --- Conditions -- this character's own combatant record only -----------
+
+const myCombatant = computed(() =>
+  encounterView.value?.turnOrder.find((c) => c.characterId === characterId.value) ?? null
+)
+
+const conditionDraft = reactive({ conditionId: '', duration: '', source: '' })
+
+async function sendEncounterAction(body: Record<string, unknown>) {
+  if (!selectedEncounterId.value || encounterPending.value) return
+  encounterPending.value = true
+  encounterError.value = ''
+
+  try {
+    const result = await $fetch<{ ok: true; encounter: EncounterView }>(
+      `/api/worlds/${worldId.value}/encounters/${selectedEncounterId.value}/actions`,
+      { method: 'POST', body }
+    )
+    encounterView.value = result.encounter
+  } catch (fetchError: any) {
+    encounterError.value = fetchError?.data?.statusMessage || fetchError?.statusMessage || 'Could not update this encounter'
+  } finally {
+    encounterPending.value = false
+  }
+}
+
+function applyMyCondition() {
+  if (!conditionDraft.conditionId) return
+  const parsedDuration = Number(conditionDraft.duration)
+  const duration = conditionDraft.duration.trim() && Number.isFinite(parsedDuration) ? parsedDuration : undefined
+
+  sendEncounterAction({
+    type: 'apply-condition',
+    characterId: characterId.value,
+    conditionId: conditionDraft.conditionId,
+    ...(duration !== undefined ? { duration } : {}),
+    ...(conditionDraft.source.trim() ? { source: conditionDraft.source.trim() } : {})
+  })
+
+  conditionDraft.conditionId = ''
+  conditionDraft.duration = ''
+  conditionDraft.source = ''
+}
+
+function removeMyCondition(conditionInstanceId: string) {
+  sendEncounterAction({ type: 'remove-condition', characterId: characterId.value, conditionInstanceId })
+}
+
+function tickMyCondition(conditionInstanceId: string, delta: number) {
+  sendEncounterAction({ type: 'tick-condition', characterId: characterId.value, conditionInstanceId, delta })
 }
 
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
@@ -1241,6 +1311,114 @@ const identityRows = computed(() =>
               >
                 Leave Encounter
               </button>
+
+              <!-- Conditions: this character's own only. Display, Remove,
+                   Tick duration -- no automation, a duration reaching zero
+                   is shown, never auto-cleared. -->
+              <div
+                v-if="isInSelectedEncounter"
+                class="mt-4 border-t border-[rgba(201,164,90,0.14)] pt-4"
+              >
+                <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Conditions</span>
+
+                <p
+                  v-if="!myCombatant?.conditions.length"
+                  class="mt-2 text-sm text-[#9f9278]"
+                >
+                  None active.
+                </p>
+
+                <div
+                  v-else
+                  class="mt-2 grid gap-1.5"
+                >
+                  <div
+                    v-for="condition in myCombatant!.conditions"
+                    :key="condition.id"
+                    class="flex flex-wrap items-center justify-between gap-2 text-xs"
+                  >
+                    <span class="text-[#d8ceb8]">
+                      <span class="eldra-gold-chip rounded-none border px-2 py-0.5 uppercase tracking-[0.06em]">{{ condition.label }}</span>
+                      <span
+                        v-if="condition.source"
+                        class="ml-2 text-[#6f6754]"
+                      >from {{ condition.source }}</span>
+                    </span>
+
+                    <div class="flex shrink-0 items-center gap-1">
+                      <template v-if="condition.duration !== null">
+                        <button
+                          type="button"
+                          class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-[#d8ceb8] disabled:opacity-50"
+                          :disabled="encounterPending"
+                          @click="tickMyCondition(condition.id, -1)"
+                        >
+                          −
+                        </button>
+                        <span class="min-w-6 text-center tabular-nums text-[#fff7df]">{{ condition.duration }}</span>
+                        <button
+                          type="button"
+                          class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-[#d8ceb8] disabled:opacity-50"
+                          :disabled="encounterPending"
+                          @click="tickMyCondition(condition.id, 1)"
+                        >
+                          +
+                        </button>
+                      </template>
+                      <button
+                        type="button"
+                        class="min-h-11 rounded-none border border-red-500/20 bg-red-500/10 px-2 text-red-200 disabled:opacity-50"
+                        :disabled="encounterPending"
+                        @click="removeMyCondition(condition.id)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="encounterView.status !== 'ended'"
+                  class="mt-3 grid gap-2"
+                >
+                  <input
+                    v-model="conditionDraft.conditionId"
+                    list="my-condition-catalog-options"
+                    placeholder="Apply condition…"
+                    class="eldra-input min-h-11 rounded-none px-3 py-2 text-xs"
+                  >
+                  <datalist id="my-condition-catalog-options">
+                    <option
+                      v-for="option in encounterView.availableConditions"
+                      :key="option.id"
+                      :value="option.id"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </datalist>
+                  <div class="grid grid-cols-2 gap-2">
+                    <input
+                      v-model="conditionDraft.duration"
+                      inputmode="numeric"
+                      placeholder="Duration"
+                      class="eldra-input min-h-11 rounded-none px-3 py-2 text-xs"
+                    >
+                    <input
+                      v-model="conditionDraft.source"
+                      placeholder="Source (optional)"
+                      class="eldra-input min-h-11 rounded-none px-3 py-2 text-xs"
+                    >
+                  </div>
+                  <button
+                    type="button"
+                    class="eldra-button min-h-11 rounded-none px-3 text-xs font-semibold disabled:opacity-50"
+                    :disabled="encounterPending || !conditionDraft.conditionId"
+                    @click="applyMyCondition"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
             </template>
           </div>
         </section>

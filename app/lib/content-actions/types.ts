@@ -24,6 +24,26 @@
 // ContentAction is resolved -- this module knows nothing about a character's
 // ability scores or proficiency bonus, only about what a piece of content
 // says an action does.
+//
+// ---------------------------------------------------------------------------
+// `resolution`/`damageRoll`/`damageType` -- COMBAT RESOLUTION SYSTEM ADDITION
+// ---------------------------------------------------------------------------
+// Still presentation, not rules, by the same test the fields above already
+// pass: `resolution` restates a FACT the book already prints ("this spell
+// forces a Dexterity saving throw", "this weapon is a ranged attack"), never
+// a computed outcome -- no roll happens here, no hit is decided, no HP
+// changes. `damageRoll` is the STRUCTURED counterpart of the already-existing
+// presentation-only `damage` STRING immediately below: the string is what a
+// player reads ("1d8 slashing"), the struct is what
+// server/utils/character-combat.ts rolls when a player asks it to resolve
+// this action -- kept separate on purpose, the same way a RuleValue and its
+// display text are already two different things everywhere else in this
+// codebase. Absent for any action with nothing to resolve (a passive Species
+// trait, Shield's self-only reaction, a Class Feature with no rules text) --
+// Combat Resolution has nothing to do with those, and a consumer offering a
+// "Resolve" control reads this field's absence to know not to.
+
+import type { AbilityKey } from '../characters/ability-scores'
 
 // The catalogue category raw content comes from -- what a resolver is asked
 // to translate. Matches the catalogue categories world-content-catalogue.ts
@@ -39,6 +59,19 @@ export type ContentSourceCategory = 'item' | 'spell' | 'species' | 'class' | 'ba
 // ('item' input only ever produces a 'weapon' action or no action at all --
 // most items are not weapons).
 export type ActionCategory = 'weapon' | 'unarmed' | 'spell' | 'species' | 'class' | 'background'
+
+// Which RAW mechanic resolves this action, and the one piece of information
+// each mechanic needs beyond what the Rules Engine already derives.
+// 'attack-roll': d20 + the relevant Attack Bonus vs the target's Armor
+// Class -- `attackKind` says WHICH Attack Bonus (melee/ranged weapon Attack
+// Bonus, or Spell Attack Bonus), all three already Rules Engine output.
+// 'saving-throw': the TARGET rolls d20 + their own save bonus for
+// `savingAbility` against this action's Spell Save DC -- the target's save
+// bonus (`value:save.<key>.bonus`) is also already Rules Engine output, for
+// the target's own character.
+export type ActionResolution =
+  | { kind: 'attack-roll'; attackKind: 'melee' | 'ranged' | 'spell' }
+  | { kind: 'saving-throw'; savingAbility: AbilityKey }
 
 export type ContentAction = {
   name: string
@@ -56,6 +89,17 @@ export type ContentAction = {
   // granted level, a limited-use trait's recharge. Absent, never invented.
   usage?: string
   sourceBook?: string
+  // See this file's own header note on the three fields below.
+  resolution?: ActionResolution
+  // The dice `damage` (above) is the presentation of, ready to roll --
+  // absent whenever `damage` itself is (no dice stated, or a flat,
+  // non-dice expression like Unarmed Strike's, which
+  // server/utils/character-actions.ts handles as its own special case
+  // rather than forcing a `{count:1,faces:1}` fiction here).
+  damageRoll?: { count: number; faces: number }
+  // The word a damage total is reported in -- "slashing", "fire". Absent
+  // exactly when `damageRoll` is.
+  damageType?: string
 }
 
 // One game system's translation of raw Content Pack `data` into the actions

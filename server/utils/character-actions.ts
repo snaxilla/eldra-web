@@ -99,12 +99,20 @@ function actionsFromSlot(slot: CharacterAssemblySlot, category: ActionCategory):
   return (slot.entry as { actions?: ContentAction[] }).actions ?? []
 }
 
+// `resolution` is present (it IS an attack roll) but `damageRoll` is not --
+// RAW 2024 Unarmed Strike damage is a FLAT "1 + Strength modifier", never
+// dice, so there is nothing for `damageRoll` (a dice payload) to hold.
+// server/utils/character-combat.ts special-cases `category === 'unarmed'`
+// for exactly this reason, the one piece of Combat Resolution genuinely
+// specific to this one synthesized action rather than generic across every
+// `damageRoll`-carrying action.
 const UNARMED_STRIKE: ContentAction = {
   name: 'Unarmed Strike',
   category: 'unarmed',
   actionType: 'Melee Attack',
   range: '5 ft.',
-  damage: '1 + Strength modifier bludgeoning'
+  damage: '1 + Strength modifier bludgeoning',
+  resolution: { kind: 'attack-roll', attackKind: 'melee' }
 }
 
 export async function getCharacterActions(

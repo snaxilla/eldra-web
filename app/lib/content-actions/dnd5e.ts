@@ -39,13 +39,20 @@
 // every class feature is surfaced uniformly as `actionType: 'Feature'`,
 // honestly labelled rather than sorted by a guess.
 //
-// SPELL DAMAGE EXPRESSIONS. A spell's damage dice ("{@damage 8d6}") are
-// embedded inside its free-form `entries` prose, not a structured field --
-// unlike a weapon's `dmg1`, there is no reliable extraction point. Rather
-// than regex-scrape prose for a dice pattern (fragile, and wrong for spells
-// with multiple damage rolls or none), a spell's full `description` already
-// carries this same information in the pack's own words; `damage` is left
-// absent for every spell action, an honest omission over an invented one.
+// SPELL DAMAGE *PRESENTATION*. A spell's damage dice are embedded inside its
+// free-form `entries` prose alongside everything else the spell does, not a
+// standalone printed line the way a weapon's `dmg1` is -- so the
+// presentation-only `damage` field (a short summary string) stays absent for
+// every spell action, an honest omission over an invented one; the full
+// `description` already carries the same information in the pack's own
+// words. `damageRoll` (Combat Resolution System addition, below) is a
+// DIFFERENT, narrower extraction: 5etools tags damage dice specifically with
+// a `{@damage NdM}` markup tag (distinct from `{@dice}`, which marks
+// non-damage rolls like healing) -- a reliable, targeted signal, not prose-
+// scraping, and the FIRST such tag in a spell's base `entries` (never its
+// `entriesHigherLevel` scaling text) is this action's base damage. A spell
+// with no `{@damage}` tag at all -- Cure Wounds heals, Shield grants no
+// damage -- correctly carries no `damageRoll`.
 //
 // BACKGROUND ACTIONS. A 2024 Background grants an Origin Feat by name only
 // (content-rules/dnd5e-2024.ts's own header: "Origin Feats need feat
@@ -62,7 +69,8 @@ import {
   readPrintedItem,
   sectionsFromEntries
 } from '../content-presentation/dnd5e'
-import type { ContentAction, ContentSourceCategory } from './types'
+import type { AbilityKey } from '../characters/ability-scores'
+import type { ActionResolution, ContentAction, ContentSourceCategory } from './types'
 
 function sourceBookOf(raw: Record<string, unknown>): string | undefined {
   return raw.source ? String(raw.source) : undefined
@@ -80,6 +88,22 @@ const DAMAGE_TYPE_LABELS: Record<string, string> = {
 // ("V|XPHB") -- the code itself is the first segment.
 function propertyCode(entry: unknown): string {
   return String(entry ?? '').split('|')[0] ?? ''
+}
+
+// "1d8" -> {count:1, faces:8}. Used for a weapon's own `dmg1` (a clean,
+// already-structured field -- no markup, no prose) and, separately, for the
+// payload of a spell's `{@damage NdM}` tag once extracted from prose (see
+// extractDamageDice below). Returns undefined for anything that is not
+// exactly `<int>d<int>` -- a modifier-bearing expression ("1d8+2") is
+// refused rather than silently dropping the "+2", since this codebase's own
+// weapon fixtures (dmg1) and spell `{@damage}` payloads never carry one.
+function parseDiceExpression(text: string): { count: number; faces: number } | undefined {
+  const match = /^(\d+)d(\d+)$/.exec(text.trim())
+  if (!match) return undefined
+  const count = Number(match[1])
+  const faces = Number(match[2])
+  if (!Number.isInteger(count) || count <= 0 || !Number.isInteger(faces) || faces <= 0) return undefined
+  return { count, faces }
 }
 
 function resolveWeaponAction(raw: Record<string, unknown>): ContentAction | null {
@@ -105,12 +129,23 @@ function resolveWeaponAction(raw: Record<string, unknown>): ContentAction | null
   let damage = dmg1 ? `${dmg1}${dmgTypeLabel ? ` ${dmgTypeLabel}` : ''}` : undefined
   if (damage && dmg2) damage += ` (${dmg2} versatile, two-handed)`
 
+  // Thrown weapons resolve as melee -- the same collapse `actionType`
+  // ("Melee or Thrown Attack") already makes: this action model has one row
+  // per weapon, not two, and Combat Resolution needs exactly one
+  // `attackKind` to pick a Rules Engine Attack Bonus with.
+  const resolution: ActionResolution | undefined = dmg1
+    ? { kind: 'attack-roll', attackKind: isRanged ? 'ranged' : 'melee' }
+    : undefined
+
   return {
     name: cleanText(raw.name),
     category: 'weapon',
     actionType,
     range,
     damage,
+    damageRoll: dmg1 ? parseDiceExpression(dmg1) : undefined,
+    damageType: dmg1 ? dmgTypeLabel || undefined : undefined,
+    resolution,
     sourceBook: sourceBookOf(raw)
   }
 }
@@ -155,6 +190,53 @@ function describeSpellTime(time: unknown): string | undefined {
   return condition ? `${label} (${condition})` : label
 }
 
+// 5etools' `savingThrow` array names the ability in full ("dexterity"); the
+// Rules Engine's own Definition ids use the three-letter key ("dex") --
+// packages/eldra-dnd5e-2024/definitions.json's own `value:save.<key>.bonus`
+// family. A spell offering more than one saving throw ability (rare, and
+// none of XPHB's measured rows do) takes the first -- a stated
+// simplification, matching this codebase's own posture on the rest.
+const SAVING_THROW_ABILITY_KEYS: Record<string, AbilityKey> = {
+  strength: 'str', dexterity: 'dex', constitution: 'con',
+  intelligence: 'int', wisdom: 'wis', charisma: 'cha'
+}
+
+function resolveSpellResolution(raw: Record<string, unknown>): ActionResolution | undefined {
+  // `spellAttack` ('M'|'R', 5etools) always wins when a spell somehow
+  // carries both -- none of XPHB's measured rows do, but a spell attack and
+  // a saving throw are mutually exclusive mechanics, so a definite answer is
+  // preferred over silently picking one at random via object key order.
+  const spellAttack = asArray(raw.spellAttack)[0]
+  if (typeof spellAttack === 'string') {
+    return { kind: 'attack-roll', attackKind: 'spell' }
+  }
+
+  const savingThrow = asArray(raw.savingThrow)[0]
+  if (typeof savingThrow === 'string') {
+    const ability = SAVING_THROW_ABILITY_KEYS[savingThrow.toLowerCase()]
+    if (ability) return { kind: 'saving-throw', savingAbility: ability }
+  }
+
+  return undefined
+}
+
+// A spell's damage dice are TAGGED, not merely mentioned -- 5etools marks
+// them `{@damage NdM ...}` specifically (as opposed to `{@dice NdM}` for a
+// non-damage roll like healing), a reliable, narrow signal this function
+// reads directly rather than through `cleanText`/`flattenEntries` (which
+// intentionally throw the tag identity away, keeping only display text --
+// see this file's header). Only the spell's BASE `entries` are scanned,
+// never `entriesHigherLevel`'s upcast scaling text, and only the FIRST tag
+// found -- a stated simplification for the rare multi-damage-roll spell,
+// matching this codebase's own posture elsewhere in this file.
+const DAMAGE_TAG_PATTERN = /\{@damage\s+(\d+d\d+)/
+
+function extractDamageDice(entries: unknown): { count: number; faces: number } | undefined {
+  const text = JSON.stringify(entries ?? '')
+  const match = DAMAGE_TAG_PATTERN.exec(text)
+  return match ? parseDiceExpression(match[1]!) : undefined
+}
+
 function resolveSpellAction(raw: Record<string, unknown>): ContentAction | null {
   const name = cleanText(raw.name)
   if (!name) return null
@@ -162,6 +244,7 @@ function resolveSpellAction(raw: Record<string, unknown>): ContentAction | null 
   const level = typeof raw.level === 'number' ? raw.level : 0
   const levelLabel = level === 0 ? 'Cantrip' : `Level ${level} Spell`
   const school = SCHOOL_LABELS[String(raw.school)]
+  const damageInflict = asArray(raw.damageInflict)[0]
 
   return {
     name,
@@ -170,6 +253,9 @@ function resolveSpellAction(raw: Record<string, unknown>): ContentAction | null 
     range: describeSpellRange(raw.range),
     usage: describeSpellTime(raw.time),
     description: flattenEntries(raw.entries).join(' ') || undefined,
+    resolution: resolveSpellResolution(raw),
+    damageRoll: extractDamageDice(raw.entries),
+    damageType: typeof damageInflict === 'string' ? damageInflict : undefined,
     sourceBook: sourceBookOf(raw)
   }
 }

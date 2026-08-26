@@ -208,7 +208,7 @@ import {
   type StoredSpellEntry
 } from '~/lib/characters/spellcasting'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
-import CharacterActionsPanel, { type CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
+import CharacterActionsPanel, { type CharacterAction, type CombatOutcome } from '~/components/characters/CharacterActionsPanel.vue'
 import { DERIVED_SHEET_REGIONS, findDerivedBoolean, findDerivedNumber, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
@@ -716,6 +716,48 @@ const actionsUnavailableMessage = computed(() => {
   return response.message || ''
 })
 
+// ---------------------------------------------------------------------------
+// Combat Resolution -- one attacker (this character), one action, one
+// target. The target list reuses GET .../entities, the same World-character
+// roster the Characters list page already fetches (`lazy` for the same
+// reason `catalogue` above is: never delay the Sheet itself on it).
+// ---------------------------------------------------------------------------
+
+const { data: worldEntities } = await useFetch<{ data?: Array<{ id: string | number; title?: string }> }>(
+  () => `/api/worlds/${worldId.value}/entities?summary=1&type=character,npc,npc_sheet,pc,player_character`,
+  { lazy: true }
+)
+
+const combatTargetOptions = computed(() =>
+  (worldEntities.value?.data ?? [])
+    .filter((entity) => String(entity.id) !== characterId.value)
+    .map((entity) => ({ id: String(entity.id), title: entity.title || `Character ${entity.id}` }))
+)
+
+const combatResults = ref<Record<string, CombatOutcome>>({})
+const combatResolving = ref(false)
+const combatError = ref('')
+
+async function onResolveAction(payload: { actionId: string; targetCharacterId: string }) {
+  if (combatResolving.value) return
+
+  combatResolving.value = true
+  combatError.value = ''
+
+  try {
+    const result = await $fetch<CombatOutcome & { ok: true }>(
+      `/api/worlds/${worldId.value}/characters/${characterId.value}/combat`,
+      { method: 'POST', body: payload }
+    )
+    combatResults.value = { ...combatResults.value, [payload.actionId]: result }
+  } catch (resolveError: any) {
+    combatError.value =
+      resolveError?.data?.statusMessage || resolveError?.statusMessage || 'Failed to resolve this action'
+  } finally {
+    combatResolving.value = false
+  }
+}
+
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
   class: 'Class',
@@ -1021,8 +1063,11 @@ const identityRows = computed(() =>
           </div>
         </section>
 
-        <!-- Actions: "what can my character do?" -- read-only, no editing
-             surface. See CharacterActionsPanel.vue's own header for why. -->
+        <!-- Actions: "what can my character do?", and now "execute one
+             against one target" -- this character's own state is never
+             edited here (Combat Resolution mutates the TARGET's HP, not
+             this character's own stored data). See CharacterActionsPanel.vue's
+             own header for why. -->
         <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
           <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
             Actions
@@ -1032,7 +1077,11 @@ const identityRows = computed(() =>
             <CharacterActionsPanel
               :actions="characterActions"
               :pending="actionsPending"
-              :error-message="actionsUnavailableMessage"
+              :error-message="actionsUnavailableMessage || combatError"
+              :target-options="combatTargetOptions"
+              :results="combatResults"
+              :resolving="combatResolving"
+              @resolve="onResolveAction"
             />
           </div>
         </section>

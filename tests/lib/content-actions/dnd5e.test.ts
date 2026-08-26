@@ -88,9 +88,62 @@ describe('resolveDnd5eActions -- spells', () => {
     expect(action.usage).toContain('hit by an attack roll')
   })
 
-  it('never fabricates a damage expression -- absent even for a damaging spell', () => {
+  it('never fabricates a presentation-only damage expression -- absent even for a damaging spell', () => {
     const [action] = resolveDnd5eActions('spell', xphb.spells.Fireball)
     expect(action.damage).toBeUndefined()
+  })
+})
+
+describe('resolveDnd5eActions -- Combat Resolution System (resolution/damageRoll/damageType)', () => {
+  it('a melee weapon resolves as a melee attack roll, with dice and damage type', () => {
+    const [action] = resolveDnd5eActions('item', xphb.items.Longsword)
+    expect(action.resolution).toEqual({ kind: 'attack-roll', attackKind: 'melee' })
+    expect(action.damageRoll).toEqual({ count: 1, faces: 8 })
+    expect(action.damageType).toBe('slashing')
+  })
+
+  it('a ranged weapon resolves as a ranged attack roll', () => {
+    const [action] = resolveDnd5eActions('item', xphb.items.Longbow)
+    expect(action.resolution).toEqual({ kind: 'attack-roll', attackKind: 'ranged' })
+    expect(action.damageRoll).toEqual({ count: 1, faces: 8 })
+  })
+
+  it('a thrown melee weapon resolves as melee, not ranged -- one row, one attackKind', () => {
+    const [action] = resolveDnd5eActions('item', xphb.items.Dagger)
+    expect(action.resolution).toEqual({ kind: 'attack-roll', attackKind: 'melee' })
+    expect(action.damageRoll).toEqual({ count: 1, faces: 4 })
+  })
+
+  it('an attack-roll spell resolves as a spell attack, regardless of melee/ranged spellAttack code', () => {
+    // Fire Bolt is a Ranged Spell Attack ('R') -- Combat Resolution reads
+    // ONE Spell Attack Bonus regardless (character-derived.ts's own
+    // `value:spellcasting.attack_bonus` does not distinguish melee/ranged),
+    // so `attackKind: 'spell'` is correct and sufficient either way.
+    const [action] = resolveDnd5eActions('spell', xphb.spells['Fire Bolt'])
+    expect(action.resolution).toEqual({ kind: 'attack-roll', attackKind: 'spell' })
+    expect(action.damageRoll).toBeDefined()
+  })
+
+  it('a saving-throw spell extracts its damage dice from the {@damage} tag and its saving ability', () => {
+    const [action] = resolveDnd5eActions('spell', xphb.spells.Fireball)
+    expect(action.resolution).toEqual({ kind: 'saving-throw', savingAbility: 'dex' })
+    expect(action.damageRoll).toEqual({ count: 8, faces: 6 })
+    expect(action.damageType).toBe('fire')
+  })
+
+  it('a healing spell with no {@damage} tag and no save/attack has no resolution and no damage roll', () => {
+    const [action] = resolveDnd5eActions('spell', xphb.spells['Cure Wounds'])
+    expect(action.resolution).toBeUndefined()
+    expect(action.damageRoll).toBeUndefined()
+  })
+
+  it('a self-only reaction spell with neither save nor attack has no resolution', () => {
+    const [action] = resolveDnd5eActions('spell', xphb.spells.Shield)
+    expect(action.resolution).toBeUndefined()
+  })
+
+  it('a non-weapon item has no resolution at all -- resolveDnd5eActions already returns [] for it', () => {
+    expect(resolveDnd5eActions('item', { name: 'Rope', source: 'XPHB' })).toEqual([])
   })
 })
 

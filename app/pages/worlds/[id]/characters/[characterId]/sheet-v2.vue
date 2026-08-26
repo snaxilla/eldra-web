@@ -758,6 +758,90 @@ async function onResolveAction(payload: { actionId: string; targetCharacterId: s
   }
 }
 
+// ---------------------------------------------------------------------------
+// Encounter -- Encounter Management System addition. "Show encounter
+// status. Show whose turn it is. Provide: Join Encounter, Leave Encounter,
+// Resolve Action" (this task's own CHARACTER SHEET section) -- Resolve
+// Action is the Actions panel above, unchanged. This section performs no
+// turn-order/round computation of its own: it fetches
+// GET .../encounters/:id (server/utils/encounter-view.ts) exactly the way
+// the DM's own encounter page does, and emits the same
+// { type: 'join' | 'leave' } intent to the same
+// POST .../encounters/:id/actions (server/utils/encounter-actions.ts).
+// ---------------------------------------------------------------------------
+
+type EncounterCombatantView = {
+  characterId: string
+  characterTitle: string
+  initiative: number
+  isCurrentTurn: boolean
+}
+
+type EncounterView = {
+  id: string
+  title: string
+  status: 'active' | 'ended'
+  round: number
+  turnOrder: EncounterCombatantView[]
+  currentCombatant: EncounterCombatantView | null
+}
+
+const { data: availableEncounters } = await useFetch<Array<{ id: string | number; title: string }>>(
+  () => `/api/worlds/${worldId.value}/entities?type=encounter&summary=1`,
+  { default: () => [], lazy: true }
+)
+
+const selectedEncounterId = ref('')
+const encounterView = ref<EncounterView | null>(null)
+const encounterPending = ref(false)
+const encounterError = ref('')
+
+const isInSelectedEncounter = computed(() =>
+  encounterView.value?.turnOrder.some((c) => c.characterId === characterId.value) ?? false
+)
+
+async function loadEncounterView() {
+  if (!selectedEncounterId.value) {
+    encounterView.value = null
+    return
+  }
+
+  encounterPending.value = true
+  encounterError.value = ''
+
+  try {
+    const result = await $fetch<{ available: true; encounter: EncounterView } | { available: false }>(
+      `/api/worlds/${worldId.value}/encounters/${selectedEncounterId.value}`
+    )
+    encounterView.value = result.available ? result.encounter : null
+  } catch (fetchError: any) {
+    encounterError.value = fetchError?.data?.statusMessage || fetchError?.statusMessage || 'Could not load this encounter'
+  } finally {
+    encounterPending.value = false
+  }
+}
+
+watch(selectedEncounterId, loadEncounterView)
+
+async function joinOrLeaveEncounter(type: 'join' | 'leave') {
+  if (!selectedEncounterId.value || encounterPending.value) return
+
+  encounterPending.value = true
+  encounterError.value = ''
+
+  try {
+    const result = await $fetch<{ ok: true; encounter: EncounterView }>(
+      `/api/worlds/${worldId.value}/encounters/${selectedEncounterId.value}/actions`,
+      { method: 'POST', body: { type, characterId: characterId.value } }
+    )
+    encounterView.value = result.encounter
+  } catch (fetchError: any) {
+    encounterError.value = fetchError?.data?.statusMessage || fetchError?.statusMessage || 'Could not update this encounter'
+  } finally {
+    encounterPending.value = false
+  }
+}
+
 const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
   class: 'Class',
@@ -1083,6 +1167,81 @@ const identityRows = computed(() =>
               :resolving="combatResolving"
               @resolve="onResolveAction"
             />
+          </div>
+        </section>
+
+        <!-- Encounter: status, whose turn it is, Join/Leave -- Resolve
+             Action is the Actions panel above, unchanged. See this file's
+             own ENCOUNTER header note. -->
+        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
+          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+            Encounter
+          </div>
+
+          <div class="mt-4">
+            <label class="block">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Encounter</span>
+              <select
+                v-model="selectedEncounterId"
+                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+              >
+                <option
+                  value=""
+                  class="bg-[#090909]"
+                >
+                  No encounter selected
+                </option>
+                <option
+                  v-for="option in availableEncounters"
+                  :key="option.id"
+                  :value="String(option.id)"
+                  class="bg-[#090909]"
+                >
+                  {{ option.title }}
+                </option>
+              </select>
+            </label>
+
+            <p
+              v-if="encounterError"
+              class="mt-3 rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
+            >
+              {{ encounterError }}
+            </p>
+
+            <template v-if="encounterView">
+              <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Round</span>
+                  <div class="text-lg font-semibold tabular-nums text-[#fff7df]">{{ encounterView.round }}</div>
+                </div>
+                <div>
+                  <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Current Turn</span>
+                  <div class="text-lg font-semibold text-[#fff7df]">
+                    {{ encounterView.currentCombatant?.characterTitle ?? '—' }}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                v-if="!isInSelectedEncounter"
+                type="button"
+                class="eldra-button mt-3 min-h-11 w-full rounded-none px-3 text-sm font-semibold disabled:opacity-50"
+                :disabled="encounterPending || encounterView.status === 'ended'"
+                @click="joinOrLeaveEncounter('join')"
+              >
+                Join Encounter
+              </button>
+              <button
+                v-else
+                type="button"
+                class="mt-3 min-h-11 w-full rounded-none border border-red-500/20 bg-red-500/10 px-3 text-sm text-red-200 disabled:opacity-50"
+                :disabled="encounterPending"
+                @click="joinOrLeaveEncounter('leave')"
+              >
+                Leave Encounter
+              </button>
+            </template>
           </div>
         </section>
 

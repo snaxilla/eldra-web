@@ -35,7 +35,73 @@ function toggleWorkspaceSidebar() {
   leftCollapsed.value = !leftCollapsed.value
 }
 
+// Phase 0 (Beautification Pass): below `md`, WorldWorkspaceSidebar leaves
+// grid flow and becomes an off-canvas overlay drawer. This state is
+// intentionally a plain `ref`, not `useState` -- unlike `leftCollapsed`
+// (a desktop layout preference worth remembering across navigation), the
+// mobile drawer's open/closed state is a transient per-page interaction:
+// every route change closes it below, matching how off-canvas nav in any
+// mobile app behaves. `leftCollapsed` itself is untouched and still governs
+// desktop's collapsed-vs-expanded width exactly as before.
+const mobileDrawerOpen = ref(false)
+const hamburgerButtonRef = ref<HTMLButtonElement | null>(null)
+const mobileDrawerRef = ref<HTMLElement | null>(null)
 
+function openMobileDrawer() {
+  mobileDrawerOpen.value = true
+}
+
+function closeMobileDrawer() {
+  if (!mobileDrawerOpen.value) return
+  mobileDrawerOpen.value = false
+  hamburgerButtonRef.value?.focus()
+}
+
+watch(() => route.path, () => {
+  mobileDrawerOpen.value = false
+})
+
+function onMobileDrawerKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeMobileDrawer()
+  }
+}
+
+let breakpointQuery: MediaQueryList | null = null
+function onBreakpointChange(query: MediaQueryList | MediaQueryListEvent) {
+  // A drawer left open through a resize/rotation past `md` would otherwise
+  // strand the scroll lock below with no visible way to dismiss it, since
+  // the hamburger/backdrop are both `md:hidden`.
+  if (query.matches) mobileDrawerOpen.value = false
+}
+
+watch(mobileDrawerOpen, (open) => {
+  if (!import.meta.client) return
+  document.documentElement.classList.toggle('overflow-hidden', open)
+  if (open) {
+    window.addEventListener('keydown', onMobileDrawerKeydown)
+    nextTick(() => {
+      mobileDrawerRef.value?.querySelector<HTMLElement>('[data-drawer-close]')?.focus()
+    })
+  } else {
+    window.removeEventListener('keydown', onMobileDrawerKeydown)
+  }
+})
+
+onMounted(() => {
+  if (!import.meta.client) return
+  breakpointQuery = window.matchMedia('(min-width: 768px)')
+  onBreakpointChange(breakpointQuery)
+  breakpointQuery.addEventListener('change', onBreakpointChange)
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+  breakpointQuery?.removeEventListener('change', onBreakpointChange)
+  window.removeEventListener('keydown', onMobileDrawerKeydown)
+  document.documentElement.classList.remove('overflow-hidden')
+})
 
 const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 
@@ -141,17 +207,71 @@ const backgroundImageUrl = computed(() => {
 <template>
   <div class="h-screen w-screen overflow-hidden text-slate-100 bg-[#0a0d12]">
     <div
-      class="grid h-full"
-      :style="{ gridTemplateColumns: leftCollapsed ? '68px minmax(0,1fr)' : '280px minmax(0,1fr)' }"
+      class="grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
+      :style="{ '--wksp-cols': leftCollapsed ? '68px minmax(0,1fr)' : '280px minmax(0,1fr)' }"
     >
-      <WorldWorkspaceSidebar
-        :world="world"
-        :collapsed="leftCollapsed"
-        :mode="mode"
-        :can-build="canBuild"
-        @toggle-collapse="toggleWorkspaceSidebar"
-        @set-mode="mode = $event"
+      <!-- Mobile drawer backdrop. Dismiss-by-tap; not rendered at all at
+           `md`+, matching the fixed-backdrop convention already used by
+           SheetItemDetailDrawer.vue / SheetSpellDetailDrawer.vue. -->
+      <div
+        v-if="mobileDrawerOpen"
+        class="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm md:hidden"
+        aria-hidden="true"
+        @click="closeMobileDrawer"
       />
+
+      <!-- Sidebar: an off-canvas drawer below `md`, an ordinary first grid
+           column at `md`+. WorldWorkspaceSidebar itself is unmodified --
+           only this wrapper's positioning differs by breakpoint, so desktop
+           markup/behavior is byte-for-byte what it was before Phase 0. -->
+      <div
+        ref="mobileDrawerRef"
+        class="fixed inset-y-0 left-0 z-[100] w-[280px] max-w-[85vw] -translate-x-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 md:pt-0 md:pb-0 md:transition-none"
+        :class="mobileDrawerOpen ? 'translate-x-0' : ''"
+        role="dialog"
+        aria-modal="true"
+        aria-label="World navigation"
+      >
+        <WorldWorkspaceSidebar
+          :world="world"
+          :collapsed="leftCollapsed"
+          :mode="mode"
+          :can-build="canBuild"
+          @toggle-collapse="toggleWorkspaceSidebar"
+          @set-mode="mode = $event"
+        />
+
+        <!-- Mobile-only close affordance -- desktop already has the
+             collapse toggle built into WorldWorkspaceSidebar itself. -->
+        <button
+          v-if="mobileDrawerOpen"
+          type="button"
+          data-drawer-close
+          class="absolute right-3 z-[101] inline-flex h-11 w-11 items-center justify-center rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.86)] text-[#efe2bd] md:hidden"
+          style="top: calc(0.75rem + env(safe-area-inset-top));"
+          aria-label="Close navigation"
+          @click="closeMobileDrawer"
+        >
+          <UIcon name="i-lucide-x" class="h-5 w-5" />
+        </button>
+      </div>
+
+      <!-- Hamburger trigger: shell-owned, floats over page content, hidden
+           at `md`+. Content pages are untouched, so this is the only new
+           control surface Phase 0 introduces into the visible page. -->
+      <button
+        v-if="!mobileDrawerOpen"
+        ref="hamburgerButtonRef"
+        type="button"
+        class="fixed left-3 z-[90] inline-flex h-11 w-11 items-center justify-center rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.86)] text-[#efe2bd] shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur transition hover:border-[rgba(201,164,90,0.55)] md:hidden"
+        style="top: calc(0.75rem + env(safe-area-inset-top));"
+        aria-label="Open navigation"
+        aria-haspopup="dialog"
+        :aria-expanded="mobileDrawerOpen"
+        @click="openMobileDrawer"
+      >
+        <UIcon name="i-lucide-menu" class="h-5 w-5" />
+      </button>
 
       <div class="min-w-0 overflow-hidden relative">
         <div class="absolute inset-0 bg-[linear-gradient(to_bottom,#0b0d12,#0d1117_40%,#10141b)]"></div>

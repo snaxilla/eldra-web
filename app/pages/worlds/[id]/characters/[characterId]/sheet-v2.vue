@@ -211,6 +211,9 @@ import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel
 import CharacterActionsPanel, { type CharacterAction, type CombatOutcome } from '~/components/characters/CharacterActionsPanel.vue'
 import { DERIVED_SHEET_REGIONS, findDerivedBoolean, findDerivedNumber, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
+import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
+import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
+import CharacterEmptyState from '~/components/characters/CharacterEmptyState.vue'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
 import type { PresentationEntry } from '~/lib/content-presentation'
 
@@ -1002,9 +1005,12 @@ const identityRows = computed(() =>
 
       <div
         v-else-if="assembly && !assembly.available"
-        class="mt-8 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] p-4 text-sm text-[#d8ceb8]"
+        class="mt-8"
       >
-        {{ notAvailableMessage }}
+        <CharacterEmptyState
+          icon="i-lucide-file-question"
+          :message="notAvailableMessage"
+        />
       </div>
 
       <div
@@ -1013,19 +1019,16 @@ const identityRows = computed(() =>
       >
         <!-- Ability Scores. Values only -- nothing on this page derives a
              modifier, save, skill, AC, HP, or initiative from them. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-              Ability Scores
-            </div>
-            <!-- The Sheet displays; the Builder edits. -->
+        <CharacterSheetSection heading="Ability Scores">
+          <!-- The Sheet displays; the Builder edits. -->
+          <template #heading-end>
             <NuxtLink
               :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
               class="text-sm text-[#9f9278] underline-offset-4 hover:text-[#d8ceb8] hover:underline"
             >
               {{ blueprint.abilityScores ? 'Edit' : 'Assign' }}
             </NuxtLink>
-          </div>
+          </template>
 
           <div class="mt-3">
             <CharacterAbilityScoresPanel
@@ -1033,23 +1036,20 @@ const identityRows = computed(() =>
               empty-message="No ability scores have been assigned yet. Use Assign above to set them."
             />
           </div>
-        </section>
+        </CharacterSheetSection>
 
         <!-- Derived by the Rules Engine. Every value below was computed by
              the evaluator from this character's data and the World's active
              Rules Package; nothing on this page calculates. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-              Derived
-            </div>
+        <CharacterSheetSection heading="Derived">
+          <template #heading-end>
             <p
               v-if="derived"
               class="break-words text-xs text-[#6f6754]"
             >
               {{ derived.packageId }}@{{ derived.packageVersion }}
             </p>
-          </div>
+          </template>
 
           <p
             v-if="derivedPending"
@@ -1097,13 +1097,12 @@ const identityRows = computed(() =>
                 {{ collection.label || 'Equipment Slots' }}
               </h3>
               <div class="flex flex-wrap gap-2">
-                <div
+                <CharacterStatChip
                   v-for="equipmentSlot in collection.slots"
                   :key="equipmentSlot.id"
-                  class="eldra-gold-chip rounded-none border px-3 py-1 text-xs capitalize"
-                >
-                  {{ equipmentSlot.id }} &middot; {{ equipmentSlot.capacity }}
-                </div>
+                  :label="equipmentSlot.id"
+                  :value="equipmentSlot.capacity"
+                />
               </div>
             </div>
 
@@ -1130,15 +1129,11 @@ const identityRows = computed(() =>
               </NuxtLink>.
             </p>
           </div>
-        </section>
+        </CharacterSheetSection>
 
         <!-- Inventory: the one editable region on this page. See the
              file header and CharacterInventoryPanel.vue for why. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Inventory
-          </div>
-
+        <CharacterSheetSection heading="Inventory">
           <div class="mt-4">
             <CharacterInventoryPanel
               :items="inventoryItems"
@@ -1151,14 +1146,10 @@ const identityRows = computed(() =>
               @toggle-flag="onInventoryFlag"
             />
           </div>
-        </section>
+        </CharacterSheetSection>
 
         <!-- Notes: also editable -- see CharacterNotesPanel.vue's header. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Notes
-          </div>
-
+        <CharacterSheetSection heading="Notes">
           <div class="mt-4">
             <CharacterNotesPanel
               :notes="noteDraft"
@@ -1167,14 +1158,10 @@ const identityRows = computed(() =>
               @save="saveNotes"
             />
           </div>
-        </section>
+        </CharacterSheetSection>
 
         <!-- Health: also editable -- see CharacterHealthPanel.vue's header. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Health
-          </div>
-
+        <CharacterSheetSection heading="Health">
           <div class="mt-4">
             <CharacterHealthPanel
               :health="healthDraft"
@@ -1188,15 +1175,11 @@ const identityRows = computed(() =>
               @recovery="applyRecovery"
             />
           </div>
-        </section>
+        </CharacterSheetSection>
 
         <!-- Spellcasting: also editable -- see CharacterSpellcastingPanel.vue's
              header. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Spellcasting
-          </div>
-
+        <CharacterSheetSection heading="Spellcasting">
           <div class="mt-4">
             <CharacterSpellcastingPanel
               :spells="spellItems"
@@ -1215,18 +1198,14 @@ const identityRows = computed(() =>
               @restore-slot="onRestoreSlot"
             />
           </div>
-        </section>
+        </CharacterSheetSection>
 
         <!-- Actions: "what can my character do?", and now "execute one
              against one target" -- this character's own state is never
              edited here (Combat Resolution mutates the TARGET's HP, not
              this character's own stored data). See CharacterActionsPanel.vue's
              own header for why. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Actions
-          </div>
-
+        <CharacterSheetSection heading="Actions">
           <div class="mt-4">
             <CharacterActionsPanel
               :actions="characterActions"
@@ -1238,16 +1217,12 @@ const identityRows = computed(() =>
               @resolve="onResolveAction"
             />
           </div>
-        </section>
+        </CharacterSheetSection>
 
         <!-- Encounter: status, whose turn it is, Join/Leave -- Resolve
              Action is the Actions panel above, unchanged. See this file's
              own ENCOUNTER header note. -->
-        <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            Encounter
-          </div>
-
+        <CharacterSheetSection heading="Encounter">
           <div class="mt-4">
             <label class="block">
               <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Encounter</span>
@@ -1321,12 +1296,15 @@ const identityRows = computed(() =>
               >
                 <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Conditions</span>
 
-                <p
+                <div
                   v-if="!myCombatant?.conditions.length"
-                  class="mt-2 text-sm text-[#9f9278]"
+                  class="mt-2"
                 >
-                  None active.
-                </p>
+                  <CharacterEmptyState
+                    compact
+                    message="None active."
+                  />
+                </div>
 
                 <div
                   v-else
@@ -1421,17 +1399,13 @@ const identityRows = computed(() =>
               </div>
             </template>
           </div>
-        </section>
+        </CharacterSheetSection>
 
-        <section
+        <CharacterSheetSection
           v-for="section in sections"
           :key="section.key"
-          class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur"
+          :heading="section.label"
         >
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
-            {{ section.label }}
-          </div>
-
           <template v-if="section.slot.status === 'resolved'">
             <!-- When the pack publishes details, the panel supplies the name
                  and source line itself; the bare title is the fallback for an
@@ -1479,7 +1453,7 @@ const identityRows = computed(() =>
               </dl>
             </div>
           </template>
-        </section>
+        </CharacterSheetSection>
       </div>
     </div>
   </div>

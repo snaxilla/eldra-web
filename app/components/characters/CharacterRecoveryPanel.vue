@@ -1,5 +1,15 @@
 <script setup lang="ts">
-// Health for Character Sheet V2 -- the Health System's editable surface.
+// CharacterRecoveryPanel -- Character Sheet Beautification Pass, Phase 3
+// (see .github/docs/architecture/character-sheet-beauty-pass.md §11 Phase
+// 3). Renamed from CharacterHealthPanel.vue as part of this phase's
+// display/action split: "The Vitals Bar should display state. The
+// Recovery panel should perform actions." CharacterVitalsBar.vue now
+// shows Current/Maximum/Temporary HP read-only, always visible; this file
+// keeps every ACTION that changes those numbers -- including the direct
+// Current/Temporary HP correction inputs below, which are themselves an
+// action (a manual override), not a passive display. Content and
+// behavior are otherwise unchanged from CharacterHealthPanel.vue -- this
+// phase renames and re-homes the component, it does not redesign it.
 //
 // Mirrors CharacterInventoryPanel.vue and CharacterNotesPanel.vue's shared
 // shape: a page owns load/save, this component owns layout and emits
@@ -270,8 +280,10 @@ function applyHealingAction() {
 
       <!-- The real game action: spends a die AND heals by the Rules
            Engine's own average-roll value (server/utils/character-recovery.ts).
-           Short Rest below performs the identical action -- see this file's
-           header and character-recovery.ts's own note on why. -->
+           Short Rest below performs the same Hit Die spend, plus -- for a
+           Pact caster only -- Pact Magic slot recovery; see this file's
+           header and character-recovery.ts's own note on why the two are no
+           longer always identical. -->
       <button
         type="button"
         class="eldra-button mt-3 min-h-11 w-full rounded-none px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
@@ -291,7 +303,7 @@ function applyHealingAction() {
           type="button"
           class="min-h-11 rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="saving || (hitDiceAvailable != null && hitDiceAvailable <= 0)"
-          title="Spends one Hit Die -- identical to Spend Hit Die above"
+          title="Spends one Hit Die, plus recovers Pact Magic slots for a Pact caster"
           @click="emitRecovery('short-rest')"
         >
           Short Rest

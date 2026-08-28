@@ -128,9 +128,10 @@
 //
 // `findDerivedNumber` reads ONLY the three read-only summaries -- never
 // Current HP or Death Saves, which the player edits directly through
-// CharacterHealthPanel.vue. Rendering those through the generic
-// `core.health` region too would show the same fact twice, through two
-// different paths; see that helper's own note.
+// CharacterRecoveryPanel.vue (CharacterHealthPanel.vue, renamed in Phase
+// 3's display/action split -- see that file's own header). Rendering
+// those through the generic `core.health` region too would show the same
+// fact twice, through two different paths; see that helper's own note.
 //
 // ---------------------------------------------------------------------------
 // SPELLCASTING -- THE SECOND GAMEPLAY SYSTEM ON THE RULES ENGINE, THE SAME
@@ -195,7 +196,7 @@
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
-import CharacterHealthPanel from '~/components/characters/CharacterHealthPanel.vue'
+import CharacterRecoveryPanel from '~/components/characters/CharacterRecoveryPanel.vue'
 import CharacterSpellcastingPanel from '~/components/characters/CharacterSpellcastingPanel.vue'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
 import CharacterActionsPanel from '~/components/characters/CharacterActionsPanel.vue'
@@ -205,6 +206,7 @@ import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
 import CharacterEmptyState from '~/components/characters/CharacterEmptyState.vue'
 import CharacterEncounterPanel from '~/components/characters/CharacterEncounterPanel.vue'
 import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
+import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import type { StoredCharacterNotes } from '~/lib/characters/character-notes'
@@ -244,6 +246,8 @@ const {
   hitDiceMax,
   hitDiceAvailable,
   hitDieSize,
+  armorClass,
+  characterLevel,
   spellcastingIsCaster,
   spellcastingAbilityMod,
   spellcastingSaveDc,
@@ -294,6 +298,42 @@ async function saveNotes(next: StoredCharacterNotes) {
     notesSaving.value = false
   }
 }
+
+// ---------------------------------------------------------------------------
+// Vitals Bar -- Phase 3. Composes values already exposed by useCharacterSheet
+// / useCharacterMutations into the shape CharacterVitalsBar.vue needs; no
+// new fetch, no new arithmetic on a Rules Engine value (`characterClassName`
+// only picks which already-resolved slot's title to show).
+// ---------------------------------------------------------------------------
+
+const characterClassName = computed(() => {
+  const classSection = identity.value.sections.find((section) => section.key === 'class')
+  if (!classSection) return ''
+  return classSection.slot.status === 'resolved' ? classSection.slot.entry.title : 'Missing'
+})
+
+const isMyTurn = computed(() => conditions.myCombatant?.isCurrentTurn ?? false)
+
+// One combined CharacterSaveIndicator for the whole page (§7.8: "a single
+// CharacterSaveIndicator in the vitals bar, not per-panel text") --
+// composed from every mutation domain's own saving/error, including Notes.
+const vitalsSaving = computed(() =>
+  mutations.recovery.saving
+  || mutations.combat.resolving
+  || mutations.inventory.saving
+  || mutations.spellcasting.saving
+  || encounter.pending
+  || notesSaving.value
+)
+
+const vitalsError = computed(() =>
+  mutations.recovery.error
+  || mutations.combat.error
+  || mutations.inventory.error
+  || mutations.spellcasting.error
+  || encounter.error
+  || notesError.value
+)
 </script>
 
 <template>
@@ -302,6 +342,32 @@ async function saveNotes(next: StoredCharacterNotes) {
          two-column fact grids, not two lines of provenance. px-4 on phones
          keeps those same cards readable with no horizontal scroll. -->
     <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
+      <!-- Vitals Bar: sticky within THIS page's own overflow-y-auto root
+           (see the class on this file's outermost div), never `fixed` --
+           per the approved plan's own risk note on why. §7.2's Feature
+           elevation tier, max one per screen, spent here. -->
+      <CharacterVitalsBar
+        v-if="blueprint"
+        class="sticky top-0 z-20 mb-4"
+        :character-title="identity.characterTitle"
+        :level="characterLevel"
+        :class-name="characterClassName"
+        :current-hp="healthDraft.currentHp"
+        :max-hp="maxHp"
+        :temporary-hp="healthDraft.temporaryHp"
+        :armor-class="armorClass"
+        :is-caster="spellcastingIsCaster"
+        :spell-save-dc="spellcastingSaveDc"
+        :spell-attack-bonus="spellcastingAttackBonus"
+        :conditions="conditions.mine"
+        :in-encounter="encounter.isInSelected"
+        :is-my-turn="isMyTurn"
+        :round="encounter.view?.round ?? null"
+        :saving="vitalsSaving"
+        :error="vitalsError"
+        :remove-condition="mutations.conditions.remove"
+      />
+
       <div class="eldra-kicker text-xs">
         Character Sheet
       </div>
@@ -511,10 +577,12 @@ async function saveNotes(next: StoredCharacterNotes) {
           </div>
         </CharacterSheetSection>
 
-        <!-- Health: also editable -- see CharacterHealthPanel.vue's header. -->
-        <CharacterSheetSection heading="Health">
+        <!-- Recovery: HP/AC/etc. now DISPLAY in the Vitals Bar above; this
+             section keeps every ACTION that changes them -- see
+             CharacterRecoveryPanel.vue's own header. -->
+        <CharacterSheetSection heading="Recovery">
           <div class="mt-4">
-            <CharacterHealthPanel
+            <CharacterRecoveryPanel
               :health="healthDraft"
               :max-hp="maxHp"
               :hit-dice-max="hitDiceMax"

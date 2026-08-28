@@ -225,11 +225,19 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
 
   // Read-only Health summaries -- never Current HP or Death Saves, which
   // the player edits directly (see useCharacterMutations.ts's `recovery`
-  // domain and CharacterHealthPanel.vue's own note on why).
+  // domain and CharacterRecoveryPanel.vue's own note on why).
   const maxHp = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.max'))
   const hitDiceMax = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_max'))
   const hitDiceAvailable = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_available'))
   const hitDieSize = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_die_size'))
+
+  // Armor Class -- Phase 3 (Vitals Bar) addition. Previously only rendered
+  // generically via `derivedRegions` (category 'core.defenses'); the
+  // Vitals Bar needs it as a NAMED T0 value, the same
+  // `findDerivedNumber(category, key)` shape every other named read here
+  // already uses. `value:defenses.armor_class` is
+  // packages/eldra-dnd5e-2024/definitions.json's own id for it.
+  const armorClass = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.defenses', 'value:defenses.armor_class'))
 
   // Read-only Spellcasting summaries.
   const spellcastingIsCaster = computed(() => findDerivedBoolean(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.is_caster'))
@@ -424,6 +432,8 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     hitDiceMax,
     hitDiceAvailable,
     hitDieSize,
+    armorClass,
+    characterLevel,
     spellcastingIsCaster,
     spellcastingAbilityMod,
     spellcastingSaveDc,

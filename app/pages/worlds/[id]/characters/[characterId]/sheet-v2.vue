@@ -143,18 +143,19 @@
 // same block_instances pattern every other player-data block uses), edited
 // directly on the Sheet for the identical reason Inventory and Health are.
 //
-// `slotLevels` (below) is the ONE piece of interpretation this page performs
-// for Spellcasting: which of the three Spell Slot progression Tables
-// (`derived.tables`) applies to THIS character, picked by reading the
+// `slotLevels` is the ONE piece of interpretation this page's data layer
+// performs for Spellcasting: which of the three Spell Slot progression
+// Tables (`derived.tables`) applies to THIS character, picked by reading the
 // `caster_type` boolean flags this file already hardcodes the Definition ids
 // of -- the same "the fixed key names the package's own vocabulary declares"
 // posture `findDerivedNumber('core.health', 'value:hit_points.max')`
 // immediately above already establishes for Health, one level up (a Table,
 // not a Value, because Spell Slot progression is not a formula -- see
 // packages/eldra-dnd5e-2024/README.md's own note on why `lookup()` is not
-// evaluated). This page still computes no NUMBER: it selects a row a Table
+// evaluated). This still computes no NUMBER: it selects a row a Table
 // already declares and reads it, exactly as it already selects which
-// `derived.collections` entry is the equipment slots.
+// `derived.collections` entry is the equipment slots. As of Phase 2 (see
+// below), this selection lives in useCharacterSheet.ts, not this file.
 //
 // ---------------------------------------------------------------------------
 // ACTIONS -- "WHAT CAN MY CHARACTER DO?", A PROJECTION OF EVERYTHING ABOVE
@@ -169,53 +170,44 @@
 // already assembled. Read-only -- see CharacterActionsPanel.vue's own
 // header for why this is the one panel added by this task with no `@`
 // emits at all.
-
+//
+// ---------------------------------------------------------------------------
+// PHASE 2 (BEAUTIFICATION PASS): DATA LAYER CONSOLIDATION
+// ---------------------------------------------------------------------------
+// Everything described above as "fetched"/"read from `derived`" now happens
+// inside app/composables/useCharacterSheet.ts, and every mutation described
+// above as "saved"/"POSTed" now happens inside
+// app/composables/useCharacterMutations.ts. This page calls both composables
+// once each and renders what they return -- it orchestrates LAYOUT, not
+// DATA. See each composable's own header for the reasoning behind its
+// specific domain boundaries (notably: why Notes stays local to this page
+// rather than becoming a sixth mutation domain, and why Join/Leave Encounter
+// lives under the `conditions` mutation group rather than its own).
+//
 // The identity summary is composed inline rather than extracted into a
 // component: it is used by exactly this one page. The ability scores ARE
 // extracted (CharacterAbilityScoresPanel), because the Builder's review step
 // renders the same panel -- the same test ContentPresentationPanel passed.
+// Encounter and Conditions ARE now extracted too (CharacterEncounterPanel,
+// CharacterConditionsPanel) -- Phase 2's other stated deliverable, alongside
+// the two composables above.
 
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
 import CharacterHealthPanel from '~/components/characters/CharacterHealthPanel.vue'
 import CharacterSpellcastingPanel from '~/components/characters/CharacterSpellcastingPanel.vue'
-import {
-  emptyCharacterNotes,
-  type StoredCharacterNotes
-} from '~/lib/characters/character-notes'
-import {
-  emptyCharacterHealth,
-  type StoredCharacterHealth
-} from '~/lib/characters/health'
-import {
-  addInventoryItem,
-  changeInventoryQuantity,
-  removeInventoryItem,
-  toggleInventoryFlag,
-  type AssembledInventoryItem,
-  type InventoryFlag,
-  type StoredInventoryItem
-} from '~/lib/characters/inventory'
-import {
-  addSpell,
-  expendSlot,
-  removeSpell,
-  restoreSlot,
-  toggleSpellFlag,
-  type AssembledSpellEntry,
-  type SpellFlag,
-  type StoredSpellEntry
-} from '~/lib/characters/spellcasting'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
-import CharacterActionsPanel, { type CharacterAction, type CombatOutcome } from '~/components/characters/CharacterActionsPanel.vue'
-import { DERIVED_SHEET_REGIONS, findDerivedBoolean, findDerivedNumber, type DerivedCharacterResponse } from '~/components/characters/characterDerivedValues'
+import CharacterActionsPanel from '~/components/characters/CharacterActionsPanel.vue'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
 import CharacterEmptyState from '~/components/characters/CharacterEmptyState.vue'
-import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
-import type { PresentationEntry } from '~/lib/content-presentation'
+import CharacterEncounterPanel from '~/components/characters/CharacterEncounterPanel.vue'
+import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
+import { useCharacterSheet } from '~/composables/useCharacterSheet'
+import { useCharacterMutations } from '~/composables/useCharacterMutations'
+import type { StoredCharacterNotes } from '~/lib/characters/character-notes'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -225,242 +217,61 @@ const route = useRoute()
 const worldId = computed(() => String(route.params.id || ''))
 const characterId = computed(() => String(route.params.characterId || ''))
 
-type CatalogueEntry = {
-  packageId: string
-  packageVersion: string
-  systemKey: string
-  title: string
-  slug: string
-  externalId: string
-  provider: string
-  sourceBook?: string
-  sourcePage?: string
-  // Optional and nullable for the same reasons the catalogue's own field is
-  // -- a pack from a system with no resolver, or an entry whose published
-  // `data` could not be read. The sheet still renders identity and
-  // provenance in that case; it never fails.
-  presentation?: PresentationEntry | null
-}
+// Single Character Sheet data-loading entry point -- see
+// app/composables/useCharacterSheet.ts. Replaces what used to be six
+// `useFetch` calls made directly in this script (three of them
+// sequential, blocking each other in turn); this page now consumes that
+// composable's state rather than coordinating its own fetching.
+const sheet = await useCharacterSheet(worldId, characterId)
 
-type AssemblySlot =
-  | { status: 'resolved'; entry: CatalogueEntry }
-  | { status: 'missing'; packageId: string; slug: string; reason: string }
-
-type AssemblyBlueprint = {
-  worldId: string
-  characterId: string
-  characterTitle: string
-  species: AssemblySlot
-  class: AssemblySlot
-  background: AssemblySlot
-  // null for every character created before Phase 3 -- a real state, shown
-  // as "not assigned yet" with a link to assign them, never as an error.
-  abilityScores: StoredAbilityScores | null
-  // Already joined to the World's catalogue by Character Assembly: each entry
-  // carries its resolved title and provenance, or an explicit 'missing'.
-  inventory: AssembledInventoryItem[]
-  // `null` for every character created before this feature -- a real state,
-  // rendered as six empty fields, never as an error.
-  notes: StoredCharacterNotes | null
-  // `null` for every character created before the Health System. Maximum HP
-  // is deliberately absent here: it is Rules Engine output, read from
-  // `derived`, never from this blueprint.
-  health: StoredCharacterHealth | null
-  // Already joined to the World's catalogue by Character Assembly, exactly
-  // as `inventory` is. Spellcasting Ability, Spell Save DC, Spell Attack
-  // Bonus, and Spell Slot progression are deliberately absent here -- all
-  // four are Rules Engine output, read from `derived`, never from this
-  // blueprint.
-  spells: AssembledSpellEntry[]
-  // How many of each spell level are currently expended -- resolves against
-  // nothing, copied through verbatim.
-  expendedSlots: Record<string, number>
-}
-
-type AssemblyResponse =
-  | { available: true; blueprint: AssemblyBlueprint }
-  | { available: false; reason: string; message?: string }
+// One mutation surface for Recovery/Combat/Inventory/Spellcasting/
+// Conditions -- see app/composables/useCharacterMutations.ts.
+const mutations = useCharacterMutations(worldId, characterId, sheet)
 
 const {
-  data: assembly,
-  pending,
-  error
-} = await useFetch<AssemblyResponse>(() => `/api/worlds/${worldId.value}/characters/${characterId.value}/assembly`)
-
-const blueprint = computed(() => (assembly.value?.available ? assembly.value.blueprint : null))
-
-const notAvailableMessage = computed(() => {
-  if (!assembly.value || assembly.value.available) return ''
-  return assembly.value.message || 'This character has nothing for Character Sheet V2 to assemble yet.'
-})
-
-const errorMessage = computed(() => {
-  if (!error.value) return ''
-  const statusCode = (error.value as any)?.statusCode
-  if (statusCode === 404) {
-    return 'This character could not be found in this World.'
-  }
-  return 'Could not load this character. Try again shortly.'
-})
-
-// ---------------------------------------------------------------------------
-// Derived values -- fetched, never computed. See this file's header.
-// ---------------------------------------------------------------------------
-
-const { data: derivedResponse, pending: derivedPending } = await useFetch<DerivedCharacterResponse>(
-  () => `/api/worlds/${worldId.value}/characters/${characterId.value}/derived`
-)
-
-const derived = computed(() => (derivedResponse.value?.available ? derivedResponse.value.derived : null))
-
-// Why derived values are unavailable, when they are. "No rules activated"
-// and "the activated rules are broken" are different problems with different
-// fixes, so they are never collapsed into one message.
-const derivedUnavailable = computed(() => {
-  const response = derivedResponse.value
-  if (!response || response.available) return ''
-  return response.message || 'Derived values are unavailable for this character.'
-})
-
-// Which regions to render is a category-level decision, declared once in
-// characterDerivedValues.ts -- see the header for why category rather than
-// Definition ID is what keeps this page game-agnostic.
-const derivedRegions = computed(() =>
-  DERIVED_SHEET_REGIONS
-    .map((region) => ({ ...region, entries: derived.value?.byCategory?.[region.category] ?? [] }))
-    .filter((region) => region.entries.length > 0)
-)
-
-// ---------------------------------------------------------------------------
-// Inventory -- state and saving only; every decision is the pure module's
-// ---------------------------------------------------------------------------
-
-// Local working copy, seeded from Assembly. Held separately so a save that
-// fails leaves the player looking at what they asked for, with an error,
-// rather than silently snapping back.
-const inventoryItems = ref<AssembledInventoryItem[]>([])
-const inventorySaving = ref(false)
-const inventoryError = ref('')
-
-watch(
+  assembly,
   blueprint,
-  (value) => { inventoryItems.value = [...(value?.inventory ?? [])] },
-  { immediate: true }
-)
-
-// Item options for the add form. `lazy` so a World with a large bound
-// catalogue never delays the sheet itself -- the add form simply has nothing
-// to offer until it arrives, and custom items work regardless.
-type CatalogueOption = {
-  packageId: string
-  packageVersion: string
-  title: string
-  slug: string
-  sourceBook?: string
-}
-
-const { data: catalogue } = await useFetch<{ items?: CatalogueOption[]; spells?: CatalogueOption[] }>(
-  () => `/api/worlds/${worldId.value}/catalogue`, { lazy: true }
-)
-
-const inventoryOptions = computed(() => catalogue.value?.items ?? [])
-const spellOptions = computed(() => catalogue.value?.spells ?? [])
-
-// The one place inventory reaches the server. Takes the STORED shape --
-// `AssembledInventoryItem` is a superset carrying resolved display fields,
-// and persisting those would be storing a copy of the catalogue, which is
-// exactly what this migration removes.
-async function persistInventory(next: AssembledInventoryItem[]) {
-  if (inventorySaving.value) return
-
-  const previous = inventoryItems.value
-  inventoryItems.value = next
-  inventorySaving.value = true
-  inventoryError.value = ''
-
-  try {
-    const items: StoredInventoryItem[] = next.map((item) => ({
-      instanceId: item.instanceId,
-      ...(item.ref ? { ref: item.ref } : { name: item.name }),
-      quantity: item.quantity,
-      equipped: item.equipped,
-      attuned: item.attuned,
-      ...(item.container ? { container: item.container } : {}),
-      ...(item.notes ? { notes: item.notes } : {})
-    }))
-
-    await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/inventory`, {
-      method: 'PUT',
-      body: { items }
-    })
-  } catch (saveError: any) {
-    inventoryItems.value = previous
-    inventoryError.value =
-      saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save inventory'
-  } finally {
-    inventorySaving.value = false
-  }
-}
-
-// Each handler applies a PURE function and saves the result. No branching, no
-// arithmetic, and no knowledge of what equipping something means.
-function onInventoryAdd(payload: {
-  ref?: { packageId: string; slug: string }
-  name?: string
-  quantity: number
-  notes?: string
-}) {
-  const added = addInventoryItem(inventoryItems.value, payload)
-  const entry = payload.ref
-    ? inventoryOptions.value.find(
-        (option) => option.packageId === payload.ref!.packageId && option.slug === payload.ref!.slug
-      )
-    : undefined
-
-  // The new row is decorated for display exactly as Assembly would have, so
-  // the card renders correctly before the next read rather than flashing an
-  // "unavailable" state for an item that is perfectly fine.
-  persistInventory(added.map((item, index) =>
-    index === added.length - 1
-      ? {
-          ...item,
-          status: payload.ref ? (entry ? 'resolved' : 'missing') : 'custom',
-          title: entry?.title || payload.name || 'Item',
-          ...(entry ? { entry } : {})
-        }
-      : (item as AssembledInventoryItem)
-  ) as AssembledInventoryItem[])
-}
-
-function onInventoryRemove(instanceId: string) {
-  persistInventory(removeInventoryItem(inventoryItems.value, instanceId) as AssembledInventoryItem[])
-}
-
-function onInventoryQuantity(payload: { instanceId: string; delta: number }) {
-  persistInventory(
-    changeInventoryQuantity(inventoryItems.value, payload.instanceId, payload.delta) as AssembledInventoryItem[]
-  )
-}
-
-function onInventoryFlag(payload: { instanceId: string; flag: InventoryFlag }) {
-  persistInventory(
-    toggleInventoryFlag(inventoryItems.value, payload.instanceId, payload.flag) as AssembledInventoryItem[]
-  )
-}
+  notAvailableMessage,
+  errorMessage,
+  pending,
+  error,
+  identity,
+  derived,
+  derivedPending,
+  derivedUnavailable,
+  derivedRegions,
+  maxHp,
+  hitDiceMax,
+  hitDiceAvailable,
+  hitDieSize,
+  spellcastingIsCaster,
+  spellcastingAbilityMod,
+  spellcastingSaveDc,
+  spellcastingAttackBonus,
+  inventoryItems,
+  inventoryOptions,
+  noteDraft,
+  healthDraft,
+  spellItems,
+  spellOptions,
+  slotLevels,
+  actions: characterActions,
+  actionsPending,
+  actionsUnavailableMessage,
+  combatTargetOptions,
+  encounter,
+  conditions
+} = sheet
 
 // ---------------------------------------------------------------------------
-// Notes -- state and saving only; the pure module owns the shape
+// Notes -- state and saving only; the pure module owns the shape. The one
+// domain this phase deliberately did NOT move into useCharacterMutations.ts
+// -- see that composable's own header for why (its task-scoped mutation
+// list names Recovery/Combat/Inventory/Spellcasting/Conditions, not Notes).
 // ---------------------------------------------------------------------------
 
-const noteDraft = ref<StoredCharacterNotes>(emptyCharacterNotes())
 const notesSaving = ref(false)
 const notesError = ref('')
-
-watch(
-  blueprint,
-  (value) => { noteDraft.value = value?.notes ? { ...value.notes } : emptyCharacterNotes() },
-  { immediate: true }
-)
 
 async function saveNotes(next: StoredCharacterNotes) {
   if (notesSaving.value) return
@@ -483,466 +294,6 @@ async function saveNotes(next: StoredCharacterNotes) {
     notesSaving.value = false
   }
 }
-
-// ---------------------------------------------------------------------------
-// Health -- state and saving only; the pure module owns the shape
-// ---------------------------------------------------------------------------
-
-const healthDraft = ref<StoredCharacterHealth>(emptyCharacterHealth())
-const healthSaving = ref(false)
-const healthError = ref('')
-
-watch(
-  blueprint,
-  (value) => { healthDraft.value = value?.health ? { ...value.health } : emptyCharacterHealth() },
-  { immediate: true }
-)
-
-async function saveHealth(next: StoredCharacterHealth) {
-  if (healthSaving.value) return
-
-  const previous = healthDraft.value
-  healthDraft.value = next
-  healthSaving.value = true
-  healthError.value = ''
-
-  try {
-    await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/health`, {
-      method: 'PUT',
-      body: next
-    })
-  } catch (saveError: any) {
-    healthDraft.value = previous
-    healthError.value =
-      saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save health'
-  } finally {
-    healthSaving.value = false
-  }
-}
-
-// Recovery -- the six named actions. A POST, not a PUT: this page sends
-// INTENT ({ type, amount? }); server/utils/character-recovery.ts decides
-// the resulting numbers (reading Maximum HP and the other Rules Engine
-// output each action needs) and returns the new authoritative state, which
-// replaces `healthDraft` directly -- no separate recompute here, and no
-// need to re-fetch `derived`, since none of these actions change Maximum
-// HP, Hit Dice total, or Hit Die size (all three come from Class/level/
-// Constitution, none of which Recovery touches).
-async function applyRecovery(action: { type: string; amount?: number }) {
-  if (healthSaving.value) return
-
-  healthSaving.value = true
-  healthError.value = ''
-
-  try {
-    const result = await $fetch<{ success: true; health: StoredCharacterHealth }>(
-      `/api/worlds/${worldId.value}/characters/${characterId.value}/recovery`,
-      { method: 'POST', body: action }
-    )
-    healthDraft.value = result.health
-  } catch (recoveryError: any) {
-    healthError.value =
-      recoveryError?.data?.statusMessage || recoveryError?.statusMessage || 'Failed to apply recovery action'
-  } finally {
-    healthSaving.value = false
-  }
-}
-
-// Read-only summaries only -- see this file's HEALTH header note on why
-// Current HP / Death Saves are never pulled from `derived` here.
-const maxHp = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.max'))
-const hitDiceMax = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_max'))
-const hitDiceAvailable = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_dice_available'))
-const hitDieSize = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.health', 'value:hit_points.hit_die_size'))
-
-// ---------------------------------------------------------------------------
-// Spellcasting -- state and saving only; every decision is the pure module's
-// ---------------------------------------------------------------------------
-
-const spellItems = ref<AssembledSpellEntry[]>([])
-const spellcastingExpendedSlots = ref<Record<string, number>>({})
-const spellcastingSaving = ref(false)
-const spellcastingError = ref('')
-
-watch(
-  blueprint,
-  (value) => {
-    spellItems.value = [...(value?.spells ?? [])]
-    spellcastingExpendedSlots.value = { ...(value?.expendedSlots ?? {}) }
-  },
-  { immediate: true }
-)
-
-// The one place Spellcasting reaches the server. Takes the STORED shape --
-// `AssembledSpellEntry` is a superset carrying resolved display fields, and
-// persisting those would be storing a copy of the catalogue, exactly as
-// `persistInventory` above already refuses to do.
-async function persistSpellcasting(nextSpells: AssembledSpellEntry[], nextExpendedSlots: Record<string, number>) {
-  if (spellcastingSaving.value) return
-
-  const previousSpells = spellItems.value
-  const previousSlots = spellcastingExpendedSlots.value
-  spellItems.value = nextSpells
-  spellcastingExpendedSlots.value = nextExpendedSlots
-  spellcastingSaving.value = true
-  spellcastingError.value = ''
-
-  try {
-    const spells: StoredSpellEntry[] = nextSpells.map((entry) => ({
-      instanceId: entry.instanceId,
-      ...(entry.ref ? { ref: entry.ref } : { name: entry.name }),
-      known: entry.known,
-      prepared: entry.prepared
-    }))
-
-    await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/spellcasting`, {
-      method: 'PUT',
-      body: { spells, expendedSlots: nextExpendedSlots }
-    })
-  } catch (saveError: any) {
-    spellItems.value = previousSpells
-    spellcastingExpendedSlots.value = previousSlots
-    spellcastingError.value =
-      saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save spellcasting'
-  } finally {
-    spellcastingSaving.value = false
-  }
-}
-
-// Each handler applies a PURE function and saves the result -- the same
-// shape the Inventory handlers above already use.
-function onSpellAdd(payload: { ref?: { packageId: string; slug: string }; name?: string }) {
-  const added = addSpell(spellItems.value, payload)
-  const entry = payload.ref
-    ? spellOptions.value.find(
-        (option) => option.packageId === payload.ref!.packageId && option.slug === payload.ref!.slug
-      )
-    : undefined
-
-  persistSpellcasting(added.map((item, index) =>
-    index === added.length - 1
-      ? {
-          ...item,
-          status: payload.ref ? (entry ? 'resolved' : 'missing') : 'custom',
-          title: entry?.title || payload.name || 'Spell',
-          ...(entry ? { entry } : {})
-        }
-      : (item as AssembledSpellEntry)
-  ) as AssembledSpellEntry[], spellcastingExpendedSlots.value)
-}
-
-function onSpellRemove(instanceId: string) {
-  persistSpellcasting(removeSpell(spellItems.value, instanceId) as AssembledSpellEntry[], spellcastingExpendedSlots.value)
-}
-
-function onSpellToggleFlag(payload: { instanceId: string; flag: SpellFlag }) {
-  persistSpellcasting(
-    toggleSpellFlag(spellItems.value, payload.instanceId, payload.flag) as AssembledSpellEntry[],
-    spellcastingExpendedSlots.value
-  )
-}
-
-function onExpendSlot(level: number) {
-  const max = slotLevels.value.find((row) => row.level === level)?.max ?? 0
-  persistSpellcasting(spellItems.value, expendSlot(spellcastingExpendedSlots.value, level, max))
-}
-
-function onRestoreSlot(level: number) {
-  persistSpellcasting(spellItems.value, restoreSlot(spellcastingExpendedSlots.value, level))
-}
-
-// Read-only summaries -- see this file's SPELLCASTING header note.
-const spellcastingIsCaster = computed(() => findDerivedBoolean(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.is_caster'))
-const spellcastingAbilityMod = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.ability_mod'))
-const spellcastingSaveDc = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.save_dc'))
-const spellcastingAttackBonus = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.attack_bonus'))
-
-const characterLevel = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'progression', 'value:level') ?? 1)
-
-// Which of the three Spell Slot progression Tables applies -- see this
-// file's SPELLCASTING header note on why this is the one piece of
-// interpretation the page performs itself.
-const SLOT_TABLE_BY_CASTER_TYPE: Record<'full' | 'half' | 'pact', string> = {
-  full: 'table:spellcasting.slots_full',
-  half: 'table:spellcasting.slots_half',
-  pact: 'table:spellcasting.slots_pact'
-}
-
-const slotLevels = computed(() => {
-  const byCategory = derived.value?.byCategory ?? {}
-  const casterType = (['full', 'half', 'pact'] as const).find((type) =>
-    findDerivedBoolean(byCategory, 'spellcasting', `value:spellcasting.caster_type.${type}`)
-  )
-  if (!casterType) return []
-
-  const table = derived.value?.tables?.find((entry) => entry.id === SLOT_TABLE_BY_CASTER_TYPE[casterType])
-  const row = table?.rows.find((candidate) => candidate.key === characterLevel.value)
-  if (!row) return []
-
-  // Pact Magic (`table:spellcasting.slots_pact`) declares `slots`/`slot_level`
-  // rather than one column per spell level -- every slot the character has
-  // shares that one level. Full/Half declare `slot_1`..`slot_9` directly.
-  if (casterType === 'pact') {
-    const level = Number(row.slot_level)
-    const max = Number(row.slots)
-    if (!level || !max) return []
-    return [{ level, max, expended: spellcastingExpendedSlots.value[String(level)] ?? 0 }]
-  }
-
-  const levels: { level: number; max: number; expended: number }[] = []
-  for (let level = 1; level <= 9; level++) {
-    const max = Number(row[`slot_${level}`] ?? 0)
-    if (max <= 0) continue
-    levels.push({ level, max, expended: spellcastingExpendedSlots.value[String(level)] ?? 0 })
-  }
-  return levels
-})
-
-// ---------------------------------------------------------------------------
-// Actions -- fetched, never computed. Read-only: see
-// CharacterActionsPanel.vue's own header.
-// ---------------------------------------------------------------------------
-
-type ActionsResponse =
-  | { available: true; actions: CharacterAction[] }
-  | { available: false; reason: string; message?: string }
-
-const { data: actionsResponse, pending: actionsPending } = await useFetch<ActionsResponse>(
-  () => `/api/worlds/${worldId.value}/characters/${characterId.value}/actions`
-)
-
-const characterActions = computed(() => (actionsResponse.value?.available ? actionsResponse.value.actions : []))
-
-const actionsUnavailableMessage = computed(() => {
-  const response = actionsResponse.value
-  if (!response || response.available) return ''
-  return response.message || ''
-})
-
-// ---------------------------------------------------------------------------
-// Combat Resolution -- one attacker (this character), one action, one
-// target. The target list reuses GET .../entities, the same World-character
-// roster the Characters list page already fetches (`lazy` for the same
-// reason `catalogue` above is: never delay the Sheet itself on it).
-// ---------------------------------------------------------------------------
-
-const { data: worldEntities } = await useFetch<{ data?: Array<{ id: string | number; title?: string }> }>(
-  () => `/api/worlds/${worldId.value}/entities?summary=1&type=character,npc,npc_sheet,pc,player_character`,
-  { lazy: true }
-)
-
-const combatTargetOptions = computed(() =>
-  (worldEntities.value?.data ?? [])
-    .filter((entity) => String(entity.id) !== characterId.value)
-    .map((entity) => ({ id: String(entity.id), title: entity.title || `Character ${entity.id}` }))
-)
-
-const combatResults = ref<Record<string, CombatOutcome>>({})
-const combatResolving = ref(false)
-const combatError = ref('')
-
-async function onResolveAction(payload: { actionId: string; targetCharacterId: string }) {
-  if (combatResolving.value) return
-
-  combatResolving.value = true
-  combatError.value = ''
-
-  try {
-    const result = await $fetch<CombatOutcome & { ok: true }>(
-      `/api/worlds/${worldId.value}/characters/${characterId.value}/combat`,
-      { method: 'POST', body: payload }
-    )
-    combatResults.value = { ...combatResults.value, [payload.actionId]: result }
-  } catch (resolveError: any) {
-    combatError.value =
-      resolveError?.data?.statusMessage || resolveError?.statusMessage || 'Failed to resolve this action'
-  } finally {
-    combatResolving.value = false
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Encounter -- Encounter Management System addition. "Show encounter
-// status. Show whose turn it is. Provide: Join Encounter, Leave Encounter,
-// Resolve Action" (this task's own CHARACTER SHEET section) -- Resolve
-// Action is the Actions panel above, unchanged. This section performs no
-// turn-order/round computation of its own: it fetches
-// GET .../encounters/:id (server/utils/encounter-view.ts) exactly the way
-// the DM's own encounter page does, and emits the same
-// { type: 'join' | 'leave' } intent to the same
-// POST .../encounters/:id/actions (server/utils/encounter-actions.ts).
-//
-// Character Conditions System addition: "Display: Active Conditions,
-// Duration, Source. Allow: Apply, Remove, Tick duration" (this task's own
-// CHARACTER SHEET section) -- scoped to THIS character's own conditions
-// within the selected encounter, the same apply/remove/tick intents the
-// DM's own encounter page sends, to the same action route.
-// ---------------------------------------------------------------------------
-
-type EncounterConditionView = {
-  id: string
-  conditionId: string
-  label: string
-  duration: number | null
-  source?: string
-}
-
-type EncounterCombatantView = {
-  characterId: string
-  characterTitle: string
-  initiative: number
-  isCurrentTurn: boolean
-  conditions: EncounterConditionView[]
-}
-
-type EncounterConditionOption = { id: string; label: string }
-
-type EncounterView = {
-  id: string
-  title: string
-  status: 'active' | 'ended'
-  round: number
-  turnOrder: EncounterCombatantView[]
-  currentCombatant: EncounterCombatantView | null
-  availableConditions: EncounterConditionOption[]
-}
-
-const { data: availableEncounters } = await useFetch<Array<{ id: string | number; title: string }>>(
-  () => `/api/worlds/${worldId.value}/entities?type=encounter&summary=1`,
-  { default: () => [], lazy: true }
-)
-
-const selectedEncounterId = ref('')
-const encounterView = ref<EncounterView | null>(null)
-const encounterPending = ref(false)
-const encounterError = ref('')
-
-const isInSelectedEncounter = computed(() =>
-  encounterView.value?.turnOrder.some((c) => c.characterId === characterId.value) ?? false
-)
-
-async function loadEncounterView() {
-  if (!selectedEncounterId.value) {
-    encounterView.value = null
-    return
-  }
-
-  encounterPending.value = true
-  encounterError.value = ''
-
-  try {
-    const result = await $fetch<{ available: true; encounter: EncounterView } | { available: false }>(
-      `/api/worlds/${worldId.value}/encounters/${selectedEncounterId.value}`
-    )
-    encounterView.value = result.available ? result.encounter : null
-  } catch (fetchError: any) {
-    encounterError.value = fetchError?.data?.statusMessage || fetchError?.statusMessage || 'Could not load this encounter'
-  } finally {
-    encounterPending.value = false
-  }
-}
-
-watch(selectedEncounterId, loadEncounterView)
-
-async function joinOrLeaveEncounter(type: 'join' | 'leave') {
-  if (!selectedEncounterId.value || encounterPending.value) return
-
-  encounterPending.value = true
-  encounterError.value = ''
-
-  try {
-    const result = await $fetch<{ ok: true; encounter: EncounterView }>(
-      `/api/worlds/${worldId.value}/encounters/${selectedEncounterId.value}/actions`,
-      { method: 'POST', body: { type, characterId: characterId.value } }
-    )
-    encounterView.value = result.encounter
-  } catch (fetchError: any) {
-    encounterError.value = fetchError?.data?.statusMessage || fetchError?.statusMessage || 'Could not update this encounter'
-  } finally {
-    encounterPending.value = false
-  }
-}
-
-// --- Conditions -- this character's own combatant record only -----------
-
-const myCombatant = computed(() =>
-  encounterView.value?.turnOrder.find((c) => c.characterId === characterId.value) ?? null
-)
-
-const conditionDraft = reactive({ conditionId: '', duration: '', source: '' })
-
-async function sendEncounterAction(body: Record<string, unknown>) {
-  if (!selectedEncounterId.value || encounterPending.value) return
-  encounterPending.value = true
-  encounterError.value = ''
-
-  try {
-    const result = await $fetch<{ ok: true; encounter: EncounterView }>(
-      `/api/worlds/${worldId.value}/encounters/${selectedEncounterId.value}/actions`,
-      { method: 'POST', body }
-    )
-    encounterView.value = result.encounter
-  } catch (fetchError: any) {
-    encounterError.value = fetchError?.data?.statusMessage || fetchError?.statusMessage || 'Could not update this encounter'
-  } finally {
-    encounterPending.value = false
-  }
-}
-
-function applyMyCondition() {
-  if (!conditionDraft.conditionId) return
-  const parsedDuration = Number(conditionDraft.duration)
-  const duration = conditionDraft.duration.trim() && Number.isFinite(parsedDuration) ? parsedDuration : undefined
-
-  sendEncounterAction({
-    type: 'apply-condition',
-    characterId: characterId.value,
-    conditionId: conditionDraft.conditionId,
-    ...(duration !== undefined ? { duration } : {}),
-    ...(conditionDraft.source.trim() ? { source: conditionDraft.source.trim() } : {})
-  })
-
-  conditionDraft.conditionId = ''
-  conditionDraft.duration = ''
-  conditionDraft.source = ''
-}
-
-function removeMyCondition(conditionInstanceId: string) {
-  sendEncounterAction({ type: 'remove-condition', characterId: characterId.value, conditionInstanceId })
-}
-
-function tickMyCondition(conditionInstanceId: string, delta: number) {
-  sendEncounterAction({ type: 'tick-condition', characterId: characterId.value, conditionInstanceId, delta })
-}
-
-const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
-  species: 'Species',
-  class: 'Class',
-  background: 'Background'
-}
-
-const sections = computed(() => {
-  if (!blueprint.value) return []
-  const current = blueprint.value
-
-  return (['species', 'class', 'background'] as const).map((key) => ({
-    key,
-    label: SECTION_LABELS[key],
-    slot: current[key]
-  }))
-})
-
-// The at-a-glance identity line. Reads a resolved slot's title, or says the
-// choice is missing -- it never falls back to a blank, because "this
-// character's Species no longer resolves" is information, not an empty cell.
-const identityRows = computed(() =>
-  sections.value.map((section) => ({
-    key: section.key,
-    label: section.label,
-    value: section.slot.status === 'resolved' ? section.slot.entry.title : 'Missing',
-    missing: section.slot.status !== 'resolved'
-  }))
-)
 </script>
 
 <template>
@@ -955,7 +306,7 @@ const identityRows = computed(() =>
         Character Sheet
       </div>
       <h1 class="eldra-title mt-2 break-words text-3xl font-semibold">
-        {{ blueprint?.characterTitle || 'Character Sheet' }}
+        {{ identity.characterTitle || 'Character Sheet' }}
       </h1>
 
       <!-- Identity at a glance: who this character is, in one line on a
@@ -966,7 +317,7 @@ const identityRows = computed(() =>
         class="mt-3 flex flex-wrap gap-x-6 gap-y-2"
       >
         <div
-          v-for="row in identityRows"
+          v-for="row in identity.identityRows"
           :key="row.key"
           class="min-w-0"
         >
@@ -1138,12 +489,12 @@ const identityRows = computed(() =>
             <CharacterInventoryPanel
               :items="inventoryItems"
               :options="inventoryOptions"
-              :saving="inventorySaving"
-              :error-message="inventoryError"
-              @add="onInventoryAdd"
-              @remove="onInventoryRemove"
-              @change-quantity="onInventoryQuantity"
-              @toggle-flag="onInventoryFlag"
+              :saving="mutations.inventory.saving"
+              :error-message="mutations.inventory.error"
+              @add="mutations.inventory.add"
+              @remove="mutations.inventory.remove"
+              @change-quantity="mutations.inventory.changeQuantity"
+              @toggle-flag="mutations.inventory.toggleFlag"
             />
           </div>
         </CharacterSheetSection>
@@ -1169,10 +520,10 @@ const identityRows = computed(() =>
               :hit-dice-max="hitDiceMax"
               :hit-dice-available="hitDiceAvailable"
               :hit-die-size="hitDieSize"
-              :saving="healthSaving"
-              :error-message="healthError"
-              @save="saveHealth"
-              @recovery="applyRecovery"
+              :saving="mutations.recovery.saving"
+              :error-message="mutations.recovery.error"
+              @save="mutations.recovery.save"
+              @recovery="mutations.recovery.apply"
             />
           </div>
         </CharacterSheetSection>
@@ -1189,13 +540,13 @@ const identityRows = computed(() =>
               :ability-mod="spellcastingAbilityMod"
               :save-dc="spellcastingSaveDc"
               :attack-bonus="spellcastingAttackBonus"
-              :saving="spellcastingSaving"
-              :error-message="spellcastingError"
-              @add="onSpellAdd"
-              @remove="onSpellRemove"
-              @toggle-flag="onSpellToggleFlag"
-              @expend-slot="onExpendSlot"
-              @restore-slot="onRestoreSlot"
+              :saving="mutations.spellcasting.saving"
+              :error-message="mutations.spellcasting.error"
+              @add="mutations.spellcasting.add"
+              @remove="mutations.spellcasting.remove"
+              @toggle-flag="mutations.spellcasting.toggleFlag"
+              @expend-slot="mutations.spellcasting.expendSlot"
+              @restore-slot="mutations.spellcasting.restoreSlot"
             />
           </div>
         </CharacterSheetSection>
@@ -1210,199 +561,43 @@ const identityRows = computed(() =>
             <CharacterActionsPanel
               :actions="characterActions"
               :pending="actionsPending"
-              :error-message="actionsUnavailableMessage || combatError"
+              :error-message="actionsUnavailableMessage || mutations.combat.error"
               :target-options="combatTargetOptions"
-              :results="combatResults"
-              :resolving="combatResolving"
-              @resolve="onResolveAction"
+              :results="mutations.combat.results"
+              :resolving="mutations.combat.resolving"
+              @resolve="mutations.combat.resolve"
             />
           </div>
         </CharacterSheetSection>
 
-        <!-- Encounter: status, whose turn it is, Join/Leave -- Resolve
-             Action is the Actions panel above, unchanged. See this file's
-             own ENCOUNTER header note. -->
+        <!-- Encounter: status, whose turn it is, Join/Leave, and (nested,
+             exactly where it always rendered) this character's own
+             Conditions -- Resolve Action is the Actions panel above,
+             unchanged. Both panels are presentation only; all data and
+             mutation state comes from useCharacterSheet.ts /
+             useCharacterMutations.ts via the `encounter`/`conditions`/
+             `mutations` props. -->
         <CharacterSheetSection heading="Encounter">
           <div class="mt-4">
-            <label class="block">
-              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Encounter</span>
-              <select
-                v-model="selectedEncounterId"
-                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
-              >
-                <option
-                  value=""
-                  class="bg-[#090909]"
-                >
-                  No encounter selected
-                </option>
-                <option
-                  v-for="option in availableEncounters"
-                  :key="option.id"
-                  :value="String(option.id)"
-                  class="bg-[#090909]"
-                >
-                  {{ option.title }}
-                </option>
-              </select>
-            </label>
-
-            <p
-              v-if="encounterError"
-              class="mt-3 rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
+            <CharacterEncounterPanel
+              :encounter="encounter"
+              :mutations="mutations.conditions"
             >
-              {{ encounterError }}
-            </p>
-
-            <template v-if="encounterView">
-              <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Round</span>
-                  <div class="text-lg font-semibold tabular-nums text-[#fff7df]">{{ encounterView.round }}</div>
-                </div>
-                <div>
-                  <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Current Turn</span>
-                  <div class="text-lg font-semibold text-[#fff7df]">
-                    {{ encounterView.currentCombatant?.characterTitle ?? '—' }}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                v-if="!isInSelectedEncounter"
-                type="button"
-                class="eldra-button mt-3 min-h-11 w-full rounded-none px-3 text-sm font-semibold disabled:opacity-50"
-                :disabled="encounterPending || encounterView.status === 'ended'"
-                @click="joinOrLeaveEncounter('join')"
-              >
-                Join Encounter
-              </button>
-              <button
-                v-else
-                type="button"
-                class="mt-3 min-h-11 w-full rounded-none border border-red-500/20 bg-red-500/10 px-3 text-sm text-red-200 disabled:opacity-50"
-                :disabled="encounterPending"
-                @click="joinOrLeaveEncounter('leave')"
-              >
-                Leave Encounter
-              </button>
-
-              <!-- Conditions: this character's own only. Display, Remove,
-                   Tick duration -- no automation, a duration reaching zero
-                   is shown, never auto-cleared. -->
-              <div
-                v-if="isInSelectedEncounter"
-                class="mt-4 border-t border-[rgba(201,164,90,0.14)] pt-4"
-              >
-                <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Conditions</span>
-
-                <div
-                  v-if="!myCombatant?.conditions.length"
-                  class="mt-2"
-                >
-                  <CharacterEmptyState
-                    compact
-                    message="None active."
-                  />
-                </div>
-
-                <div
-                  v-else
-                  class="mt-2 grid gap-1.5"
-                >
-                  <div
-                    v-for="condition in myCombatant!.conditions"
-                    :key="condition.id"
-                    class="flex flex-wrap items-center justify-between gap-2 text-xs"
-                  >
-                    <span class="text-[#d8ceb8]">
-                      <span class="eldra-gold-chip rounded-none border px-2 py-0.5 uppercase tracking-[0.06em]">{{ condition.label }}</span>
-                      <span
-                        v-if="condition.source"
-                        class="ml-2 text-[#6f6754]"
-                      >from {{ condition.source }}</span>
-                    </span>
-
-                    <div class="flex shrink-0 items-center gap-1">
-                      <template v-if="condition.duration !== null">
-                        <button
-                          type="button"
-                          class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-[#d8ceb8] disabled:opacity-50"
-                          :disabled="encounterPending"
-                          @click="tickMyCondition(condition.id, -1)"
-                        >
-                          −
-                        </button>
-                        <span class="min-w-6 text-center tabular-nums text-[#fff7df]">{{ condition.duration }}</span>
-                        <button
-                          type="button"
-                          class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-[#d8ceb8] disabled:opacity-50"
-                          :disabled="encounterPending"
-                          @click="tickMyCondition(condition.id, 1)"
-                        >
-                          +
-                        </button>
-                      </template>
-                      <button
-                        type="button"
-                        class="min-h-11 rounded-none border border-red-500/20 bg-red-500/10 px-2 text-red-200 disabled:opacity-50"
-                        :disabled="encounterPending"
-                        @click="removeMyCondition(condition.id)"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  v-if="encounterView.status !== 'ended'"
-                  class="mt-3 grid gap-2"
-                >
-                  <input
-                    v-model="conditionDraft.conditionId"
-                    list="my-condition-catalog-options"
-                    placeholder="Apply condition…"
-                    class="eldra-input min-h-11 rounded-none px-3 py-2 text-xs"
-                  >
-                  <datalist id="my-condition-catalog-options">
-                    <option
-                      v-for="option in encounterView.availableConditions"
-                      :key="option.id"
-                      :value="option.id"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </datalist>
-                  <div class="grid grid-cols-2 gap-2">
-                    <input
-                      v-model="conditionDraft.duration"
-                      inputmode="numeric"
-                      placeholder="Duration"
-                      class="eldra-input min-h-11 rounded-none px-3 py-2 text-xs"
-                    >
-                    <input
-                      v-model="conditionDraft.source"
-                      placeholder="Source (optional)"
-                      class="eldra-input min-h-11 rounded-none px-3 py-2 text-xs"
-                    >
-                  </div>
-                  <button
-                    type="button"
-                    class="eldra-button min-h-11 rounded-none px-3 text-xs font-semibold disabled:opacity-50"
-                    :disabled="encounterPending || !conditionDraft.conditionId"
-                    @click="applyMyCondition"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            </template>
+              <template #conditions>
+                <CharacterConditionsPanel
+                  v-if="encounter.isInSelected"
+                  :conditions="conditions"
+                  :mutations="mutations.conditions"
+                  :pending="encounter.pending"
+                  :encounter-ended="encounter.view?.status === 'ended'"
+                />
+              </template>
+            </CharacterEncounterPanel>
           </div>
         </CharacterSheetSection>
 
         <CharacterSheetSection
-          v-for="section in sections"
+          v-for="section in identity.sections"
           :key="section.key"
           :heading="section.label"
         >

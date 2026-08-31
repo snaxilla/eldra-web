@@ -144,6 +144,30 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     () => `/api/worlds/${worldId.value}/characters/${characterId.value}/actions`
   )
 
+  // Item/spell options for the add forms, the Combat Resolution target
+  // list, and the Encounter selector -- all `lazy` (see each one's use
+  // site below for why), but still created here, before the
+  // `Promise.all` below's internal `await`, alongside assemblyTask/
+  // derivedTask/actionsTask. `useFetch` must be invoked while the
+  // component's Nuxt instance is still active; once this function
+  // crosses its own internal `await`, that instance is no longer
+  // guaranteed available (Vue's `withAsyncContext` only protects the
+  // outer `await useCharacterSheet(...)` in sheet-v2.vue, not awaits
+  // inside this composable itself), so every `useFetch` call has to
+  // happen up here, before that boundary.
+  const { data: catalogue } = useFetch<{ items?: CatalogueOption[]; spells?: CatalogueOption[] }>(
+    () => `/api/worlds/${worldId.value}/catalogue`,
+    { lazy: true }
+  )
+  const { data: worldEntities } = useFetch<{ data?: Array<{ id: string | number; title?: string }> }>(
+    () => `/api/worlds/${worldId.value}/entities?summary=1&type=character,npc,npc_sheet,pc,player_character`,
+    { lazy: true }
+  )
+  const { data: availableEncounters } = useFetch<Array<{ id: string | number; title: string }>>(
+    () => `/api/worlds/${worldId.value}/entities?type=encounter&summary=1`,
+    { default: () => [], lazy: true }
+  )
+
   const [
     { data: assembly, pending, error, refresh: refreshAssembly },
     { data: derivedResponse, pending: derivedPending, refresh: refreshDerived },
@@ -273,14 +297,11 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     { immediate: true }
   )
 
-  // Item/spell options for the add forms. `lazy` so a World with a large
-  // bound catalogue never delays the sheet itself -- the add form simply
-  // has nothing to offer until it arrives, and custom items work
-  // regardless.
-  const { data: catalogue } = useFetch<{ items?: CatalogueOption[]; spells?: CatalogueOption[] }>(
-    () => `/api/worlds/${worldId.value}/catalogue`,
-    { lazy: true }
-  )
+  // Item/spell options for the add forms. `lazy` (declared above,
+  // alongside the other fetches, for the reason noted there) so a World
+  // with a large bound catalogue never delays the sheet itself -- the
+  // add form simply has nothing to offer until it arrives, and custom
+  // items work regardless.
   const inventoryOptions = computed(() => catalogue.value?.items ?? [])
   const spellOptions = computed(() => catalogue.value?.spells ?? [])
 
@@ -333,12 +354,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
 
   // Combat Resolution's target list reuses GET .../entities, the same
   // World-character roster the Characters list page already fetches
-  // (`lazy` for the same reason `catalogue` above is).
-  const { data: worldEntities } = useFetch<{ data?: Array<{ id: string | number; title?: string }> }>(
-    () => `/api/worlds/${worldId.value}/entities?summary=1&type=character,npc,npc_sheet,pc,player_character`,
-    { lazy: true }
-  )
-
+  // (`lazy`, declared above, for the same reason `catalogue` is).
   const combatTargetOptions = computed(() =>
     (worldEntities.value?.data ?? [])
       .filter((entity) => String(entity.id) !== characterId.value)
@@ -352,11 +368,6 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   // ConditionsPanel.vue each receive one clean, focused prop instead of
   // a dozen individually-named ones.
   // -------------------------------------------------------------------
-
-  const { data: availableEncounters } = useFetch<Array<{ id: string | number; title: string }>>(
-    () => `/api/worlds/${worldId.value}/entities?type=encounter&summary=1`,
-    { default: () => [], lazy: true }
-  )
 
   const selectedEncounterId = ref('')
   const encounterView = ref<EncounterView | null>(null)

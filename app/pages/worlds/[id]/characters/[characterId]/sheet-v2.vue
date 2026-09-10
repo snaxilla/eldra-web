@@ -233,6 +233,7 @@ import CharacterEncounterPanel from '~/components/characters/CharacterEncounterP
 import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
 import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
 import CharacterSheetShell from '~/components/characters/CharacterSheetShell.vue'
+import CharacterIdentityCard from '~/components/characters/CharacterIdentityCard.vue'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import { useCharacterSheetLayout } from '~/composables/useCharacterSheetLayout'
@@ -457,29 +458,13 @@ const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
           v-if="isDesktop"
           #left
         >
-          <div class="eldra-kicker text-xs">
-            Character Sheet
-          </div>
-          <h1 class="eldra-title mt-2 break-words text-2xl font-semibold">
-            {{ identity.characterTitle || 'Character Sheet' }}
-          </h1>
-          <dl class="mt-3 grid gap-2">
-            <div
-              v-for="row in identity.identityRows"
-              :key="row.key"
-              class="min-w-0"
-            >
-              <dt class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
-                {{ row.label }}
-              </dt>
-              <dd
-                class="break-words text-sm font-semibold"
-                :class="row.missing ? 'text-red-300' : 'text-[#fff7df]'"
-              >
-                {{ row.value }}
-              </dd>
-            </div>
-          </dl>
+          <CharacterIdentityCard
+            :character-title="identity.characterTitle"
+            :image-url="identity.characterImageUrl"
+            :level="characterLevel"
+            :identity-rows="identity.identityRows"
+            compact
+          />
 
           <CharacterSheetSection
             heading="Ability Scores"
@@ -665,29 +650,12 @@ const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
             <!-- Below 1280px there is no left rail to hold these -- they
                  fold into the Character tab, per §3.1's capability rule. -->
             <template v-if="!isDesktop">
-              <div class="eldra-kicker text-xs">
-                Character Sheet
-              </div>
-              <h1 class="eldra-title mt-2 break-words text-2xl font-semibold">
-                {{ identity.characterTitle || 'Character Sheet' }}
-              </h1>
-              <dl class="mt-3 flex flex-wrap gap-x-6 gap-y-2">
-                <div
-                  v-for="row in identity.identityRows"
-                  :key="row.key"
-                  class="min-w-0"
-                >
-                  <dt class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
-                    {{ row.label }}
-                  </dt>
-                  <dd
-                    class="break-words text-base font-semibold"
-                    :class="row.missing ? 'text-red-300' : 'text-[#fff7df]'"
-                  >
-                    {{ row.value }}
-                  </dd>
-                </div>
-              </dl>
+              <CharacterIdentityCard
+                :character-title="identity.characterTitle"
+                :image-url="identity.characterImageUrl"
+                :level="characterLevel"
+                :identity-rows="identity.identityRows"
+              />
 
               <CharacterSheetSection heading="Ability Scores">
                 <template #heading-end>

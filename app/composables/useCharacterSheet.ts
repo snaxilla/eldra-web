@@ -59,6 +59,10 @@ export type AssemblyBlueprint = {
   worldId: string
   characterId: string
   characterTitle: string
+  // Visual Language Phase 2 -- see server/utils/character-assembly.ts's own
+  // note on this field. Already resolved to a URL (or `null`, a legal "no
+  // portrait set" state) by the server; this file relays it verbatim.
+  characterImageUrl: string | null
   species: AssemblySlot
   class: AssemblySlot
   background: AssemblySlot
@@ -219,6 +223,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
 
   const identity = computed(() => ({
     characterTitle: blueprint.value?.characterTitle || '',
+    characterImageUrl: blueprint.value?.characterImageUrl || null,
     sections: sections.value,
     identityRows: identityRows.value
   }))

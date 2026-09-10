@@ -132,6 +132,15 @@ export type CharacterAssemblyBlueprint = {
   worldId: string
   characterId: string
   characterTitle: string
+  // Visual Language Phase 2 (eldra-character-sheet-visual-language.md §1.4,
+  // eldra-design-language.md §11 Style Guide "Identity Block"). Relayed
+  // verbatim from the entity's own `image` field (the same Directus file
+  // relation V1 and the World roster already read via their own
+  // `imageUrlFor` helpers) -- resolved to a URL here, once, so every
+  // consumer of this blueprint reads a plain string rather than
+  // re-deriving the `/api/assets/:id` convention itself. `null` is a
+  // first-class, legal state (no portrait set), never a placeholder image.
+  characterImageUrl: string | null
   species: CharacterAssemblySlot
   class: CharacterAssemblySlot
   background: CharacterAssemblySlot
@@ -191,6 +200,19 @@ export type CharacterAssemblyResult =
 function extractRef(value: unknown): StoredChoiceRef | null {
   if (!value || typeof value !== 'object') return null
   return value as StoredChoiceRef
+}
+
+// Same `/api/assets/:id` convention the World roster and Builder already
+// use (see e.g. characters/index.vue's own `imageUrlFor`) -- resolved once
+// here so `characterImageUrl` is a plain string or `null` for every
+// consumer of this blueprint, never a Directus file id/object shape they
+// would each have to re-interpret themselves.
+function resolveEntityImageUrl(entity: any): string | null {
+  const image = entity?.image
+  if (!image) return null
+  if (typeof image === 'string' || typeof image === 'number') return `/api/assets/${image}`
+  if (typeof image === 'object' && image.id) return `/api/assets/${image.id}`
+  return null
 }
 
 // Resolves one choice against its category's CURRENT catalogue entries --
@@ -307,7 +329,7 @@ export async function assembleCharacter(
   try {
     const entityRes: any = await directusServiceRequest(`/items/entities/${characterId}`, {
       method: 'GET',
-      query: { fields: 'id,world_id,title' }
+      query: { fields: 'id,world_id,title,image' }
     })
     entity = entityRes?.data || null
   } catch {
@@ -378,6 +400,7 @@ export async function assembleCharacter(
     worldId: String(worldId),
     characterId: String(characterId),
     characterTitle: String(entity.title || ''),
+    characterImageUrl: resolveEntityImageUrl(entity),
     species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species'),
     class: resolveSlot(extractRef(selection.class), catalogue.classes, catalogue.packs, 'Class'),
     background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),

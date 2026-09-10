@@ -87,6 +87,7 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
     worldId: '5',
     characterId: '42',
     characterTitle: 'Bobbert',
+    characterImageUrl: null,
     species: slot('species', 'human-xphb'),
     class: slot('class', 'fighter-xphb'),
     background: slot('background', 'acolyte-xphb'),

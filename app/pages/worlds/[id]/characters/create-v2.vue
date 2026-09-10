@@ -322,7 +322,7 @@ async function createCharacter() {
     )
 
     if (created?.id) {
-      await navigateTo(`/worlds/${worldId.value}/characters/${created.id}/sheet-v2`)
+      await navigateTo(`/worlds/${worldId.value}/characters/${created.id}/sheet`)
     } else {
       await navigateTo(`/worlds/${worldId.value}/characters`)
     }

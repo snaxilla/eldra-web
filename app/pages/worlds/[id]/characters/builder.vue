@@ -2936,7 +2936,7 @@ async function createCharacter() {
     await uploadBuilderPortraitForEntity(entityId)
 
     workspaceMode.value = 'build'
-    await router.push(`/worlds/${worldId.value}/entities/${entityId}/sheet`)
+    await router.push(`/worlds/${worldId.value}/characters/${entityId}/sheet`)
   } catch (err: any) {
     createError.value =
       err?.data?.statusMessage ||

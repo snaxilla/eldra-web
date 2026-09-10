@@ -116,7 +116,7 @@ async function save() {
       method: 'PUT',
       body: { selections }
     })
-    await navigateTo(`/worlds/${worldId.value}/characters/${characterId.value}/sheet-v2`)
+    await navigateTo(`/worlds/${worldId.value}/characters/${characterId.value}/sheet`)
   } catch (saveError: any) {
     saveErrorMessage.value =
       saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to save proficiency choices'
@@ -147,7 +147,7 @@ async function save() {
       </p>
 
       <NuxtLink
-        :to="`/worlds/${worldId}/characters/${characterId}/sheet-v2`"
+        :to="`/worlds/${worldId}/characters/${characterId}/sheet`"
         class="mt-4 inline-block text-sm text-[#9f9278] hover:text-[#d8ceb8]"
       >
         &larr; Back to Character Sheet
@@ -210,7 +210,7 @@ async function save() {
         <div class="fixed inset-x-0 bottom-0 z-20 border-t border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,8,0.96)] px-4 py-3 backdrop-blur">
           <div class="mx-auto flex max-w-3xl items-center gap-2">
             <NuxtLink
-              :to="`/worlds/${worldId}/characters/${characterId}/sheet-v2`"
+              :to="`/worlds/${worldId}/characters/${characterId}/sheet`"
               class="flex min-h-12 shrink-0 items-center rounded-none border border-[rgba(201,164,90,0.24)] px-4 text-sm font-semibold text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
             >
               Cancel

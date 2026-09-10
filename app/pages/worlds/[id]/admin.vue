@@ -358,7 +358,7 @@ function openArticle(entity: any) {
 
 function openSheet(entity: any) {
   const id = entityId(entity)
-  if (id) router.push(`/worlds/${worldId.value}/entities/${id}/sheet`)
+  if (id) router.push(`/worlds/${worldId.value}/characters/${id}/sheet`)
 }
 
 function relationshipOther(relationship: any) {

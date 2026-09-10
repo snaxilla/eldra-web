@@ -195,7 +195,7 @@ const selectedCharacterContextEntity = computed(() => {
   const summary = String(character?.displaySummary || character?.summary || '').trim()
   const imageUrl = String(character?.imageUrl || imageUrlFor(character) || '').trim()
   const articleUrl = id ? `/worlds/${worldId.value}/entities/${id}` : ''
-  const sheetUrl = id ? `/worlds/${worldId.value}/entities/${id}/sheet` : ''
+  const sheetUrl = id ? `/worlds/${worldId.value}/characters/${id}/sheet` : ''
 
   return {
     ...character,
@@ -763,7 +763,7 @@ onBeforeUnmount(() => {
                   </NuxtLink>
 
                   <NuxtLink
-                    :to="`/worlds/${worldId}/entities/${character.id}/sheet`"
+                    :to="`/worlds/${worldId}/characters/${character.id}/sheet`"
                     class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.48)]"
                     @click.stop
                   >

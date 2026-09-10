@@ -152,7 +152,7 @@ const entitySheetUrl = computed(() => {
 
   if (!isSheetCharacterLike.value || !drawerWorldId.value || !activeEntityId.value) return ''
 
-  return `/worlds/${drawerWorldId.value}/entities/${activeEntityId.value}/sheet`
+  return `/worlds/${drawerWorldId.value}/characters/${activeEntityId.value}/sheet`
 })
 
 const entityTags = computed(() => {

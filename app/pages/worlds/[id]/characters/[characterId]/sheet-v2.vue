@@ -195,28 +195,46 @@
 //
 // ---------------------------------------------------------------------------
 // PHASE 4 (BEAUTIFICATION PASS): SHELL, NAVIGATION, THREE-COLUMN LAYOUT
+// -- SUPERSEDED BY CORRECTIVE PHASE 2R, BELOW
 // ---------------------------------------------------------------------------
-// This page's template stopped being a flat list of sections and became a
-// layout wiring file: CharacterSheetShell.vue owns the desktop 3-column
-// grid / tablet+phone single column / phone bottom nav decision;
-// useCharacterSheetLayout.ts owns which of the five tabs (§3.4) is active,
-// URL-synced to `?tab=` the same way V1's sheet.vue already does. No
-// panel below was redesigned -- every one is the exact same component
-// Phases 1-3 already built, only re-parented into its approved region
-// (§3.2): Identity/Ability Scores/Derived to the left rail on desktop
-// (folded into the Character tab below that width, per §3.1's "T1 becomes
-// a T2 tab on smaller screens -- never removed"); Recovery/Encounter to
-// the right rail on desktop (folded into the Play tab below that width,
-// alongside Actions) -- this task's own literal Right Rail list, not
-// this doc section's original Play-tab-only phrasing, is what's followed
-// here (matching how every prior phase in this session has treated a
-// literal task instruction as authoritative over the architecture
-// document's own wording where the two differ). "Spell Slots" specifically
-// stays inside the full Spellcasting panel (Spells tab only) rather than
-// being pulled out as a standalone right-rail widget -- doing that would
-// mean splitting CharacterSpellcastingPanel.vue, which this task's own
-// IMPORTANT section forbids ("Do NOT redesign... Spellcasting... Only
-// move them into their approved homes").
+// Phase 4 gave this page a desktop-only three-column dashboard (left rail /
+// center / right rail via CharacterSheetDesktopLayout.vue), nested inside
+// Eldra's OWN three-pane workspace shell (world navigation / main
+// workspace / context rail). Corrective Phase 2R (see
+// eldra-character-sheet-visual-language.md) rejects that nesting outright:
+// a second three-column app-within-app inside the workspace's own middle
+// pane is precisely the "admin dashboard" feeling the Beautification Pass
+// exists to remove, not a fix for it. Nothing about §3.4's five tabs or
+// `?tab=` URL sync changes -- only the LAYOUT those tabs render into.
+//
+// ---------------------------------------------------------------------------
+// CORRECTIVE PHASE 2R: V1-STYLE FOLIO SHELL
+// ---------------------------------------------------------------------------
+// The rails are gone, not restyled. `CharacterSheetShell.vue` no longer
+// renders `CharacterSheetDesktopLayout.vue` at all (left unused on disk,
+// per this task's own "bypass, don't delete" guidance) -- every breakpoint
+// now gets the SAME single folio body: one sticky command center
+// (`CharacterSheetCommandCenter.vue`, this page's one Feature surface),
+// then one tabbed content column. What used to be gated `v-if="!isDesktop"`
+// (Identity/Ability Scores/Derived folding into the Character tab;
+// Recovery/Encounter/Conditions folding into the Play tab, "never both at
+// once" to avoid two live instances of the same stateful panel) is now
+// simply the ONLY copy of that content -- there is no second, rail-hosted
+// copy left to avoid duplicating. This is why the template below is
+// smaller than Phase 4's, not larger.
+//
+// `CharacterIdentityCard` (Visual Language Phase 2) is unchanged and
+// simply relocated from "desktop left rail / mobile Character-tab fold" to
+// "the one place it's ever shown now": the top of the Character tab's
+// body. `CharacterVitalsBar` is unchanged internally and now renders
+// `bare` inside `CharacterSheetCommandCenter`, which supplies the identity
+// summary (portrait thumbnail, name, level, Species/Class/Background at a
+// glance) and Back/Rest command buttons the old Vitals Bar's own top row
+// used to own alone -- see that component's own header for the full
+// reasoning. No gameplay panel below (Actions/Recovery/Spellcasting/
+// Inventory/Conditions/Encounter) was touched: every one is the exact same
+// component this task's IMPORTANT section says not to redesign, only
+// re-parented into a flatter template.
 
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
@@ -231,9 +249,9 @@ import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
 import CharacterEmptyState from '~/components/characters/CharacterEmptyState.vue'
 import CharacterEncounterPanel from '~/components/characters/CharacterEncounterPanel.vue'
 import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
-import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
 import CharacterSheetShell from '~/components/characters/CharacterSheetShell.vue'
 import CharacterIdentityCard from '~/components/characters/CharacterIdentityCard.vue'
+import CharacterSheetCommandCenter from '~/components/characters/CharacterSheetCommandCenter.vue'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import { useCharacterSheetLayout } from '~/composables/useCharacterSheetLayout'
@@ -275,6 +293,7 @@ const {
   hitDiceAvailable,
   hitDieSize,
   armorClass,
+  proficiencyBonus,
   characterLevel,
   spellcastingIsCaster,
   spellcastingAbilityMod,
@@ -364,47 +383,49 @@ const vitalsError = computed(() =>
 )
 
 // ---------------------------------------------------------------------------
-// Shell -- Phase 4. `tabs`/`activeTab`/`setActiveTab`/`isDesktop` are all
-// useCharacterSheetLayout.ts's; this page's only job is deciding WHAT
-// renders in the shell's `left`/`center`/`right` slots for the current
-// tab and breakpoint. See useCharacterSheetLayout.ts's own header for why
-// `isDesktop` (not pure CSS) is what decides whether Ability Scores/
-// Derived/Recovery/Encounter render in a rail (once) or fold into their
-// approved tab (once) -- never both at once, which would mean two live,
-// independently-stateful instances of the same data-bound panel.
+// Shell -- Corrective Phase 2R. `tabs`/`activeTab`/`setActiveTab` are still
+// useCharacterSheetLayout.ts's (URL-synced tab state is still useful, per
+// this task's own KEEP list); `isDesktop` is not destructured here anymore
+// -- CharacterSheetShell.vue no longer branches on it (there is no more
+// rail/tab-fold distinction left for it to decide), and every tab's
+// content below now renders identically at every breakpoint, the same
+// content that used to be gated `v-if="!isDesktop"` and is now simply the
+// only copy.
 // ---------------------------------------------------------------------------
 
-const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
+const { tabs, activeTab, setActiveTab } = useCharacterSheetLayout()
+
+// Rest buttons in the command center are a shortcut to the SAME mutation
+// CharacterRecoveryPanel.vue's own Rest buttons already call -- see
+// CharacterSheetCommandCenter.vue's own header for why this adds no new
+// validation logic.
+function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) {
+  mutations.recovery.apply(payload)
+}
 </script>
 
 <template>
   <div class="eldra-ground h-full overflow-y-auto">
-    <div class="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8">
-      <NuxtLink
-        :to="`/worlds/${worldId}/characters`"
-        class="mb-4 inline-block text-sm text-[#9f9278] hover:text-[#d8ceb8]"
-      >
-        &larr; Back to Characters
-      </NuxtLink>
-
+    <!-- Folio width, not dashboard width -- Corrective Phase 2R. A single
+         reading column belongs at a book's proportions (~max-w-4xl), not
+         stretched to fill a 2560px monitor the way the rejected 3-column
+         layout's max-w-[1600px] container assumed it would need to. -->
+    <div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <div
         v-if="pending"
-        class="mt-4 text-sm text-[#9f9278]"
+        class="text-sm text-[#9f9278]"
       >
         Loading this character's Assembly…
       </div>
 
       <div
         v-else-if="error"
-        class="mt-4 rounded-none border border-red-900 bg-red-950/40 p-4 text-sm text-red-300"
+        class="rounded-none border border-red-900 bg-red-950/40 p-4 text-sm text-red-300"
       >
         {{ errorMessage }}
       </div>
 
-      <div
-        v-else-if="assembly && !assembly.available"
-        class="mt-4"
-      >
+      <div v-else-if="assembly && !assembly.available">
         <CharacterEmptyState
           icon="i-lucide-file-question"
           :message="notAvailableMessage"
@@ -413,27 +434,30 @@ const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
 
       <CharacterSheetShell
         v-else-if="blueprint"
-        class="mt-4"
         :tabs="tabs"
         :active-tab="activeTab"
-        :is-desktop="isDesktop"
         @select-tab="setActiveTab"
       >
-        <!-- Vitals Bar: sticky within THIS page's own overflow-y-auto root
-             (see the class on this file's outermost div), never `fixed` --
-             per the approved plan's own risk note on why. §7.2's Feature
-             elevation tier, max one per screen, spent here. Measured by
-             the shell so both rails can stick immediately below it. -->
+        <!-- Command center: sticky within THIS page's own overflow-y-auto
+             root (see the class on this file's outermost div), never
+             `fixed` -- per the approved plan's own risk note on why. The
+             page's one Feature surface (§7.2/Design Language §8 Rule 1),
+             spent here. No height measurement needed -- there is no rail
+             left to offset beneath it. -->
         <template #vitals>
-          <CharacterVitalsBar
+          <CharacterSheetCommandCenter
             class="sticky top-0 z-20"
+            :world-id="worldId"
             :character-title="identity.characterTitle"
+            :image-url="identity.characterImageUrl"
             :level="characterLevel"
             :class-name="characterClassName"
+            :identity-rows="identity.identityRows"
             :current-hp="healthDraft.currentHp"
             :max-hp="maxHp"
             :temporary-hp="healthDraft.temporaryHp"
             :armor-class="armorClass"
+            :proficiency-bonus="proficiencyBonus"
             :is-caster="spellcastingIsCaster"
             :spell-save-dc="spellcastingSaveDc"
             :spell-attack-bonus="spellcastingAttackBonus"
@@ -444,146 +468,12 @@ const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
             :saving="vitalsSaving"
             :error="vitalsError"
             :remove-condition="mutations.conditions.remove"
+            @rest="handleCommandCenterRest"
           />
         </template>
 
-        <!-- Left rail (desktop only, >= 1280px): reference data read
-             constantly, changed almost never -- §3.2's own placement for
-             Identity, Ability Scores, and Derived (saves/skills/
-             proficiencies/other categories, all still rendered generically
-             through the one existing Derived section -- see this task's
-             own note on why that section isn't being split into new
-             per-category panels this phase). -->
-        <template
-          v-if="isDesktop"
-          #left
-        >
-          <CharacterIdentityCard
-            :character-title="identity.characterTitle"
-            :image-url="identity.characterImageUrl"
-            :level="characterLevel"
-            :identity-rows="identity.identityRows"
-            compact
-          />
-
-          <CharacterSheetSection
-            heading="Ability Scores"
-            density="compact"
-          >
-            <template #heading-end>
-              <NuxtLink
-                :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
-                class="text-sm text-[#9f9278] underline-offset-4 hover:text-[#d8ceb8] hover:underline"
-              >
-                {{ blueprint.abilityScores ? 'Edit' : 'Assign' }}
-              </NuxtLink>
-            </template>
-
-            <div class="mt-3">
-              <CharacterAbilityScoresPanel
-                :scores="blueprint.abilityScores?.scores ?? null"
-                empty-message="No ability scores have been assigned yet. Use Assign above to set them."
-              />
-            </div>
-          </CharacterSheetSection>
-
-          <CharacterSheetSection
-            heading="Derived"
-            density="compact"
-          >
-            <template #heading-end>
-              <p
-                v-if="derived"
-                class="break-words text-xs text-[#6f6754]"
-              >
-                {{ derived.packageId }}@{{ derived.packageVersion }}
-              </p>
-            </template>
-
-            <p
-              v-if="derivedPending"
-              class="mt-3 text-sm text-[#9f9278]"
-            >
-              Evaluating this character against the World's rules…
-            </p>
-
-            <p
-              v-else-if="!derived"
-              class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
-            >
-              {{ derivedUnavailable }}
-            </p>
-
-            <div
-              v-else
-              class="mt-3 grid gap-5"
-            >
-              <div
-                v-for="region in derivedRegions"
-                :key="region.category"
-                class="min-w-0"
-              >
-                <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
-                  {{ region.label }}
-                </h3>
-                <CharacterDerivedPanel :entries="region.entries" />
-              </div>
-
-              <!-- Equipment Slots: declared by the active Rules Package's
-                   Collection metadata (registry.getById('collection:equipment')
-                   .slots), not computed here. No per-slot occupancy is shown --
-                   that needs an item to declare WHICH slot it fills, which
-                   needs a Rules Facet no item authors yet (see the actor
-                   bridge's header). What the package declares (which slots
-                   exist, and their capacity) is real Rules Engine output and
-                   is shown as such. -->
-              <div
-                v-for="collection in derived.collections"
-                :key="collection.id"
-                class="min-w-0"
-              >
-                <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
-                  {{ collection.label || 'Equipment Slots' }}
-                </h3>
-                <div class="flex flex-wrap gap-2">
-                  <CharacterStatChip
-                    v-for="equipmentSlot in collection.slots"
-                    :key="equipmentSlot.id"
-                    :label="equipmentSlot.id"
-                    :value="equipmentSlot.capacity"
-                  />
-                </div>
-              </div>
-
-              <!-- Declared by a Species, Class, or Background and not yet
-                   answered. Stated rather than silently omitted, because "you
-                   still have skills to choose" is information a player needs
-                   -- and it disappears on its own once they are answered,
-                   because `pendingChoices` is derived from the current answers
-                   rather than from a flag anything has to clear.
-                   The Sheet still renders; it does not edit. The link goes to
-                   the Builder-context page that does. -->
-              <p
-                v-if="derived.pendingChoices.length"
-                class="text-xs leading-5 text-[#6f6754]"
-              >
-                {{ derived.pendingChoices.length }} proficiency
-                {{ derived.pendingChoices.length === 1 ? 'choice is' : 'choices are' }}
-                still outstanding, so those proficiencies show as unselected.
-                <NuxtLink
-                  :to="`/worlds/${worldId}/characters/${characterId}/proficiencies`"
-                  class="text-[#c9a45a] underline underline-offset-2 hover:text-[#f5e7bd]"
-                >
-                  Choose them
-                </NuxtLink>.
-              </p>
-            </div>
-          </CharacterSheetSection>
-        </template>
-
-        <!-- Center: the one region that changes with the active tab (§3.4,
-             §4's own "only region that changes with the tab; gets all
-             spare width"). -->
+        <!-- The one content column, at every breakpoint (§3.4). No more
+             left/right rail slots -- Corrective Phase 2R. -->
         <template #center>
           <template v-if="activeTab === 'play'">
             <!-- Actions: "what can my character do?", and now "execute one
@@ -605,150 +495,145 @@ const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
               </div>
             </CharacterSheetSection>
 
-            <!-- Below 1280px there is no right rail to hold these -- they
-                 fold into the Play tab, alongside Actions, per §3.1's
-                 capability rule ("never removed", only re-tiered). -->
-            <template v-if="!isDesktop">
-              <CharacterSheetSection heading="Recovery">
-                <div class="mt-4">
-                  <CharacterRecoveryPanel
-                    :health="healthDraft"
-                    :max-hp="maxHp"
-                    :hit-dice-max="hitDiceMax"
-                    :hit-dice-available="hitDiceAvailable"
-                    :hit-die-size="hitDieSize"
-                    :saving="mutations.recovery.saving"
-                    :error-message="mutations.recovery.error"
-                    @save="mutations.recovery.save"
-                    @recovery="mutations.recovery.apply"
-                  />
-                </div>
-              </CharacterSheetSection>
+            <!-- Recovery and Encounter/Conditions live inside Play, not a
+                 third rail -- this task's own NEW SHEET STRUCTURE note. -->
+            <CharacterSheetSection heading="Recovery">
+              <div class="mt-4">
+                <CharacterRecoveryPanel
+                  :health="healthDraft"
+                  :max-hp="maxHp"
+                  :hit-dice-max="hitDiceMax"
+                  :hit-dice-available="hitDiceAvailable"
+                  :hit-die-size="hitDieSize"
+                  :saving="mutations.recovery.saving"
+                  :error-message="mutations.recovery.error"
+                  @save="mutations.recovery.save"
+                  @recovery="mutations.recovery.apply"
+                />
+              </div>
+            </CharacterSheetSection>
 
-              <CharacterSheetSection heading="Encounter">
-                <div class="mt-4">
-                  <CharacterEncounterPanel
-                    :encounter="encounter"
-                    :mutations="mutations.conditions"
-                  >
-                    <template #conditions>
-                      <CharacterConditionsPanel
-                        v-if="encounter.isInSelected"
-                        :conditions="conditions"
-                        :mutations="mutations.conditions"
-                        :pending="encounter.pending"
-                        :encounter-ended="encounter.view?.status === 'ended'"
-                      />
-                    </template>
-                  </CharacterEncounterPanel>
-                </div>
-              </CharacterSheetSection>
-            </template>
+            <CharacterSheetSection heading="Encounter">
+              <div class="mt-4">
+                <CharacterEncounterPanel
+                  :encounter="encounter"
+                  :mutations="mutations.conditions"
+                >
+                  <template #conditions>
+                    <CharacterConditionsPanel
+                      v-if="encounter.isInSelected"
+                      :conditions="conditions"
+                      :mutations="mutations.conditions"
+                      :pending="encounter.pending"
+                      :encounter-ended="encounter.view?.status === 'ended'"
+                    />
+                  </template>
+                </CharacterEncounterPanel>
+              </div>
+            </CharacterSheetSection>
           </template>
 
           <template v-else-if="activeTab === 'character'">
-            <!-- Below 1280px there is no left rail to hold these -- they
-                 fold into the Character tab, per §3.1's capability rule. -->
-            <template v-if="!isDesktop">
-              <CharacterIdentityCard
-                :character-title="identity.characterTitle"
-                :image-url="identity.characterImageUrl"
-                :level="characterLevel"
-                :identity-rows="identity.identityRows"
-              />
+            <!-- Identity/Ability Scores/Derived: one copy, every breakpoint
+                 -- Corrective Phase 2R (no more rail to also hold these). -->
+            <CharacterIdentityCard
+              :character-title="identity.characterTitle"
+              :image-url="identity.characterImageUrl"
+              :level="characterLevel"
+              :identity-rows="identity.identityRows"
+            />
 
-              <CharacterSheetSection heading="Ability Scores">
-                <template #heading-end>
-                  <NuxtLink
-                    :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
-                    class="text-sm text-[#9f9278] underline-offset-4 hover:text-[#d8ceb8] hover:underline"
-                  >
-                    {{ blueprint.abilityScores ? 'Edit' : 'Assign' }}
-                  </NuxtLink>
-                </template>
+            <CharacterSheetSection heading="Ability Scores">
+              <template #heading-end>
+                <NuxtLink
+                  :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
+                  class="text-sm text-[#9f9278] underline-offset-4 hover:text-[#d8ceb8] hover:underline"
+                >
+                  {{ blueprint.abilityScores ? 'Edit' : 'Assign' }}
+                </NuxtLink>
+              </template>
 
-                <div class="mt-3">
-                  <CharacterAbilityScoresPanel
-                    :scores="blueprint.abilityScores?.scores ?? null"
-                    empty-message="No ability scores have been assigned yet. Use Assign above to set them."
-                  />
+              <div class="mt-3">
+                <CharacterAbilityScoresPanel
+                  :scores="blueprint.abilityScores?.scores ?? null"
+                  empty-message="No ability scores have been assigned yet. Use Assign above to set them."
+                />
+              </div>
+            </CharacterSheetSection>
+
+            <CharacterSheetSection heading="Derived">
+              <template #heading-end>
+                <p
+                  v-if="derived"
+                  class="break-words text-xs text-[#6f6754]"
+                >
+                  {{ derived.packageId }}@{{ derived.packageVersion }}
+                </p>
+              </template>
+
+              <p
+                v-if="derivedPending"
+                class="mt-3 text-sm text-[#9f9278]"
+              >
+                Evaluating this character against the World's rules…
+              </p>
+
+              <p
+                v-else-if="!derived"
+                class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+              >
+                {{ derivedUnavailable }}
+              </p>
+
+              <div
+                v-else
+                class="mt-3 grid gap-5"
+              >
+                <div
+                  v-for="region in derivedRegions"
+                  :key="region.category"
+                  class="min-w-0"
+                >
+                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+                    {{ region.label }}
+                  </h3>
+                  <CharacterDerivedPanel :entries="region.entries" />
                 </div>
-              </CharacterSheetSection>
-
-              <CharacterSheetSection heading="Derived">
-                <template #heading-end>
-                  <p
-                    v-if="derived"
-                    class="break-words text-xs text-[#6f6754]"
-                  >
-                    {{ derived.packageId }}@{{ derived.packageVersion }}
-                  </p>
-                </template>
-
-                <p
-                  v-if="derivedPending"
-                  class="mt-3 text-sm text-[#9f9278]"
-                >
-                  Evaluating this character against the World's rules…
-                </p>
-
-                <p
-                  v-else-if="!derived"
-                  class="mt-3 rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
-                >
-                  {{ derivedUnavailable }}
-                </p>
 
                 <div
-                  v-else
-                  class="mt-3 grid gap-5"
+                  v-for="collection in derived.collections"
+                  :key="collection.id"
+                  class="min-w-0"
                 >
-                  <div
-                    v-for="region in derivedRegions"
-                    :key="region.category"
-                    class="min-w-0"
-                  >
-                    <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
-                      {{ region.label }}
-                    </h3>
-                    <CharacterDerivedPanel :entries="region.entries" />
+                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+                    {{ collection.label || 'Equipment Slots' }}
+                  </h3>
+                  <div class="flex flex-wrap gap-2">
+                    <CharacterStatChip
+                      v-for="equipmentSlot in collection.slots"
+                      :key="equipmentSlot.id"
+                      :label="equipmentSlot.id"
+                      :value="equipmentSlot.capacity"
+                    />
                   </div>
-
-                  <div
-                    v-for="collection in derived.collections"
-                    :key="collection.id"
-                    class="min-w-0"
-                  >
-                    <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
-                      {{ collection.label || 'Equipment Slots' }}
-                    </h3>
-                    <div class="flex flex-wrap gap-2">
-                      <CharacterStatChip
-                        v-for="equipmentSlot in collection.slots"
-                        :key="equipmentSlot.id"
-                        :label="equipmentSlot.id"
-                        :value="equipmentSlot.capacity"
-                      />
-                    </div>
-                  </div>
-
-                  <p
-                    v-if="derived.pendingChoices.length"
-                    class="text-xs leading-5 text-[#6f6754]"
-                  >
-                    {{ derived.pendingChoices.length }} proficiency
-                    {{ derived.pendingChoices.length === 1 ? 'choice is' : 'choices are' }}
-                    still outstanding, so those proficiencies show as unselected.
-                    <NuxtLink
-                      :to="`/worlds/${worldId}/characters/${characterId}/proficiencies`"
-                      class="text-[#c9a45a] underline underline-offset-2 hover:text-[#f5e7bd]"
-                    >
-                      Choose them
-                    </NuxtLink>.
-                  </p>
                 </div>
-              </CharacterSheetSection>
-            </template>
+
+                <p
+                  v-if="derived.pendingChoices.length"
+                  class="text-xs leading-5 text-[#6f6754]"
+                >
+                  {{ derived.pendingChoices.length }} proficiency
+                  {{ derived.pendingChoices.length === 1 ? 'choice is' : 'choices are' }}
+                  still outstanding, so those proficiencies show as unselected.
+                  <NuxtLink
+                    :to="`/worlds/${worldId}/characters/${characterId}/proficiencies`"
+                    class="text-[#c9a45a] underline underline-offset-2 hover:text-[#f5e7bd]"
+                  >
+                    Choose them
+                  </NuxtLink>.
+                </p>
+              </div>
+            </CharacterSheetSection>
 
             <!-- Species/Class/Background prose+traits: T2 Character at
                  every breakpoint (§3.2) -- the one piece of Character-tab
@@ -870,54 +755,6 @@ const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
               </div>
             </CharacterSheetSection>
           </template>
-        </template>
-
-        <!-- Right rail (desktop only, >= 1280px): live play state --
-             adjacent to the center column so acting (Play tab, Actions)
-             and tracking (Recovery, Conditions, Encounter) are in one
-             visual sweep, per §4's own rail rationale. This task's
-             literal Right Rail list, followed exactly -- see this file's
-             own PHASE 4 header note on why it differs from this doc
-             section's original Play-tab-only phrasing for these same
-             three panels. -->
-        <template
-          v-if="isDesktop"
-          #right
-        >
-          <CharacterSheetSection heading="Recovery">
-            <div class="mt-4">
-              <CharacterRecoveryPanel
-                :health="healthDraft"
-                :max-hp="maxHp"
-                :hit-dice-max="hitDiceMax"
-                :hit-dice-available="hitDiceAvailable"
-                :hit-die-size="hitDieSize"
-                :saving="mutations.recovery.saving"
-                :error-message="mutations.recovery.error"
-                @save="mutations.recovery.save"
-                @recovery="mutations.recovery.apply"
-              />
-            </div>
-          </CharacterSheetSection>
-
-          <CharacterSheetSection heading="Encounter">
-            <div class="mt-4">
-              <CharacterEncounterPanel
-                :encounter="encounter"
-                :mutations="mutations.conditions"
-              >
-                <template #conditions>
-                  <CharacterConditionsPanel
-                    v-if="encounter.isInSelected"
-                    :conditions="conditions"
-                    :mutations="mutations.conditions"
-                    :pending="encounter.pending"
-                    :encounter-ended="encounter.view?.status === 'ended'"
-                  />
-                </template>
-              </CharacterEncounterPanel>
-            </div>
-          </CharacterSheetSection>
         </template>
       </CharacterSheetShell>
     </div>

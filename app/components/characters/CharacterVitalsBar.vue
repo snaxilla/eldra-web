@@ -31,13 +31,38 @@
 // DISPLAY list does not name them, and CharacterRecoveryPanel.vue already
 // owns that tracker in full. HP shifts to a danger tint at 0 (§7.9), which
 // is the one HP=0 signal this bar surfaces.
+//
+// ---------------------------------------------------------------------------
+// `bare` -- CORRECTIVE PHASE 2R, FOLIO SHELL
+// ---------------------------------------------------------------------------
+// eldra-character-sheet-visual-language.md / eldra-design-language.md's
+// "exactly one Feature surface per screen" rule now applies to the whole
+// page's new command center (CharacterSheetCommandCenter.vue), not to this
+// component standing alone -- the command center already supplies its OWN
+// outer Feature surface, plus the portrait/name/level/species-class-
+// background identity content this bar's own top row used to show. `bare`
+// therefore does two things, both purely presentational: (1) render a
+// plain wrapper instead of a second nested `CharacterSheetSection`, and
+// (2) skip the identity/chips/save-indicator row so it is never shown
+// twice. Nothing about HOW a value is read or computed changes -- every
+// prop, and the numbers row beneath, is byte-identical to before. Default
+// (`bare: false`) is unchanged, in case this component is ever used
+// standalone again.
+//
+// Initiative/Speed/Proficiency Bonus are new, optional number cells added
+// to the SAME row HP/AC/Save DC/Attack already live in -- matching V1's own
+// single combined stat-tile row (SheetDesktopOverviewDashboard.vue's
+// `combatCards`), not a second strip. `null` renders as "--", the same
+// "reserved, not yet available" posture every other absent Rules Engine
+// value in this Sheet already uses (Initiative and Speed have no Rules
+// Package category yet -- see character-sheet-beauty-pass.md §1.8b/§3.3).
 
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
 import CharacterSaveIndicator from '~/components/characters/CharacterSaveIndicator.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   characterTitle: string
   level: number
   className: string
@@ -45,6 +70,9 @@ const props = defineProps<{
   maxHp: number | null
   temporaryHp: number
   armorClass: number | null
+  initiative?: number | null
+  speed?: number | null
+  proficiencyBonus?: number | null
   isCaster: boolean | null
   spellSaveDc: number | null
   spellAttackBonus: number | null
@@ -55,7 +83,16 @@ const props = defineProps<{
   saving: boolean
   error: string
   removeCondition: (conditionInstanceId: string) => void
-}>()
+  bare?: boolean
+}>(), {
+  initiative: null,
+  speed: null,
+  proficiencyBonus: null,
+  bare: false
+})
+
+const wrapper = computed(() => (props.bare ? 'div' : CharacterSheetSection))
+const wrapperProps = computed(() => (props.bare ? {} : { elevation: 'feature' as const, density: 'compact' as const }))
 
 // Only a REAL Maximum HP (Rules Engine output) makes 0 meaningful --
 // `currentHp` defaults to 0 for a character with no Health record yet,
@@ -77,12 +114,15 @@ function formatBonus(value: number | null): string {
 </script>
 
 <template>
-  <CharacterSheetSection
-    elevation="feature"
-    density="compact"
+  <component
+    :is="wrapper"
+    v-bind="wrapperProps"
     :class="combatEmphasisClass"
   >
-    <div class="flex flex-wrap items-start justify-between gap-3">
+    <div
+      v-if="!bare"
+      class="flex flex-wrap items-start justify-between gap-3"
+    >
       <div class="min-w-0">
         <div class="truncate text-lg font-semibold text-[#fff7df]">
           {{ characterTitle || 'Character' }}
@@ -105,7 +145,10 @@ function formatBonus(value: number | null): string {
       />
     </div>
 
-    <div class="mt-3 flex flex-wrap items-end gap-x-6 gap-y-3">
+    <div
+      class="flex flex-wrap items-end gap-x-6 gap-y-3"
+      :class="bare ? '' : 'mt-3'"
+    >
       <div>
         <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
           HP
@@ -130,6 +173,33 @@ function formatBonus(value: number | null): string {
         </div>
         <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
           {{ armorClass ?? '—' }}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+          Initiative
+        </div>
+        <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+          {{ formatBonus(initiative) }}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+          Speed
+        </div>
+        <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+          {{ speed ?? '—' }}
+        </div>
+      </div>
+
+      <div>
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+          Prof. Bonus
+        </div>
+        <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+          {{ formatBonus(proficiencyBonus) }}
         </div>
       </div>
 
@@ -191,5 +261,5 @@ function formatBonus(value: number | null): string {
         <span>{{ isMyTurn ? 'Your turn' : `Round ${round ?? '—'}` }}</span>
       </div>
     </div>
-  </CharacterSheetSection>
+  </component>
 </template>

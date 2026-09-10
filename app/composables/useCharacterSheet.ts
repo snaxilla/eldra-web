@@ -268,6 +268,12 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   // packages/eldra-dnd5e-2024/definitions.json's own id for it.
   const armorClass = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.defenses', 'value:defenses.armor_class'))
 
+  // Proficiency Bonus -- Corrective Phase 2R (folio command center). Same
+  // shape as Armor Class immediately above; `value:proficiency_bonus` is
+  // packages/eldra-dnd5e-2024/definitions.json's own id for the
+  // `core.proficiency` category's one Value.
+  const proficiencyBonus = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.proficiency', 'value:proficiency_bonus'))
+
   // Read-only Spellcasting summaries.
   const spellcastingIsCaster = computed(() => findDerivedBoolean(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.is_caster'))
   const spellcastingAbilityMod = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.ability_mod'))
@@ -449,6 +455,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     hitDiceAvailable,
     hitDieSize,
     armorClass,
+    proficiencyBonus,
     characterLevel,
     spellcastingIsCaster,
     spellcastingAbilityMod,

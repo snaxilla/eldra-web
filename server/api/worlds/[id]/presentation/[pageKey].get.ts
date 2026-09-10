@@ -32,17 +32,7 @@ async function dxFetch(path: string, options: RequestInit = {}) {
   return json
 }
 
-export default defineEventHandler(async (event) => {
-  const worldId = String(getRouterParam(event, 'id') || '')
-  const pageKey = String(getRouterParam(event, 'pageKey') || '')
-
-  if (!worldId || !pageKey) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing world id or page key'
-    })
-  }
-
+async function fetchPresentationRow(worldId: string, pageKey: string) {
   const params = new URLSearchParams()
   params.set('filter[world_key][_eq]', worldId)
   params.set('filter[page_key][_eq]', pageKey)
@@ -54,7 +44,34 @@ export default defineEventHandler(async (event) => {
   params.set('limit', '1')
 
   const json = await dxFetch(`/items/world_page_presentations?${params.toString()}`)
-  const item = Array.isArray(json?.data) && json.data.length ? json.data[0] : null
+  return Array.isArray(json?.data) && json.data.length ? json.data[0] : null
+}
+
+export default defineEventHandler(async (event) => {
+  const worldId = String(getRouterParam(event, 'id') || '')
+  const pageKey = String(getRouterParam(event, 'pageKey') || '')
+
+  if (!worldId || !pageKey) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Missing world id or page key'
+    })
+  }
+
+  let item = await fetchPresentationRow(worldId, pageKey)
+
+  // Game Admin Page Setup correction: `character-sheet` is a newly split
+  // page key -- see world-workspace.vue's own `pageKey` computed. Before
+  // that split, a World's Character Sheet backdrop was stored under the
+  // shared `characters` key. This is a READ-ONLY fallback so an existing
+  // World's sheet backdrop doesn't disappear the moment this ships -- it
+  // never writes anything back. The first time a Game Admin saves a
+  // Character Sheet presentation of its own (even re-saving the same
+  // values), the POST route creates a real, independent `character-sheet`
+  // row and this fallback stops applying for that World.
+  if (!item && pageKey === 'character-sheet') {
+    item = await fetchPresentationRow(worldId, 'characters')
+  }
 
   return {
     worldKey: worldId,

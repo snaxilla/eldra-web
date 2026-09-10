@@ -135,9 +135,24 @@ const pageKey = computed(() => {
 
   const maybePage = parts[worldIndex + 2]
   const maybeChild = parts[worldIndex + 3]
+  const maybeGrandchild = parts[worldIndex + 4]
 
   if (maybePage === 'entities' && maybeChild) {
     return 'entity-article'
+  }
+
+  // Game Admin Page Setup correction: the Character Sheet (canonical
+  // `/characters/:characterId/sheet`, and the pre-canonical-routing
+  // `/sheet-v2`) is a different product concept from the Characters
+  // roster/browsing page it happens to be nested under -- see
+  // eldra-design-language.md's own "Identity Block"/"Command Center"
+  // vocabulary, which treats the Sheet as its own artifact. Every other
+  // `/characters/**` route (the roster itself, and Builder-context pages
+  // like `abilities`/`proficiencies`/`builder`/`create-v2`) still falls
+  // through to the generic `maybePage` return below and keeps the
+  // `characters` page key -- only the sheet itself splits out.
+  if (maybePage === 'characters' && maybeChild && (maybeGrandchild === 'sheet' || maybeGrandchild === 'sheet-v2')) {
+    return 'character-sheet'
   }
 
   return maybePage || 'world-map'

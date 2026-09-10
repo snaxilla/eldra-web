@@ -109,9 +109,14 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <!-- Bottom nav bar is persistent shell chrome, not content -- it never
+         changes with the tab and never becomes a Feature surface, so it
+         carries the `eldra-leather` material (Material Phase 1, see
+         eldra-design-language.md §2/§8 Rule 5) rather than an inline
+         one-off background color. -->
     <div
       v-if="!isDesktop"
-      class="fixed inset-x-0 bottom-0 z-30 border-t border-[rgba(201,164,90,0.24)] bg-[rgba(10,10,9,0.94)] backdrop-blur md:hidden"
+      class="eldra-leather fixed inset-x-0 bottom-0 z-30 border-t border-[rgba(201,164,90,0.24)] backdrop-blur md:hidden"
       style="padding-bottom: env(safe-area-inset-bottom);"
     >
       <CharacterSheetNav

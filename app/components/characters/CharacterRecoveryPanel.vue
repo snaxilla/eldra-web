@@ -63,6 +63,16 @@
 // each one press -- no typing required for the actions used most often
 // mid-session. Every button stays at min-h-11 (44px), the same target size
 // CharacterInventoryPanel's own stepper buttons already use.
+//
+// ---------------------------------------------------------------------------
+// MATERIAL -- INTERACTIVE WELL, NOT REFERENCE SURFACE
+// ---------------------------------------------------------------------------
+// Material Phase 1 (eldra-design-language.md §2/§8). Every section in this
+// panel is something the player DOES, never something they only read --
+// Hit Points, Hit Dice, Rest, and Death Saves all carry the reusable
+// `eldra-well` primitive (eldra-fieldguide.css) instead of the flat
+// Reference-Surface box every section used identically before this phase.
+// This is a material swap only: no prop, emit, or layout changed.
 
 import type { StoredCharacterHealth } from '~/lib/characters/health'
 
@@ -184,7 +194,7 @@ function applyHealingAction() {
     </p>
 
     <!-- Hit Points ----------------------------------------------------- -->
-    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+    <div class="eldra-well rounded-none p-4">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
         <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Hit Points</span>
         <span class="text-xs text-[#9f9278]">
@@ -255,7 +265,7 @@ function applyHealingAction() {
     </div>
 
     <!-- Hit Dice --------------------------------------------------------- -->
-    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+    <div class="eldra-well rounded-none p-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">{{ hitDiceLabel }}</span>
@@ -295,7 +305,7 @@ function applyHealingAction() {
     </div>
 
     <!-- Rest --------------------------------------------------------------- -->
-    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+    <div class="eldra-well rounded-none p-4">
       <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Rest</span>
 
       <div class="mt-3 grid grid-cols-2 gap-2">
@@ -320,7 +330,7 @@ function applyHealingAction() {
     </div>
 
     <!-- Death Saves -------------------------------------------------------- -->
-    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+    <div class="eldra-well rounded-none p-4">
       <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Death Saves</span>
 
       <div

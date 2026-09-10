@@ -530,3 +530,62 @@
   text-underline-offset: 4px;
 }
 
+/* ------------------------------------------------------------------
+   Canonical material primitives -- Eldra Design Language
+   (.github/docs/architecture/eldra-design-language.md §2/§8) and the
+   Character Sheet Visual Language's own surface vocabulary
+   (eldra-character-sheet-visual-language.md §3). These are the
+   reusable classes Material Phase 1 introduces so no component has to
+   hardcode its own version of Ground/Well/Quiet/Leather again.
+   Feature Surface and Gold Structure already exist as primitives
+   (eldra-ornate-panel + eldra-frame-corners; eldra-gold-chip/
+   eldra-gold-divider/eldra-gold-rule) and are not redefined here.
+------------------------------------------------------------------- */
+
+/* Ground -- the application background a page sits on. Cool, near-
+   black, faintly blue -- distinct from the warm charcoal used inside
+   frames. Design Language §2. */
+.eldra-ground {
+  background: #05080d;
+}
+
+/* Interactive Well -- any place the player edits, clicks, changes,
+   spends, equips, or resolves. Cool steel/navy, distinct from the warm
+   gold-charcoal Frame material, so a row's material alone signals "this
+   does something" -- never used for pure display. Hover/focus warm
+   slightly toward gold, the same "coin catching light" cue V1's own
+   well-material controls already used (e.g. ability score buttons in
+   the legacy SheetDesktopOverviewDashboard.vue). Design Language §2/§8
+   Rule 2. */
+.eldra-well {
+  border: 1px solid rgba(65,82,103,0.62);
+  background: rgba(9,17,26,0.48);
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.eldra-well:hover,
+.eldra-well:focus-within {
+  border-color: rgba(201,164,90,0.46);
+  background: rgba(9,17,26,0.62);
+}
+
+.eldra-well:disabled,
+.eldra-well[disabled] {
+  opacity: 0.5;
+}
+
+/* Quiet Surface -- reference-only rows and dividers that should
+   visually step back: hairline only, no fill distinct from Ground.
+   Formalizes the tier CharacterSheetSection.vue previously inlined as a
+   literal Tailwind string. Design Language §2/§3. */
+.eldra-quiet {
+  border-bottom: 1px solid rgba(201,164,90,0.14);
+}
+
+/* Leather -- persistent shell chrome (a sidebar, a toolbar, a bottom
+   nav bar) that never changes with content and never becomes a Feature
+   surface. Design Language §2. */
+.eldra-leather {
+  background: linear-gradient(to bottom, #090806, #11100d 48%, #070604);
+}
+

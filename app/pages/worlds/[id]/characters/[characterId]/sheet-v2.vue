@@ -377,7 +377,7 @@ const { tabs, activeTab, setActiveTab, isDesktop } = useCharacterSheetLayout()
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-transparent">
+  <div class="eldra-ground h-full overflow-y-auto">
     <div class="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8">
       <NuxtLink
         :to="`/worlds/${worldId}/characters`"

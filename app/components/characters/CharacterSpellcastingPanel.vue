@@ -41,6 +41,18 @@
 // items already use; Slot trackers use the same size-11 circular target
 // CharacterHealthPanel.vue's Death Save marks already establish. Every
 // control stays at min-h-11 (44px).
+//
+// ---------------------------------------------------------------------------
+// MATERIAL -- WELL FOR SLOTS/ADD/CARDS, FRAME FOR THE READ-ONLY SUMMARY
+// ---------------------------------------------------------------------------
+// Material Phase 1 (eldra-design-language.md §2/§8). The Spellcasting
+// summary (Ability Mod/Save DC/Attack Bonus) is pure Rules Engine output
+// with no control on it -- it keeps the plain Reference Surface. Spell
+// Slots (expend/restore buttons), Add Spell (a form), and every spell card
+// (Remove, Known/Prepared toggles) are all things the player acts on, so
+// they carry `eldra-well`. A "missing" spell keeps its own danger tint
+// rather than the well material -- that color already communicates a
+// different, more urgent thing than "you can act here."
 
 import type { AssembledSpellEntry, SpellFlag } from '~/lib/characters/spellcasting'
 
@@ -170,7 +182,7 @@ const preparedCount = computed(() => props.spells.filter((entry) => entry.prepar
          mirrors this for Health's Hit Dice). -->
     <div
       v-if="slotLevels.length"
-      class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4"
+      class="eldra-well rounded-none p-4"
     >
       <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Slots</span>
 
@@ -209,7 +221,7 @@ const preparedCount = computed(() => props.spells.filter((entry) => entry.prepar
     </div>
 
     <!-- Add ---------------------------------------------------------------- -->
-    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+    <div class="eldra-well rounded-none p-4">
       <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
         Add Spell
       </div>
@@ -298,10 +310,10 @@ const preparedCount = computed(() => props.spells.filter((entry) => entry.prepar
         <article
           v-for="entry in spells"
           :key="entry.instanceId"
-          class="min-w-0 rounded-none border p-3 text-sm text-[#d8ceb8]"
+          class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
           :class="entry.status === 'missing'
-            ? 'border-red-900/60 bg-red-950/20'
-            : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)]'"
+            ? 'border border-red-900/60 bg-red-950/20'
+            : 'eldra-well'"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">

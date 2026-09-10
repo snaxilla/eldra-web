@@ -51,6 +51,16 @@
 // than a text field so it needs no keyboard, and equipped/attuned are native
 // checkboxes so they are reachable by keyboard and announced correctly. No
 // control is desktop-only and nothing depends on hover.
+//
+// ---------------------------------------------------------------------------
+// MATERIAL -- WELL FOR THE ADD FORM AND EVERY CARRIED-ITEM CARD
+// ---------------------------------------------------------------------------
+// Material Phase 1 (eldra-design-language.md §2/§8). The Add form and every
+// carried-item card exist so the player can act on them (add, remove,
+// adjust quantity, equip, attune) -- both carry the reusable `eldra-well`
+// primitive instead of the flat Reference-Surface box used identically
+// before this phase. A "missing" item keeps its own danger tint, which
+// already communicates something more urgent than "you can act here."
 
 import type { AssembledInventoryItem } from '~/lib/characters/inventory'
 
@@ -150,7 +160,7 @@ function submitAdd() {
 <template>
   <div class="grid gap-4">
     <!-- Add ---------------------------------------------------------------- -->
-    <div class="rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-4">
+    <div class="eldra-well rounded-none p-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
@@ -272,10 +282,10 @@ function submitAdd() {
         <article
           v-for="item in items"
           :key="item.instanceId"
-          class="min-w-0 rounded-none border p-3 text-sm text-[#d8ceb8]"
+          class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
           :class="item.status === 'missing'
-            ? 'border-red-900/60 bg-red-950/20'
-            : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)]'"
+            ? 'border border-red-900/60 bg-red-950/20'
+            : 'eldra-well'"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">

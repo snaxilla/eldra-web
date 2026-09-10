@@ -36,6 +36,17 @@
 // `md:grid-cols-2` Inventory/Spellcasting's own carried-item grids already
 // use. The target `<select>` and every Resolve button stay at min-h-11
 // (44px), matching every other control in this Sheet.
+//
+// ---------------------------------------------------------------------------
+// MATERIAL -- WELL ONLY WHERE THE ROW IS ACTUALLY ACTIONABLE
+// ---------------------------------------------------------------------------
+// Material Phase 1 (eldra-design-language.md §2/§8). A row with a
+// `resolution` (an attack roll or a saving throw) is something the player
+// DOES here, so it carries `eldra-well`. A passive Species/Class trait with
+// no resolution is read, never acted on, so it keeps the plain Reference
+// Surface treatment -- the two were visually identical before this phase,
+// which hid exactly the distinction this material makes legible. No prop,
+// emit, or action data changed.
 
 export type CharacterActionCategory = 'weapon' | 'unarmed' | 'spell' | 'species' | 'class' | 'background'
 
@@ -170,7 +181,10 @@ function resolve(actionId: string) {
       <article
         v-for="action in actions"
         :key="action.id"
-        class="min-w-0 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] p-3 text-sm text-[#d8ceb8]"
+        class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
+        :class="action.resolution
+          ? 'eldra-well'
+          : 'border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)]'"
       >
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">

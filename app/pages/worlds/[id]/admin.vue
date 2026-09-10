@@ -208,7 +208,7 @@ const pageSetupSections = [
   {
     key: 'characters',
     title: 'Characters',
-    description: 'Controls the characters and cast browsing page presentation.'
+    description: 'Controls the characters and cast browsing page presentation, and the world backdrop shown behind the Character Sheet (the canonical /sheet route and every other /characters/** page share this page key; the legacy /entities/:id/sheet route uses the Entity Article page key instead).'
   },
   {
     key: 'locations',

@@ -405,7 +405,27 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
 </script>
 
 <template>
-  <div class="eldra-ground h-full overflow-y-auto">
+  <!-- World Backdrop Activation. `bg-transparent`, matching every sibling
+       world-workspace page (characters/index.vue, entities/[entityId]/
+       index.vue, WorldEntityInteractivePage.vue all use the identical
+       "h-full overflow-y-auto bg-transparent" root) -- NOT `eldra-ground`.
+       `world-workspace.vue`'s own layout already paints the page's Ground
+       material (a dark gradient, always present) plus the World's
+       configured backdrop image/overlay (per-`pageKey`, via the existing
+       Page Setup / WorldPagePresentationPanel system -- see admin.vue's
+       'characters' Page Setup entry, which already targets exactly the
+       `pageKey` this route's own path resolves to) BEHIND this page's
+       `<slot />`. An opaque `eldra-ground` root here would paint over that
+       entire system and hide any backdrop a Game Admin configures -- which
+       is exactly what happened before this task: Material Phase 1 applied
+       `eldra-ground` directly to this page without realizing the
+       workspace layout already owns "the ground," the same way it already
+       does for every other World page. Nothing about the sheet's own
+       panels changes: CharacterSheetCommandCenter/CharacterSheetSection
+       are already semi-transparent + backdrop-blur (Glass/Frame material),
+       the same treatment WorldEntityInteractivePage.vue's panels already
+       use successfully over this exact backdrop system today. -->
+  <div class="h-full overflow-y-auto bg-transparent">
     <!-- Folio width, not dashboard width -- Corrective Phase 2R. A single
          reading column belongs at a book's proportions (~max-w-4xl), not
          stretched to fill a 2560px monitor the way the rejected 3-column

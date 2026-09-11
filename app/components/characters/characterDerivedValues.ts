@@ -268,7 +268,32 @@ export function groupDerivedValues(entries: readonly DerivedValue[]): DerivedGro
     if (stem) stemCounts.set(stem, (stemCounts.get(stem) ?? 0) + 1)
   }
 
+  // H4 fix: ids that are themselves the STEM of some other entry in this
+  // batch -- i.e. something else genuinely hangs off them, the `.mod`
+  // pattern `ids.has(stem)` below already exists to detect. An id in this
+  // set must group under ITSELF even when ITS OWN stem happens to collide
+  // with an unrelated sibling's, which is exactly what an ability score
+  // does and the two-up save/skill pairs never do: `value:ability.str` is
+  // both the parent `value:ability.str.mod` hangs off of, AND -- purely
+  // as an accident of every ability score sharing the same `ability`
+  // namespace segment -- its OWN stem (`value:ability`) collides with
+  // `value:ability.dex`, `.con`, etc. Without this check, `groupKeyFor`
+  // read that collision first and bucketed all six SCORES together as
+  // false "siblings" under the non-existent id `value:ability`, while
+  // each MODIFIER correctly found its score and grouped alone -- the
+  // exact bug this phase reports: one merged "Strength" entry holding
+  // every score, plus six standalone "X Modifier" entries. A save's
+  // `.bonus`/`.proficient` pair never triggers this: neither sibling's id
+  // is itself any other entry's stem, so neither is ever a parent.
+  const parentIds = new Set(
+    entries
+      .map((entry) => idStem(entry.id))
+      .filter((stem) => stem && ids.has(stem))
+  )
+
   function groupKeyFor(entry: DerivedValue): string {
+    if (parentIds.has(entry.id)) return entry.id
+
     const stem = idStem(entry.id)
     if (!stem) return entry.id
     // A Value hanging off another Value that actually exists (`.mod`).

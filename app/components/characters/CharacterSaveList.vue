@@ -5,17 +5,15 @@
 // H3: ONE ROW PER SAVE, MATCHING SKILLS -- NOT A TWO-UP CARD GRID. Saves
 // previously sat in a compact `@container`-driven two-column grid of
 // bordered boxes -- a visually distinct "third system" next to Abilities'
-// old card grid and Skills' own list. This task's own brief is explicit
-// that Abilities, Saving Throws, and Skills "should share one visual
-// language" and that Skills (CharacterSkillList.vue) is the canonical one,
-// never redesigned. So this is now a single-column list of `eldra-quiet`
-// hairline-divider rows, the same shape CharacterAbilityGrid.vue's rows
-// now use, with the two things this task says to keep: the proficiency
-// indicator and the total bonus. The compact two-up grid's abbreviated
-// qualifier label (space-constrained by two columns) is no longer needed
-// now that a save gets its own full row -- the full label renders instead,
-// the same way Skills already shows a skill's full name rather than an
-// abbreviation.
+// old card grid and Skills' own list. Abilities, Saving Throws, and Skills
+// are all mechanical reference information that share one visual language,
+// with Skills (CharacterSkillList.vue) the canonical one, never redesigned.
+// So this is a single-column list, one row per save, keeping the two
+// things that matter: the proficiency indicator and the total bonus. The
+// old two-up grid's abbreviated qualifier label (space-constrained by two
+// columns) is no longer needed now that a save gets its own full row --
+// the full label renders instead, the same way Skills already shows a
+// skill's full name rather than an abbreviation.
 //
 // Each row is ONE fact assembled from two Rules Engine Values (the bonus
 // and the proficiency flag) by `groupDerivedValues` -- see that helper for
@@ -23,12 +21,19 @@
 // computed: the bonus already includes whatever proficiency contributed,
 // because the engine put it there.
 //
-// MATERIAL -- QUIET, NOT WELL. Saves are read here, never rolled here (the
-// approved scope makes actions/spells/items/features/skills selectable, and
-// deliberately not saves), so per Design Language §8 Rule 2 they do not get
-// the interactive well material -- the same distinction
-// CharacterActionsPanel.vue already draws between a resolvable row and a
-// passive one, and CharacterAbilityGrid.vue's rows now draw too.
+// H4: WELL MATERIAL, SKILLS' OWN SCALE, NOT ABILITIES'. H3 used
+// `eldra-quiet` (a bare hairline divider) here because nothing is rolled
+// from a save row (the approved scope makes actions/spells/items/
+// features/skills selectable, and deliberately not saves) -- Design
+// Language §8 Rule 2's usual reading. H4's own brief overrides that on
+// purpose for this row too, the same deliberate, scoped exception
+// CharacterAbilityGrid.vue's rows now document: Saves are asked to "apply
+// the same visual family" as Abilities and Skills, kept "visually lighter
+// than Abilities but clearly heavier than ordinary reference text". So
+// this row adopts well material -- closing the gap toward Skills' own
+// language -- but stays at Skills' row SCALE (no enlargement; Abilities
+// alone gets that), which is exactly what keeps it lighter than Abilities.
+// Nothing here gained a click or a drawer.
 //
 // Shape + text, never colour alone (§7.6): the proficiency marker is a
 // filled/hollow glyph with a screen-reader label, matching exactly how
@@ -80,7 +85,7 @@ const rows = computed(() =>
       <li
         v-for="row in rows"
         :key="row.key"
-        class="eldra-quiet grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5"
+        class="eldra-well grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5"
       >
         <span
           v-if="row.proficient !== null"

@@ -5,14 +5,27 @@
 //
 // H3: LIST-BASED, MATCHING SKILLS -- NOT A CARD GRID. Header Phase H1
 // removed ability presentation from the command center; Phase H2 gave it
-// a card-grid home in the reference region; Phase H3 rejects the card grid
-// itself. Abilities, Saving Throws, and Skills are all mechanical
-// reference information and this task's own brief is explicit that they
-// "should share one visual language" -- and that Skills (CharacterSkillList
-// .vue) is the canonical one, never redesigned, with Abilities and Saves
-// brought toward it. So this is now one row per ability, the same
-// `eldra-quiet` hairline-divider rows the rest of this region uses, never
-// a `rounded-none border ... bg-[...]` card.
+// a card-grid home in the reference region; Phase H3 rejected the card
+// grid itself. Abilities, Saving Throws, and Skills are all mechanical
+// reference information and share one visual language -- Skills
+// (CharacterSkillList.vue) is the canonical one, never redesigned, with
+// Abilities and Saves brought toward it. So this is one row per ability,
+// never a `rounded-none border ... bg-[...]` card.
+//
+// H4: WELL MATERIAL, ENLARGED -- "A LARGER VERSION OF A SKILL ROW". H3's
+// own fix used `eldra-quiet` (a bare hairline divider) because nothing
+// here was clickable, and Design Language §8 Rule 2 says well material on
+// something inert "is a lie the color is telling". H4's brief overrides
+// that on purpose, explicitly, for exactly this row: Abilities are named
+// "the primary mechanical reference" and are asked to "carry slightly
+// more visual weight than Skills" while still visibly belonging to the
+// same family -- so the row keeps Skills' well material and general shape
+// (grid row, right-aligned bold value, tabular numerals) but at a larger
+// scale (bigger padding, bigger score, an uppercase/tracked label) than
+// Skills' own rows, which are NOT touched. This is a deliberate, scoped
+// exception to the "well means interactive" rule, not a reversal of it --
+// Skills' own well material still means "click to open the drawer";
+// here it means "the first thing to scan."
 //
 // FIXES THE SPLIT MODIFIER (§2.3.2), SCORE LEADS. The score and its
 // modifier are two separate Rules Engine Values; V2 rendered them in two
@@ -27,14 +40,6 @@
 //
 // COMPUTES NOTHING. Both numbers come off the engine already evaluated;
 // this file chooses only which is large and which is parenthetical.
-//
-// MATERIAL -- QUIET, NOT WELL. A row is read, not pressed: nothing here
-// responds to a click yet, and Design Language §8 Rule 2 is explicit that
-// well material on something inert "is a lie the color is telling" --
-// exactly the same reasoning CharacterSaveList.vue's own header already
-// gives for saves. When rolling arrives (Visual Language Phase 8) these
-// rows become the natural place for it, and the material changes with the
-// behavior, not before it.
 
 import {
   formatDerivedValue,
@@ -69,14 +74,14 @@ const rows = computed(() =>
 <template>
   <ul
     v-if="rows.length"
-    class="grid gap-0.5"
+    class="grid gap-1"
   >
     <li
       v-for="row in rows"
       :key="row.key"
-      class="eldra-quiet grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5"
+      class="eldra-well grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
     >
-      <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
+      <span class="min-w-0 truncate text-sm font-semibold uppercase tracking-[0.12em] text-[#d8ceb8]">
         {{ row.label }}
       </span>
 
@@ -88,12 +93,12 @@ const rows = computed(() =>
 
       <span
         v-else
-        class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
+        class="text-right text-lg font-semibold tabular-nums text-[#fff7df]"
       >
         {{ row.score }}
         <span
           v-if="row.modifier"
-          class="font-normal text-[#9f9278]"
+          class="text-sm font-normal text-[#9f9278]"
         >({{ row.modifier }})</span>
       </span>
     </li>

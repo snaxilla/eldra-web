@@ -54,6 +54,36 @@ describe('groupDerivedValues', () => {
     expect(groups[0]!.numbers.map((entry) => entry.value)).toEqual([16, 3])
   })
 
+  it('pairs each ability score with its own modifier even when several abilities are present together (H4 regression)', () => {
+    // The bug this phase reports: with only ONE ability in the test data
+    // (the case above), the score's own stem never collides with a
+    // sibling, so it happens to resolve correctly by accident. A real
+    // Character Sheet always renders all six at once, and
+    // `value:ability.str`'s own stem (`value:ability`) spuriously collides
+    // with `value:ability.dex`'s, `.con`'s, etc. -- see groupDerivedValues'
+    // own header for why a Value that is itself a PARENT (something hangs
+    // off it) must group under itself even when its own stem happens to
+    // look like a sibling collision with unrelated Values.
+    const groups = groupDerivedValues([
+      value({ id: 'value:ability.str', label: 'Strength', value: 15, tags: ['ability'] }),
+      value({ id: 'value:ability.dex', label: 'Dexterity', value: 15, tags: ['ability'] }),
+      value({ id: 'value:ability.con', label: 'Constitution', value: 12, tags: ['ability'] }),
+      value({ id: 'value:ability.str.mod', label: 'Strength Modifier', value: 2, tags: ['ability-modifier', 'ability:str'] }),
+      value({ id: 'value:ability.dex.mod', label: 'Dexterity Modifier', value: 2, tags: ['ability-modifier', 'ability:dex'] }),
+      value({ id: 'value:ability.con.mod', label: 'Constitution Modifier', value: 1, tags: ['ability-modifier', 'ability:con'] })
+    ])
+
+    // Six entries in, THREE groups out -- one per ability, never one
+    // merged "every score" group plus standalone "X Modifier" entries.
+    expect(groups).toHaveLength(3)
+    expect(groups.map((group) => group.label)).toEqual(['Strength', 'Dexterity', 'Constitution'])
+    expect(groups.map((group) => group.numbers.map((entry) => entry.value))).toEqual([
+      [15, 2],
+      [15, 2],
+      [12, 1]
+    ])
+  })
+
   it('groups nothing it has no reason to group', () => {
     const groups = groupDerivedValues([
       value({ id: 'value:proficiency_bonus', label: 'Proficiency Bonus', value: 4, tags: ['proficiency'] }),

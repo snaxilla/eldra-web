@@ -9,6 +9,7 @@ import AdminHomebrewForgePanel from '~/components/admin/homebrew/AdminHomebrewFo
 import AdminRulesPanel from '~/components/admin/rules/AdminRulesPanel.vue'
 import AdminMembersPanel from '~/components/admin/members/AdminMembersPanel.vue'
 import AdminContentPacksPanel from '~/components/admin/content-packs/AdminContentPacksPanel.vue'
+import AdminProjectHealthPanel from '~/components/admin/health/AdminProjectHealthPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,7 +17,7 @@ const router = useRouter()
 const worldId = computed(() => String(route.params.id || ''))
 const mode = useState<'play' | 'build'>('world-workspace-mode', () => 'play')
 
-const activePanel = ref<'overview' | 'party' | 'members' | 'grants' | 'homebrew' | 'rules' | 'content-packs' | 'setup' | 'transfers' | 'relationships'>('overview')
+const activePanel = ref<'overview' | 'health' | 'party' | 'members' | 'grants' | 'homebrew' | 'rules' | 'content-packs' | 'setup' | 'transfers' | 'relationships'>('overview')
 const partySearch = ref('')
 const selectedContextEntity = ref<any | null>(null)
 const contextDrawerOpen = ref(false)
@@ -193,6 +194,7 @@ const healthCards = computed(() => [
 
 const panels = [
   { key: 'overview', label: 'Overview', icon: 'i-lucide-layout-dashboard' },
+  { key: 'health', label: 'Project Health', icon: 'i-lucide-activity' },
   { key: 'party', label: 'Party / Cast', icon: 'i-lucide-users' },
   { key: 'members', label: 'Members', icon: 'i-lucide-shield-check' },
   { key: 'grants', label: 'Grants', icon: 'i-lucide-gift' },
@@ -778,6 +780,12 @@ async function refreshAdmin() {
             <AdminHomebrewForgePanel
         v-else-if="activePanel === 'homebrew'"
         :world-id="worldId"
+      />
+
+      <AdminProjectHealthPanel
+        v-else-if="activePanel === 'health'"
+        :world-id="worldId"
+        @navigate="activePanel = $event as typeof activePanel"
       />
 
       <AdminRulesPanel

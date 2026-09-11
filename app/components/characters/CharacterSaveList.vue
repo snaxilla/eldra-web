@@ -1,8 +1,21 @@
 <script setup lang="ts">
-// CharacterSaveList -- saving throws, two-up, in the desktop left region.
-// Desktop IA pass (D&D Beyond reference layout), which puts saves in a
-// compact two-column grid at the top of its left column: a proficiency
-// marker, the ability it keys off, and the bonus.
+// CharacterSaveList -- saving throws, second in the desktop left region
+// (Header Phase H3), right after Abilities.
+//
+// H3: ONE ROW PER SAVE, MATCHING SKILLS -- NOT A TWO-UP CARD GRID. Saves
+// previously sat in a compact `@container`-driven two-column grid of
+// bordered boxes -- a visually distinct "third system" next to Abilities'
+// old card grid and Skills' own list. This task's own brief is explicit
+// that Abilities, Saving Throws, and Skills "should share one visual
+// language" and that Skills (CharacterSkillList.vue) is the canonical one,
+// never redesigned. So this is now a single-column list of `eldra-quiet`
+// hairline-divider rows, the same shape CharacterAbilityGrid.vue's rows
+// now use, with the two things this task says to keep: the proficiency
+// indicator and the total bonus. The compact two-up grid's abbreviated
+// qualifier label (space-constrained by two columns) is no longer needed
+// now that a save gets its own full row -- the full label renders instead,
+// the same way Skills already shows a skill's full name rather than an
+// abbreviation.
 //
 // Each row is ONE fact assembled from two Rules Engine Values (the bonus
 // and the proficiency flag) by `groupDerivedValues` -- see that helper for
@@ -10,12 +23,12 @@
 // computed: the bonus already includes whatever proficiency contributed,
 // because the engine put it there.
 //
-// MATERIAL -- FRAME, NOT WELL. Saves are read here, never rolled here (the
+// MATERIAL -- QUIET, NOT WELL. Saves are read here, never rolled here (the
 // approved scope makes actions/spells/items/features/skills selectable, and
 // deliberately not saves), so per Design Language §8 Rule 2 they do not get
-// the interactive well material. This is the same distinction
+// the interactive well material -- the same distinction
 // CharacterActionsPanel.vue already draws between a resolvable row and a
-// passive one.
+// passive one, and CharacterAbilityGrid.vue's rows now draw too.
 //
 // Shape + text, never colour alone (§7.6): the proficiency marker is a
 // filled/hollow glyph with a screen-reader label, matching exactly how
@@ -42,10 +55,6 @@ const rows = computed(() =>
 
     return {
       key: group.key,
-      // The qualifier tag (e.g. the ability a save keys off) is the most
-      // compact label a two-up grid can carry; the full label is kept for
-      // assistive technology and for packages that declare no qualifier.
-      short: group.qualifier ? group.qualifier.toUpperCase() : group.label,
       label: group.label,
       value: bonus ? formatDerivedValue(bonus) : '—',
       proficient: typeof flag?.value === 'boolean' ? flag.value : null,
@@ -56,7 +65,7 @@ const rows = computed(() =>
 </script>
 
 <template>
-  <div class="@container min-w-0">
+  <div class="min-w-0">
     <p
       v-if="!rows.length"
       class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-3 text-sm text-[#9f9278]"
@@ -66,38 +75,36 @@ const rows = computed(() =>
 
     <ul
       v-else
-      class="grid grid-cols-1 gap-1 @[16rem]:grid-cols-2"
+      class="grid gap-0.5"
     >
       <li
         v-for="row in rows"
         :key="row.key"
-        class="flex min-w-0 items-center gap-2 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.45)] px-2 py-1.5"
+        class="eldra-quiet grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5"
       >
         <span
           v-if="row.proficient !== null"
-          class="shrink-0 text-xs"
+          class="text-xs"
           :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
         >
           <span aria-hidden="true">{{ row.proficient ? '●' : '○' }}</span>
           <span class="sr-only">{{ row.proficient ? 'Proficient' : 'Not proficient' }}</span>
         </span>
+        <span v-else />
 
-        <span
-          class="min-w-0 flex-1 truncate text-xs uppercase tracking-[0.12em] text-[#d8ceb8]"
-          :title="row.label"
-        >
-          {{ row.short }}
+        <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
+          {{ row.label }}
         </span>
 
         <span
           v-if="row.error"
           :title="row.error"
-          class="shrink-0 text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
+          class="text-right text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
         >Error</span>
 
         <span
           v-else
-          class="shrink-0 text-sm font-semibold tabular-nums text-[#fff7df]"
+          class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
         >{{ row.value }}</span>
       </li>
     </ul>

@@ -2,22 +2,22 @@
 // CharacterSheetShell -- the Character Sheet's breakpoint orchestration.
 // Owns no data.
 //
-// Desktop IA pass (D&D Beyond reference layout). Corrective Phase 2R had
-// collapsed this to a single folio column at every width, after Beauty Pass
-// Phase 4's three-column dashboard was rejected for nesting a second
-// three-pane app inside the workspace's own. This restores a body with
-// REGIONS -- but two of them, not three: the sheet keeps a reference region
-// and a working region, and the third pane is the workspace's existing
-// context drawer, which the page mounts and this file knows nothing about.
-// See CharacterSheetDesktopLayout.vue's header for the full reasoning.
+// Desktop IA pass (D&D Beyond reference layout), corrected by Phase H3.
+// Corrective Phase 2R had collapsed this to a single folio column at every
+// width, after Beauty Pass Phase 4's three-column dashboard was rejected
+// for nesting a second three-pane app inside the workspace's own. The
+// Desktop IA pass restored a body with REGIONS -- but two of them, not
+// three: the sheet keeps a reference region and a working region, and the
+// third pane is the workspace's existing context drawer, which the page
+// mounts and this file knows nothing about. See
+// CharacterSheetDesktopLayout.vue's header for the full reasoning.
 //
 // WHAT DID NOT CHANGE, DELIBERATELY:
 //   - The command center slot, and the fact that whoever fills it makes it
 //     sticky (no measurement here).
 //   - The bottom nav: phone-only, `eldra-leather`, persistent shell chrome
-//     that never becomes a Feature surface. Untouched by this pass, per the
-//     approved "mobile direction stays as-is".
-//   - The top `tabs` nav at `md`+, which now sits inside the center region
+//     that never becomes a Feature surface.
+//   - The top `tabs` nav at `md`+, which sits inside the center region
 //     rather than spanning the whole body -- the reference sheet's tab bar
 //     sits above its working column only, and a tab bar spanning a
 //     reference rail would imply the rail changes with the tab, which it
@@ -25,14 +25,19 @@
 //   - No JS breakpoint. Region placement is CSS only, which is why there is
 //     still no `isDesktop` prop here.
 //
-// THE ONE PIECE OF MEASUREMENT, AND WHY IT IS BACK. Both sticky regions
-// must begin exactly where the sticky command center ends, and that height
-// genuinely varies -- conditions, temp HP, and caster-only fields all change
-// it, so any constant would drift wrong. Phase 4 measured it for the same
-// reason; Corrective Phase 2R removed the measurement because it had
-// removed the rails. The rails are back, so the ResizeObserver is too, and
-// it publishes ONE CSS variable (`--sheet-command-h`) that the layout reads
-// -- no prop threading, no layout decision made in JS.
+// H3: THE MEASUREMENT IS GONE, BECAUSE WHAT IT FED IS GONE. The Desktop IA
+// pass added a ResizeObserver here that published `--sheet-command-h`, so
+// the left region and the skills column could sit `sticky` beginning
+// exactly where the command center ended. Phase H3 rejects that split
+// scrolling outright ("the entire sheet scrolls together... sticky
+// behavior should only exist where it genuinely improves usability") --
+// see CharacterSheetDesktopLayout.vue's own header for the other half of
+// this fix. With neither region sticky anymore, nothing reads
+// `--sheet-command-h`, so measuring it here would be dead code kept
+// "just in case." The command center's own stickiness (applied by
+// whoever fills the `vitals` slot) needs no measurement at all -- it is
+// simply `position: sticky` against the page's own scroll, exactly like
+// Corrective Phase 2R originally built it.
 
 import CharacterSheetNav from '~/components/characters/CharacterSheetNav.vue'
 import CharacterSheetDesktopLayout from '~/components/characters/CharacterSheetDesktopLayout.vue'
@@ -53,42 +58,11 @@ const emit = defineEmits<{
 }>()
 
 const slots = useSlots()
-
-const commandRef = ref<HTMLElement | null>(null)
-const commandHeight = ref(0)
-let observer: ResizeObserver | null = null
-
-function measureCommandCenter() {
-  commandHeight.value = commandRef.value?.offsetHeight ?? 0
-}
-
-onMounted(() => {
-  if (!import.meta.client || !commandRef.value) return
-  measureCommandCenter()
-  observer = new ResizeObserver(measureCommandCenter)
-  observer.observe(commandRef.value)
-})
-
-onBeforeUnmount(() => {
-  observer?.disconnect()
-})
-
-// Unset until measured, so the layout's own fallback applies during SSR and
-// the first paint rather than a zero offset.
-const shellStyle = computed(() =>
-  commandHeight.value > 0 ? { '--sheet-command-h': `${commandHeight.value}px` } : {}
-)
 </script>
 
 <template>
-  <div :style="shellStyle">
-    <!-- pb-4 lives on the wrapper being measured, so the sticky regions
-         begin where the command center visually ends rather than where its
-         border-box does. -->
-    <div
-      ref="commandRef"
-      class="pb-4"
-    >
+  <div>
+    <div class="pb-4">
       <slot name="vitals" />
     </div>
 

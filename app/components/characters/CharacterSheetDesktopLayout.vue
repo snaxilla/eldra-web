@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // CharacterSheetDesktopLayout -- the sheet body's two regions. Desktop IA
-// pass (D&D Beyond reference layout).
+// pass (D&D Beyond reference layout), corrected by Phase H3.
 //
 // HISTORY, BECAUSE IT EXPLAINS THE SHAPE. This file was originally Beauty
 // Pass Phase 4's THREE-column dashboard (left rail / center / right rail),
@@ -18,9 +18,9 @@
 // contextual drawer -- and it is why no `right` slot exists here.
 //
 // REGIONS
-//   left    Reference: saves, proficiency, defenses. Sticky, >= 1280px.
-//           Hidden below that, where the page renders the same content
-//           inside the Character tab instead (CSS, not JS -- see
+//   left    Reference: abilities, saves, defenses. >= 1280px. Hidden below
+//           that, where the page renders the same content inside the
+//           Character tab instead (CSS, not JS -- see
 //           CharacterReferencePanels.vue for why duplicating it is safe).
 //   skills  Persistent at EVERY width: its own column beside the tab body
 //           at >= 1536px, stacked directly above the tab bar below that.
@@ -29,11 +29,21 @@
 //   center  The working surface: tab bar + active tab. The only region
 //           that changes with the tab, and it gets all the spare width.
 //
-// The sticky rail offsets itself with a CSS variable rather than a measured
-// pixel height -- the command center's height changes with conditions and
-// caster fields, and `--sheet-command-h` lets whoever renders it say so
-// without this file running a ResizeObserver. It falls back to a sensible
-// constant when unset.
+// H3: NEITHER REGION IS STICKY ANYMORE. The Desktop IA pass made both
+// independently `sticky`/`overflow-y-auto`, each clipped to its own
+// `max-height` below the command center -- so the header stayed put, the
+// left region and skills stayed put, and only the tab body actually
+// scrolled with the page. That reads as three separate scrolling surfaces
+// stitched together, not one document, and Phase H3's own brief rejects it
+// outright: "the entire sheet scrolls together... Sticky behavior should
+// only exist where it genuinely improves usability." The command center
+// remains the one exception (it is not this file's concern; whoever fills
+// the `vitals` slot makes it sticky) -- everything below it, including
+// this file's two regions, is now a normal block that scrolls with the
+// page like any other content. `--sheet-command-h` (the CSS variable the
+// old sticky-offset math read) has no remaining consumer and is gone from
+// this file along with the measurement that produced it -- see
+// CharacterSheetShell.vue's own header for that half of the fix.
 
 const props = defineProps<{
   hasLeft?: boolean
@@ -52,25 +62,13 @@ const skillsSplit = computed(() => Boolean(props.hasSkills) && !props.drawerOpen
 const skillsSplitClass = computed(() =>
   skillsSplit.value ? '2xl:grid-cols-[280px_minmax(0,1fr)]' : ''
 )
-
-// Sticky only where the column actually sits beside the tab body; stacked
-// above it, it scrolls with the page like any other block.
-const skillsStickyClass = computed(() =>
-  skillsSplit.value
-    ? '2xl:sticky 2xl:self-start 2xl:overflow-y-auto 2xl:[top:var(--sheet-command-h,7rem)] 2xl:[max-height:calc(100dvh-var(--sheet-command-h,7rem))]'
-    : ''
-)
 </script>
 
 <template>
   <div class="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
-    <!-- The sticky offset/height are applied ONLY at the breakpoint where
-         the region is actually sticky. As plain inline styles they would
-         also apply while the region is a normal block, where a max-height
-         with no overflow rule silently clips content. -->
     <aside
       v-if="hasLeft"
-      class="hidden min-w-0 xl:block xl:sticky xl:self-start xl:overflow-y-auto xl:[top:var(--sheet-command-h,7rem)] xl:[max-height:calc(100dvh-var(--sheet-command-h,7rem))]"
+      class="hidden min-w-0 xl:block"
       aria-label="Character reference"
     >
       <slot name="left" />
@@ -84,7 +82,6 @@ const skillsStickyClass = computed(() =>
         <div
           v-if="hasSkills"
           class="min-w-0"
-          :class="skillsStickyClass"
         >
           <slot name="skills" />
         </div>

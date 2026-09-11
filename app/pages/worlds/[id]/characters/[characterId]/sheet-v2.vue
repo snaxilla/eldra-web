@@ -276,7 +276,6 @@
 // Skills are persistent at every width rather than living in a tab: "what
 // do I roll for that?" is asked constantly and is not a destination.
 
-import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
 import CharacterRecoveryPanel from '~/components/characters/CharacterRecoveryPanel.vue'
@@ -836,23 +835,21 @@ function openSkillContext(skill: CharacterSkillRow) {
               :unavailable-message="derived ? '' : derivedUnavailable"
             />
 
-            <CharacterSheetSection heading="Ability Scores">
-              <template #heading-end>
-                <NuxtLink
-                  :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
-                  class="text-sm text-[#9f9278] underline-offset-4 hover:text-[#d8ceb8] hover:underline"
-                >
-                  {{ blueprint.abilityScores ? 'Edit' : 'Assign' }}
-                </NuxtLink>
-              </template>
-
-              <div class="mt-3">
-                <CharacterAbilityScoresPanel
-                  :scores="blueprint.abilityScores?.scores ?? null"
-                  empty-message="No ability scores have been assigned yet. Use Assign above to set them."
-                />
-              </div>
-            </CharacterSheetSection>
+            <!-- H3: the score+modifier information itself is not repeated
+                 here -- it is already visible above, via the reference
+                 region's fold-in copy (the Abilities list). Only the
+                 Builder edit/assign ACTION is relocated, per this task's
+                 own "if the Builder/Edit action still needs a home,
+                 relocate only that action; do not duplicate the
+                 information." -->
+            <p class="text-sm text-[#9f9278]">
+              <NuxtLink
+                :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
+                class="text-[#c9a45a] underline underline-offset-2 hover:text-[#f5e7bd]"
+              >
+                {{ blueprint.abilityScores ? 'Edit ability scores' : 'Assign ability scores' }}
+              </NuxtLink>
+            </p>
 
             <CharacterSheetSection heading="Derived">
               <template #heading-end>

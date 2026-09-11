@@ -374,20 +374,28 @@ describe('resolveCombatAction -- errors', () => {
     expect(result.reason).toBe('action-not-found')
   })
 
-  it('reports no-resolution for an action with nothing to resolve (Species/Class/Background features)', async () => {
+  // DND5E Playability Audit: Species/Class/Background content actions
+  // (formerly the example here, e.g. an unresolvable "Magic Initiate"
+  // Background feature) are no longer surfaced by getCharacterActions at
+  // all (server/utils/character-actions.ts) -- so attempting to resolve one
+  // by id now correctly reports 'action-not-found', covered above, not
+  // 'no-resolution'. That reason is still real and reachable for a genuine
+  // action that simply has no attack roll or saving throw to resolve, e.g.
+  // a prepared spell like Shield or Cure Wounds.
+  it('reports no-resolution for a real action with nothing to resolve (a spell with no attack roll or saving throw)', async () => {
     assembleCharacterMock.mockImplementation(async (_worldId: unknown, characterId: unknown) => {
       if (String(characterId) === '42') {
         return {
           available: true,
           blueprint: attackerBlueprint({
-            background: { status: 'resolved', entry: baseEntry({ title: 'Acolyte', slug: 'acolyte-xphb', actions: [{ name: 'Magic Initiate', category: 'background', actionType: 'Feature' }] }) }
+            spells: [{ instanceId: 'spell-1', status: 'resolved', title: 'Shield', known: true, prepared: true, entry: baseEntry({ actions: [{ name: 'Shield', category: 'spell', actionType: 'Level 1 Spell (Abjuration)' }] }) }]
           })
         }
       }
       return { available: true, blueprint: targetBlueprint() }
     })
 
-    const result = await resolveCombatAction('5', '42', '99', 'background:0')
+    const result = await resolveCombatAction('5', '42', '99', 'spell:spell-1')
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('no-resolution')

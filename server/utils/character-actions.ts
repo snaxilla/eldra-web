@@ -46,7 +46,7 @@
 // went missing) still gets a minimal action carrying its name alone, so a
 // player's homebrew spell is not silently absent from their own action list.
 
-import { assembleCharacter, type CharacterAssemblyBlueprint, type CharacterAssemblySlot } from './character-assembly'
+import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
 import { getDerivedCharacter } from './character-derived'
 import type { ActionCategory, ContentAction } from '../../app/lib/content-actions'
 
@@ -92,11 +92,6 @@ function findNumber(byCategory: Record<string, Array<{ id: string; value?: unkno
 // which two different traits could share.
 function actionId(category: ActionCategory, key: string | number): string {
   return `${category}:${key}`
-}
-
-function actionsFromSlot(slot: CharacterAssemblySlot, category: ActionCategory): ContentAction[] {
-  if (slot.status !== 'resolved') return []
-  return (slot.entry as { actions?: ContentAction[] }).actions ?? []
 }
 
 // `resolution` is present (it IS an attack roll) but `damageRoll` is not --
@@ -146,16 +141,19 @@ export async function getCharacterActions(
 
   actions.push({ ...UNARMED_STRIKE, id: actionId('unarmed', 'strike'), attackBonus: meleeBonus })
 
-  for (const [slotKey, category] of [
-    ['species', 'species'],
-    ['class', 'class'],
-    ['background', 'background']
-  ] as const) {
-    let index = 0
-    for (const action of actionsFromSlot(blueprint[slotKey], category)) {
-      actions.push({ ...action, id: actionId(category, index++) })
-    }
-  }
+  // Species/Class/Background content actions (`ContentAction[]` on each
+  // slot's catalogue entry, resolved by resolveSpeciesActions/
+  // resolveClassActions/resolveBackgroundActions in content-actions/dnd5e.ts)
+  // are DELIBERATELY NOT surfaced here. DND5E Playability Audit: this data
+  // has no action-vs-passive signal (content-actions/dnd5e.ts's own header)
+  // and no reliable level metadata usable for gating a level-1 character's
+  // list, so every row -- Darkvision, Unarmored Defense, Ability Score
+  // Improvement, a level-11 feature -- was appearing as something a player
+  // could "do" regardless of level. There is no Features & Traits surface
+  // yet to move them to (a real gap, not fixed here), so they are left out
+  // of Actions entirely rather than shown misleadingly -- "Do not lie."
+  // Weapon/Unarmed/Spell actions below are unaffected: each already carries
+  // real usable-now semantics (equipped/prepared) this content lacks.
 
   for (const item of blueprint.inventory) {
     if (!item.equipped) continue

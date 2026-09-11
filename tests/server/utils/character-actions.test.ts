@@ -128,19 +128,48 @@ describe('getCharacterActions -- Unarmed Strike', () => {
   })
 })
 
-describe('getCharacterActions -- Species / Class / Background', () => {
-  it('surfaces every action a resolved slot\'s content carries', async () => {
+describe('getCharacterActions -- Species / Class / Background (DND5E Playability Audit)', () => {
+  // Species/Class/Background content actions carry no action-vs-passive
+  // signal and no usable level-gating metadata (content-actions/dnd5e.ts's
+  // own header) -- surfacing them here put passive traits (Darkvision),
+  // passive class features (Unarmored Defense), and future-level features
+  // (Ability Score Improvement) in front of a player as if they were things
+  // to "do" right now. character-actions.ts deliberately drops all three
+  // categories rather than mislabel them.
+  it('never surfaces Species content actions, even when the slot resolves and carries them', async () => {
     const result = await getCharacterActions('5', '42')
     expect(result.available).toBe(true)
     if (!result.available) return
 
-    expect(result.actions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'Breath Weapon', category: 'species' }),
-      expect.objectContaining({ name: 'Second Wind', category: 'class' })
-    ]))
+    expect(result.actions.some((action) => action.name === 'Breath Weapon')).toBe(false)
+    expect(result.actions.some((action) => action.category === 'species')).toBe(false)
   })
 
-  it('surfaces nothing for a Species/Class/Background slot that failed to resolve', async () => {
+  it('never surfaces Class content actions, even when the slot resolves and carries them', async () => {
+    const result = await getCharacterActions('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    expect(result.actions.some((action) => action.name === 'Second Wind')).toBe(false)
+    expect(result.actions.some((action) => action.category === 'class')).toBe(false)
+  })
+
+  it('never surfaces Background content actions', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        background: { status: 'resolved', entry: baseEntry({ title: 'Acolyte', slug: 'acolyte-xphb', actions: [{ name: 'Shelter of the Faithful', category: 'background' as const, actionType: 'Feature' }] }) }
+      })
+    })
+
+    const result = await getCharacterActions('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    expect(result.actions.some((action) => action.category === 'background')).toBe(false)
+  })
+
+  it('a Species/Class/Background slot that failed to resolve still surfaces no action for it (unaffected by the audit fix)', async () => {
     assembleCharacterMock.mockResolvedValue({
       available: true,
       blueprint: blueprint({ species: { status: 'missing', packageId: 'x', slug: 'y', reason: 'gone' } })

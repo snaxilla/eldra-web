@@ -387,6 +387,53 @@ describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
 })
 
 // ---------------------------------------------------------------------------
+// DND5E Playability Audit: Level 1 Monk Max HP
+// ---------------------------------------------------------------------------
+// Regression coverage for the reported bug ("a Level 1 Monk with CON 12
+// shows 1/1 HP"). Traced to the fact that `value:hit_points.hit_die_size`
+// defaults to 0 when a Class facet's grant never reaches ActorState.values
+// -- 0 (hit die size) + 1 (CON mod) + 0 (levels above 1) = 1, matching the
+// reported symptom exactly. This suite proves the current, on-disk chain
+// (content facet -> bridge -> package formula) does NOT reproduce that bug:
+// the Monk facet's grant reaches ActorState, and the correct Hit Die size
+// (8) is available to the Health System's formula. Full end-to-end Max HP
+// arithmetic (which also needs `value:level` and `value:ability.con.mod`,
+// both handled elsewhere) is covered in character-derived.test.ts.
+describe('DND5E Playability Audit: Monk Hit Die grant', () => {
+  it('the Monk Class facet grants hit_points.hit_die_size = 8, and it reaches ActorState.values', () => {
+    const { bridged } = derive(blueprint({ class: slot('class', 'monk-xphb') }))
+    expect(bridged.actorState.values['value:hit_points.hit_die_size']).toBe(8)
+  })
+
+  it('every class\'s hit_die_size grant reaches ActorState.values -- not just Monk\'s', () => {
+    const CLASS_HIT_DICE: Record<string, number> = {
+      'barbarian-xphb': 12,
+      'bard-xphb': 8,
+      'cleric-xphb': 8,
+      'druid-xphb': 8,
+      'fighter-xphb': 10,
+      'monk-xphb': 8,
+      'paladin-xphb': 10,
+      'ranger-xphb': 10,
+      'rogue-xphb': 8,
+      'sorcerer-xphb': 6,
+      'warlock-xphb': 8,
+      'wizard-xphb': 6
+    }
+
+    for (const [slug, expectedDie] of Object.entries(CLASS_HIT_DICE)) {
+      const { bridged } = derive(blueprint({ class: slot('class', slug) }))
+      expect(bridged.actorState.values['value:hit_points.hit_die_size'], slug).toBe(expectedDie)
+    }
+  })
+
+  it('with NO Class resolved, hit_die_size is absent from ActorState -- the engine formula falls back to its own default, never a value this bridge invents', () => {
+    const { bridged } = derive(blueprint({ class: { status: 'missing', packageId: 'x', slug: 'y', reason: 'gone' } }))
+    expect(bridged.actorState.values['value:hit_points.hit_die_size']).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Proficiency choice resolution -- Builder -> ActorState -> Rules Engine
 // ---------------------------------------------------------------------------
 

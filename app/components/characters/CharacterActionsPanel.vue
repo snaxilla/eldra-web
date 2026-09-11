@@ -35,17 +35,23 @@
 // Resolve.
 //
 // ---------------------------------------------------------------------------
-// FILTERS -- STRUCTURED, NEVER PROSE-MATCHED
+// FILTERS -- STRUCTURED, NEVER PROSE-MATCHED, NEVER SYSTEM LANGUAGE
 // ---------------------------------------------------------------------------
-// V1 inferred an action's timing by substring-matching its description
-// (`timingFilter()`); §8.4 replaces that with filtering on data the
-// pipeline actually produces. The pills are built from the DISTINCT
-// `actionType` values present in this character's own actions -- so they
-// read "Action / Bonus Action / Reaction" for a 5e character because the
-// pipeline said so, and would read something else entirely for another
-// system, with no list of timings hardcoded in this file. The one
-// non-derived control is "Resolvable only", which filters on the presence
-// of `resolution` -- also §8.4.
+// DND5E Playability Audit (Step 7): the previous filter bar showed pills
+// built from raw `actionType` strings (never actually "Action / Bonus
+// Action / Reaction" -- for a weapon that is "Melee Attack", for a spell it
+// is "Level 1 Spell (Evocation)", one pill per school/level combination) and
+// a "Resolvable only" toggle -- internal engine vocabulary (`resolution`
+// presence) a player has no reason to understand, and one that actively hid
+// legitimate castable utility spells with no attack/save (Shield, Cure
+// Wounds) since those never carry a `resolution`. Both are replaced with a
+// filter over `category`, the one distinction this data actually and always
+// supports honestly: Attacks (weapon + unarmed) and Spells. A pill for
+// Bonus Actions/Reactions is NOT added -- weapon/unarmed actions carry no
+// action-economy field at all, so that distinction is not something this
+// data can honestly support yet (see character-actions.ts's own note on
+// why Species/Class/Background rows, the other source of noise, are not in
+// this list at all any more).
 //
 // ---------------------------------------------------------------------------
 // A SINGLE SHARED TARGET, NOT A TARGETING UI
@@ -54,9 +60,10 @@
 // resolvable row -- "a simple way to execute an action", deliberately not a
 // spatial/map-based target picker (explicitly out of scope). Only actions
 // carrying a `resolution` (an attack roll or a saving throw) get a
-// "Resolve" control at all; a passive Species trait or an unresolvable
-// Class Feature has none, matching `attackBonus`/`saveDc`'s own "absent
-// means not applicable" rule.
+// "Resolve" control at all; a non-attack/non-save spell (Shield, Cure
+// Wounds) has none, matching `attackBonus`/`saveDc`'s own "absent means not
+// applicable" rule -- it is still a real, castable action, just not one
+// this system resolves automatically.
 //
 // ---------------------------------------------------------------------------
 // MOBILE
@@ -155,32 +162,43 @@ const targetCharacterId = ref('')
 
 const ALL_FILTER = '__all__'
 
-const timingFilters = computed(() => {
-  const seen: string[] = []
+type ActionFilterCategory = 'attacks' | 'spells'
+
+function filterCategoryOf(action: CharacterAction): ActionFilterCategory | null {
+  if (action.category === 'weapon' || action.category === 'unarmed') return 'attacks'
+  if (action.category === 'spell') return 'spells'
+  return null
+}
+
+const FILTER_LABELS: Record<ActionFilterCategory, string> = {
+  attacks: 'Attacks',
+  spells: 'Spells'
+}
+
+const availableFilters = computed(() => {
+  const present = new Set<ActionFilterCategory>()
   for (const action of props.actions) {
-    const timing = String(action.actionType || '').trim()
-    if (timing && !seen.includes(timing)) seen.push(timing)
+    const category = filterCategoryOf(action)
+    if (category) present.add(category)
   }
-  return seen
+  return (['attacks', 'spells'] as const).filter((category) => present.has(category))
 })
 
-const activeTiming = ref<string>(ALL_FILTER)
-const resolvableOnly = ref(false)
+const activeFilter = ref<ActionFilterCategory | typeof ALL_FILTER>(ALL_FILTER)
 
 // A filter that no longer matches anything this character has (equipment
 // changed, a spell was unprepared) silently falls back to All rather than
 // showing an empty table for a reason the player cannot see.
-watch(timingFilters, (available) => {
-  if (activeTiming.value !== ALL_FILTER && !available.includes(activeTiming.value)) {
-    activeTiming.value = ALL_FILTER
+watch(availableFilters, (available) => {
+  if (activeFilter.value !== ALL_FILTER && !available.includes(activeFilter.value)) {
+    activeFilter.value = ALL_FILTER
   }
 })
 
 const visibleActions = computed(() =>
   props.actions.filter((action) => {
-    if (resolvableOnly.value && !action.resolution) return false
-    if (activeTiming.value !== ALL_FILTER && action.actionType !== activeTiming.value) return false
-    return true
+    if (activeFilter.value === ALL_FILTER) return true
+    return filterCategoryOf(action) === activeFilter.value
   })
 )
 
@@ -207,8 +225,10 @@ function hitOrDc(action: CharacterAction): string {
       {{ errorMessage }}
     </p>
 
-    <!-- Filter bar. Pills are the action timings this character actually
-         has; the toggle is §8.4's resolvable filter. -->
+    <!-- Filter bar. Pills are All / Attacks / Spells -- the one distinction
+         this data actually and honestly supports (see this file's own
+         header note on why "Resolvable only" and per-actionType pills are
+         gone). -->
     <div
       v-if="actions.length"
       class="flex flex-wrap items-center gap-1.5"
@@ -216,39 +236,27 @@ function hitOrDc(action: CharacterAction): string {
       <button
         type="button"
         class="min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
-        :class="activeTiming === ALL_FILTER
+        :class="activeFilter === ALL_FILTER
           ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
           : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
-        :aria-pressed="activeTiming === ALL_FILTER"
-        @click="activeTiming = ALL_FILTER"
+        :aria-pressed="activeFilter === ALL_FILTER"
+        @click="activeFilter = ALL_FILTER"
       >
         All
       </button>
 
       <button
-        v-for="timing in timingFilters"
-        :key="timing"
+        v-for="category in availableFilters"
+        :key="category"
         type="button"
         class="min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
-        :class="activeTiming === timing
+        :class="activeFilter === category
           ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
           : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
-        :aria-pressed="activeTiming === timing"
-        @click="activeTiming = timing"
+        :aria-pressed="activeFilter === category"
+        @click="activeFilter = category"
       >
-        {{ timing }}
-      </button>
-
-      <button
-        type="button"
-        class="ml-auto min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
-        :class="resolvableOnly
-          ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
-          : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
-        :aria-pressed="resolvableOnly"
-        @click="resolvableOnly = !resolvableOnly"
-      >
-        Resolvable only
+        {{ FILTER_LABELS[category] }}
       </button>
     </div>
 

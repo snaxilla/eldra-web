@@ -370,3 +370,51 @@ describe('getDerivedCharacter -- Spellcasting System', () => {
     expect(byId['value:spellcasting.attack_bonus']).toBe(6) // 2 + 4
   })
 })
+
+describe('getDerivedCharacter -- Health System (DND5E Playability Audit)', () => {
+  // Regression test for the reported bug: a Level 1 Monk with CON 12 showed
+  // 1/1 HP instead of the expected 9 (hit die size 8 + CON mod +1). Traced
+  // to `value:hit_points.hit_die_size` silently defaulting to 0 whenever a
+  // Class's grant does not reach ActorState -- see
+  // character-actor-bridge.test.ts's own "Monk Hit Die grant" suite for the
+  // bridge-level half of this trace. This test proves the FULL chain
+  // (content facet -> bridge -> package formula -> projection) derives the
+  // correct number today, end to end, exactly as a Sheet load would read it.
+  it('a Level 1 Monk with CON 12 derives Max HP as 9 (hit die 8 + CON mod +1), never 1', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        class: slot('class', 'monk-xphb'),
+        abilityScores: {
+          method: 'standard-array',
+          scores: { str: 10, dex: 14, con: 12, int: 10, wis: 14, cha: 8 }
+        }
+      })
+    })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const health = result.derived.byCategory['core.health'] ?? []
+    const byId = Object.fromEntries(health.map((entry) => [entry.id, entry.value]))
+
+    expect(byId['value:hit_points.hit_die_size']).toBe(8)
+    expect(byId['value:hit_points.max']).toBe(9)
+  })
+
+  it('a Level 1 Fighter with CON 13 derives Max HP as 11 (hit die 10 + CON mod +1) -- proves the formula is class-generic, not Monk-specific', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint() })
+
+    const result = await getDerivedCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const health = result.derived.byCategory['core.health'] ?? []
+    const byId = Object.fromEntries(health.map((entry) => [entry.id, entry.value]))
+
+    // blueprint()'s defaults: Fighter, CON 13 (standard array) -> mod +1.
+    expect(byId['value:hit_points.hit_die_size']).toBe(10)
+    expect(byId['value:hit_points.max']).toBe(11)
+  })
+})

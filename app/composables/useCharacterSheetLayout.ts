@@ -40,13 +40,50 @@ export type CharacterSheetTab = {
 // Icons match §7.5's vocabulary exactly (i-lucide-swords Play/attack,
 // i-lucide-user Character, i-lucide-sparkles Spells, i-lucide-backpack
 // Inventory, i-lucide-notebook-pen Notes).
+//
+// ORDER AND LABELS -- Desktop IA pass. Reordered and relabelled to match
+// the tab order a 5e player already has muscle memory for (Actions,
+// Spells, Inventory, Features, Notes). The `play` KEY is deliberately
+// unchanged behind its new "Actions" label: `?tab=play` is a URL other
+// people may already have bookmarked or shared, and renaming a route
+// vocabulary to match a label change would break those for nothing. The
+// same applies to `character`, whose tab now holds what the reference
+// sheet calls Features & Traits.
 export const CHARACTER_SHEET_TABS: readonly CharacterSheetTab[] = [
-  { key: 'play', label: 'Play', icon: 'i-lucide-swords' },
-  { key: 'character', label: 'Character', icon: 'i-lucide-user' },
+  { key: 'play', label: 'Actions', icon: 'i-lucide-swords' },
   { key: 'spells', label: 'Spells', icon: 'i-lucide-sparkles' },
   { key: 'inventory', label: 'Inventory', icon: 'i-lucide-backpack' },
+  { key: 'character', label: 'Character', icon: 'i-lucide-user' },
   { key: 'notes', label: 'Notes', icon: 'i-lucide-notebook-pen' }
 ]
+
+// ---------------------------------------------------------------------------
+// CONTEXT SELECTION -- WHAT THE SHARED DRAWER IS CURRENTLY SHOWING
+// ---------------------------------------------------------------------------
+// §8.3 assigns "drawer stack" to this composable, so the SELECTION lives
+// here; the drawer COMPONENT is still mounted by the page, exactly as every
+// other WorldEntityContextDrawer consumer in the app mounts its own.
+//
+// One payload shape for all five selectable things. Each field maps onto a
+// prop the existing drawer already renders (title, eyebrow, detail lines,
+// summary, chips, image), which is what let the Character Sheet adopt
+// Eldra's one context system instead of growing a private drawer.
+//
+// Every field is already-resolved data handed over by a panel -- there is
+// no fetch here, and nothing in this file reads `derived`, the catalogue,
+// or a Content Pack.
+export type CharacterSheetContextKind = 'action' | 'spell' | 'item' | 'feature' | 'skill'
+
+export type CharacterSheetContext = {
+  kind: CharacterSheetContextKind
+  id: string
+  title: string
+  eyebrow: string
+  detailLines?: string[]
+  summary?: string
+  tags?: string[]
+  imageUrl?: string | null
+}
 
 const DEFAULT_TAB: CharacterSheetTabKey = 'play'
 
@@ -89,10 +126,48 @@ export function useCharacterSheetLayout() {
     desktopQuery?.removeEventListener('change', onDesktopQueryChange)
   })
 
+  // ---------------------------------------------------------------------
+  // Context drawer selection
+  // ---------------------------------------------------------------------
+
+  const context = ref<CharacterSheetContext | null>(null)
+
+  function openContext(next: CharacterSheetContext) {
+    context.value = next
+  }
+
+  function closeContext() {
+    context.value = null
+  }
+
+  // The shape WorldEntityContextDrawer already consumes. Mapping here (not
+  // in the page) keeps the page a layout wiring file and keeps every
+  // panel's `select` payload in Character Sheet vocabulary rather than
+  // entity-drawer vocabulary.
+  const contextEntity = computed(() => {
+    const current = context.value
+    if (!current) return null
+
+    return {
+      id: current.id,
+      title: current.title,
+      displayType: current.eyebrow,
+      entityType: current.kind,
+      detailLines: current.detailLines ?? [],
+      summary: current.summary ?? '',
+      tags: current.tags ?? [],
+      image: current.imageUrl ?? ''
+    }
+  })
+
   return {
     tabs: CHARACTER_SHEET_TABS,
     activeTab,
     setActiveTab,
-    isDesktop
+    isDesktop,
+    context,
+    contextEntity,
+    openContext,
+    closeContext
   }
 }

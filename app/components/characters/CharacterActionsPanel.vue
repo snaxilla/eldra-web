@@ -18,35 +18,65 @@
 // shape CharacterHealthPanel.vue's own Recovery actions already use.
 //
 // ---------------------------------------------------------------------------
+// A TABLE, NOT A PILE OF CARDS -- Desktop IA pass
+// ---------------------------------------------------------------------------
+// Rebuilt against the reference sheet's own Actions tab, whose single
+// biggest usability advantage over V2's card grid is that it is a TABLE:
+// one row per action, fixed columns (attack, range, hit/DC, damage, notes),
+// so a player scans down one column instead of reading six boxes. Cards
+// forced every action to be as tall as its prose; rows make twelve actions
+// legible at once.
+//
+// The prose itself is not deleted, it MOVES: clicking a row opens it in
+// Eldra's shared context drawer (`select`), which is the same progressive
+// disclosure V1 had via its own four detail drawers and the reason lists
+// can stay dense. This component does not own or know about that drawer --
+// it emits the intent and the page decides, exactly as it already does for
+// Resolve.
+//
+// ---------------------------------------------------------------------------
+// FILTERS -- STRUCTURED, NEVER PROSE-MATCHED
+// ---------------------------------------------------------------------------
+// V1 inferred an action's timing by substring-matching its description
+// (`timingFilter()`); §8.4 replaces that with filtering on data the
+// pipeline actually produces. The pills are built from the DISTINCT
+// `actionType` values present in this character's own actions -- so they
+// read "Action / Bonus Action / Reaction" for a 5e character because the
+// pipeline said so, and would read something else entirely for another
+// system, with no list of timings hardcoded in this file. The one
+// non-derived control is "Resolvable only", which filters on the presence
+// of `resolution` -- also §8.4.
+//
+// ---------------------------------------------------------------------------
 // A SINGLE SHARED TARGET, NOT A TARGETING UI
 // ---------------------------------------------------------------------------
 // One plain `<select>` of the World's other characters, shared by every
-// resolvable row -- "a simple way to execute an action" (this task's own
-// CHARACTER SHEET section), deliberately not a spatial/map-based target
-// picker (explicitly out of scope). Only actions carrying a `resolution`
-// (an attack roll or a saving throw -- Combat Resolution System addition)
-// get a "Resolve" control at all; a passive Species trait or an
-// unresolvable Class Feature has none, matching `attackBonus`/`saveDc`'s own
-// "absent means not applicable" rule immediately above.
+// resolvable row -- "a simple way to execute an action", deliberately not a
+// spatial/map-based target picker (explicitly out of scope). Only actions
+// carrying a `resolution` (an attack roll or a saving throw) get a
+// "Resolve" control at all; a passive Species trait or an unresolvable
+// Class Feature has none, matching `attackBonus`/`saveDc`'s own "absent
+// means not applicable" rule.
 //
 // ---------------------------------------------------------------------------
 // MOBILE
 // ---------------------------------------------------------------------------
-// One column on phones, two where there is room -- the same
-// `md:grid-cols-2` Inventory/Spellcasting's own carried-item grids already
-// use. The target `<select>` and every Resolve button stay at min-h-11
-// (44px), matching every other control in this Sheet.
+// The column headings are desktop-only; below `md` each row stacks into a
+// name plus a wrapped meta line, so nothing is lost and nothing scrolls
+// sideways. The target `<select>`, every filter pill, and every Resolve
+// button stay at min-h-11 (44px), matching every other control in this
+// Sheet.
 //
 // ---------------------------------------------------------------------------
-// MATERIAL -- WELL ONLY WHERE THE ROW IS ACTUALLY ACTIONABLE
+// MATERIAL
 // ---------------------------------------------------------------------------
-// Material Phase 1 (eldra-design-language.md §2/§8). A row with a
-// `resolution` (an attack roll or a saving throw) is something the player
-// DOES here, so it carries `eldra-well`. A passive Species/Class trait with
-// no resolution is read, never acted on, so it keeps the plain Reference
-// Surface treatment -- the two were visually identical before this phase,
-// which hid exactly the distinction this material makes legible. No prop,
-// emit, or action data changed.
+// Every row now carries `eldra-well`, where previously only resolvable rows
+// did. That is not a loosening of Design Language §8 Rule 2 ("interactive
+// controls always sit on a Steel well") but a consequence of it: as of this
+// pass EVERY row is interactive, because every row opens its detail. The
+// resolvable/passive distinction it used to carry is now shown by the
+// affordance that actually differs -- the Resolve control -- rather than by
+// the surface.
 
 export type CharacterActionCategory = 'weapon' | 'unarmed' | 'spell' | 'species' | 'class' | 'background'
 
@@ -104,6 +134,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   resolve: [{ actionId: string; targetCharacterId: string }]
+  select: [CharacterAction]
 }>()
 
 const CATEGORY_LABELS: Record<CharacterActionCategory, string> = {
@@ -117,20 +148,109 @@ function signed(value: number): string {
 
 const targetCharacterId = ref('')
 
+// ---------------------------------------------------------------------------
+// Filtering -- see this file's header on why the timing pills are derived
+// from the data rather than declared here.
+// ---------------------------------------------------------------------------
+
+const ALL_FILTER = '__all__'
+
+const timingFilters = computed(() => {
+  const seen: string[] = []
+  for (const action of props.actions) {
+    const timing = String(action.actionType || '').trim()
+    if (timing && !seen.includes(timing)) seen.push(timing)
+  }
+  return seen
+})
+
+const activeTiming = ref<string>(ALL_FILTER)
+const resolvableOnly = ref(false)
+
+// A filter that no longer matches anything this character has (equipment
+// changed, a spell was unprepared) silently falls back to All rather than
+// showing an empty table for a reason the player cannot see.
+watch(timingFilters, (available) => {
+  if (activeTiming.value !== ALL_FILTER && !available.includes(activeTiming.value)) {
+    activeTiming.value = ALL_FILTER
+  }
+})
+
+const visibleActions = computed(() =>
+  props.actions.filter((action) => {
+    if (resolvableOnly.value && !action.resolution) return false
+    if (activeTiming.value !== ALL_FILTER && action.actionType !== activeTiming.value) return false
+    return true
+  })
+)
+
 function resolve(actionId: string) {
   if (!targetCharacterId.value || props.resolving) return
   emit('resolve', { actionId, targetCharacterId: targetCharacterId.value })
 }
+
+// The "Hit / DC" column carries whichever of the two the action declares --
+// absent stays absent, never a fabricated zero.
+function hitOrDc(action: CharacterAction): string {
+  if (action.attackBonus !== undefined) return signed(action.attackBonus)
+  if (action.saveDc !== undefined) return `DC ${action.saveDc}`
+  return '—'
+}
 </script>
 
 <template>
-  <div class="grid gap-4">
+  <div class="grid gap-3">
     <p
       v-if="errorMessage"
       class="rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
     >
       {{ errorMessage }}
     </p>
+
+    <!-- Filter bar. Pills are the action timings this character actually
+         has; the toggle is §8.4's resolvable filter. -->
+    <div
+      v-if="actions.length"
+      class="flex flex-wrap items-center gap-1.5"
+    >
+      <button
+        type="button"
+        class="min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
+        :class="activeTiming === ALL_FILTER
+          ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
+          : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+        :aria-pressed="activeTiming === ALL_FILTER"
+        @click="activeTiming = ALL_FILTER"
+      >
+        All
+      </button>
+
+      <button
+        v-for="timing in timingFilters"
+        :key="timing"
+        type="button"
+        class="min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
+        :class="activeTiming === timing
+          ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
+          : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+        :aria-pressed="activeTiming === timing"
+        @click="activeTiming = timing"
+      >
+        {{ timing }}
+      </button>
+
+      <button
+        type="button"
+        class="ml-auto min-h-11 rounded-none border px-3 text-xs uppercase tracking-[0.12em] transition"
+        :class="resolvableOnly
+          ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
+          : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+        :aria-pressed="resolvableOnly"
+        @click="resolvableOnly = !resolvableOnly"
+      >
+        Resolvable only
+      </button>
+    </div>
 
     <!-- One shared target for every resolvable row below -- see this
          file's own header on why this is not a targeting UI. -->
@@ -171,152 +291,118 @@ function resolve(actionId: string) {
       v-else-if="!actions.length"
       class="text-sm text-[#9f9278]"
     >
-      Nothing yet -- equip a weapon, prepare a spell, or check back once Species/Class/Background are set.
+      Nothing yet — equip a weapon, prepare a spell, or check back once Species/Class/Background are set.
     </p>
 
-    <div
-      v-else
-      class="grid gap-2 md:grid-cols-2"
+    <p
+      v-else-if="!visibleActions.length"
+      class="text-sm text-[#9f9278]"
     >
-      <article
-        v-for="action in actions"
-        :key="action.id"
-        class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
-        :class="action.resolution
-          ? 'eldra-well'
-          : 'border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)]'"
+      No actions match this filter.
+    </p>
+
+    <template v-else>
+      <!-- Column headings, matching the reference sheet's own action table.
+           Desktop only, and hidden from assistive technology: each row
+           already carries its own labelled values. -->
+      <div
+        aria-hidden="true"
+        class="hidden border-b border-[rgba(201,164,90,0.16)] px-3 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-[#6f6754] md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:gap-3"
       >
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="truncate font-semibold text-[#fff7df]">
-              {{ action.name }}
-            </div>
-            <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
-              <span class="eldra-gold-chip rounded-none border px-2 py-0.5 uppercase tracking-[0.08em]">
-                {{ CATEGORY_LABELS[action.category] }}
-              </span>
-              <span>{{ action.actionType }}</span>
-            </div>
-          </div>
+        <span>Action</span>
+        <span>Range</span>
+        <span>Hit / DC</span>
+        <span>Damage</span>
+        <span>Notes</span>
+      </div>
 
-          <!-- Attack Bonus / Save DC -- Rules Engine output, when this
-               action has one to show. Absent means "not yet available"
-               (no Rules Package activated), never a fabricated zero. -->
-          <div
-            v-if="action.attackBonus !== undefined || action.saveDc !== undefined"
-            class="shrink-0 text-right"
-          >
-            <div
-              v-if="action.attackBonus !== undefined"
-              class="text-base font-semibold tabular-nums text-[#fff7df]"
-            >
-              {{ signed(action.attackBonus) }}
-            </div>
-            <div
-              v-if="action.saveDc !== undefined"
-              class="text-xs text-[#9f9278]"
-            >
-              DC {{ action.saveDc }}
-            </div>
-          </div>
-        </div>
-
-        <dl
-          v-if="action.range || action.damage || action.usage"
-          class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs"
+      <ul class="grid gap-1">
+        <li
+          v-for="action in visibleActions"
+          :key="action.id"
         >
-          <template v-if="action.range">
-            <dt class="text-[#9f9278]">
-              Range
-            </dt>
-            <dd class="text-[#d8ceb8]">
-              {{ action.range }}
-            </dd>
-          </template>
-          <template v-if="action.damage">
-            <dt class="text-[#9f9278]">
-              Damage
-            </dt>
-            <dd class="text-[#d8ceb8]">
-              {{ action.damage }}
-            </dd>
-          </template>
-          <template v-if="action.usage">
-            <dt class="text-[#9f9278]">
-              Usage
-            </dt>
-            <dd class="text-[#d8ceb8]">
-              {{ action.usage }}
-            </dd>
-          </template>
-        </dl>
-
-        <p
-          v-if="action.description"
-          class="mt-2 border-t border-[rgba(201,164,90,0.14)] pt-2 text-xs leading-5 text-[#9f9278]"
-        >
-          {{ action.description }}
-        </p>
-
-        <p
-          v-if="action.sourceBook"
-          class="mt-2 text-xs text-[#6f6754]"
-        >
-          {{ action.sourceBook }}
-        </p>
-
-        <!-- Combat Resolution: only actions with a resolution mechanic get
-             a control at all. -->
-        <template v-if="action.resolution">
           <button
             type="button"
-            class="eldra-button mt-3 min-h-11 w-full rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="!targetCharacterId || resolving"
-            @click="resolve(action.id)"
+            class="eldra-well block w-full rounded-none px-3 py-2 text-left transition md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:items-center md:gap-3"
+            :aria-label="`${action.name} — open details`"
+            @click="emit('select', action)"
           >
-            {{ resolving ? 'Resolving…' : 'Resolve' }}
+            <span class="block min-w-0">
+              <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
+              <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                {{ CATEGORY_LABELS[action.category] }}
+              </span>
+            </span>
+
+            <!-- Below `md` the four table columns become one wrapped meta
+                 line, each value still carrying its own label. -->
+            <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
+              <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
+              <span><span class="text-[#6f6754]">Hit/DC</span> {{ hitOrDc(action) }}</span>
+              <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
+              <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
+            </span>
+
+            <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
+            <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
+            <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
+            <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
           </button>
 
-          <div
-            v-if="results[action.id]"
-            class="mt-2 rounded-none border p-2 text-xs leading-5"
-            :class="results[action.id]!.hit
-              ? 'border-[rgba(158,195,125,0.4)] bg-[rgba(158,195,125,0.08)] text-[#d8ceb8]'
-              : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.4)] text-[#9f9278]'"
-          >
-            <template v-if="results[action.id]!.attackRoll">
-              <div>
-                Attack roll {{ results[action.id]!.attackRoll!.roll }}
-                {{ signed(results[action.id]!.attackRoll!.bonus) }}
-                = {{ results[action.id]!.attackRoll!.total }}
-                vs AC {{ results[action.id]!.attackRoll!.targetArmorClass }}
-                — <strong>{{ results[action.id]!.critical ? 'Critical Hit' : results[action.id]!.hit ? 'Hit' : 'Miss' }}</strong>
-              </div>
-            </template>
-            <template v-else-if="results[action.id]!.savingThrow">
-              <div>
-                Target save {{ results[action.id]!.savingThrow!.roll }}
-                {{ signed(results[action.id]!.savingThrow!.bonus) }}
-                = {{ results[action.id]!.savingThrow!.total }}
-                vs DC {{ results[action.id]!.savingThrow!.dc }}
-                — <strong>{{ results[action.id]!.savingThrow!.success ? 'Save Succeeded' : 'Save Failed' }}</strong>
-              </div>
-            </template>
+          <!-- Combat Resolution: only actions with a resolution mechanic get
+               a control at all. It sits outside the row button so activating
+               it never also opens the detail drawer. -->
+          <template v-if="action.resolution">
+            <button
+              type="button"
+              class="eldra-button mt-1 min-h-11 w-full rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:px-4"
+              :disabled="!targetCharacterId || resolving"
+              @click="resolve(action.id)"
+            >
+              {{ resolving ? 'Resolving…' : 'Resolve' }}
+            </button>
 
-            <div v-if="results[action.id]!.damage && results[action.id]!.damage!.total > 0">
-              Damage: {{ results[action.id]!.damage!.total }}
-              <template v-if="results[action.id]!.damage!.type">({{ results[action.id]!.damage!.type }})</template>
-              <template v-if="results[action.id]!.damage!.halvedFrom">
-                — halved from {{ results[action.id]!.damage!.halvedFrom }}
+            <div
+              v-if="results[action.id]"
+              class="mt-1 rounded-none border p-2 text-xs leading-5"
+              :class="results[action.id]!.hit
+                ? 'border-[rgba(158,195,125,0.4)] bg-[rgba(158,195,125,0.08)] text-[#d8ceb8]'
+                : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.4)] text-[#9f9278]'"
+            >
+              <template v-if="results[action.id]!.attackRoll">
+                <div>
+                  Attack roll {{ results[action.id]!.attackRoll!.roll }}
+                  {{ signed(results[action.id]!.attackRoll!.bonus) }}
+                  = {{ results[action.id]!.attackRoll!.total }}
+                  vs AC {{ results[action.id]!.attackRoll!.targetArmorClass }}
+                  — <strong>{{ results[action.id]!.critical ? 'Critical Hit' : results[action.id]!.hit ? 'Hit' : 'Miss' }}</strong>
+                </div>
               </template>
-            </div>
+              <template v-else-if="results[action.id]!.savingThrow">
+                <div>
+                  Target save {{ results[action.id]!.savingThrow!.roll }}
+                  {{ signed(results[action.id]!.savingThrow!.bonus) }}
+                  = {{ results[action.id]!.savingThrow!.total }}
+                  vs DC {{ results[action.id]!.savingThrow!.dc }}
+                  — <strong>{{ results[action.id]!.savingThrow!.success ? 'Save Succeeded' : 'Save Failed' }}</strong>
+                </div>
+              </template>
 
-            <div class="mt-1 text-[#6f6754]">
-              Target HP remaining: {{ results[action.id]!.targetHealth.currentHp }}
+              <div v-if="results[action.id]!.damage && results[action.id]!.damage!.total > 0">
+                Damage: {{ results[action.id]!.damage!.total }}
+                <template v-if="results[action.id]!.damage!.type">({{ results[action.id]!.damage!.type }})</template>
+                <template v-if="results[action.id]!.damage!.halvedFrom">
+                  — halved from {{ results[action.id]!.damage!.halvedFrom }}
+                </template>
+              </div>
+
+              <div class="mt-1 text-[#6f6754]">
+                Target HP remaining: {{ results[action.id]!.targetHealth.currentHp }}
+              </div>
             </div>
-          </div>
-        </template>
-      </article>
-    </div>
+          </template>
+        </li>
+      </ul>
+    </template>
   </div>
 </template>

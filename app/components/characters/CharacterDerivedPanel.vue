@@ -23,7 +23,12 @@
 // different things on a character sheet -- and the TAG makes that a
 // package-declared fact rather than a guess this component makes about ids.
 
-import type { DerivedValue } from './characterDerivedValues'
+// `display` used to live here. It is now `formatDerivedValue` in
+// characterDerivedValues.ts, unchanged, because the skills/saves/ability
+// tables added by the desktop IA pass render numbers by the same rule --
+// one copy of "signed only when the package tags it as modifier-like",
+// four renderers.
+import { formatDerivedValue, type DerivedValue } from './characterDerivedValues'
 
 const props = withDefaults(defineProps<{
   entries?: DerivedValue[]
@@ -38,23 +43,7 @@ function isBoolean(entry: DerivedValue): boolean {
   return typeof entry.value === 'boolean'
 }
 
-// Signed only when the PACKAGE says this is a modifier-like value. The tag
-// is authored in packages/eldra-dnd5e-2024; this component never infers it
-// from an id, which is what keeps the file game-agnostic.
-const SIGNED_TAGS = ['ability-modifier', 'proficiency', 'save', 'skill']
-
-function display(entry: DerivedValue): string {
-  const value = entry.value
-
-  if (typeof value === 'number') {
-    const signed = (entry.tags ?? []).some((tag) => SIGNED_TAGS.includes(tag))
-    return signed && value >= 0 ? `+${value}` : String(value)
-  }
-
-  if (typeof value === 'string') return value
-  if (value === undefined || value === null) return '—'
-  return String(value)
-}
+const display = formatDerivedValue
 
 const rows = computed(() => props.entries)
 </script>

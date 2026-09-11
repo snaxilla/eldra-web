@@ -44,11 +44,26 @@
 // disable rules in two places would be the kind of "redesign a panel
 // deeply" this task's own IMPORTANT section rules out.
 
+// ABILITY TILES -- Desktop IA pass (D&D Beyond reference layout)
+// ---------------------------------------------------------------------------
+// The six ability tiles join this header rather than sitting in a column,
+// matching the reference sheet and for the same reason every other number
+// here earns its place: a modifier is quoted out loud constantly and is
+// needed from every tab, so it belongs in the one region that never scrolls
+// away. `CharacterAbilityGrid` owns the tile itself (including pairing each
+// score with its modifier); this file only decides that the row sits
+// between the identity line and the vitals numbers.
+//
+// Absent by default: a character whose World has no Rules Package activated
+// passes no entries and gets no row at all, rather than six empty tiles.
+
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
+import type { DerivedValue } from '~/components/characters/characterDerivedValues'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
 import CharacterSaveIndicator from '~/components/characters/CharacterSaveIndicator.vue'
 import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
+import CharacterAbilityGrid from '~/components/characters/CharacterAbilityGrid.vue'
 
 withDefaults(defineProps<{
   worldId: string
@@ -74,11 +89,13 @@ withDefaults(defineProps<{
   saving: boolean
   error: string
   removeCondition: (conditionInstanceId: string) => void
+  abilityEntries?: readonly DerivedValue[]
 }>(), {
   imageUrl: null,
   initiative: null,
   speed: null,
-  proficiencyBonus: null
+  proficiencyBonus: null,
+  abilityEntries: () => []
 })
 
 const emit = defineEmits<{
@@ -160,6 +177,12 @@ const emit = defineEmits<{
         </button>
       </div>
     </div>
+
+    <CharacterAbilityGrid
+      v-if="abilityEntries.length"
+      class="mt-4"
+      :entries="abilityEntries"
+    />
 
     <div class="mt-4">
       <CharacterVitalsBar

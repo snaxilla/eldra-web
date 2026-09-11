@@ -235,6 +235,42 @@
 // Inventory/Conditions/Encounter) was touched: every one is the exact same
 // component this task's IMPORTANT section says not to redesign, only
 // re-parented into a flatter template.
+//
+// ---------------------------------------------------------------------------
+// DESKTOP IA PASS: TWO SHEET REGIONS + ELDRA'S OWN CONTEXT DRAWER
+// ---------------------------------------------------------------------------
+// Corrective Phase 2R's single folio column was right to reject Phase 4's
+// three-column app-within-an-app, and wrong to conclude the answer was one
+// column at every width: it left a 2560px desktop mostly empty and buried
+// saves and skills behind a tab.
+//
+// Measured against a real 5e sheet's desktop information architecture, the
+// correction is that the sheet has TWO regions and the THIRD PANE IS NOT
+// THE SHEET'S:
+//
+//   Command center   identity, ability tiles, HP/AC/DC, conditions, turn
+//   Left region      reference: saves, proficiency, defenses (>= 1280px)
+//   Center region    skills (always visible) + the tab body
+//   Context drawer   Eldra's EXISTING WorldEntityContextDrawer -- the same
+//                    component the World map, roster, admin, timelines and
+//                    entity pages already open, now opened by this page too
+//
+// That last line is the whole point. A right-hand rail owned by the sheet
+// would be a second context system sitting inside a workspace that already
+// has one; instead an action/spell/item/feature/skill opens in the drawer
+// Eldra already had, and the sheet compresses to make room for it at
+// desktop width exactly as the reference sheet does. No new drawer, no
+// third rail.
+//
+// The left region is rendered TWICE (rail at >= 1280px, folded into the
+// Character tab below that) with CSS choosing which is visible rather than
+// a JS breakpoint. That is safe here and nowhere else: every panel in it is
+// a read-only projection of derived values. Recovery/Encounter, which
+// mutate, are still rendered exactly once -- see
+// CharacterReferencePanels.vue's own header.
+//
+// Skills are persistent at every width rather than living in a tab: "what
+// do I roll for that?" is asked constantly and is not a destination.
 
 import CharacterAbilityScoresPanel from '~/components/characters/CharacterAbilityScoresPanel.vue'
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
@@ -252,9 +288,24 @@ import CharacterConditionsPanel from '~/components/characters/CharacterCondition
 import CharacterSheetShell from '~/components/characters/CharacterSheetShell.vue'
 import CharacterIdentityCard from '~/components/characters/CharacterIdentityCard.vue'
 import CharacterSheetCommandCenter from '~/components/characters/CharacterSheetCommandCenter.vue'
+import CharacterReferencePanels from '~/components/characters/CharacterReferencePanels.vue'
+import CharacterSkillList from '~/components/characters/CharacterSkillList.vue'
+import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
+import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
+import {
+  ABILITIES_CATEGORY,
+  HOMED_CATEGORIES,
+  REFERENCE_CATEGORIES,
+  SAVES_CATEGORY,
+  SKILLS_CATEGORY
+} from '~/components/characters/characterDerivedValues'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import { useCharacterSheetLayout } from '~/composables/useCharacterSheetLayout'
+import type { AssembledInventoryItem } from '~/lib/characters/inventory'
+import type { AssembledSpellEntry } from '~/lib/characters/spellcasting'
+import type { PresentationEntry } from '~/lib/content-presentation/types'
 import type { StoredCharacterNotes } from '~/lib/characters/character-notes'
 
 definePageMeta({
@@ -393,7 +444,15 @@ const vitalsError = computed(() =>
 // only copy.
 // ---------------------------------------------------------------------------
 
-const { tabs, activeTab, setActiveTab } = useCharacterSheetLayout()
+const {
+  tabs,
+  activeTab,
+  setActiveTab,
+  context,
+  contextEntity,
+  openContext,
+  closeContext
+} = useCharacterSheetLayout()
 
 // Rest buttons in the command center are a shortcut to the SAME mutation
 // CharacterRecoveryPanel.vue's own Rest buttons already call -- see
@@ -401,6 +460,149 @@ const { tabs, activeTab, setActiveTab } = useCharacterSheetLayout()
 // validation logic.
 function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) {
   mutations.recovery.apply(payload)
+}
+
+// ---------------------------------------------------------------------------
+// WHICH RULE CATEGORY RENDERS WHERE -- Desktop IA pass
+// ---------------------------------------------------------------------------
+// Three categories now have a bespoke home (abilities as command-center
+// tiles, saves in the left region, skills as the persistent table); two
+// more are routed to the left region as reference. Everything else still
+// falls through to the generic Derived section in the Character tab, which
+// is what keeps a package declaring categories Eldra has never heard of
+// visible instead of dropped.
+//
+// This selects by CATEGORY and never by Definition id -- §13.2's whole
+// point -- and computes nothing: each list is handed to a renderer exactly
+// as the engine produced it.
+// ---------------------------------------------------------------------------
+
+const abilityEntries = computed(() => derived.value?.byCategory?.[ABILITIES_CATEGORY] ?? [])
+const saveEntries = computed(() => derived.value?.byCategory?.[SAVES_CATEGORY] ?? [])
+const skillEntries = computed(() => derived.value?.byCategory?.[SKILLS_CATEGORY] ?? [])
+
+const referenceRegions = computed(() =>
+  derivedRegions.value.filter((region) => REFERENCE_CATEGORIES.includes(region.category))
+)
+
+const otherDerivedRegions = computed(() =>
+  derivedRegions.value.filter((region) => !HOMED_CATEGORIES.includes(region.category))
+)
+
+// ---------------------------------------------------------------------------
+// CONTEXT DRAWER -- ELDRA'S OWN, NOT A NEW ONE
+// ---------------------------------------------------------------------------
+// Every handler below does the same thing: turn a panel's already-resolved
+// payload into the shared `CharacterSheetContext` shape and hand it to
+// useCharacterSheetLayout. There is NO FETCH here -- each panel already
+// holds everything the drawer shows, because Character Assembly resolved it
+// on the way in.
+//
+// Where a payload genuinely carries no prose (Assembly relays a spell's and
+// an item's provenance and actions, but no description), the drawer shows
+// the structured facts and says the pack publishes nothing further -- the
+// same "absence is legal and visible" posture ContentPresentationPanel's
+// own empty message already takes, never invented text.
+// ---------------------------------------------------------------------------
+
+function signedNumber(value: number): string {
+  return value >= 0 ? `+${value}` : String(value)
+}
+
+function openActionContext(action: CharacterAction) {
+  const lines: string[] = []
+  if (action.range) lines.push(`Range: ${action.range}`)
+  if (action.attackBonus !== undefined) lines.push(`Attack Bonus: ${signedNumber(action.attackBonus)}`)
+  if (action.saveDc !== undefined) lines.push(`Save DC: ${action.saveDc}`)
+  if (action.damage) lines.push(`Damage: ${action.damage}`)
+  if (action.usage) lines.push(`Usage: ${action.usage}`)
+  if (action.sourceBook) lines.push(`Source: ${action.sourceBook}`)
+
+  openContext({
+    kind: 'action',
+    id: action.id,
+    title: action.name,
+    eyebrow: action.actionType || 'Action',
+    detailLines: lines,
+    summary: action.description || '',
+    tags: [action.category]
+  })
+}
+
+function openSpellContext(spell: AssembledSpellEntry) {
+  const lines: string[] = []
+  if (spell.entry?.sourceBook) lines.push(`Source: ${spell.entry.sourceBook}`)
+  if (spell.entry) lines.push(`Resolved from: ${spell.entry.packageId}@${spell.entry.packageVersion}`)
+  if (spell.status === 'missing' && spell.reason) lines.push(spell.reason)
+
+  openContext({
+    kind: 'spell',
+    id: spell.instanceId,
+    title: spell.title,
+    eyebrow: spell.status === 'custom' ? 'Homebrew Spell' : 'Spell',
+    detailLines: lines,
+    summary: '',
+    tags: spell.prepared ? ['Prepared'] : []
+  })
+}
+
+function openItemContext(item: AssembledInventoryItem) {
+  const lines: string[] = [`Quantity: ${item.quantity}`]
+  if (item.container) lines.push(`Container: ${item.container}`)
+  if (item.notes) lines.push(item.notes)
+  if (item.entry?.sourceBook) lines.push(`Source: ${item.entry.sourceBook}`)
+  if (item.entry) lines.push(`Resolved from: ${item.entry.packageId}@${item.entry.packageVersion}`)
+  if (item.status === 'missing' && item.reason) lines.push(item.reason)
+
+  const tags: string[] = []
+  if (item.equipped) tags.push('Equipped')
+  if (item.attuned) tags.push('Attuned')
+
+  openContext({
+    kind: 'item',
+    id: item.instanceId,
+    title: item.title,
+    eyebrow: item.status === 'custom' ? 'Custom Item' : 'Item',
+    detailLines: lines,
+    summary: '',
+    tags
+  })
+}
+
+// Species/Class/Background. Unlike spells and items, these DO carry a
+// published presentation model, so the drawer shows the pack's own prose.
+function openFeatureContext(label: string, presentation: PresentationEntry | null | undefined, title: string) {
+  const paragraphs = [
+    ...(presentation?.description ?? []),
+    ...(presentation?.sections ?? []).flatMap((section) => [section.title, ...section.paragraphs]),
+    ...(presentation?.notes ?? [])
+  ]
+
+  openContext({
+    kind: 'feature',
+    id: `${label}:${title}`,
+    title,
+    eyebrow: label,
+    detailLines: (presentation?.facts ?? []).map((fact) => `${fact.label}: ${fact.value}`),
+    summary: paragraphs.join('\n\n'),
+    tags: presentation?.sourceBook ? [presentation.sourceBook] : []
+  })
+}
+
+function openSkillContext(skill: CharacterSkillRow) {
+  const lines = [`Bonus: ${skill.value}`]
+  if (skill.qualifier) lines.push(`Ability: ${skill.qualifier.toUpperCase()}`)
+  if (skill.proficient !== null) lines.push(`Proficient: ${skill.proficient ? 'Yes' : 'No'}`)
+
+  openContext({
+    kind: 'skill',
+    id: skill.key,
+    title: skill.label,
+    eyebrow: 'Skill',
+    detailLines: lines,
+    summary: '',
+    tags: skill.proficient ? ['Proficient'] : []
+  })
 }
 </script>
 
@@ -426,11 +628,23 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
        the same treatment WorldEntityInteractivePage.vue's panels already
        use successfully over this exact backdrop system today. -->
   <div class="h-full overflow-y-auto bg-transparent">
-    <!-- Folio width, not dashboard width -- Corrective Phase 2R. A single
-         reading column belongs at a book's proportions (~max-w-4xl), not
-         stretched to fill a 2560px monitor the way the rejected 3-column
-         layout's max-w-[1600px] container assumed it would need to. -->
-    <div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+    <!-- Sheet width, not dashboard width. Corrective Phase 2R capped this
+         at max-w-4xl to stop the rejected 3-column layout from stretching
+         to a 2560px monitor; a reference region beside a working region
+         needs more than one folio column but far less than the whole
+         viewport, so it opens up only at `xl` and stops at 1400px -- about
+         the measure a real two-column character sheet is printed at.
+
+         The right padding is how Eldra's EXISTING context drawer gets its
+         space: when the drawer is open at desktop width the sheet
+         compresses rather than being covered, which is both this app's
+         prior behaviour and the reference sheet's. Below `xl` the drawer
+         goes full-width over the sheet, as every other page's drawer
+         already does on a phone. -->
+    <div
+      class="mx-auto max-w-4xl px-4 py-6 transition-[padding] duration-200 sm:px-6 sm:py-8 xl:max-w-[1400px]"
+      :class="context ? 'xl:pr-[472px]' : ''"
+    >
       <div
         v-if="pending"
         class="text-sm text-[#9f9278]"
@@ -456,6 +670,7 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
         v-else-if="blueprint"
         :tabs="tabs"
         :active-tab="activeTab"
+        :drawer-open="Boolean(context)"
         @select-tab="setActiveTab"
       >
         <!-- Command center: sticky within THIS page's own overflow-y-auto
@@ -488,12 +703,44 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
             :saving="vitalsSaving"
             :error="vitalsError"
             :remove-condition="mutations.conditions.remove"
+            :ability-entries="abilityEntries"
             @rest="handleCommandCenterRest"
           />
         </template>
 
-        <!-- The one content column, at every breakpoint (§3.4). No more
-             left/right rail slots -- Corrective Phase 2R. -->
+        <!-- Left region: reference data, read constantly, changed almost
+             never. Desktop only -- the same content is rendered again
+             inside the Character tab below `xl` (see that copy, and
+             CharacterReferencePanels.vue's header, for why duplicating
+             THESE panels specifically is safe). -->
+        <template #left>
+          <CharacterReferencePanels
+            :save-entries="saveEntries"
+            :reference-regions="referenceRegions"
+            :pending="derivedPending"
+            :unavailable-message="derived ? '' : derivedUnavailable"
+          />
+        </template>
+
+        <!-- Skills: persistent at every width, never behind a tab. Its own
+             column beside the tab body at >= 1536px, stacked above the tab
+             bar below that. -->
+        <template #skills>
+          <CharacterSheetSection
+            heading="Skills"
+            density="compact"
+          >
+            <div class="mt-3">
+              <CharacterSkillList
+                :entries="skillEntries"
+                @select="openSkillContext"
+              />
+            </div>
+          </CharacterSheetSection>
+        </template>
+
+        <!-- Center region: the working surface -- the only region that
+             changes with the tab. -->
         <template #center>
           <template v-if="activeTab === 'play'">
             <!-- Actions: "what can my character do?", and now "execute one
@@ -511,6 +758,7 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
                   :results="mutations.combat.results"
                   :resolving="mutations.combat.resolving"
                   @resolve="mutations.combat.resolve"
+                  @select="openActionContext"
                 />
               </div>
             </CharacterSheetSection>
@@ -554,13 +802,25 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
           </template>
 
           <template v-else-if="activeTab === 'character'">
-            <!-- Identity/Ability Scores/Derived: one copy, every breakpoint
-                 -- Corrective Phase 2R (no more rail to also hold these). -->
             <CharacterIdentityCard
               :character-title="identity.characterTitle"
               :image-url="identity.characterImageUrl"
               :level="characterLevel"
               :identity-rows="identity.identityRows"
+            />
+
+            <!-- The left region's content, for widths that have no left
+                 region. CSS decides which copy is visible, not JS -- safe
+                 here and only here because these panels are read-only
+                 projections with no state of their own (the rule this does
+                 NOT break is the one about never duplicating Recovery or
+                 Encounter, which mutate and are still rendered once). -->
+            <CharacterReferencePanels
+              class="xl:hidden"
+              :save-entries="saveEntries"
+              :reference-regions="referenceRegions"
+              :pending="derivedPending"
+              :unavailable-message="derived ? '' : derivedUnavailable"
             />
 
             <CharacterSheetSection heading="Ability Scores">
@@ -609,8 +869,14 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
                 v-else
                 class="mt-3 grid gap-5"
               >
+                <!-- Only the categories WITHOUT a bespoke home. Abilities
+                     (command center), saves (reference region) and skills
+                     (persistent table) are deliberately absent here --
+                     rendering them again would be the same fact reached by
+                     two different paths. Anything else a package declares
+                     still lands here automatically. -->
                 <div
-                  v-for="region in derivedRegions"
+                  v-for="region in otherDerivedRegions"
                   :key="region.category"
                   class="min-w-0"
                 >
@@ -663,6 +929,26 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
               :key="section.key"
               :heading="section.label"
             >
+              <!-- Features open in the shared context drawer too, from the
+                   section heading rather than from inside the panel:
+                   ContentPresentationPanel is shared with the Builder, and
+                   teaching it to emit a selection would change a component
+                   two surfaces depend on in order to serve one. The prose
+                   stays rendered inline exactly as before -- the drawer is
+                   an additional way to read it, not a replacement. -->
+              <template
+                v-if="section.slot.status === 'resolved' && section.slot.entry.presentation"
+                #heading-end
+              >
+                <button
+                  type="button"
+                  class="text-sm text-[#9f9278] underline-offset-4 transition hover:text-[#d8ceb8] hover:underline"
+                  @click="openFeatureContext(section.label, section.slot.entry.presentation, section.slot.entry.title)"
+                >
+                  Details
+                </button>
+              </template>
+
               <template v-if="section.slot.status === 'resolved'">
                 <!-- When the pack publishes details, the panel supplies the
                      name and source line itself; the bare title is the
@@ -737,6 +1023,7 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
                   @toggle-flag="mutations.spellcasting.toggleFlag"
                   @expend-slot="mutations.spellcasting.expendSlot"
                   @restore-slot="mutations.spellcasting.restoreSlot"
+                  @select="openSpellContext"
                 />
               </div>
             </CharacterSheetSection>
@@ -756,6 +1043,7 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
                   @remove="mutations.inventory.remove"
                   @change-quantity="mutations.inventory.changeQuantity"
                   @toggle-flag="mutations.inventory.toggleFlag"
+                  @select="openItemContext"
                 />
               </div>
             </CharacterSheetSection>
@@ -778,5 +1066,23 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
         </template>
       </CharacterSheetShell>
     </div>
+
+    <!-- Eldra's ONE context system, mounted by this page exactly as the
+         World map, roster, admin, timelines and entity pages already mount
+         it -- and as the legacy sheet already does, with the same
+         `rail-variant="sheet"` this drawer has carried for that purpose all
+         along. `content="detail"` is the only new thing: it tells the
+         drawer that what it is showing is an action/spell/item/feature/
+         skill rather than a World Entity, so it skips the relationships
+         panel, the Open Sheet link, and the entity footer. See that
+         component's own header. -->
+    <WorldEntityContextDrawer
+      :open="Boolean(context)"
+      :entity="contextEntity"
+      :world-id="worldId"
+      content="detail"
+      rail-variant="sheet"
+      @close="closeContext"
+    />
   </div>
 </template>

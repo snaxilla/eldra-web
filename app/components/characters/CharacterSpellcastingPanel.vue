@@ -84,6 +84,12 @@ const emit = defineEmits<{
   'toggle-flag': [{ instanceId: string; flag: SpellFlag }]
   'expend-slot': [number]
   'restore-slot': [number]
+  // Desktop IA pass: the spell's name opens its full detail in Eldra's
+  // shared context drawer. Intent only -- this panel does not know the
+  // drawer exists, the page wires it, exactly as it already does for every
+  // other emit here. Nothing about how a spell is added, removed, prepared,
+  // or how a slot is spent changed.
+  select: [(typeof props.spells)[number]]
 }>()
 
 // --- Add form -------------------------------------------------------------
@@ -317,9 +323,14 @@ const preparedCount = computed(() => props.spells.filter((entry) => entry.prepar
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <div class="truncate font-semibold text-[#fff7df]">
+              <button
+                type="button"
+                class="block w-full truncate text-left font-semibold text-[#fff7df] underline-offset-4 transition hover:underline"
+                :aria-label="`${entry.title} — open details`"
+                @click="emit('select', entry)"
+              >
                 {{ entry.title }}
-              </div>
+              </button>
               <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
                 <span v-if="entry.entry?.sourceBook">{{ entry.entry.sourceBook }}</span>
                 <span v-else-if="entry.status === 'custom'">Homebrew</span>

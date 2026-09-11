@@ -84,6 +84,12 @@ const emit = defineEmits<{
   remove: [string]
   'change-quantity': [{ instanceId: string; delta: number }]
   'toggle-flag': [{ instanceId: string; flag: 'equipped' | 'attuned' }]
+  // Desktop IA pass: the item's name opens its full detail in Eldra's
+  // shared context drawer. Intent only -- this panel does not know the
+  // drawer exists, the page wires it, exactly as it already does for every
+  // other emit here. Quantity, equip, attune, add, and remove are all
+  // untouched.
+  select: [(typeof props.items)[number]]
 }>()
 
 // Read straight off the SAME `item.entry.rulesFacet` prop this component
@@ -289,9 +295,14 @@ function submitAdd() {
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <div class="truncate font-semibold text-[#fff7df]">
+              <button
+                type="button"
+                class="block w-full truncate text-left font-semibold text-[#fff7df] underline-offset-4 transition hover:underline"
+                :aria-label="`${item.title} — open details`"
+                @click="emit('select', item)"
+              >
                 {{ item.title }}
-              </div>
+              </button>
               <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
                 <span>x{{ item.quantity }}</span>
                 <span v-if="item.container">Container: {{ item.container }}</span>

@@ -1,6 +1,25 @@
 <script setup lang="ts">
 import WorldMentionText from '~/components/world/WorldMentionText.vue'
 import WorldEntityRelationshipsPanel from '~/components/world/WorldEntityRelationshipsPanel.vue'
+// `content` -- Desktop Character Sheet IA pass.
+//
+// This drawer is Eldra's ONE context system: five World pages and the
+// legacy sheet already mount it, and the Character Sheet now does too
+// rather than growing a seventh private drawer of its own. What a sheet
+// opens in it (an action, a spell, an item, a feature, a skill) is not a
+// World Entity, so `content: 'detail'` turns off the three affordances
+// that only make sense for one -- the relationships panel (which would
+// otherwise fetch relationships for an id that is not an entity id), the
+// "Open Sheet" link, and the entity footer -- and renders the payload's
+// prose plainly instead of through the mention resolver.
+//
+// Everything else is untouched and shared: the eyebrow/title header, the
+// image, the detail lines, the summary block, the chips, the nested
+// back-navigation, and the slide-in transition. That shared anatomy is
+// exactly why a second drawer was not built.
+//
+// `'entity'` is the default, so all existing call sites keep today's
+// behaviour with no change at all.
 const props = withDefaults(defineProps<{
   open: boolean
   entity: any | null
@@ -9,12 +28,16 @@ const props = withDefaults(defineProps<{
   allowBuildActions?: boolean
   readMoreLabel?: string
   railVariant?: 'workspace' | 'sheet'
+  content?: 'entity' | 'detail'
 }>(), {
   mode: 'play',
   allowBuildActions: false,
   readMoreLabel: 'Read More',
-  railVariant: 'workspace'
+  railVariant: 'workspace',
+  content: 'entity'
 })
+
+const isEntityContent = computed(() => props.content === 'entity')
 
 const route = useRoute()
 
@@ -163,9 +186,15 @@ const entityTags = computed(() => {
 
 const isResolved = computed(() => activeEntity.value?.resolved !== false)
 
-const eyebrowLabel = computed(() =>
-  isResolved.value ? (titleCase(displayType.value) || 'Entity') : 'Unresolved'
-)
+// Sheet detail payloads supply their own eyebrow already cased the way it
+// should read ("1st Level Evocation", "Melee Weapon"), so it passes through
+// verbatim; entity eyebrows keep the existing title-casing of a raw
+// entity_type.
+const eyebrowLabel = computed(() => {
+  if (!isResolved.value) return 'Unresolved'
+  if (!isEntityContent.value) return displayType.value || 'Detail'
+  return titleCase(displayType.value) || 'Entity'
+})
 
 const detailHeading = computed(() => {
   const base = titleCase(rawEntityType.value || 'Entity')
@@ -181,6 +210,11 @@ const detailLines = computed(() => {
     if (lines.length) return lines
   }
 
+  // A sheet detail payload that carries no lines has none to show -- the
+  // synthesized "Type:" line below is an entity affordance, and inventing
+  // one for a spell would state something the payload never said.
+  if (!isEntityContent.value) return []
+
   const lines: string[] = []
   const type = titleCase(displayType.value || rawEntityType.value || 'Entity')
 
@@ -192,11 +226,11 @@ const detailLines = computed(() => {
 const chipTags = computed(() => {
   const tags = [...entityTags.value]
 
-  if (entityUrl.value && !tags.some((tag) => tag.toLowerCase() === 'linked article')) {
+  if (isEntityContent.value && entityUrl.value && !tags.some((tag) => tag.toLowerCase() === 'linked article')) {
     tags.push('Linked Article')
   }
 
-  if (!tags.length && isResolved.value) tags.push('Entity')
+  if (isEntityContent.value && !tags.length && isResolved.value) tags.push('Entity')
 
   return Array.from(new Set(tags.filter(Boolean)))
 })
@@ -358,8 +392,12 @@ function readMore() {
               Summary
             </div>
 
+            <!-- Entity summaries are World prose and may contain mentions
+                 worth resolving; a sheet detail payload is already-resolved
+                 rules text that contains none, so it renders plainly rather
+                 than taking a trip through the mention resolver. -->
             <WorldMentionText
-              v-if="entitySummary"
+              v-if="entitySummary && isEntityContent"
               :world-id="drawerWorldId || 0"
               :markdown="entitySummary"
               class="mt-3 text-sm leading-7 text-[#d8ceb8]"
@@ -411,9 +449,12 @@ function readMore() {
           </div>
 
           
+          <!-- Relationships are a World Entity concept. A sheet detail
+               payload's id is an action/spell/item id, not an entity id, so
+               this must not fire for it. -->
           <WorldEntityRelationshipsPanel
             variant="drawer"
-            v-if="activeEntity?.id && drawerWorldId"
+            v-if="isEntityContent && activeEntity?.id && drawerWorldId"
             :world-id="drawerWorldId"
             :entity="activeEntity"
             :show-graph="false"
@@ -435,8 +476,19 @@ function readMore() {
           </div>
         </div>
 
+        <!-- Detail mode renders a footer only if a host actually supplies
+             one. The slot is deliberately empty for now: acting on a spell
+             or an item stays in the panel that owns its validation rules,
+             rather than being duplicated into this drawer. -->
         <div
-          v-if="isResolved && (entityUrl || !entityUrl)"
+          v-if="!isEntityContent && $slots.footer"
+          class="border-t border-[rgba(201,164,90,0.22)] p-5"
+        >
+          <slot name="footer" />
+        </div>
+
+        <div
+          v-else-if="isEntityContent && isResolved"
           class="border-t border-[rgba(201,164,90,0.22)] p-5"
         >
           <div class="flex gap-3">

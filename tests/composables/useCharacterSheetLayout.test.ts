@@ -35,8 +35,23 @@ describe('normalizeCharacterSheetTab', () => {
   })
 
   it('CHARACTER_SHEET_TABS has exactly the five approved tabs, in order', () => {
+    // Reordered by the desktop IA pass to match the tab order a 5e player
+    // already knows: Actions, Spells, Inventory, Features, Notes.
     expect(CHARACTER_SHEET_TABS.map((tab) => tab.key)).toEqual([
-      'play', 'character', 'spells', 'inventory', 'notes'
+      'play', 'spells', 'inventory', 'character', 'notes'
     ])
+  })
+
+  it('keeps the route keys stable while the labels follow the reference order', () => {
+    // The whole reason the keys above still read "play"/"character" after a
+    // relabel: `?tab=play` is a URL people may already have shared, and
+    // renaming a route vocabulary to match a label would break those for
+    // nothing. This test exists to make that deliberate mismatch visible to
+    // whoever next edits the labels.
+    expect(CHARACTER_SHEET_TABS.map((tab) => tab.label)).toEqual([
+      'Actions', 'Spells', 'Inventory', 'Character', 'Notes'
+    ])
+    expect(normalizeCharacterSheetTab('play')).toBe('play')
+    expect(normalizeCharacterSheetTab('character')).toBe('character')
   })
 })

@@ -1,14 +1,11 @@
 <script setup lang="ts">
-// CharacterAbilityGrid -- the six ability tiles, in the command center.
-// Desktop IA pass (D&D Beyond reference layout); the component the
-// Beautification Pass §8.2 named and the Visual Language doc's Phase 3
-// scoped as "merge score + modifier into one tile", finally built.
-//
-// WHY THE COMMAND CENTER AND NOT A RAIL: the reference sheet this pass is
-// matched against puts the ability row in its top strip, not in a column,
-// and that is the right call for the same reason the Vitals Bar is -- a
-// modifier is quoted out loud constantly and read from every tab, so it
-// belongs in the one region that never scrolls away.
+// CharacterAbilityGrid -- the six ability tiles. Originally built for the
+// command center (Desktop IA pass); Header Phase H1 removed ability
+// presentation from the header entirely, and Phase H2 gives it the home
+// H1 deferred: first in the left reference region, ahead of Saving Throws
+// -- read constantly, changed almost never, exactly the reference-region
+// profile Saves and Defenses already have. See CharacterReferencePanels.vue
+// for the ordering.
 //
 // FIXES THE SPLIT MODIFIER (§2.3.2). The score and its modifier are two
 // separate Rules Engine Values; V2 rendered them in two different cards, so
@@ -18,8 +15,18 @@
 // id, and so keeps this tile renderable by a package that has never heard
 // of Strength.
 //
+// SCORE LEADS, MODIFIER FOLLOWS IN PARENS -- Phase H2's own correction.
+// "STR 15 (+2)" is the canonical reading order (matching
+// eldra-character-sheet-visual-language.md §2.3.2's own "16 (+3)"
+// example): the score is the large, primary number; the modifier sits
+// beside/beneath it in parentheses, never as an equal-weight standalone
+// card. `numbers[0]` is the parent Value (the score) when the package
+// declares one; anything further derived from it (the modifier) comes
+// after -- a package declaring only one of the two renders only that one,
+// never a fabricated companion.
+//
 // COMPUTES NOTHING. Both numbers come off the engine already evaluated;
-// this file chooses only which is large and which sits in the pill.
+// this file chooses only which is large and which is parenthetical.
 //
 // MATERIAL -- FRAME, NOT WELL. A tile is read, not pressed: nothing here
 // responds to a click yet, and Design Language §8 Rule 2 is explicit that
@@ -43,22 +50,15 @@ const tiles = computed(() =>
   groupDerivedValues(props.entries)
     .filter((group) => group.numbers.length > 0)
     .map((group) => {
-      // `numbers[0]` is the parent Value (the score) when the package
-      // declares one; anything further derived from it (the modifier) comes
-      // after. A package declaring only one of the two renders only that
-      // one, at the large size -- never a fabricated companion.
-      const parent = group.numbers[0]!
-      const derivedFromParent = group.numbers[1] ?? null
-
-      const lead = derivedFromParent ?? parent
-      const support = derivedFromParent ? parent : null
+      const score = group.numbers[0]!
+      const modifier = group.numbers[1] ?? null
 
       return {
         key: group.key,
         label: group.label,
         error: group.error,
-        lead: formatDerivedValue(lead),
-        support: support ? formatDerivedValue(support) : null
+        score: formatDerivedValue(score),
+        modifier: modifier ? formatDerivedValue(modifier) : null
       }
     })
 )
@@ -69,7 +69,7 @@ const tiles = computed(() =>
     v-if="tiles.length"
     class="@container min-w-0"
   >
-    <div class="grid grid-cols-3 gap-2 @md:grid-cols-6">
+    <div class="grid grid-cols-2 gap-2 @sm:grid-cols-3 @lg:grid-cols-6">
       <div
         v-for="tile in tiles"
         :key="tile.key"
@@ -89,14 +89,14 @@ const tiles = computed(() =>
 
         <template v-else>
           <div class="mt-0.5 text-2xl font-semibold leading-tight tabular-nums text-[#fff7df]">
-            {{ tile.lead }}
+            {{ tile.score }}
           </div>
 
           <div
-            v-if="tile.support"
-            class="mx-auto mt-1 w-fit rounded-none border border-[rgba(201,164,90,0.28)] px-2 text-xs tabular-nums text-[#d8ceb8]"
+            v-if="tile.modifier"
+            class="mt-0.5 text-xs tabular-nums text-[#9f9278]"
           >
-            {{ tile.support }}
+            ({{ tile.modifier }})
           </div>
         </template>
       </div>

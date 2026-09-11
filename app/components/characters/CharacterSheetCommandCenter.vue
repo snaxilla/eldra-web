@@ -124,8 +124,12 @@ const emit = defineEmits<{
     density="compact"
   >
     <div class="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(96px,1fr)_5fr] xl:items-start xl:gap-5">
-      <!-- Portrait: the folio's cover illustration, not an avatar. -->
-      <div class="eldra-image-frame h-20 w-20 shrink-0 overflow-hidden rounded-none border bg-black/25 sm:h-24 sm:w-24 xl:aspect-square xl:h-auto xl:w-full">
+      <!-- Portrait: the folio's cover illustration, not an avatar. Always
+           aspect-[4/5] -- the same character-portrait proportion
+           CharacterIdentityCard.vue already established, never square --
+           sized by WIDTH at every breakpoint so the ratio holds instead of
+           being fixed-square below `xl`. -->
+      <div class="eldra-image-frame aspect-[4/5] w-16 h-auto shrink-0 overflow-hidden rounded-none border bg-black/25 sm:w-20 xl:w-full">
         <img
           v-if="imageUrl"
           :src="imageUrl"

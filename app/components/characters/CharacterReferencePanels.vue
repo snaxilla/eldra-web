@@ -1,9 +1,15 @@
 <script setup lang="ts">
-// CharacterReferencePanels -- the sheet's reference region: saving throws
-// first, then every Rule Category the sheet routes here (proficiency,
-// defenses, and whatever a package declares later). Desktop IA pass (D&D
-// Beyond reference layout), whose left column holds exactly this class of
-// content: read constantly, changed almost never, never tab-dependent.
+// CharacterReferencePanels -- the sheet's reference region: abilities
+// first (Header Phase H2 -- moved out of the command center, never given
+// a standalone modifier card, see CharacterAbilityGrid.vue's own header),
+// then saving throws, then every Rule Category the sheet routes here
+// (defenses, and whatever a package declares later; proficiency bonus is
+// deliberately NOT one of these -- its bespoke home is the command center's
+// vitals row, see characterDerivedValues.ts's own note on why rendering it
+// again here would be the duplication Header Phase H1 removed). Desktop IA
+// pass (D&D Beyond reference layout), whose left column holds exactly this
+// class of content: read constantly, changed almost never, never
+// tab-dependent.
 //
 // RENDERED TWICE, ON PURPOSE, AND SAFELY. The approved layout shows this in
 // a sticky left rail at >= 1280px and folds it into the Character tab below
@@ -27,10 +33,12 @@
 
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterSaveList from '~/components/characters/CharacterSaveList.vue'
+import CharacterAbilityGrid from '~/components/characters/CharacterAbilityGrid.vue'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
 import type { DerivedValue } from './characterDerivedValues'
 
 withDefaults(defineProps<{
+  abilityEntries?: readonly DerivedValue[]
   saveEntries?: readonly DerivedValue[]
   // One entry per Rule Category routed to this region, already selected by
   // the page from the same `derivedRegions` every other section reads.
@@ -40,6 +48,7 @@ withDefaults(defineProps<{
   pending?: boolean
   unavailableMessage?: string
 }>(), {
+  abilityEntries: () => [],
   saveEntries: () => [],
   referenceRegions: () => [],
   pending: false,
@@ -64,6 +73,21 @@ withDefaults(defineProps<{
     </p>
 
     <template v-else>
+      <!-- Abilities lead the reference region (Header Phase H2) -- read
+           constantly, changed almost never, exactly the profile this
+           region exists for. Score and modifier always paired; see
+           CharacterAbilityGrid.vue's own header for why no standalone
+           modifier card is ever rendered. -->
+      <CharacterSheetSection
+        v-if="abilityEntries.length"
+        heading="Abilities"
+        density="compact"
+      >
+        <div class="mt-3">
+          <CharacterAbilityGrid :entries="abilityEntries" />
+        </div>
+      </CharacterSheetSection>
+
       <CharacterSheetSection
         v-if="saveEntries.length"
         heading="Saving Throws"

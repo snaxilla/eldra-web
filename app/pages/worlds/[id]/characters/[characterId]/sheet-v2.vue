@@ -223,13 +223,17 @@
 // copy left to avoid duplicating. This is why the template below is
 // smaller than Phase 4's, not larger.
 //
-// `CharacterIdentityCard` (Visual Language Phase 2) is unchanged and
-// simply relocated from "desktop left rail / mobile Character-tab fold" to
-// "the one place it's ever shown now": the top of the Character tab's
-// body. `CharacterVitalsBar` is unchanged internally and now renders
+// `CharacterIdentityCard` (Visual Language Phase 2) was relocated here at
+// the time -- "desktop left rail / mobile Character-tab fold" collapsing
+// to "the one place it's ever shown". Header Phase H2 later removed this
+// last usage too: once the command center grew its own portrait/name/
+// level/Species/Class/Background summary, a second copy in the Character
+// tab stopped serving a new purpose and became exactly the duplication
+// H2's own principle forbids. The component file itself is unused on disk
+// now, not deleted, per this session's standing "bypass, don't delete"
+// convention. `CharacterVitalsBar` is unchanged internally and renders
 // `bare` inside `CharacterSheetCommandCenter`, which supplies the identity
-// summary (portrait thumbnail, name, level, Species/Class/Background at a
-// glance) and Back/Rest command buttons the old Vitals Bar's own top row
+// summary and Back/Rest command buttons the old Vitals Bar's own top row
 // used to own alone -- see that component's own header for the full
 // reasoning. No gameplay panel below (Actions/Recovery/Spellcasting/
 // Inventory/Conditions/Encounter) was touched: every one is the exact same
@@ -286,7 +290,6 @@ import CharacterEmptyState from '~/components/characters/CharacterEmptyState.vue
 import CharacterEncounterPanel from '~/components/characters/CharacterEncounterPanel.vue'
 import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
 import CharacterSheetShell from '~/components/characters/CharacterSheetShell.vue'
-import CharacterIdentityCard from '~/components/characters/CharacterIdentityCard.vue'
 import CharacterSheetCommandCenter from '~/components/characters/CharacterSheetCommandCenter.vue'
 import CharacterReferencePanels from '~/components/characters/CharacterReferencePanels.vue'
 import CharacterSkillList from '~/components/characters/CharacterSkillList.vue'
@@ -294,6 +297,7 @@ import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawe
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
 import {
+  ABILITIES_CATEGORY,
   HOMED_CATEGORIES,
   REFERENCE_CATEGORIES,
   SAVES_CATEGORY,
@@ -463,28 +467,25 @@ function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) 
 
 // ---------------------------------------------------------------------------
 // WHICH RULE CATEGORY RENDERS WHERE -- Desktop IA pass, corrected by
-// Header Phase H1
+// Header Phases H1 and H2
 // ---------------------------------------------------------------------------
-// Saves have a bespoke home in the left region, skills a bespoke home as
-// the persistent table, and proficiency bonus a bespoke home in the
-// command center's vitals row (CharacterVitalsBar's own `proficiencyBonus`
-// prop) -- one more category is routed to the left region as reference
-// (defenses). Abilities are NOT given a bespoke home by this phase: H1
-// removed the command center's ability tiles and explicitly does not
-// replace them with a left-region equivalent yet. `core.abilities` stays
-// in `characterDerivedValues.ts`'s own HOMED_CATEGORIES regardless, so it
-// still does NOT fall through to the generic `otherDerivedRegions` below
-// either -- that would just relocate the duplication H1 is removing, since
-// ability scores already render via the Character tab's pre-existing
-// `CharacterAbilityScoresPanel`. Right now `core.abilities` simply has no
-// `derivedRegions`-driven rendering at all, until a future phase gives it
-// one in the left region.
+// Abilities and saves have a bespoke home in the left region (H2 gives
+// abilities the one H1 deliberately left open -- see
+// CharacterReferencePanels.vue's own header for the Abilities-then-Saves
+// order), skills a bespoke home as the persistent table, and proficiency
+// bonus a bespoke home in the command center's vitals row
+// (CharacterVitalsBar's own `proficiencyBonus` prop) -- one more category
+// is routed to the left region as reference (defenses). Everything else
+// still falls through to the generic Derived section in the Character
+// tab, which is what keeps a package declaring categories Eldra has never
+// heard of visible instead of dropped.
 //
 // This selects by CATEGORY and never by Definition id -- §13.2's whole
 // point -- and computes nothing: each list is handed to a renderer exactly
 // as the engine produced it.
 // ---------------------------------------------------------------------------
 
+const abilityEntries = computed(() => derived.value?.byCategory?.[ABILITIES_CATEGORY] ?? [])
 const saveEntries = computed(() => derived.value?.byCategory?.[SAVES_CATEGORY] ?? [])
 const skillEntries = computed(() => derived.value?.byCategory?.[SKILLS_CATEGORY] ?? [])
 
@@ -721,6 +722,7 @@ function openSkillContext(skill: CharacterSkillRow) {
              THESE panels specifically is safe). -->
         <template #left>
           <CharacterReferencePanels
+            :ability-entries="abilityEntries"
             :save-entries="saveEntries"
             :reference-regions="referenceRegions"
             :pending="derivedPending"
@@ -808,12 +810,16 @@ function openSkillContext(skill: CharacterSkillRow) {
           </template>
 
           <template v-else-if="activeTab === 'character'">
-            <CharacterIdentityCard
-              :character-title="identity.characterTitle"
-              :image-url="identity.characterImageUrl"
-              :level="characterLevel"
-              :identity-rows="identity.identityRows"
-            />
+            <!-- Portrait/name/level/Species/Class/Background are NOT
+                 repeated here (Header Phase H2) -- the command center
+                 already shows all of them, and a second copy with no new
+                 purpose is exactly the duplication H2's own principle
+                 forbids ("no duplicated information unless the second
+                 copy serves a new purpose"). This tab is now reference
+                 material and depth: the reference region's fold-in copy
+                 below, ability score editing, Derived, and the full
+                 Species/Class/Background prose further down -- none of
+                 which the command center's one-line summary attempts. -->
 
             <!-- The left region's content, for widths that have no left
                  region. CSS decides which copy is visible, not JS -- safe
@@ -823,6 +829,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                  Encounter, which mutate and are still rendered once). -->
             <CharacterReferencePanels
               class="xl:hidden"
+              :ability-entries="abilityEntries"
               :save-entries="saveEntries"
               :reference-regions="referenceRegions"
               :pending="derivedPending"

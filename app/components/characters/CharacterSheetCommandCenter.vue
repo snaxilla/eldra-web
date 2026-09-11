@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// CharacterSheetCommandCenter -- Header Phase H1: Desktop Command Center
-// Reconstruction (see eldra-character-sheet-visual-language.md,
-// eldra-design-language.md §2/§3/§8). The one thing V1 actually had: a
-// single persistent header that answers "whose character is this, what's
-// their state, what can they do right now" without a scroll, at every
-// breakpoint -- see eldra-character-sheet-visual-language.md §1.3's audit
-// of V1's own sticky header/desktop identity+combat-tile row.
+// CharacterSheetCommandCenter -- Command Center Reconstruction, Phase H5
+// (see eldra-character-sheet-visual-language.md, eldra-design-language.md
+// §2/§3/§8). The single persistent header that answers "whose character
+// is this, what's their state, what can they do right now" without a
+// scroll, at every breakpoint -- see eldra-character-sheet-visual-
+// language.md §1.3's audit of V1's own sticky header/desktop identity+
+// combat-tile row.
 //
 // This is the page's one Feature surface (Design Language §8 Rule 1:
 // exactly one loud surface per screen). It owns the outer
@@ -13,74 +13,70 @@
 // `CharacterVitalsBar` rendered `bare` (see that file's own header for why)
 // so there is still only one nested Feature surface, not two.
 //
-// PRESENTATION ONLY -- computes nothing. Every value is a prop already
-// produced by useCharacterSheet.ts, passed straight through from
-// sheet-v2.vue.
+// PRESENTATION ONLY, EXCEPT WHERE H5 SAYS OTHERWISE. Identity/vitals stay
+// presentation-only. Health/Recovery/Death Saves/Spell Slots are now real
+// mutation surfaces -- see `CharacterCommandResources.vue`'s own header for
+// why moving them here does not change what any of them DO, only where
+// the control lives.
 //
 // ---------------------------------------------------------------------------
-// H1 -- WHAT THIS PHASE REMOVED, AND WHY
+// H5 -- THE COMMAND CENTER BECOMES THE COMBAT HUD
 // ---------------------------------------------------------------------------
-// The Desktop IA pass added ability score/modifier tiles to this header
-// (`CharacterAbilityGrid`, fed by `abilityEntries`). That mixed four
-// different concerns into one surface -- identity, abilities, vitals, and
-// controls -- and made the header feel crowded rather than authoritative.
-// H1's own brief is explicit: "Remove ALL ability presentation from the
-// command center... Abilities move completely out of the header." So this
-// file no longer imports CharacterAbilityGrid, no longer accepts
-// `abilityEntries`, and sheet-v2.vue no longer passes it. Ability scores
-// still render exactly where they already did before the Desktop IA pass
-// (the Character tab's own "Ability Scores" section) until the next phase
-// gives the left reference region its own Ability Grid -- H1's own
-// FOLLOW-UP PREPARATION note is explicit that building that grid is NOT
-// this phase's job, only clearing the header's claim on the category.
-//
-// The command center now contains exactly what H1's VITALS section names:
-// identity (portrait, name, Species/Class/Background/Level as supporting
-// metadata) and play state (HP, AC, Initiative, Speed, Proficiency Bonus,
-// Spell Save DC/Attack for casters, conditions, turn state) -- all still
-// via the unchanged `CharacterVitalsBar` (bare), which never carried
-// ability content in the first place.
+// H1's own DISPLAY list ("HP, AC, Initiative, Speed, Proficiency Bonus,
+// Spell Save DC/Attack, conditions, turn state") was read-only play STATE.
+// H5's brief goes further: "Health belongs together. Resources belong
+// together. Recovery belongs together" -- the player should rarely need
+// to leave the command center during combat. So this file now also
+// renders a visible Health Bar (`CharacterHealthBar.vue`) right beneath
+// the Vitals numbers, and `CharacterCommandResources.vue` beneath that --
+// HP correction, Damage/Heal, Hit Dice, Death Saves, and (for casters)
+// Spell Slots, everything CharacterRecoveryPanel.vue and
+// CharacterSpellcastingPanel.vue's own Spell Slots block used to own
+// alone in a separate, scrolled-away section. Short Rest/Long Rest
+// already lived in this file's own button row since H1 and are
+// unchanged.
 //
 // ---------------------------------------------------------------------------
 // PORTRAIT -- THE COVER OF THE FOLIO, NOT AN AVATAR
 // ---------------------------------------------------------------------------
-// H1: "approximately the left sixth of the command center... Treat it as
-// the illustration on the cover of a character folio." At `xl` (the same
-// breakpoint the sheet's own reference region already uses) the portrait
-// becomes a genuine grid column sized `minmax(96px,1fr)` against the
-// identity/vitals column's `5fr` -- a real ~1:5 proportion, not a fixed
-// thumbnail size that happens to look small. Below `xl` it stays a fixed
-// square, sized a little larger than before so it still reads as an
-// illustration rather than a chat-avatar at any width. Placeholder
+// "Approximately the left sixth of the command center... Treat it as the
+// illustration on the cover of a character folio" (Header Phase H1). At
+// `xl` (the same breakpoint the sheet's own reference region already
+// uses) the portrait becomes a genuine grid column sized
+// `minmax(96px,1fr)` against the identity/vitals column's `5fr` -- a real
+// ~1:5 proportion, not a fixed thumbnail size that happens to look small.
+// Below `xl` it stays a fixed square-ish `aspect-[4/5]` block, the same
+// character-portrait proportion CharacterIdentityCard.vue already
+// established (Phase H2 corrected an earlier square). Placeholder
 // behavior, and the complete absence of upload/edit affordances, are
-// unchanged -- H1 is explicit that this phase touches neither.
+// unchanged by any phase.
 //
 // ---------------------------------------------------------------------------
 // IDENTITY -- ONE BLOCK, NOT A ROW OF CHIPS
 // ---------------------------------------------------------------------------
-// H1: "Reduce the feeling of floating chips. Identity should read as one
-// coherent block." Level/Species/Class/Background were each their own
-// `CharacterStatChip` pill; they are now one inline metadata line beneath
-// the (now visually dominant) name -- "Level 5 · Elf · Wizard · Sage" --
-// with an unresolved slot still rendered in the same danger tint
-// `identity.identityRows` already carries, so a missing Species/Class/
-// Background is still legible, just no longer boxed.
+// "Reduce the feeling of floating chips. Identity should read as one
+// coherent block" (Header Phase H1). Level/Species/Class/Background are
+// one inline metadata line beneath the visually dominant name -- "Level 5
+// · Elf · Wizard · Sage" -- with an unresolved slot still rendered in the
+// same danger tint `identity.identityRows` already carries.
 //
 // ---------------------------------------------------------------------------
 // REST BUTTONS -- A SHORTCUT TO AN EXISTING MUTATION, NOT A NEW CONTROL
 // ---------------------------------------------------------------------------
 // `rest` emits the exact `{ type: 'short-rest' | 'long-rest' }` shape
-// CharacterRecoveryPanel.vue already emits via its own `recovery` event --
-// the page wires both to the SAME `mutations.recovery.apply` handler. This
-// component adds no validation of its own (e.g. it does not check hit dice
-// remaining before allowing Short Rest) -- CharacterRecoveryPanel.vue,
-// still present in the Play tab body, remains the one fully-validated
-// Recovery control.
+// `recovery` below also carries -- the page wires both to the SAME
+// `mutations.recovery.apply` handler. This component adds no validation
+// of its own (e.g. it does not check hit dice remaining before allowing
+// Short Rest); that validation lives server-side, exactly as it did when
+// the button lived in CharacterRecoveryPanel.vue.
 
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
+import type { StoredCharacterHealth } from '~/lib/characters/health'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterSaveIndicator from '~/components/characters/CharacterSaveIndicator.vue'
 import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
+import CharacterHealthBar from '~/components/characters/CharacterHealthBar.vue'
+import CharacterCommandResources, { type RecoveryActionType } from '~/components/characters/CharacterCommandResources.vue'
 
 withDefaults(defineProps<{
   worldId: string
@@ -89,9 +85,11 @@ withDefaults(defineProps<{
   level: number
   className: string
   identityRows: readonly { key: string; label: string; value: string; missing: boolean }[]
-  currentHp: number
+  health: StoredCharacterHealth
   maxHp: number | null
-  temporaryHp: number
+  hitDiceMax: number | null
+  hitDiceAvailable: number | null
+  hitDieSize: number | null
   armorClass: number | null
   initiative?: number | null
   speed?: number | null
@@ -99,22 +97,34 @@ withDefaults(defineProps<{
   isCaster: boolean | null
   spellSaveDc: number | null
   spellAttackBonus: number | null
+  slotLevels?: readonly { level: number; max: number; expended: number }[]
   conditions: EncounterConditionView[]
   inEncounter: boolean
   isMyTurn: boolean
   round: number | null
   saving: boolean
   error: string
+  recoverySaving?: boolean
+  recoveryError?: string
+  spellSaving?: boolean
   removeCondition: (conditionInstanceId: string) => void
 }>(), {
   imageUrl: null,
   initiative: null,
   speed: null,
-  proficiencyBonus: null
+  proficiencyBonus: null,
+  slotLevels: () => [],
+  recoverySaving: false,
+  recoveryError: '',
+  spellSaving: false
 })
 
 const emit = defineEmits<{
   rest: [{ type: 'short-rest' | 'long-rest' }]
+  save: [StoredCharacterHealth]
+  recovery: [{ type: RecoveryActionType; amount?: number }]
+  'expend-slot': [number]
+  'restore-slot': [number]
 }>()
 </script>
 
@@ -125,10 +135,8 @@ const emit = defineEmits<{
   >
     <div class="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(96px,1fr)_5fr] xl:items-start xl:gap-5">
       <!-- Portrait: the folio's cover illustration, not an avatar. Always
-           aspect-[4/5] -- the same character-portrait proportion
-           CharacterIdentityCard.vue already established, never square --
-           sized by WIDTH at every breakpoint so the ratio holds instead of
-           being fixed-square below `xl`. -->
+           aspect-[4/5] -- sized by WIDTH at every breakpoint so the ratio
+           holds instead of being fixed-square below `xl`. -->
       <div class="eldra-image-frame aspect-[4/5] w-16 h-auto shrink-0 overflow-hidden rounded-none border bg-black/25 sm:w-20 xl:w-full">
         <img
           v-if="imageUrl"
@@ -199,17 +207,25 @@ const emit = defineEmits<{
           </div>
         </div>
 
-        <!-- Vitals: current state and immediate play state only -- no
-             ability presentation lives here anymore (H1). -->
-        <div class="mt-4">
+        <!-- Health Bar: instant visual condition, right beneath identity,
+             right above the numbers it summarizes. -->
+        <div class="mt-3">
+          <CharacterHealthBar
+            :current-hp="health.currentHp"
+            :max-hp="maxHp"
+          />
+        </div>
+
+        <!-- Vitals: current state and immediate play state. -->
+        <div class="mt-3">
           <CharacterVitalsBar
             bare
             :character-title="characterTitle"
             :level="level"
             :class-name="className"
-            :current-hp="currentHp"
+            :current-hp="health.currentHp"
             :max-hp="maxHp"
-            :temporary-hp="temporaryHp"
+            :temporary-hp="health.temporaryHp"
             :armor-class="armorClass"
             :initiative="initiative"
             :speed="speed"
@@ -224,6 +240,29 @@ const emit = defineEmits<{
             :saving="saving"
             :error="error"
             :remove-condition="removeCondition"
+          />
+        </div>
+
+        <!-- The combat HUD: Health correction, Damage/Heal, Hit Dice,
+             Death Saves, and (for casters) Spell Slots -- everything H5
+             moves out of the Play tab's own Recovery section and the
+             Spells tab's Spell Slots block. -->
+        <div class="mt-3">
+          <CharacterCommandResources
+            :health="health"
+            :max-hp="maxHp"
+            :hit-dice-max="hitDiceMax"
+            :hit-dice-available="hitDiceAvailable"
+            :hit-die-size="hitDieSize"
+            :recovery-saving="recoverySaving"
+            :recovery-error="recoveryError"
+            :is-caster="isCaster"
+            :slot-levels="slotLevels"
+            :spell-saving="spellSaving"
+            @save="emit('save', $event)"
+            @recovery="emit('recovery', $event)"
+            @expend-slot="emit('expend-slot', $event)"
+            @restore-slot="emit('restore-slot', $event)"
           />
         </div>
       </div>

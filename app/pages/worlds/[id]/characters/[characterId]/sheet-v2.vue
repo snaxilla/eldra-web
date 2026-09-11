@@ -278,7 +278,6 @@
 
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
-import CharacterRecoveryPanel from '~/components/characters/CharacterRecoveryPanel.vue'
 import CharacterSpellcastingPanel from '~/components/characters/CharacterSpellcastingPanel.vue'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
 import CharacterActionsPanel from '~/components/characters/CharacterActionsPanel.vue'
@@ -695,22 +694,32 @@ function openSkillContext(skill: CharacterSkillRow) {
             :level="characterLevel"
             :class-name="characterClassName"
             :identity-rows="identity.identityRows"
-            :current-hp="healthDraft.currentHp"
+            :health="healthDraft"
             :max-hp="maxHp"
-            :temporary-hp="healthDraft.temporaryHp"
+            :hit-dice-max="hitDiceMax"
+            :hit-dice-available="hitDiceAvailable"
+            :hit-die-size="hitDieSize"
             :armor-class="armorClass"
             :proficiency-bonus="proficiencyBonus"
             :is-caster="spellcastingIsCaster"
             :spell-save-dc="spellcastingSaveDc"
             :spell-attack-bonus="spellcastingAttackBonus"
+            :slot-levels="slotLevels"
             :conditions="conditions.mine"
             :in-encounter="encounter.isInSelected"
             :is-my-turn="isMyTurn"
             :round="encounter.view?.round ?? null"
             :saving="vitalsSaving"
             :error="vitalsError"
+            :recovery-saving="mutations.recovery.saving"
+            :recovery-error="mutations.recovery.error"
+            :spell-saving="mutations.spellcasting.saving"
             :remove-condition="mutations.conditions.remove"
             @rest="handleCommandCenterRest"
+            @save="mutations.recovery.save"
+            @recovery="mutations.recovery.apply"
+            @expend-slot="mutations.spellcasting.expendSlot"
+            @restore-slot="mutations.spellcasting.restoreSlot"
           />
         </template>
 
@@ -770,24 +779,13 @@ function openSkillContext(skill: CharacterSkillRow) {
               </div>
             </CharacterSheetSection>
 
-            <!-- Recovery and Encounter/Conditions live inside Play, not a
-                 third rail -- this task's own NEW SHEET STRUCTURE note. -->
-            <CharacterSheetSection heading="Recovery">
-              <div class="mt-4">
-                <CharacterRecoveryPanel
-                  :health="healthDraft"
-                  :max-hp="maxHp"
-                  :hit-dice-max="hitDiceMax"
-                  :hit-dice-available="hitDiceAvailable"
-                  :hit-die-size="hitDieSize"
-                  :saving="mutations.recovery.saving"
-                  :error-message="mutations.recovery.error"
-                  @save="mutations.recovery.save"
-                  @recovery="mutations.recovery.apply"
-                />
-              </div>
-            </CharacterSheetSection>
-
+            <!-- Recovery no longer lives here (Command Center
+                 Reconstruction, Phase H5) -- HP correction, Damage/Heal,
+                 Hit Dice, and Death Saves all moved into the command
+                 center's own CharacterCommandResources, which this page
+                 wires to the exact same mutations.recovery.save/apply
+                 handlers below. Encounter/Conditions stay inside Play,
+                 not a third rail -- unaffected by this phase. -->
             <CharacterSheetSection heading="Encounter">
               <div class="mt-4">
                 <CharacterEncounterPanel
@@ -1013,15 +1011,17 @@ function openSkillContext(skill: CharacterSkillRow) {
 
           <template v-else-if="activeTab === 'spells'">
             <!-- Spellcasting: also editable -- see
-                 CharacterSpellcastingPanel.vue's header. Spell Slots stay
-                 inside this same panel rather than a standalone right-rail
-                 widget -- see this file's own PHASE 4 header note. -->
+                 CharacterSpellcastingPanel.vue's header. Spell Slots no
+                 longer live here (Command Center Reconstruction, Phase
+                 H5) -- they moved into the command center's own
+                 CharacterCommandResources, alongside every other resource
+                 a player spends mid-combat, so this panel keeps only the
+                 summary, Add Spell, and Known/Prepared list. -->
             <CharacterSheetSection heading="Spellcasting">
               <div class="mt-4">
                 <CharacterSpellcastingPanel
                   :spells="spellItems"
                   :options="spellOptions"
-                  :slot-levels="slotLevels"
                   :is-caster="spellcastingIsCaster"
                   :ability-mod="spellcastingAbilityMod"
                   :save-dc="spellcastingSaveDc"
@@ -1031,8 +1031,6 @@ function openSkillContext(skill: CharacterSkillRow) {
                   @add="mutations.spellcasting.add"
                   @remove="mutations.spellcasting.remove"
                   @toggle-flag="mutations.spellcasting.toggleFlag"
-                  @expend-slot="mutations.spellcasting.expendSlot"
-                  @restore-slot="mutations.spellcasting.restoreSlot"
                   @select="openSpellContext"
                 />
               </div>

@@ -28,9 +28,10 @@
 // generic primitive to invent.
 //
 // Death Saves are deliberately NOT duplicated here -- this task's own
-// DISPLAY list does not name them, and CharacterRecoveryPanel.vue already
-// owns that tracker in full. HP shifts to a danger tint at 0 (§7.9), which
-// is the one HP=0 signal this bar surfaces.
+// DISPLAY list does not name them, and (as of Command Center
+// Reconstruction, Phase H5) CharacterCommandResources.vue owns that
+// tracker in full, in the command center itself. HP shifts to a danger
+// tint at 0 (§7.9), which is the one HP=0 signal this bar surfaces.
 //
 // ---------------------------------------------------------------------------
 // `bare` -- CORRECTIVE PHASE 2R, FOLIO SHELL

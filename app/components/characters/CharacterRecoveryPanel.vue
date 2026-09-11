@@ -1,7 +1,18 @@
 <script setup lang="ts">
-// CharacterRecoveryPanel -- Character Sheet Beautification Pass, Phase 3
-// (see .github/docs/architecture/character-sheet-beauty-pass.md §11 Phase
-// 3). Renamed from CharacterHealthPanel.vue as part of this phase's
+// CharacterRecoveryPanel -- UNUSED as of Command Center Reconstruction,
+// Phase H5. Left on disk rather than deleted, per this session's standing
+// "bypass, don't delete" convention (the same treatment
+// CharacterSheetDesktopLayout.vue got during Corrective Phase 2R, before
+// the Desktop IA pass later revived it for a different purpose). Every
+// control this file owns -- HP correction, Damage/Heal, Hit Dice, Death
+// Saves -- moved into CharacterCommandResources.vue, in the command
+// center, wired to the exact same mutations this file's own emits used to
+// reach. See that file's own header for the full reasoning.
+//
+// Everything below this note is historical: Character Sheet
+// Beautification Pass, Phase 3 (see
+// .github/docs/architecture/character-sheet-beauty-pass.md §11 Phase 3).
+// Renamed from CharacterHealthPanel.vue as part of this phase's
 // display/action split: "The Vitals Bar should display state. The
 // Recovery panel should perform actions." CharacterVitalsBar.vue now
 // shows Current/Maximum/Temporary HP read-only, always visible; this file

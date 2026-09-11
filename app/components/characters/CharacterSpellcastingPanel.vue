@@ -1,21 +1,24 @@
 <script setup lang="ts">
 // Spellcasting for Character Sheet V2 -- the Spellcasting System's editable
-// surface. Shaped like CharacterHealthPanel.vue and CharacterInventoryPanel.vue
-// combined, because this task is exactly their intersection: read-only Rules
-// Engine summaries (Spellcasting Ability, Spell Save DC, Spell Attack Bonus --
-// Health's Maximum HP role) sitting above two editable collections (Spell
-// Slots -- Health's Hit Dice role; Known/Prepared Spells -- Inventory's carried
-// items role).
+// surface: a read-only Rules Engine summary (Spellcasting Ability, Spell
+// Save DC, Spell Attack Bonus) sitting above one editable collection
+// (Known/Prepared Spells -- Inventory's carried-items role).
+//
+// SPELL SLOTS MOVED OUT (Command Center Reconstruction, Phase H5). This
+// panel used to also own the Spell Slot tracker (`slotLevels`,
+// `expend-slot`/`restore-slot`) -- H5's brief is explicit that Spell Slots
+// are command-center content, alongside every other resource a player
+// spends mid-combat ("Resources belong together"), so that tracker now
+// lives in `CharacterCommandResources.vue` instead, wired to the exact
+// same `mutations.spellcasting.expendSlot/restoreSlot` this file's own
+// emits used to reach. Nothing about how a slot is spent changed, only
+// where the control lives -- see that file's own header.
 //
 // NOT ONE NUMBER IS COMPUTED HERE. `abilityMod`/`saveDc`/`attackBonus`/
 // `isCaster` all arrive as PROPS already evaluated by the Rules Engine
 // (server/utils/character-derived.ts's `spellcasting` category, read via
 // `findDerivedNumber`/`findDerivedBoolean` exactly as Health's own summary
-// props are). `slotLevels` (max per spell level) is picked from the active
-// package's Spell Slot progression Table by the PAGE (sheet-v2.vue), which
-// knows this character's caster type and level -- this file only renders
-// whatever it is handed and emits `expend-slot`/`restore-slot` with a slot
-// LEVEL, never a count it computed itself.
+// props are).
 //
 // ---------------------------------------------------------------------------
 // KNOWN/PREPARED -- ONE SHARED SHAPE FOR EVERY 2024 CASTER ARCHETYPE
@@ -61,10 +64,6 @@ const props = withDefaults(defineProps<{
   // Catalogue-published spells this World can offer, already resolved by the
   // assembly endpoint -- mirrors CharacterInventoryPanel's own `options`.
   options?: readonly { packageId: string; slug: string; title: string; sourceBook?: string }[]
-  // How many of each spell level (1-9) this character's Spell Slot
-  // progression grants, and how many are currently expended -- both handed
-  // down already resolved; see this file's own header.
-  slotLevels?: readonly { level: number; max: number; expended: number }[]
   isCaster: boolean | null
   abilityMod: number | null
   saveDc: number | null
@@ -73,7 +72,6 @@ const props = withDefaults(defineProps<{
   errorMessage?: string
 }>(), {
   options: () => [],
-  slotLevels: () => [],
   saving: false,
   errorMessage: ''
 })
@@ -82,13 +80,11 @@ const emit = defineEmits<{
   add: [{ ref?: { packageId: string; slug: string }; name?: string }]
   remove: [string]
   'toggle-flag': [{ instanceId: string; flag: SpellFlag }]
-  'expend-slot': [number]
-  'restore-slot': [number]
   // Desktop IA pass: the spell's name opens its full detail in Eldra's
   // shared context drawer. Intent only -- this panel does not know the
   // drawer exists, the page wires it, exactly as it already does for every
-  // other emit here. Nothing about how a spell is added, removed, prepared,
-  // or how a slot is spent changed.
+  // other emit here. Nothing about how a spell is added, removed, or
+  // prepared changed.
   select: [(typeof props.spells)[number]]
 }>()
 
@@ -177,50 +173,6 @@ const preparedCount = computed(() => props.spells.filter((entry) => entry.prepar
           </div>
           <div class="mt-1 text-lg font-semibold tabular-nums text-[#fff7df]">
             {{ attackBonus != null ? (attackBonus >= 0 ? `+${attackBonus}` : attackBonus) : '—' }}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Spell Slots -- one row per spell level this character's Spell Slot
-         progression grants at least one slot for. Expend/restore emit a
-         LEVEL; the page decides the new count is legal (character-recovery.ts
-         mirrors this for Health's Hit Dice). -->
-    <div
-      v-if="slotLevels.length"
-      class="eldra-well rounded-none p-4"
-    >
-      <span class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">Spell Slots</span>
-
-      <div class="mt-3 grid gap-2">
-        <div
-          v-for="slot in slotLevels"
-          :key="slot.level"
-          class="flex items-center justify-between gap-3"
-        >
-          <span class="text-sm text-[#d8ceb8]">Level {{ slot.level }}</span>
-          <div class="flex items-center gap-2">
-            <span class="text-sm tabular-nums text-[#9f9278]">
-              {{ slot.max - slot.expended }} of {{ slot.max }}
-            </span>
-            <button
-              type="button"
-              class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="saving || slot.expended <= 0"
-              :aria-label="`Restore a level ${slot.level} spell slot`"
-              @click="emit('restore-slot', slot.level)"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              class="min-h-11 min-w-11 rounded-none border border-[rgba(201,164,90,0.24)] text-sm font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="saving || slot.expended >= slot.max"
-              :aria-label="`Expend a level ${slot.level} spell slot`"
-              @click="emit('expend-slot', slot.level)"
-            >
-              +
-            </button>
           </div>
         </div>
       </div>

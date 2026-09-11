@@ -87,6 +87,29 @@
 // without a working preview render disabled with a "Coming Soon" badge,
 // never omitted -- a GM should see the full shape of what Eldra will
 // eventually support, not just what works today.
+//
+// ---------------------------------------------------------------------------
+// REFRESH CONTENT PACKAGE -- Developer Workflow
+// ---------------------------------------------------------------------------
+// A second, independent workflow alongside Preview -> Curate -> Publish
+// (this task's own KEEP BOTH WORKFLOWS section) -- see
+// server/utils/content-sources/refresh.ts's own header for the full
+// rationale ("a Content Pack is a compiled artifact"). It needs only the
+// two keys already selected above (`selectedGameSystemKey`,
+// `selectedContentSourceKey`) -- it does NOT require Generate Preview to
+// have been run, and it does not touch `previewResult`/`selection`/
+// `packageName`/`packageVersion` at all, since it never asks the developer
+// to curate anything ("No manual preview inspection required"). Posts to
+// the new POST /api/content-packs/refresh, which resolves the same
+// provider/collection this panel already resolves and republishes the
+// LAST published version's own selection, rebuilt fresh, as a new patch
+// version -- see that route and refresh.ts for the actual orchestration.
+// This component's only job is to show the currently-published version (by
+// re-fetching GET /api/content-packs, the same read AdminContentPacksPanel.vue
+// already performs -- deliberately re-fetched here rather than shared via
+// props/emit, matching this codebase's "always a fresh server round-trip"
+// convention) and to surface the button, a one-line explanation, and the
+// old -> new version confirmation once refreshed.
 
 import {
   GAME_SYSTEM_REGISTRY,
@@ -225,6 +248,105 @@ watch(availabilityLoaded, (loaded) => {
 function selectContentSource(source: SourceCollectionDefinition) {
   if (!isCollectionAvailable(selectedGameSystemKey.value, source.key)) return
   selectedContentSourceKey.value = source.key
+}
+
+// ---------------------------------------------------------------------------
+// Refresh Content Package -- see this file's header. Independent of
+// Preview/Curate/Publish state below; only needs the two selected keys.
+// ---------------------------------------------------------------------------
+
+type PublishedPackSummary = { packageId: string; version: string }
+
+const publishedPacks = ref<PublishedPackSummary[]>([])
+const publishedPacksLoaded = ref(false)
+
+async function loadPublishedPacksForRefresh() {
+  try {
+    const response = await $fetch<{ packages: PublishedPackSummary[] }>('/api/content-packs')
+    publishedPacks.value = response.packages || []
+  } catch {
+    // Refresh's own version display degrades to "Not yet published" --
+    // the button itself still attempts a refresh and reports the real
+    // error server-side if this list failed to load for some other reason.
+    publishedPacks.value = []
+  } finally {
+    publishedPacksLoaded.value = true
+  }
+}
+
+onMounted(loadPublishedPacksForRefresh)
+
+function parseVersionTripleForDisplay(version: string): [number, number, number] | null {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version)
+  if (!match) return null
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+function compareVersionsForDisplay(a: string, b: string): number {
+  const pa = parseVersionTripleForDisplay(a)
+  const pb = parseVersionTripleForDisplay(b)
+  if (!pa || !pb) return a.localeCompare(b)
+  const [aMajor, aMinor, aPatch] = pa
+  const [bMajor, bMinor, bPatch] = pb
+  if (aMajor !== bMajor) return aMajor - bMajor
+  if (aMinor !== bMinor) return aMinor - bMinor
+  return aPatch - bPatch
+}
+
+// The packageId a Refresh click targets -- always the registry's own
+// suggestedPackageId for the selected source, exactly what the server
+// route defaults an omitted packageId to. Refresh never asks the developer
+// to type a Package Name (this task's own "no manual preview inspection
+// required" extends to not asking for identity either -- refreshing IS
+// the identity).
+const refreshTargetPackageId = computed(() => selectedContentSource.value?.suggestedPackageId ?? '')
+
+const latestPublishedVersion = computed<string | null>(() => {
+  const packageId = refreshTargetPackageId.value
+  if (!packageId) return null
+  let latest: string | null = null
+  for (const pack of publishedPacks.value) {
+    if (pack.packageId !== packageId) continue
+    if (!latest || compareVersionsForDisplay(pack.version, latest) > 0) latest = pack.version
+  }
+  return latest
+})
+
+const refreshPending = ref(false)
+const refreshError = ref('')
+const refreshResult = ref<{ packageId: string; previousVersion: string; version: string; counts: Record<string, number> } | null>(null)
+
+const canRefresh = computed(
+  () => !refreshPending.value && publishedPacksLoaded.value && !!latestPublishedVersion.value && !!selectedContentSource.value
+)
+
+async function refreshContentPackage() {
+  if (!selectedContentSource.value || !latestPublishedVersion.value) return
+
+  refreshPending.value = true
+  refreshError.value = ''
+  refreshResult.value = null
+
+  try {
+    const response = await $fetch<{ packageId: string; previousVersion: string; version: string; counts: Record<string, number> }>(
+      '/api/content-packs/refresh',
+      {
+        method: 'POST',
+        body: {
+          gameSystemKey: selectedGameSystemKey.value,
+          collectionKey: selectedContentSource.value.key
+        }
+      }
+    )
+    refreshResult.value = response
+    await loadPublishedPacksForRefresh()
+    emit('published')
+  } catch (error: any) {
+    refreshError.value =
+      error?.data?.statusMessage || error?.data?.message || error?.message || 'Failed to refresh the Content Package.'
+  } finally {
+    refreshPending.value = false
+  }
 }
 
 const previewPending = ref(false)
@@ -466,6 +588,51 @@ async function publish() {
             Coming Soon
           </span>
         </button>
+      </div>
+    </div>
+
+    <div
+      v-if="selectedContentSource"
+      class="mt-5 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(8,17,27,0.42)] p-4"
+    >
+      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+        Refresh Content Package
+      </div>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-[#d8ceb8]">
+        This rebuilds the Content Pack using the latest compiler and Rules Facets. It republishes exactly what
+        <span class="font-mono text-[#f5e7bd]">{{ refreshTargetPackageId }}</span>
+        already contains today -- no curation, no manual preview inspection -- as a new immutable version.
+      </p>
+
+      <div class="mt-3 flex flex-wrap items-center gap-3">
+        <span class="text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+          Published:
+          <span class="font-mono text-[#fff7df]">{{ latestPublishedVersion ? `v${latestPublishedVersion}` : 'not yet published' }}</span>
+        </span>
+
+        <button
+          type="button"
+          class="eldra-button rounded-none px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          :disabled="!canRefresh"
+          :title="!latestPublishedVersion ? 'Publish this Content Source at least once before refreshing it' : ''"
+          @click="refreshContentPackage"
+        >
+          {{ refreshPending ? 'Refreshing…' : 'Refresh Content Package' }}
+        </button>
+      </div>
+
+      <div
+        v-if="refreshResult"
+        class="mt-3 rounded-none border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-100"
+      >
+        Refreshed <strong>{{ refreshResult.packageId }}</strong> from v{{ refreshResult.previousVersion }} to v{{ refreshResult.version }} with {{ Object.values(refreshResult.counts).reduce((a, b) => a + b, 0) }} entries.
+      </div>
+
+      <div
+        v-if="refreshError"
+        class="mt-3 rounded-none border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200"
+      >
+        {{ refreshError }}
       </div>
     </div>
 

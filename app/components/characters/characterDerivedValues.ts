@@ -90,14 +90,22 @@ export const DERIVED_SHEET_REGIONS: ReadonlyArray<{ category: RuleCategory; labe
 ]
 
 // ---------------------------------------------------------------------------
-// WHERE A CATEGORY RENDERS -- Desktop IA pass (D&D Beyond reference layout)
+// WHERE A CATEGORY RENDERS -- Desktop IA pass (D&D Beyond reference layout),
+// corrected by Header Phase H1
 // ---------------------------------------------------------------------------
-// The desktop sheet gives three of the categories above a bespoke home
-// instead of the generic `CharacterDerivedPanel` label/value list:
-// abilities become tiles in the command center, saves a two-up grid in the
-// left region, skills a persistent table in the center region. Everything
-// else still renders generically, which is what keeps a package that
-// declares categories Eldra has never heard of visible rather than dropped.
+// The desktop sheet gives several of the categories above a bespoke home
+// instead of the generic `CharacterDerivedPanel` label/value list: saves a
+// two-up grid in the left region, skills a persistent table in the center
+// region, proficiency bonus a vitals cell in the command center (see
+// CharacterVitalsBar.vue's own `proficiencyBonus` prop). Abilities are
+// DELIBERATELY NOT one of these yet -- H1 removed the command center's
+// ability tiles and this phase does not give them a new home; they still
+// render via the Character tab's pre-existing `CharacterAbilityScoresPanel`
+// until a future phase builds the left region's own Ability Grid.
+//
+// Everything without a bespoke home still renders generically, which is
+// what keeps a package that declares categories Eldra has never heard of
+// visible rather than dropped.
 //
 // These are CATEGORY constants, never Definition ids -- §13.2's "Sheet
 // regions address Rule Categories" is the whole reason a non-D&D package
@@ -109,17 +117,26 @@ export const SKILLS_CATEGORY: RuleCategory = 'core.skills'
 
 // Categories that render in the desktop left region (reference data read
 // constantly, changed almost never) rather than in the Character tab's
-// generic Derived section.
-export const REFERENCE_CATEGORIES: readonly RuleCategory[] = ['core.proficiency', 'core.defenses']
+// generic Derived section. `core.proficiency` is NOT one of these --
+// Header Phase H1's own "Proficiency Bonus should exist only once" rule:
+// it already has a bespoke home (the command center's vitals row), so
+// giving it a second, generic rendering here would be exactly the
+// duplication that phase's REMOVE DUPLICATION section forbids.
+export const REFERENCE_CATEGORIES: readonly RuleCategory[] = ['core.defenses']
 
 // Categories that have a bespoke home and must therefore NOT also appear in
 // the generic Derived section -- showing the same fact twice through two
 // different paths is the "second source of truth" this module's own
-// findDerivedNumber note already warns against for Health.
+// findDerivedNumber note already warns against for Health. `core.proficiency`
+// is listed explicitly (rather than folded into REFERENCE_CATEGORIES,
+// above) because its bespoke home is the command center, not the left
+// region -- it still needs excluding from the generic section, just not by
+// way of appearing in the reference one.
 export const HOMED_CATEGORIES: readonly RuleCategory[] = [
   ABILITIES_CATEGORY,
   SAVES_CATEGORY,
   SKILLS_CATEGORY,
+  'core.proficiency',
   ...REFERENCE_CATEGORIES
 ]
 

@@ -22,22 +22,28 @@
 // because the engine put it there.
 //
 // H4: WELL MATERIAL, SKILLS' OWN SCALE, NOT ABILITIES'. H3 used
-// `eldra-quiet` (a bare hairline divider) here because nothing is rolled
-// from a save row (the approved scope makes actions/spells/items/
-// features/skills selectable, and deliberately not saves) -- Design
-// Language §8 Rule 2's usual reading. H4's own brief overrides that on
-// purpose for this row too, the same deliberate, scoped exception
-// CharacterAbilityGrid.vue's rows now document: Saves are asked to "apply
-// the same visual family" as Abilities and Skills, kept "visually lighter
-// than Abilities but clearly heavier than ordinary reference text". So
-// this row adopts well material -- closing the gap toward Skills' own
-// language -- but stays at Skills' row SCALE (no enlargement; Abilities
-// alone gets that), which is exactly what keeps it lighter than Abilities.
-// Nothing here gained a click or a drawer.
+// `eldra-quiet` (a bare hairline divider) here because nothing was rolled
+// from a save row at the time -- Design Language §8 Rule 2's usual
+// reading. H4's own brief overrode that on purpose for this row too, the
+// same deliberate, scoped exception CharacterAbilityGrid.vue's rows
+// documented: Saves are asked to "apply the same visual family" as
+// Abilities and Skills, kept "visually lighter than Abilities but clearly
+// heavier than ordinary reference text". So this row adopted well
+// material -- closing the gap toward Skills' own language -- but stayed at
+// Skills' row SCALE (no enlargement; Abilities alone gets that), which is
+// exactly what keeps it lighter than Abilities. Eldra Roll System Phase 2
+// (§8/§14) is what finally gives the well its click: saving throws join
+// abilities and skills as rollable rows.
 //
 // Shape + text, never colour alone (§7.6): the proficiency marker is a
 // filled/hollow glyph with a screen-reader label, matching exactly how
 // CharacterDerivedPanel.vue already renders a boolean.
+//
+// ELDRA ROLL SYSTEM PHASE 2 -- WHOLE ROW IS THE ROLL CONTROL, MATCHING
+// CharacterAbilityGrid.vue. No prior drawer/select interaction existed on
+// this row to preserve, so the entire row becomes the roll button, sending
+// only `sourceKey` (the `.bonus` Value's own id) -- the server re-derives
+// the number (§3), this component sends no modifier.
 
 import {
   formatDerivedValue,
@@ -45,15 +51,30 @@ import {
   type DerivedValue
 } from './characterDerivedValues'
 
+export type CharacterSaveRow = {
+  key: string
+  label: string
+  value: string
+  proficient: boolean | null
+  error: string | null
+  sourceKey: string
+}
+
 const props = withDefaults(defineProps<{
   entries?: readonly DerivedValue[]
   emptyMessage?: string
+  rolling?: boolean
 }>(), {
   entries: () => [],
-  emptyMessage: 'No saving throws are declared by this World’s rules.'
+  emptyMessage: 'No saving throws are declared by this World’s rules.',
+  rolling: false
 })
 
-const rows = computed(() =>
+const emit = defineEmits<{
+  roll: [CharacterSaveRow]
+}>()
+
+const rows = computed<CharacterSaveRow[]>(() =>
   groupDerivedValues(props.entries).map((group) => {
     const bonus = group.numbers[0] ?? null
     const flag = group.flags[0] ?? null
@@ -63,7 +84,8 @@ const rows = computed(() =>
       label: group.label,
       value: bonus ? formatDerivedValue(bonus) : '—',
       proficient: typeof flag?.value === 'boolean' ? flag.value : null,
-      error: group.error
+      error: group.error,
+      sourceKey: bonus?.id ?? group.key
     }
   })
 )
@@ -85,32 +107,39 @@ const rows = computed(() =>
       <li
         v-for="row in rows"
         :key="row.key"
-        class="eldra-well grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5"
       >
-        <span
-          v-if="row.proficient !== null"
-          class="text-xs"
-          :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+        <button
+          type="button"
+          class="eldra-well grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-none px-2 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="rolling"
+          :aria-label="`Roll ${row.label} Save${row.proficient ? ', proficient' : ''}`"
+          @click="emit('roll', row)"
         >
-          <span aria-hidden="true">{{ row.proficient ? '●' : '○' }}</span>
-          <span class="sr-only">{{ row.proficient ? 'Proficient' : 'Not proficient' }}</span>
-        </span>
-        <span v-else />
+          <span
+            v-if="row.proficient !== null"
+            class="text-xs"
+            :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+          >
+            <span aria-hidden="true">{{ row.proficient ? '●' : '○' }}</span>
+            <span class="sr-only">{{ row.proficient ? 'Proficient' : 'Not proficient' }}</span>
+          </span>
+          <span v-else />
 
-        <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
-          {{ row.label }}
-        </span>
+          <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
+            {{ row.label }}
+          </span>
 
-        <span
-          v-if="row.error"
-          :title="row.error"
-          class="text-right text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
-        >Error</span>
+          <span
+            v-if="row.error"
+            :title="row.error"
+            class="text-right text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
+          >Error</span>
 
-        <span
-          v-else
-          class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
-        >{{ row.value }}</span>
+          <span
+            v-else
+            class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
+          >{{ row.value }}</span>
+        </button>
       </li>
     </ul>
   </div>

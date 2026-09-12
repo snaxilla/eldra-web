@@ -36,6 +36,8 @@ import CharacterSaveList from '~/components/characters/CharacterSaveList.vue'
 import CharacterAbilityGrid from '~/components/characters/CharacterAbilityGrid.vue'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
 import type { DerivedValue } from './characterDerivedValues'
+import type { CharacterAbilityRow } from './CharacterAbilityGrid.vue'
+import type { CharacterSaveRow } from './CharacterSaveList.vue'
 
 withDefaults(defineProps<{
   abilityEntries?: readonly DerivedValue[]
@@ -47,13 +49,24 @@ withDefaults(defineProps<{
   // owns the distinction between "loading" and "unavailable".
   pending?: boolean
   unavailableMessage?: string
+  // Eldra Roll System Phase 2 -- disables both rollable lists' buttons
+  // while a roll this page requested is in flight, matching
+  // useWorldRolls.ts's own `pending` state. This region has no roll state
+  // of its own; it only relays the page's.
+  rolling?: boolean
 }>(), {
   abilityEntries: () => [],
   saveEntries: () => [],
   referenceRegions: () => [],
   pending: false,
-  unavailableMessage: ''
+  unavailableMessage: '',
+  rolling: false
 })
+
+const emit = defineEmits<{
+  'roll-ability': [CharacterAbilityRow]
+  'roll-save': [CharacterSaveRow]
+}>()
 </script>
 
 <template>
@@ -84,7 +97,11 @@ withDefaults(defineProps<{
         density="compact"
       >
         <div class="mt-3">
-          <CharacterAbilityGrid :entries="abilityEntries" />
+          <CharacterAbilityGrid
+            :entries="abilityEntries"
+            :rolling="rolling"
+            @roll="emit('roll-ability', $event)"
+          />
         </div>
       </CharacterSheetSection>
 
@@ -94,7 +111,11 @@ withDefaults(defineProps<{
         density="compact"
       >
         <div class="mt-3">
-          <CharacterSaveList :entries="saveEntries" />
+          <CharacterSaveList
+            :entries="saveEntries"
+            :rolling="rolling"
+            @roll="emit('roll-save', $event)"
+          />
         </div>
       </CharacterSheetSection>
 

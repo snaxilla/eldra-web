@@ -27,6 +27,17 @@
 // satisfied rather than violated here, and the material is doing real work
 // -- it is the only signal distinguishing the rows you can open from the
 // reference blocks you cannot.
+//
+// ELDRA ROLL SYSTEM PHASE 2 -- A SECOND, DISTINCT CONTROL, NOT A
+// REPLACEMENT. eldra-roll-system.md §8/§14 Phase 2: "a skill row now does
+// two things: open detail on most of the row, roll on an explicit
+// control," the same split CharacterActionsPanel.vue already draws between
+// opening a detail drawer and its own Resolve button. The bonus figure
+// itself becomes that explicit roll control -- the one number a player
+// actually watches -- while the rest of the row keeps opening the drawer
+// exactly as before. Rolling sends ONLY `sourceKey` (the Rules Engine id
+// the bonus was read from); the server re-derives the number itself
+// (§3) -- this component never computes or sends a modifier.
 
 import {
   formatDerivedValue,
@@ -40,18 +51,28 @@ export type CharacterSkillRow = {
   qualifier: string | null
   value: string
   proficient: boolean | null
+  // The Rules Engine Value id the bonus was actually read from (e.g.
+  // 'value:skill.stealth.bonus') -- distinct from `key`, which is the
+  // GROUPING stem `groupDerivedValues` assigned this row (see that
+  // helper's own header) and is never itself a real Definition id when a
+  // bonus/proficiency pair shares one. This is the id a roll request must
+  // name.
+  sourceKey: string
 }
 
 const props = withDefaults(defineProps<{
   entries?: readonly DerivedValue[]
   emptyMessage?: string
+  rolling?: boolean
 }>(), {
   entries: () => [],
-  emptyMessage: 'No skills are declared by this World’s rules.'
+  emptyMessage: 'No skills are declared by this World’s rules.',
+  rolling: false
 })
 
 const emit = defineEmits<{
   select: [CharacterSkillRow]
+  roll: [CharacterSkillRow]
 }>()
 
 const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
@@ -66,6 +87,7 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
         qualifier: group.qualifier,
         value: bonus ? formatDerivedValue(bonus) : '—',
         proficient: typeof flag?.value === 'boolean' ? flag.value : null,
+        sourceKey: bonus?.id ?? group.key,
         error: group.error
       }
     })
@@ -104,38 +126,48 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
           v-for="row in rows"
           :key="row.key"
         >
-          <button
-            type="button"
-            class="eldra-well grid w-full grid-cols-[1.25rem_2rem_minmax(0,1fr)_2.5rem] items-center gap-2 rounded-none px-2 py-1.5 text-left transition"
-            :aria-label="`${row.label} ${row.value}${row.proficient ? ', proficient' : ''}`"
-            @click="emit('select', row)"
-          >
-            <span
-              class="text-xs"
-              :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+          <div class="eldra-well grid w-full grid-cols-[1.25rem_2rem_minmax(0,1fr)_2.5rem] items-center gap-2 rounded-none px-2 py-1.5">
+            <button
+              type="button"
+              class="col-span-3 grid grid-cols-[1.25rem_2rem_minmax(0,1fr)] items-center gap-2 rounded-none py-0 text-left transition"
+              :aria-label="`${row.label}${row.proficient ? ', proficient' : ''} — view details`"
+              @click="emit('select', row)"
             >
-              <span aria-hidden="true">{{ row.proficient === null ? '·' : row.proficient ? '●' : '○' }}</span>
-            </span>
+              <span
+                class="text-xs"
+                :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+              >
+                <span aria-hidden="true">{{ row.proficient === null ? '·' : row.proficient ? '●' : '○' }}</span>
+              </span>
 
-            <span class="truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
-              {{ row.qualifier || '' }}
-            </span>
+              <span class="truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                {{ row.qualifier || '' }}
+              </span>
 
-            <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
-              {{ row.label }}
-            </span>
+              <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
+                {{ row.label }}
+              </span>
+            </button>
 
-            <span
-              v-if="row.error"
-              :title="row.error"
-              class="text-right text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
-            >Err</span>
+            <button
+              type="button"
+              class="rounded-none text-right transition hover:text-[#f5e7bd] disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="rolling"
+              :aria-label="`Roll ${row.label}, bonus ${row.value}`"
+              @click="emit('roll', row)"
+            >
+              <span
+                v-if="row.error"
+                :title="row.error"
+                class="text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
+              >Err</span>
 
-            <span
-              v-else
-              class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
-            >{{ row.value }}</span>
-          </button>
+              <span
+                v-else
+                class="text-sm font-semibold tabular-nums text-[#fff7df]"
+              >{{ row.value }}</span>
+            </button>
+          </div>
         </li>
       </ul>
     </template>

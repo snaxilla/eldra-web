@@ -1,23 +1,28 @@
 // Unit tests for POST /api/worlds/:id/rolls
 // (server/api/worlds/[id]/rolls/index.post.ts). Phase 1 of
-// .github/docs/architecture/eldra-roll-system.md §14.
+// .github/docs/architecture/eldra-roll-system.md §14, extended by Phase 2
+// (§3/§4) for `sourceType: 'ability' | 'saving_throw' | 'skill'`.
 //
 // requireCapability/can are exercised for REAL (not mocked), matching
 // tests/server/api/worlds/index.get.test.ts's own precedent of proving a
 // route uses the actual capability system rather than a re-derived
-// approximation of it. createCustomRollEvent is mocked -- this file is
-// about the route's own validation/rejection behavior, not roll
-// persistence (tests/server/utils/roll-events.test.ts covers that).
+// approximation of it. createCustomRollEvent/createDerivedRollEvent are
+// mocked -- this file is about the route's own validation/rejection
+// behavior, not roll persistence or derivation
+// (tests/server/utils/roll-events.test.ts and
+// tests/server/utils/roll-events-derived.test.ts cover those).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-const { createCustomRollEventMock } = vi.hoisted(() => ({
-  createCustomRollEventMock: vi.fn()
+const { createCustomRollEventMock, createDerivedRollEventMock } = vi.hoisted(() => ({
+  createCustomRollEventMock: vi.fn(),
+  createDerivedRollEventMock: vi.fn()
 }))
 
 vi.mock('../../../../../../server/utils/roll-events', () => ({
-  createCustomRollEvent: createCustomRollEventMock
+  createCustomRollEvent: createCustomRollEventMock,
+  createDerivedRollEvent: createDerivedRollEventMock
 }))
 
 // h3's real readBody needs a live Node request stream this test has no
@@ -62,6 +67,7 @@ function fakeEvent(worldId: string, principal: Principal | null, body: unknown):
 
 beforeEach(() => {
   createCustomRollEventMock.mockReset()
+  createDerivedRollEventMock.mockReset()
 })
 
 describe('POST /api/worlds/:id/rolls', () => {
@@ -79,11 +85,12 @@ describe('POST /api/worlds/:id/rolls', () => {
     expect(createCustomRollEventMock).not.toHaveBeenCalled()
   })
 
-  it('rejects sourceType other than "custom" with 400 -- Phase 1 scope', async () => {
+  it('rejects a sourceType nothing implements yet with 400 -- action_attack/spell_attack/spell_save/damage are still Phase 3', async () => {
     await expect(
-      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'skill', sourceKey: 'value:skill.stealth.bonus' }))
+      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'action_attack', sourceId: 'action-1', actorCharacterId: '42' }))
     ).rejects.toMatchObject({ statusCode: 400 })
     expect(createCustomRollEventMock).not.toHaveBeenCalled()
+    expect(createDerivedRollEventMock).not.toHaveBeenCalled()
   })
 
   it('rejects a missing sourceType with 400', async () => {
@@ -177,5 +184,110 @@ describe('POST /api/worlds/:id/rolls', () => {
     await expect(
       handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'custom', expression: 'not a formula' }))
     ).rejects.toMatchObject({ statusCode: 400 })
+  })
+})
+
+describe('POST /api/worlds/:id/rolls -- Phase 2 (ability/saving_throw/skill)', () => {
+  it.each(['ability', 'saving_throw', 'skill'] as const)(
+    'succeeds for a %s roll, sending only actorCharacterId/sourceKey/visibility to the derivation layer',
+    async (sourceType) => {
+      createDerivedRollEventMock.mockResolvedValue({ id: 'roll-1', sourceType, total: 17 })
+
+      const result = await handler(
+        fakeEvent('5', playerPrincipal('5'), {
+          sourceType,
+          actorCharacterId: '42',
+          sourceKey: 'value:skill.stealth.bonus',
+          visibility: 'table'
+        })
+      )
+
+      expect(result).toEqual({ id: 'roll-1', sourceType, total: 17 })
+      expect(createDerivedRollEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          worldId: '5',
+          rollerUserId: 'account-1',
+          actorCharacterId: '42',
+          sourceType,
+          sourceKey: 'value:skill.stealth.bonus',
+          visibility: 'table'
+        })
+      )
+      expect(createCustomRollEventMock).not.toHaveBeenCalled()
+    }
+  )
+
+  it('defaults visibility to private (fail closed) when omitted', async () => {
+    createDerivedRollEventMock.mockResolvedValue({ id: 'roll-2' })
+
+    await handler(
+      fakeEvent('5', playerPrincipal('5'), {
+        sourceType: 'ability',
+        actorCharacterId: '42',
+        sourceKey: 'value:ability.str.mod'
+      })
+    )
+
+    expect(createDerivedRollEventMock).toHaveBeenCalledWith(expect.objectContaining({ visibility: 'private' }))
+  })
+
+  it('rejects a missing actorCharacterId with 400', async () => {
+    await expect(
+      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'skill', sourceKey: 'value:skill.stealth.bonus' }))
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(createDerivedRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a missing sourceKey with 400', async () => {
+    await expect(
+      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'skill', actorCharacterId: '42' }))
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(createDerivedRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['expression', 'modifier', 'modifiers', 'bonus'])(
+    'rejects a body supplying "%s" with 400 -- no client-side math for a derived roll',
+    async (field) => {
+      await expect(
+        handler(
+          fakeEvent('5', playerPrincipal('5'), {
+            sourceType: 'ability',
+            actorCharacterId: '42',
+            sourceKey: 'value:ability.str.mod',
+            [field]: field === 'modifiers' ? [1] : field === 'expression' ? '1d20+99' : 99
+          })
+        )
+      ).rejects.toMatchObject({ statusCode: 400 })
+      expect(createDerivedRollEventMock).not.toHaveBeenCalled()
+    }
+  )
+
+  it('propagates a rejection from createDerivedRollEvent (e.g. a stale sourceKey) unchanged', async () => {
+    createDerivedRollEventMock.mockRejectedValue(Object.assign(new Error('not declared'), { statusCode: 400 }))
+
+    await expect(
+      handler(
+        fakeEvent('5', playerPrincipal('5'), {
+          sourceType: 'skill',
+          actorCharacterId: '42',
+          sourceKey: 'value:skill.nonexistent.bonus'
+        })
+      )
+    ).rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  it('never derives rollerUserId from the request body for a derived roll either', async () => {
+    createDerivedRollEventMock.mockResolvedValue({ id: 'roll-3' })
+
+    await handler(
+      fakeEvent('5', playerPrincipal('5', 'real-account'), {
+        sourceType: 'skill',
+        actorCharacterId: '42',
+        sourceKey: 'value:skill.stealth.bonus',
+        rollerUserId: 'someone-else'
+      })
+    )
+
+    expect(createDerivedRollEventMock).toHaveBeenCalledWith(expect.objectContaining({ rollerUserId: 'real-account' }))
   })
 })

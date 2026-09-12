@@ -29,6 +29,17 @@
 // is source-type-agnostic already (it lists whatever rows exist), so it
 // needs no Phase 2 change to keep working once other source types exist.
 //
+// PHASE 2 ADDITION: `createDerivedRollEvent` is the ability/saving_throw/
+// skill write path (eldra-roll-system.md §3/§4/Phase 2). It re-derives the
+// bonus from `getDerivedCharacter` (server/utils/character-derived.ts) --
+// the SAME already-tested Rules Engine output the Character Sheet itself
+// reads -- and never trusts a client-supplied number, mirroring
+// world-rules-roll.ts's own "recompute, don't trust" precedent for its
+// seed. No new evaluation path is built; this function only looks up one
+// already-evaluated `DerivedValue` by category + id and rolls `1d20`
+// against it. `action_attack`/`spell_attack`/`spell_save`/`damage` remain
+// Phase 3 work.
+//
 // DIRECTUS ACCESS: `directusServiceRequest` (server/utils/directus.ts) --
 // CLAUDE.md's "the only sanctioned way to talk to Directus" -- never a new
 // local `dxFetch`. The service token, not the session-forwarding
@@ -56,7 +67,9 @@
 import { createError } from 'h3'
 import { rollFormula } from '../../app/lib/rolls/dice-adapter'
 import type { RollDieGroup, RollEventRecord, RollSourceType, RollVisibility } from '../../app/lib/rolls/types'
+import type { RuleCategory } from '../../app/lib/rules/types'
 import { directusServiceRequest } from './directus'
+import { getDerivedCharacter, type DerivedCharacterResult } from './character-derived'
 
 const COLLECTION = 'roll_events'
 
@@ -181,6 +194,146 @@ export async function createCustomRollEvent(input: CreateCustomRollInput): Promi
     label: input.label,
     sourceType: 'custom',
     sourceKey: null,
+    sourceId: null,
+    expression: rolled.roll.expression,
+    dice: rolled.roll.dice,
+    modifier: rolled.roll.modifier,
+    modifiers: rolled.roll.modifiers,
+    total: rolled.roll.total,
+    visibility: input.visibility,
+    metadata: input.metadata ?? {}
+  })
+
+  const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
+    method: 'POST',
+    body: row
+  })
+
+  return fromPersistenceRow(res?.data)
+}
+
+// ---------------------------------------------------------------------------
+// Write -- ability/saving_throw/skill rolls (Phase 2, §3/§4)
+// ---------------------------------------------------------------------------
+
+export type DerivableRollSourceType = 'ability' | 'saving_throw' | 'skill'
+
+// The one place this file names a Rule Category per source type -- §3's
+// "the server re-derives from the same already-tested Rules Engine output
+// the Character Sheet itself reads." Never a Definition id: a package that
+// declares no `core.saves` simply has no saving throw entries to find,
+// which surfaces below as an ordinary "not found" rejection, not a crash.
+const DERIVED_ROLL_CATEGORY_BY_SOURCE_TYPE: Record<DerivableRollSourceType, RuleCategory> = {
+  ability: 'core.abilities',
+  saving_throw: 'core.saves',
+  skill: 'core.skills'
+}
+
+// The default display label when the client doesn't supply one (mirroring
+// createCustomRollEvent's own "no label, default from what was actually
+// rolled" posture) -- eldra-roll-system.md §4's own "Shown to player"
+// examples ("Strength Check", "Wisdom Save", "Stealth Check"). This is
+// generic English roll vocabulary keyed by SOURCE TYPE, never a package's
+// own Definition id or ability name -- the label still comes entirely from
+// `entry.label`, this only appends the word for what kind of roll it is.
+const DERIVED_ROLL_LABEL_SUFFIX_BY_SOURCE_TYPE: Record<DerivableRollSourceType, string> = {
+  ability: 'Check',
+  saving_throw: 'Save',
+  skill: 'Check'
+}
+
+// Maps a `getDerivedCharacter` rejection onto an HTTP status -- the same
+// character-not-found -> 404, everything-else-about-Rules-state -> 409/500
+// shape server/api/worlds/[id]/characters/[characterId]/combat.post.ts
+// already established for this exact result type, restated as its own
+// function here because this module (unlike that route) throws directly
+// rather than returning a result for the route to translate, matching
+// createCustomRollEvent's own throw-from-the-util convention immediately
+// above.
+function statusForDerivedCharacterFailure(
+  result: Extract<DerivedCharacterResult, { available: false }>
+): { statusCode: number; statusMessage: string } {
+  switch (result.reason) {
+    case 'character-not-found':
+      return { statusCode: 404, statusMessage: 'No character exists with that id in this World' }
+    case 'no-catalogue-selection':
+      return { statusCode: 409, statusMessage: result.message }
+    case 'rules-unconfigured':
+      return { statusCode: 409, statusMessage: result.message }
+    case 'rules-broken':
+      return { statusCode: 500, statusMessage: result.message }
+    default: {
+      const exhaustive: never = result
+      return exhaustive
+    }
+  }
+}
+
+export type CreateDerivedRollInput = {
+  worldId: string | number
+  rollerUserId: string
+  actorCharacterId: string | number
+  encounterId?: string | number | null
+  sourceType: DerivableRollSourceType
+  // The Rules Engine id this bonus is read from, e.g.
+  // 'value:skill.stealth.bonus' -- required, and looked up ONLY within the
+  // category §3/§4 name for this sourceType, never across all categories.
+  sourceKey: string
+  label?: string
+  visibility: RollVisibility
+  metadata?: Record<string, unknown>
+}
+
+// Rolls `1d20` against the ONE already-evaluated bonus a real
+// `getDerivedCharacter` call reports for `sourceKey`, and persists the
+// result exactly like `createCustomRollEvent` does. Trust boundary
+// (eldra-roll-system.md §13, §3): this function never accepts a bonus,
+// modifier, or expression from the caller -- `sourceKey` only NAMES which
+// already-computed Rules Engine Value to re-read; the number itself always
+// comes from this fresh `getDerivedCharacter` call, never from `input`.
+export async function createDerivedRollEvent(input: CreateDerivedRollInput): Promise<RollEventRecord> {
+  const result = await getDerivedCharacter(input.worldId, input.actorCharacterId)
+
+  if (!result.available) {
+    throw createError(statusForDerivedCharacterFailure(result))
+  }
+
+  const category = DERIVED_ROLL_CATEGORY_BY_SOURCE_TYPE[input.sourceType]
+  const entry = (result.derived.byCategory[category] ?? []).find((candidate) => candidate.id === input.sourceKey)
+
+  if (!entry) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `'${input.sourceKey}' is not a ${input.sourceType.replace('_', ' ')} this character's Rules Package declares`
+    })
+  }
+  if (entry.error) {
+    throw createError({ statusCode: 409, statusMessage: entry.error })
+  }
+  if (typeof entry.value !== 'number') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `'${input.sourceKey}' did not evaluate to a number, so it cannot be rolled`
+    })
+  }
+
+  const rolled = rollFormula('1d20', { bonuses: [entry.value] })
+  if (!rolled.ok) {
+    throw createError({ statusCode: 400, statusMessage: rolled.error })
+  }
+
+  const label =
+    input.label?.trim() ||
+    `${entry.label ?? input.sourceKey} ${DERIVED_ROLL_LABEL_SUFFIX_BY_SOURCE_TYPE[input.sourceType]}`
+
+  const row = toPersistenceRow({
+    worldId: input.worldId,
+    encounterId: input.encounterId ?? null,
+    actorCharacterId: input.actorCharacterId,
+    rollerUserId: input.rollerUserId,
+    label,
+    sourceType: input.sourceType,
+    sourceKey: input.sourceKey,
     sourceId: null,
     expression: rolled.roll.expression,
     dice: rolled.roll.dice,

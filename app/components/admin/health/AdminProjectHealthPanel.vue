@@ -67,6 +67,7 @@
 
 import { GAME_SYSTEM_REGISTRY } from '~/lib/content-sources/registry'
 import AdminHealthStatusBadge from './AdminHealthStatusBadge.vue'
+import AdminDeveloperToolsPanel from './AdminDeveloperToolsPanel.vue'
 import {
   classifyContentPackHealth,
   classifyRulesHealth,
@@ -526,6 +527,11 @@ const FUTURE_PLACEHOLDERS = [
           </article>
         </div>
       </div>
+
+      <!-- Developer Tools -- Eldra Roll System Phase 2A. See
+           AdminDeveloperToolsPanel.vue's own header for why this
+           subsection exists and how future tools join it. -->
+      <AdminDeveloperToolsPanel :world-id="worldId" />
 
       <!-- Future Placeholders -->
       <div class="eldra-ornate-panel eldra-frame-corners rounded-none border border-dashed border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.34)] p-5">

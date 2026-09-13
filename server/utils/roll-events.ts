@@ -40,6 +40,16 @@
 // against it. `action_attack`/`spell_attack`/`spell_save`/`damage` remain
 // Phase 3 work.
 //
+// PHASE 2C ADDITION: every `RollEventRecord` this module returns now
+// carries `rollerDisplayName`, resolved via
+// world-memberships.ts's own `resolveDisplayNames` (exported for exactly
+// this reuse) -- the Roll Tray's own CONTENT requirement ("Player name")
+// would otherwise have nothing but a bare account UUID to show. This is a
+// display-only enrichment, resolved with the same service-token trust this
+// module already has (no new capability, no new endpoint, no schema
+// change) -- never routed through the capability-gated `GET /members`,
+// since knowing who rolled is not roster/invite data.
+//
 // DIRECTUS ACCESS: `directusServiceRequest` (server/utils/directus.ts) --
 // CLAUDE.md's "the only sanctioned way to talk to Directus" -- never a new
 // local `dxFetch`. The service token, not the session-forwarding
@@ -70,6 +80,7 @@ import type { RollDieGroup, RollEventRecord, RollSourceType, RollVisibility } fr
 import type { RuleCategory } from '../../app/lib/rules/types'
 import { directusServiceRequest } from './directus'
 import { getDerivedCharacter, type DerivedCharacterResult } from './character-derived'
+import { resolveDisplayNames } from './world-memberships'
 
 const COLLECTION = 'roll_events'
 
@@ -79,6 +90,16 @@ const COLLECTION = 'roll_events'
 // means.
 export const DEFAULT_ROLL_EVENTS_LIMIT = 50
 export const MAX_ROLL_EVENTS_LIMIT = 200
+
+// One-account convenience over `resolveDisplayNames` -- every WRITE path
+// resolves exactly its own roller (`principal.accountId`, never a batch),
+// falling back to the bare id itself rather than throwing, matching
+// `listMembersForWorld`'s own "still appears, falling back to accountId"
+// posture for an account that can't be resolved.
+async function resolveOneDisplayName(accountId: string): Promise<string> {
+  const names = await resolveDisplayNames([accountId])
+  return names.get(accountId) || accountId
+}
 
 // ---------------------------------------------------------------------------
 // Persistence translation -- Directus row (snake_case) <-> RollEventRecord
@@ -128,13 +149,20 @@ function toPersistenceRow(input: {
   }
 }
 
-function fromPersistenceRow(row: any): RollEventRecord {
+// `displayName` is resolved separately (a Directus `/users` lookup,
+// server/utils/world-memberships.ts's own `resolveDisplayNames`) because
+// this function only ever sees ONE roll_events row at a time and batching
+// that lookup across a whole page (`listRollEvents`) needs to happen once,
+// outside this per-row translator -- never omitted silently: every caller
+// below resolves and passes one.
+function fromPersistenceRow(row: any, displayName: string): RollEventRecord {
   return {
     id: String(row?.id ?? ''),
     worldId: String(row?.world_id ?? ''),
     encounterId: row?.encounter_id != null ? String(row.encounter_id) : null,
     actorCharacterId: row?.actor_character_id != null ? String(row.actor_character_id) : null,
     rollerUserId: String(row?.roller_user_id ?? ''),
+    rollerDisplayName: displayName,
     label: String(row?.label ?? ''),
     sourceType: (row?.source_type ?? 'custom') as RollSourceType,
     sourceKey: row?.source_key != null ? String(row.source_key) : null,
@@ -204,12 +232,12 @@ export async function createCustomRollEvent(input: CreateCustomRollInput): Promi
     metadata: input.metadata ?? {}
   })
 
-  const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
-    method: 'POST',
-    body: row
-  })
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
 
-  return fromPersistenceRow(res?.data)
+  return fromPersistenceRow(res?.data, displayName)
 }
 
 // ---------------------------------------------------------------------------
@@ -344,12 +372,12 @@ export async function createDerivedRollEvent(input: CreateDerivedRollInput): Pro
     metadata: input.metadata ?? {}
   })
 
-  const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
-    method: 'POST',
-    body: row
-  })
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
 
-  return fromPersistenceRow(res?.data)
+  return fromPersistenceRow(res?.data, displayName)
 }
 
 // ---------------------------------------------------------------------------
@@ -481,7 +509,12 @@ export async function listRollEvents(input: ListRollEventsInput): Promise<ListRo
   const hasMore = rows.length > pageSize
   const page = hasMore ? rows.slice(0, pageSize) : rows
 
-  const rolls = page.map(fromPersistenceRow)
+  // Batch-resolved once per page, not once per row -- the same
+  // dedupe-then-`_in` shape `resolveDisplayNames` already uses for a whole
+  // World roster, applied here to whichever rollers actually appear on
+  // this page (often the same handful of players, repeated many times).
+  const displayNames = await resolveDisplayNames([...new Set(page.map((row) => String(row?.roller_user_id ?? '')))])
+  const rolls = page.map((row) => fromPersistenceRow(row, displayNames.get(String(row?.roller_user_id ?? '')) || String(row?.roller_user_id ?? '')))
   const lastRow = page[page.length - 1]
   const nextCursor =
     hasMore && lastRow

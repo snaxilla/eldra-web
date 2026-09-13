@@ -171,7 +171,16 @@ export type WorldMemberSummary = WorldMembershipRecord & { displayName: string }
 // formatAccountDisplayName is shared with server/utils/accounts.ts's
 // searchAccounts so a member looks identical whether you are viewing an
 // existing roster row or searching for one to add.
-async function resolveDisplayNames(accountIds: string[]): Promise<Map<string, string>> {
+//
+// Exported (Roll System Phase 2C, eldra-roll-system.md §9): the Roll
+// Tray's server-side `RollEventRecord.rollerDisplayName` enrichment
+// (server/utils/roll-events.ts) reuses this exact resolution rather than
+// re-implementing it or routing through this module's own
+// capability-gated `listMembersForWorld`/`GET /members` (Owner/GM only) --
+// a roll's roller name is not roster/invite data, so it does not belong
+// behind that capability, but the identical Directus lookup is correct for
+// both call sites.
+export async function resolveDisplayNames(accountIds: string[]): Promise<Map<string, string>> {
   if (accountIds.length === 0) {
     return new Map()
   }

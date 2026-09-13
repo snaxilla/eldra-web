@@ -286,11 +286,23 @@
 // only a SOURCE (sourceType/actorCharacterId/sourceKey/visibility) --
 // never a bonus, modifier, expression, or total; the server re-derives the
 // number from the same `derived` this page already reads for display
-// (§3). No 3D dice, no history tray, no realtime yet (§14 Phase 2's own
-// scope) -- `latestRollSummary` below is the lightweight inline readout
-// this phase calls for, replacing nothing but a blank space, and
-// `useCharacterSheetRolls.ts` (the prior client-side-seeded prototype) is
-// no longer this page's roll composable.
+// (§3). `useCharacterSheetRolls.ts` (the prior client-side-seeded
+// prototype) is no longer this page's roll composable.
+//
+// ---------------------------------------------------------------------------
+// ELDRA ROLL SYSTEM PHASE 2C: THE ROLL TRAY
+// ---------------------------------------------------------------------------
+// Phase 2's own temporary inline "latest roll" strip is gone -- `WorldRollTray`
+// (components/world/, §9) is now the one, permanent, canonical place a roll
+// result appears: a persistent, collapsible feed (tabletop notebook / combat
+// log, never a modal or a toast) docked bottom-right on desktop, a bottom
+// sheet on mobile. This page owns no roll DATA beyond its one
+// `useWorldRolls()` instance -- the Tray is purely a display component fed
+// by that composable's `history`/`pending`/`error`/pagination state; see
+// WorldRollTray.vue's own header for the full location/animation/pagination
+// design. Still no 3D dice, no realtime, no table broadcast, no Combat
+// Roll integration (§14 Phase 3, not started here) -- only a reserved,
+// empty `dice-stage` slot for a later phase to fill.
 
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
@@ -308,6 +320,7 @@ import CharacterSheetCommandCenter from '~/components/characters/CharacterSheetC
 import CharacterReferencePanels from '~/components/characters/CharacterReferencePanels.vue'
 import CharacterSkillList from '~/components/characters/CharacterSkillList.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
+import WorldRollTray from '~/components/world/WorldRollTray.vue'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
 import type { CharacterAbilityRow } from '~/components/characters/CharacterAbilityGrid.vue'
@@ -357,7 +370,27 @@ const mutations = useCharacterMutations(worldId, characterId, sheet)
 // `useWorldRolls` returns one flat set of refs, not several named groups.
 // ---------------------------------------------------------------------------
 
-const { pending: rollPending, result: latestRoll, error: rollError, requestRoll } = useWorldRolls(worldId)
+const {
+  pending: rollPending,
+  error: rollError,
+  history: rollHistory,
+  nextCursor: rollNextCursor,
+  historyPending: rollHistoryPending,
+  historyError: rollHistoryError,
+  requestRoll,
+  refreshHistory: refreshRollHistory,
+  loadMoreHistory: loadMoreRollHistory
+} = useWorldRolls(worldId)
+
+// Loads this character's existing rolls once, on entry -- Phase 2C's own
+// "History persists" (surviving a page reload, not just a session) --
+// scoped to THIS character (`actorCharacterId`) rather than the whole
+// World, matching the sheet's own single-character focus everywhere else.
+refreshRollHistory({ actorCharacterId: characterId.value }).catch(() => {})
+
+function loadMoreRolls() {
+  loadMoreRollHistory({ actorCharacterId: characterId.value }).catch(() => {})
+}
 
 // Sheet-wide, not per-row: every roll this page requests until changed
 // shares one visibility choice, matching §5's exact two Phase-1 states.
@@ -388,20 +421,6 @@ function rollSave(row: CharacterSaveRow) {
 function rollSkill(row: CharacterSkillRow) {
   requestSheetRoll('skill', row.sourceKey)
 }
-
-// The lightweight inline readout this phase calls for (§14 Phase 2's own
-// "Manual verification" -- no history tray, no 3D dice yet). Reads only
-// fields the server already returned on `RollEventRecord` -- no
-// arithmetic, matching every other Roll System consumer's own display
-// discipline (rollSandbox.ts's own header note).
-const latestRollBreakdown = computed(() => {
-  const roll = latestRoll.value
-  if (!roll) return ''
-
-  const dieFace = roll.dice[0]?.kept[0] ?? roll.dice[0]?.results[0]
-  const modifierText = roll.modifier >= 0 ? `+${roll.modifier}` : String(roll.modifier)
-  return dieFace === undefined ? modifierText : `roll ${dieFace} ${modifierText}`
-})
 
 const {
   assembly,
@@ -1157,45 +1176,30 @@ function openSkillContext(skill: CharacterSkillRow) {
         </template>
       </CharacterSheetShell>
 
-      <!-- Eldra Roll System Phase 2 -- the lightweight latest-roll readout
-           this phase calls for (see this file's own header above). Sits
-           below the folio rather than inside CharacterSheetShell's slots so
-           it stays visible across every tab, matching how the skills table
-           is persistent for the identical reason. No modal, no drawer, no
-           history tray -- just this composable's own most recent result,
-           the same well material every other actionable control on this
-           page already uses. -->
-      <div
-        v-if="blueprint"
-        class="eldra-well mt-4 flex flex-wrap items-center justify-between gap-3 rounded-none px-4 py-2.5"
-      >
-        <p class="min-w-0 text-sm">
-          <span
-            v-if="rollPending"
-            class="text-[#9f9278]"
-          >Rolling…</span>
-          <span
-            v-else-if="rollError"
-            class="text-red-300"
-          >{{ rollError }}</span>
-          <span
-            v-else-if="latestRoll"
-            class="text-[#d8ceb8]"
-          >
-            {{ latestRoll.label }}:
-            <span class="font-semibold tabular-nums text-[#fff7df]">{{ latestRoll.total }}</span>
-            <span
-              v-if="latestRollBreakdown"
-              class="text-[#9f9278]"
-            >({{ latestRollBreakdown }})</span>
-          </span>
-          <span
-            v-else
-            class="text-[#6f6754]"
-          >Click an ability, saving throw, or skill to roll it.</span>
-        </p>
+    </div>
 
-        <div class="flex shrink-0 items-center gap-1 text-[0.65rem] uppercase tracking-[0.14em]">
+    <!-- Eldra Roll System Phase 2C -- the permanent Roll Tray, replacing
+         Phase 2B's temporary inline "latest roll" strip entirely (this
+         phase's own instruction: "only one canonical presentation
+         exists"). Rendered as a page-level sibling, not inside
+         CharacterSheetShell's slots, because it is `fixed`-positioned and
+         must float above the whole viewport regardless of which tab is
+         active -- see WorldRollTray.vue's own header for the exact
+         desktop/mobile docking behavior and why bottom-right never
+         collides with the left sidebar or the command center. -->
+    <WorldRollTray
+      v-if="blueprint"
+      :rolls="rollHistory"
+      :pending="rollPending"
+      :error="rollError"
+      :history-pending="rollHistoryPending"
+      :history-error="rollHistoryError"
+      :has-more="Boolean(rollNextCursor)"
+      empty-message="No rolls yet. Click an ability, saving throw, or skill to roll it."
+      @load-more="loadMoreRolls"
+    >
+      <template #header-actions>
+        <div class="flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.14em]">
           <button
             type="button"
             class="rounded-none px-2 py-1 transition"
@@ -1213,8 +1217,8 @@ function openSkillContext(skill: CharacterSkillRow) {
             Table
           </button>
         </div>
-      </div>
-    </div>
+      </template>
+    </WorldRollTray>
 
     <!-- Eldra's ONE context system, mounted by this page exactly as the
          World map, roster, admin, timelines and entity pages already mount

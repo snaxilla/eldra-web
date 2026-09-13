@@ -14,7 +14,8 @@
 // tests/server/utils/roll-events.test.ts and the route tests, not
 // re-tested here.
 
-import type { RollDieGroup, RollEventRecord, RollVisibility } from '~/lib/rolls/types'
+import type { RollVisibility } from '~/lib/rolls/types'
+import type { RollRequestInput } from '~/composables/useWorldRolls'
 
 // ---------------------------------------------------------------------------
 // Request body -- what the form actually sends
@@ -30,7 +31,11 @@ export type CustomRollFormInput = {
   label: string
 }
 
-export function buildCustomRollRequestBody(input: CustomRollFormInput): Record<string, unknown> {
+// Return type is `RollRequestInput` (Phase 2C) rather than a bare
+// `Record<string, unknown>` now that this feeds directly into
+// `useWorldRolls().requestRoll` -- the Sandbox no longer calls `$fetch`
+// itself (see AdminRollSandbox.vue's own header).
+export function buildCustomRollRequestBody(input: CustomRollFormInput): RollRequestInput {
   const expression = input.expression.trim()
   const label = input.label.trim()
 
@@ -47,49 +52,11 @@ export function buildCustomRollRequestBody(input: CustomRollFormInput): Record<s
 }
 
 // ---------------------------------------------------------------------------
-// Error display -- the real server message, never replaced with generic
-// text (this task's own ERRORS section). Mirrors the exact extraction
-// shape already used throughout this codebase (e.g.
-// CharacterNotesPanel.vue's save handler,
-// AdminProjectHealthPanel.vue's rebuildContentPackage) --restated here so
-// it is independently testable rather than copy-pasted into the Sandbox
-// verbatim.
+// Error display / roll formatting -- moved to app/lib/rolls/format.ts by
+// Eldra Roll System Phase 2C (the Roll Tray), which needed this exact
+// formatting outside the admin-only tree. Re-exported here, unchanged in
+// name and behavior, so this file's own existing call sites and tests
+// (tests/components/admin/health/rollSandbox.test.ts) needed no changes.
 // ---------------------------------------------------------------------------
 
-export function extractServerErrorMessage(error: unknown): string {
-  const err = error as any
-  return (
-    err?.data?.statusMessage ||
-    err?.data?.message ||
-    err?.statusMessage ||
-    err?.message ||
-    String(error)
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Display formatting -- shared between the "latest roll" result and every
-// history row. COMPUTES NOTHING: every value read here is already on the
-// RollEventRecord/RollDieGroup the server returned (results, keptFlags,
-// total, modifiers) -- matching the same "the sheet displays, it never
-// recomputes" discipline every other Roll System consumer already follows
-// (characterDerivedValues.ts, diceBoxRollSummary.ts).
-// ---------------------------------------------------------------------------
-
-// One die group as a single line: "d20 #1: [14] -> 14", or, for a group
-// with a dropped die (advantage/keep), the dropped face shown in
-// parentheses so nothing about what OpenDice actually rolled is hidden --
-// "d20 #1: [17, (4)] -> 17".
-export function formatRollDieGroup(group: RollDieGroup, index: number): string {
-  const shown = group.results
-    .map((face, i) => (group.keptFlags[i] ? String(face) : `(${face})`))
-    .join(', ')
-  return `d${group.sides} #${index + 1}: [${shown}] -> ${group.total}`
-}
-
-// "(none)" rather than an empty string -- a blank field reads as a bug in
-// a debugging tool, not as "there were no modifiers."
-export function formatRollModifiers(record: Pick<RollEventRecord, 'modifiers'>): string {
-  if (!record.modifiers.length) return '(none)'
-  return record.modifiers.map((value) => (value >= 0 ? `+${value}` : String(value))).join(' ')
-}
+export { extractServerErrorMessage, formatRollDieGroup, formatRollModifiers } from '~/lib/rolls/format'

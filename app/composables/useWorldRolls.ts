@@ -22,6 +22,14 @@
 // app/pages/worlds/[id]/characters/** may import
 // useCharacterSheetRolls.ts from here on; this file is that surface's only
 // roll composable now.
+//
+// PHASE 2C ADDITION: `nextCursor`/`historyPending`/`historyError`/
+// `loadMoreHistory` -- the Roll Tray (WorldRollTray.vue) needs real
+// pagination, not just the single-page `refreshHistory` Phase 2 shipped.
+// Mirrors AdminRollSandbox.vue's own pre-existing local
+// history/nextCursor/historyPending pattern, moved here so the Sandbox and
+// every sheet surface share ONE history/pagination implementation instead
+// of two ("Do NOT build two history UIs" -- Phase 2C's own instruction).
 
 import type { Ref } from 'vue'
 import type { RollEventRecord, RollSourceType, RollVisibility } from '~/lib/rolls/types'
@@ -70,8 +78,15 @@ export function useWorldRolls(worldId: Ref<string> | string) {
   const error = ref('')
   // Forward-declared per §8's own sketch of this composable, so a future
   // Roll History Tray (§9) has a ready-made refresh hook rather than
-  // inventing its own fetch. Nothing in Phase 2 renders this list.
+  // inventing its own fetch. Rendered for real by WorldRollTray.vue as of
+  // Phase 2C.
   const history = ref<RollEventRecord[]>([])
+  // Keyset-pagination state for `loadMoreHistory` (§7's `nextCursor`) --
+  // `null` means either "never loaded" or "no more pages," which
+  // `WorldRollTray.vue` distinguishes using `history.value.length`.
+  const nextCursor = ref<string | null>(null)
+  const historyPending = ref(false)
+  const historyError = ref('')
 
   function resolvedWorldId(): string {
     return typeof worldId === 'string' ? worldId : worldId.value
@@ -102,22 +117,71 @@ export function useWorldRolls(worldId: Ref<string> | string) {
     }
   }
 
-  // GET /api/worlds/:id/rolls -- the history refresh hook (§7). Replaces
-  // `history` outright with the fetched page rather than merging, matching
-  // that endpoint's own newest-first contract; a future tray adds its own
-  // cursor-paging on top of this same call.
-  async function refreshHistory(query: {
+  type RollsListQuery = {
     actorCharacterId?: string | number
     encounterId?: string | number
     limit?: number
-    cursor?: string | null
-  } = {}): Promise<void> {
-    const response = await $fetch<{ rolls: RollEventRecord[]; nextCursor: string | null }>(
-      `/api/worlds/${resolvedWorldId()}/rolls`,
-      { method: 'GET', query }
-    )
-    history.value = response.rolls
   }
 
-  return { pending, result, error, history, requestRoll, refreshHistory }
+  // GET /api/worlds/:id/rolls -- the history refresh hook (§7), first page.
+  // Replaces `history` outright rather than merging, matching that
+  // endpoint's own newest-first contract, and resets `nextCursor` to
+  // whatever this fresh page reports.
+  async function refreshHistory(query: RollsListQuery = {}): Promise<void> {
+    historyPending.value = true
+    historyError.value = ''
+
+    try {
+      const response = await $fetch<{ rolls: RollEventRecord[]; nextCursor: string | null }>(
+        `/api/worlds/${resolvedWorldId()}/rolls`,
+        { method: 'GET', query }
+      )
+      history.value = response.rolls
+      nextCursor.value = response.nextCursor
+    } catch (caught) {
+      historyError.value = extractRollErrorMessage(caught)
+      throw caught
+    } finally {
+      historyPending.value = false
+    }
+  }
+
+  // Resumes from `nextCursor` and APPENDS the next page -- the Roll Tray's
+  // "Load More" (§9's own "retain the existing pagination... Load More
+  // belongs at the bottom"). A no-op when there is nothing more to load or
+  // a load is already in flight, so a caller can wire this directly to a
+  // button's `@click` without its own guard.
+  async function loadMoreHistory(query: RollsListQuery = {}): Promise<void> {
+    if (!nextCursor.value || historyPending.value) return
+
+    historyPending.value = true
+    historyError.value = ''
+
+    try {
+      const response = await $fetch<{ rolls: RollEventRecord[]; nextCursor: string | null }>(
+        `/api/worlds/${resolvedWorldId()}/rolls`,
+        { method: 'GET', query: { ...query, cursor: nextCursor.value } }
+      )
+      history.value = [...history.value, ...response.rolls]
+      nextCursor.value = response.nextCursor
+    } catch (caught) {
+      historyError.value = extractRollErrorMessage(caught)
+      throw caught
+    } finally {
+      historyPending.value = false
+    }
+  }
+
+  return {
+    pending,
+    result,
+    error,
+    history,
+    nextCursor,
+    historyPending,
+    historyError,
+    requestRoll,
+    refreshHistory,
+    loadMoreHistory
+  }
 }

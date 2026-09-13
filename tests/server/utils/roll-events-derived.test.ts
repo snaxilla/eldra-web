@@ -221,8 +221,8 @@ describe('createDerivedRollEvent -- skill', () => {
     expect(roll.label.endsWith('Check')).toBe(true)
   })
 
-  it('persists exactly one Directus row per roll, never an update', async () => {
-    await createDerivedRollEvent({
+  it('persists exactly one CREATE call against roll_events, never an update (plus the separate display-name lookup)', async () => {
+    const roll = await createDerivedRollEvent({
       worldId: '5',
       rollerUserId: 'account-1',
       actorCharacterId: '42',
@@ -231,8 +231,12 @@ describe('createDerivedRollEvent -- skill', () => {
       visibility: 'private'
     })
 
-    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(2)
     expect(directusServiceRequestMock.mock.calls[0]![1].method).toBe('POST')
+    // The default beforeEach mock resolves no /users match, so this falls
+    // back to the bare account id -- Phase 2C's own fallback, exercised
+    // for real here rather than assumed.
+    expect(roll.rollerDisplayName).toBe('account-1')
   })
 })
 

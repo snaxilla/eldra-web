@@ -107,6 +107,14 @@ export type RollEventRecord = {
   // client-asserted; a future write path stamps this from the resolved
   // Principal, the same way every other Eldra mutation already does.
   rollerUserId: string
+  // A human-readable name for `rollerUserId` -- Phase 2C (Roll Tray),
+  // resolved server-side the same way `world-memberships.ts`'s own roster
+  // already resolves one (`resolveDisplayNames`/`formatAccountDisplayName`
+  // in server/utils/accounts.ts), so the Tray never shows a bare UUID.
+  // Falls back to `rollerUserId` itself when the account can't be
+  // resolved (deleted account, lookup failure), matching that same
+  // roster's own fallback -- never blank.
+  rollerDisplayName: string
   // Display only, e.g. "Stealth Check", "Longsword Attack" -- never parsed
   // back into meaning by anything that reads this record.
   label: string

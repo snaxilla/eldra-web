@@ -1,5 +1,6 @@
 // Unit tests for Roll Event persistence (server/utils/roll-events.ts).
-// Phase 1 of .github/docs/architecture/eldra-roll-system.md §14.
+// Phase 1 of .github/docs/architecture/eldra-roll-system.md §14, extended
+// by Phase 2C's `rollerDisplayName` enrichment (§9, the Roll Tray).
 //
 // directusServiceRequest is mocked at the module boundary (matching
 // tests/server/utils/world-memberships.test.ts and
@@ -9,6 +10,14 @@
 // mocked dice adapter would defeat the entire point of a "successful
 // custom roll" test, which is proving an actual server-authoritative roll
 // happened.
+//
+// Every mock implementation below now guards on `path === '/users'` first
+// (Phase 2C's `resolveOneDisplayName`/`resolveDisplayNames` calls hit that
+// path alongside `/items/roll_events`) and returns an empty user list --
+// these tests assert on the ROLL, not on name resolution (which has its
+// own dedicated tests below), so an empty lookup (falling back to the bare
+// account id, exactly like `world-memberships.ts`'s own fallback) keeps
+// every existing assertion meaningful without re-deriving a real name.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -31,6 +40,13 @@ function jsonResponse(data: unknown) {
   return { data }
 }
 
+// Stands in for a Directus `/users` lookup with no matches -- every roller
+// then falls back to their bare account id, which is what most of these
+// (pre-existing) tests want: they assert on the roll, not on the name.
+function noUsersFound() {
+  return jsonResponse([])
+}
+
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
 })
@@ -38,6 +54,7 @@ beforeEach(() => {
 describe('createCustomRollEvent', () => {
   it('rolls a well-formed custom expression and persists a new row, never overwriting anything', async () => {
     directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       expect(path).toBe('/items/roll_events')
       expect(options.method).toBe('POST')
       // Round-trips exactly what was written, as Directus itself would.
@@ -71,14 +88,16 @@ describe('createCustomRollEvent', () => {
     expect(roll.modifiers).toEqual([3])
     expect(roll.total).toBe(group.total + 3)
 
-    // Exactly one Directus call -- a create, never an update.
-    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+    // Exactly one CREATE call against roll_events (plus the separate
+    // display-name lookup) -- never an update.
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(2)
     expect(directusServiceRequestMock.mock.calls[0]![1].method).toBe('POST')
   })
 
   it('never sends a client-influenced total/dice/seed -- every persisted number came from the adapter', async () => {
     let persistedBody: any
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       persistedBody = options.body
       return jsonResponse({ id: 'roll-2', ...options.body })
     })
@@ -125,6 +144,43 @@ describe('createCustomRollEvent', () => {
     expect(directusServiceRequestMock).not.toHaveBeenCalled()
   })
 
+  it('resolves the roller\'s real display name (Phase 2C, the Roll Tray\'s "Player name")', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') {
+        expect(options.query.filter).toEqual({ id: { _in: ['account-1'] } })
+        return jsonResponse([{ id: 'account-1', first_name: 'Ada', last_name: 'Lovelace' }])
+      }
+      return jsonResponse({ id: 'roll-4', ...options.body })
+    })
+
+    const roll = await createCustomRollEvent({
+      worldId: '5',
+      rollerUserId: 'account-1',
+      expression: '1d20',
+      label: 'Perception',
+      visibility: 'table'
+    })
+
+    expect(roll.rollerDisplayName).toBe('Ada Lovelace')
+  })
+
+  it('falls back to the bare account id when the roller cannot be resolved', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
+      return jsonResponse({ id: 'roll-5', ...options.body })
+    })
+
+    const roll = await createCustomRollEvent({
+      worldId: '5',
+      rollerUserId: 'deleted-account',
+      expression: '1d20',
+      label: 'Perception',
+      visibility: 'table'
+    })
+
+    expect(roll.rollerDisplayName).toBe('deleted-account')
+  })
+
   it('exposes no update or delete function -- append-only means there is nothing to overwrite a Roll Event with', async () => {
     const module = await import('../../../server/utils/roll-events')
     const exportNames = Object.keys(module)
@@ -160,7 +216,8 @@ describe('listRollEvents', () => {
   }
 
   it('hides a private roll from anyone but its own roller when the requester lacks world.roll.see_gm', async () => {
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       // Prove the visibility clause was actually sent to Directus, not
       // just applied after the fact client-side.
       expect(options.query.filter).toMatchObject({
@@ -189,7 +246,8 @@ describe('listRollEvents', () => {
   })
 
   it('adds no visibility filter at all for a requester holding world.roll.see_gm -- a GM sees every row', async () => {
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       const filter = options.query.filter
       const asString = JSON.stringify(filter)
       expect(asString).not.toContain('roller_user_id')
@@ -206,7 +264,8 @@ describe('listRollEvents', () => {
   })
 
   it('scopes to the given World, encounter, and actor character', async () => {
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       expect(options.query.filter).toMatchObject({
         _and: expect.arrayContaining([
           { world_id: { _eq: 5 } },
@@ -227,7 +286,8 @@ describe('listRollEvents', () => {
   })
 
   it('returns nextCursor only when more rows exist beyond the page, and null otherwise', async () => {
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       expect(options.query.limit).toBe(3) // pageSize(2) + 1
       return jsonResponse([row({ id: 'a' }), row({ id: 'b' }), row({ id: 'c' })])
     })
@@ -247,7 +307,9 @@ describe('listRollEvents', () => {
   })
 
   it('returns a null nextCursor when the page exactly exhausts the available rows', async () => {
-    directusServiceRequestMock.mockImplementation(async () => jsonResponse([row({ id: 'a' }), row({ id: 'b' })]))
+    directusServiceRequestMock.mockImplementation(async (path: string) =>
+      path === '/users' ? noUsersFound() : jsonResponse([row({ id: 'a' }), row({ id: 'b' })])
+    )
 
     const result = await listRollEvents({
       worldId: 5,
@@ -261,7 +323,8 @@ describe('listRollEvents', () => {
   })
 
   it('resuming from a cursor asks Directus for strictly-after rows in the same (created_at, id) order', async () => {
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       expect(options.query.sort).toEqual(['-created_at', '-id'])
       expect(options.query.filter).toMatchObject({
         _and: expect.arrayContaining([
@@ -288,7 +351,8 @@ describe('listRollEvents', () => {
   })
 
   it('clamps an out-of-range limit rather than trusting it verbatim', async () => {
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       expect(options.query.limit).toBeLessThanOrEqual(201) // MAX_ROLL_EVENTS_LIMIT(200) + 1
       return jsonResponse([])
     })
@@ -301,8 +365,28 @@ describe('listRollEvents', () => {
     })
   })
 
+  it('batch-resolves display names once per page, not once per row, deduping repeated rollers', async () => {
+    let usersCallCount = 0
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') {
+        usersCallCount += 1
+        // Both rows share 'account-1' -- the `_in` filter should ask once
+        // for the deduped set, not once per row.
+        expect(options.query.filter).toEqual({ id: { _in: ['account-1'] } })
+        return jsonResponse([{ id: 'account-1', first_name: 'Ada', last_name: 'Lovelace' }])
+      }
+      return jsonResponse([row({ id: 'a', roller_user_id: 'account-1' }), row({ id: 'b', roller_user_id: 'account-1' })])
+    })
+
+    const result = await listRollEvents({ worldId: 5, requesterAccountId: 'account-1', canSeeGm: true })
+
+    expect(usersCallCount).toBe(1)
+    expect(result.rolls.map((r) => r.rollerDisplayName)).toEqual(['Ada Lovelace', 'Ada Lovelace'])
+  })
+
   it('ignores an unparseable cursor rather than throwing, and starts from the beginning', async () => {
-    directusServiceRequestMock.mockImplementation(async (_path: string, options: any) => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
       const asString = JSON.stringify(options.query.filter)
       expect(asString).not.toContain('_lt')
       return jsonResponse([row()])

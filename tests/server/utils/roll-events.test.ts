@@ -1,6 +1,7 @@
 // Unit tests for Roll Event persistence (server/utils/roll-events.ts).
 // Phase 1 of .github/docs/architecture/eldra-roll-system.md §14, extended
-// by Phase 2C's `rollerDisplayName` enrichment (§9, the Roll Tray).
+// by Phase 2C's `rollerDisplayName` enrichment (§9, the Roll Tray) and
+// Phase 2D's realtime broadcast (§10).
 //
 // directusServiceRequest is mocked at the module boundary (matching
 // tests/server/utils/world-memberships.test.ts and
@@ -9,7 +10,11 @@
 // (app/lib/rolls/dice-adapter.ts, Phase 0) is exercised for REAL -- a
 // mocked dice adapter would defeat the entire point of a "successful
 // custom roll" test, which is proving an actual server-authoritative roll
-// happened.
+// happened. `broadcastRollEvent` (Phase 2D) is also mocked at the module
+// boundary -- this file proves persistence, not delivery
+// (tests/server/utils/roll-realtime-bridge.test.ts covers the broadcast
+// rule itself); it only asserts THAT persistence triggers a broadcast,
+// with the exact persisted record.
 //
 // Every mock implementation below now guards on `path === '/users'` first
 // (Phase 2C's `resolveOneDisplayName`/`resolveDisplayNames` calls hit that
@@ -21,12 +26,17 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { directusServiceRequestMock } = vi.hoisted(() => ({
-  directusServiceRequestMock: vi.fn()
+const { directusServiceRequestMock, broadcastRollEventMock } = vi.hoisted(() => ({
+  directusServiceRequestMock: vi.fn(),
+  broadcastRollEventMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/directus', () => ({
   directusServiceRequest: directusServiceRequestMock
+}))
+
+vi.mock('../../../server/utils/roll-realtime-bridge', () => ({
+  broadcastRollEvent: broadcastRollEventMock
 }))
 
 import {
@@ -49,6 +59,7 @@ function noUsersFound() {
 
 beforeEach(() => {
   directusServiceRequestMock.mockReset()
+  broadcastRollEventMock.mockReset()
 })
 
 describe('createCustomRollEvent', () => {
@@ -179,6 +190,38 @@ describe('createCustomRollEvent', () => {
     })
 
     expect(roll.rollerDisplayName).toBe('deleted-account')
+  })
+
+  it('broadcasts the exact persisted RollEventRecord after a successful roll (Phase 2D)', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
+      return jsonResponse({ id: 'roll-6', ...options.body })
+    })
+
+    const roll = await createCustomRollEvent({
+      worldId: '5',
+      rollerUserId: 'account-1',
+      expression: '1d20',
+      label: 'Perception',
+      visibility: 'table'
+    })
+
+    expect(broadcastRollEventMock).toHaveBeenCalledTimes(1)
+    expect(broadcastRollEventMock).toHaveBeenCalledWith(roll)
+  })
+
+  it('never broadcasts anything when the roll is rejected before persistence', async () => {
+    await expect(
+      createCustomRollEvent({
+        worldId: '5',
+        rollerUserId: 'account-1',
+        expression: 'not a formula',
+        label: 'Bad Roll',
+        visibility: 'private'
+      })
+    ).rejects.toMatchObject({ statusCode: 400 })
+
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
   })
 
   it('exposes no update or delete function -- append-only means there is nothing to overwrite a Roll Event with', async () => {

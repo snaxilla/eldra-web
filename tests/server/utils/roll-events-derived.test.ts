@@ -14,15 +14,18 @@
 // is the real formula, not a hand-built fake. `directusServiceRequest` is
 // mocked (Phase 1's own roll-events.test.ts precedent) -- no live Directus
 // call, and OpenDice's `rollFormula` is exercised for real, same reason
-// roll-events.test.ts gives for `createCustomRollEvent`.
+// roll-events.test.ts gives for `createCustomRollEvent`. `broadcastRollEvent`
+// (Phase 2D, §10) is mocked too -- delivery itself is
+// tests/server/utils/roll-realtime-bridge.test.ts's job.
 
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { assembleCharacterMock, getWorldRuntimeMock, directusServiceRequestMock } = vi.hoisted(() => ({
+const { assembleCharacterMock, getWorldRuntimeMock, directusServiceRequestMock, broadcastRollEventMock } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
-  directusServiceRequestMock: vi.fn()
+  directusServiceRequestMock: vi.fn(),
+  broadcastRollEventMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', async () => {
@@ -38,6 +41,10 @@ vi.mock('../../../server/utils/world-runtime-service', () => ({
 
 vi.mock('../../../server/utils/directus', () => ({
   directusServiceRequest: directusServiceRequestMock
+}))
+
+vi.mock('../../../server/utils/roll-realtime-bridge', () => ({
+  broadcastRollEvent: broadcastRollEventMock
 }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
@@ -124,6 +131,7 @@ beforeEach(() => {
   assembleCharacterMock.mockReset()
   getWorldRuntimeMock.mockReset()
   directusServiceRequestMock.mockReset()
+  broadcastRollEventMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -238,6 +246,20 @@ describe('createDerivedRollEvent -- skill', () => {
     // for real here rather than assumed.
     expect(roll.rollerDisplayName).toBe('account-1')
   })
+
+  it('broadcasts the exact persisted RollEventRecord after a successful derived roll (Phase 2D)', async () => {
+    const roll = await createDerivedRollEvent({
+      worldId: '5',
+      rollerUserId: 'account-1',
+      actorCharacterId: '42',
+      sourceType: 'ability',
+      sourceKey: 'value:ability.str.mod',
+      visibility: 'table'
+    })
+
+    expect(broadcastRollEventMock).toHaveBeenCalledTimes(1)
+    expect(broadcastRollEventMock).toHaveBeenCalledWith(roll)
+  })
 })
 
 describe('createDerivedRollEvent -- rejections', () => {
@@ -256,6 +278,7 @@ describe('createDerivedRollEvent -- rejections', () => {
     ).rejects.toMatchObject({ statusCode: 404 })
 
     expect(directusServiceRequestMock).not.toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
   })
 
   it('rejects with 409 when the World has no active Rules Package', async () => {
@@ -273,6 +296,7 @@ describe('createDerivedRollEvent -- rejections', () => {
     ).rejects.toMatchObject({ statusCode: 409 })
 
     expect(directusServiceRequestMock).not.toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
   })
 
   it('rejects a sourceKey this character\'s Rules Package does not declare with 400, and never persists anything', async () => {
@@ -286,6 +310,8 @@ describe('createDerivedRollEvent -- rejections', () => {
         visibility: 'private'
       })
     ).rejects.toMatchObject({ statusCode: 400 })
+
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
 
     expect(directusServiceRequestMock).not.toHaveBeenCalled()
   })

@@ -30,8 +30,22 @@
 // history/nextCursor/historyPending pattern, moved here so the Sandbox and
 // every sheet surface share ONE history/pagination implementation instead
 // of two ("Do NOT build two history UIs" -- Phase 2C's own instruction).
+//
+// PHASE 2D ADDITION: this composable now also subscribes to
+// GET /api/worlds/:id/rolls/stream (the SSE broadcast
+// server/utils/roll-realtime-bridge.ts feeds) automatically on mount and
+// unsubscribes automatically on unmount -- no caller action required
+// (this task's own CLIENT section). A broadcast roll is inserted through
+// the EXACT SAME `prependUniqueRoll` (app/lib/rolls/history.ts) a
+// successful `requestRoll` response already used, so `history` -- and
+// therefore WorldRollTray.vue, unmodified -- can never tell whether an
+// entry came from this client's own POST or another player's `table`
+// roll. Duplicate suppression (the requester's own roll, echoed back by
+// its own broadcast) is that same function's job, not a second check
+// here.
 
 import type { Ref } from 'vue'
+import { prependUniqueRoll } from '~/lib/rolls/history'
 import type { RollEventRecord, RollSourceType, RollVisibility } from '~/lib/rolls/types'
 
 export type RollRequestInput = {
@@ -107,7 +121,7 @@ export function useWorldRolls(worldId: Ref<string> | string) {
         body: input
       })
       result.value = roll
-      history.value = [roll, ...history.value]
+      history.value = prependUniqueRoll(history.value, roll)
       return roll
     } catch (caught) {
       error.value = extractRollErrorMessage(caught)
@@ -171,6 +185,52 @@ export function useWorldRolls(worldId: Ref<string> | string) {
       historyPending.value = false
     }
   }
+
+  // ---------------------------------------------------------------------
+  // Realtime -- GET /api/worlds/:id/rolls/stream (§10, Phase 2D). One
+  // EventSource per composable instance (matching one `useWorldRolls()`
+  // call per mounted roll-triggering page/component), opened on mount and
+  // closed on unmount -- `EventSource` is a browser-only API, and
+  // `onMounted`/`onBeforeUnmount` already guarantee this never runs
+  // during SSR.
+  // ---------------------------------------------------------------------
+
+  let eventSource: EventSource | null = null
+
+  function handleRollBroadcast(event: MessageEvent) {
+    try {
+      const payload = JSON.parse(event.data)
+      if (payload?.roll) {
+        history.value = prependUniqueRoll(history.value, payload.roll as RollEventRecord)
+      }
+    } catch {
+      // A malformed broadcast payload is not this client's problem to
+      // surface as an error -- the next well-formed event (or the next
+      // `refreshHistory`) recovers on its own.
+    }
+  }
+
+  function subscribeToRollBroadcasts() {
+    if (eventSource) return
+
+    eventSource = new EventSource(`/api/worlds/${resolvedWorldId()}/rolls/stream`)
+    eventSource.addEventListener('roll', handleRollBroadcast)
+    // No `onerror` handling beyond letting it exist: EventSource retries
+    // a dropped connection on its own (the platform's own reconnect,
+    // this task's own "disconnect/reconnect" behavior) -- there is
+    // nothing this composable needs to do differently while that
+    // happens, since `history` already reflects everything up to the
+    // drop and `refreshHistory`/`loadMoreHistory` remain available
+    // regardless of stream state.
+  }
+
+  function unsubscribeFromRollBroadcasts() {
+    eventSource?.close()
+    eventSource = null
+  }
+
+  onMounted(subscribeToRollBroadcasts)
+  onBeforeUnmount(unsubscribeFromRollBroadcasts)
 
   return {
     pending,

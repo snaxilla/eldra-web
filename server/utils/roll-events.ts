@@ -50,6 +50,15 @@
 // change) -- never routed through the capability-gated `GET /members`,
 // since knowing who rolled is not roster/invite data.
 //
+// PHASE 2D ADDITION: every write path (`createCustomRollEvent`,
+// `createDerivedRollEvent`) now calls `broadcastRollEvent`
+// (server/utils/roll-realtime-bridge.ts) immediately after persisting,
+// with the exact same fully-resolved `RollEventRecord` it returns to the
+// requester -- "the broadcaster should only deliver already-persisted
+// RollEvents" (this task's own SERVER section). No business logic moves
+// into the bridge: it never decides whether a roll happened, only who
+// among already-connected clients is allowed to see this one.
+//
 // DIRECTUS ACCESS: `directusServiceRequest` (server/utils/directus.ts) --
 // CLAUDE.md's "the only sanctioned way to talk to Directus" -- never a new
 // local `dxFetch`. The service token, not the session-forwarding
@@ -81,6 +90,7 @@ import type { RuleCategory } from '../../app/lib/rules/types'
 import { directusServiceRequest } from './directus'
 import { getDerivedCharacter, type DerivedCharacterResult } from './character-derived'
 import { resolveDisplayNames } from './world-memberships'
+import { broadcastRollEvent } from './roll-realtime-bridge'
 
 const COLLECTION = 'roll_events'
 
@@ -237,7 +247,9 @@ export async function createCustomRollEvent(input: CreateCustomRollInput): Promi
     resolveOneDisplayName(input.rollerUserId)
   ])
 
-  return fromPersistenceRow(res?.data, displayName)
+  const roll = fromPersistenceRow(res?.data, displayName)
+  broadcastRollEvent(roll)
+  return roll
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +389,9 @@ export async function createDerivedRollEvent(input: CreateDerivedRollInput): Pro
     resolveOneDisplayName(input.rollerUserId)
   ])
 
-  return fromPersistenceRow(res?.data, displayName)
+  const roll = fromPersistenceRow(res?.data, displayName)
+  broadcastRollEvent(roll)
+  return roll
 }
 
 // ---------------------------------------------------------------------------

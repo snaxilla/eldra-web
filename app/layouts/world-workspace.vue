@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// Eldra Roll System Phase 3A -- WorldDiceOverlay is mounted exactly once
+// here (see that component's own header for why the World layout, not any
+// individual page, is its home).
+import WorldDiceOverlay from '~/components/world/WorldDiceOverlay.vue'
+
 const route = useRoute()
 
 const worldId = computed(() => String(route.params.id || ''))
@@ -318,5 +323,7 @@ const backgroundImageUrl = computed(() => {
         </div>
       </div>
     </div>
+
+    <WorldDiceOverlay />
   </div>
 </template>

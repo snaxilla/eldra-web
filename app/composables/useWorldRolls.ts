@@ -43,8 +43,27 @@
 // roll. Duplicate suppression (the requester's own roll, echoed back by
 // its own broadcast) is that same function's job, not a second check
 // here.
+//
+// PHASE 3A ADDITION (the Dice Presentation Layer,
+// eldra-roll-system.md §11): a NEWLY-ARRIVED roll -- from `requestRoll`'s
+// own POST response, or from the SSE broadcast handler -- no longer goes
+// straight into `history`. It is first handed to the shared
+// `useDiceAnimationQueue()` singleton (~/composables/useDiceAnimationQueue.ts)
+// via `revealAfterAnimation`, and only added to `history` once that
+// queue's own `enqueue()` Promise resolves -- i.e. once the placeholder
+// animation (or, later, a real renderer) has actually played. This is
+// "the Roll Tray should now own the animation stage... New behavior:
+// Animation placeholder -> History entry" cashed out exactly: this file
+// still owns history/reveal-timing, the queue still owns
+// animation/timing/queue/cleanup, and neither reaches into the other's
+// state. `refreshHistory`/`loadMoreHistory` (bulk, historical pages) are
+// deliberately UNCHANGED -- animating dozens of already-old rolls on
+// initial load or "Load More" would be exactly the unwanted spectacle
+// this phase's own NO RENDERER YET section warns against; only rolls that
+// "just happened" pass through the queue at all.
 
 import type { Ref } from 'vue'
+import { useDiceAnimationQueue } from '~/composables/useDiceAnimationQueue'
 import { prependUniqueRoll } from '~/lib/rolls/history'
 import type { RollEventRecord, RollSourceType, RollVisibility } from '~/lib/rolls/types'
 
@@ -106,6 +125,23 @@ export function useWorldRolls(worldId: Ref<string> | string) {
     return typeof worldId === 'string' ? worldId : worldId.value
   }
 
+  // The one shared, world-scoped animation queue (Phase 3A) -- calling
+  // useDiceAnimationQueue() here does not create a new one; it returns
+  // the exact same singleton WorldDiceOverlay.vue reads.
+  const diceQueue = useDiceAnimationQueue()
+
+  // Queues a just-arrived roll for celebration and reveals it in
+  // `history` only once its turn is over -- never rejects (see
+  // useDiceAnimationQueue.ts's own `enqueue`: a torn-down overlay still
+  // resolves every waiting request, just with `completed: false`), so
+  // gameplay truth reaching the Tray is never actually blocked on
+  // presentation succeeding.
+  function revealAfterAnimation(roll: RollEventRecord) {
+    diceQueue.enqueue({ id: roll.id, roll }).then(() => {
+      history.value = prependUniqueRoll(history.value, roll)
+    })
+  }
+
   // POST /api/worlds/:id/rolls -- the one write path every roll-triggering
   // control calls. Throws on a server rejection (a stale sourceKey, a
   // capability failure, a malformed custom expression) after recording the
@@ -121,7 +157,7 @@ export function useWorldRolls(worldId: Ref<string> | string) {
         body: input
       })
       result.value = roll
-      history.value = prependUniqueRoll(history.value, roll)
+      revealAfterAnimation(roll)
       return roll
     } catch (caught) {
       error.value = extractRollErrorMessage(caught)
@@ -201,7 +237,7 @@ export function useWorldRolls(worldId: Ref<string> | string) {
     try {
       const payload = JSON.parse(event.data)
       if (payload?.roll) {
-        history.value = prependUniqueRoll(history.value, payload.roll as RollEventRecord)
+        revealAfterAnimation(payload.roll as RollEventRecord)
       }
     } catch {
       // A malformed broadcast payload is not this client's problem to

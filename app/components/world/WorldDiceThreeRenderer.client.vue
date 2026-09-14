@@ -97,6 +97,50 @@
 // "asleep" and "how bouncy a landing is" move -- squarely "read the
 // renderer source, determine which parameters control settle threshold",
 // this phase's own explicit instruction.
+//
+// ---------------------------------------------------------------------------
+// ROLL SYSTEM PHASE 3E.1 -- RENDERER COMPLETION INVESTIGATION
+// ---------------------------------------------------------------------------
+// Real browser observation: the die is "often still rotating or visually
+// ambiguous" when the animation ends -- Phase 3D's own tuning was too
+// aggressive on TWO separate, independently-traceable axes, not one:
+//
+// 1. `iterationLimit` (this file's own `iterationLimitForDiceCount`) was
+//    set as though it were the PRIMARY duration control (48-78 frames,
+//    tightly matched to the 600-800ms target) rather than the rare-outlier
+//    SAFETY NET `DiceBox.js`'s own `throwFinished()` design implies
+//    (`forcedFinish = this.iteration > this.iterationLimit` converts every
+//    die to KINEMATIC immediately, whatever its current motion, the instant
+//    this fires -- an abrupt freeze, not a settle). Ordinary variance in a
+//    throw's random toss vector/collision pattern means a normal fraction
+//    of throws legitimately need more frames than a tightly-matched ceiling
+//    allows, and those throws are exactly the ones this task's own
+//    BACKGROUND describes: visibly still moving when the animation ends.
+// 2. `sleepSpeedLimit: 140` / `sleepTimeLimit: 0.12` made "asleep" fire at
+//    a residual velocity/confirmation-time close enough to "still visibly
+//    moving" that even throws NOT hitting the iteration ceiling could still
+//    read as ambiguous -- correctly identified in Phase 3E, but Phase 3E's
+//    own fix (a fixed post-signal beat in the ADAPTER) could only delay
+//    revealing an unconvincing ending, never make the ending itself look
+//    convincing. This task's own IMPORTANT section is explicit that this
+//    was the wrong lever to keep pulling.
+//
+// PROOF, NOT GUESSWORK: `roll()` below now logs, after every throw,
+// `instance.iteration` against `instance.iterationLimit` -- `DiceBox.js`'s
+// own `animateThrow()` increments `iteration` once per rendered frame and
+// the loop only exits once `throwFinished()` returns true, so
+// `iteration >= iterationLimit` at exit is direct, verifiable evidence the
+// ceiling (not natural sleep) ended that specific throw, and
+// `iteration < iterationLimit` is equally direct evidence physics genuinely
+// settled first. NO alternate completion signal exists to switch to --
+// dice-box-threejs exposes exactly one ("every die asleep, or forced") --
+// so the fix is REBALANCING both axes toward "physics settling naturally,
+// well inside a now-generous ceiling" rather than either accepting a
+// premature "asleep" or a mid-motion forced freeze. Per this task's own
+// explicit preference ("a 900ms satisfying animation" over "a 650ms
+// awkward one"), every value below is deliberately less aggressive than
+// Phase 3D, not reverted to dice-box-threejs's own original (slow)
+// defaults.
 const containerId = `eldra-dice-three-${Math.random().toString(36).slice(2)}`
 
 const error = ref('')
@@ -106,37 +150,45 @@ let DiceBoxCtor: any = null
 let box: any = null
 let readyPromise: Promise<any> | null = null
 
-// Roll System Phase 3D -- how long a die is allowed to keep physically
+// Roll System Phase 3E.1 -- how long a die is allowed to keep physically
 // settling before this component forcibly ends its turn (dice-box-threejs's
 // own PUBLIC `iterationLimit` config: one unit is one rendered physics
 // frame at its `framerate` of 1/60s, so `60` iterations is ~1 real second).
-// This is a CEILING, not a target -- the sleep-threshold and restitution
-// tuning below aim to make dice settle naturally well inside these numbers
-// most of the time; this only protects the outlier throw (a die balanced
-// oddly, an unusual collision) from running away toward dice-box-threejs's
-// own default of 1000 iterations (~16.6s). Scaled by dice count per this
-// phase's own MULTIPLE DICE section -- more dice colliding naturally take
-// a little longer to visually resolve, and forcing a 10-die pool to freeze
-// at the same instant as a lone d20 would look abrupt, not decisive.
+// THIS IS NOW GENUINELY A SAFETY NET, NOT A DURATION CONTROL -- Phase 3D's
+// own tighter numbers (48-78, this file's own git history) were being hit
+// by ordinary throws, not just outliers, forcibly freezing dice mid-motion
+// (this task's own investigation, see this file's own header). Raised
+// generously here so the sleep-threshold tuning below is what normally
+// decides when a throw ends; this only protects a genuinely pathological
+// throw (a die balanced oddly, an unusual collision) from running away
+// toward dice-box-threejs's own default of 1000 iterations (~16.6s).
+// Scaled by dice count per Phase 3D's own MULTIPLE DICE section -- more
+// dice colliding naturally take a little longer to visually resolve.
 function iterationLimitForDiceCount(diceCount: number): number {
-  if (diceCount <= 1) return 48 // ~800ms ceiling
-  if (diceCount <= 3) return 54 // ~900ms ceiling
-  if (diceCount <= 10) return 66 // ~1100ms ceiling
-  return 78 // ~1300ms ceiling for very large pools
+  if (diceCount <= 1) return 75 // ~1250ms safety net
+  if (diceCount <= 3) return 85 // ~1417ms safety net
+  if (diceCount <= 10) return 100 // ~1667ms safety net
+  return 120 // ~2000ms safety net for very large pools
 }
 
-// Roll System Phase 3D -- see this file's own header for the full citation.
-// Each die's cannon-es Body is created inside dice-box-threejs's own
-// `spawnDice()` with FOUR hardcoded values this component can only reach
-// AFTER they exist, with no config hook to set any of them up front:
-//   - sleepSpeedLimit: 75 / sleepTimeLimit: 0.9 -- how still, and for how
-//     long, before physics calls a die "asleep" (see this file's own
-//     header: 0.9s alone blows the entire animation budget).
-//   - linearDamping: 0.1 / angularDamping: 0.1 -- how much velocity/spin a
-//     die loses per physics step independent of collisions ("air
-//     resistance"). Low damping lets a die keep bouncing/spinning near-
-//     full-strength for many collisions before it ever gets slow enough to
-//     start the sleep countdown at all.
+// Roll System Phase 3D, REBALANCED in Phase 3E.1 -- see this file's own
+// header for the full citation and investigation. Each die's cannon-es
+// Body is created inside dice-box-threejs's own `spawnDice()` with FOUR
+// hardcoded values this component can only reach AFTER they exist, with no
+// config hook to set any of them up front:
+//   - sleepSpeedLimit / sleepTimeLimit -- how still, and for how long,
+//     before physics calls a die "asleep." Phase 3D's 140/0.12 let "asleep"
+//     fire while a die could still be visibly moving -- exactly this
+//     task's "visually ambiguous" complaint. Dialed back toward (not all
+//     the way to) dice-box-threejs's own original 75/0.9 defaults: still
+//     far faster than doing nothing, but a die must now actually be near-
+//     motionless, and stay that way for a perceptible beat, before physics
+//     calls it done.
+//   - linearDamping / angularDamping -- how much velocity/spin a die loses
+//     per physics step independent of collisions ("air resistance"). Phase
+//     3D's 0.5/0.5 bled energy fast enough to make the tumble itself read
+//     as abrupt/truncated rather than a natural toss. Lowered to let the
+//     die decelerate more like an actual thrown object.
 // Called once per roll, right after `instance.roll()` has synchronously
 // spawned this throw's FINAL dice (see `roll()` below for exactly why that
 // timing is safe, and DiceBox.js's own `spawnDice()`: every call --
@@ -148,10 +200,10 @@ function applyFastSettleTuning(instance: any): void {
   for (const dicemesh of instance?.diceList ?? []) {
     const dieBody = dicemesh?.body
     if (!dieBody) continue
-    dieBody.sleepSpeedLimit = 140
-    dieBody.sleepTimeLimit = 0.12
-    dieBody.linearDamping = 0.5
-    dieBody.angularDamping = 0.5
+    dieBody.sleepSpeedLimit = 95
+    dieBody.sleepTimeLimit = 0.35
+    dieBody.linearDamping = 0.3
+    dieBody.angularDamping = 0.3
   }
 }
 
@@ -186,26 +238,25 @@ async function ensureBox(): Promise<any> {
     // install; a themed/skinned die is explicitly Phase 8 (Dice Skins),
     // named as future scope, not this phase's job.
     //
-    // ROLL SYSTEM PHASE 3D -- animation duration tuning (target 600-800ms,
-    // "satisfying, not cinematic," "reduce unnecessary motion, increase
-    // decisiveness"). dice-box-threejs's own defaults (gravity_multiplier:
-    // 400, strength: 1 -- see its DiceBox.js defaultConfig) are tuned for a
-    // slower, more dramatic tabletop-simulator throw; Phase 3C's own more
-    // moderate retune (800/0.6) measured at ~2800-3200ms -- still far over
-    // budget, which is what led to actually reading the source for Phase
-    // 3D rather than tuning further blind (see this file's own header: the
-    // dominant cost turned out to be the hardcoded sleep-threshold wait
-    // below, not the tumble itself). `gravity_multiplier` raised further
-    // and `strength` (toss force) lowered further here shortens the ACTIVE
-    // tumbling phase specifically; none of this changes the predetermined-
-    // face guarantee -- see this file's own roll() logging to confirm the
+    // ROLL SYSTEM PHASE 3D, REBALANCED IN PHASE 3E.1 -- animation duration
+    // tuning. dice-box-threejs's own defaults (gravity_multiplier: 400,
+    // strength: 1 -- see its DiceBox.js defaultConfig) are tuned for a
+    // slower, more dramatic tabletop-simulator throw. Phase 3D pushed both
+    // aggressively (1400/0.4) chasing a tight 600-800ms target and produced
+    // a throw so short/steep it read as abrupt rather than satisfying (this
+    // task's own investigation). Moderated here toward a throw with a real,
+    // readable arc -- still meaningfully faster than dice-box-threejs's own
+    // defaults, just no longer fighting the tumble itself to hit a number;
+    // the sleep-threshold tuning above (not raw fall speed) is now the
+    // primary duration lever. None of this changes the predetermined-face
+    // guarantee -- see this file's own roll() logging to confirm the
     // resulting real-world duration and retune further if needed.
     const instance = new DiceBoxCtor(`#${containerId}`, {
       theme_colorset: 'white',
       theme_material: 'plastic',
       sounds: false,
-      gravity_multiplier: 1400,
-      strength: 0.4
+      gravity_multiplier: 1000,
+      strength: 0.5
     })
 
     // THE ACTUAL RUNTIME BUG (Phase 3B.2): the constructor above only
@@ -224,18 +275,19 @@ async function ensureBox(): Promise<any> {
     // to the placeholder via `onRendererFailed`.
     await instance.initialize()
 
-    // Roll System Phase 3D -- see this file's own header. `makeWorldBox()`
-    // (called once, inside `initialize()`) registers desk/wall/dice contact
-    // materials with hardcoded restitution (bounciness) of 0.5-1.0 -- no
-    // config hook exposes these either. `world.contactmaterials` is a
-    // standard, public `cannon-es` `World` property (an ordinary array of
-    // `ContactMaterial`, each with a plain, documented `.restitution`
-    // field) -- capping it low here, ONCE, for the lifetime of this
-    // renderer instance, means every die loses most of its bounce on
-    // landing instead of bouncing repeatedly before settling, directly
-    // satisfying "reduce unnecessary motion... not long tumbles."
+    // Roll System Phase 3D, REBALANCED IN PHASE 3E.1 -- see this file's own
+    // header. `makeWorldBox()` (called once, inside `initialize()`)
+    // registers desk/wall/dice contact materials with hardcoded restitution
+    // (bounciness) of 0.5-1.0 -- no config hook exposes these either.
+    // `world.contactmaterials` is a standard, public `cannon-es` `World`
+    // property (an ordinary array of `ContactMaterial`, each with a plain,
+    // documented `.restitution` field). Phase 3D capped this at 0.15,
+    // steep enough that a die's landing could look like it stuck rather
+    // than settled; raised slightly here so one or two real, visible
+    // bounces remain -- reading as an actual landing, not "not long
+    // tumbles" taken to the point of no motion at all.
     for (const contactMaterial of instance.world?.contactmaterials ?? []) {
-      contactMaterial.restitution = Math.min(contactMaterial.restitution, 0.15)
+      contactMaterial.restitution = Math.min(contactMaterial.restitution, 0.22)
     }
 
     const tInitialized = performance.now()
@@ -286,7 +338,7 @@ async function roll(notation: string, diceCount: number): Promise<void> {
     // not the spawning). This means the dice bodies already exist, with
     // their default sleep thresholds, in the same synchronous tick this
     // call returns its (still-pending) Promise -- exactly the window
-    // `shortenSettleThreshold` needs to patch them before any settling has
+    // `applyFastSettleTuning` needs to patch them before any settling has
     // had a chance to begin.
     const rollPromise = instance.roll(notation)
     applyFastSettleTuning(instance)
@@ -294,15 +346,28 @@ async function roll(notation: string, diceCount: number): Promise<void> {
     await rollPromise
     const tDone = performance.now()
 
-    // Roll System Phase 3D -- actual animation duration, measured, not
-    // guessed. Target 600-800ms. The `wasAlreadyInitialized` split matters:
-    // on the very first roll this page view, `tReady - tStart` also
-    // includes the one-time init cost logged above, which would otherwise
-    // make the FIRST roll look like a slow animation when it is actually a
-    // slow (one-time) setup.
+    // Roll System Phase 3E.1 -- PROOF, not guesswork, of which mechanism
+    // actually ended THIS throw. `DiceBox.js`'s own `animateThrow()`
+    // increments `instance.iteration` once per rendered frame and the loop
+    // only exits once `throwFinished()` returns true; `forcedFinish` there
+    // is exactly `this.iteration > this.iterationLimit`. So reading both
+    // values the instant `roll()` resolves says, unambiguously, which path
+    // fired for this specific throw -- no assumption, no guess. If
+    // `endedBy` ever reads "iterationLimit" for an ordinary throw (not an
+    // unusual outlier), the ceiling in `iterationLimitForDiceCount` is
+    // still too tight and should be raised further; this line is what
+    // proves that rather than requiring another round of speculation.
+    const endedBy = instance.iteration >= instance.iterationLimit ? 'iterationLimit (forced)' : 'physics settled naturally'
+
+    // Actual animation duration, measured, not guessed. The
+    // `wasAlreadyInitialized` split matters: on the very first roll this
+    // page view, `tReady - tStart` also includes the one-time init cost
+    // logged above, which would otherwise make the FIRST roll look like a
+    // slow animation when it is actually a slow (one-time) setup.
     console.log(
-      `[roll-perf] WorldDiceThreeRenderer.roll("${notation}", diceCount=${diceCount}, iterationLimit=${instance.iterationLimit}): animation=${(tDone - tReady).toFixed(1)}ms` +
-      (wasAlreadyInitialized ? '' : ` (renderer init included in a separate log line above, not in this number)`)
+      `[roll-perf] WorldDiceThreeRenderer.roll("${notation}", diceCount=${diceCount}): animation=${(tDone - tReady).toFixed(1)}ms, ` +
+      `endedBy=${endedBy} (iteration=${instance.iteration}/${instance.iterationLimit})` +
+      (wasAlreadyInitialized ? '' : ' (renderer init included in a separate log line above, not in this number)')
     )
   } catch (err: any) {
     error.value = err?.message || '3D dice failed to render.'

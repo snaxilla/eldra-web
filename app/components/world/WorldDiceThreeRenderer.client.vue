@@ -105,7 +105,9 @@
 // ambiguous" when the animation ends -- Phase 3D's own tuning was too
 // aggressive on TWO separate, independently-traceable axes, not one:
 //
-// 1. `iterationLimit` (this file's own `iterationLimitForDiceCount`) was
+// 1. `iterationLimit` (then this file's own `iterationLimitForDiceCount`,
+//    removed outright in Phase 3F below -- it turned out to be a
+//    determinism hazard, not merely a mis-sized ceiling) was
 //    set as though it were the PRIMARY duration control (48-78 frames,
 //    tightly matched to the 600-800ms target) rather than the rare-outlier
 //    SAFETY NET `DiceBox.js`'s own `throwFinished()` design implies
@@ -141,6 +143,65 @@
 // awkward one"), every value below is deliberately less aggressive than
 // Phase 3D, not reverted to dice-box-threejs's own original (slow)
 // defaults.
+//
+// ---------------------------------------------------------------------------
+// ROLL SYSTEM PHASE 3F -- DETERMINISTIC FACE MAPPING (THE REAL ROOT CAUSE)
+// ---------------------------------------------------------------------------
+// SYMPTOM: the visible face frequently disagreed with the authoritative
+// RollEventRecord (tray 5 / die 20, tray 15 / die 2). The NOTATION was never
+// wrong -- `@20` really does mean "display 20" (proven from source in
+// worldDiceThreeRendererAdapter.ts's own Phase 3F header). What was wrong was
+// THIS FILE, and specifically the two paragraphs directly above.
+//
+// HOW dice-box-threejs ACTUALLY GUARANTEES A FORCED FACE -- `rollDice()`, in
+// order, all SYNCHRONOUS:
+//   1. `spawnDice(vectors[i])`      -- create each die's cannon-es Body.
+//   2. `simulateThrow()`            -- run the physics SILENTLY to rest, and
+//                                      record which face each die naturally
+//                                      landed on (`storeRolledValue`).
+//   3. `spawnDice(vectors[i], die)` -- DESTROY and re-create every Body from
+//                                      the identical starting vectors.
+//   4. `swapDiceFace(die, result[i])` -- swap textures so the face predicted
+//                                      in step 2 now PRINTS the forced value.
+//   5. `animateThrow()`             -- replay the same throw, visibly.
+// The entire guarantee rests on step 5 reproducing step 2 EXACTLY. Same
+// starting vectors, same world, same body parameters => same resting
+// orientation => the face step 4 re-textured is the face that ends up up.
+// It is deterministic replay, not a constraint solver: nothing re-checks the
+// result afterwards, and nothing can correct it.
+//
+// WHAT PHASE 3D/3E.1 BROKE: `applyFastSettleTuning()` was called from
+// `roll()` AFTER `instance.roll(notation)` returned -- i.e. after step 5 had
+// already been scheduled, and long after step 2 had already decided the
+// answer. The old comment here reasoned that this was safe because step 3
+// re-creates the bodies, so the patch "always reaches the real bodies the
+// visible animation uses, never the discarded silent-simulation ones." That
+// is true, and it is exactly the bug: it reaches ONLY the visible pass.
+// Step 2 ran with cannon-es's spawn defaults (sleepSpeedLimit 75,
+// sleepTimeLimit 0.9, damping 0.1/0.1) while step 5 ran with 95/0.35 and
+// damping 0.3/0.3. Different damping is a different trajectory, so the die
+// came to rest in a DIFFERENT orientation than the one whose texture had
+// been swapped -- a visibly wrong face, with no error anywhere.
+// `iterationLimit` compounded it: `throwFinished()`'s
+// `forcedFinish = this.iteration > this.iterationLimit` applies to BOTH
+// passes, but `simulateThrow()` increments `iteration` once per PHYSICS STEP
+// while `animateThrow()` increments it once per RENDERED FRAME and steps
+// physics `Math.floor(elapsed / framerate)` times per frame. At 75-120 the
+// ceiling was being hit routinely, and any dropped frame made the visible
+// pass freeze at a different physics step than the silent one -- a second,
+// independent source of divergence.
+//
+// THE FIX, AND WHY IT IS NOT A PHYSICS CHANGE: every tuning VALUE below is
+// byte-for-byte the Phase 3E.1 value -- sleepSpeedLimit 95, sleepTimeLimit
+// 0.35, damping 0.3/0.3, gravity_multiplier 1000, strength 0.5, restitution
+// cap 0.22. Nothing about the feel is re-tuned. What changes is WHEN the
+// tuning is applied: it now hooks `spawnDice` itself, so steps 1 and 3 both
+// produce bodies with identical parameters and steps 2 and 5 simulate the
+// SAME physics. The per-roll `iterationLimit` override is removed so natural
+// sleep -- which is a pure function of that identical trajectory, and so
+// identical in both passes -- is what ends a throw, instead of a
+// frame-jitter-dependent forced freeze. This is the same shape of fix as
+// Phase 3E: change WHEN, not WHAT.
 const containerId = `eldra-dice-three-${Math.random().toString(36).slice(2)}`
 
 const error = ref('')
@@ -150,53 +211,22 @@ let DiceBoxCtor: any = null
 let box: any = null
 let readyPromise: Promise<any> | null = null
 
-// Roll System Phase 3E.1 -- how long a die is allowed to keep physically
-// settling before this component forcibly ends its turn (dice-box-threejs's
-// own PUBLIC `iterationLimit` config: one unit is one rendered physics
-// frame at its `framerate` of 1/60s, so `60` iterations is ~1 real second).
-// THIS IS NOW GENUINELY A SAFETY NET, NOT A DURATION CONTROL -- Phase 3D's
-// own tighter numbers (48-78, this file's own git history) were being hit
-// by ordinary throws, not just outliers, forcibly freezing dice mid-motion
-// (this task's own investigation, see this file's own header). Raised
-// generously here so the sleep-threshold tuning below is what normally
-// decides when a throw ends; this only protects a genuinely pathological
-// throw (a die balanced oddly, an unusual collision) from running away
-// toward dice-box-threejs's own default of 1000 iterations (~16.6s).
-// Scaled by dice count per Phase 3D's own MULTIPLE DICE section -- more
-// dice colliding naturally take a little longer to visually resolve.
-function iterationLimitForDiceCount(diceCount: number): number {
-  if (diceCount <= 1) return 75 // ~1250ms safety net
-  if (diceCount <= 3) return 85 // ~1417ms safety net
-  if (diceCount <= 10) return 100 // ~1667ms safety net
-  return 120 // ~2000ms safety net for very large pools
-}
-
-// Roll System Phase 3D, REBALANCED in Phase 3E.1 -- see this file's own
-// header for the full citation and investigation. Each die's cannon-es
-// Body is created inside dice-box-threejs's own `spawnDice()` with FOUR
-// hardcoded values this component can only reach AFTER they exist, with no
-// config hook to set any of them up front:
+// Roll System Phase 3D, rebalanced in Phase 3E.1, RE-SITED in Phase 3F.
+// Each die's cannon-es Body is created inside dice-box-threejs's own
+// `spawnDice()` with these values hardcoded and no config hook to set any
+// of them up front:
 //   - sleepSpeedLimit / sleepTimeLimit -- how still, and for how long,
-//     before physics calls a die "asleep." Phase 3D's 140/0.12 let "asleep"
-//     fire while a die could still be visibly moving -- exactly this
-//     task's "visually ambiguous" complaint. Dialed back toward (not all
-//     the way to) dice-box-threejs's own original 75/0.9 defaults: still
-//     far faster than doing nothing, but a die must now actually be near-
-//     motionless, and stay that way for a perceptible beat, before physics
-//     calls it done.
-//   - linearDamping / angularDamping -- how much velocity/spin a die loses
-//     per physics step independent of collisions ("air resistance"). Phase
-//     3D's 0.5/0.5 bled energy fast enough to make the tumble itself read
-//     as abrupt/truncated rather than a natural toss. Lowered to let the
-//     die decelerate more like an actual thrown object.
-// Called once per roll, right after `instance.roll()` has synchronously
-// spawned this throw's FINAL dice (see `roll()` below for exactly why that
-// timing is safe, and DiceBox.js's own `spawnDice()`: every call --
-// including the internal reset pass before the visible animation --
-// constructs a brand-new Body with these same defaults, so patching after
-// `roll()` returns always reaches the real bodies the visible animation
-// uses, never the discarded silent-simulation ones).
-function applyFastSettleTuning(instance: any): void {
+//     before physics calls a die "asleep." dice-box-threejs's own spawn
+//     defaults are 75 / 0.9s; 0.9s of waiting AFTER a die has visually
+//     stopped is pure dead time (Phase 3D's original finding, unchanged).
+//   - linearDamping / angularDamping -- velocity/spin lost per physics step
+//     independent of collisions ("air resistance"). Spawn default 0.1/0.1.
+// THE VALUES BELOW ARE UNCHANGED FROM PHASE 3E.1. Phase 3F changes only
+// where they are applied from -- see this file's own header. Applying them
+// inside `spawnDice` is what makes the silent pre-simulation and the
+// visible animation run IDENTICAL physics, which is the entire basis of
+// dice-box-threejs's forced-face guarantee.
+function applySettleTuningToBodies(instance: any): void {
   for (const dicemesh of instance?.diceList ?? []) {
     const dieBody = dicemesh?.body
     if (!dieBody) continue
@@ -204,6 +234,33 @@ function applyFastSettleTuning(instance: any): void {
     dieBody.sleepTimeLimit = 0.35
     dieBody.linearDamping = 0.3
     dieBody.angularDamping = 0.3
+  }
+}
+
+// Roll System Phase 3F -- installs the tuning above as a `spawnDice` hook,
+// exactly once per renderer instance.
+//
+// `spawnDice` is the ONE place dice-box-threejs constructs a die's Body, and
+// it is called in BOTH of `rollDice()`'s passes (before `simulateThrow()`,
+// and again to reset every Body before `animateThrow()`). Wrapping it is
+// therefore the only point at which a caller can guarantee both passes see
+// the same physics -- there is no config hook, and patching after `roll()`
+// returns provably reaches only the second pass (that was the bug).
+//
+// The wrapper re-applies to every die in `diceList` rather than just the one
+// spawned, because `spawnDice` pushes to `diceList` only on first creation
+// and mutates in place on the reset pass -- walking the list covers both
+// shapes without depending on which argument form was used. The list is at
+// most a handful of dice, so the cost is irrelevant next to the physics step
+// it precedes.
+function installSettleTuningHook(instance: any): void {
+  const originalSpawnDice = instance?.spawnDice
+  if (typeof originalSpawnDice !== 'function') return
+
+  instance.spawnDice = function patchedSpawnDice(...args: any[]) {
+    const spawned = originalSpawnDice.apply(this, args)
+    applySettleTuningToBodies(this)
+    return spawned
   }
 }
 
@@ -275,6 +332,12 @@ async function ensureBox(): Promise<any> {
     // to the placeholder via `onRendererFailed`.
     await instance.initialize()
 
+    // Roll System Phase 3F -- must be installed BEFORE the first `roll()`,
+    // since `roll()` synchronously runs both spawn passes and the silent
+    // pre-simulation between them. Installed once per instance, here,
+    // alongside the other one-time world setup.
+    installSettleTuningHook(instance)
+
     // Roll System Phase 3D, REBALANCED IN PHASE 3E.1 -- see this file's own
     // header. `makeWorldBox()` (called once, inside `initialize()`)
     // registers desk/wall/dice contact materials with hardcoded restitution
@@ -309,8 +372,10 @@ async function ensureBox(): Promise<any> {
 // dice-box-threejs notation string (see worldDiceThreeRendererAdapter.ts's
 // own buildPredeterminedNotation) -- this function has no idea what a
 // RollEventRecord is, matching this file's own header note. `diceCount`
-// (Phase 3D) sizes this one roll's own settle ceiling -- see
-// iterationLimitForDiceCount's own header.
+// is retained for the perf log only -- Phase 3F removed the per-roll
+// settle ceiling it used to size (see this file's own Phase 3F header),
+// but the adapter's `roll(notation, diceCount)` contract is deliberately
+// left alone rather than churned for a diagnostic.
 async function roll(notation: string, diceCount: number): Promise<void> {
   error.value = ''
   const tStart = performance.now()
@@ -324,26 +389,29 @@ async function roll(notation: string, diceCount: number): Promise<void> {
       instance.clearDice()
     }
 
-    // Read fresh by `throwFinished()` on every frame (a plain instance
-    // property dice-box-threejs's own config already assigns this way) --
-    // safe to set per-roll with no re-initialization.
-    instance.iterationLimit = iterationLimitForDiceCount(diceCount)
-
-    // `instance.roll(notation)` is an `async` function with no `await`
-    // before it synchronously calls `rollDice()`, which synchronously
-    // spawns every die's `cannon-es` Body BEFORE the first
-    // `requestAnimationFrame` of the visible animation ever fires (source:
-    // DiceBox.js's own `roll()`/`rollDice()` -- the `new Promise(executor)`
-    // executor runs synchronously, and `animateThrow` is what's deferred,
-    // not the spawning). This means the dice bodies already exist, with
-    // their default sleep thresholds, in the same synchronous tick this
-    // call returns its (still-pending) Promise -- exactly the window
-    // `applyFastSettleTuning` needs to patch them before any settling has
-    // had a chance to begin.
-    const rollPromise = instance.roll(notation)
-    applyFastSettleTuning(instance)
-
-    await rollPromise
+    // Roll System Phase 3F -- `iterationLimit` is deliberately NOT set here
+    // any more. dice-box-threejs's own default (1000, ~16.6s) is left in
+    // place as the genuine runaway guard it was designed to be. Any tighter
+    // ceiling makes `throwFinished()`'s `forcedFinish` path the normal way a
+    // throw ends, and that path is NOT deterministic between the silent
+    // pre-simulation and the visible animation: `simulateThrow()` counts one
+    // iteration per physics step, `animateThrow()` counts one per rendered
+    // frame while stepping physics `floor(elapsed / framerate)` times. A
+    // single dropped frame therefore freezes the visible die at a different
+    // physics step than the one that chose its face. Duration is instead
+    // controlled by the sleep thresholds in `applySettleTuningToBodies`,
+    // which now apply identically to both passes and so end both at the same
+    // step. See this file's own Phase 3F header.
+    //
+    // `instance.roll(notation)` runs `rollDice()` -- both spawn passes, the
+    // silent `simulateThrow()`, and `swapDiceFace()` -- SYNCHRONOUSLY before
+    // it returns its still-pending Promise (its `new Promise(executor)`
+    // executor runs synchronously; only `animateThrow` is deferred to
+    // requestAnimationFrame). Nothing may be patched onto the dice bodies
+    // between this call and the await: by the time it returns, the forced
+    // face has already been decided. That is precisely why the settle tuning
+    // is installed as a `spawnDice` hook at init instead.
+    await instance.roll(notation)
     const tDone = performance.now()
 
     // Roll System Phase 3E.1 -- PROOF, not guesswork, of which mechanism
@@ -352,11 +420,16 @@ async function roll(notation: string, diceCount: number): Promise<void> {
     // only exits once `throwFinished()` returns true; `forcedFinish` there
     // is exactly `this.iteration > this.iterationLimit`. So reading both
     // values the instant `roll()` resolves says, unambiguously, which path
-    // fired for this specific throw -- no assumption, no guess. If
-    // `endedBy` ever reads "iterationLimit" for an ordinary throw (not an
-    // unusual outlier), the ceiling in `iterationLimitForDiceCount` is
-    // still too tight and should be raised further; this line is what
-    // proves that rather than requiring another round of speculation.
+    // fired for this specific throw -- no assumption, no guess.
+    //
+    // PHASE 3F RAISES THE STAKES ON THIS LINE. With the per-roll ceiling
+    // removed, `endedBy` should now read "physics settled naturally" on
+    // every ordinary throw. If it EVER reads "iterationLimit (forced)",
+    // that throw took the one completion path that is NOT deterministic
+    // between the silent pre-simulation and the visible animation -- so it
+    // is also exactly the throw at risk of showing a face that disagrees
+    // with the Roll Tray. This line is therefore the direct early warning
+    // for a face-mapping regression, not merely a perf datapoint.
     const endedBy = instance.iteration >= instance.iterationLimit ? 'iterationLimit (forced)' : 'physics settled naturally'
 
     // Actual animation duration, measured, not guessed. The

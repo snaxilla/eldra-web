@@ -60,10 +60,140 @@ export type WorldDiceThreeRendererExposed = {
   error: string
 }
 
+// ---------------------------------------------------------------------------
+// ROLL SYSTEM PHASE 3F -- DETERMINISTIC FACE MAPPING
+// ---------------------------------------------------------------------------
+// WHAT `@` ACTUALLY MEANS, PROVEN FROM THE RENDERER SOURCE (not assumed).
+// Traced through @3d-dice/dice-box-threejs@0.0.12's own shipped bundle
+// (`dist/dice-box-threejs.es.js`), every step of the chain:
+//
+//  1. PARSE. `DiceNotation.parseNotation()` splits the string on `"@"` and
+//     matches the right-hand side with `/(\b)*(\-\d+|\d+)(\b)*/gi`, pushing
+//     each match into `this.result` as a STRING, positionally:
+//         `!this.error && n[1] && (r = n[1].match(o)) !== null
+//            && this.result.push(...r)`
+//     So `"2d20@11,20"` yields `result = ["11", "20"]`. Nothing is parsed as
+//     an index, an offset, or a texture id -- the digits are carried through
+//     verbatim.
+//
+//  2. APPLY. `DiceBox.rollDice()` walks `result` positionally against
+//     `this.diceList` and calls `swapDiceFace(die, result[i])`.
+//
+//  3. RESOLVE. `swapDiceFace(die, t)` does, literally:
+//         `let s = n.values.indexOf(i), o = n.values.indexOf(t)`
+//     where `i` is the face physics actually produced and `n` is the die
+//     DESCRIPTOR. It then swaps the two faces' `materialIndex` values so the
+//     texture showing `t` ends up on the facet physics will leave pointing
+//     up. `indexOf` is the whole story: `t` is looked up BY VALUE in the
+//     descriptor's `values` array.
+//
+//  4. `values` IS A RANGE, EXPANDED. The descriptor table stores
+//     `d20: { values: [1, 20] }`, which `DieDescriptor.setValues()` expands
+//     via `range(1, 20, 1)` into the full `[1, 2, ... 20]`. So for every die
+//     below, `values.indexOf(v) === v - 1`.
+//
+// CONCLUSION: `"1d20@20"` means "display the face whose printed value is
+// 20". It is a LITERAL FACE VALUE -- not a face index, not a texture index,
+// not a zero-based offset. Eldra's existing mapping (pass `RollDieGroup.
+// results` straight through) was therefore already CORRECT, and this table
+// exists to PROVE that per die type and to keep it proven, not to change it.
+//
+// WHY AN EXPLICIT TABLE RATHER THAN "just pass the number": because the
+// identity mapping is only safe for dice whose `values` really are the
+// contiguous run `1..sides`, and that is a property of the RENDERER'S table,
+// not of dice in general. Two concrete counter-examples from the same
+// source:
+//   - `d100: { values: [10, 100, 10] }` expands to `[10, 20, ... 100]` --
+//     DECADES, not 1..100. A percentile result of 57 would hit
+//     `values.indexOf(57) === -1`, `swapDiceFace` would `return` early
+//     (`if (s < 0 || o < 0 || s == o) return`), and the die would silently
+//     display whatever physics produced. A wrong face, no error.
+//   - Sides with NO descriptor at all (d5, d7, d16, d30 ...) are worse than
+//     wrong: `DiceFactory.create()` returns `null` (`createGeometry`'s own
+//     `default: return console.error(...), null`), so `spawnDice()` returns
+//     BEFORE `this.diceList.push(r)`. The die never enters `diceList`, which
+//     positionally shifts EVERY later die's forced result onto the wrong
+//     die. One unsupported die corrupts the whole roll.
+// Eldra's roll pipeline does not constrain `sides` (opendice allows up to
+// MAX_SIDES), so both cases are reachable from a custom roll expression.
+// This table is what makes them explicit and handled instead of silent.
+export type DieFaceMapping = {
+  // The dice-box-threejs die type key (its `Ps` descriptor table key), used
+  // to build the `NdM` half of the notation.
+  notationType: string
+  // The descriptor's own expanded `values` array, in face order -- exactly
+  // what `swapDiceFace` runs `indexOf` against. Index `i` here is the face
+  // whose forced value is `values[i]`.
+  values: number[]
+  // The glyph actually PRINTED on each face, from the descriptor's own
+  // `labels` array, index-aligned with `values`. Documentation and test
+  // evidence only -- the renderer never receives this. Note d10's tenth
+  // face prints "0", not "10", which is ordinary percentile-die convention
+  // and NOT a mapping error: its `values` entry is still 10.
+  labels: string[]
+}
+
+function contiguousMapping(notationType: string, sides: number, labels?: string[]): DieFaceMapping {
+  const values = Array.from({ length: sides }, (_, index) => index + 1)
+  return {
+    notationType,
+    values,
+    labels: labels ?? values.map((value) => String(value))
+  }
+}
+
+// Every die Eldra is allowed to animate, keyed by `RollDieGroup.sides`.
+// Deliberately a CLOSED list: a die absent here is not animated at all
+// (see buildPredeterminedNotation) rather than animated with an unverified
+// mapping. Values/labels are transcribed from dice-box-threejs's own `Ps`
+// descriptor table; `d1`/`d3` render on a d6 shape and `d100` is omitted on
+// purpose -- see this section's own header for both reasons.
+export const DIE_FACE_MAPPINGS: Readonly<Record<number, DieFaceMapping>> = Object.freeze({
+  1: contiguousMapping('d1', 1),
+  2: contiguousMapping('d2', 2),
+  3: contiguousMapping('d3', 3),
+  4: contiguousMapping('d4', 4),
+  6: contiguousMapping('d6', 6),
+  8: contiguousMapping('d8', 8),
+  10: contiguousMapping('d10', 10, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']),
+  12: contiguousMapping('d12', 12),
+  20: contiguousMapping('d20', 20)
+})
+
+// The value to write after `@` for a given physical face. Returns `null`
+// when this die/face pair has no verified mapping -- an unsupported side
+// count, or a face outside the die's own `values` (a d20 "0" or "21",
+// which `swapDiceFace` would silently ignore).
+export function notationValueForFace(sides: number, face: number): number | null {
+  const mapping = DIE_FACE_MAPPINGS[sides]
+  if (!mapping) return null
+  return mapping.values.includes(face) ? face : null
+}
+
+// What the player will actually SEE on the settled die for a given forced
+// value -- the inverse of the renderer's own resolution chain, replicated
+// from source so tests can assert the full round trip rather than assuming
+// it. Returns `null` for anything unmapped.
+export function visibleLabelForFace(sides: number, face: number): string | null {
+  const mapping = DIE_FACE_MAPPINGS[sides]
+  if (!mapping) return null
+  const index = mapping.values.indexOf(face)
+  return index < 0 ? null : (mapping.labels[index] ?? null)
+}
+
 // Builds @3d-dice/dice-box-threejs's own notation string, e.g.
 // `"1d20@20"` or `"2d6+1d4@3,5,2"` for a multi-group custom roll. Returns
 // `null` for a roll with no dice at all (eldra-roll-system.md §17.3's
 // "manual" rolls) -- nothing to force, nothing to animate.
+//
+// Also returns `null` -- Phase 3F -- if ANY die in the roll has no verified
+// face mapping (see DIE_FACE_MAPPINGS). This is deliberately all-or-nothing
+// rather than best-effort: dropping or mis-mapping a single die
+// positionally shifts every LATER die's forced result onto the wrong die
+// (see this section's own header), so a roll containing one d7 would
+// otherwise show wrong faces for its d20s too. Returning `null` here makes
+// the queue fall back to the Phase 3A CSS placeholder for that roll, which
+// shows no face at all -- never a face that contradicts the server.
 //
 // Every die in every group is included, not just `kept` ones -- matching
 // RollDieGroup's own documented contract that a future renderer might dim
@@ -77,10 +207,20 @@ export function buildPredeterminedNotation(record: RollEventRecord): string | nu
   const groups = record.dice.filter((group) => group.results.length > 0)
   if (!groups.length) return null
 
-  const dicePart = groups.map((group) => `${group.results.length}d${group.sides}`).join('+')
-  const resultsPart = groups.flatMap((group) => group.results).join(',')
+  const forcedValues: number[] = []
+  for (const group of groups) {
+    for (const face of group.results) {
+      const value = notationValueForFace(group.sides, face)
+      if (value === null) return null
+      forcedValues.push(value)
+    }
+  }
 
-  return `${dicePart}@${resultsPart}`
+  const dicePart = groups
+    .map((group) => `${group.results.length}${DIE_FACE_MAPPINGS[group.sides]!.notationType}`)
+    .join('+')
+
+  return `${dicePart}@${forcedValues.join(',')}`
 }
 
 // Total physical dice this roll forces -- Phase 3D's own basis for scaling

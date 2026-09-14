@@ -14,7 +14,10 @@ import {
   buildPredeterminedNotation,
   countDice,
   createWorldDiceThreeRendererAdapter,
+  DIE_FACE_MAPPINGS,
+  notationValueForFace,
   SETTLE_CONFIRMATION_BEAT_MS,
+  visibleLabelForFace,
   type WorldDiceThreeRendererExposed
 } from '../../../app/components/world/worldDiceThreeRendererAdapter'
 import type { RollDieGroup, RollEventRecord } from '../../../app/lib/rolls/types'
@@ -107,6 +110,177 @@ describe('countDice', () => {
 
   it('is zero for a manual roll with no dice', () => {
     expect(countDice(roll({ dice: [] }))).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ROLL SYSTEM PHASE 3F -- DETERMINISTIC FACE MAPPING VERIFICATION
+// ---------------------------------------------------------------------------
+// This block does NOT assert that our table matches itself. It replicates
+// @3d-dice/dice-box-threejs@0.0.12's OWN arithmetic, transcribed from its
+// shipped bundle (`dist/dice-box-threejs.es.js`), and pushes every face of
+// every supported die all the way through it:
+//
+//   notation `@` value
+//     -> DiceNotation.parseNotation()  : `n[1].match(/(\b)*(\-\d+|\d+)(\b)*/gi)`
+//                                        pushed verbatim into `result`
+//     -> DiceBox.rollDice()            : `swapDiceFace(diceList[i], result[i])`
+//     -> swapDiceFace()                : `o = n.values.indexOf(t)`, then
+//                                        `materialIndex = o + c`, where
+//                                        `c = 2`, or `1` for the d10 shape,
+//                                        or `o + 1` for the d2 shape
+//     -> mesh.getFaceValue()           : `c = materialIndex - 1`, then
+//                                        `c += 1` for the d10/d2 shapes, and
+//                                        `value = values[(c - 1) % values.length]`
+//     -> visible face value
+//
+// If that chain does not return the number the Roll Tray shows, the mapping
+// is wrong. That is the actual property under test.
+const D10_SHAPE_TYPES = new Set(['d10', 'd100'])
+
+// Faithful replication of swapDiceFace()'s own materialIndex arithmetic.
+function materialIndexForFace(notationType: string, faceIndex: number): number {
+  if (notationType === 'd2') return faceIndex + 1
+  if (D10_SHAPE_TYPES.has(notationType)) return faceIndex + 1
+  return faceIndex + 2
+}
+
+// Faithful replication of getFaceValue()'s own materialIndex -> value
+// arithmetic. Returns what the settled die will actually read as.
+function visibleValueForMaterialIndex(notationType: string, materialIndex: number, values: number[]): number {
+  let c = materialIndex - 1
+  if (notationType === 'd2' || D10_SHAPE_TYPES.has(notationType)) c += 1
+  return values[(c - 1) % values.length]!
+}
+
+// The whole chain, end to end, exactly as the renderer runs it.
+// `null` models swapDiceFace()'s own silent bail-out
+// (`if (s < 0 || o < 0 || s == o) return`) -- the case where a forced value
+// is simply ignored and the die shows whatever physics produced.
+function rendererVisibleValueFor(sides: number, notationValue: number): number | null {
+  const mapping = DIE_FACE_MAPPINGS[sides]
+  if (!mapping) return null
+  const faceIndex = mapping.values.indexOf(notationValue)
+  if (faceIndex < 0) return null
+  const materialIndex = materialIndexForFace(mapping.notationType, faceIndex)
+  return visibleValueForMaterialIndex(mapping.notationType, materialIndex, mapping.values)
+}
+
+describe('Phase 3F -- deterministic face mapping, verified against the renderer\'s own arithmetic', () => {
+  const supportedSides = Object.keys(DIE_FACE_MAPPINGS).map(Number).sort((a, b) => a - b)
+
+  it('supports exactly the dice whose renderer face values are the contiguous run 1..sides', () => {
+    // d100 is deliberately ABSENT: its descriptor is `values: [10, 100, 10]`,
+    // which expands to decades ([10, 20, ... 100]), so a percentile result of
+    // 57 has no face at all. Unsupported sides are handled by refusing to
+    // animate, never by guessing -- see buildPredeterminedNotation.
+    expect(supportedSides).toEqual([1, 2, 3, 4, 6, 8, 10, 12, 20])
+    for (const sides of supportedSides) {
+      expect(DIE_FACE_MAPPINGS[sides]!.values).toEqual(
+        Array.from({ length: sides }, (_, i) => i + 1)
+      )
+    }
+  })
+
+  // THE CORE PROOF. Every face of every supported die, through the renderer's
+  // real arithmetic. d20 in full is the task's explicit minimum bar; the rest
+  // are covered because the mapping must be documented per die type, not
+  // assumed to generalize from d20.
+  for (const sides of [1, 2, 3, 4, 6, 8, 10, 12, 20]) {
+    it(`d${sides}: every face survives the full notation -> renderer -> visible-face chain`, () => {
+      const mapping = DIE_FACE_MAPPINGS[sides]!
+      for (let face = 1; face <= sides; face++) {
+        // 1. The authoritative record's face becomes the `@` value verbatim.
+        expect(notationValueForFace(sides, face)).toBe(face)
+
+        // 2. The adapter emits it in the notation.
+        const record = roll({
+          dice: [dieGroup({ sides, results: [face], kept: [face], keptFlags: [true] })]
+        })
+        expect(buildPredeterminedNotation(record)).toBe(`1${mapping.notationType}@${face}`)
+
+        // 3. The renderer's own arithmetic resolves that `@` value back to
+        //    the SAME number the Roll Tray will display.
+        expect(rendererVisibleValueFor(sides, face)).toBe(face)
+
+        // 4. And the glyph physically printed on that face is the documented
+        //    one (d10's tenth face prints "0" by percentile convention --
+        //    its VALUE is still 10, which is what step 3 just proved).
+        expect(visibleLabelForFace(sides, face)).toBe(mapping.labels[face - 1])
+      }
+    })
+  }
+
+  it('d20 nat 1 and nat 20 specifically -- the two faces a player will notice instantly', () => {
+    expect(buildPredeterminedNotation(roll({
+      dice: [dieGroup({ sides: 20, results: [1], kept: [1], naturalLow: true })]
+    }))).toBe('1d20@1')
+    expect(rendererVisibleValueFor(20, 1)).toBe(1)
+
+    expect(buildPredeterminedNotation(roll({
+      dice: [dieGroup({ sides: 20, results: [20], kept: [20], naturalHigh: true })]
+    }))).toBe('1d20@20')
+    expect(rendererVisibleValueFor(20, 20)).toBe(20)
+  })
+
+  it('d10 face 10 maps to the face printed "0" without ever becoming 0 in the notation', () => {
+    // swapDiceFace special-cases `t == 0` back to 10 for d10, but Eldra must
+    // never rely on that: the record says 10, the notation says 10.
+    expect(buildPredeterminedNotation(roll({
+      dice: [dieGroup({ sides: 10, results: [10], kept: [10] })]
+    }))).toBe('1d10@10')
+    expect(visibleLabelForFace(10, 10)).toBe('0')
+    expect(rendererVisibleValueFor(10, 10)).toBe(10)
+  })
+
+  it('refuses faces outside a supported die rather than emitting a value swapDiceFace would silently ignore', () => {
+    expect(notationValueForFace(20, 0)).toBeNull()
+    expect(notationValueForFace(20, 21)).toBeNull()
+    expect(rendererVisibleValueFor(20, 21)).toBeNull()
+    expect(buildPredeterminedNotation(roll({
+      dice: [dieGroup({ sides: 20, results: [21], kept: [21] })]
+    }))).toBeNull()
+  })
+
+  it('refuses die types the renderer has no geometry for -- these are dropped from diceList and shift every later die', () => {
+    for (const sides of [5, 7, 14, 16, 30, 100]) {
+      expect(notationValueForFace(sides, 1)).toBeNull()
+      expect(buildPredeterminedNotation(roll({
+        dice: [dieGroup({ sides, results: [1], kept: [1] })]
+      }))).toBeNull()
+    }
+  })
+
+  it('refuses the WHOLE roll if any single group is unsupported -- a partial roll would mis-map its supported dice too', () => {
+    // 1d20 + 1d7: dice-box-threejs never pushes the d7 into `diceList`, so
+    // `result[1]` (the d7's value) would be applied to whatever die landed at
+    // index 1 -- or dropped. All-or-nothing is the only safe behaviour.
+    const record = roll({
+      dice: [
+        dieGroup({ sides: 20, results: [18], kept: [18] }),
+        dieGroup({ sides: 7, results: [4], kept: [4] })
+      ]
+    })
+    expect(buildPredeterminedNotation(record)).toBeNull()
+  })
+
+  it('keeps forced values positionally aligned with diceList across multiple groups', () => {
+    // rollDice() walks `result[i]` against `diceList[i]`, and diceList is
+    // filled in declaration order -- so group order and within-group order
+    // must both be preserved exactly.
+    const record = roll({
+      dice: [
+        dieGroup({ sides: 20, results: [11, 20], keptFlags: [false, true], kept: [20] }),
+        dieGroup({ sides: 6, results: [3, 5, 1], kept: [3, 5, 1], keptFlags: [true, true, true] }),
+        dieGroup({ sides: 4, results: [2], kept: [2], keptFlags: [true] })
+      ]
+    })
+    expect(buildPredeterminedNotation(record)).toBe('2d20+3d6+1d4@11,20,3,5,1,2')
+
+    // And every one of those forced values independently resolves to itself.
+    for (const [sides, face] of [[20, 11], [20, 20], [6, 3], [6, 5], [6, 1], [4, 2]] as const) {
+      expect(rendererVisibleValueFor(sides, face)).toBe(face)
+    }
   })
 })
 

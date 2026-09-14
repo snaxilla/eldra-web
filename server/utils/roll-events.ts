@@ -94,6 +94,22 @@ import { broadcastRollEvent } from './roll-realtime-bridge'
 
 const COLLECTION = 'roll_events'
 
+// ---------------------------------------------------------------------------
+// Roll System Phase 3C (Roll Performance Audit) -- pipeline timing.
+// ---------------------------------------------------------------------------
+// "Measure first, optimize second." This logs how long each named server-
+// side stage of a roll actually took, so the true bottleneck in "click ->
+// Roll Tray visible" is read directly out of server logs rather than
+// guessed at. `performance.now()` (sub-millisecond, monotonic), not
+// `Date.now()` -- precision matters against a 1000ms budget. Every write
+// path (`createCustomRollEvent`, `createDerivedRollEvent`) logs the same
+// shape so the two are directly comparable.
+function logRollPerf(label: string, stages: ReadonlyArray<readonly [string, number]>): void {
+  const total = stages.reduce((sum, [, ms]) => sum + ms, 0)
+  const breakdown = stages.map(([name, ms]) => `${name}=${ms.toFixed(1)}ms`).join(' ')
+  console.log(`[roll-perf] ${label} total=${total.toFixed(1)}ms (${breakdown})`)
+}
+
 // Paging defaults -- eldra-roll-system.md §7's own `?limit=&cursor=`
 // contract names no specific numbers; picked once, here, so the route and
 // this module never drift on what "no limit given" or "too large a limit"
@@ -218,7 +234,9 @@ export type CreateCustomRollInput = {
 // Never returns a partially-written or updatable record -- there is no
 // corresponding update function in this module (this file's own header).
 export async function createCustomRollEvent(input: CreateCustomRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
   const rolled = rollFormula(input.expression)
+  const tRolled = performance.now()
 
   if (!rolled.ok) {
     throw createError({ statusCode: 400, statusMessage: rolled.error })
@@ -242,13 +260,23 @@ export async function createCustomRollEvent(input: CreateCustomRollInput): Promi
     metadata: input.metadata ?? {}
   })
 
+  const tBeforePersist = performance.now()
   const [res, displayName]: [any, string] = await Promise.all([
     directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
     resolveOneDisplayName(input.rollerUserId)
   ])
+  const tAfterPersist = performance.now()
 
   const roll = fromPersistenceRow(res?.data, displayName)
   broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf('custom roll', [
+    ['openDice', tRolled - tStart],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
   return roll
 }
 
@@ -332,7 +360,9 @@ export type CreateDerivedRollInput = {
 // already-computed Rules Engine Value to re-read; the number itself always
 // comes from this fresh `getDerivedCharacter` call, never from `input`.
 export async function createDerivedRollEvent(input: CreateDerivedRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
   const result = await getDerivedCharacter(input.worldId, input.actorCharacterId)
+  const tDerived = performance.now()
 
   if (!result.available) {
     throw createError(statusForDerivedCharacterFailure(result))
@@ -358,6 +388,7 @@ export async function createDerivedRollEvent(input: CreateDerivedRollInput): Pro
   }
 
   const rolled = rollFormula('1d20', { bonuses: [entry.value] })
+  const tRolled = performance.now()
   if (!rolled.ok) {
     throw createError({ statusCode: 400, statusMessage: rolled.error })
   }
@@ -384,13 +415,24 @@ export async function createDerivedRollEvent(input: CreateDerivedRollInput): Pro
     metadata: input.metadata ?? {}
   })
 
+  const tBeforePersist = performance.now()
   const [res, displayName]: [any, string] = await Promise.all([
     directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
     resolveOneDisplayName(input.rollerUserId)
   ])
+  const tAfterPersist = performance.now()
 
   const roll = fromPersistenceRow(res?.data, displayName)
   broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf(`derived roll (${input.sourceType})`, [
+    ['characterAssembly+rulesDerivation', tDerived - tStart],
+    ['openDice', tRolled - tDerived],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
   return roll
 }
 

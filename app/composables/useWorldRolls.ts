@@ -130,15 +130,43 @@ export function useWorldRolls(worldId: Ref<string> | string) {
   // the exact same singleton WorldDiceOverlay.vue reads.
   const diceQueue = useDiceAnimationQueue()
 
+  // ---------------------------------------------------------------------
+  // Roll System Phase 3C (Roll Performance Audit) -- client-side pipeline
+  // timing. "Measure first, optimize second": logs how long the network
+  // round-trip and the queue+animation stage each took, against this
+  // phase's own <1000ms (target) / <750ms (stretch) / ~500ms (ideal)
+  // click-to-Tray budget. `performance.now()` (monotonic, sub-millisecond),
+  // never Date.now(). `clickedAt` is `undefined` for a roll that arrived
+  // via SSE broadcast (another player's roll) -- there is no "click" on
+  // THIS client for that roll, so only the queue+animation stage is
+  // reported, never a misleading "total since click" for an event this
+  // client never clicked.
+  // ---------------------------------------------------------------------
+  function logClientRollPerf(roll: RollEventRecord, clickedAt: number | undefined, respondedAt: number | undefined) {
+    return (revealedAt: number) => {
+      const parts: string[] = []
+      if (clickedAt !== undefined && respondedAt !== undefined) {
+        parts.push(`network=${(respondedAt - clickedAt).toFixed(1)}ms`)
+        parts.push(`queue+animation=${(revealedAt - respondedAt).toFixed(1)}ms`)
+        parts.push(`total=${(revealedAt - clickedAt).toFixed(1)}ms`)
+      } else {
+        parts.push(`queue+animation=${(revealedAt - (respondedAt ?? revealedAt)).toFixed(1)}ms`)
+      }
+      console.log(`[roll-perf] client "${roll.label}" ${parts.join(' ')}`)
+    }
+  }
+
   // Queues a just-arrived roll for celebration and reveals it in
   // `history` only once its turn is over -- never rejects (see
   // useDiceAnimationQueue.ts's own `enqueue`: a torn-down overlay still
   // resolves every waiting request, just with `completed: false`), so
   // gameplay truth reaching the Tray is never actually blocked on
   // presentation succeeding.
-  function revealAfterAnimation(roll: RollEventRecord) {
+  function revealAfterAnimation(roll: RollEventRecord, clickedAt?: number, respondedAt?: number) {
+    const logReveal = logClientRollPerf(roll, clickedAt, respondedAt)
     diceQueue.enqueue({ id: roll.id, roll }).then(() => {
       history.value = prependUniqueRoll(history.value, roll)
+      logReveal(performance.now())
     })
   }
 
@@ -148,6 +176,10 @@ export function useWorldRolls(worldId: Ref<string> | string) {
   // message in `error`, so a caller can either read `error` reactively or
   // catch the rejection directly, whichever its own UI needs.
   async function requestRoll(input: RollRequestInput): Promise<RollEventRecord> {
+    // As close to "click" as this composable can observe -- the actual DOM
+    // click handler that called requestRoll() ran a negligible instant
+    // earlier.
+    const clickedAt = performance.now()
     pending.value = true
     error.value = ''
 
@@ -156,8 +188,9 @@ export function useWorldRolls(worldId: Ref<string> | string) {
         method: 'POST',
         body: input
       })
+      const respondedAt = performance.now()
       result.value = roll
-      revealAfterAnimation(roll)
+      revealAfterAnimation(roll, clickedAt, respondedAt)
       return roll
     } catch (caught) {
       error.value = extractRollErrorMessage(caught)

@@ -76,12 +76,24 @@ async function ensureBox(): Promise<any> {
   if (readyPromise) return readyPromise
 
   readyPromise = (async () => {
+    // Roll System Phase 3C (Roll Performance Audit) -- confirms, in the
+    // browser console, that renderer initialization runs exactly ONCE per
+    // page view, never per roll: this whole function is guarded by the
+    // `box`/`readyPromise` checks above, so this log line can only ever
+    // appear a single time for the lifetime of one mounted
+    // WorldDiceThreeRenderer instance. If it ever appears more than once
+    // for the same session, THAT is the bug to chase -- not a redesign,
+    // an init-guard regression.
+    const tInitStart = performance.now()
+    console.log('[roll-perf] WorldDiceThreeRenderer: initializing (should log ONCE per page view)')
+
     await nextTick()
 
     if (!DiceBoxCtor) {
       const mod: any = await import('@3d-dice/dice-box-threejs')
       DiceBoxCtor = mod.default || mod
     }
+    const tImported = performance.now()
 
     // Plain, undecorated dice -- deliberately no `theme_texture`/`sounds`
     // (both would require copying static assets out of the package's own
@@ -89,10 +101,24 @@ async function ensureBox(): Promise<any> {
     // README note). This phase's INSTALLATION section asks for the minimum
     // install; a themed/skinned die is explicitly Phase 8 (Dice Skins),
     // named as future scope, not this phase's job.
+    //
+    // ROLL SYSTEM PHASE 3C -- animation duration tuning (this phase's own
+    // ANIMATION section: target 600-800ms, "satisfying, not cinematic").
+    // dice-box-threejs's own defaults (gravity_multiplier: 400, strength: 1
+    // -- see its DiceBox.js defaultConfig) are tuned for a slower,
+    // more dramatic tabletop-simulator throw. `gravity_multiplier` raised
+    // and `strength` (toss force) lowered here settle the physics faster
+    // without changing the predetermined-face guarantee at all (§11's
+    // "physics for spectacle, number from the server" is unaffected by
+    // HOW FAST the spectacle resolves) -- see this file's own roll()
+    // logging below to confirm the resulting real-world duration and
+    // retune further if needed.
     const instance = new DiceBoxCtor(`#${containerId}`, {
       theme_colorset: 'white',
       theme_material: 'plastic',
-      sounds: false
+      sounds: false,
+      gravity_multiplier: 800,
+      strength: 0.6
     })
 
     // THE ACTUAL RUNTIME BUG (Phase 3B.2): the constructor above only
@@ -110,6 +136,12 @@ async function ensureBox(): Promise<any> {
     // element existed in the DOM at all, and every roll silently fell back
     // to the placeholder via `onRendererFailed`.
     await instance.initialize()
+    const tInitialized = performance.now()
+
+    console.log(
+      `[roll-perf] WorldDiceThreeRenderer: initialized in ${(tInitialized - tInitStart).toFixed(1)}ms ` +
+      `(import=${(tImported - tInitStart).toFixed(1)}ms, initialize()=${(tInitialized - tImported).toFixed(1)}ms) -- one-time cost, not paid again this page view`
+    )
 
     box = instance
     ready.value = true
@@ -125,15 +157,30 @@ async function ensureBox(): Promise<any> {
 // RollEventRecord is, matching this file's own header note.
 async function roll(notation: string): Promise<void> {
   error.value = ''
+  const tStart = performance.now()
+  const wasAlreadyInitialized = box !== null
 
   try {
     const instance = await ensureBox()
+    const tReady = performance.now()
 
     if (typeof instance.clearDice === 'function') {
       instance.clearDice()
     }
 
     await instance.roll(notation)
+    const tDone = performance.now()
+
+    // Roll System Phase 3C -- actual animation duration, measured, not
+    // guessed. Target 600-800ms (this phase's own ANIMATION section). The
+    // `wasAlreadyInitialized` split matters: on the very first roll this
+    // page view, `tReady - tStart` also includes the one-time init cost
+    // logged above, which would otherwise make the FIRST roll look like a
+    // slow animation when it is actually a slow (one-time) setup.
+    console.log(
+      `[roll-perf] WorldDiceThreeRenderer.roll("${notation}"): animation=${(tDone - tReady).toFixed(1)}ms` +
+      (wasAlreadyInitialized ? '' : ` (renderer init included in a separate log line above, not in this number)`)
+    )
   } catch (err: any) {
     error.value = err?.message || '3D dice failed to render.'
   }

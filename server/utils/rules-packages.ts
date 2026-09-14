@@ -44,16 +44,32 @@
 //    reported, not silently swallowed, not an uncaught exception).
 //
 // 5. Cache key is exactly `${packageId}@${version}#${integrityHash}`, per
-//    Q8. The row is still fetched and re-verified on every call in this
-//    commit -- nothing yet calls this loader repeatedly on a hot path (no
-//    roll route exists until a later commit), so a second structure to
-//    skip the Directus fetch itself would be optimizing for a caller that
-//    does not exist yet. What the cache already buys today: the parsed
-//    package object returned on a cache hit is the *same instance* as the
-//    first load (verified by the cache-hit test), so a caller comparing
+//    Q8. What the cache already buys: the parsed package object returned on
+//    a cache hit is the *same instance* as the first load (verified by the
+//    cache-hit test), so a caller comparing
 //    `loaded.definitions === previouslyLoaded.definitions` can rely on
-//    referential stability. Skipping the Directus round-trip entirely is
-//    deferred until a real repeated caller justifies the extra structure.
+//    referential stability.
+//
+// 5a. ROLL SYSTEM PHASE 3C (Roll Performance Audit): "a real repeated
+//    caller" (design decision 5's own deferred condition) now exists --
+//    every ability/saving_throw/skill roll (server/utils/roll-events.ts's
+//    `createDerivedRollEvent`) calls `getDerivedCharacter` ->
+//    `getWorldRuntime` -> this function, on the request's hot path. Before
+//    this phase, EVERY roll re-fetched the full `rules_packages` row
+//    (fields: '*', the entire manifest+definitions JSON) from Directus AND
+//    recomputed a SHA-256 hash over the whole canonicalized definitions
+//    array -- unconditionally, every time -- because the hash-keyed cache
+//    above can only be consulted AFTER that fetch+hash already happened
+//    (the key includes the hash). `resolvedPackageCache` below is a
+//    SEPARATE, version-only-keyed fast path checked FIRST, before any
+//    Directus I/O: a hit skips the network round-trip and the hashing
+//    entirely. This is safe with no staleness risk because published
+//    `rules_packages` rows are immutable by construction (publish-rules-
+//    package.mjs: "insert-only, never destructive... refusing to
+//    overwrite" -- no PATCH/DELETE route for this collection exists
+//    anywhere in this codebase) -- a given (packageId, version) can only
+//    ever resolve to one possible row, forever, so caching before
+//    verifying its content is exactly as safe as caching after.
 
 import { createHash } from 'node:crypto'
 import { canonicalize } from '../../app/lib/rules/canonicalize'
@@ -99,10 +115,22 @@ function cacheKey(packageId: string, version: string, integrityHash: string): st
   return `${packageId}@${version}#${integrityHash}`
 }
 
+// Phase 3C fast path -- see design decision 5a above. Populated only on a
+// SUCCESSFUL load (never on a validation failure, so a transient bad row
+// -- e.g. one instant of an integrity mismatch during a bug -- is never
+// permanently pinned as broken for the process's lifetime; the next call
+// simply re-fetches and re-validates, exactly like today).
+const resolvedPackageCache = new Map<string, LoadedRulesPackage>()
+
+function resolvedCacheKey(packageId: string, version: string): string {
+  return `${packageId}@${version}`
+}
+
 // Exposed for tests only -- there is no production code path that needs to
 // clear this cache (published rows are immutable for the process lifetime).
 export function clearRulesPackageCache(): void {
   packageCache.clear()
+  resolvedPackageCache.clear()
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +270,16 @@ export async function loadPublishedPackage(
   packageId: string,
   version: string
 ): Promise<PublishedPackageLoadResult> {
+  // Phase 3C fast path (design decision 5a): a hit here skips the Directus
+  // round-trip AND the SHA-256 hash recomputation below entirely -- safe
+  // because a published (packageId, version) is immutable for the life of
+  // the row.
+  const fastKey = resolvedCacheKey(packageId, version)
+  const fastHit = resolvedPackageCache.get(fastKey)
+  if (fastHit) {
+    return { ok: true, package: fastHit }
+  }
+
   const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
     method: 'GET',
     query: {
@@ -311,5 +349,6 @@ export async function loadPublishedPackage(
   }
 
   packageCache.set(key, loaded)
+  resolvedPackageCache.set(fastKey, loaded)
   return { ok: true, package: loaded }
 }

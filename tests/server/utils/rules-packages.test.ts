@@ -423,6 +423,26 @@ describe('loadPublishedPackage -- cache behavior', () => {
     }
   })
 
+  it('Phase 3C: a cache hit skips the Directus round-trip entirely, not just the object allocation', async () => {
+    const row = buildRow()
+    directusServiceRequestMock.mockResolvedValueOnce(directusListResponse([row]))
+
+    const first = await loadPublishedPackage('eldra.test.pkg', '1.0.0')
+    expect(first.ok).toBe(true)
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+
+    // No second mockResolvedValueOnce is queued -- if the fast path did not
+    // skip the fetch, this second call would receive `undefined` from the
+    // exhausted mock and fail to find a row.
+    const second = await loadPublishedPackage('eldra.test.pkg', '1.0.0')
+    expect(second.ok).toBe(true)
+    expect(directusServiceRequestMock).toHaveBeenCalledTimes(1)
+
+    if (first.ok && second.ok) {
+      expect(second.package).toBe(first.package)
+    }
+  })
+
   it('different versions of the same packageId cache independently', async () => {
     const rowV1 = buildRow()
     const rowV2 = buildRow({ manifest: manifest({ version: '2.0.0' }) })

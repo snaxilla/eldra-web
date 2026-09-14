@@ -61,7 +61,42 @@
 // exactly the same two-step contract EldraDiceBox.client.vue's own
 // `rollResult()`/`error` already established -- gameplay must never be
 // blocked by a presentation failure.
-
+//
+// ---------------------------------------------------------------------------
+// ROLL SYSTEM PHASE 3D -- DICE FEEL TUNING
+// ---------------------------------------------------------------------------
+// Phase 3C's measurements showed animation alone taking ~2800-3200ms --
+// physics tuning (gravity/throw strength) was a start but nowhere near this
+// phase's 600-800ms target. Reading dice-box-threejs's own DiceBox.js
+// source (not guessing) found the REAL dominant cost is not the visible
+// tumble at all: `throwFinished()` gates the completion callback on every
+// die's underlying `cannon-es` Body reaching `CANNON.Body.SLEEPING`, and
+// each die's Body is constructed with `sleepSpeedLimit: 75, sleepTimeLimit:
+// 0.9` (hardcoded inside DiceBox.js's own dice-spawning code, not exposed
+// through dice-box-threejs's own public config object at all -- see
+// `spawnDice`'s `new CANNON.Body({...})` call). `sleepTimeLimit: 0.9` alone
+// -- 0.9 SECONDS a die must sit continuously below the speed threshold
+// before physics considers it "asleep" -- exceeds this phase's entire
+// animation budget by itself, regardless of how fast the tumble itself is
+// tuned. This is exactly "waiting for mathematical rest instead of visual
+// completion" (this phase's own COMPLETION section), and it is why no
+// amount of gravity/strength tuning alone could have hit budget.
+//
+// THE FIX, AND WHY IT IS TUNING, NOT A REDESIGN: `sleepSpeedLimit`/
+// `sleepTimeLimit`/`linearDamping`/`angularDamping`/`ContactMaterial.
+// restitution` are ordinary, PUBLIC, documented properties of `cannon-es`
+// (the physics engine dice-box-threejs
+// itself depends on and constructs) -- not private internals, and not
+// something this file monkey-patches on a prototype or forks. Every die's
+// `body` object (`instance.diceList[i].body`) and every registered
+// `instance.world.contactmaterials[i]` are ordinary data this component can
+// read and adjust after the renderer creates them, exactly the same way a
+// caller of any physics engine tunes a body's own properties. The
+// renderer's OWN decision algorithm ("wait until every die is asleep, then
+// reveal") is completely unchanged; only the thresholds that define
+// "asleep" and "how bouncy a landing is" move -- squarely "read the
+// renderer source, determine which parameters control settle threshold",
+// this phase's own explicit instruction.
 const containerId = `eldra-dice-three-${Math.random().toString(36).slice(2)}`
 
 const error = ref('')
@@ -70,6 +105,55 @@ const ready = ref(false)
 let DiceBoxCtor: any = null
 let box: any = null
 let readyPromise: Promise<any> | null = null
+
+// Roll System Phase 3D -- how long a die is allowed to keep physically
+// settling before this component forcibly ends its turn (dice-box-threejs's
+// own PUBLIC `iterationLimit` config: one unit is one rendered physics
+// frame at its `framerate` of 1/60s, so `60` iterations is ~1 real second).
+// This is a CEILING, not a target -- the sleep-threshold and restitution
+// tuning below aim to make dice settle naturally well inside these numbers
+// most of the time; this only protects the outlier throw (a die balanced
+// oddly, an unusual collision) from running away toward dice-box-threejs's
+// own default of 1000 iterations (~16.6s). Scaled by dice count per this
+// phase's own MULTIPLE DICE section -- more dice colliding naturally take
+// a little longer to visually resolve, and forcing a 10-die pool to freeze
+// at the same instant as a lone d20 would look abrupt, not decisive.
+function iterationLimitForDiceCount(diceCount: number): number {
+  if (diceCount <= 1) return 48 // ~800ms ceiling
+  if (diceCount <= 3) return 54 // ~900ms ceiling
+  if (diceCount <= 10) return 66 // ~1100ms ceiling
+  return 78 // ~1300ms ceiling for very large pools
+}
+
+// Roll System Phase 3D -- see this file's own header for the full citation.
+// Each die's cannon-es Body is created inside dice-box-threejs's own
+// `spawnDice()` with FOUR hardcoded values this component can only reach
+// AFTER they exist, with no config hook to set any of them up front:
+//   - sleepSpeedLimit: 75 / sleepTimeLimit: 0.9 -- how still, and for how
+//     long, before physics calls a die "asleep" (see this file's own
+//     header: 0.9s alone blows the entire animation budget).
+//   - linearDamping: 0.1 / angularDamping: 0.1 -- how much velocity/spin a
+//     die loses per physics step independent of collisions ("air
+//     resistance"). Low damping lets a die keep bouncing/spinning near-
+//     full-strength for many collisions before it ever gets slow enough to
+//     start the sleep countdown at all.
+// Called once per roll, right after `instance.roll()` has synchronously
+// spawned this throw's FINAL dice (see `roll()` below for exactly why that
+// timing is safe, and DiceBox.js's own `spawnDice()`: every call --
+// including the internal reset pass before the visible animation --
+// constructs a brand-new Body with these same defaults, so patching after
+// `roll()` returns always reaches the real bodies the visible animation
+// uses, never the discarded silent-simulation ones).
+function applyFastSettleTuning(instance: any): void {
+  for (const dicemesh of instance?.diceList ?? []) {
+    const dieBody = dicemesh?.body
+    if (!dieBody) continue
+    dieBody.sleepSpeedLimit = 140
+    dieBody.sleepTimeLimit = 0.12
+    dieBody.linearDamping = 0.5
+    dieBody.angularDamping = 0.5
+  }
+}
 
 async function ensureBox(): Promise<any> {
   if (box) return box
@@ -102,23 +186,26 @@ async function ensureBox(): Promise<any> {
     // install; a themed/skinned die is explicitly Phase 8 (Dice Skins),
     // named as future scope, not this phase's job.
     //
-    // ROLL SYSTEM PHASE 3C -- animation duration tuning (this phase's own
-    // ANIMATION section: target 600-800ms, "satisfying, not cinematic").
-    // dice-box-threejs's own defaults (gravity_multiplier: 400, strength: 1
-    // -- see its DiceBox.js defaultConfig) are tuned for a slower,
-    // more dramatic tabletop-simulator throw. `gravity_multiplier` raised
-    // and `strength` (toss force) lowered here settle the physics faster
-    // without changing the predetermined-face guarantee at all (§11's
-    // "physics for spectacle, number from the server" is unaffected by
-    // HOW FAST the spectacle resolves) -- see this file's own roll()
-    // logging below to confirm the resulting real-world duration and
-    // retune further if needed.
+    // ROLL SYSTEM PHASE 3D -- animation duration tuning (target 600-800ms,
+    // "satisfying, not cinematic," "reduce unnecessary motion, increase
+    // decisiveness"). dice-box-threejs's own defaults (gravity_multiplier:
+    // 400, strength: 1 -- see its DiceBox.js defaultConfig) are tuned for a
+    // slower, more dramatic tabletop-simulator throw; Phase 3C's own more
+    // moderate retune (800/0.6) measured at ~2800-3200ms -- still far over
+    // budget, which is what led to actually reading the source for Phase
+    // 3D rather than tuning further blind (see this file's own header: the
+    // dominant cost turned out to be the hardcoded sleep-threshold wait
+    // below, not the tumble itself). `gravity_multiplier` raised further
+    // and `strength` (toss force) lowered further here shortens the ACTIVE
+    // tumbling phase specifically; none of this changes the predetermined-
+    // face guarantee -- see this file's own roll() logging to confirm the
+    // resulting real-world duration and retune further if needed.
     const instance = new DiceBoxCtor(`#${containerId}`, {
       theme_colorset: 'white',
       theme_material: 'plastic',
       sounds: false,
-      gravity_multiplier: 800,
-      strength: 0.6
+      gravity_multiplier: 1400,
+      strength: 0.4
     })
 
     // THE ACTUAL RUNTIME BUG (Phase 3B.2): the constructor above only
@@ -136,6 +223,21 @@ async function ensureBox(): Promise<any> {
     // element existed in the DOM at all, and every roll silently fell back
     // to the placeholder via `onRendererFailed`.
     await instance.initialize()
+
+    // Roll System Phase 3D -- see this file's own header. `makeWorldBox()`
+    // (called once, inside `initialize()`) registers desk/wall/dice contact
+    // materials with hardcoded restitution (bounciness) of 0.5-1.0 -- no
+    // config hook exposes these either. `world.contactmaterials` is a
+    // standard, public `cannon-es` `World` property (an ordinary array of
+    // `ContactMaterial`, each with a plain, documented `.restitution`
+    // field) -- capping it low here, ONCE, for the lifetime of this
+    // renderer instance, means every die loses most of its bounce on
+    // landing instead of bouncing repeatedly before settling, directly
+    // satisfying "reduce unnecessary motion... not long tumbles."
+    for (const contactMaterial of instance.world?.contactmaterials ?? []) {
+      contactMaterial.restitution = Math.min(contactMaterial.restitution, 0.15)
+    }
+
     const tInitialized = performance.now()
 
     console.log(
@@ -154,8 +256,10 @@ async function ensureBox(): Promise<any> {
 // The one method this component exposes. `notation` is an ALREADY-BUILT
 // dice-box-threejs notation string (see worldDiceThreeRendererAdapter.ts's
 // own buildPredeterminedNotation) -- this function has no idea what a
-// RollEventRecord is, matching this file's own header note.
-async function roll(notation: string): Promise<void> {
+// RollEventRecord is, matching this file's own header note. `diceCount`
+// (Phase 3D) sizes this one roll's own settle ceiling -- see
+// iterationLimitForDiceCount's own header.
+async function roll(notation: string, diceCount: number): Promise<void> {
   error.value = ''
   const tStart = performance.now()
   const wasAlreadyInitialized = box !== null
@@ -168,17 +272,36 @@ async function roll(notation: string): Promise<void> {
       instance.clearDice()
     }
 
-    await instance.roll(notation)
+    // Read fresh by `throwFinished()` on every frame (a plain instance
+    // property dice-box-threejs's own config already assigns this way) --
+    // safe to set per-roll with no re-initialization.
+    instance.iterationLimit = iterationLimitForDiceCount(diceCount)
+
+    // `instance.roll(notation)` is an `async` function with no `await`
+    // before it synchronously calls `rollDice()`, which synchronously
+    // spawns every die's `cannon-es` Body BEFORE the first
+    // `requestAnimationFrame` of the visible animation ever fires (source:
+    // DiceBox.js's own `roll()`/`rollDice()` -- the `new Promise(executor)`
+    // executor runs synchronously, and `animateThrow` is what's deferred,
+    // not the spawning). This means the dice bodies already exist, with
+    // their default sleep thresholds, in the same synchronous tick this
+    // call returns its (still-pending) Promise -- exactly the window
+    // `shortenSettleThreshold` needs to patch them before any settling has
+    // had a chance to begin.
+    const rollPromise = instance.roll(notation)
+    applyFastSettleTuning(instance)
+
+    await rollPromise
     const tDone = performance.now()
 
-    // Roll System Phase 3C -- actual animation duration, measured, not
-    // guessed. Target 600-800ms (this phase's own ANIMATION section). The
-    // `wasAlreadyInitialized` split matters: on the very first roll this
-    // page view, `tReady - tStart` also includes the one-time init cost
-    // logged above, which would otherwise make the FIRST roll look like a
-    // slow animation when it is actually a slow (one-time) setup.
+    // Roll System Phase 3D -- actual animation duration, measured, not
+    // guessed. Target 600-800ms. The `wasAlreadyInitialized` split matters:
+    // on the very first roll this page view, `tReady - tStart` also
+    // includes the one-time init cost logged above, which would otherwise
+    // make the FIRST roll look like a slow animation when it is actually a
+    // slow (one-time) setup.
     console.log(
-      `[roll-perf] WorldDiceThreeRenderer.roll("${notation}"): animation=${(tDone - tReady).toFixed(1)}ms` +
+      `[roll-perf] WorldDiceThreeRenderer.roll("${notation}", diceCount=${diceCount}, iterationLimit=${instance.iterationLimit}): animation=${(tDone - tReady).toFixed(1)}ms` +
       (wasAlreadyInitialized ? '' : ` (renderer init included in a separate log line above, not in this number)`)
     )
   } catch (err: any) {

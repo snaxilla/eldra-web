@@ -50,7 +50,13 @@ import type { RollEventRecord } from '~/lib/rolls/types'
 // eldraDiceRendererAdapter.ts's own established precedent for the same
 // reason (Vue/Nuxt makes naming an SFC's instance type standalone awkward).
 export type WorldDiceThreeRendererExposed = {
-  roll: (notation: string) => Promise<void>
+  // `diceCount` -- Roll System Phase 3D (Dice Feel Tuning): "do not force
+  // every roll to use the same duration... the system should remain
+  // responsive." The renderer uses this to size its own per-roll settle
+  // ceiling (WorldDiceThreeRenderer.client.vue's own
+  // iterationLimitForDiceCount) -- a lone d20 and a 10-die damage pool
+  // should not visually take the same amount of time to feel decisive.
+  roll: (notation: string, diceCount: number) => Promise<void>
   error: string
 }
 
@@ -75,6 +81,15 @@ export function buildPredeterminedNotation(record: RollEventRecord): string | nu
   const resultsPart = groups.flatMap((group) => group.results).join(',')
 
   return `${dicePart}@${resultsPart}`
+}
+
+// Total physical dice this roll forces -- Phase 3D's own basis for scaling
+// animation duration ("do not force every roll to use the same duration").
+// Counts every die in every group, matching buildPredeterminedNotation's
+// own "never trimmed to just kept" posture: a dropped advantage die still
+// physically exists and still takes up settle time.
+export function countDice(record: RollEventRecord): number {
+  return record.dice.reduce((sum, group) => sum + group.results.length, 0)
 }
 
 // `onRendererFailed` is called after a `play()` call whose underlying
@@ -119,7 +134,7 @@ export function createWorldDiceThreeRendererAdapter(
         return
       }
 
-      await exposed.roll(notation)
+      await exposed.roll(notation, countDice(request.roll))
 
       if (exposed.error) {
         onRendererFailed?.()

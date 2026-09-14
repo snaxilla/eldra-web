@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import {
   buildPredeterminedNotation,
+  countDice,
   createWorldDiceThreeRendererAdapter,
   type WorldDiceThreeRendererExposed
 } from '../../../app/components/world/worldDiceThreeRendererAdapter'
@@ -92,6 +93,22 @@ describe('buildPredeterminedNotation', () => {
   })
 })
 
+describe('countDice', () => {
+  it('counts every die across every group, including ones a keep rule dropped', () => {
+    const record = roll({
+      dice: [
+        dieGroup({ sides: 20, results: [11, 20], keptFlags: [false, true], kept: [20] }),
+        dieGroup({ sides: 6, results: [3, 5, 1], kept: [3, 5, 1], keptFlags: [true, true, true] })
+      ]
+    })
+    expect(countDice(record)).toBe(5)
+  })
+
+  it('is zero for a manual roll with no dice', () => {
+    expect(countDice(roll({ dice: [] }))).toBe(0)
+  })
+})
+
 describe('createWorldDiceThreeRendererAdapter -- play()', () => {
   function exposed(overrides: Partial<WorldDiceThreeRendererExposed> = {}): WorldDiceThreeRendererExposed {
     return {
@@ -108,7 +125,7 @@ describe('createWorldDiceThreeRendererAdapter -- play()', () => {
     await expect(adapter.play({ id: 'roll-1', roll: roll() })).rejects.toThrow('WorldDiceThreeRenderer is not mounted')
   })
 
-  it('calls roll() with a forced-outcome notation built from the already-authoritative record', async () => {
+  it('calls roll() with a forced-outcome notation built from the already-authoritative record, plus the dice count', async () => {
     const rollMock = vi.fn().mockResolvedValue(undefined)
     const box = ref<WorldDiceThreeRendererExposed | null>(exposed({ roll: rollMock }))
     const adapter = createWorldDiceThreeRendererAdapter(box)
@@ -116,7 +133,23 @@ describe('createWorldDiceThreeRendererAdapter -- play()', () => {
     const record = roll({ id: 'roll-42', dice: [dieGroup({ sides: 20, results: [20], kept: [20] })] })
     await adapter.play({ id: 'roll-42', roll: record })
 
-    expect(rollMock).toHaveBeenCalledWith('1d20@20')
+    expect(rollMock).toHaveBeenCalledWith('1d20@20', 1)
+  })
+
+  it('passes the total dice count across every group, for a multi-die roll', async () => {
+    const rollMock = vi.fn().mockResolvedValue(undefined)
+    const box = ref<WorldDiceThreeRendererExposed | null>(exposed({ roll: rollMock }))
+    const adapter = createWorldDiceThreeRendererAdapter(box)
+
+    const record = roll({
+      dice: [
+        dieGroup({ sides: 6, results: [3, 5], kept: [3, 5], keptFlags: [true, true] }),
+        dieGroup({ sides: 4, results: [2], kept: [2], keptFlags: [true] })
+      ]
+    })
+    await adapter.play({ id: 'roll-1', roll: record })
+
+    expect(rollMock).toHaveBeenCalledWith('2d6+1d4@3,5,2', 3)
   })
 
   it('never calls roll() for a manual roll with no dice -- resolves immediately instead', async () => {

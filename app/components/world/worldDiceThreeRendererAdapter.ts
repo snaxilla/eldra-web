@@ -92,6 +92,50 @@ export function countDice(record: RollEventRecord): number {
   return record.dice.reduce((sum, group) => sum + group.results.length, 0)
 }
 
+// ---------------------------------------------------------------------------
+// ROLL SYSTEM PHASE 3E -- DICE COMPLETION TIMING
+// ---------------------------------------------------------------------------
+// ROOT CAUSE, traced (not guessed) through dice-box-threejs's own DiceBox.js:
+// `exposed.roll()` (WorldDiceThreeRenderer.client.vue) resolves its Promise
+// the instant `@3d-dice/dice-box-threejs`'s own `animateThrow()` sees
+// `throwFinished()` return true -- which checks ONLY whether every die's
+// underlying cannon-es Body has reached `CANNON.Body.SLEEPING`. That is a
+// PHYSICS signal (a body's own sleep-state machine), not a distinct visual-
+// completion or render-callback event -- there is no other completion
+// signal to "use instead": dice-box-threejs exposes exactly one way to know
+// a roll is done (the callback/Promise this adapter already awaits), and it
+// is defined purely in terms of physics sleep state.
+//
+// Phase 3D deliberately shortened that same sleep state's own thresholds
+// (`sleepTimeLimit` 0.9s->0.12s, `sleepSpeedLimit` 75->140 -- see
+// WorldDiceThreeRenderer.client.vue's own header) specifically to stop
+// wasting time on imperceptible motion, which this task's own OBJECTIVE
+// confirms was the right call ("The animation is significantly faster").
+// But it also means "physics declares this die asleep" now fires at a more
+// permissive residual-motion threshold than before, close to but not
+// perfectly synchronized with the instant a human eye perceives the die as
+// fully, unambiguously still -- occasionally close enough that the queue's
+// reveal (driven directly by this same Promise) can land a frame or two
+// before the eye has finished registering the settle.
+//
+// THE FIX: add exactly one small, fixed beat AFTER the renderer's own
+// completion signal resolves, before this adapter reports completion back
+// to useDiceAnimationQueue.ts -- matching this phase's own TARGET
+// EXPERIENCE verbatim ("Dice visibly settle -> ~100-150ms beat -> Roll Tray
+// entry appears"). This changes WHEN completion is reported, never WHAT
+// counts as complete, and touches no physics parameter, the renderer's own
+// architecture, the queue's state machine, or the DiceRendererAdapter
+// contract -- only this adapter's own internal timing between "the
+// renderer says it's done" and "I tell the queue it's done." Skipped on
+// failure (`exposed.error` set): a broken renderer should fall back to the
+// placeholder promptly, not sit through an extra beat for a settle that
+// never actually happened.
+export const SETTLE_CONFIRMATION_BEAT_MS = 130
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 // `onRendererFailed` is called after a `play()` call whose underlying
 // WorldDiceThreeRenderer instance reports an `error` (WebGL unavailable,
 // asset load failure, an unsupported die type such as d100/d%, or any
@@ -138,7 +182,15 @@ export function createWorldDiceThreeRendererAdapter(
 
       if (exposed.error) {
         onRendererFailed?.()
+        return
       }
+
+      // Phase 3E's own settle-confirmation beat -- see this file's own
+      // header for the full trace. The renderer already resolved (physics
+      // says every die is asleep); this holds completion back from the
+      // queue for one short, fixed beat so the reveal always lands after
+      // the eye has had a moment to confirm the die actually stopped.
+      await wait(SETTLE_CONFIRMATION_BEAT_MS)
     },
 
     dispose() {}

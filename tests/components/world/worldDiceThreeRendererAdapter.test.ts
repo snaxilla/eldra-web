@@ -14,6 +14,7 @@ import {
   buildPredeterminedNotation,
   countDice,
   createWorldDiceThreeRendererAdapter,
+  SETTLE_CONFIRMATION_BEAT_MS,
   type WorldDiceThreeRendererExposed
 } from '../../../app/components/world/worldDiceThreeRendererAdapter'
 import type { RollDieGroup, RollEventRecord } from '../../../app/lib/rolls/types'
@@ -184,6 +185,63 @@ describe('createWorldDiceThreeRendererAdapter -- play()', () => {
     const adapter = createWorldDiceThreeRendererAdapter(box)
 
     await expect(adapter.play({ id: 'roll-1', roll: roll() })).resolves.toBeUndefined()
+  })
+})
+
+describe('createWorldDiceThreeRendererAdapter -- Phase 3E settle-confirmation beat', () => {
+  function exposed(overrides: Partial<WorldDiceThreeRendererExposed> = {}): WorldDiceThreeRendererExposed {
+    return {
+      roll: vi.fn().mockResolvedValue(undefined),
+      error: '',
+      ...overrides
+    }
+  }
+
+  it('does not resolve play() until the settle-confirmation beat has elapsed after roll() resolves -- the Roll Tray must never reveal before this', async () => {
+    vi.useFakeTimers()
+    try {
+      const box = ref<WorldDiceThreeRendererExposed | null>(exposed({ error: '' }))
+      const adapter = createWorldDiceThreeRendererAdapter(box)
+
+      let resolved = false
+      const playPromise = adapter.play({ id: 'roll-1', roll: roll() }).then(() => {
+        resolved = true
+      })
+
+      // Flushes roll()'s own already-resolved Promise without advancing any
+      // setTimeout-driven wait yet.
+      await vi.advanceTimersByTimeAsync(0)
+      expect(resolved).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(SETTLE_CONFIRMATION_BEAT_MS - 1)
+      expect(resolved).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(1)
+      await playPromise
+      expect(resolved).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('skips the settle-confirmation beat entirely on a renderer error -- a broken renderer must fall back promptly, never sit through a beat for a settle that never happened', async () => {
+    vi.useFakeTimers()
+    try {
+      const onRendererFailed = vi.fn()
+      const box = ref<WorldDiceThreeRendererExposed | null>(exposed({ error: '3D dice failed to render.' }))
+      const adapter = createWorldDiceThreeRendererAdapter(box, onRendererFailed)
+
+      let resolved = false
+      adapter.play({ id: 'roll-1', roll: roll() }).then(() => {
+        resolved = true
+      })
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(resolved).toBe(true)
+      expect(onRendererFailed).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

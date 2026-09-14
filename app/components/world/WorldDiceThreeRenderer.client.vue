@@ -95,6 +95,22 @@ async function ensureBox(): Promise<any> {
       sounds: false
     })
 
+    // THE ACTUAL RUNTIME BUG (Phase 3B.2): the constructor above only
+    // assigns config and builds the DiceFactory/DiceColors helpers -- it
+    // creates no THREE.WebGLRenderer, no camera, no CANNON world gravity,
+    // and appends NO <canvas> to the container. All of that happens inside
+    // this SEPARATE, mandatory `initialize()` method (confirmed by reading
+    // dice-box-threejs's own DiceBox.js: `renderer.domElement` is only
+    // created and appended here, and `this.camera` is only assigned deep
+    // inside the `setDimensions()` call this method makes). Every prior
+    // `roll()` call was silently throwing on `this.renderer.render(...)`
+    // (via `clearDice()`) because `this.renderer` was `undefined` --
+    // caught by this function's own try/catch below, surfaced only as
+    // `error`, which is exactly why no 3D dice ever appeared: no canvas
+    // element existed in the DOM at all, and every roll silently fell back
+    // to the placeholder via `onRendererFailed`.
+    await instance.initialize()
+
     box = instance
     ready.value = true
     return instance

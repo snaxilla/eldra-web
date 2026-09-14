@@ -1,6 +1,34 @@
 <script setup lang="ts">
 import { summarizeRollEvent } from '~/utils/diceBoxRollSummary'
 
+// Roll System Phase 3B (eldra-roll-system.md §11). `headless` is the ONE
+// change this file needed to become the Dice Presentation Layer's real
+// renderer (see app/components/world/eldraDiceRendererAdapter.ts, the
+// DiceRendererAdapter that mounts a SECOND instance of this same
+// component, headless, inside WorldDiceOverlay.vue -- not a second dice
+// library, the same @3d-dice/dice-box this file already wraps). Defaults
+// to `false`, so entities/[entityId]/sheet.vue's own existing mount (V1,
+// which never passes this prop) is byte-for-byte unchanged.
+//
+// When true: the physics canvas (`#boxId` below) still mounts and still
+// tumbles real dice -- that IS the spectacle worth reusing -- but the
+// result card, mini history strip, and critical-hit confetti/stink
+// banners never render. Those three already exist in the new pipeline as
+// WorldDiceStage.vue / WorldRollTray.vue; rendering this component's OWN
+// copies of them alongside would be exactly the "two history UIs" this
+// project has avoided since Phase 2C. The eager `onMounted` prewarm below
+// is ALSO skipped in headless mode, for a different reason: this instance
+// is mounted once per World page (every page, not just ones where a roll
+// happens), so eagerly loading `@3d-dice/dice-box` on every page view
+// would violate this phase's own "only load renderer assets when the
+// first animation is requested" -- prewarming happens lazily instead, the
+// first time `rollResult()` itself is actually called.
+const props = withDefaults(defineProps<{
+  headless?: boolean
+}>(), {
+  headless: false
+})
+
 const visible = ref(false)
 const loading = ref(false)
 const ready = ref(false)
@@ -397,6 +425,18 @@ async function rollDice(options: { notation: string; label?: string; kind?: stri
 // app/utils/diceBoxRollSummary.ts), which is what "the RollEvent must
 // remain authoritative" actually cashes out to here. Flagged in the
 // commit Summary, not silently papered over.
+//
+// Roll System Phase 3B: this function's OWN returned Promise now resolves
+// exactly when `settle()` fires -- i.e. when the animation is VISUALLY
+// complete -- rather than when `box.roll()` merely dispatches the throw.
+// This is the one behavior change in this file: every value this function
+// sets, and when it sets them, is otherwise byte-for-byte unchanged, and
+// its existing caller (entities/[entityId]/sheet.vue's
+// `rollD20AndAnimate`) never awaited this function's return value in the
+// first place, so nothing about V1's behavior differs. The new caller
+// that DOES need this -- eldraDiceRendererAdapter.ts's `play()`, which
+// `useDiceAnimationQueue.ts` awaits before advancing its own queue -- is
+// the entire reason this was worth changing.
 async function rollResult(event: any, label = 'Roll') {
   if (autoHideTimer) {
     clearTimeout(autoHideTimer)
@@ -446,49 +486,68 @@ async function rollResult(event: any, label = 'Roll') {
     scheduleAutoHide()
   }
 
-  try {
-    await nextTick()
+  // Everything below this line is IDENTICAL to before, field for field and
+  // condition for condition -- the only addition is `resolve()`, called at
+  // every point this function previously just fell off the end of a
+  // branch. In particular, the token-mismatch case inside `if (returned)`
+  // still does NOT call `settle()` (a newer roll's own settle already
+  // took over `latestRoll`/`rollHistory`, exactly as before) -- it only
+  // unblocks THIS invocation's own caller, since `box.onRollComplete` was
+  // already overwritten by the newer roll and will never fire for this
+  // one otherwise.
+  await new Promise<void>((resolve) => {
+    (async () => {
+      try {
+        await nextTick()
 
-    const box = await prewarmDiceBox()
+        const box = await prewarmDiceBox()
 
-    if (typeof box.resize === 'function') {
-      box.resize()
-    }
+        if (typeof box.resize === 'function') {
+          box.resize()
+        }
 
-    if (typeof box.clear === 'function') {
-      box.clear()
-    }
+        if (typeof box.clear === 'function') {
+          box.clear()
+        }
 
-    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    activeRollToken = token
+        const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        activeRollToken = token
 
-    // The physics engine's own settled values are intentionally never
-    // read here -- only that it finished is relevant.
-    box.onRollComplete = () => {
-      if (token !== activeRollToken) return
-      activeRollToken = ''
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer)
-        fallbackTimer = null
-      }
-      settle()
-    }
+        // The physics engine's own settled values are intentionally never
+        // read here -- only that it finished is relevant.
+        box.onRollComplete = () => {
+          if (token !== activeRollToken) return
+          activeRollToken = ''
+          if (fallbackTimer) {
+            clearTimeout(fallbackTimer)
+            fallbackTimer = null
+          }
+          settle()
+          resolve()
+        }
 
-    const returned = await Promise.resolve(box.roll(diceNotation))
+        const returned = await Promise.resolve(box.roll(diceNotation))
 
-    if (returned) {
-      if (token === activeRollToken) {
+        if (returned) {
+          if (token === activeRollToken) {
+            activeRollToken = ''
+            settle()
+          }
+          resolve()
+        } else {
+          fallbackTimer = setTimeout(() => {
+            settle()
+            resolve()
+          }, 3800)
+        }
+      } catch (err: any) {
+        // The visual flourish failed; the authoritative result still shows.
         activeRollToken = ''
         settle()
+        resolve()
       }
-    } else {
-      fallbackTimer = setTimeout(settle, 3800)
-    }
-  } catch (err: any) {
-    // The visual flourish failed; the authoritative result still shows.
-    activeRollToken = ''
-    settle()
-  }
+    })()
+  })
 }
 
 function closeRoller() {
@@ -496,6 +555,11 @@ function closeRoller() {
 }
 
 onMounted(() => {
+  // Headless instances (Phase 3B) skip the eager idle-time prewarm --
+  // see this file's own `headless` prop doc for why. `prewarmDiceBox()`
+  // still runs lazily, the first time `rollResult()` is actually called.
+  if (props.headless) return
+
   const start = () => {
     prewarmDiceBox().catch((err: any) => {
       error.value = err?.message || '3D dice failed to initialize.'
@@ -520,7 +584,16 @@ onBeforeUnmount(() => {
 
 defineExpose({
   rollDice,
-  rollResult
+  rollResult,
+  // Roll System Phase 3B: `error` lets eldraDiceRendererAdapter.ts detect
+  // an initialization/roll failure AFTER a `rollResult()` call returns
+  // (that call itself never rejects -- see its own header) and stop
+  // registering this renderer for future rolls, falling back to
+  // useDiceAnimationQueue.ts's own placeholder (this task's own FAILURE
+  // MODE section). `ready` is exposed for the same kind of external
+  // introspection, though the adapter does not currently read it.
+  error,
+  ready
 })
 </script>
 
@@ -533,7 +606,7 @@ defineExpose({
     />
 
     <div
-      v-if="visible && latestRoll?.criticalOutcome === 'nat20'"
+      v-if="!headless && visible && latestRoll?.criticalOutcome === 'nat20'"
       :key="`nat20-${latestRoll?.id}`"
       class="pointer-events-none absolute inset-0 z-[2] overflow-hidden"
     >
@@ -549,7 +622,7 @@ defineExpose({
     </div>
 
     <div
-      v-if="visible && latestRoll?.criticalOutcome === 'nat1'"
+      v-if="!headless && visible && latestRoll?.criticalOutcome === 'nat1'"
       :key="`nat1-${latestRoll?.id}`"
       class="pointer-events-none absolute inset-0 z-[2] overflow-hidden"
     >
@@ -571,7 +644,7 @@ defineExpose({
       leave-active-class="transition duration-150"
     >
       <div
-        v-if="visible"
+        v-if="!headless && visible"
         class="pointer-events-auto absolute inset-x-3 bottom-3 rounded-none border border-[rgba(201,164,90,0.42)] bg-[rgba(7,13,20,0.92)] p-3 shadow-[0_18px_48px_rgba(0,0,0,0.50)] backdrop-blur md:left-auto md:right-4 md:w-[420px]"
         :class="{
           'border-emerald-300/80 shadow-[0_0_38px_rgba(110,231,183,0.25)]': latestRoll?.criticalOutcome === 'nat20',

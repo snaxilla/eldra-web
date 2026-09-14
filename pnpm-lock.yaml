@@ -11,6 +11,9 @@ importers:
       '@3d-dice/dice-box':
         specifier: ^1.1.4
         version: 1.1.4(babylonjs-gltf2interface@5.57.1)
+      '@3d-dice/dice-box-threejs':
+        specifier: ^0.0.12
+        version: 0.0.12
       '@fontsource/public-sans':
         specifier: 5.3.0
         version: 5.3.0
@@ -113,6 +116,9 @@ importers:
         version: 3.2.5(typescript@5.9.3)
 
 packages:
+
+  '@3d-dice/dice-box-threejs@0.0.12':
+    resolution: {integrity: sha512-Bau5UizUunZS9+A6zgGeZecEJotSLEI6YvmYTosvvdhRxv92xo89aIvKYQb6xqdx/AqjHdGENJmqBOadlFL9kA==}
 
   '@3d-dice/dice-box@1.1.4':
     resolution: {integrity: sha512-W8evh0LlCx/sorPS00cGZJO+/3I8g5eMfDqFAKAIUXF+/XVTP06bhgHSNFOCvLzWbdbEJX5za9QxB0ulDvfxyA==}
@@ -2926,6 +2932,9 @@ packages:
   caniuse-lite@1.0.30001779:
     resolution: {integrity: sha512-U5og2PN7V4DMgF50YPNtnZJGWVLFjjsN3zb6uMT5VGYIewieDj1upwfuVNXf4Kor+89c3iCRJnSzMD5LmTvsfA==}
 
+  cannon-es@0.20.0:
+    resolution: {integrity: sha512-eZhWTZIkFOnMAJOgfXJa9+b3kVlvG+FX4mdkpePev/w/rP5V8NRquGyEozcjPfEoXUlb+p7d9SUcmDSn14prOA==}
+
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
@@ -5287,6 +5296,9 @@ packages:
   thpace@2.0.3:
     resolution: {integrity: sha512-fwHGBpYuDVv4PjRchHmWzqzmubc0/Ah+vwFOlZ8bwDbYQuXfTyvCS9T8e8l2+zyDB0k2jiSv7vl7mrAzDfEqBw==}
 
+  three@0.143.0:
+    resolution: {integrity: sha512-oKcAGYHhJ46TGEuHjodo2n6TY2R6lbvrkp+feKZxqsUL/WkH7GKKaeu6RHeyb2Xjfk2dPLRKLsOP0KM2VgT8Zg==}
+
   tiny-inflate@1.0.3:
     resolution: {integrity: sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==}
 
@@ -5999,6 +6011,11 @@ packages:
     engines: {node: '>= 14'}
 
 snapshots:
+
+  '@3d-dice/dice-box-threejs@0.0.12':
+    dependencies:
+      cannon-es: 0.20.0
+      three: 0.143.0
 
   '@3d-dice/dice-box@1.1.4(babylonjs-gltf2interface@5.57.1)':
     dependencies:
@@ -8833,6 +8850,8 @@ snapshots:
 
   caniuse-lite@1.0.30001779: {}
 
+  cannon-es@0.20.0: {}
+
   chai@6.2.2: {}
 
   change-case@5.4.4: {}
@@ -11491,6 +11510,8 @@ snapshots:
       delaunator: 4.0.1
       stats.js: 0.17.0
       tslib: 2.8.1
+
+  three@0.143.0: {}
 
   tiny-inflate@1.0.3: {}
 

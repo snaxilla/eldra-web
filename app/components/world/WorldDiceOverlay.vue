@@ -29,38 +29,48 @@
 // panel.
 //
 // ---------------------------------------------------------------------------
-// PHASE 3B: THE ONE PLACE THE REAL RENDERER IS MOUNTED AND REGISTERED
+// PHASE 3B (RENDERER REPLACEMENT): THE ONE PLACE THE REAL RENDERER IS
+// MOUNTED AND REGISTERED
 // ---------------------------------------------------------------------------
-// A single, headless EldraDiceBox instance mounts here (`<ClientOnly>`,
+// A single WorldDiceThreeRenderer instance mounts here (`<ClientOnly>`,
 // matching the DOM/WebGL-only reason entities/[entityId]/sheet.vue's own
-// mount already needs it) -- NOT inside the Character Sheet, an
-// Encounter, the Developer Sandbox, or WorldRollTray.vue itself (this
+// EldraDiceBox mount already needs it) -- NOT inside the Character Sheet,
+// an Encounter, the Developer Sandbox, or WorldRollTray.vue itself (this
 // task's own WORLD SCOPE section: those consume the presentation layer,
-// they do not own it). `headless` suppresses EldraDiceBox's own result
-// card/history strip/critical banners, which would otherwise duplicate
-// WorldDiceStage.vue/WorldRollTray.vue -- see that prop's own doc on
-// EldraDiceBox.client.vue.
+// they do not own it). WorldDiceThreeRenderer.client.vue renders only a
+// canvas -- no result card/history strip/critical banners of its own,
+// which would otherwise duplicate WorldDiceStage.vue/WorldRollTray.vue.
 //
-// The adapter (eldraDiceRendererAdapter.ts) is registered with the shared
-// queue on mount and un-registered on unmount -- `useDiceAnimationQueue()`
-// falls back to its own built-in placeholder automatically whenever no
-// renderer is registered (Phase 3A's own design), which is also exactly
-// how FAILURE MODE is satisfied: if a `play()` call reports the renderer
-// errored, the adapter calls back here to un-register itself, and every
-// later roll (this session) uses the placeholder instead -- gameplay
-// keeps moving either way, since the queue's own promise always resolves
-// regardless of which path ran.
+// This REPLACES the previously-registered EldraDiceBox-backed renderer
+// (@3d-dice/dice-box@1.1.4): that library cannot guarantee a die's visible
+// resting face matches the authoritative RollEventRecord -- see
+// worldDiceThreeRendererAdapter.ts's and WorldDiceThreeRenderer
+// .client.vue's own headers for the full reasoning and the predetermined-
+// outcome mechanism @3d-dice/dice-box-threejs uses instead.
+// EldraDiceBox.client.vue and @3d-dice/dice-box remain installed and
+// unchanged for entities/[entityId]/sheet.vue's own separate, still-legacy
+// notation-only roll path -- this file no longer imports either.
+//
+// The adapter (worldDiceThreeRendererAdapter.ts) is registered with the
+// shared queue on mount and un-registered on unmount --
+// `useDiceAnimationQueue()` falls back to its own built-in placeholder
+// automatically whenever no renderer is registered (Phase 3A's own
+// design), which is also exactly how FAILURE MODE is satisfied: if a
+// `play()` call reports the renderer errored, the adapter calls back here
+// to un-register itself, and every later roll (this session) uses the
+// placeholder instead -- gameplay keeps moving either way, since the
+// queue's own promise always resolves regardless of which path ran.
 
-import EldraDiceBox from '~/components/EldraDiceBox.client.vue'
+import WorldDiceThreeRenderer from '~/components/world/WorldDiceThreeRenderer.client.vue'
 import WorldDiceStage from '~/components/world/WorldDiceStage.vue'
-import { createEldraDiceRendererAdapter, type EldraDiceBoxExposed } from '~/components/world/eldraDiceRendererAdapter'
+import { createWorldDiceThreeRendererAdapter, type WorldDiceThreeRendererExposed } from '~/components/world/worldDiceThreeRendererAdapter'
 import { useDiceAnimationQueue } from '~/composables/useDiceAnimationQueue'
 
-const diceBoxRef = ref<EldraDiceBoxExposed | null>(null)
+const diceBoxRef = ref<WorldDiceThreeRendererExposed | null>(null)
 const diceQueue = useDiceAnimationQueue()
 
 onMounted(() => {
-  const adapter = createEldraDiceRendererAdapter(diceBoxRef, () => {
+  const adapter = createWorldDiceThreeRendererAdapter(diceBoxRef, () => {
     diceQueue.setRenderer(null)
   })
   diceQueue.setRenderer(adapter)
@@ -79,9 +89,6 @@ onBeforeUnmount(() => {
   </div>
 
   <ClientOnly>
-    <EldraDiceBox
-      ref="diceBoxRef"
-      headless
-    />
+    <WorldDiceThreeRenderer ref="diceBoxRef" />
   </ClientOnly>
 </template>

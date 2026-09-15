@@ -50,11 +50,13 @@
     "sharp": "^0.34.3",
     "tailwindcss": "^4.2.1",
     "thpace": "^2.0.3",
+    "three": "0.143.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.15.2",
     "@types/markdown-it": "^14.1.2",
+    "@types/three": "0.143.0",
     "eslint": "^10.0.3",
     "jiti": "^2.6.1",
     "typescript": "^5.9.3",

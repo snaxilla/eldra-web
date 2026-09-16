@@ -29,9 +29,11 @@
 // this land."
 //
 // vs. WorldAuthoredDiceRenderer.vue (Phase 4B's own CSS/DOM proof of
-// concept, kept -- see useDiceRendererMode.ts's own header for how): that
-// approach proved the ARCHITECTURE (authored presentation, deterministic
-// targets, fixed duration, DiceRendererAdapter as the correct seam) but
+// concept -- never committed to git, and not registered by any committed
+// code; see useDiceRendererMode.ts's own header for the deployment-fix
+// account of why): that approach proved the ARCHITECTURE (authored
+// presentation, deterministic targets, fixed duration, DiceRendererAdapter
+// as the correct seam) but
 // its "sphere of 20 independent face cards" visual did not read as a real
 // 3D die. This file builds a GENUINE, single, rigid icosahedral mesh --
 // `THREE.IcosahedronGeometry`, the same solid a real d20 has -- and

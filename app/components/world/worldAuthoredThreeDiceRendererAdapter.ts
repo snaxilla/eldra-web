@@ -1,31 +1,38 @@
-// worldAuthoredThreeDiceRendererAdapter -- the THIRD real
-// DiceRendererAdapter implementation. Roll System Phase 4B.1 (Authored
-// Three.js d20 Proof of Concept, ADR-024 Option 2), implementing ADR-024
+// worldAuthoredThreeDiceRendererAdapter -- the SECOND real
+// DiceRendererAdapter implementation actually registered in production.
+// Roll System Phase 4B.1 (Authored Three.js d20 Proof of Concept,
+// ADR-024 Option 2), implementing ADR-024
 // (.github/docs/architecture/adr-024-authored-dice-presentation.md) §4
 // ("System concept"), §7 ("Face presentation"), §11/§12 (Option 2 --
 // Canvas/WebGL authored dice, invoked here as the named fallback after
 // Phase 4B's CSS/DOM proof of concept did not clear the visual-quality
 // gate).
 //
-// NEITHER OF THE OTHER TWO RENDERERS IS TOUCHED. WorldDiceThreeRenderer
-// .client.vue (physics, @3d-dice/dice-box-threejs) and
-// WorldAuthoredDiceRenderer.vue (Phase 4B's CSS/DOM proof of concept) are
-// both unchanged and remain registerable -- see useDiceRendererMode.ts
-// for the now-three-way dev flag that decides which of the three adapters
-// WorldDiceOverlay.vue actually registers at a given moment.
+// THE PHYSICS RENDERER IS NOT TOUCHED. WorldDiceThreeRenderer.client.vue
+// (physics, @3d-dice/dice-box-threejs) is unchanged and remains
+// registerable -- see useDiceRendererMode.ts for the two-way dev flag
+// (`'physics' | 'authored-three'`) that decides which adapter
+// WorldDiceOverlay.vue actually registers at a given moment. Phase 4B's
+// own CSS/DOM proof of concept (`WorldAuthoredDiceRenderer.vue`,
+// `worldAuthoredDiceRendererAdapter.ts`) is NOT a third option here -- it
+// was never committed to git (a Phase 4B.1 deployment-fix audit proved
+// this directly via `git ls-tree`/`git status`), so it is not registered
+// or imported by any committed code, this file included.
 //
 // DELIBERATELY DUPLICATES extractSingleD20Face RATHER THAN IMPORTING IT
-// FROM worldAuthoredDiceRendererAdapter.ts (Phase 4B's own identical
-// function). This phase's own IMPORTANT section reads "do not couple the
-// new renderer to [the old renderer's] runtime behavior" -- applied here
-// to mean each renderer's own adapter stays fully self-contained, with NO
-// cross-import between sibling renderer adapters, matching the precedent
-// worldDiceThreeRendererAdapter.ts and (Phase 4B's)
-// worldAuthoredDiceRendererAdapter.ts already set for each other (neither
-// imports from the other; each duplicates its own tiny `wait()`-style
-// helpers). The duplicated function is eight lines and changes only if
-// this phase's own d20-only scope ever changes, at which point it would
-// need independent review anyway.
+// FROM worldAuthoredDiceRendererAdapter.ts (Phase 4B's own identical,
+// never-committed function). This phase's own IMPORTANT section reads "do
+// not couple the new renderer to [the old renderer's] runtime behavior"
+// -- applied here to mean each renderer's own adapter stays fully
+// self-contained, with NO cross-import between sibling renderer adapters,
+// matching the precedent worldDiceThreeRendererAdapter.ts already sets
+// (it duplicates its own tiny `wait()`-style helpers rather than sharing
+// them). The duplicated function is eight lines and changes only if this
+// phase's own d20-only scope ever changes, at which point it would need
+// independent review anyway. This also turned out to matter more than
+// intended: because the two adapters never share an import, this file's
+// own build was never at risk from the CSS renderer's own missing commit
+// -- only WorldDiceOverlay.vue's direct import of it was.
 //
 // PHASE 4B.1'S OWN SCOPE, ENFORCED HERE, NOT ASSUMED (identical to Phase
 // 4B's own posture): "ONLY support: single d20 rolls." Any roll that is

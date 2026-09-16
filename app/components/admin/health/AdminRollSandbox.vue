@@ -36,18 +36,19 @@
 // throws, skills, attacks, spells, the dice box, realtime, or the
 // Character Sheet. This component knows none of those exist.
 //
-// ROLL SYSTEM PHASE 4B / 4B.1 (AUTHORED d20 PROOFS OF CONCEPT): THE
+// ROLL SYSTEM PHASE 4B.1 (AUTHORED THREE.JS d20 PROOF OF CONCEPT): THE
 // RENDERER-MODE SELECTOR. This page (`worlds/[id]/admin.vue`,
 // `layout: 'world-workspace'`) already mounts the real, shared
 // `WorldDiceOverlay.vue` -- the exact same queue/renderer every gameplay
 // surface uses -- so rolling `1d20` here exercises whichever renderer is
-// selected end to end, not a preview. The selector below is this task's
+// selected end to end, not a preview. The selector below is this phase's
 // own "a simple development flag is sufficient" FEATURE FLAG / COMPARISON
-// requirement made concrete and testable -- widened from Phase 4B's own
-// two-way checkbox to a three-way choice now that a third renderer
-// exists (see useDiceRendererMode.ts's own header for why the SAME
-// mechanism was extended rather than a second flag system being
-// invented). Not a permanent settings surface.
+// requirement made concrete and testable -- Phase 4B's own two-way
+// checkbox, widened in place to a mode selector (see
+// useDiceRendererMode.ts's own header for why the SAME mechanism was
+// extended rather than a second flag system being invented, and for why
+// it offers only 'physics'/'authored-three', not a third 'authored-css'
+// option). Not a permanent settings surface.
 
 import WorldRollTray from '~/components/world/WorldRollTray.vue'
 import { useDiceRendererMode } from '~/composables/useDiceRendererMode'
@@ -113,12 +114,15 @@ watch(worldId, () => refreshHistory().catch(() => {}), { immediate: true })
       Rolls a real, server-authoritative <span class="font-mono">custom</span> Roll Event -- OpenDice, persistence, the API, authorization, and history, exactly as any future gameplay feature will use this pipeline. Not wired to abilities, saves, skills, attacks, spells, the dice box, realtime, or the Character Sheet yet.
     </p>
 
-    <!-- Roll System Phase 4B/4B.1 -- renderer-mode selector. Selects which
+    <!-- Roll System Phase 4B.1 -- renderer-mode selector. Selects which
          DiceRendererAdapter WorldDiceOverlay.vue registers; 'physics'
          remains the default and is unaffected by this selector. Only a
-         plain 1d20 roll actually animates on either authored renderer --
+         plain 1d20 roll actually animates on the authored renderer --
          anything else falls back to the physics renderer regardless of
-         this selection. -->
+         this selection. No 'authored-css' option -- Phase 4B's own CSS/DOM
+         proof of concept was never committed to git and was removed from
+         this selector by this phase's own deployment fix; see
+         useDiceRendererMode.ts's own header for the full account. -->
     <fieldset class="mt-3">
       <legend class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">
         Dice Renderer (dev)
@@ -132,15 +136,6 @@ watch(worldId, () => refreshHistory().catch(() => {}), { immediate: true })
             class="accent-[#c9a45a]"
           >
           Physics (default)
-        </label>
-        <label class="flex items-center gap-2">
-          <input
-            v-model="diceRendererMode"
-            type="radio"
-            value="authored-css"
-            class="accent-[#c9a45a]"
-          >
-          Authored CSS (Phase 4B)
         </label>
         <label class="flex items-center gap-2">
           <input

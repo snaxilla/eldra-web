@@ -62,71 +62,64 @@
 // queue's own promise always resolves regardless of which path ran.
 //
 // ---------------------------------------------------------------------------
-// PHASE 4B (AUTHORED CSS d20 PROOF OF CONCEPT): A SECOND RENDERER,
-// SELECTABLE, RETAINED
+// PHASE 4B (AUTHORED CSS d20 PROOF OF CONCEPT): REJECTED, NEVER SHIPPED
 // ---------------------------------------------------------------------------
-// WorldAuthoredDiceRenderer.vue mounts here TOO, unconditionally,
-// alongside WorldDiceThreeRenderer -- ADR-024 §13's migration plan is
-// explicit that renderers coexist through Phase 4F. Its purpose
-// (validating the authored-presentation architecture: deterministic
-// targets, fixed duration, DiceRendererAdapter as the correct seam) is
-// done -- Phase 4B.1's own CSS/DOM visual quality did not clear ADR-024's
-// gate, which is why Phase 4B.1 exists at all -- but the component and
-// its exhaustive orientation tests remain genuine, working evidence, and
-// a genuine three-way comparison option, not dead code. See
-// useDiceRendererMode.ts's own header for the full reasoning behind
-// keeping it registerable rather than deleting it.
+// Phase 4B's CSS/DOM renderer (`WorldAuthoredDiceRenderer.vue`) validated
+// the authored-presentation architecture (deterministic targets, fixed
+// duration, DiceRendererAdapter as the correct seam) but its visual
+// quality did not clear ADR-024's gate -- Phase 4B.1's Three.js renderer,
+// below, is the result. That CSS component and its own exhaustive
+// orientation tests were NEVER committed (a Phase 4B.1 deployment-fix
+// audit -- `git ls-tree HEAD`/`git status` -- proved this directly: the
+// component existed only as an untracked working-tree file, which is
+// exactly why a from-git production build failed with `ENOENT` for it
+// while every local build, which still had that untracked file sitting
+// on disk, kept passing). It is intentionally NOT imported or mounted
+// here -- this file's own committed code must depend only on committed
+// code. The file remains on disk locally as design history/evidence per
+// that audit's own findings; it is simply no longer wired to anything
+// production loads. Reintroducing it as a real, selectable mode is a
+// separate, future decision (committing it for real, first) -- not an
+// automatic consequence of it still existing on someone's machine.
 //
 // ---------------------------------------------------------------------------
 // PHASE 4B.1 (AUTHORED THREE.JS d20 PROOF OF CONCEPT, ADR-024 OPTION 2): A
-// THIRD RENDERER
+// SECOND RENDERER
 // ---------------------------------------------------------------------------
 // WorldAuthoredThreeDiceRenderer.client.vue mounts here too -- a real
-// WebGL/Three.js renderer (`.client.vue` suffix required, unlike its CSS
-// sibling), invoked as ADR-024's own named fallback after Phase 4B's
-// CSS/DOM approach. `useDiceAnimationQueue.ts` only ever holds ONE
-// registered renderer at a time (`setRenderer()` replaces, never adds);
-// `useDiceRendererMode()` (a plain, session-local `useState`, default
-// `'physics'` -- Phase 4B's own boolean flag, widened to a three-way mode
-// now that three renderers exist to choose between, see that composable's
-// own header) decides which of the three adapters is actually registered,
-// and is watched so choosing a different mode (AdminRollSandbox.vue's own
-// selector) takes effect on the very next roll with no page reload. All
-// three renderer components remain mounted regardless of mode --
-// WorldDiceThreeRenderer's and WorldAuthoredThreeDiceRenderer's own lazy
-// self-init (each dynamically imports its own 3D library only on the
-// FIRST roll it actually renders) and WorldAuthoredDiceRenderer's own
-// zero-asset CSS/DOM approach all mean an unregistered, never-called
-// renderer costs nothing merely by being present in the DOM.
+// WebGL/Three.js renderer (`.client.vue` suffix required), invoked as
+// ADR-024's own named fallback after Phase 4B's CSS/DOM approach.
+// `useDiceAnimationQueue.ts` only ever holds ONE registered renderer at a
+// time (`setRenderer()` replaces, never adds); `useDiceRendererMode()` (a
+// plain, session-local `useState`, default `'physics'`) decides which of
+// the two adapters is actually registered, and is watched so choosing a
+// different mode (AdminRollSandbox.vue's own selector) takes effect on
+// the very next roll with no page reload. Both renderer components remain
+// mounted regardless of mode -- each dynamically imports its own 3D
+// library only on the FIRST roll it actually renders, so an unregistered,
+// never-called renderer costs nothing merely by being present in the DOM.
 
-import WorldAuthoredDiceRenderer from '~/components/world/WorldAuthoredDiceRenderer.vue'
 import WorldAuthoredThreeDiceRenderer from '~/components/world/WorldAuthoredThreeDiceRenderer.client.vue'
 import WorldDiceStage from '~/components/world/WorldDiceStage.vue'
 import WorldDiceThreeRenderer from '~/components/world/WorldDiceThreeRenderer.client.vue'
-import { createAuthoredDiceRendererAdapter, type WorldAuthoredDiceRendererExposed } from '~/components/world/worldAuthoredDiceRendererAdapter'
 import { createAuthoredThreeDiceRendererAdapter, type WorldAuthoredThreeDiceRendererExposed } from '~/components/world/worldAuthoredThreeDiceRendererAdapter'
 import { createWorldDiceThreeRendererAdapter, type WorldDiceThreeRendererExposed } from '~/components/world/worldDiceThreeRendererAdapter'
 import { useDiceRendererMode } from '~/composables/useDiceRendererMode'
 import { useDiceAnimationQueue } from '~/composables/useDiceAnimationQueue'
 
 const diceBoxRef = ref<WorldDiceThreeRendererExposed | null>(null)
-const authoredDiceBoxRef = ref<WorldAuthoredDiceRendererExposed | null>(null)
 const authoredThreeDiceBoxRef = ref<WorldAuthoredThreeDiceRendererExposed | null>(null)
 const diceQueue = useDiceAnimationQueue()
 const diceRendererMode = useDiceRendererMode()
 
 // Registers whichever renderer the mode currently selects. Re-run on
-// mount and on every mode change (see the `watch` below) -- every path
-// calls `setRenderer()`, which simply replaces whatever was registered
+// mount and on every mode change (see the `watch` below) -- both paths
+// call `setRenderer()`, which simply replaces whatever was registered
 // before, so re-registering the SAME renderer the mode already selected
 // is harmless, not just safe.
 function registerActiveRenderer() {
   if (diceRendererMode.value === 'authored-three') {
     diceQueue.setRenderer(createAuthoredThreeDiceRendererAdapter(authoredThreeDiceBoxRef, () => {
-      diceQueue.setRenderer(null)
-    }))
-  } else if (diceRendererMode.value === 'authored-css') {
-    diceQueue.setRenderer(createAuthoredDiceRendererAdapter(authoredDiceBoxRef, () => {
       diceQueue.setRenderer(null)
     }))
   } else {
@@ -158,7 +151,6 @@ onBeforeUnmount(() => {
 
   <ClientOnly>
     <WorldDiceThreeRenderer ref="diceBoxRef" />
-    <WorldAuthoredDiceRenderer ref="authoredDiceBoxRef" />
     <WorldAuthoredThreeDiceRenderer ref="authoredThreeDiceBoxRef" />
   </ClientOnly>
 </template>

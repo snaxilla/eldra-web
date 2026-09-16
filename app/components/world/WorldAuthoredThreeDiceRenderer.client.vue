@@ -103,6 +103,45 @@
 //      performed in Phase 4B.1 (see LAND, below) is completely unchanged.
 //
 // ---------------------------------------------------------------------------
+// PHASE 4B.5 -- FACE UV + NUMERAL MAPPING REPAIR
+// ---------------------------------------------------------------------------
+// Real browser feedback: numerals appeared oversized/cropped, spilling
+// toward triangle edges on many faces at once. Traced (not assumed) --
+// see authoredD20ThreeFaceUV.ts's own header for the full account, this
+// is the short version:
+//
+//   THE "SPHERICAL UV" HYPOTHESIS WAS FALSE. Phase 4B.1 already replaced
+//   IcosahedronGeometry's own default spherical UVs with a canonical,
+//   per-face-identical triangle (`buildD20FaceGeometry`, now extracted
+//   into authoredD20ThreeFaceUV.ts) -- proven by reading
+//   node_modules/three/src/geometries/PolyhedronGeometry.js's own
+//   `generateUVs()` AND the geometry this file actually builds.
+//
+//   THE ACTUAL DEFECT: `THREE.Texture.flipY` defaults to `true` (verified
+//   in three@0.143.0's own Texture.js), which flips every CanvasTexture
+//   vertically on GPU upload. `paintFaceNumeral`/`paintFaceBackground`'s
+//   own canvas-drawing math assumed v behaves like a plain top-to-bottom
+//   canvas fraction -- it does not, by default. The ACTUALLY sampled
+//   triangle at LAND was the vertical MIRROR of the intended one, only
+//   ~0.28 of the canvas wide at the numeral's anchor height -- comfortably
+//   narrower than the numeral drawn there, hence the cropping.
+//
+//   THE FIX: `createFaceTexture` now sets `texture.flipY = false`
+//   (zero change to UV values, vertex positions, or orientation data),
+//   and `paintFaceNumeral` now measures the numeral's actual rendered
+//   width and scales its font size to fit the REAL available width at its
+//   anchor height (`halfWidthAtCanvasFraction`), rather than a flat
+//   font-size fraction. `buildGeometry` (below) now delegates its
+//   UV/grouping logic to `authoredD20ThreeFaceUV.ts`'s own
+//   `buildD20FaceGeometry`, so it is directly testable against a real
+//   `three` import instead of asserted about via hand-duplicated
+//   constants.
+//
+// NOT TOUCHED: choreography timings (authoredD20ThreeChoreography.ts),
+// authoredD20ThreeOrientation.ts's landing-quaternion table, vertex
+// positions, face order, or the DiceSkin abstraction.
+//
+// ---------------------------------------------------------------------------
 // GEOMETRY -- A REAL ICOSAHEDRON, SOFTENED, NOT REBUILT
 // ---------------------------------------------------------------------------
 // `new THREE.IcosahedronGeometry(DIE_RADIUS, 0)` -- one rigid, convex,
@@ -363,6 +402,7 @@
 import type { DiceSkin } from './authoredD20ThreeSkin'
 import { ELDRA_DEFAULT_D20_SKIN, resolveDiceSkin } from './authoredD20ThreeSkin'
 import { D20_THREE_FACE_VALUE_BY_INDEX, landingQuaternionForFace } from './authoredD20ThreeOrientation'
+import { buildD20FaceGeometry, FACE_UV_CENTROID, halfWidthAtCanvasFraction } from './authoredD20ThreeFaceUV'
 import {
   ANIMATION_WATCHDOG_MS,
   bezierPoint,
@@ -565,23 +605,55 @@ async function paintFaceBackground(ctx: CanvasRenderingContext2D, size: number, 
   paintDefaultFaceBackground(ctx, size, skin.material.baseColor)
 }
 
+// PHASE 4B.5 -- font size is a fraction of the SAFE-AREA WIDTH, not a flat
+// guess. `NUMERAL_SAFE_AREA_MARGIN` insets from the triangle's own raw
+// edges (computed by `halfWidthAtCanvasFraction`) so the glyph's outline
+// stroke and general breathing room never reach the actual UV boundary;
+// `NUMERAL_MAX_FONT_FRACTION` is a HEIGHT ceiling (unchanged in spirit
+// from Phase 4B.3's flat 0.50) so a single narrow digit like "1", which
+// the width budget alone would let grow very large, cannot blow past a
+// sane vertical size either.
+const NUMERAL_SAFE_AREA_MARGIN = 0.82
+const NUMERAL_MAX_FONT_FRACTION = 0.5
+const NUMERAL_MEASURE_REFERENCE_PX = 100
+
 // Draws the numeral itself -- a soft engraved-look drop shadow beneath an
 // optionally outlined, filled glyph, per the skin's own
 // `DiceNumeralTreatment` (authoredD20ThreeSkin.ts). Centered on the
-// SAMPLED triangle's own centroid (uv y ~= 0.08/0.92/0.92 -> centroid y
-// ~= 0.64 of the canvas height, see `buildGeometry`'s own UV assignment
-// below), not the canvas's own geometric center, so it reads centered
-// once only that triangular slice of the texture is visible on the die.
+// canonical UV triangle's own centroid (`FACE_UV_CENTROID`,
+// authoredD20ThreeFaceUV.ts), not the canvas's own geometric center, so it
+// reads centered once only that triangular slice of the texture is
+// visible on the die -- correct now that `createFaceTexture`'s own
+// `texture.flipY = false` makes canvas-pixel-space and UV-space agree
+// (see that module's own header for the full traced root cause this
+// phase fixed).
+//
+// PHASE 4B.5 -- FONT SIZE IS MEASURED, NOT ASSUMED. Rather than a flat
+// font-size fraction (Phase 4B.3's 0.44, then 0.50) that happened to look
+// plausible against the WRONG sampled region, this measures the actual
+// string's rendered width at a fixed reference size, then scales that
+// size so the glyph's REAL width fits the REAL available width at this
+// anchor height (`halfWidthAtCanvasFraction`) -- one formula that handles
+// both a one-digit and a two-digit numeral correctly, rather than a
+// hardcoded per-digit-count exception (this phase's own explicit
+// preference: "a principled fit-to-safe-area calculation over arbitrary
+// per-number exceptions").
 function paintFaceNumeral(ctx: CanvasRenderingContext2D, size: number, value: number, skin: DiceSkin): void {
   const { numeral } = skin
   const fontWeight = numeral.fontWeight ?? 700
   const fontFamily = numeral.fontFamily ?? 'ui-monospace, "SFMono-Regular", monospace'
-  const x = size / 2
-  const y = size * 0.64
+  const x = size * FACE_UV_CENTROID.u
+  const y = size * FACE_UV_CENTROID.v
+  const text = String(value)
 
-  // PHASE 4B.3 -- 0.44 -> 0.50: NUMERALS section, "large enough, centered,
-  // high contrast, crisp, immediately readable" at LAND.
-  ctx.font = `${fontWeight} ${Math.round(size * 0.50)}px ${fontFamily}`
+  ctx.font = `${fontWeight} ${NUMERAL_MEASURE_REFERENCE_PX}px ${fontFamily}`
+  const referenceWidth = ctx.measureText(text).width || NUMERAL_MEASURE_REFERENCE_PX
+  const availableWidth = 2 * halfWidthAtCanvasFraction(FACE_UV_CENTROID.v) * size * NUMERAL_SAFE_AREA_MARGIN
+  const widthConstrainedSize = NUMERAL_MEASURE_REFERENCE_PX * (availableWidth / referenceWidth)
+  const heightConstrainedSize = size * NUMERAL_MAX_FONT_FRACTION
+  const fontSize = Math.max(1, Math.round(Math.min(widthConstrainedSize, heightConstrainedSize)))
+
+  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
@@ -592,13 +664,18 @@ function paintFaceNumeral(ctx: CanvasRenderingContext2D, size: number, value: nu
   ctx.shadowOffsetY = size * 0.02
 
   if (numeral.outlineColor && numeral.outlineWidth) {
-    ctx.lineWidth = numeral.outlineWidth * (size / 256)
+    // Scaled against the COMPUTED font size (was: the fixed canvas
+    // `size`) so the outline-to-glyph ratio stays visually consistent
+    // now that font size itself varies by digit count -- `/128` preserves
+    // the exact ratio Phase 4B.3's `outlineWidth * (size/256)` produced
+    // when font size was always `size * 0.5` (`size/256 == (size*0.5)/128`).
+    ctx.lineWidth = numeral.outlineWidth * (fontSize / 128)
     ctx.strokeStyle = numeral.outlineColor
-    ctx.strokeText(String(value), x, y)
+    ctx.strokeText(text, x, y)
   }
 
   ctx.fillStyle = numeral.color
-  ctx.fillText(String(value), x, y)
+  ctx.fillText(text, x, y)
   ctx.restore()
 }
 
@@ -649,6 +726,18 @@ async function createFaceTexture(three: typeof import('three'), value: number, s
   paintFaceNumeral(ctx, FACE_TEXTURE_SIZE, value, skin)
 
   const texture = new three.CanvasTexture(canvas)
+  // PHASE 4B.5 -- THE PROVEN ROOT CAUSE FIX. `Texture.flipY` defaults to
+  // `true` (verified in three@0.143.0's own Texture.js constructor),
+  // which flips this canvas vertically on GPU upload -- so the canonical
+  // UV triangle's "top" vertex (v=0.08) actually sampled canvas y-fraction
+  // 0.92 (the BOTTOM), not 0.08, before this line existed. See
+  // authoredD20ThreeFaceUV.ts's own header for the full traced account.
+  // Setting this `false` makes the GPU sample canvas rows in their
+  // natural top-to-bottom order, so `paintFaceNumeral`'s own canvas-space
+  // math (which assumes v behaves like a plain top-to-bottom fraction)
+  // now matches what is actually rendered -- with no change to the UV
+  // VALUES, vertex positions, or orientation data.
+  texture.flipY = false
   texture.minFilter = three.LinearMipmapLinearFilter
   texture.magFilter = three.LinearFilter
   texture.generateMipmaps = true
@@ -703,28 +792,16 @@ async function buildMaterials(
 // Geometry
 // ---------------------------------------------------------------------------
 
-// Replaces IcosahedronGeometry's own default spherical UVs with a
-// canonical, per-face-identical triangle, assigns each face its own
-// materialIndex, and softens the edge shading -- see this file's own
-// header, GEOMETRY section, for the full rationale of each step.
+// Builds the base d20 geometry (real IcosahedronGeometry, canonical
+// per-face UV triangle, one materialIndex group per face --
+// authoredD20ThreeFaceUV.ts's own `buildD20FaceGeometry`, extracted there
+// this phase so its UV/grouping logic is directly testable against a real
+// `three` import, see that module's own header) and softens the edge
+// shading on top of it -- see this file's own header, GEOMETRY section,
+// for the full rationale of the softening step.
 function buildGeometry(three: typeof import('three')): import('three').IcosahedronGeometry {
-  const geometry = new three.IcosahedronGeometry(DIE_RADIUS, 0)
-
-  const FACE_COUNT = 20
-  const uvs = new Float32Array(FACE_COUNT * 3 * 2)
-  for (let f = 0; f < FACE_COUNT; f++) {
-    const base = f * 6
-    uvs[base + 0] = 0.5; uvs[base + 1] = 0.08 // buffer-vertex 0 -- "top"
-    uvs[base + 2] = 0.92; uvs[base + 3] = 0.92 // buffer-vertex 1 -- "bottom right"
-    uvs[base + 4] = 0.08; uvs[base + 5] = 0.92 // buffer-vertex 2 -- "bottom left"
-  }
-  geometry.setAttribute('uv', new three.BufferAttribute(uvs, 2))
-
-  geometry.clearGroups()
-  for (let f = 0; f < FACE_COUNT; f++) geometry.addGroup(f * 3, 3, f)
-
+  const geometry = buildD20FaceGeometry(three, DIE_RADIUS)
   applySoftenedEdgeNormals(three, geometry, EDGE_NORMAL_SOFTEN)
-
   return geometry
 }
 

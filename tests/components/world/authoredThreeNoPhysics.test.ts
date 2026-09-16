@@ -28,6 +28,7 @@ import { describe, expect, it } from 'vitest'
 const AUTHORED_THREE_FILES = [
   'app/components/world/WorldAuthoredThreeDiceRenderer.client.vue',
   'app/components/world/authoredD20ThreeChoreography.ts',
+  'app/components/world/authoredD20ThreeFaceUV.ts',
   'app/components/world/authoredD20ThreeOrientation.ts',
   'app/components/world/authoredD20ThreeSkin.ts',
   'app/components/world/worldAuthoredThreeDiceRendererAdapter.ts'

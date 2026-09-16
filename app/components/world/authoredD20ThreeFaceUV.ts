@@ -77,6 +77,54 @@
 //      rendered width and scaling to fit, rather than a flat font-size
 //      fraction that happened to look plausible against the WRONG
 //      sampled region.
+//
+// ---------------------------------------------------------------------------
+// PHASE 4B.6 -- THE HORIZONTAL MIRROR, AND WHY 4B.5's WINDING TEST DID NOT
+// CATCH IT
+// ---------------------------------------------------------------------------
+// Real browser feedback after 4B.5 shipped: numerals were contained,
+// correctly sized, and vertically correct -- but horizontally MIRRORED.
+// Proven (not assumed) with the same derivation authoredD20ThreeOrientation
+// .ts itself uses, run against the real installed `three` package for all
+// 20 faces using their REAL landing quaternions from `D20_THREE_ORIENTATIONS`:
+//
+//   right_local = normalize(up_local x normal)   -- exactly
+//   authoredD20ThreeOrientation.ts's own step 2 -- is DERIVED, independent
+//   of which raw buffer vertex it happens to point toward. Applying each
+//   face's own real landing quaternion to (v1 - centroid) and
+//   (v2 - centroid) for all 20 faces shows, UNANIMOUSLY:
+//
+//     buffer-vertex 1 always lands at NEGATIVE world X (screen LEFT)
+//     buffer-vertex 2 always lands at POSITIVE world X (screen RIGHT)
+//
+//   But the UV buffer (before this phase) assigned buffer-vertex 1 the
+//   u=0.92 "right" corner and buffer-vertex 2 the u=0.08 "left" corner --
+//   backwards relative to where those vertices actually end up on screen.
+//   Since `u` maps directly to canvas-x with NO flip anywhere in this
+//   pipeline (`flipY` only ever affects `v`; there is no `flipX`), the
+//   canvas's own RIGHT-drawn content (high canvas-x, high u) was sampled
+//   by the vertex that lands on screen-LEFT, and vice versa -- a full
+//   horizontal mirror of the printed glyph, on every face, uniformly.
+//
+//   WHY 4B.5's winding-consistency test did not catch this: that test
+//   proved every face's UV triangle has the SAME winding as every other
+//   face's -- true both before and after this fix, since the U-assignment
+//   error was applied identically to all 20 faces. Consistent winding
+//   proves the 20 faces agree WITH EACH OTHER; it says nothing about
+//   whether that shared winding is the CORRECT handedness relative to the
+//   physical face's own right/up/normal basis and the camera. A
+//   perfectly self-consistent mirror is still a mirror.
+//
+// THE FIX: swap which named UV corner `buildCanonicalFaceUVs` assigns to
+// buffer-vertex 1 vs buffer-vertex 2 (below). `FACE_UV_BOTTOM_LEFT`/
+// `FACE_UV_BOTTOM_RIGHT`'s own (u,v) VALUES are UNCHANGED -- this is a
+// pure relabeling of vertex ASSIGNMENT, not a change to the UV
+// coordinate system, the safe-area math (`halfWidthAtCanvasFraction`,
+// `FACE_UV_CENTROID` -- both computed from the corner VALUES, which are
+// untouched), `texture.flipY`, vertex positions, or
+// `authoredD20ThreeOrientation.ts`'s landing quaternions. Fixed at the
+// texture/UV layer, per this task's own explicit instruction: "A texture
+// handedness defect must not become an orientation-math change."
 
 export type FaceUVPoint = { u: number; v: number }
 
@@ -115,16 +163,30 @@ export const FACE_UV_CENTROID: FaceUVPoint = {
 // node_modules/three/src/geometries/PolyhedronGeometry.js, which builds
 // `position`/`normal`/`uv` as flat `Float32BufferAttribute`s with no
 // index attribute at all).
+//
+// PHASE 4B.6 -- buffer-vertex 1 gets `FACE_UV_BOTTOM_LEFT` and
+// buffer-vertex 2 gets `FACE_UV_BOTTOM_RIGHT` (SWAPPED from Phase 4B.1-4B.5,
+// which had this backwards). Proven, not assumed: applying each face's own
+// REAL landing quaternion (`D20_THREE_ORIENTATIONS`) to
+// `(bufferVertex1 - centroid)` and `(bufferVertex2 - centroid)`, for all 20
+// faces, shows buffer-vertex 1 always lands at NEGATIVE world X (screen
+// LEFT) and buffer-vertex 2 always lands at POSITIVE world X (screen
+// RIGHT) -- see this file's own PHASE 4B.6 header for the full account.
+// Since `u` maps directly to canvas-x with no flip anywhere in this
+// pipeline, the vertex that lands on screen-right must receive the
+// LARGER-u ("right") corner, and the vertex that lands on screen-left
+// must receive the smaller-u ("left") corner -- the opposite of the
+// previous assignment, which is exactly what produced the mirrored glyph.
 export function buildCanonicalFaceUVs(faceCount: number = D20_FACE_COUNT): Float32Array {
   const uvs = new Float32Array(faceCount * 3 * 2)
   for (let f = 0; f < faceCount; f++) {
     const base = f * 6
     uvs[base + 0] = FACE_UV_TOP.u
     uvs[base + 1] = FACE_UV_TOP.v
-    uvs[base + 2] = FACE_UV_BOTTOM_RIGHT.u
-    uvs[base + 3] = FACE_UV_BOTTOM_RIGHT.v
-    uvs[base + 4] = FACE_UV_BOTTOM_LEFT.u
-    uvs[base + 5] = FACE_UV_BOTTOM_LEFT.v
+    uvs[base + 2] = FACE_UV_BOTTOM_LEFT.u
+    uvs[base + 3] = FACE_UV_BOTTOM_LEFT.v
+    uvs[base + 4] = FACE_UV_BOTTOM_RIGHT.u
+    uvs[base + 5] = FACE_UV_BOTTOM_RIGHT.v
   }
   return uvs
 }

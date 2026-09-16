@@ -36,7 +36,7 @@ describe('buildD20FaceGeometry -- item 1: exactly 20 d20 triangles exist', () =>
 })
 
 describe('buildD20FaceGeometry -- item 2: every triangle receives a canonical local UV triangle', () => {
-  it('assigns the exact same (top, bottom-right, bottom-left) UV triple to every one of the 20 faces', () => {
+  it('assigns the exact same (top, bottom-left, bottom-right) UV triple to every one of the 20 faces -- PHASE 4B.6: buffer-vertex 1 gets BOTTOM_LEFT and buffer-vertex 2 gets BOTTOM_RIGHT (swapped from 4B.1-4B.5; see authoredD20ThreeFaceUV.ts\'s own PHASE 4B.6 header for the proof this is the correct assignment)', () => {
     const geometry = buildD20FaceGeometry(THREE, DIE_RADIUS)
     const uv = geometry.getAttribute('uv')
 
@@ -44,10 +44,10 @@ describe('buildD20FaceGeometry -- item 2: every triangle receives a canonical lo
       const base = f * 3
       expect(uv.getX(base + 0)).toBeCloseTo(FACE_UV_TOP.u, 6)
       expect(uv.getY(base + 0)).toBeCloseTo(FACE_UV_TOP.v, 6)
-      expect(uv.getX(base + 1)).toBeCloseTo(FACE_UV_BOTTOM_RIGHT.u, 6)
-      expect(uv.getY(base + 1)).toBeCloseTo(FACE_UV_BOTTOM_RIGHT.v, 6)
-      expect(uv.getX(base + 2)).toBeCloseTo(FACE_UV_BOTTOM_LEFT.u, 6)
-      expect(uv.getY(base + 2)).toBeCloseTo(FACE_UV_BOTTOM_LEFT.v, 6)
+      expect(uv.getX(base + 1)).toBeCloseTo(FACE_UV_BOTTOM_LEFT.u, 6)
+      expect(uv.getY(base + 1)).toBeCloseTo(FACE_UV_BOTTOM_LEFT.v, 6)
+      expect(uv.getX(base + 2)).toBeCloseTo(FACE_UV_BOTTOM_RIGHT.u, 6)
+      expect(uv.getY(base + 2)).toBeCloseTo(FACE_UV_BOTTOM_RIGHT.v, 6)
     }
   })
 
@@ -91,6 +91,128 @@ describe('buildD20FaceGeometry -- item 3: every face\'s UV triangle has the same
     expect(firstSign).not.toBe(0)
     for (const area of areas) {
       expect(Math.sign(area)).toBe(firstSign)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PHASE 4B.6 -- UV HANDEDNESS (not merely winding consistency)
+// ---------------------------------------------------------------------------
+// The winding-consistency test above proves all 20 faces agree WITH EACH
+// OTHER. It does NOT prove that shared winding is the CORRECT handedness
+// relative to the physical face's own right/up/normal basis and the
+// camera -- a perfectly self-consistent mirror is still a mirror, which is
+// exactly what Phase 4B.5 shipped. These tests read the REAL generated
+// geometry's UV attribute, apply each face's own REAL landing quaternion
+// (`D20_THREE_ORIENTATIONS`), and check the resulting WORLD-SPACE position
+// of the physical vertices/points that hold the high-u ("right") and
+// low-u ("left") UV values -- proving handedness against actual data, not
+// asserting a constant against itself.
+function faceCentroidAndVertices(three: typeof THREE, face: number) {
+  const geometry = buildD20FaceGeometry(three, DIE_RADIUS)
+  const position = geometry.getAttribute('position')
+  const uv = geometry.getAttribute('uv')
+  const base = face * 3
+
+  const v = [0, 1, 2].map((i) => new three.Vector3(
+    position.getX(base + i),
+    position.getY(base + i),
+    position.getZ(base + i)
+  ))
+  const uvs = [0, 1, 2].map((i) => ({ u: uv.getX(base + i), v: uv.getY(base + i) }))
+  const centroid = v[0]!.clone().add(v[1]!).add(v[2]!).divideScalar(3)
+
+  return { v, uvs, centroid }
+}
+
+function landingQuaternionFor(face: number): THREE.Quaternion {
+  const value = D20_THREE_FACE_VALUE_BY_INDEX[face]!
+  const q = D20_THREE_ORIENTATIONS[value]!
+  return new THREE.Quaternion(q.x, q.y, q.z, q.w)
+}
+
+// Barycentric interpolation: given a triangle's 2D UV vertices and a
+// target UV point inside it, returns the weights that reconstruct that
+// point as a linear combination of the three vertices -- the same
+// mapping a GPU rasterizer performs when it samples a texture across a
+// triangle, used here in reverse (UV -> which world-space point does this
+// UV coordinate actually correspond to).
+function barycentricWeights(p0: { u: number; v: number }, p1: { u: number; v: number }, p2: { u: number; v: number }, p: { u: number; v: number }): [number, number, number] {
+  const denom = (p1.v - p2.v) * (p0.u - p2.u) + (p2.u - p1.u) * (p0.v - p2.v)
+  const w0 = ((p1.v - p2.v) * (p.u - p2.u) + (p2.u - p1.u) * (p.v - p2.v)) / denom
+  const w1 = ((p2.v - p0.v) * (p.u - p2.u) + (p0.u - p2.u) * (p.v - p2.v)) / denom
+  const w2 = 1 - w0 - w1
+  return [w0, w1, w2]
+}
+
+describe('Phase 4B.6 item 2/3: physical face <-> UV mapping has correct handedness -- +U maps to visible RIGHT, not visible left', () => {
+  it('for all 20 faces, the buffer vertex holding the higher-u ("right") UV coordinate lands at POSITIVE world X after the face\'s own real landing quaternion, and the lower-u ("left") vertex lands at NEGATIVE world X', () => {
+    for (let f = 0; f < D20_FACE_COUNT; f++) {
+      const { v, uvs, centroid } = faceCentroidAndVertices(THREE, f)
+      const quat = landingQuaternionFor(f)
+
+      // Only vertices 1/2 carry the two distinct base-corner u values in
+      // this canonical triangle (vertex 0 is the top, u=0.5, deliberately
+      // centered and excluded from a left/right handedness claim).
+      const rightVertexIndex = uvs[1]!.u > uvs[2]!.u ? 1 : 2
+      const leftVertexIndex = rightVertexIndex === 1 ? 2 : 1
+
+      const rightWorldX = v[rightVertexIndex]!.clone().sub(centroid).applyQuaternion(quat).x
+      const leftWorldX = v[leftVertexIndex]!.clone().sub(centroid).applyQuaternion(quat).x
+
+      expect(rightWorldX).toBeGreaterThan(0)
+      expect(leftWorldX).toBeLessThan(0)
+      expect(rightWorldX).toBeGreaterThan(leftWorldX)
+    }
+  })
+})
+
+describe('Phase 4B.6 item 4: +V maps to visible UP according to the intended numeral orientation', () => {
+  it('for all 20 faces, the buffer vertex holding the UV "top" corner lands at POSITIVE world Y, and the face normal lands at POSITIVE world Z (camera-facing), after the face\'s own real landing quaternion', () => {
+    for (let f = 0; f < D20_FACE_COUNT; f++) {
+      const { v, centroid } = faceCentroidAndVertices(THREE, f)
+      const quat = landingQuaternionFor(f)
+
+      const topWorldY = v[0]!.clone().sub(centroid).applyQuaternion(quat).y
+      const normalWorldZ = centroid.clone().normalize().applyQuaternion(quat).z
+
+      expect(topWorldY).toBeGreaterThan(0)
+      expect(normalWorldZ).toBeCloseTo(1, 2)
+    }
+  })
+})
+
+describe('Phase 4B.6 item 5: an asymmetric test marker is not mirrored by the mapping', () => {
+  it('a canvas-space marker drawn toward canvas-RIGHT lands at a MORE POSITIVE world X than an equivalent marker drawn toward canvas-LEFT, for every face', () => {
+    // The asymmetric marker itself: two points at the SAME canvas height
+    // (the numeral's own anchor row) but opposite horizontal sides --
+    // conceptually "a mark placed right of center" vs "a mark placed left
+    // of center," exactly the kind of asymmetric probe this task calls
+    // for, expressed as pure UV/geometry math rather than an actual drawn
+    // glyph (no debug letter ships on production dice -- this stays a
+    // test-only verification technique, per this task's own instruction).
+    const markerY = FACE_UV_CENTROID.v
+    const rightMarkerUV = { u: 0.75, v: markerY }
+    const leftMarkerUV = { u: 0.25, v: markerY }
+
+    for (let f = 0; f < D20_FACE_COUNT; f++) {
+      const { v, uvs, centroid } = faceCentroidAndVertices(THREE, f)
+      const quat = landingQuaternionFor(f)
+
+      const rightWeights = barycentricWeights(uvs[0]!, uvs[1]!, uvs[2]!, rightMarkerUV)
+      const leftWeights = barycentricWeights(uvs[0]!, uvs[1]!, uvs[2]!, leftMarkerUV)
+
+      function worldXForWeights(weights: [number, number, number]): number {
+        const local = v[0]!.clone().multiplyScalar(weights[0])
+          .add(v[1]!.clone().multiplyScalar(weights[1]))
+          .add(v[2]!.clone().multiplyScalar(weights[2]))
+        return local.sub(centroid).applyQuaternion(quat).x
+      }
+
+      const rightMarkerWorldX = worldXForWeights(rightWeights)
+      const leftMarkerWorldX = worldXForWeights(leftWeights)
+
+      expect(rightMarkerWorldX).toBeGreaterThan(leftMarkerWorldX)
     }
   })
 })

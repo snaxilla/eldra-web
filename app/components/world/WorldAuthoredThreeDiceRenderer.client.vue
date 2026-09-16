@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // WorldAuthoredThreeDiceRenderer -- Eldra Roll System Phase 4B.1
-// (Authored Three.js d20 Proof of Concept). Implements ADR-024
+// (Authored Three.js d20 Proof of Concept) + Phase 4B.2 (Visual Polish +
+// Skin-Ready Material Architecture). Implements ADR-024
 // (.github/docs/architecture/adr-024-authored-dice-presentation.md) §11/
 // §12's own Option 2 (Canvas/WebGL authored dice, without physics),
 // invoked as this task's own explicit fallback after Phase 4B's CSS/DOM
@@ -20,24 +21,24 @@
 // proved. THIS FILE HAS NO PHYSICS ENGINE AT ALL. There is no
 // `cannon-es` import anywhere in this file or its siblings
 // (authoredD20ThreeOrientation.ts, authoredD20ThreeChoreography.ts,
-// worldAuthoredThreeDiceRendererAdapter.ts) -- verified by direct grep,
-// reported in this phase's own summary, not merely asserted here. `three`
-// is used ONLY as a rendering/graphics library (scene graph, geometry,
-// materials, a render loop) -- never as a physics/simulation engine, and
-// this file never calls anything resembling `world.step()`, never
-// constructs a rigid body, and never asks a physics engine "where did
-// this land."
+// authoredD20ThreeSkin.ts, worldAuthoredThreeDiceRendererAdapter.ts) --
+// verified by direct grep, reported in this phase's own summary, not
+// merely asserted here. `three` is used ONLY as a rendering/graphics
+// library (scene graph, geometry, materials, a render loop) -- never as a
+// physics/simulation engine, and this file never calls anything
+// resembling `world.step()`, never constructs a rigid body, and never
+// asks a physics engine "where did this land."
 //
 // vs. WorldAuthoredDiceRenderer.vue (Phase 4B's own CSS/DOM proof of
 // concept -- never committed to git, and not registered by any committed
 // code; see useDiceRendererMode.ts's own header for the deployment-fix
 // account of why): that approach proved the ARCHITECTURE (authored
 // presentation, deterministic targets, fixed duration, DiceRendererAdapter
-// as the correct seam) but
-// its "sphere of 20 independent face cards" visual did not read as a real
-// 3D die. This file builds a GENUINE, single, rigid icosahedral mesh --
-// `THREE.IcosahedronGeometry`, the same solid a real d20 has -- and
-// rotates the WHOLE OBJECT as one piece, the way an actual die tumbles.
+// as the correct seam) but its "sphere of 20 independent face cards"
+// visual did not read as a real 3D die. This file builds a GENUINE, single,
+// rigid icosahedral mesh -- `THREE.IcosahedronGeometry`, the same solid a
+// real d20 has -- and rotates the WHOLE OBJECT as one piece, the way an
+// actual die tumbles.
 //
 // THE ONE RULE BOTH REJECTED APPROACHES SHARE WITH THIS ONE, UNCHANGED:
 // the server decides reality; this file only ever presents it. `playD20
@@ -46,124 +47,228 @@
 // step anywhere in this file that "discovers," simulates, or randomizes a
 // resting face -- there is only a precomputed target
 // (authoredD20ThreeOrientation.ts's own `landingQuaternionForFace`) that
-// every throw is authored to arrive at exactly.
+// every throw is authored to arrive at exactly. Phase 4B.2 (this pass)
+// touches ONLY appearance and motion polish (material, geometry shading,
+// lighting, a contact shadow, squash/glint) -- see PHASE 4B.2 SCOPE below
+// for the precise boundary and why none of it can affect the face.
 //
 // ---------------------------------------------------------------------------
 // OWNERSHIP -- THREE.JS AS A LIBRARY, NOT dice-box-threejs AS A RUNTIME
 // ---------------------------------------------------------------------------
 // This file imports `three` directly (`package.json`'s own dependency,
-// added this phase -- see this phase's own summary for why it was
-// previously only a transitive dependency of
-// @3d-dice/dice-box-threejs, and why that was no longer good enough once
-// this file needed to import the library itself). It does NOT import
-// @3d-dice/dice-box-threejs, does not call its `roll()`/
-// `simulateThrow()`/`animateThrow()`, and does not monkey-patch anything
-// on it (contrast WorldDiceThreeRenderer.client.vue's own Phase 3F
-// `spawnDice` hook, which this file has no equivalent of, because it has
-// no physics body to hook). Geometry/material KNOWLEDGE -- how to build
-// an icosahedron, how per-face materials/UVs work -- is general Three.js
-// knowledge, not anything read from or coupled to dice-box-threejs's own
-// runtime; see authoredD20ThreeOrientation.ts's own header for exactly
-// where this file's geometry construction was independently verified
-// against three@0.143.0's own shipped source, not assumed.
+// added in Phase 4B.1). It does NOT import @3d-dice/dice-box-threejs,
+// does not call its `roll()`/`simulateThrow()`/`animateThrow()`, and does
+// not monkey-patch anything on it (contrast WorldDiceThreeRenderer
+// .client.vue's own Phase 3F `spawnDice` hook, which this file has no
+// equivalent of, because it has no physics body to hook). Geometry/
+// material KNOWLEDGE -- how to build an icosahedron, how per-face
+// materials/UVs work, how to soften vertex normals or draw an edge
+// outline -- is general Three.js knowledge, independently verified this
+// phase against three@0.143.0's own shipped source (see
+// authoredD20ThreeSkin.ts's own header for the exact API citations), never
+// read from or coupled to dice-box-threejs's own runtime.
 //
 // ---------------------------------------------------------------------------
-// GEOMETRY -- A REAL ICOSAHEDRON, NOT TWENTY FLOATING CARDS
+// PHASE 4B.2 SCOPE -- WHY NONE OF THIS CAN TOUCH CORRECTNESS
+// ---------------------------------------------------------------------------
+// Every change in this pass falls into exactly one of three buckets, and
+// every bucket is structurally incapable of reaching the face:
+//   1. APPEARANCE (authoredD20ThreeSkin.ts's own `DiceSkin` -- base color,
+//      roughness, metalness, emissive, numeral treatment, optional
+//      texture maps). Consumed by `buildMaterials`/`createFaceTexture`
+//      below, which produce `THREE.Material`s -- materials never
+//      participate in `landingQuaternionForFace`'s own lookup, and
+//      changing every color in `ELDRA_DEFAULT_D20_SKIN` to something else
+//      would not move a single vertex or change which face value maps to
+//      which quaternion.
+//   2. GEOMETRY SHADING (`applySoftenedEdgeNormals`, `buildEdgeOutline`).
+//      Both operate EXCLUSIVELY on the `normal` attribute (lighting
+//      response) or add a purely decorative child object (the edge
+//      outline) -- neither ever writes to the `position` attribute, which
+//      is the ONLY thing authoredD20ThreeOrientation.ts's own derivation
+//      depends on (see that file's own header). The existing, unmodified
+//      orientation test suite (tests/components/world/
+//      authoredD20ThreeOrientation.test.ts) is therefore still a complete
+//      proof of correctness after this phase -- it was never given a
+//      reason to change, and re-running it (this phase's own Verification
+//      results) confirms that directly rather than by argument alone.
+//   3. MOTION POLISH (squash-and-stretch scale, contact-shadow
+//      scale/opacity, the FLOURISH emissive glint -- all in
+//      authoredD20ThreeChoreography.ts). Squash only ever writes to
+//      `die.scale`; the shadow is a SEPARATE object with no bearing on the
+//      die's own transform; the glint only ever writes to each material's
+//      own `emissiveIntensity`. None of the three ever reads or writes
+//      `die.quaternion` or `die.position`'s FINAL (post-LAND) values --
+//      the same hard-assignment-to-exact-target this file already
+//      performed in Phase 4B.1 (see LAND, below) is completely unchanged.
+//
+// ---------------------------------------------------------------------------
+// GEOMETRY -- A REAL ICOSAHEDRON, SOFTENED, NOT REBUILT
 // ---------------------------------------------------------------------------
 // `new THREE.IcosahedronGeometry(DIE_RADIUS, 0)` -- one rigid, convex,
-// 20-triangle solid. Its default spherical (azimuth/inclination) UVs are
-// replaced with a canonical top/bottom-right/bottom-left triangle,
-// IDENTICALLY repeated for all 20 faces (`buildGeometry` below) -- the
-// default UVs would map each face to an arbitrary, badly-distorted sliver
-// of a global equirectangular texture; a fixed, repeated triangle instead
-// makes every face's own separately-baked numeral texture (`createFace
-// Texture`) render consistently regardless of where that face sits on the
-// sphere. `geometry.addGroup(3f, 3, f)` assigns each face its OWN
-// materialIndex (0-19), so 20 independent `MeshStandardMaterial`s (one
-// numeral each) can be painted onto one physical mesh -- the standard
-// Three.js "per-face material" technique, unrelated to and unlearned from
-// dice-box-threejs.
+// 20-triangle solid, VERTEX POSITIONS UNCHANGED FROM PHASE 4B.1. Its
+// default spherical (azimuth/inclination) UVs are replaced with a
+// canonical top/bottom-right/bottom-left triangle, IDENTICALLY repeated
+// for all 20 faces (`buildGeometry` below) -- the default UVs would map
+// each face to an arbitrary, badly-distorted sliver of a global
+// equirectangular texture; a fixed, repeated triangle instead makes every
+// face's own separately-baked numeral texture (`createFaceTexture`)
+// render consistently regardless of where that face sits on the sphere.
+// `geometry.addGroup(3f, 3, f)` assigns each face its OWN materialIndex
+// (0-19), so 20 independent `MeshStandardMaterial`s (one numeral each)
+// can be painted onto one physical mesh.
 //
 // Buffer-vertex 0 of face `f` (position index `3f`) is, by construction,
 // the SAME vertex authoredD20ThreeOrientation.ts's own derivation treats
 // as that face's "up" reference (see that file's own header, step 2) --
 // this is why that vertex is assigned the TOP uv coordinate here: it is
-// what makes a landed face's printed numeral appear upright on screen,
-// not a coincidence between two independently-tuned numbers.
+// what makes a landed face's printed numeral appear upright on screen.
+//
+// PHASE 4B.2 -- "RAZOR-SHARP MATHEMATICAL EDGES" (this phase's own
+// GEOMETRY QUALITY section). Investigated and rejected: rebuilding the
+// geometry with real bevel/chamfer faces (inserting extra triangles along
+// every edge and at every vertex) -- this would multiply the face count
+// well beyond 20, invalidating the `materialIndex`/orientation
+// correspondence this renderer and its entire test suite depend on, for a
+// purely cosmetic gain, and is real CSG geometry engineering with a much
+// larger risk surface than this phase's stated goal justifies (this
+// phase's own explicit "Correctness wins over prettier geometry").
+// Adopted instead, in order of how much they matter:
+//   (a) `applySoftenedEdgeNormals` -- blends each vertex's own hard, flat
+//       face normal with the AVERAGE normal of every face sharing that
+//       same underlying vertex POSITION, at a modest blend factor
+//       (`EDGE_NORMAL_SOFTEN`). This is an ordinary, well-known low-poly
+//       stylization technique ("partial smoothing" / a soft "smoothing
+//       angle") -- it changes ONLY how light responds near an edge
+//       (a gentler falloff instead of a knife-sharp crease), never a
+//       vertex position, so it is unconditionally safe with respect to
+//       the orientation table (see PHASE 4B.2 SCOPE above).
+//   (b) `buildEdgeOutline` -- a thin `THREE.LineSegments` traced along the
+//       geometry's real edges (`THREE.EdgesGeometry`) in the skin's own
+//       accent color, added as a CHILD of the die mesh so it automatically
+//       inherits every frame's position/quaternion/scale with zero extra
+//       per-frame work. This is the classic "faceted/cut-gem" technique
+//       many stylized low-poly renderers use specifically to read as
+//       "manufactured with defined edges" without any geometry rebuild.
+// Together these produce "subtle bevel/chamfer, readable edges" (this
+// phase's own desired result) while leaving `position` -- and therefore
+// every existing orientation guarantee -- completely untouched.
 //
 // ---------------------------------------------------------------------------
-// MATERIAL / LIGHTING
+// MATERIAL / SKIN (authoredD20ThreeSkin.ts)
 // ---------------------------------------------------------------------------
-// `MeshStandardMaterial` (physically-based, needs real light sources --
-// intentional: an unlit material would look flat and fail this task's own
-// "lighting sufficient to make the geometry immediately legible"
-// requirement). Each face's texture is drawn on a warm gold ground
-// (`#c9a45a`, matching the same accent color WorldRollTray.vue/
-// WorldDiceAnimation.vue already use throughout the Dice Presentation
-// Layer) with a dark inlaid numeral, so the number reads as carved into
-// the die rather than pasted onto it. One warm key light plus a cool rim
-// light plus ambient fill give every face visible depth/shading without
-// needing an environment map -- appropriate for a small, close-up,
-// presentational object, not a claim this is final art direction (this
-// phase's own "do not chase final art direction yet").
+// `buildMaterials`/`createFaceTexture` below are the ONLY place a
+// `DiceSkin` becomes real `THREE.Material`/`THREE.Texture` instances --
+// see authoredD20ThreeSkin.ts's own header for the full skin/appearance
+// contract, the custom-texture pipeline (`resolveAuxTexture`, reused here
+// for every optional PBR map slot), and why this file has no hardcoded
+// color/roughness/metalness literals anymore (Phase 4B.1 had them inline;
+// they now live entirely in `ELDRA_DEFAULT_D20_SKIN`). `MeshStandardMaterial`
+// remains the material class (physically-based, needs real light sources
+// -- intentional, an unlit material would look flat and fail this
+// phase's own "lighting... communicate real 3D volume" requirement).
+//
+// ---------------------------------------------------------------------------
+// LIGHTING
+// ---------------------------------------------------------------------------
+// A small, fixed, four-light rig -- ambient fill (soft, low), a warm key
+// light (primary shape/shading), a cool rim light (edge separation from
+// the background), and a small warm point light near the camera (a
+// travelling specular highlight as the die rotates, the single strongest
+// cue for "polished material" per this phase's own "specular response
+// through lighting/material interaction"). Not a cinematic sequence --
+// every light is static for the lifetime of the renderer; nothing about
+// lighting is animated per-roll.
+//
+// ---------------------------------------------------------------------------
+// CONTACT SHADOW (authoredD20ThreeChoreography.ts's own
+// `shadowScaleForHeight`/`shadowOpacityForHeight`)
+// ---------------------------------------------------------------------------
+// A flat, radially-gradient-textured plane, built ONCE in `ensureScene`,
+// whose scale/opacity/horizontal position are updated every animation
+// frame from the die's OWN already-computed position -- not a physics
+// contact, not a real-time shadow map (which would cost a full extra
+// render pass for a small decorative UI element), just the well-
+// established cheap "blob shadow" technique. It tightens and darkens as
+// the die approaches the floor and loosens/fades as the die is "in the
+// air," giving the single biggest available sense of weight for the
+// lowest implementation/performance cost among this phase's own listed
+// CONTACT / WEIGHT options.
 //
 // ---------------------------------------------------------------------------
 // THE THROW -- AUTHORED position(t)/rotation(t)/scale(t), NEVER
 // force/gravity/sleep-state
 // ---------------------------------------------------------------------------
 // All motion math (the Bezier arc, the spin turn-counts, the
-// overshoot-and-settle easing, every duration) lives in
-// authoredD20ThreeChoreography.ts, a plain, WebGL-free module -- this file
-// only ever reads those constants/functions and applies their output to
-// real `THREE.Object3D.position`/`.quaternion`/`.scale` each animation
-// frame. See that file's own header for the full beat-by-beat account of
-// why Enter+Roll are one continuous motion, why the ROLL phase's own spin
-// deliberately does NOT target the authoritative face (this task's own
-// ROTATION STRATEGY: "Do NOT simply interpolate identity -> target
-// face... that will look like a model viewer"), and exactly where LAND's
-// slerp starts from a fully-known, authored intermediate quaternion --
-// never a value "discovered" mid-animation.
+// overshoot-and-settle easing, squash-and-stretch, shadow response, every
+// duration) lives in authoredD20ThreeChoreography.ts, a plain, WebGL-free
+// module -- this file only ever reads those constants/functions and
+// applies their output to real `THREE.Object3D.position`/`.quaternion`/
+// `.scale` each animation frame. See that file's own header for the full
+// beat-by-beat account, and for exactly why Phase 4B.2 changed only
+// `LAND_MS` (170ms -> 190ms, to give the new squash room to read) and left
+// the throw's own arc/spin numbers untouched (no browser evidence asked
+// for a redesign there).
 //
 // THE FINAL ORIENTATION IS GUARANTEED EXACT, NOT MERELY "CLOSE ENOUGH
-// AFTER EASING." `easeOutBack(1)` is algebraically exactly `1` (see that
-// function's own docstring), so the slerp already lands exactly on
-// target -- but this file ALSO hard-assigns the die's quaternion to the
-// literal target values once LAND's own animation loop exits, overriding
-// any floating-point drift from 60+ frames of incremental slerping. The
-// same defensive-exactness posture applies to position (`THROW_LAND
-// _POSITION`, dead center) after LAND's own landing-bob settles to zero.
+// AFTER EASING." `easeOutBack(1)` is algebraically exactly `1`, so the
+// slerp already lands exactly on target -- but this file ALSO
+// hard-assigns the die's quaternion to the literal target values once
+// LAND's own animation loop exits, overriding any floating-point drift
+// from 60+ frames of incremental slerping. The same defensive-exactness
+// posture applies to position (dead center) and, new this phase, to scale
+// (exactly `1,1,1`) once the squash beat's own recovery finishes.
+//
+// ---------------------------------------------------------------------------
+// REDUCED MOTION -- SEAM DOCUMENTED, NOT IMPLEMENTED THIS PHASE
+// ---------------------------------------------------------------------------
+// This phase's own REDUCED MOTION section: "do not architect... in a way
+// that prevents `prefers-reduced-motion` support later... no further
+// implementation required unless a tiny obvious improvement falls
+// naturally out." `playD20` below is structured as a strict, linear
+// sequence of `await animatePhase(...)` calls with no shared mutable
+// timing state outside that function -- a future reduced-motion check has
+// exactly one place to intervene (immediately after computing `target`
+// and before the THROW `animatePhase` call), either skipping straight to
+// a short LAND-only motion or collapsing THROW_MS to a much smaller value
+// before proceeding, with no other line in this file needing to change.
+// Deliberately NOT implemented now: this phase is scoped to visual
+// quality/skin architecture, and gating real behavior on a media query
+// is its own small feature with its own testing/verification surface,
+// better done as a deliberate, reviewed change than an incidental one.
 //
 // ---------------------------------------------------------------------------
 // STAGE / DOCKING -- REUSED, NOT REINVENTED
 // ---------------------------------------------------------------------------
 // Docked at the EXACT same shelf every prior Dice Presentation Layer
 // renderer uses (`bottom-40`/`h-56`/`w-56` mobile,
-// `sm:right-6`/`h-72`/`w-72` desktop, `origin-bottom`) -- Phase 3G
-// established this position for the physics renderer, Phase 4B reused it
-// for the CSS proof of concept, and this file reuses it a third time, so
-// flipping useDiceRendererMode.ts between any of the three renderers
-// never visibly relocates or resizes the stage. `visible` (not `v-show`)
-// drives the outer container's own fade/scale -- WorldDiceThreeRenderer
-// .client.vue's own header documents exactly why `display:none` would be
-// a correctness hazard for a renderer that reads `container.clientWidth`;
-// this component never reads that (it uses a fixed internal render
-// resolution, `SCENE_PX`, matching Phase 4B's own identical reasoning),
-// so the hazard does not apply here either, but keeping every renderer's
-// outer-stage mechanics identical is its own, simpler justification.
-// EXIT/"Record" (ADR-024 §6) is exactly this same outer-stage fade,
-// reused unchanged a third time -- the die's own pose is already fully
+// `sm:right-6`/`h-72`/`w-72` desktop, `origin-bottom`). `visible` (not
+// `v-show`) drives the outer container's own fade/scale -- this component
+// never reads `container.clientWidth` (it uses a fixed internal render
+// resolution, `SCENE_PX`), so the `display:none` hazard
+// WorldDiceThreeRenderer.client.vue's own header documents does not apply
+// here, but keeping every renderer's outer-stage mechanics identical is
+// its own, simpler justification. EXIT/"Record" (ADR-024 §6) is exactly
+// this same outer-stage fade -- the die's own pose is already fully
 // settled by the time this beat begins; only the framing around it fades.
 
+import type { DiceSkin } from './authoredD20ThreeSkin'
+import { ELDRA_DEFAULT_D20_SKIN, resolveDiceSkin } from './authoredD20ThreeSkin'
 import { D20_THREE_FACE_VALUE_BY_INDEX, landingQuaternionForFace } from './authoredD20ThreeOrientation'
 import {
   bezierPoint,
   easeOutBack,
   easeOutCubic,
   EXIT_MS,
+  flourishEmissiveBoost,
   flourishScale,
   FLOURISH_MS,
   landBobOffset,
+  landSquashScaleXZ,
+  landSquashScaleY,
   LAND_MS,
+  shadowOpacityForHeight,
+  shadowScaleForHeight,
   SPIN_X_TURNS,
   SPIN_Y_TURNS,
   THROW_LAND_POSITION,
@@ -176,14 +281,35 @@ const error = ref('')
 const visible = ref(false)
 const containerEl = ref<HTMLDivElement | null>(null)
 
-// Fixed internal render resolution -- deliberately NOT breakpoint-aware,
-// matching Phase 4B's own identical reasoning (WorldAuthoredDiceRenderer
-// .vue's own header): the OUTER stage box is responsive via Tailwind
-// classes (template, below); this fixed-size inner scene is centered
-// within it via flexbox, so the 3D setup itself never needs
-// per-breakpoint recomputation.
+// Fixed internal render resolution -- deliberately NOT breakpoint-aware
+// (see this file's own header, STAGE / DOCKING).
 const SCENE_PX = 200
 const DIE_RADIUS = 1
+
+// Texture resolution for the per-face numeral/albedo canvas and for any
+// optional aux (normal/roughness/metalness/emissive) map painted via a
+// `{ kind: 'canvas' }` DiceTextureSource. Bumped from Phase 4B.1's 128 to
+// 256 for crisper numeral edges/outline (this phase's own NUMERALS
+// section: "crisp... sufficient contrast") -- still tiny, and built ONCE
+// per face at init, never per-roll (see PERFORMANCE, below).
+const FACE_TEXTURE_SIZE = 256
+const AUX_TEXTURE_SIZE = 256
+
+// How strongly `applySoftenedEdgeNormals` blends each hard, flat face
+// normal toward its neighbor-averaged "smooth" normal -- 0 leaves the
+// original razor-sharp per-face shading untouched, 1 would read as a
+// nearly spherical, facet-less blob. This phase's own "subtle bevel...
+// NOT... a perfectly sharp math primitive" sits well short of either
+// extreme.
+const EDGE_NORMAL_SOFTEN = 0.35
+
+// The active skin -- resolved ONCE, here, not per-roll. This phase's own
+// DEFAULT SKIN section: "No selector. No user preference storage." A
+// future phase that adds real skin selection changes only this one line
+// (and whatever composable it reads from) -- see authoredD20ThreeSkin
+// .ts's own `resolveDiceSkin` header for why the fallback lives there,
+// not here.
+const activeSkin: DiceSkin = resolveDiceSkin(ELDRA_DEFAULT_D20_SKIN)
 
 // Module-scoped (not `ref()` -- none of this needs to be reactive),
 // created lazily on the first roll, matching WorldDiceThreeRenderer
@@ -195,6 +321,7 @@ let scene: import('three').Scene | null = null
 let camera: import('three').PerspectiveCamera | null = null
 let renderer: import('three').WebGLRenderer | null = null
 let dieMesh: import('three').Mesh | null = null
+let contactShadow: import('three').Mesh | null = null
 let readyPromise: Promise<void> | null = null
 
 // Real THREE.Vector3 axis constants -- constructed once ThreeMod is
@@ -203,33 +330,193 @@ let readyPromise: Promise<void> | null = null
 let xAxis: import('three').Vector3 | null = null
 let yAxis: import('three').Vector3 | null = null
 
-// Draws one face's numeral onto a small canvas, warm-gold ground with a
-// dark inlaid number -- see this file's own header for the palette
-// rationale. The numeral is centered on the SAMPLED triangle's own
-// centroid (uv y ~= 0.08/0.92/0.92 -> centroid y ~= 0.64 of the canvas
-// height), not the canvas's own geometric center, so it reads centered
+// ---------------------------------------------------------------------------
+// Skin -> real Three.js resources
+// ---------------------------------------------------------------------------
+
+// Resolves ONE optional `DiceTextureSource` (any PBR map slot except the
+// numeral-bearing albedo map, which has its own composited path in
+// `createFaceTexture`/`paintFaceBackground` below) into a real
+// `THREE.Texture`, or `null` if the skin didn't specify one. Both
+// `DiceTextureSource` kinds are handled for real, not merely typed -- see
+// authoredD20ThreeSkin.ts's own header, CUSTOM TEXTURE SUPPORT, for the
+// exact three@0.143.0 APIs this was verified against.
+async function resolveAuxTexture(
+  three: typeof import('three'),
+  source: import('./authoredD20ThreeSkin').DiceTextureSource | undefined
+): Promise<import('three').Texture | null> {
+  if (!source) return null
+
+  if (source.kind === 'canvas') {
+    const canvas = document.createElement('canvas')
+    canvas.width = AUX_TEXTURE_SIZE
+    canvas.height = AUX_TEXTURE_SIZE
+    const ctx = canvas.getContext('2d')!
+    source.draw(ctx, AUX_TEXTURE_SIZE)
+    const texture = new three.CanvasTexture(canvas)
+    texture.needsUpdate = true
+    return texture
+  }
+
+  const image = await loadImage(source.url)
+  const texture = new three.Texture(image)
+  texture.needsUpdate = true
+  return texture
+}
+
+// Loads an external image for a `{ kind: 'url' }` DiceTextureSource.
+// `crossOrigin = 'anonymous'` matches `THREE.Loader`'s own default (see
+// authoredD20ThreeSkin.ts's own header) -- required for a cross-origin
+// image to be usable as a WebGL texture without tainting the canvas.
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error(`WorldAuthoredThreeDiceRenderer: failed to load dice texture "${url}"`))
+    image.src = url
+  })
+}
+
+// The default procedural face background -- a flat fill in the skin's own
+// base color plus a soft radial vignette (subtly darker toward the
+// canvas's own edges). This phase's own NUMERALS section named the
+// problem directly: "numerals feel pasted onto faces." A perfectly flat,
+// single-color fill is exactly what makes a printed number look like a
+// sticker; a gentle vignette gives the face itself a lit, faceted
+// appearance to sit inside, so the numeral reads as printed ON a surface
+// rather than floating in front of a flat color block.
+function paintDefaultFaceBackground(ctx: CanvasRenderingContext2D, size: number, baseColor: string): void {
+  ctx.fillStyle = baseColor
+  ctx.fillRect(0, 0, size, size)
+
+  const gradient = ctx.createRadialGradient(
+    size / 2, size * 0.55, size * 0.12,
+    size / 2, size * 0.55, size * 0.62
+  )
+  gradient.addColorStop(0, 'rgba(255,255,255,0.12)')
+  gradient.addColorStop(0.55, 'rgba(0,0,0,0)')
+  gradient.addColorStop(1, 'rgba(0,0,0,0.30)')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+}
+
+// Paints the face's own background layer -- either the skin's own custom
+// `material.map` (if present, composited FIRST so the numeral always
+// draws on top of it) or the default procedural vignette above. See
+// authoredD20ThreeSkin.ts's own `DiceMaterialDescriptor.map` doc for why
+// this is the one map slot with compositing logic, unlike the other four
+// (normal/roughness/metalness/emissive), which never need to share canvas
+// space with a numeral.
+async function paintFaceBackground(ctx: CanvasRenderingContext2D, size: number, skin: DiceSkin): Promise<void> {
+  const source = skin.material.map
+  if (source?.kind === 'canvas') {
+    source.draw(ctx, size)
+    return
+  }
+  if (source?.kind === 'url') {
+    const image = await loadImage(source.url)
+    ctx.drawImage(image, 0, 0, size, size)
+    return
+  }
+  paintDefaultFaceBackground(ctx, size, skin.material.baseColor)
+}
+
+// Draws the numeral itself -- a soft engraved-look drop shadow beneath an
+// optionally outlined, filled glyph, per the skin's own
+// `DiceNumeralTreatment` (authoredD20ThreeSkin.ts). Centered on the
+// SAMPLED triangle's own centroid (uv y ~= 0.08/0.92/0.92 -> centroid y
+// ~= 0.64 of the canvas height, see `buildGeometry`'s own UV assignment
+// below), not the canvas's own geometric center, so it reads centered
 // once only that triangular slice of the texture is visible on the die.
-function createFaceTexture(three: typeof import('three'), value: number): import('three').CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = 128
-  canvas.height = 128
-  const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#c9a45a'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = '#2a2013'
-  ctx.font = '700 58px ui-monospace, "SFMono-Regular", monospace'
+function paintFaceNumeral(ctx: CanvasRenderingContext2D, size: number, value: number, skin: DiceSkin): void {
+  const { numeral } = skin
+  const fontWeight = numeral.fontWeight ?? 700
+  const fontFamily = numeral.fontFamily ?? 'ui-monospace, "SFMono-Regular", monospace'
+  const x = size / 2
+  const y = size * 0.64
+
+  ctx.font = `${fontWeight} ${Math.round(size * 0.44)}px ${fontFamily}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(String(value), canvas.width / 2, canvas.height * 0.64)
+
+  ctx.save()
+  ctx.shadowColor = 'rgba(0,0,0,0.55)'
+  ctx.shadowBlur = size * 0.035
+  ctx.shadowOffsetX = size * 0.012
+  ctx.shadowOffsetY = size * 0.02
+
+  if (numeral.outlineColor && numeral.outlineWidth) {
+    ctx.lineWidth = numeral.outlineWidth * (size / 256)
+    ctx.strokeStyle = numeral.outlineColor
+    ctx.strokeText(String(value), x, y)
+  }
+
+  ctx.fillStyle = numeral.color
+  ctx.fillText(String(value), x, y)
+  ctx.restore()
+}
+
+// Builds ONE face's complete texture -- background (skin-aware) then
+// numeral, composited onto the same canvas, matching Phase 4B.1's own
+// established "one CanvasTexture per numbered face" approach (kept, not
+// replaced -- this phase's own NUMERALS section: "If retained, improve it
+// rather than replacing it merely for novelty").
+async function createFaceTexture(three: typeof import('three'), value: number, skin: DiceSkin): Promise<import('three').CanvasTexture> {
+  const canvas = document.createElement('canvas')
+  canvas.width = FACE_TEXTURE_SIZE
+  canvas.height = FACE_TEXTURE_SIZE
+  const ctx = canvas.getContext('2d')!
+
+  await paintFaceBackground(ctx, FACE_TEXTURE_SIZE, skin)
+  paintFaceNumeral(ctx, FACE_TEXTURE_SIZE, value, skin)
 
   const texture = new three.CanvasTexture(canvas)
   texture.needsUpdate = true
   return texture
 }
 
+// Builds the 20 per-face materials from the active skin -- the aux PBR
+// maps (normal/roughness/metalness/emissive) are resolved once, shared
+// across all 20 materials (a skin's surface-detail texture is the SAME
+// physical material repeated per face, not 20 independent images), while
+// the albedo/numeral map is necessarily unique per face.
+async function buildMaterials(three: typeof import('three'), skin: DiceSkin): Promise<import('three').MeshStandardMaterial[]> {
+  const [normalMap, roughnessMap, metalnessMap, emissiveMap] = await Promise.all([
+    resolveAuxTexture(three, skin.material.normalMap),
+    resolveAuxTexture(three, skin.material.roughnessMap),
+    resolveAuxTexture(three, skin.material.metalnessMap),
+    resolveAuxTexture(three, skin.material.emissiveMap)
+  ])
+
+  const faceTextures = await Promise.all(
+    D20_THREE_FACE_VALUE_BY_INDEX.map((value) => createFaceTexture(three, value, skin))
+  )
+
+  const emissive = new three.Color(skin.material.emissiveColor ?? '#000000')
+
+  return faceTextures.map((map) => new three.MeshStandardMaterial({
+    map,
+    normalMap: normalMap ?? undefined,
+    roughnessMap: roughnessMap ?? undefined,
+    metalnessMap: metalnessMap ?? undefined,
+    emissiveMap: emissiveMap ?? undefined,
+    color: 0xffffff,
+    roughness: skin.material.roughness,
+    metalness: skin.material.metalness,
+    emissive,
+    emissiveIntensity: skin.material.emissiveIntensity ?? 0
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// Geometry
+// ---------------------------------------------------------------------------
+
 // Replaces IcosahedronGeometry's own default spherical UVs with a
-// canonical, per-face-identical triangle, and assigns each face its own
-// materialIndex -- see this file's own header, GEOMETRY section, for why.
+// canonical, per-face-identical triangle, assigns each face its own
+// materialIndex, and softens the edge shading -- see this file's own
+// header, GEOMETRY section, for the full rationale of each step.
 function buildGeometry(three: typeof import('three')): import('three').IcosahedronGeometry {
   const geometry = new three.IcosahedronGeometry(DIE_RADIUS, 0)
 
@@ -246,16 +533,91 @@ function buildGeometry(three: typeof import('three')): import('three').Icosahedr
   geometry.clearGroups()
   for (let f = 0; f < FACE_COUNT; f++) geometry.addGroup(f * 3, 3, f)
 
+  applySoftenedEdgeNormals(three, geometry, EDGE_NORMAL_SOFTEN)
+
   return geometry
 }
 
-function buildMaterials(three: typeof import('three')): import('three').MeshStandardMaterial[] {
-  return D20_THREE_FACE_VALUE_BY_INDEX.map((value) => new three.MeshStandardMaterial({
-    map: createFaceTexture(three, value),
-    color: 0xffffff,
-    roughness: 0.55,
-    metalness: 0.12
-  }))
+// Blends each vertex's own per-face FLAT normal with the AVERAGE normal
+// of every face sharing that same underlying vertex position -- softens
+// the perceived hardness of each edge WITHOUT moving a single vertex
+// position, so authoredD20ThreeOrientation.ts's own face-landing guarantee
+// (which depends only on vertex POSITIONS, never normals) is completely
+// unaffected -- see this file's own header, GEOMETRY section, for why
+// this was chosen over an actual beveled-geometry rebuild. Vertices are
+// grouped by rounded position (the underlying icosahedron has only 12
+// unique positions, each repeated across 5 of the 60 non-indexed buffer
+// entries -- see authoredD20ThreeOrientation.ts's own DERIVATION for the
+// same construction) rather than by any stored index, since this
+// non-indexed geometry has none.
+function applySoftenedEdgeNormals(three: typeof import('three'), geometry: import('three').BufferGeometry, blend: number): void {
+  const position = geometry.getAttribute('position')
+  const normal = geometry.getAttribute('normal')
+
+  const keyFor = (i: number): string =>
+    `${position.getX(i).toFixed(5)},${position.getY(i).toFixed(5)},${position.getZ(i).toFixed(5)}`
+
+  const groups = new Map<string, number[]>()
+  for (let i = 0; i < position.count; i++) {
+    const key = keyFor(i)
+    const list = groups.get(key)
+    if (list) list.push(i)
+    else groups.set(key, [i])
+  }
+
+  const smoothedByKey = new Map<string, import('three').Vector3>()
+  for (const [key, indices] of groups) {
+    const sum = new three.Vector3()
+    for (const i of indices) sum.add(new three.Vector3(normal.getX(i), normal.getY(i), normal.getZ(i)))
+    smoothedByKey.set(key, sum.normalize())
+  }
+
+  for (let i = 0; i < position.count; i++) {
+    const flat = new three.Vector3(normal.getX(i), normal.getY(i), normal.getZ(i))
+    const smooth = smoothedByKey.get(keyFor(i))!
+    const blended = flat.lerp(smooth, blend).normalize()
+    normal.setXYZ(i, blended.x, blended.y, blended.z)
+  }
+  normal.needsUpdate = true
+}
+
+// A thin outline traced along the geometry's real edges, in the skin's
+// own accent color -- see this file's own header, GEOMETRY section, for
+// why this (plus the softened normals above) was chosen over rebuilding
+// the geometry with real bevel faces. Added as a CHILD of the die mesh by
+// the caller, so it inherits every frame's transform automatically.
+function buildEdgeOutline(three: typeof import('three'), geometry: import('three').BufferGeometry, accentColor: string): import('three').LineSegments {
+  const edges = new three.EdgesGeometry(geometry, 1)
+  const material = new three.LineBasicMaterial({ color: accentColor, transparent: true, opacity: 0.32 })
+  return new three.LineSegments(edges, material)
+}
+
+// A soft, radially-gradient "blob shadow" plane -- see this file's own
+// header, CONTACT SHADOW section. Built ONCE; its scale/opacity/position
+// are updated per-frame from the die's own already-computed position (see
+// `playD20`, below), never recreated.
+function buildContactShadow(three: typeof import('three')): import('three').Mesh {
+  const size = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+  gradient.addColorStop(0, 'rgba(0,0,0,0.85)')
+  gradient.addColorStop(0.65, 'rgba(0,0,0,0.32)')
+  gradient.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+
+  const texture = new three.CanvasTexture(canvas)
+  texture.needsUpdate = true
+
+  const geometry = new three.PlaneGeometry(1.7, 1.7)
+  const material = new three.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false })
+  const mesh = new three.Mesh(geometry, material)
+  mesh.rotation.x = -Math.PI / 2
+  mesh.position.set(0, -1.05, 0)
+  return mesh
 }
 
 async function ensureScene(): Promise<void> {
@@ -278,11 +640,10 @@ async function ensureScene(): Promise<void> {
 
     camera = new three.PerspectiveCamera(40, 1, 0.1, 10)
     // Slightly elevated, not dead-on -- reads as photographed/dimensional
-    // rather than a flat model-viewer thumbnail (this task's own
-    // "perspective/depth" requirement). The landing math itself targets
-    // world +Z exactly (authoredD20ThreeOrientation.ts's own header) --
-    // this small camera tilt is a separate, purely cosmetic choice, not
-    // baked into the orientation table.
+    // rather than a flat model-viewer thumbnail. The landing math itself
+    // targets world +Z exactly (authoredD20ThreeOrientation.ts's own
+    // header) -- this small camera tilt is a separate, purely cosmetic
+    // choice, not baked into the orientation table.
     camera.position.set(0, 0.35, 3.4)
     camera.lookAt(0, 0, 0)
 
@@ -292,26 +653,48 @@ async function ensureScene(): Promise<void> {
     renderer.setSize(SCENE_PX, SCENE_PX)
     container.appendChild(renderer.domElement)
 
-    const ambient = new three.AmbientLight(0xfff2d9, 0.55)
-    const key = new three.DirectionalLight(0xfff2d9, 1.0)
+    // PHASE 4B.2 -- lighting rig. See this file's own header, LIGHTING,
+    // for the role each light plays.
+    const ambient = new three.AmbientLight(0xfff2d9, 0.38)
+    const key = new three.DirectionalLight(0xfff6e6, 1.15)
     key.position.set(2, 3, 4)
-    const rim = new three.DirectionalLight(0x8fa8ff, 0.35)
+    const rim = new three.DirectionalLight(0x8fa8ff, 0.42)
     rim.position.set(-3, -1, -2)
-    scene.add(ambient, key, rim)
+    const specular = new three.PointLight(0xfff2d9, 0.6, 8)
+    specular.position.set(0.6, 1.1, 3.2)
+    scene.add(ambient, key, rim, specular)
 
     const geometry = buildGeometry(three)
-    const materials = buildMaterials(three)
+    const materials = await buildMaterials(three, activeSkin)
     dieMesh = new three.Mesh(geometry, materials)
+    dieMesh.add(buildEdgeOutline(three, geometry, activeSkin.material.accentColor ?? activeSkin.material.baseColor))
     scene.add(dieMesh)
+
+    contactShadow = buildContactShadow(three)
+    scene.add(contactShadow)
 
     // Draw one initial frame at rest so nothing flashes before the first
     // roll's own reset-and-fade-in.
     dieMesh.position.set(0, 0, 0)
     dieMesh.quaternion.identity()
+    updateContactShadow(0, 0)
     renderer.render(scene, camera)
   })()
 
   return readyPromise
+}
+
+// Updates the shared contact-shadow mesh from the die's own current
+// horizontal position and height -- see authoredD20ThreeChoreography.ts's
+// own `shadowScaleForHeight`/`shadowOpacityForHeight` header for why this
+// reuses already-computed position data rather than simulating anything.
+function updateContactShadow(x: number, y: number, z = 0): void {
+  if (!contactShadow) return
+  contactShadow.position.x = x
+  contactShadow.position.z = z
+  contactShadow.scale.setScalar(shadowScaleForHeight(y))
+  const material = contactShadow.material as import('three').MeshBasicMaterial
+  material.opacity = shadowOpacityForHeight(y)
 }
 
 // Runs `onFrame(t)` on every animation frame for `durationMs`, `t`
@@ -352,19 +735,19 @@ async function playD20(face: number): Promise<void> {
   try {
     await ensureScene()
     const three = ThreeMod
-    if (!three || !renderer || !scene || !camera || !dieMesh || !xAxis || !yAxis) {
+    if (!three || !renderer || !scene || !camera || !dieMesh || !contactShadow || !xAxis || !yAxis) {
       error.value = 'WorldAuthoredThreeDiceRenderer failed to initialize'
       return
     }
     // Local `const` captures -- TS narrows `let` variables per-statement,
     // not across the closures passed to `animatePhase` below, since a
     // mutable outer binding could in principle change between the check
-    // above and a later callback invocation. These captures make the
-    // already-true "these are non-null for the rest of this call" fact
-    // visible to the type checker.
+    // above and a later callback invocation.
     const die = dieMesh
     const spinXAxis = xAxis
     const spinYAxis = yAxis
+    const materials = die.material as import('three').MeshStandardMaterial[]
+    const baseEmissiveIntensity = activeSkin.material.emissiveIntensity ?? 0
 
     const targetQuat = new three.Quaternion(target.x, target.y, target.z, target.w)
 
@@ -375,18 +758,20 @@ async function playD20(face: number): Promise<void> {
     die.position.set(THROW_START_POSITION.x, THROW_START_POSITION.y, THROW_START_POSITION.z)
     die.quaternion.identity()
     die.scale.setScalar(1)
+    updateContactShadow(THROW_START_POSITION.x, THROW_START_POSITION.y, THROW_START_POSITION.z)
     renderer.render(scene, camera)
     visible.value = true
 
-    // THROW (Enter + Roll, one continuous motion -- see this file's own
-    // header and authoredD20ThreeChoreography.ts's own header for why).
-    // Position follows the authored Bezier arc; rotation is a fast,
-    // multi-axis spin that does NOT target the authoritative face --
-    // LAND (next) is what arrives at the exact, already-known target.
+    // THROW (Enter + Roll, one continuous motion). Position follows the
+    // authored Bezier arc; rotation is a fast, multi-axis spin that does
+    // NOT target the authoritative face -- LAND (next) is what arrives at
+    // the exact, already-known target. The contact shadow tracks the same
+    // position data, tightening as the die nears the floor.
     await animatePhase(THROW_MS, (t) => {
       const eased = easeOutCubic(t)
       const pos = bezierPoint(eased, THROW_START_POSITION, THROW_PEAK_POSITION, THROW_LAND_POSITION)
       die.position.set(pos.x, pos.y, pos.z)
+      updateContactShadow(pos.x, pos.y, pos.z)
 
       const qx = new three.Quaternion().setFromAxisAngle(spinXAxis, SPIN_X_TURNS * Math.PI * 2 * eased)
       const qy = new three.Quaternion().setFromAxisAngle(spinYAxis, SPIN_Y_TURNS * Math.PI * 2 * eased)
@@ -401,29 +786,39 @@ async function playD20(face: number): Promise<void> {
     const throwEndQuat = die.quaternion.clone()
 
     // LAND -- decelerate onto the authoritative face, with a small,
-    // controlled rotational overshoot-and-settle (`easeOutBack`) plus a
-    // tiny landing-impact dip. `target` was read directly from
+    // controlled rotational overshoot-and-settle (`easeOutBack`), a tiny
+    // landing-impact position dip, and (new this phase) squash-and-stretch
+    // scale for a real sense of contact. `target` was read directly from
     // authoredD20ThreeOrientation.ts's own explicit table before this
     // beat (or any beat) began.
     await animatePhase(LAND_MS, (t) => {
       const eased = easeOutBack(t)
       die.quaternion.slerpQuaternions(throwEndQuat, targetQuat, eased)
-      die.position.set(0, -landBobOffset(t), 0)
+      const y = -landBobOffset(t)
+      die.position.set(0, y, 0)
+      die.scale.set(landSquashScaleXZ(t), landSquashScaleY(t), landSquashScaleXZ(t))
+      updateContactShadow(0, y, 0)
     })
 
     // Exact, guaranteed final pose -- overrides any floating-point drift
-    // from 60+ frames of incremental slerping (this file's own header:
-    // "THE FINAL ORIENTATION IS GUARANTEED EXACT").
+    // from 60+ frames of incremental slerping/scaling ("THE FINAL
+    // ORIENTATION IS GUARANTEED EXACT," this file's own header).
     die.quaternion.set(targetQuat.x, targetQuat.y, targetQuat.z, targetQuat.w)
     die.position.set(0, 0, 0)
+    die.scale.set(1, 1, 1)
+    updateContactShadow(0, 0, 0)
     renderer.render(scene, camera)
 
     // FLOURISH -- deliberately minimal (this phase's own instruction): a
-    // small, tier-blind scale pulse, nothing result-quality-aware.
+    // small, tier-blind scale pulse plus a brief emissive glint, nothing
+    // result-quality-aware (Natural 20/1 effects remain Phase 4D).
     await animatePhase(FLOURISH_MS, (t) => {
       die.scale.setScalar(flourishScale(t))
+      const boosted = baseEmissiveIntensity + flourishEmissiveBoost(t)
+      for (const material of materials) material.emissiveIntensity = boosted
     })
     die.scale.setScalar(1)
+    for (const material of materials) material.emissiveIntensity = baseEmissiveIntensity
     renderer.render(scene, camera)
 
     // EXIT ("Record" in ADR-024 §6) -- the die's own pose is already
@@ -445,8 +840,18 @@ onBeforeUnmount(() => {
     if (Array.isArray(materials)) {
       for (const material of materials as import('three').MeshStandardMaterial[]) {
         material.map?.dispose()
+        material.normalMap?.dispose()
+        material.roughnessMap?.dispose()
+        material.metalnessMap?.dispose()
+        material.emissiveMap?.dispose()
         material.dispose()
       }
+    }
+    contactShadow?.geometry?.dispose()
+    const shadowMaterial = contactShadow?.material
+    if (shadowMaterial && !Array.isArray(shadowMaterial)) {
+      (shadowMaterial as import('three').MeshBasicMaterial).map?.dispose()
+      shadowMaterial.dispose()
     }
   } catch {
     // Tearing down an already-broken renderer must never throw during
@@ -461,7 +866,7 @@ defineExpose({
 </script>
 
 <template>
-  <!-- Roll System Phase 4B.1 -- docked at the EXACT same shelf every
+  <!-- Roll System Phase 4B.1/4B.2 -- docked at the EXACT same shelf every
        prior Dice Presentation Layer renderer uses -- see this file's own
        header. -->
   <div

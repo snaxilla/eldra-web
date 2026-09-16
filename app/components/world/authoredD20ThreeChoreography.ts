@@ -54,7 +54,23 @@
 // `TOTAL_CEREMONY_MS` (all five beats) is asserted, by test, to land
 // inside this phase's own 700-900ms target and under its 1000ms hard
 // ceiling -- see this file's own test for the exact numbers.
-
+//
+// ---------------------------------------------------------------------------
+// PHASE 4B.2 (VISUAL POLISH) -- CHOREOGRAPHY POLISH, NOT A REDESIGN
+// ---------------------------------------------------------------------------
+// This phase's own CHOREOGRAPHY POLISH section: "Polish it, but do NOT
+// redesign it unless browser evidence clearly requires it." No evidence
+// said the throw arc or spin was wrong -- Phase 4B.1 passed its own
+// browser gate with the choreography unchanged -- so `THROW_START/PEAK/
+// LAND_POSITION` and `SPIN_X/Y_TURNS` below are BYTE-FOR-BYTE unchanged
+// from Phase 4B.1. The one real timing change is `LAND_MS` (170 -> 190):
+// this phase adds real squash-and-stretch (`landSquashScaleY/XZ`, below)
+// on top of the existing rotational overshoot, and 170ms read as slightly
+// rushed once that compression-and-recovery had to fit inside it. 20ms
+// buys room for the squash to read clearly without changing what LAND
+// fundamentally does. `TOTAL_CEREMONY_MS` is re-verified, by test, to
+// still land inside the 700-900ms target (now 870ms) and under the
+// 1000ms hard ceiling -- see this file's own test for the exact numbers.
 export type Vec3Like = { x: number; y: number; z: number }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +80,7 @@ export type Vec3Like = { x: number; y: number; z: number }
 export const ENTER_MS = 100
 export const ROLL_MS = 350
 export const THROW_MS = ENTER_MS + ROLL_MS
-export const LAND_MS = 170
+export const LAND_MS = 190
 export const FLOURISH_MS = 100
 export const EXIT_MS = 130
 export const TOTAL_CEREMONY_MS = THROW_MS + LAND_MS + FLOURISH_MS + EXIT_MS
@@ -155,4 +171,83 @@ export function landBobOffset(t: number, peakHeight: number = LAND_BOB_HEIGHT): 
 // at `peak` partway through.
 export function flourishScale(t: number, peak: number = FLOURISH_SCALE_PEAK): number {
   return 1 + Math.sin(Math.min(Math.max(t, 0), 1) * Math.PI) * (peak - 1)
+}
+
+// ---------------------------------------------------------------------------
+// PHASE 4B.2 -- CONTACT / WEIGHT (no physics, no collision system)
+// ---------------------------------------------------------------------------
+// This phase's own CONTACT / WEIGHT section names a short list of
+// presentation-only techniques for perceived weight; two are implemented
+// as pure math here (squash-and-stretch, contact-shadow response), applied
+// to real Three.js objects by WorldAuthoredThreeDiceRenderer.client.vue.
+// Neither reads or affects the die's own orientation/position TRUTH --
+// squash only ever touches `scale`, and the shadow is a second, separate
+// object with no bearing on the die's own transform.
+
+// Squash-and-stretch on impact -- classic animation-principle "contact"
+// cue (compressed and widened for an instant, then springs back to
+// neutral) applied to LAND's own progress `t`, recovering well before
+// LAND ends so it never fights FLOURISH's own separate settle pulse.
+// `easeOutBack` (above) is reused here as the recovery curve, at a gentler
+// overshoot than LAND's own rotational one -- this is a scale bounce, not
+// a rotation, and should read as softer.
+export const LAND_SQUASH_Y = 0.86
+export const LAND_SQUASH_XZ = 1.08
+const LAND_SQUASH_RECOVERY_FRACTION = 0.45
+
+export function landSquashScaleY(t: number): number {
+  const recoverT = Math.min(Math.max(t, 0) / LAND_SQUASH_RECOVERY_FRACTION, 1)
+  return LAND_SQUASH_Y + (1 - LAND_SQUASH_Y) * easeOutBack(recoverT, 0.6)
+}
+
+export function landSquashScaleXZ(t: number): number {
+  const recoverT = Math.min(Math.max(t, 0) / LAND_SQUASH_RECOVERY_FRACTION, 1)
+  return LAND_SQUASH_XZ + (1 - LAND_SQUASH_XZ) * easeOutBack(recoverT, 0.6)
+}
+
+// Contact shadow -- a cheap, presentation-only "blob shadow" (this
+// phase's own CONTACT section lists this explicitly: "soft contact
+// shadow... shadow tightening as the die approaches LAND"). Driven purely
+// by the die's OWN already-computed height above the stage floor
+// (`Math.abs(position.y)`, since the authored trajectory both starts
+// below and arcs above the floor at y=0) -- this reuses position data the
+// throw/land curves above already produce every frame; it does not
+// simulate or measure anything new. Larger height -> smaller, fainter
+// shadow (die is "away" from the table); height near zero -> largest,
+// darkest shadow (die is in, or approaching, contact).
+export const SHADOW_MIN_SCALE = 0.55
+export const SHADOW_MAX_SCALE = 1.05
+export const SHADOW_MAX_OPACITY = 0.35
+// Die-radius units of |y| beyond which the shadow is already at its
+// smallest/faintest -- tuned against THROW_START_POSITION.y (-0.95) and
+// THROW_PEAK_POSITION.y (0.55), the largest |y| excursions the authored
+// trajectory actually reaches.
+export const SHADOW_HEIGHT_FALLOFF = 1.0
+
+export function shadowScaleForHeight(height: number): number {
+  const t = Math.min(Math.max(Math.abs(height) / SHADOW_HEIGHT_FALLOFF, 0), 1)
+  return SHADOW_MAX_SCALE - t * (SHADOW_MAX_SCALE - SHADOW_MIN_SCALE)
+}
+
+export function shadowOpacityForHeight(height: number): number {
+  const t = Math.min(Math.max(Math.abs(height) / SHADOW_HEIGHT_FALLOFF, 0), 1)
+  return SHADOW_MAX_OPACITY * (1 - t)
+}
+
+// ---------------------------------------------------------------------------
+// PHASE 4B.2 -- FLOURISH glint (this phase's own FLOURISH section: "very
+// subtle baseline flourish... tiny gold glint... Keep it extremely
+// subtle")
+// ---------------------------------------------------------------------------
+// A brief boost ON TOP OF the active DiceSkin's own baseline
+// `emissiveIntensity` (authoredD20ThreeSkin.ts) -- zero at the start/end
+// of FLOURISH, peaking briefly in the middle. Deliberately tier-blind:
+// nothing here reads the roll's total, natural-20/1 status, or anything
+// else about WHAT was rolled -- every roll gets the identical, small
+// glint (Natural 20/1-specific effects remain Phase 4D, per this phase's
+// own explicit instruction).
+export const FLOURISH_EMISSIVE_BOOST_PEAK = 0.35
+
+export function flourishEmissiveBoost(t: number, peak: number = FLOURISH_EMISSIVE_BOOST_PEAK): number {
+  return Math.sin(Math.min(Math.max(t, 0), 1) * Math.PI) * peak
 }

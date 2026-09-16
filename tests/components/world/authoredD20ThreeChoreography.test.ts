@@ -1,12 +1,14 @@
 // Tests for app/components/world/authoredD20ThreeChoreography.ts. Eldra
 // Roll System Phase 4B.1 (Authored Three.js d20 Proof of Concept,
-// ADR-024 Option 2). This task's own explicit ask: "Test pure
-// animation/choreography helpers where practical: duration budget, target
-// orientation, deterministic final state, optional trajectory selection
-// invariants." No WebGL/DOM/`three` import needed here -- this module is
-// deliberately plain math, importable and testable without a browser
-// (matching app/lib/rolls/dice-adapter.ts's own established "pure logic
-// lives outside .vue files" convention).
+// ADR-024 Option 2) + Phase 4B.2 (Visual Polish + Skin-Ready Material
+// Architecture, which added the squash/shadow/glint blocks below). This
+// task's own explicit ask: "Test pure animation/choreography helpers
+// where practical: duration budget, target orientation, deterministic
+// final state, optional trajectory selection invariants." No WebGL/DOM/
+// `three` import needed here -- this module is deliberately plain math,
+// importable and testable without a browser (matching
+// app/lib/rolls/dice-adapter.ts's own established "pure logic lives
+// outside .vue files" convention).
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -15,14 +17,26 @@ import {
   easeOutCubic,
   ENTER_MS,
   EXIT_MS,
+  FLOURISH_EMISSIVE_BOOST_PEAK,
   FLOURISH_MS,
   FLOURISH_SCALE_PEAK,
+  flourishEmissiveBoost,
   flourishScale,
   LAND_BOB_HEIGHT,
   LAND_MS,
   LAND_OVERSHOOT,
+  LAND_SQUASH_XZ,
+  LAND_SQUASH_Y,
   landBobOffset,
+  landSquashScaleXZ,
+  landSquashScaleY,
   ROLL_MS,
+  SHADOW_HEIGHT_FALLOFF,
+  SHADOW_MAX_OPACITY,
+  SHADOW_MAX_SCALE,
+  SHADOW_MIN_SCALE,
+  shadowOpacityForHeight,
+  shadowScaleForHeight,
   SPIN_X_TURNS,
   SPIN_Y_TURNS,
   THROW_LAND_POSITION,
@@ -56,6 +70,12 @@ describe('duration budget -- this phase\'s own CHOREOGRAPHY/DURATION BUDGET sect
     expect(TOTAL_CEREMONY_MS).toBeGreaterThanOrEqual(700)
     expect(TOTAL_CEREMONY_MS).toBeLessThanOrEqual(900)
     expect(TOTAL_CEREMONY_MS).toBeLessThan(1000)
+  })
+
+  it('Phase 4B.2 widened LAND_MS for the new squash-and-stretch, but the throw\'s own arc/spin timing is untouched (no redesign without browser evidence)', () => {
+    expect(ENTER_MS).toBe(100)
+    expect(ROLL_MS).toBe(350)
+    expect(LAND_MS).toBe(190)
   })
 })
 
@@ -162,5 +182,86 @@ describe('spin configuration -- this phase\'s own ROTATION STRATEGY ("deliberate
 
   it('uses two DIFFERENT turn counts on the two spin axes -- an irregular tumble, not a single clean spin', () => {
     expect(SPIN_X_TURNS).not.toBe(SPIN_Y_TURNS)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PHASE 4B.2 -- CONTACT / WEIGHT
+// ---------------------------------------------------------------------------
+
+describe('landSquashScaleY / landSquashScaleXZ -- impact squash-and-stretch', () => {
+  it('starts compressed (Y below 1, XZ above 1) at the instant of impact', () => {
+    expect(landSquashScaleY(0)).toBeCloseTo(LAND_SQUASH_Y, 6)
+    expect(landSquashScaleXZ(0)).toBeCloseTo(LAND_SQUASH_XZ, 6)
+    expect(LAND_SQUASH_Y).toBeLessThan(1)
+    expect(LAND_SQUASH_XZ).toBeGreaterThan(1)
+  })
+
+  it('fully recovers to neutral (1,1,1) well before LAND ends, leaving room for FLOURISH\'s own separate pulse', () => {
+    expect(landSquashScaleY(1)).toBeCloseTo(1, 6)
+    expect(landSquashScaleXZ(1)).toBeCloseTo(1, 6)
+  })
+
+  it('never inflates beyond a modest, controlled range -- a bounce, not a cartoon wobble', () => {
+    for (let i = 0; i <= 100; i++) {
+      const t = i / 100
+      expect(landSquashScaleY(t)).toBeGreaterThan(0.7)
+      expect(landSquashScaleY(t)).toBeLessThan(1.05)
+      expect(landSquashScaleXZ(t)).toBeGreaterThan(0.95)
+      expect(landSquashScaleXZ(t)).toBeLessThan(1.15)
+    }
+  })
+})
+
+describe('shadowScaleForHeight / shadowOpacityForHeight -- the contact shadow', () => {
+  it('is largest and darkest exactly at the floor (height 0)', () => {
+    expect(shadowScaleForHeight(0)).toBeCloseTo(SHADOW_MAX_SCALE, 6)
+    expect(shadowOpacityForHeight(0)).toBeCloseTo(SHADOW_MAX_OPACITY, 6)
+  })
+
+  it('shrinks and fades as height increases, reaching its floor at/beyond SHADOW_HEIGHT_FALLOFF', () => {
+    expect(shadowScaleForHeight(SHADOW_HEIGHT_FALLOFF)).toBeCloseTo(SHADOW_MIN_SCALE, 6)
+    expect(shadowOpacityForHeight(SHADOW_HEIGHT_FALLOFF)).toBeCloseTo(0, 6)
+    // Beyond the falloff distance, it does not go negative or invert.
+    expect(shadowScaleForHeight(SHADOW_HEIGHT_FALLOFF * 3)).toBeCloseTo(SHADOW_MIN_SCALE, 6)
+    expect(shadowOpacityForHeight(SHADOW_HEIGHT_FALLOFF * 3)).toBeCloseTo(0, 6)
+  })
+
+  it('treats height as unsigned -- the authored trajectory dips below the floor (negative y) at THROW_START_POSITION', () => {
+    expect(shadowScaleForHeight(-0.5)).toBeCloseTo(shadowScaleForHeight(0.5), 6)
+    expect(shadowOpacityForHeight(-0.5)).toBeCloseTo(shadowOpacityForHeight(0.5), 6)
+  })
+
+  it('is monotonic -- moving farther from the floor never makes the shadow tighter or darker', () => {
+    let prevScale = Infinity
+    let prevOpacity = Infinity
+    for (let i = 0; i <= 20; i++) {
+      const height = (i / 20) * SHADOW_HEIGHT_FALLOFF
+      const scale = shadowScaleForHeight(height)
+      const opacity = shadowOpacityForHeight(height)
+      expect(scale).toBeLessThanOrEqual(prevScale + 1e-9)
+      expect(opacity).toBeLessThanOrEqual(prevOpacity + 1e-9)
+      prevScale = scale
+      prevOpacity = opacity
+    }
+  })
+})
+
+describe('flourishEmissiveBoost -- the FLOURISH glint', () => {
+  it('is zero at the start and end of the beat', () => {
+    expect(flourishEmissiveBoost(0)).toBe(0)
+    expect(flourishEmissiveBoost(1)).toBeCloseTo(0, 10)
+  })
+
+  it('peaks at FLOURISH_EMISSIVE_BOOST_PEAK, kept small ("extremely subtle")', () => {
+    const values = Array.from({ length: 101 }, (_, i) => flourishEmissiveBoost(i / 100))
+    expect(Math.max(...values)).toBeCloseTo(FLOURISH_EMISSIVE_BOOST_PEAK, 3)
+    expect(FLOURISH_EMISSIVE_BOOST_PEAK).toBeLessThan(0.6)
+  })
+
+  it('never goes negative -- a glint only ever adds glow, never subtracts it', () => {
+    for (let i = 0; i <= 100; i++) {
+      expect(flourishEmissiveBoost(i / 100)).toBeGreaterThanOrEqual(0)
+    }
   })
 })

@@ -1,12 +1,30 @@
 <script setup lang="ts">
 import { useAuth } from '~/composables/useAuth'
-import { safeRedirectTarget } from '~/utils/safeRedirect'
+import { resolvePostLoginDestination } from '~/utils/safeRedirect'
 definePageMeta({
   layout: false
 })
 
-const { login, state } = useAuth()
+const { login, state, fetchMe } = useAuth()
 const route = useRoute()
+
+// Authentication Flow Cleanup -- AUTHENTICATED USER VISITING LOGIN. Resolved
+// here, in top-level <script setup> (blocking SSR + client-side navigation
+// via Vue's Suspense), not `onMounted` -- an `onMounted` redirect would
+// still paint the login form first on every server-rendered response,
+// which is exactly the flicker this task's AUTHORITY/SSR REQUIREMENT rules
+// out. A visitor who already has a valid session and lands on /login
+// (a stale bookmark, browser back, or the "you must be signed in" link
+// clicked after already signing in elsewhere) is sent straight to whatever
+// they were actually trying to reach instead of being asked to log in
+// again.
+if (!state.value.ready) {
+  await fetchMe()
+}
+
+if (state.value.authenticated) {
+  await navigateTo(resolvePostLoginDestination(route.query.redirect))
+}
 
 // Accepts a Player's username OR an existing administrator's real email --
 // see server/utils/players.ts's resolveLoginEmail for how the server tells
@@ -26,11 +44,15 @@ async function submit() {
     await login(username.value, password.value)
 
     // Return the user to whatever route sent them here (recorded by
-    // middleware/auth.ts or middleware/admin.ts). Falls back to the
-    // previous behavior when there is no redirect to honor.
-    const requested = safeRedirectTarget(route.query.redirect)
-    const target = requested || (state.value.user?.role?.admin_access ? '/admin' : '/')
-    await navigateTo(target)
+    // middleware/auth.ts or middleware/admin.ts), or the World Selection
+    // page otherwise. Login's ONLY job is authenticating -- it no longer
+    // has an opinion about role-based destinations (the previous
+    // `admin_access ? '/admin' : '/'` branch routed every administrator
+    // through the "ELDRA ADMIN TEST" diagnostic page on every login, which
+    // is the exact defect Authentication Flow Cleanup traced and removed;
+    // /admin remains reachable deliberately, via the sidebar's own "Admin"
+    // link, just never as an automatic login destination).
+    await navigateTo(resolvePostLoginDestination(route.query.redirect))
   } catch (error: any) {
     errorMessage.value =
       error?.data?.statusMessage ||
@@ -99,10 +121,6 @@ async function submit() {
             {{ loading ? 'Signing in...' : 'Sign In' }}
           </button>
         </form>
-
-        <div class="mt-6 text-center text-sm text-slate-500">
-          After login, admin users are sent to the admin test page.
-        </div>
       </div>
     </div>
   </div>

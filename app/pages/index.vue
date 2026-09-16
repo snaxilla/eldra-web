@@ -1,33 +1,48 @@
 <script setup lang="ts">
 import WorldCreateModal from '~/components/world/WorldCreateModal.vue'
 import { useAuth } from '~/composables/useAuth'
+import { resolveWorldSelectionState } from '~/utils/worldSelectionState'
 
-// GET /api/worlds is intentionally still gated by the Phase 0 deny-by-default
-// middleware (server/middleware/authorize.ts) -- it stays that way; see this
-// task's own ISSUE 1 ("Do NOT make GET /api/worlds public"). An anonymous
-// visitor must never even ATTEMPT that request, so auth state is resolved
-// FIRST, and the fetch below only ever fires when it's already known to
-// succeed. Same `if (!state.value.ready) await fetchMe()` sequencing
-// app/middleware/auth.ts and app/plugins/auth-init.client.ts already use --
-// fetchMe() forwards the incoming request's cookie during SSR (useAuth.ts),
-// so this resolves correctly on the very first server-rendered response,
-// not just after client-side hydration.
+// Authentication Flow Cleanup -- this page (the World Selection page,
+// "Choose a world to enter") is now gated by the project's own canonical
+// `auth` middleware (app/middleware/auth.ts), same as every other
+// protected route. An unauthenticated request is redirected to
+// `/login?redirect=/` during route resolution, BEFORE this component's own
+// setup ever runs -- so by the time the code below executes, authentication
+// is already known to have succeeded. This replaces the page's previous,
+// bespoke "render an inline signed-out card instead of the real page"
+// branch, which was a second, divergent auth-gating path outside the
+// middleware every other protected page already uses.
+definePageMeta({
+  middleware: 'auth'
+})
+
 const { state, fetchMe } = useAuth()
 
 if (!state.value.ready) {
   await fetchMe()
 }
 
-const isAuthenticated = computed(() => state.value.authenticated)
+// GET /api/worlds is intentionally still gated by the Phase 0 deny-by-default
+// middleware (server/middleware/authorize.ts) -- it stays that way. The
+// `auth` middleware above already guarantees this request only ever fires
+// for an authenticated visitor, so it is called unconditionally here (no
+// `immediate` gate needed) like any other page's own `useFetch` call.
+const { data: worlds, pending: worldsPending, error: worldsError, refresh: refreshWorlds } = await useFetch('/api/worlds')
 
-// `immediate: isAuthenticated.value` is read once, here, after the await
-// above -- not reactively -- so this never issues the request for a
-// signed-out visitor (no 401 round-trip, no "attempt" at all), while still
-// calling useFetch unconditionally (consistent composable usage, SSR-safe
-// hydration) rather than skipping the call itself.
-const { data: worlds, refresh: refreshWorlds } = await useFetch('/api/worlds', {
-  immediate: isAuthenticated.value
-})
+// WORLD SELECTION DATA STATES -- see worldSelectionState.ts's own header
+// for why this is a pure, separately-tested function rather than inline
+// template conditionals: it is the one place that decides whether "No
+// worlds yet" is allowed to render at all.
+const selectionState = computed(() =>
+  resolveWorldSelectionState({
+    authReady: state.value.ready,
+    authenticated: state.value.authenticated,
+    worldsPending: worldsPending.value,
+    worldsError: !!worldsError.value,
+    worldsCount: worlds.value?.length ?? 0
+  })
+)
 
 const createWorldOpen = ref(false)
 
@@ -62,7 +77,7 @@ async function onWorldCreated(world: { id: string | number; slug: string }) {
     <WorldChooserThpace />
 
     <div
-      v-if="isAuthenticated"
+      v-if="selectionState === 'populated' || selectionState === 'empty' || selectionState === 'loading' || selectionState === 'error'"
       class="relative z-10 space-y-12 lg:space-y-16"
     >
       <section class="relative overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(4,9,22,0.40)] shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-sm">
@@ -109,7 +124,7 @@ async function onWorldCreated(world: { id: string | number; slug: string }) {
         </div>
       </section>
 
-      <section v-if="worlds?.length" class="space-y-8">
+      <section v-if="selectionState === 'populated'" class="space-y-8">
         <div class="flex items-end justify-between gap-4">
           <div>
             <div class="text-[11px] uppercase tracking-[0.35em] text-slate-400">
@@ -121,13 +136,13 @@ async function onWorldCreated(world: { id: string | number; slug: string }) {
           </div>
 
           <div class="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-slate-300 backdrop-blur">
-            {{ worlds.length }} world<span v-if="worlds.length !== 1">s</span>
+            {{ worlds?.length }} world<span v-if="worlds?.length !== 1">s</span>
           </div>
         </div>
 
         <div class="grid grid-cols-1 gap-10 2xl:grid-cols-2">
           <NuxtLink
-            v-for="world in worlds"
+            v-for="world in worlds ?? []"
             :key="world.id"
             :to="worldHref(world)"
             class="group relative overflow-hidden rounded-[36px] border border-white/12 bg-[rgba(8,16,27,0.48)] shadow-[0_24px_80px_rgba(0,0,0,0.50)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-sky-300/25"
@@ -189,6 +204,70 @@ async function onWorldCreated(world: { id: string | number; slug: string }) {
         </div>
       </section>
 
+      <!--
+        LOADING -- CRITICAL EMPTY-STATE RULE: while /api/worlds is still
+        pending, this branch (not "empty") is what renders, so a slow
+        request can never read as "you own zero Worlds."
+      -->
+      <section
+        v-else-if="selectionState === 'loading'"
+        class="rounded-[36px] border border-dashed border-white/10 bg-white/[0.04] px-8 py-16 text-center backdrop-blur"
+      >
+        <div class="mx-auto max-w-2xl">
+          <div class="text-[11px] uppercase tracking-[0.35em] text-slate-500">
+            Eldra Cosmos
+          </div>
+
+          <h2 class="mt-3 text-3xl font-semibold tracking-tight text-white">
+            Loading your Worlds…
+          </h2>
+        </div>
+      </section>
+
+      <!--
+        ERROR -- CRITICAL EMPTY-STATE RULE: a failed /api/worlds request
+        (including a stale/rejected session -- see the DEPLOYMENT / STALE
+        SESSION CASE this state also exists for) must never be silently
+        presented as "No worlds yet." Offers a retry via the SAME
+        `refreshWorlds` the Create World flow already uses, not a full
+        page reload.
+      -->
+      <section
+        v-else-if="selectionState === 'error'"
+        class="rounded-[36px] border border-dashed border-white/10 bg-white/[0.04] px-8 py-16 text-center backdrop-blur"
+      >
+        <div class="mx-auto max-w-2xl">
+          <div class="text-[11px] uppercase tracking-[0.35em] text-slate-500">
+            Something went wrong
+          </div>
+
+          <h2 class="mt-3 text-3xl font-semibold tracking-tight text-white">
+            Couldn't load your Worlds
+          </h2>
+
+          <p class="mt-4 text-base leading-8 text-slate-300">
+            This is a loading error, not an empty account -- your Worlds are still there.
+          </p>
+
+          <button
+            type="button"
+            class="mt-7 inline-flex items-center gap-2 rounded-full border border-sky-300/25 bg-sky-400/15 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-400/25"
+            @click="refreshWorlds()"
+          >
+            <UIcon
+              name="i-lucide-refresh-cw"
+              class="h-4 w-4"
+            />
+            <span>Try again</span>
+          </button>
+        </div>
+      </section>
+
+      <!--
+        EMPTY -- the ONLY state that may say "No worlds yet" (this task's
+        own CRITICAL EMPTY-STATE RULE): reached only once auth is resolved,
+        authenticated, loading has finished, and the request succeeded.
+      -->
       <section
         v-else
         class="rounded-[36px] border border-dashed border-white/10 bg-white/[0.04] px-8 py-16 text-center backdrop-blur"
@@ -222,63 +301,28 @@ async function onWorldCreated(world: { id: string | number; slug: string }) {
     </div>
 
     <!--
-      Signed-out experience -- this task's own ISSUE 1/SIGNED-OUT EXPERIENCE.
-      GET /api/worlds stays protected (never called above when
-      !isAuthenticated, per the script's `immediate` guard); this section
-      exists specifically so the page says WHY nothing is shown, instead of
-      falling through to the authenticated branch's "No worlds yet" empty
-      state, which would misleadingly imply zero Worlds exist rather than
-      "you are not signed in."  No World metadata, no Create World entry
-      point -- both require an authenticated session this visitor doesn't
-      have.
+      Authentication Flow Cleanup -- an unauthenticated visitor is now
+      redirected to /login by the `auth` middleware above BEFORE this
+      component's own setup runs (see this file's own header comment), so
+      this branch is a defensive fallback for the brief `auth-unresolved`
+      moment (or a genuinely unreachable-in-practice `unauthenticated` one)
+      rather than a full second sign-in experience -- maintaining a whole
+      parallel "you're signed out" page here would just be the same
+      divergent auth-gating path this cleanup removed, rebuilt one level
+      down. Deliberately minimal: it exists to never flash a false "No
+      worlds yet," not to be seen.
     -->
     <div
       v-else
       class="relative z-10 flex min-h-[calc(100vh-3.5rem)] items-center justify-center"
     >
-      <section class="relative w-full max-w-2xl overflow-hidden rounded-[40px] border border-white/10 bg-[rgba(4,9,22,0.40)] px-8 py-16 text-center shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:px-14 sm:py-20">
-        <div class="text-[12px] uppercase tracking-[0.42em] text-sky-300/90">
-          Eldra Cosmos
-        </div>
-
-        <h1 class="mt-5 text-5xl font-semibold tracking-tight text-white sm:text-6xl">
-          Welcome to Eldra
-        </h1>
-
-        <p class="mt-7 text-lg leading-9 text-slate-200">
-          Worlds are private by default. Sign in to continue into the realms
-          you're part of.
-        </p>
-
-        <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <NuxtLink
-            to="/login"
-            class="inline-flex items-center gap-2 rounded-full border border-sky-300/25 bg-sky-400/15 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-400/25"
-          >
-            <UIcon
-              name="i-lucide-log-in"
-              class="h-4 w-4"
-            />
-            <span>Sign In</span>
-          </NuxtLink>
-
-          <button
-            type="button"
-            disabled
-            class="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-slate-400 opacity-50"
-          >
-            <UIcon
-              name="i-lucide-user-plus"
-              class="h-4 w-4"
-            />
-            <span>Create Account (coming soon)</span>
-          </button>
-        </div>
-      </section>
+      <div class="text-sm uppercase tracking-[0.3em] text-slate-500">
+        Loading…
+      </div>
     </div>
 
     <WorldCreateModal
-      v-if="isAuthenticated"
+      v-if="selectionState === 'populated' || selectionState === 'empty'"
       v-model:open="createWorldOpen"
       @created="onWorldCreated"
     />

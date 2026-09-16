@@ -90,6 +90,56 @@
 //     decisive... small squash... small scale/position response."
 //   - `TOTAL_CEREMONY_MS` re-verified, by test, to still land inside the
 //     700-900ms target (now 890ms) and under the 1000ms hard ceiling.
+//
+// ---------------------------------------------------------------------------
+// PHASE 4B.4 (LANDING READABILITY + RESULT HOLD)
+// ---------------------------------------------------------------------------
+// Real browser feedback, after 4B.3 finally shipped as the actual default
+// (see WorldAuthoredThreeDiceRenderer.client.vue's own PHASE 4B.4 header
+// for the full traced readability account): the die vanished before a
+// player could read it, and the numeral itself was hard to acquire even
+// during the brief window it WAS visible. This task's own PRODUCT
+// CORRECTION: "the old sub-1000ms target... is NOT sacred... optimize for
+// fast tabletop cadence AND a clearly readable result."
+//
+// TWO CHANGES HERE, BOTH ADDITIVE, NEITHER TOUCHING THE THROW:
+//
+// 1. `RESULT_HOLD_MS` -- a genuinely NEW, fourth beat, distinct from LAND
+//    and EXIT (this task's own RESULT HOLD section). Runs after FLOURISH
+//    settles and before EXIT begins. During it, `WorldAuthoredThreeDice
+//    Renderer.client.vue`'s own `playD20` calls `animatePhase` with a
+//    literal no-op `onFrame` -- position, quaternion, and scale are never
+//    touched, so the already-landed, already-settled frame simply repeats
+//    for the beat's full duration. This is the safest possible reading of
+//    "position fixed, target quaternion fixed... only an extremely subtle
+//    flourish may continue": rather than thread a SECOND, independent
+//    "subtle flourish" curve through the hold (which is optional per this
+//    task's own wording, "MAY continue," not "must"), FLOURISH's existing
+//    scale/glint pop already supplies the "decisive contact" emphasis
+//    immediately before the hold begins -- RESULT_HOLD itself stays
+//    completely, provably static, which is the literal, unambiguous
+//    reading of this task's own "No tumble. No rotation. No ambiguity."
+//
+// 2. `LAND_REST_SCALE` -- the die's permanent resting scale from the
+//    instant LAND's exact final pose is locked in, through FLOURISH, and
+//    for the entirety of RESULT_HOLD (previously this was a bare `1`,
+//    i.e. no size emphasis at all). This is this task's own LAND-ONLY
+//    EMPHASIS section's first suggested example, "modest die scale-up
+//    during final LAND" -- directly increasing the authoritative face's
+//    projected screen size for exactly the window a player is meant to
+//    read it, with zero change to camera, FOV, or geometry. `flourishScale`
+//    (below) is redefined to pulse ABOVE and settle AT this new resting
+//    scale, rather than above and settling at neutral `1` -- so FLOURISH's
+//    existing "small pop" now reads as "pop up TO the enlarged, readable
+//    size," not "pop and shrink back down."
+//
+// DURATION BUDGET REBALANCED, NOT PADDED: THROW_MS and LAND_MS are
+// BYTE-FOR-BYTE unchanged from Phase 4B.3 (this task's own explicit "Do
+// NOT add time to the THROW merely to make the animation longer"). Only
+// `RESULT_HOLD_MS` is new time; `TOTAL_CEREMONY_MS` moves from 890ms to
+// 1290ms -- inside this task's own suggested ~1100-1300ms target band,
+// comfortably under its ~1400ms outer ceiling, and nowhere near the
+// 2-3 SECOND physics-era durations ADR-024 rejected.
 export type Vec3Like = { x: number; y: number; z: number }
 
 // ---------------------------------------------------------------------------
@@ -101,8 +151,14 @@ export const ROLL_MS = 350
 export const THROW_MS = ENTER_MS + ROLL_MS
 export const LAND_MS = 190
 export const FLOURISH_MS = 100
+// PHASE 4B.4 -- the new, distinct "let the player actually read it" beat.
+// 400ms sits in the middle of this task's own suggested 350-450ms range:
+// long enough for a two-digit numeral to be consciously read (not merely
+// glimpsed), short enough that repeated tabletop rolls do not feel
+// sluggish (this task's own "the hold feels satisfying, not sluggish").
+export const RESULT_HOLD_MS = 400
 export const EXIT_MS = 150
-export const TOTAL_CEREMONY_MS = THROW_MS + LAND_MS + FLOURISH_MS + EXIT_MS
+export const TOTAL_CEREMONY_MS = THROW_MS + LAND_MS + FLOURISH_MS + RESULT_HOLD_MS + EXIT_MS
 
 // ---------------------------------------------------------------------------
 // PHASE 4B.3 -- LIFECYCLE WATCHDOG (this task's own PART A: "the temporary
@@ -168,9 +224,21 @@ export const LAND_OVERSHOOT = 1.2
 // die's own radius (1.0), never a bounce.
 export const LAND_BOB_HEIGHT = 0.07
 
+// PHASE 4B.4 -- the die's permanent resting scale for LAND's exact final
+// pose, through FLOURISH's own settle, and for the entirety of
+// RESULT_HOLD. See this file's own PHASE 4B.4 header for why this exists
+// (LAND-ONLY EMPHASIS's "modest die scale-up") -- deliberately modest
+// (+12%), enough to measurably enlarge the projected face without reading
+// as a jump-scare pop or breaking "the physical-looking 3D die itself
+// must communicate the result" (this task's own NUMERAL READABILITY
+// framing: emphasize, do not replace, the physical object).
+export const LAND_REST_SCALE = 1.12
+
 // A tiny, tier-blind FLOURISH scale pulse -- deliberately small (this
-// phase's own "minimal for this phase").
-export const FLOURISH_SCALE_PEAK = 1.05
+// phase's own "minimal for this phase"). PHASE 4B.4: peaks ABOVE, and
+// settles AT, `LAND_REST_SCALE` (previously peaked above, and settled at,
+// neutral `1`) -- see `flourishScale`'s own updated doc, below.
+export const FLOURISH_SCALE_PEAK = LAND_REST_SCALE + 0.06
 
 // ---------------------------------------------------------------------------
 // Pure math
@@ -219,10 +287,16 @@ export function landBobOffset(t: number, peakHeight: number = LAND_BOB_HEIGHT): 
   return Math.sin(Math.min(Math.max(t, 0), 1) * Math.PI) * peakHeight
 }
 
-// The FLOURISH scale pulse -- 1 at the start and end of the beat, peaking
-// at `peak` partway through.
+// The FLOURISH scale pulse -- `LAND_REST_SCALE` at the start AND end of
+// the beat (PHASE 4B.4: previously neutral `1` at start/end), peaking at
+// `peak` partway through. Starting from `LAND_REST_SCALE` rather than `1`
+// matters: the caller sets the die's scale to `LAND_REST_SCALE` the
+// instant LAND's exact final pose locks in (WorldAuthoredThreeDice
+// Renderer.client.vue's own `playD20`), so this function's own t=0 value
+// must match that already-applied scale exactly, or the first FLOURISH
+// frame would visibly jump.
 export function flourishScale(t: number, peak: number = FLOURISH_SCALE_PEAK): number {
-  return 1 + Math.sin(Math.min(Math.max(t, 0), 1) * Math.PI) * (peak - 1)
+  return LAND_REST_SCALE + Math.sin(Math.min(Math.max(t, 0), 1) * Math.PI) * (peak - LAND_REST_SCALE)
 }
 
 // ---------------------------------------------------------------------------

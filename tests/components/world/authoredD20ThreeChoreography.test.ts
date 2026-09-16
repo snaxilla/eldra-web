@@ -26,11 +26,13 @@ import {
   LAND_BOB_HEIGHT,
   LAND_MS,
   LAND_OVERSHOOT,
+  LAND_REST_SCALE,
   LAND_SQUASH_XZ,
   LAND_SQUASH_Y,
   landBobOffset,
   landSquashScaleXZ,
   landSquashScaleY,
+  RESULT_HOLD_MS,
   ROLL_MS,
   SHADOW_HEIGHT_FALLOFF,
   SHADOW_MAX_OPACITY,
@@ -66,11 +68,13 @@ describe('duration budget -- this phase\'s own CHOREOGRAPHY/DURATION BUDGET sect
     expect(EXIT_MS).toBeLessThanOrEqual(150)
   })
 
-  it('TOTAL_CEREMONY_MS is the sum of every beat, inside the 700-900ms target and under the 1000ms hard ceiling', () => {
-    expect(TOTAL_CEREMONY_MS).toBe(THROW_MS + LAND_MS + FLOURISH_MS + EXIT_MS)
-    expect(TOTAL_CEREMONY_MS).toBeGreaterThanOrEqual(700)
-    expect(TOTAL_CEREMONY_MS).toBeLessThanOrEqual(900)
-    expect(TOTAL_CEREMONY_MS).toBeLessThan(1000)
+  it('PHASE 4B.4: TOTAL_CEREMONY_MS is the sum of every beat, including the new RESULT_HOLD, inside the ~1100-1300ms target and under the ~1400ms outer ceiling', () => {
+    expect(TOTAL_CEREMONY_MS).toBe(THROW_MS + LAND_MS + FLOURISH_MS + RESULT_HOLD_MS + EXIT_MS)
+    expect(TOTAL_CEREMONY_MS).toBeGreaterThanOrEqual(1100)
+    expect(TOTAL_CEREMONY_MS).toBeLessThanOrEqual(1300)
+    expect(TOTAL_CEREMONY_MS).toBeLessThan(1400)
+    // Nowhere near the 2-3 SECOND physics-era durations ADR-024 rejected.
+    expect(TOTAL_CEREMONY_MS).toBeLessThan(2000)
   })
 
   it('Phase 4B.2 widened LAND_MS for the new squash-and-stretch, but the throw\'s own arc/spin timing is untouched (no redesign without browser evidence)', () => {
@@ -81,7 +85,25 @@ describe('duration budget -- this phase\'s own CHOREOGRAPHY/DURATION BUDGET sect
 
   it('Phase 4B.3 widened EXIT_MS to match the outer stage\'s own CSS transition duration, staying at/under the 100-150ms exit-experience target', () => {
     expect(EXIT_MS).toBe(150)
-    expect(TOTAL_CEREMONY_MS).toBe(890)
+  })
+
+  it('PHASE 4B.4: RESULT_HOLD_MS is a real, distinct beat within this task\'s own suggested 350-450ms range', () => {
+    expect(RESULT_HOLD_MS).toBeGreaterThanOrEqual(350)
+    expect(RESULT_HOLD_MS).toBeLessThanOrEqual(450)
+  })
+
+  it('PHASE 4B.4: RESULT_HOLD sits strictly after LAND/FLOURISH and strictly before EXIT in the total budget (this task\'s own "HOLD occurs after LAND and before EXIT")', () => {
+    // TOTAL_CEREMONY_MS's own additive definition above already encodes the
+    // sequence THROW -> LAND -> FLOURISH -> RESULT_HOLD -> EXIT; this test
+    // asserts the ordering claim directly, by construction, rather than
+    // merely re-summing the same constants: the ceremony's time budget UP
+    // TO AND INCLUDING FLOURISH must fall strictly before RESULT_HOLD ends,
+    // which in turn must fall strictly before the ceremony's total time.
+    const elapsedThroughFlourish = THROW_MS + LAND_MS + FLOURISH_MS
+    const elapsedThroughResultHold = elapsedThroughFlourish + RESULT_HOLD_MS
+    expect(elapsedThroughFlourish).toBeLessThan(elapsedThroughResultHold)
+    expect(elapsedThroughResultHold).toBeLessThan(TOTAL_CEREMONY_MS)
+    expect(TOTAL_CEREMONY_MS - elapsedThroughResultHold).toBe(EXIT_MS)
   })
 })
 
@@ -179,16 +201,24 @@ describe('landBobOffset -- LAND\'s tiny impact dip', () => {
   })
 })
 
+describe('LAND_REST_SCALE -- PHASE 4B.4\'s LAND-ONLY EMPHASIS scale-up', () => {
+  it('is a modest enlargement, not a jump-scare pop or a no-op', () => {
+    expect(LAND_REST_SCALE).toBeGreaterThan(1)
+    expect(LAND_REST_SCALE).toBeLessThan(1.3)
+  })
+})
+
 describe('flourishScale -- FLOURISH\'s minimal, tier-blind pulse', () => {
-  it('is exactly 1 at the start and end of the beat', () => {
-    expect(flourishScale(0)).toBe(1)
-    expect(flourishScale(1)).toBeCloseTo(1, 10)
+  it('PHASE 4B.4: is exactly LAND_REST_SCALE (not neutral 1) at the start and end of the beat', () => {
+    expect(flourishScale(0)).toBeCloseTo(LAND_REST_SCALE, 10)
+    expect(flourishScale(1)).toBeCloseTo(LAND_REST_SCALE, 10)
   })
 
-  it('peaks at FLOURISH_SCALE_PEAK, a deliberately small bump ("minimal for this phase")', () => {
+  it('peaks at FLOURISH_SCALE_PEAK, a deliberately small bump ABOVE LAND_REST_SCALE ("minimal for this phase")', () => {
     const values = Array.from({ length: 101 }, (_, i) => flourishScale(i / 100))
     expect(Math.max(...values)).toBeCloseTo(FLOURISH_SCALE_PEAK, 3)
-    expect(FLOURISH_SCALE_PEAK).toBeLessThan(1.15)
+    expect(FLOURISH_SCALE_PEAK).toBeGreaterThan(LAND_REST_SCALE)
+    expect(FLOURISH_SCALE_PEAK - LAND_REST_SCALE).toBeLessThan(0.15)
   })
 })
 

@@ -290,6 +290,62 @@
 //       stage / try: play authored ceremony / finally: hide/reset stage."
 //
 // ---------------------------------------------------------------------------
+// PHASE 4B.4 -- LANDING READABILITY + RESULT HOLD
+// ---------------------------------------------------------------------------
+// Real browser feedback, once Phase 4B.3's lifecycle fix and skin actually
+// shipped as the default: the die vanished before the authoritative
+// numeral could be read. Traced (not guessed), per this task's own FIRST
+// -- TRACE CURRENT LAND ORIENTATION section:
+//
+//   A. Does the authoritative face's normal point at the camera at LAND?
+//   B. Does its numeral's "up" align with camera/world up?
+//   C. Is the face large enough in projected screen space to read?
+//
+// A and B were ALREADY true, by construction, before this phase touched
+// anything -- see authoredD20ThreeOrientation.ts's own derivation header:
+// `D20_THREE_ORIENTATIONS` is built so that applying face N's own landing
+// quaternion to its own (normal, up_local) vectors reproduces world +Z and
+// world +Y respectively to ~1e-16 precision, verified by
+// `authoredD20ThreeOrientation.test.ts`. There was no orientation-math
+// defect to fix, and this phase changes NONE of that table, NONE of
+// `landingQuaternionForFace`, and NONE of the per-face tests asserting it
+// -- exactly this task's own CORRECTNESS section's "do not weaken tests
+// merely to make a new orientation pass" was never in tension with
+// anything found here.
+//
+// C was the actual gap, and it had two independent causes, neither of
+// them "wrong orientation":
+//
+//   1. NO DEDICATED HOLD. LAND (190ms) flowed straight into FLOURISH
+//      (100ms) and then EXIT began -- at most ~290ms of stationary
+//      viewing, most of it consumed by FLOURISH's own scale pulse, before
+//      the fade-out started. A two-digit numeral needs longer than that
+//      to be consciously read, not merely glimpsed. Fixed by
+//      `RESULT_HOLD_MS` (authoredD20ThreeChoreography.ts) -- a genuinely
+//      new, distinct beat, entirely additive, that holds the already-
+//      settled frame perfectly still for ~400ms before EXIT begins.
+//   2. SMALL PROJECTED SIZE. At `DIE_RADIUS=1`, `camera` FOV 40 /
+//      distance 3.4, and `SCENE_PX=200`, a single triangular face's
+//      screen footprint is a small fraction of an already-small 200px
+//      canvas -- correctly oriented, but modest. Fixed by
+//      `LAND_REST_SCALE` (authoredD20ThreeChoreography.ts) -- the die's
+//      resting scale from LAND's exact final pose onward is now +12%,
+//      not neutral, directly enlarging the authoritative face for
+//      exactly the window it is meant to be read in. `FACE_TEXTURE_SIZE`
+//      (256 -> 384) and per-face texture anisotropy
+//      (`renderer.capabilities.getMaxAnisotropy()`, see
+//      `createFaceTexture`'s own header) were raised alongside it so the
+//      larger on-screen face is fed by correspondingly sharper source
+//      data, rather than stretching the same 256px canvas further.
+//
+// Texture color-space/encoding was investigated (`createFaceTexture`'s
+// own header) and deliberately left unchanged: both the numeral texture
+// and the renderer already default to the SAME encoding, so there is no
+// mismatch degrading contrast, and correcting BOTH to a physically-based
+// sRGB pipeline would recolor the entire scene, not just this face --
+// outside this phase's stated scope.
+//
+// ---------------------------------------------------------------------------
 // STAGE / DOCKING -- REUSED, NOT REINVENTED
 // ---------------------------------------------------------------------------
 // Docked at the EXACT same shelf every prior Dice Presentation Layer
@@ -320,6 +376,8 @@ import {
   landSquashScaleXZ,
   landSquashScaleY,
   LAND_MS,
+  LAND_REST_SCALE,
+  RESULT_HOLD_MS,
   shadowOpacityForHeight,
   shadowScaleForHeight,
   SPIN_X_TURNS,
@@ -344,8 +402,18 @@ const DIE_RADIUS = 1
 // `{ kind: 'canvas' }` DiceTextureSource. Bumped from Phase 4B.1's 128 to
 // 256 for crisper numeral edges/outline (this phase's own NUMERALS
 // section: "crisp... sufficient contrast") -- still tiny, and built ONCE
-// per face at init, never per-roll (see PERFORMANCE, below).
-const FACE_TEXTURE_SIZE = 256
+// per face at init, never per-roll (see PERFORMANCE, below). PHASE 4B.4 --
+// bumped again, 256 -> 384: Phase 4B.4's own LAND-ONLY EMPHASIS scale-up
+// (`LAND_REST_SCALE`, authoredD20ThreeChoreography.ts) makes the
+// authoritative face measurably LARGER on screen for exactly the window a
+// player is meant to read it, which reduces how much the GPU minifies
+// this source texture at that moment -- more source resolution now
+// translates more directly into on-screen sharpness than it did at the
+// smaller neutral scale. Not raised further: `paintFaceNumeral`'s outline
+// width already scales proportionally with this constant (`size / 256`),
+// and 20 independent per-face canvases are built once at init, not
+// per-roll, so this stays a one-time cost, not a per-frame one.
+const FACE_TEXTURE_SIZE = 384
 const AUX_TEXTURE_SIZE = 256
 
 // How strongly `applySoftenedEdgeNormals` blends each hard, flat face
@@ -539,7 +607,39 @@ function paintFaceNumeral(ctx: CanvasRenderingContext2D, size: number, value: nu
 // established "one CanvasTexture per numbered face" approach (kept, not
 // replaced -- this phase's own NUMERALS section: "If retained, improve it
 // rather than replacing it merely for novelty").
-async function createFaceTexture(three: typeof import('three'), value: number, skin: DiceSkin): Promise<import('three').CanvasTexture> {
+// PHASE 4B.4 -- TEXTURE QUALITY. Configuration verified against
+// three@0.143.0's own installed source (node_modules/three/src/textures/
+// {Texture,CanvasTexture}.js), not assumed from a newer API:
+//   - `minFilter`/`magFilter`/`generateMipmaps` are set EXPLICITLY here to
+//     the exact values `Texture`'s own constructor already defaults to
+//     (`LinearMipmapLinearFilter` / `LinearFilter` / `true`) -- a
+//     no-behavior-change edit that documents the choice instead of
+//     leaving it implicit. Mipmapping is the CORRECT setting here, not a
+//     bug to disable: this texture is minified on screen (a 384px source
+//     covering a projected face well under 200px even after the
+//     LAND_REST_SCALE bump), and mipmapping is what prevents shimmer/
+//     aliasing on a minified texture -- turning it off would make the
+//     numeral LESS stable-looking during the tumble, not crisper at LAND.
+//   - `anisotropy` is set from `renderer.capabilities.getMaxAnisotropy()`
+//     -- the version-correct way to query hardware-supported anisotropic
+//     filtering (verified present in this exact three.js source tree,
+//     `WebGLCapabilities.js`'s own `getMaxAnisotropy`). It principally
+//     helps the numeral stay legible at the oblique viewing angles the
+//     THROW/ROLL tumble passes through, and costs nothing once LAND holds
+//     the face perpendicular to camera.
+//   - Color-space/encoding was investigated and deliberately NOT changed:
+//     `texture.encoding` and `renderer.outputEncoding` (the actual
+//     property names in this three.js version -- `colorSpace`/
+//     `outputColorSpace` do not exist on `Texture`/`WebGLRenderer` here)
+//     both already default to the SAME value (`LinearEncoding`), so there
+//     is no encoding MISMATCH degrading contrast. Setting both to
+//     `sRGBEncoding` together would be the "textbook correct" PBR
+//     configuration, but it recalibrates the brightness/contrast of the
+//     ENTIRE scene -- every light, every material, not just this face's
+//     numeral -- which exceeds this task's own scope (LAND readability +
+//     Result Hold, not a whole-renderer lighting pass). Left as a
+//     documented, deliberately-deferred option, not a defect.
+async function createFaceTexture(three: typeof import('three'), value: number, skin: DiceSkin, maxAnisotropy: number): Promise<import('three').CanvasTexture> {
   const canvas = document.createElement('canvas')
   canvas.width = FACE_TEXTURE_SIZE
   canvas.height = FACE_TEXTURE_SIZE
@@ -549,6 +649,10 @@ async function createFaceTexture(three: typeof import('three'), value: number, s
   paintFaceNumeral(ctx, FACE_TEXTURE_SIZE, value, skin)
 
   const texture = new three.CanvasTexture(canvas)
+  texture.minFilter = three.LinearMipmapLinearFilter
+  texture.magFilter = three.LinearFilter
+  texture.generateMipmaps = true
+  texture.anisotropy = maxAnisotropy
   texture.needsUpdate = true
   return texture
 }
@@ -557,8 +661,17 @@ async function createFaceTexture(three: typeof import('three'), value: number, s
 // maps (normal/roughness/metalness/emissive) are resolved once, shared
 // across all 20 materials (a skin's surface-detail texture is the SAME
 // physical material repeated per face, not 20 independent images), while
-// the albedo/numeral map is necessarily unique per face.
-async function buildMaterials(three: typeof import('three'), skin: DiceSkin): Promise<import('three').MeshStandardMaterial[]> {
+// the albedo/numeral map is necessarily unique per face. PHASE 4B.4 --
+// takes the live `renderer` so the numeral maps can be configured with
+// `renderer.capabilities.getMaxAnisotropy()` (see `createFaceTexture`'s
+// own header); `ensureScene()`'s only call site already constructs the
+// renderer before calling this, so it is always available here.
+async function buildMaterials(
+  three: typeof import('three'),
+  skin: DiceSkin,
+  renderer: import('three').WebGLRenderer
+): Promise<import('three').MeshStandardMaterial[]> {
+  const maxAnisotropy = renderer.capabilities.getMaxAnisotropy()
   const [normalMap, roughnessMap, metalnessMap, emissiveMap] = await Promise.all([
     resolveAuxTexture(three, skin.material.normalMap),
     resolveAuxTexture(three, skin.material.roughnessMap),
@@ -567,7 +680,7 @@ async function buildMaterials(three: typeof import('three'), skin: DiceSkin): Pr
   ])
 
   const faceTextures = await Promise.all(
-    D20_THREE_FACE_VALUE_BY_INDEX.map((value) => createFaceTexture(three, value, skin))
+    D20_THREE_FACE_VALUE_BY_INDEX.map((value) => createFaceTexture(three, value, skin, maxAnisotropy))
   )
 
   const emissive = new three.Color(skin.material.emissiveColor ?? '#000000')
@@ -750,7 +863,7 @@ async function ensureScene(): Promise<void> {
     scene.add(ambient, key, rim, specular)
 
     const geometry = buildGeometry(three)
-    const materials = await buildMaterials(three, activeSkin)
+    const materials = await buildMaterials(three, activeSkin, renderer)
     dieMesh = new three.Mesh(geometry, materials)
     dieMesh.add(buildEdgeOutline(three, geometry, activeSkin.material.accentColor ?? activeSkin.material.baseColor))
     scene.add(dieMesh)
@@ -933,24 +1046,45 @@ async function playD20(face: number): Promise<void> {
 
     // Exact, guaranteed final pose -- overrides any floating-point drift
     // from 60+ frames of incremental slerping/scaling ("THE FINAL
-    // ORIENTATION IS GUARANTEED EXACT," this file's own header).
+    // ORIENTATION IS GUARANTEED EXACT," this file's own header). PHASE
+    // 4B.4 -- scale locks to `LAND_REST_SCALE`, not neutral `1`: see this
+    // file's own PHASE 4B.4 header, LAND-ONLY EMPHASIS.
     die.quaternion.set(targetQuat.x, targetQuat.y, targetQuat.z, targetQuat.w)
     die.position.set(0, 0, 0)
-    die.scale.set(1, 1, 1)
+    die.scale.setScalar(LAND_REST_SCALE)
     updateContactShadow(0, 0, 0)
     renderer.render(scene, camera)
 
     // FLOURISH -- deliberately minimal (this phase's own instruction): a
     // small, tier-blind scale pulse plus a brief emissive glint, nothing
-    // result-quality-aware (Natural 20/1 effects remain Phase 4D).
+    // result-quality-aware (Natural 20/1 effects remain Phase 4D). PHASE
+    // 4B.4 -- `flourishScale` now pulses above, and settles back AT,
+    // `LAND_REST_SCALE` (see authoredD20ThreeChoreography.ts's own updated
+    // doc), so the reset below matches that same resting scale instead of
+    // neutral `1`.
     await animatePhase(myGeneration, FLOURISH_MS, (t) => {
       die.scale.setScalar(flourishScale(t))
       const boosted = baseEmissiveIntensity + flourishEmissiveBoost(t)
       for (const material of materials) material.emissiveIntensity = boosted
     })
-    die.scale.setScalar(1)
+    die.scale.setScalar(LAND_REST_SCALE)
     for (const material of materials) material.emissiveIntensity = baseEmissiveIntensity
     renderer.render(scene, camera)
+
+    // PHASE 4B.4 -- RESULT_HOLD. A genuinely new, distinct beat: real
+    // browser feedback showed the die vanishing before a player could
+    // read the authoritative numeral (this file's own PHASE 4B.4 header).
+    // `onFrame` is a literal no-op -- position, quaternion, and scale are
+    // never touched, so the already-rendered, already-static LAND/
+    // FLOURISH frame simply repeats for the beat's full duration. This is
+    // the deliberately unambiguous reading of the task's own "position
+    // fixed, target quaternion fixed... No tumble. No rotation. No
+    // ambiguity." -- rather than thread a second, independent "subtle
+    // flourish" curve through the hold (explicitly optional: "an
+    // extremely subtle flourish MAY continue"), the emphasis FLOURISH
+    // already supplied immediately before this beat is left to simply
+    // stand, unaltered, for the player to read.
+    await animatePhase(myGeneration, RESULT_HOLD_MS, () => {})
   } catch (err: any) {
     error.value = err?.message || 'Authored Three.js d20 renderer failed.'
   } finally {

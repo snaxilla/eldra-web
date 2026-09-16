@@ -115,14 +115,16 @@ watch(worldId, () => refreshHistory().catch(() => {}), { immediate: true })
     </p>
 
     <!-- Roll System Phase 4B.1 -- renderer-mode selector. Selects which
-         DiceRendererAdapter WorldDiceOverlay.vue registers; 'physics'
-         remains the default and is unaffected by this selector. Only a
-         plain 1d20 roll actually animates on the authored renderer --
+         DiceRendererAdapter WorldDiceOverlay.vue registers. As of the
+         Phase 4B.3 deployment repair, 'authored-three' is the default
+         (see useDiceRendererMode.ts's own header for the full account of
+         why this default was promoted); 'physics' remains fully
+         implemented and selectable here for comparison or rollback. Only
+         a plain 1d20 roll actually animates on the authored renderer --
          anything else falls back to the physics renderer regardless of
          this selection. No 'authored-css' option -- Phase 4B's own CSS/DOM
          proof of concept was never committed to git and was removed from
-         this selector by this phase's own deployment fix; see
-         useDiceRendererMode.ts's own header for the full account. -->
+         this selector by an earlier deployment fix. -->
     <fieldset class="mt-3">
       <legend class="mb-1 block text-xs uppercase tracking-[0.2em] text-[#9f9278]">
         Dice Renderer (dev)
@@ -135,7 +137,7 @@ watch(worldId, () => refreshHistory().catch(() => {}), { immediate: true })
             value="physics"
             class="accent-[#c9a45a]"
           >
-          Physics (default)
+          Physics
         </label>
         <label class="flex items-center gap-2">
           <input
@@ -144,7 +146,7 @@ watch(worldId, () => refreshHistory().catch(() => {}), { immediate: true })
             value="authored-three"
             class="accent-[#c9a45a]"
           >
-          Authored Three.js (Phase 4B.1)
+          Authored Three.js (default)
         </label>
       </div>
     </fieldset>

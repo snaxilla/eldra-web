@@ -16,11 +16,13 @@
 //
 // TWO FULL RENDERER IMPLEMENTATIONS COEXIST, UNCONDITIONALLY:
 //   'physics'        -- WorldDiceThreeRenderer.client.vue /
-//                        worldDiceThreeRendererAdapter.ts. UNCHANGED, the
-//                        default, still fully selectable for comparison.
+//                        worldDiceThreeRendererAdapter.ts. UNCHANGED,
+//                        still fully selectable for comparison or rollback.
 //   'authored-three' -- WorldAuthoredThreeDiceRenderer.client.vue /
 //                        worldAuthoredThreeDiceRendererAdapter.ts. Phase
-//                        4B.1's own renderer (ADR-024 Option 2).
+//                        4B.1's own renderer (ADR-024 Option 2), THE
+//                        DEFAULT as of the Phase 4B.3 deployment repair
+//                        (see this file's own header, below, for why).
 //
 // WHY THERE IS NO THIRD `'authored-css'` MODE HERE. Phase 4B's own CSS/DOM
 // proof of concept (`WorldAuthoredDiceRenderer.vue`) was never committed
@@ -50,10 +52,29 @@
 // for cross-component/SSR-safe shared toggles (`world-workspace.vue`'s
 // own `mode`/`showPins`) -- no persistence, no cookie, no server round
 // trip: choosing a mode is a developer action for the current browser tab
-// only. Defaults to `'physics'` so nobody who never touches this control
-// sees any behavior change from either phase landing.
+// only.
+//
+// PHASE 4B.3 DEPLOYMENT REPAIR -- DEFAULT PROMOTED TO 'authored-three'.
+// From Phase 4B.1 through Phase 4B.3, this default stayed `'physics'` so
+// nobody who never touched this control saw any behavior change while the
+// authored renderer was still an unreviewed proof of concept. Phase 4B.3
+// (charcoal/gold skin, hardened show/hide lifecycle) was implemented,
+// reviewed, and approved -- but this default was never flipped as part of
+// that approval, so a normal player's roll (and the reviewer's own
+// post-deploy browser check) kept registering the OLD `'physics'`
+// renderer instead, which is a completely separate, untouched
+// implementation with its own pale `theme_colorset: 'white'` die and its
+// own independent show/hide logic. Neither of Phase 4B.3's two
+// accepted, observable changes could ever appear in an ordinary browser
+// session while this default pointed at the other renderer -- this was
+// the FIRST point production diverged from the accepted implementation,
+// traced and proven (not guessed) during this repair: git HEAD and the
+// production bundle both contain Phase 4B.3 correctly; only this
+// selection default stood between them and an ordinary roll. `'physics'`
+// remains fully implemented and selectable below, for comparison or as
+// an instant rollback, exactly as it always was.
 export type DiceRendererMode = 'physics' | 'authored-three'
 
 export function useDiceRendererMode() {
-  return useState<DiceRendererMode>('dice-renderer-mode', () => 'physics')
+  return useState<DiceRendererMode>('dice-renderer-mode', () => 'authored-three')
 }

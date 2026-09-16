@@ -184,29 +184,65 @@ export type DiceSkin = {
 // No uploads. No monetization.")
 // ---------------------------------------------------------------------------
 // Every color below is transcribed from Eldra's own already-established
-// palette (app/assets/css/eldra-fieldguide.css's `--eldra-gold`/
-// `--eldra-charcoal`/`--eldra-parchment` custom properties, and the
-// `#fff7df` ivory already used throughout WorldRollTray.vue/
-// WorldDiceAnimation.vue) -- not new brand colors invented for this die,
-// so the die reads as part of the same visual language as the rest of the
-// Dice Presentation Layer chrome around it, per this phase's own "warm,
-// fantasy-adjacent, consistent with Eldra's existing visual language"
-// goal.
+// palette (app/assets/css/eldra-fieldguide.css's `--eldra-ink`/
+// `--eldra-charcoal`/`--eldra-gold` custom properties, and the `#fff7df`
+// ivory already used throughout WorldRollTray.vue/WorldDiceAnimation.vue)
+// -- not new brand colors invented for this die, so the die reads as part
+// of the same visual language as the rest of the Dice Presentation Layer
+// chrome around it.
+//
+// ---------------------------------------------------------------------------
+// PHASE 4B.3 -- THE COLOR SCHEME IS INVERTED, NOT RETUNED (real browser
+// feedback: "the die still reads as ivory Three.js prototype d20... make
+// the default Eldra die's visual hierarchy CLEARLY different")
+// ---------------------------------------------------------------------------
+// Phase 4B.2's skin kept the body a mid-value gold (`--eldra-gold`
+// itself) with dark numerals and a light parchment accent -- a small,
+// same-family palette shift from Phase 4B.1's identical gold body that
+// browser testing confirmed reads as "the same pale/gold prototype" at
+// normal gameplay scale, regardless of how much the ROUGHNESS/METALNESS/
+// vignette numbers underneath it changed. The fix this phase makes is not
+// another such adjustment -- it is a genuine hierarchy inversion:
+//   - `baseColor` is now `--eldra-charcoal` (near-black) -- the body
+//     itself no longer competes for attention at all.
+//   - `accentColor`/`emissiveColor` remain `--eldra-gold`, but now read as
+//     a bright, high-contrast accent AGAINST a dark body, rather than as
+//     a slightly-different shade of the SAME light body color -- the
+//     edge outline and glint finally have something to contrast against.
+//   - `numeral.color` is now ivory (`#fff7df`) instead of charcoal-on-gold
+//     -- white-on-near-black is a substantially stronger raw contrast
+//     ratio than dark-on-gold ever was, satisfying this task's own
+//     "high-contrast numerals... immediately readable" requirement
+//     directly, not incrementally.
+//   - `numeral.outlineColor` becomes gold (`--eldra-gold`) -- an ivory
+//     glyph with a gold inlay line reads as "gold-lettered ivory," tying
+//     the numeral back into the same accent family as the edges/glint
+//     without needing a third, separate hue.
+//   - `roughness`/`metalness` are pulled back slightly ("restrained
+//     metallic response," this task's own DEFAULT SKIN DIRECTION) --
+//     the job of reading as "premium" now belongs to the color contrast
+//     and lighting (WorldAuthoredThreeDiceRenderer.client.vue's own
+//     LIGHTING section), not to a shinier material.
+//   - `emissiveIntensity`'s baseline is lower than Phase 4B.2's -- "subtle
+//     warm emissive/glint only where useful" -- most of the visible glow
+//     now happens in the FLOURISH beat's own temporary boost
+//     (authoredD20ThreeChoreography.ts's own `flourishEmissiveBoost`),
+//     not as a constant ambient wash.
 export const ELDRA_DEFAULT_D20_SKIN: DiceSkin = Object.freeze({
   id: 'eldra-default',
   name: 'Eldra Default',
   material: Object.freeze({
-    baseColor: '#c9a45a', // --eldra-gold
-    roughness: 0.42,
-    metalness: 0.24,
-    accentColor: '#e8d9b5', // --eldra-parchment -- a lighter accent than the base gold, for a crisp edge-line
+    baseColor: '#11100d', // --eldra-charcoal -- near-black body, see this file's own PHASE 4B.3 header
+    roughness: 0.5,
+    metalness: 0.16,
+    accentColor: '#c9a45a', // --eldra-gold -- edge outline, numeral outline, and emissive tint all share this ONE accent
     emissiveColor: '#c9a45a', // --eldra-gold
-    emissiveIntensity: 0.045 // a bare glow, not a light source -- see the renderer's own FLOURISH glint, which boosts this temporarily
+    emissiveIntensity: 0.03 // deliberately faint at rest -- FLOURISH supplies the real glint
   }),
   numeral: Object.freeze({
-    color: '#11100d', // --eldra-charcoal
-    outlineColor: '#fff7df', // established ivory text color
-    outlineWidth: 6,
+    color: '#fff7df', // established ivory -- maximum contrast against the near-black body
+    outlineColor: '#c9a45a', // --eldra-gold -- a gold-inlaid look
+    outlineWidth: 7,
     fontFamily: 'ui-monospace, "SFMono-Regular", monospace',
     fontWeight: 800
   })

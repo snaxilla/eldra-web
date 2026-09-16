@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  ANIMATION_WATCHDOG_MS,
   bezierPoint,
   easeOutBack,
   easeOutCubic,
@@ -76,6 +77,22 @@ describe('duration budget -- this phase\'s own CHOREOGRAPHY/DURATION BUDGET sect
     expect(ENTER_MS).toBe(100)
     expect(ROLL_MS).toBe(350)
     expect(LAND_MS).toBe(190)
+  })
+
+  it('Phase 4B.3 widened EXIT_MS to match the outer stage\'s own CSS transition duration, staying at/under the 100-150ms exit-experience target', () => {
+    expect(EXIT_MS).toBe(150)
+    expect(TOTAL_CEREMONY_MS).toBe(890)
+  })
+})
+
+describe('ANIMATION_WATCHDOG_MS -- Phase 4B.3\'s lifecycle safety net', () => {
+  it('is a small, positive wall-clock ceiling layered on top of each beat\'s own duration, not a replacement for it', () => {
+    expect(ANIMATION_WATCHDOG_MS).toBeGreaterThan(0)
+    // Generous enough to never fire in the ordinary case (every beat's own
+    // durationMs is well under a second) but not so large that a genuine
+    // stall (an uncaught per-frame exception, a backgrounded-tab rAF
+    // throttle) leaves the die visible for a perceptible extra delay.
+    expect(ANIMATION_WATCHDOG_MS).toBeLessThan(1000)
   })
 })
 

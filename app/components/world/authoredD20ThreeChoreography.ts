@@ -68,9 +68,28 @@
 // on top of the existing rotational overshoot, and 170ms read as slightly
 // rushed once that compression-and-recovery had to fit inside it. 20ms
 // buys room for the squash to read clearly without changing what LAND
-// fundamentally does. `TOTAL_CEREMONY_MS` is re-verified, by test, to
-// still land inside the 700-900ms target (now 870ms) and under the
-// 1000ms hard ceiling -- see this file's own test for the exact numbers.
+// fundamentally does.
+//
+// ---------------------------------------------------------------------------
+// PHASE 4B.3 (LIFECYCLE + VISUAL READ) -- EXIT_MS 130 -> 150, SQUASH/BOB
+// PUNCHIER, WATCHDOG ADDED
+// ---------------------------------------------------------------------------
+// Real browser feedback: (1) the die could remain visible indefinitely
+// after a roll (see WorldAuthoredThreeDiceRenderer.client.vue's own
+// header, LIFECYCLE, for the full traced root cause and fix -- `
+// ANIMATION_WATCHDOG_MS` below is this file's own contribution to that
+// fix); (2) LAND needed to read as more decisive contact ("THUNK"). Three
+// changes here, none of them a redesign:
+//   - `EXIT_MS` 130 -> 150, matching the outer stage's own CSS
+//     `transition duration-150` exactly (previously 20ms shorter than the
+//     visual fade it was supposed to cover) -- this task's own EXIT
+//     EXPERIENCE section's own "~100-150ms... quick exit" range.
+//   - `LAND_SQUASH_Y`/`LAND_SQUASH_XZ` deepened (a more pronounced
+//     compress-and-widen on impact) and `LAND_BOB_HEIGHT` raised
+//     slightly -- this task's own CONTACT section: "Make LAND visually
+//     decisive... small squash... small scale/position response."
+//   - `TOTAL_CEREMONY_MS` re-verified, by test, to still land inside the
+//     700-900ms target (now 890ms) and under the 1000ms hard ceiling.
 export type Vec3Like = { x: number; y: number; z: number }
 
 // ---------------------------------------------------------------------------
@@ -82,8 +101,38 @@ export const ROLL_MS = 350
 export const THROW_MS = ENTER_MS + ROLL_MS
 export const LAND_MS = 190
 export const FLOURISH_MS = 100
-export const EXIT_MS = 130
+export const EXIT_MS = 150
 export const TOTAL_CEREMONY_MS = THROW_MS + LAND_MS + FLOURISH_MS + EXIT_MS
+
+// ---------------------------------------------------------------------------
+// PHASE 4B.3 -- LIFECYCLE WATCHDOG (this task's own PART A: "the temporary
+// die presentation must eventually return to its hidden, idle state...
+// There must be no code path where a completed/failed roll leaves the die
+// visible forever")
+// ---------------------------------------------------------------------------
+// A hard wall-clock ceiling layered ON TOP OF each beat's own
+// `requestAnimationFrame`-driven pacing -- see
+// WorldAuthoredThreeDiceRenderer.client.vue's own `animatePhase` for
+// exactly how this is used. Traced root cause: NOTHING in the previous
+// implementation bounded a beat's own real-world duration except
+// `requestAnimationFrame` itself continuing to fire at its ordinary
+// cadence. Two real, provable ways that assumption fails: (1) an
+// exception thrown inside a rAF callback is NOT caught by the `try/catch`
+// that originally called `animatePhase` -- rAF callbacks run in a later,
+// detached browser task, so an uncaught per-frame error leaves that
+// beat's own Promise permanently pending, with no `reject` path anywhere
+// in the old code to unstick it; (2) browsers throttle or fully suspend
+// `requestAnimationFrame` for a backgrounded/minimized tab, so a beat
+// waiting purely on rAF can stall for an arbitrary, unbounded amount of
+// real time. Either one leaves `visible` stuck at `true` forever, exactly
+// the reported defect. `ANIMATION_WATCHDOG_MS` fixes both: it is added ON
+// TOP OF whichever beat's own `durationMs` is currently running (e.g.
+// `THROW_MS` + this margin, `LAND_MS` + this margin, ...), so rAF reaches
+// `t=1` well before the watchdog's own timeout in the ordinary case --
+// zero added latency on the happy path (this task's own "do not add
+// substantial latency") -- and only forces a beat to finish as a genuine
+// last-resort safety net.
+export const ANIMATION_WATCHDOG_MS = 400
 
 // ---------------------------------------------------------------------------
 // The authored throw trajectory -- "start near the lower/right
@@ -113,8 +162,11 @@ export const LAND_OVERSHOOT = 1.2
 
 // A tiny, tier-blind landing "impact" dip (die-radius units) during LAND
 // -- see WorldAuthoredThreeDiceRenderer.client.vue's own header for how
-// this composes with the rotational settle.
-export const LAND_BOB_HEIGHT = 0.06
+// this composes with the rotational settle. Raised slightly this phase
+// (0.06 -> 0.07) alongside the squash below, for a more decisive "THUNK"
+// (this task's own CONTACT section) -- still a small fraction of the
+// die's own radius (1.0), never a bounce.
+export const LAND_BOB_HEIGHT = 0.07
 
 // A tiny, tier-blind FLOURISH scale pulse -- deliberately small (this
 // phase's own "minimal for this phase").
@@ -190,9 +242,13 @@ export function flourishScale(t: number, peak: number = FLOURISH_SCALE_PEAK): nu
 // LAND ends so it never fights FLOURISH's own separate settle pulse.
 // `easeOutBack` (above) is reused here as the recovery curve, at a gentler
 // overshoot than LAND's own rotational one -- this is a scale bounce, not
-// a rotation, and should read as softer.
-export const LAND_SQUASH_Y = 0.86
-export const LAND_SQUASH_XZ = 1.08
+// a rotation, and should read as softer. Deepened this phase (0.86/1.08
+// -> 0.80/1.14) -- browser feedback named LAND as not yet reading as
+// decisive contact ("the player should perceive: THUNK"); a more
+// pronounced compress-and-widen is the cheapest, purely-authored way to
+// sell that without simulating an actual impact.
+export const LAND_SQUASH_Y = 0.80
+export const LAND_SQUASH_XZ = 1.14
 const LAND_SQUASH_RECOVERY_FRACTION = 0.45
 
 export function landSquashScaleY(t: number): number {

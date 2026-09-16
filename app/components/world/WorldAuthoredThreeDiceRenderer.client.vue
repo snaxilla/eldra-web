@@ -238,6 +238,58 @@
 // better done as a deliberate, reviewed change than an incidental one.
 //
 // ---------------------------------------------------------------------------
+// PHASE 4B.3 -- LIFECYCLE: THE TRACED ROOT CAUSE OF THE "DIE STAYS VISIBLE
+// FOREVER" DEFECT
+// ---------------------------------------------------------------------------
+// Real browser feedback: after a roll completes, the die could remain on
+// screen indefinitely. Traced (not guessed) through the full chain --
+// `DiceRendererAdapter.play()` (worldAuthoredThreeDiceRendererAdapter.ts)
+// awaits `exposed.playD20(face)`, which awaits a sequence of
+// `animatePhase()` calls, each a `new Promise` driven purely by
+// `requestAnimationFrame`. NOTHING in that chain had a `reject` path or a
+// wall-clock ceiling. Two concrete, provable ways that breaks:
+//   1. A per-frame exception (`onFrame(t)` or `renderer.render(...)`
+//      throwing inside `step()`) is NOT caught by `playD20`'s own
+//      `try/catch` -- `requestAnimationFrame` invokes `step` in a LATER,
+//      detached browser task, outside the call stack that originally
+//      awaited the Promise. An uncaught throw there simply never reaches
+//      `if (t < 1) ... else resolve()` -- the Promise stays pending
+//      forever, `await animatePhase(...)` in `playD20` never returns, and
+//      since `visible` was already set `true` before that await, the die
+//      is stuck visible with no code path left to un-stick it.
+//   2. Browsers throttle or fully suspend `requestAnimationFrame` for a
+//      backgrounded/minimized tab -- a beat waiting purely on rAF can
+//      stall for an arbitrary, unbounded amount of real time even with no
+//      error at all.
+// Either failure ALSO stalls `useDiceAnimationQueue.ts`'s own
+// `runQueue()` (it `await`s the exact same `renderer.play()` call), which
+// is consistent with, and a superset of, the reported symptom.
+//
+// THE FIX, in two parts:
+//   (a) `animatePhase` (below) now takes a `generation` token and races
+//       its own rAF loop against a `setTimeout` WATCHDOG
+//       (authoredD20ThreeChoreography.ts's own `ANIMATION_WATCHDOG_MS`),
+//       and wraps each frame's own work in try/catch -- ANY per-frame
+//       exception, ANY stalled/throttled rAF, or a newer roll superseding
+//       an older one (the same `generation`-token idiom
+//       useDiceAnimationQueue.ts's own `runQueue`/`clear` already
+//       establishes for the identical reason) now finishes that beat's
+//       Promise instead of leaving it pending. This never fires in the
+//       ordinary case -- the watchdog margin is generous relative to
+//       every beat's own nominal duration -- so it adds no latency to a
+//       normal roll.
+//   (b) `playD20`'s own OUTER lifecycle is now a genuine `try/finally`,
+//       not two independent copies of "set `visible.value = false`" (one
+//       at the end of the happy path, one in `catch`) that depended on
+//       one of those two exact lines being reached. The `finally` block
+//       is the ONLY place that hides the stage, and it runs on every
+//       possible exit from the try block -- return, throw, or normal
+//       completion -- so cleanup is a structural guarantee, not a
+//       byproduct of the happy path finishing. This is this task's own
+//       CLEANUP section's own suggested shape, applied literally: "show
+//       stage / try: play authored ceremony / finally: hide/reset stage."
+//
+// ---------------------------------------------------------------------------
 // STAGE / DOCKING -- REUSED, NOT REINVENTED
 // ---------------------------------------------------------------------------
 // Docked at the EXACT same shelf every prior Dice Presentation Layer
@@ -256,6 +308,7 @@ import type { DiceSkin } from './authoredD20ThreeSkin'
 import { ELDRA_DEFAULT_D20_SKIN, resolveDiceSkin } from './authoredD20ThreeSkin'
 import { D20_THREE_FACE_VALUE_BY_INDEX, landingQuaternionForFace } from './authoredD20ThreeOrientation'
 import {
+  ANIMATION_WATCHDOG_MS,
   bezierPoint,
   easeOutBack,
   easeOutCubic,
@@ -298,10 +351,16 @@ const AUX_TEXTURE_SIZE = 256
 // How strongly `applySoftenedEdgeNormals` blends each hard, flat face
 // normal toward its neighbor-averaged "smooth" normal -- 0 leaves the
 // original razor-sharp per-face shading untouched, 1 would read as a
-// nearly spherical, facet-less blob. This phase's own "subtle bevel...
-// NOT... a perfectly sharp math primitive" sits well short of either
-// extreme.
-const EDGE_NORMAL_SOFTEN = 0.35
+// nearly spherical, facet-less blob. Lowered this phase (0.35 -> 0.15):
+// real browser feedback named the edge/face separation as "too subtle at
+// gameplay scale" -- Phase 4B.2's own blend softened edges FOR a
+// polished look, which directly worked against the distinct per-facet
+// brightness contrast this task's own EDGE READ section now asks for.
+// Less smoothing means each face reads as a more clearly separate flat
+// facet under directional light, which combines with the bolder edge
+// outline (`buildEdgeOutline`, below) for a much stronger "obviously a
+// d20" read.
+const EDGE_NORMAL_SOFTEN = 0.15
 
 // The active skin -- resolved ONCE, here, not per-roll. This phase's own
 // DEFAULT SKIN section: "No selector. No user preference storage." A
@@ -323,6 +382,17 @@ let renderer: import('three').WebGLRenderer | null = null
 let dieMesh: import('three').Mesh | null = null
 let contactShadow: import('three').Mesh | null = null
 let readyPromise: Promise<void> | null = null
+
+// PHASE 4B.3 -- incremented once per `playD20()` call, matching
+// useDiceAnimationQueue.ts's own `generation` idiom exactly. Each
+// `animatePhase()` call captures the token active when IT started; if a
+// newer `playD20()` call has since begun (defensive -- the queue's own
+// strict serialization should make this unreachable in practice, but
+// costs nothing to guard), a stale beat finishes itself immediately
+// instead of continuing to animate or render on behalf of a roll that no
+// longer owns the stage. See this file's own header, PHASE 4B.3 --
+// LIFECYCLE, for the full root-cause account this is part of the fix for.
+let animationGeneration = 0
 
 // Real THREE.Vector3 axis constants -- constructed once ThreeMod is
 // loaded (ensureScene, below), not plain `{x,y,z}` literals, so
@@ -394,7 +464,12 @@ function paintDefaultFaceBackground(ctx: CanvasRenderingContext2D, size: number,
     size / 2, size * 0.55, size * 0.12,
     size / 2, size * 0.55, size * 0.62
   )
-  gradient.addColorStop(0, 'rgba(255,255,255,0.12)')
+  // PHASE 4B.3 -- warm gold highlight (was a plain white 0.12 highlight),
+  // matching the new near-black `--eldra-charcoal` base so the face's own
+  // "lit" side reads as warm metal catching light, not a generic glossy
+  // plastic sheen -- part of this phase's "same world as Eldra's
+  // charcoal/gold interface" visual target, not just a body-color swap.
+  gradient.addColorStop(0, 'rgba(201,164,90,0.14)')
   gradient.addColorStop(0.55, 'rgba(0,0,0,0)')
   gradient.addColorStop(1, 'rgba(0,0,0,0.30)')
   ctx.fillStyle = gradient
@@ -436,7 +511,9 @@ function paintFaceNumeral(ctx: CanvasRenderingContext2D, size: number, value: nu
   const x = size / 2
   const y = size * 0.64
 
-  ctx.font = `${fontWeight} ${Math.round(size * 0.44)}px ${fontFamily}`
+  // PHASE 4B.3 -- 0.44 -> 0.50: NUMERALS section, "large enough, centered,
+  // high contrast, crisp, immediately readable" at LAND.
+  ctx.font = `${fontWeight} ${Math.round(size * 0.50)}px ${fontFamily}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
@@ -588,7 +665,12 @@ function applySoftenedEdgeNormals(three: typeof import('three'), geometry: impor
 // the caller, so it inherits every frame's transform automatically.
 function buildEdgeOutline(three: typeof import('three'), geometry: import('three').BufferGeometry, accentColor: string): import('three').LineSegments {
   const edges = new three.EdgesGeometry(geometry, 1)
-  const material = new three.LineBasicMaterial({ color: accentColor, transparent: true, opacity: 0.32 })
+  // PHASE 4B.3 -- 0.32 -> 0.85: EDGE READ section, "increase face
+  // separation... edge accent." Raised via opacity, not `linewidth` --
+  // `LineBasicMaterial.linewidth` is capped at ~1px on most WebGL/ANGLE
+  // implementations regardless of the requested value, so opacity is the
+  // only lever that reliably makes the traced edges more visible.
+  const material = new three.LineBasicMaterial({ color: accentColor, transparent: true, opacity: 0.85 })
   return new three.LineSegments(edges, material)
 }
 
@@ -654,13 +736,16 @@ async function ensureScene(): Promise<void> {
     container.appendChild(renderer.domElement)
 
     // PHASE 4B.2 -- lighting rig. See this file's own header, LIGHTING,
-    // for the role each light plays.
-    const ambient = new three.AmbientLight(0xfff2d9, 0.38)
-    const key = new three.DirectionalLight(0xfff6e6, 1.15)
+    // for the role each light plays. PHASE 4B.3 -- intensities raised
+    // (ambient lowered) for deliberately MORE light/shadow separation on
+    // the new dark body: a near-black die under the old, flatter rig read
+    // as a featureless silhouette rather than a lit object.
+    const ambient = new three.AmbientLight(0xfff2d9, 0.30)
+    const key = new three.DirectionalLight(0xfff6e6, 1.4)
     key.position.set(2, 3, 4)
-    const rim = new three.DirectionalLight(0x8fa8ff, 0.42)
+    const rim = new three.DirectionalLight(0x8fa8ff, 0.55)
     rim.position.set(-3, -1, -2)
-    const specular = new three.PointLight(0xfff2d9, 0.6, 8)
+    const specular = new three.PointLight(0xfff2d9, 0.75, 8)
     specular.position.set(0.6, 1.1, 3.2)
     scene.add(ambient, key, rim, specular)
 
@@ -701,20 +786,55 @@ function updateContactShadow(x: number, y: number, z = 0): void {
 // clamped to `[0, 1]` (`t` reaches exactly `1` on the final call before
 // resolving), rendering the scene after each call. Pure orchestration --
 // all actual motion math lives in authoredD20ThreeChoreography.ts.
-function animatePhase(durationMs: number, onFrame: (t: number) => void): Promise<void> {
+//
+// PHASE 4B.3 -- GUARANTEED TO SETTLE. See this file's own header, PHASE
+// 4B.3 -- LIFECYCLE, for the full traced root cause. Three independent
+// guards, any ONE of which is enough to finish this Promise instead of
+// leaving it pending forever:
+//   - a `generation` mismatch (a newer `playD20()` call has since begun)
+//   - a per-frame exception (`onFrame`/`renderer.render` throwing)
+//   - a wall-clock WATCHDOG (`ANIMATION_WATCHDOG_MS` beyond `durationMs`),
+//     which also covers a stalled/throttled `requestAnimationFrame` (a
+//     backgrounded tab) even with no exception at all.
+// `finish()` is idempotent (`settled` guard) since more than one of these
+// can fire in practice (e.g. the watchdog AND a later stray rAF callback).
+function animatePhase(generation: number, durationMs: number, onFrame: (t: number) => void): Promise<void> {
   return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      resolve()
+    }
+
     const start = performance.now()
     function step(now: number) {
-      const t = durationMs <= 0 ? 1 : Math.min(1, (now - start) / durationMs)
-      onFrame(t)
-      renderer!.render(scene!, camera!)
-      if (t < 1) {
-        requestAnimationFrame(step)
-      } else {
-        resolve()
+      if (settled) return
+      if (generation !== animationGeneration) {
+        finish()
+        return
+      }
+      try {
+        const t = durationMs <= 0 ? 1 : Math.min(1, (now - start) / durationMs)
+        onFrame(t)
+        renderer?.render(scene!, camera!)
+        if (t < 1) {
+          requestAnimationFrame(step)
+        } else {
+          finish()
+        }
+      } catch {
+        // A per-frame failure (a lost WebGL context, a disposed renderer
+        // mid-frame, ...) must never leave this Promise -- and therefore
+        // the whole ceremony's own cleanup -- pending forever. Matches
+        // worldAuthoredThreeDiceRendererAdapter.ts's own "a presentation
+        // failure is never a gameplay failure" posture, one layer deeper.
+        finish()
       }
     }
+
     requestAnimationFrame(step)
+    setTimeout(finish, durationMs + ANIMATION_WATCHDOG_MS)
   })
 }
 
@@ -731,6 +851,16 @@ async function playD20(face: number): Promise<void> {
     error.value = `No authored orientation for face ${face} -- this renderer only supports d20 faces 1-20`
     return
   }
+
+  // PHASE 4B.3 -- see this file's own header, PHASE 4B.3 -- LIFECYCLE.
+  // `myGeneration` is this call's own token, passed to every
+  // `animatePhase` call below so a stale beat can recognize a NEWER
+  // `playD20()` has since started. `shown` tracks whether this call ever
+  // actually made the stage visible, so the `finally` block below never
+  // runs an unnecessary exit-wait for a call that failed before showing
+  // anything.
+  const myGeneration = ++animationGeneration
+  let shown = false
 
   try {
     await ensureScene()
@@ -761,13 +891,14 @@ async function playD20(face: number): Promise<void> {
     updateContactShadow(THROW_START_POSITION.x, THROW_START_POSITION.y, THROW_START_POSITION.z)
     renderer.render(scene, camera)
     visible.value = true
+    shown = true
 
     // THROW (Enter + Roll, one continuous motion). Position follows the
     // authored Bezier arc; rotation is a fast, multi-axis spin that does
     // NOT target the authoritative face -- LAND (next) is what arrives at
     // the exact, already-known target. The contact shadow tracks the same
     // position data, tightening as the die nears the floor.
-    await animatePhase(THROW_MS, (t) => {
+    await animatePhase(myGeneration, THROW_MS, (t) => {
       const eased = easeOutCubic(t)
       const pos = bezierPoint(eased, THROW_START_POSITION, THROW_PEAK_POSITION, THROW_LAND_POSITION)
       die.position.set(pos.x, pos.y, pos.z)
@@ -787,11 +918,11 @@ async function playD20(face: number): Promise<void> {
 
     // LAND -- decelerate onto the authoritative face, with a small,
     // controlled rotational overshoot-and-settle (`easeOutBack`), a tiny
-    // landing-impact position dip, and (new this phase) squash-and-stretch
-    // scale for a real sense of contact. `target` was read directly from
+    // landing-impact position dip, and squash-and-stretch scale for a
+    // real sense of contact. `target` was read directly from
     // authoredD20ThreeOrientation.ts's own explicit table before this
     // beat (or any beat) began.
-    await animatePhase(LAND_MS, (t) => {
+    await animatePhase(myGeneration, LAND_MS, (t) => {
       const eased = easeOutBack(t)
       die.quaternion.slerpQuaternions(throwEndQuat, targetQuat, eased)
       const y = -landBobOffset(t)
@@ -812,7 +943,7 @@ async function playD20(face: number): Promise<void> {
     // FLOURISH -- deliberately minimal (this phase's own instruction): a
     // small, tier-blind scale pulse plus a brief emissive glint, nothing
     // result-quality-aware (Natural 20/1 effects remain Phase 4D).
-    await animatePhase(FLOURISH_MS, (t) => {
+    await animatePhase(myGeneration, FLOURISH_MS, (t) => {
       die.scale.setScalar(flourishScale(t))
       const boosted = baseEmissiveIntensity + flourishEmissiveBoost(t)
       for (const material of materials) material.emissiveIntensity = boosted
@@ -820,19 +951,37 @@ async function playD20(face: number): Promise<void> {
     die.scale.setScalar(1)
     for (const material of materials) material.emissiveIntensity = baseEmissiveIntensity
     renderer.render(scene, camera)
-
-    // EXIT ("Record" in ADR-024 §6) -- the die's own pose is already
-    // fully settled; only the outer stage's own fade/scale (template,
-    // below) needs to run now.
-    visible.value = false
-    await new Promise((resolve) => setTimeout(resolve, EXIT_MS))
   } catch (err: any) {
     error.value = err?.message || 'Authored Three.js d20 renderer failed.'
-    visible.value = false
+  } finally {
+    // PHASE 4B.3 -- THE ONE PLACE THE STAGE IS HIDDEN. Runs on every
+    // possible exit from the try block above -- normal completion, an
+    // early `return`, or a caught exception -- so cleanup is a structural
+    // guarantee rather than something that depended on the happy path
+    // reaching one particular line (this task's own CLEANUP section).
+    // `shown` skips the exit-wait entirely for a call that never actually
+    // displayed anything (e.g. the "failed to initialize" early return);
+    // the `myGeneration` check skips it for a call that has since been
+    // superseded by a newer one, which already owns `visible` -- an old
+    // call's `finally` must never hide a NEWER roll's own die.
+    if (shown && myGeneration === animationGeneration) {
+      // EXIT ("Record" in ADR-024 §6) -- the die's own pose is already
+      // fully settled (or, on failure, no longer matters -- only the
+      // outer stage's own fade/scale, template below, needs to run now).
+      visible.value = false
+      await new Promise((resolve) => setTimeout(resolve, EXIT_MS))
+    }
   }
 }
 
 onBeforeUnmount(() => {
+  // PHASE 4B.3 -- invalidate any in-flight `playD20()` immediately on
+  // unmount. `animatePhase`'s per-frame `step()` checks this generation
+  // every rAF tick and resolves early on mismatch, and `playD20()`'s own
+  // `finally` block checks it before touching `visible` -- so an
+  // in-flight ceremony stops scheduling frames against a renderer that's
+  // about to be disposed below, without racing this teardown.
+  animationGeneration += 1
   try {
     renderer?.dispose()
     dieMesh?.geometry?.dispose()

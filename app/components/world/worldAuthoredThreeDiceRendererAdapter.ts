@@ -54,10 +54,15 @@
 // RollEventRecord is ever inspected to produce that number.
 
 import type { Ref } from 'vue'
+import { PLACEHOLDER_ANIMATION_MS } from '~/composables/useDiceAnimationQueue'
 import type { DiceRendererAdapter } from '~/lib/dice-presentation/renderer'
 import type { DiceAnimationRequest } from '~/lib/dice-presentation/types'
 import type { RollEventRecord } from '~/lib/rolls/types'
 import { D20_FACE_VALUES } from './authoredD20ThreeOrientation'
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 // The narrow slice of WorldAuthoredThreeDiceRenderer.client.vue's own
 // `defineExpose` this adapter touches -- typed here rather than importing
@@ -127,8 +132,25 @@ export function createAuthoredThreeDiceRendererAdapter(
 
       const face = extractSingleD20Face(request.roll)
       if (face === null) {
-        // Out of this phase's own explicit scope (not exactly one d20)
-        // -- resolve immediately rather than animating something wrong.
+        // Roll System Phase 4B.7: out of this renderer's own explicit
+        // scope (not exactly one d20 -- a manual d4/d6/d8/d10/d12/d100,
+        // advantage, damage, or a multi-group custom roll). Resolving
+        // IMMEDIATELY here (the original Phase 4B.1 behavior) meant
+        // useDiceAnimationQueue.ts's 'animating' state lasted only a few
+        // milliseconds -- long enough that WorldDiceStage.vue's own
+        // always-mounted placeholder chip (Phase 3A) never got a real
+        // beat to show before the roll completed, which reads as "the die
+        // silently did nothing" rather than an honest fallback
+        // presentation. Waiting out the SAME PLACEHOLDER_ANIMATION_MS the
+        // queue itself already uses when NO renderer is registered at all
+        // gives that chip a normal-feeling animating beat -- this is the
+        // "smallest appropriate correction at the adapter/presentation
+        // seam" this phase's own CURRENT AUTHORED RENDERER LIMITATION
+        // section calls for, not a change to the renderer's own frozen
+        // d20 presentation contract, and not a route back through
+        // physics merely because this renderer lacks geometry for the
+        // die.
+        await wait(PLACEHOLDER_ANIMATION_MS)
         return
       }
 

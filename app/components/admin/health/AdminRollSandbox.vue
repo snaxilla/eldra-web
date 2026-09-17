@@ -53,6 +53,7 @@
 import WorldRollTray from '~/components/world/WorldRollTray.vue'
 import { useDiceRendererMode } from '~/composables/useDiceRendererMode'
 import { useWorldRolls } from '~/composables/useWorldRolls'
+import { buildManualRollRequestBody, type ManualDieOption } from '~/lib/rolls/requests'
 import type { RollVisibility } from '~/lib/rolls/types'
 import { buildCustomRollRequestBody } from './rollSandbox'
 
@@ -103,6 +104,13 @@ async function submitRoll() {
 }
 
 watch(worldId, () => refreshHistory().catch(() => {}), { immediate: true })
+
+// Phase 4B.7 -- the Roll Tray's manual dice rack, exercised here exactly
+// like every other roll: same requestRoll, same visibility field this
+// form already tracks above.
+function rollManualDie(die: ManualDieOption) {
+  requestRoll(buildManualRollRequestBody(die, visibility.value)).catch(() => {})
+}
 </script>
 
 <template>
@@ -227,6 +235,7 @@ watch(worldId, () => refreshHistory().catch(() => {}), { immediate: true })
       :has-more="Boolean(nextCursor)"
       empty-message="No rolls yet in this World."
       @load-more="loadMoreHistory().catch(() => {})"
+      @roll-manual-die="rollManualDie"
     />
   </div>
 </template>

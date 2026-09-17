@@ -11,8 +11,9 @@
 // (worldDiceThreeRendererAdapter.test.ts, worldAuthoredDiceRendererAdapter
 // .test.ts).
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
+import { PLACEHOLDER_ANIMATION_MS } from '../../../app/composables/useDiceAnimationQueue'
 import {
   createAuthoredThreeDiceRendererAdapter,
   extractSingleD20Face,
@@ -111,6 +112,22 @@ describe('createAuthoredThreeDiceRendererAdapter -- play()', () => {
     }
   }
 
+  // Phase 4B.7's own correction (worldAuthoredThreeDiceRendererAdapter.ts's
+  // own header): an out-of-scope roll now waits out
+  // PLACEHOLDER_ANIMATION_MS before resolving, rather than resolving
+  // instantly, so WorldDiceStage.vue's always-mounted placeholder chip gets
+  // a real beat to show instead of flashing. Fake timers keep these tests
+  // fast and deterministic; every OTHER test in this describe block mocks
+  // `playD20` as an already-resolved Promise, which fake timers do not
+  // affect.
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('throws when the renderer instance is not mounted -- never silently no-ops', async () => {
     const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(null)
     const adapter = createAuthoredThreeDiceRendererAdapter(box)
@@ -130,13 +147,16 @@ describe('createAuthoredThreeDiceRendererAdapter -- play()', () => {
     expect(playD20).toHaveBeenCalledTimes(1)
   })
 
-  it('never calls playD20 for a roll outside Phase 4B.1\'s scope -- resolves immediately instead', async () => {
+  it('never calls playD20 for a roll outside this renderer\'s scope -- waits out the placeholder duration instead (Phase 4B.7)', async () => {
     const playD20 = vi.fn().mockResolvedValue(undefined)
     const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ playD20 }))
     const adapter = createAuthoredThreeDiceRendererAdapter(box)
 
     const record = roll({ dice: [dieGroup({ sides: 6, results: [4], kept: [4] })] })
-    await adapter.play({ id: 'roll-1', roll: record })
+    const played = adapter.play({ id: 'roll-1', roll: record })
+
+    await vi.advanceTimersByTimeAsync(PLACEHOLDER_ANIMATION_MS)
+    await played
 
     expect(playD20).not.toHaveBeenCalled()
   })
@@ -171,8 +191,28 @@ describe('createAuthoredThreeDiceRendererAdapter -- play()', () => {
     const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ error: '' }))
     const adapter = createAuthoredThreeDiceRendererAdapter(box, onRendererFailed)
 
-    await adapter.play({ id: 'roll-1', roll: roll({ dice: [] }) })
+    const played = adapter.play({ id: 'roll-1', roll: roll({ dice: [] }) })
+    await vi.advanceTimersByTimeAsync(PLACEHOLDER_ANIMATION_MS)
+    await played
+
     expect(onRendererFailed).not.toHaveBeenCalled()
+  })
+
+  it('waits out PLACEHOLDER_ANIMATION_MS for an out-of-scope roll, giving WorldDiceStage.vue\'s placeholder chip a real beat (Phase 4B.7)', async () => {
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed())
+    const adapter = createAuthoredThreeDiceRendererAdapter(box)
+
+    let resolved = false
+    const played = adapter.play({ id: 'roll-1', roll: roll({ dice: [] }) }).then(() => {
+      resolved = true
+    })
+
+    await vi.advanceTimersByTimeAsync(PLACEHOLDER_ANIMATION_MS - 1)
+    expect(resolved).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1)
+    await played
+    expect(resolved).toBe(true)
   })
 })
 

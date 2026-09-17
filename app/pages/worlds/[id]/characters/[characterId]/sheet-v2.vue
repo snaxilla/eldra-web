@@ -340,6 +340,7 @@ import type { AssembledInventoryItem } from '~/lib/characters/inventory'
 import type { AssembledSpellEntry } from '~/lib/characters/spellcasting'
 import type { PresentationEntry } from '~/lib/content-presentation/types'
 import type { StoredCharacterNotes } from '~/lib/characters/character-notes'
+import { buildManualRollRequestBody, type ManualDieOption } from '~/lib/rolls/requests'
 import type { RollVisibility } from '~/lib/rolls/types'
 
 definePageMeta({
@@ -420,6 +421,14 @@ function rollSave(row: CharacterSaveRow) {
 
 function rollSkill(row: CharacterSkillRow) {
   requestSheetRoll('skill', row.sourceKey)
+}
+
+// Phase 4B.7 -- the Roll Tray's manual dice rack. Same visibility, same
+// requestRoll, same pipeline as every ability/save/skill click above --
+// only the source differs (a plain expression, via `sourceType: 'custom'`,
+// instead of a Rules Engine sourceKey).
+function rollManualDie(die: ManualDieOption) {
+  requestRoll(buildManualRollRequestBody(die, rollVisibility.value)).catch(() => {})
 }
 
 const {
@@ -1197,6 +1206,7 @@ function openSkillContext(skill: CharacterSkillRow) {
       :has-more="Boolean(rollNextCursor)"
       empty-message="No rolls yet. Click an ability, saving throw, or skill to roll it."
       @load-more="loadMoreRolls"
+      @roll-manual-die="rollManualDie"
     >
       <template #header-actions>
         <div class="flex items-center gap-1 text-[0.6rem] uppercase tracking-[0.14em]">

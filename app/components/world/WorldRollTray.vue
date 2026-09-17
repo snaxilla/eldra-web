@@ -89,6 +89,8 @@
 // task's own "do not render dice yet, do not install dice libraries."
 
 import WorldRollTrayEntry from '~/components/world/WorldRollTrayEntry.vue'
+import WorldManualDiceRack from '~/components/world/WorldManualDiceRack.vue'
+import type { ManualDieOption } from '~/lib/rolls/requests'
 import type { RollEventRecord } from '~/lib/rolls/types'
 
 const props = withDefaults(defineProps<{
@@ -126,6 +128,12 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'load-more': []
+  // Phase 4B.7 -- the player picked one die off the manual dice rack.
+  // This component has no opinion on visibility or the actual request
+  // shape (see WorldManualDiceRack.vue's own header) -- the page that
+  // mounts this Tray, which already owns a `useWorldRolls()` instance and
+  // its own Private/Table selection, turns this into an actual roll.
+  'roll-manual-die': [ManualDieOption]
 }>()
 
 // Local UI state, not persisted or shared -- exactly the collapse pattern
@@ -217,6 +225,18 @@ const latestRoll = computed(() => props.rolls[0] ?? null)
                purpose; a future phase fills this slot from whichever page
                mounts the tray. -->
           <slot name="dice-stage" />
+
+          <!-- Manual dice rack -- Phase 4B.7. Below Private/Table
+               (header-actions, above), above history (below). A real,
+               built-in feature of the Tray itself -- not a slot -- since
+               every page that mounts a Tray should get it "for free," the
+               same way Load More already is. -->
+          <div class="shrink-0 border-b border-[rgba(201,164,90,0.14)] px-3 py-2">
+            <WorldManualDiceRack
+              :disabled="pending"
+              @roll="emit('roll-manual-die', $event)"
+            />
+          </div>
 
           <div class="min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
             <p

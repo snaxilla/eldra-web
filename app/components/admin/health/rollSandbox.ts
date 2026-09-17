@@ -14,49 +14,16 @@
 // tests/server/utils/roll-events.test.ts and the route tests, not
 // re-tested here.
 
-import type { RollVisibility } from '~/lib/rolls/types'
-import type { RollRequestInput } from '~/composables/useWorldRolls'
-
 // ---------------------------------------------------------------------------
-// Request body -- what the form actually sends
-// ---------------------------------------------------------------------------
-
-// Phase 2A supports `custom` rolls only (this task's own scope, and
-// server/api/worlds/[id]/rolls/index.post.ts's own Phase 1 rejection of
-// any other sourceType) -- this helper hardcodes it rather than exposing a
-// sourceType the form has no control for.
-export type CustomRollFormInput = {
-  expression: string
-  visibility: RollVisibility
-  label: string
-}
-
-// Return type is `RollRequestInput` (Phase 2C) rather than a bare
-// `Record<string, unknown>` now that this feeds directly into
-// `useWorldRolls().requestRoll` -- the Sandbox no longer calls `$fetch`
-// itself (see AdminRollSandbox.vue's own header).
-export function buildCustomRollRequestBody(input: CustomRollFormInput): RollRequestInput {
-  const expression = input.expression.trim()
-  const label = input.label.trim()
-
-  return {
-    sourceType: 'custom',
-    expression,
-    visibility: input.visibility,
-    // Omitted rather than sent empty -- the server already defaults an
-    // absent label to the expression itself
-    // (server/api/worlds/[id]/rolls/index.post.ts), so sending `''` would
-    // only make this component's own guess worse than the server's.
-    ...(label ? { label } : {})
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Error display / roll formatting -- moved to app/lib/rolls/format.ts by
-// Eldra Roll System Phase 2C (the Roll Tray), which needed this exact
-// formatting outside the admin-only tree. Re-exported here, unchanged in
+// Request body / error display / roll formatting -- moved to
+// app/lib/rolls/requests.ts and app/lib/rolls/format.ts (Phase 2C for the
+// latter, Phase 4B.7 for the former), both of which needed this exact
+// logic outside the admin-only tree once a second, non-admin consumer
+// (WorldManualDiceRack.vue) needed it too. Re-exported here, unchanged in
 // name and behavior, so this file's own existing call sites and tests
 // (tests/components/admin/health/rollSandbox.test.ts) needed no changes.
 // ---------------------------------------------------------------------------
 
+export type { CustomRollFormInput } from '~/lib/rolls/requests'
+export { buildCustomRollRequestBody } from '~/lib/rolls/requests'
 export { extractServerErrorMessage, formatRollDieGroup, formatRollModifiers } from '~/lib/rolls/format'

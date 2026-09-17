@@ -167,20 +167,29 @@ function handlePortraitFileChange(event: Event) {
     elevation="feature"
     density="compact"
   >
-    <div class="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(96px,1fr)_5fr] xl:items-start xl:gap-5">
-      <!-- Portrait: the folio's cover illustration, not an avatar. Always
-           aspect-[4/5] -- sized by WIDTH at every breakpoint so the ratio
-           holds instead of being fixed-square below `xl`. Wrapped (rather
-           than being the grid item itself) so the error message below it
-           doesn't add a third child to a 2-column grid. `relative` on the
-           frame itself, plus an absolutely-positioned fill (img/
-           placeholder/overlay) rather than relying on `aspect-ratio`
-           alone to size a flex/grid child -- the reported "frame taller
-           than the image" defect -- so the portrait always fills its
-           frame exactly (`inset-0 h-full w-full object-cover`), cropping
-           gracefully instead of leaving a gap or stretching. -->
-      <div class="w-16 shrink-0 sm:w-20 xl:w-full">
-      <div class="eldra-image-frame group relative aspect-[4/5] w-full overflow-hidden rounded-none border bg-black/25">
+    <div class="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(96px,1fr)_5fr] xl:items-stretch xl:gap-5">
+      <!-- Portrait: the folio's cover illustration, not an avatar.
+           aspect-[4/5] below `xl` (a fixed-ratio thumbnail beside identity
+           in a flex row); at `xl` the grid ITSELF now stretches this
+           column to the row's full height (`xl:items-stretch` above, was
+           `xl:items-start` -- the exact root cause of the reported "empty
+           header space below the portrait": `items-start` opted the
+           portrait's shorter aspect-ratio-derived height out of Grid's
+           default stretch, so it never matched the identity column's
+           taller content), so `xl:aspect-auto xl:h-full` here lets the
+           frame consume that stretched height instead of staying locked
+           to its own aspect ratio -- a real stretch behavior, not a
+           hardcoded pixel height. Wrapped (rather than being the grid
+           item itself) so the error message below it doesn't add a third
+           child to a 2-column grid. `relative` on the frame itself, plus
+           an absolutely-positioned fill (img/placeholder/overlay) rather
+           than relying on `aspect-ratio` alone to size a flex/grid child
+           -- the previously reported "frame taller than the image"
+           defect -- so the portrait always fills its frame exactly
+           (`inset-0 h-full w-full object-cover`), cropping gracefully
+           instead of leaving a gap or stretching. -->
+      <div class="w-16 shrink-0 sm:w-20 xl:w-full xl:h-full">
+      <div class="eldra-image-frame group relative aspect-[4/5] w-full overflow-hidden rounded-none border bg-black/25 xl:aspect-auto xl:h-full">
         <img
           v-if="imageUrl"
           :src="imageUrl"

@@ -1,14 +1,15 @@
 // POST /api/worlds/:id/characters/:characterId/recovery
 //
-// The Recovery System's one endpoint -- Apply Damage, Apply Healing, Spend
-// Hit Die, Short Rest, Long Rest, Reset Death Saves. A POST rather than a
-// PUT, matching this codebase's own "PUT replaces a whole resource, POST
-// performs an operation" split -- the same shape
+// The Recovery System's one endpoint -- Apply Damage, Apply Healing, Grant
+// Temporary HP, Spend Hit Die, Short Rest, Long Rest, Reset Death Saves. A
+// POST rather than a PUT, matching this codebase's own "PUT replaces a
+// whole resource, POST performs an operation" split -- the same shape
 // POST /api/worlds/:id/rules/roll and POST /api/worlds/:id/rules/activate
 // already use. `PUT .../health` still exists for direct correction (typing
-// a new absolute number); this route is for the six named ACTIONS, each of
-// which applies a RULE (temp-then-current, capped at Maximum HP, ...) that
-// a raw PUT cannot express without the player doing that math themselves.
+// a new absolute number); this route is for the named ACTIONS, each of
+// which applies a RULE (temp-then-current, capped at Maximum HP, replace-
+// if-higher, ...) that a raw PUT cannot express without the player doing
+// that math themselves.
 //
 // Thin by design: parse params -> validate the action shape -> call
 // server/utils/character-recovery.ts -> translate its result into an HTTP
@@ -26,8 +27,17 @@ import { requireCapability } from '../../../../../utils/authorization'
 import { applyRecoveryAction, type RecoveryAction } from '../../../../../utils/character-recovery'
 import { dxFetch } from '../../../../../utils/entity-factory'
 
+// Header Cleanup 1 correction: this array is a hand-maintained duplicate of
+// RecoveryAction['type'] from character-recovery.ts, NOT derived from it --
+// the `readonly RecoveryAction['type'][]` annotation only constrains each
+// element to be a valid member of that union, it does not require every
+// member to be listed, so TypeScript gave no warning when 'temp-hp' was
+// added to character-recovery.ts's own type without also being added here.
+// This was the exact request-validation boundary real-browser testing
+// caught rejecting `{ type: 'temp-hp', amount }` with a 400 before it ever
+// reached applyRecoveryAction/grantTemporaryHp.
 const ACTION_TYPES: readonly RecoveryAction['type'][] = [
-  'damage', 'heal', 'spend-hit-die', 'short-rest', 'long-rest', 'reset-death-saves'
+  'damage', 'heal', 'temp-hp', 'spend-hit-die', 'short-rest', 'long-rest', 'reset-death-saves'
 ]
 
 function parseAction(body: unknown): RecoveryAction | null {
@@ -38,7 +48,7 @@ function parseAction(body: unknown): RecoveryAction | null {
 
   if (typeof type !== 'string' || !ACTION_TYPES.includes(type as RecoveryAction['type'])) return null
 
-  if (type === 'damage' || type === 'heal') {
+  if (type === 'damage' || type === 'heal' || type === 'temp-hp') {
     const amount = typeof input.amount === 'number' ? input.amount : Number(input.amount)
     if (!Number.isFinite(amount)) return null
     return { type, amount }

@@ -137,6 +137,22 @@ describe('applyDamage', () => {
     expect(applyDamage(health({ currentHp: 10 }), 4).currentHp).toBe(6)
   })
 
+  // Header Cleanup 1 browser-feedback correction: confirmed, not assumed,
+  // using the exact scenario numbers real-browser testing asked about.
+  // This behavior already existed before Temp HP got its own header
+  // button -- these two cases just pin it down explicitly.
+  it('HP 9, Temp HP 5, Damage 3 -> HP 9, Temp HP 2 (damage absorbed entirely by temp HP)', () => {
+    const result = applyDamage(health({ currentHp: 9, temporaryHp: 5 }), 3)
+    expect(result.currentHp).toBe(9)
+    expect(result.temporaryHp).toBe(2)
+  })
+
+  it('HP 9, Temp HP 5, Damage 8 -> HP 6, Temp HP 0 (temp HP exhausted, remainder spills to current HP)', () => {
+    const result = applyDamage(health({ currentHp: 9, temporaryHp: 5 }), 8)
+    expect(result.currentHp).toBe(6)
+    expect(result.temporaryHp).toBe(0)
+  })
+
   it('absorbs damage into temporary HP first', () => {
     const result = applyDamage(health({ currentHp: 10, temporaryHp: 5 }), 3)
     expect(result.temporaryHp).toBe(2)

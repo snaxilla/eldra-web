@@ -165,12 +165,16 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
 
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
       <!-- Damage / Heal ----------------------------------------------------
-           Header Cleanup 1: absorbs the space freed by removing "HP
-           Correction" -- col-span-2 of 4 (was col-span-1), giving three
-           actions room instead of two, on the exact same 4-track grid the
-           header already used (Hit Dice and Death Saves, below, are
-           untouched). -->
-      <div class="eldra-well col-span-2 rounded-none p-2">
+           Header Cleanup 1 correction: back to col-span-1 at `sm:` (the
+           same single-column footprint this block had before "HP
+           Correction" was removed). Real-browser feedback: col-span-2
+           made this block unnecessarily wide -- empty header space is
+           acceptable and expected to hold future features, so it is not
+           filled just because it is available. Three buttons no longer
+           fit one row cleanly at this narrower width, so Damage/Heal
+           share a row and Temp HP takes its own row below, rather than
+           three cramped equal-width buttons or widening the block. -->
+      <div class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1">
         <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
           Damage / Heal
         </div>
@@ -182,7 +186,7 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
           class="eldra-input mt-1.5 min-h-11 w-full rounded-none px-2 py-1 text-center text-sm font-semibold tabular-nums text-white"
           :disabled="recoverySaving"
         >
-        <div class="mt-1.5 grid grid-cols-3 gap-1.5">
+        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
             class="min-h-11 rounded-none border border-red-900/60 bg-red-950/20 text-xs font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-red-500/60 disabled:cursor-not-allowed disabled:opacity-50"
@@ -199,15 +203,15 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
           >
             Heal
           </button>
-          <button
-            type="button"
-            class="min-h-11 rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] text-xs font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="recoverySaving || parsedAmount === null"
-            @click="applyTempHpAction"
-          >
-            Temp HP
-          </button>
         </div>
+        <button
+          type="button"
+          class="mt-1.5 min-h-11 w-full rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] text-xs font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="recoverySaving || parsedAmount === null"
+          @click="applyTempHpAction"
+        >
+          Temp HP
+        </button>
       </div>
 
       <!-- Hit Dice ---------------------------------------------------------- -->

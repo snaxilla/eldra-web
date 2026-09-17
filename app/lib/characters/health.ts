@@ -202,6 +202,21 @@ export function takeLongRest(
   }
 }
 
+// Granting Temporary HP needs no Rules Engine input, the same as
+// applyDamage above. 5e RAW: temporary hit points never stack -- a
+// character who receives a new dose keeps whichever value is higher, not
+// the sum. This is the ONLY temp-HP-granting semantic declared anywhere in
+// this package (definitions.json declares `value:hit_points.temp` as a
+// plain stored value with no formula attached); Character Sheet Header
+// Cleanup 1 confirmed no other contract exists before adding this.
+export function grantTemporaryHp(health: StoredCharacterHealth, amount: number): StoredCharacterHealth {
+  const granted = nonNegativeInt(amount)
+  return {
+    ...health,
+    temporaryHp: Math.max(health.temporaryHp, granted)
+  }
+}
+
 // Independently available -- not folded into Long Rest alone, because a
 // future Recovery action (stabilization, a Medicine check -- both this
 // milestone's own NON-GOALS) will need to clear marks without also forcing

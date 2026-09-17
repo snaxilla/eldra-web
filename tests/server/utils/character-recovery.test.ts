@@ -174,6 +174,58 @@ describe('applyRecoveryAction -- damage (no Rules Engine needed)', () => {
   })
 })
 
+describe('applyRecoveryAction -- temp-hp (no Rules Engine needed, replace-if-higher)', () => {
+  it('replaces temporary HP when the granted amount is higher', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 2, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'temp-hp', amount: 5 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.health.temporaryHp).toBe(5)
+  })
+
+  it('keeps the existing (higher) temporary HP rather than stacking or replacing downward', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 8, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'temp-hp', amount: 3 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.health.temporaryHp).toBe(8)
+  })
+
+  it('works even when the World has no Rules Package activated', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 10, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    getWorldRuntimeMock.mockResolvedValue({ configured: false })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'temp-hp', amount: 4 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.health.temporaryHp).toBe(4)
+  })
+
+  it('persists the result through saveCharacterHealth', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 10, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    await applyRecoveryAction('5', '42', { type: 'temp-hp', amount: 6 })
+    expect(saveHealthMock).toHaveBeenCalledWith('42', expect.objectContaining({ temporaryHp: 6 }))
+  })
+
+  it('rejects a non-positive amount', async () => {
+    loadHealthMock.mockResolvedValue(null)
+    const result = await applyRecoveryAction('5', '42', { type: 'temp-hp', amount: 0 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-amount')
+  })
+
+  it('does not touch current HP', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 9, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    const result = await applyRecoveryAction('5', '42', { type: 'temp-hp', amount: 4 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.health.currentHp).toBe(9)
+  })
+})
+
 describe('applyRecoveryAction -- heal (reads Maximum HP)', () => {
   it('heals, capped at the Rules Engine\'s derived Maximum HP', async () => {
     loadHealthMock.mockResolvedValue({ currentHp: 10, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })

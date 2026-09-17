@@ -141,6 +141,17 @@ export type CharacterAssemblyBlueprint = {
   // re-deriving the `/api/assets/:id` convention itself. `null` is a
   // first-class, legal state (no portrait set), never a placeholder image.
   characterImageUrl: string | null
+  // Header Cleanup 1 (Play-Mode Portrait Management). Relayed verbatim
+  // from the entity's own `entity_type`/`summary` fields -- needed only so
+  // a Play-Mode portrait change can round-trip through the existing
+  // `POST .../characters/:id/update` endpoint (the same one Build Mode's
+  // portrait upload and the World roster's Edit Character form already
+  // use) without corrupting either field. That endpoint requires both on
+  // every request; without reading them here first, a portrait-only
+  // request would silently blank the summary and could misclassify a PC
+  // as an NPC (see update.post.ts's own capability-selection logic).
+  characterType: string
+  characterSummary: string | null
   species: CharacterAssemblySlot
   class: CharacterAssemblySlot
   background: CharacterAssemblySlot
@@ -329,7 +340,7 @@ export async function assembleCharacter(
   try {
     const entityRes: any = await directusServiceRequest(`/items/entities/${characterId}`, {
       method: 'GET',
-      query: { fields: 'id,world_id,title,image' }
+      query: { fields: 'id,world_id,title,image,entity_type,summary' }
     })
     entity = entityRes?.data || null
   } catch {
@@ -401,6 +412,8 @@ export async function assembleCharacter(
     characterId: String(characterId),
     characterTitle: String(entity.title || ''),
     characterImageUrl: resolveEntityImageUrl(entity),
+    characterType: String(entity.entity_type || 'pc'),
+    characterSummary: entity.summary != null ? String(entity.summary) : null,
     species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species'),
     class: resolveSlot(extractRef(selection.class), catalogue.classes, catalogue.packs, 'Class'),
     background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),

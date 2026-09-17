@@ -27,25 +27,42 @@
 //
 // COMPACT ON PURPOSE. This sits inside the command center, competing with
 // identity and vitals for space that used to belong to one full-width
-// Recovery section alone. Primary, frequently-pressed actions (Apply
-// Damage/Healing, Spend Hit Die, the HP correction inputs) keep the
-// established min-h-11 (44px) touch target used everywhere else in this
-// Sheet. Death Save marks and the Spell Slot +/-, both used far less
-// often and already small glyphs even in their original full-size panels,
-// step down to a smaller (but still real, `aria-label`led) target -- a
-// deliberate density trade-off for a dashboard that has to hold six
-// clusters of controls in the space one used to occupy, not an
-// accessibility oversight.
+// Recovery section alone. Primary, frequently-pressed actions (Damage,
+// Heal, Temp HP, Spend Hit Die) keep the established min-h-11 (44px) touch
+// target used everywhere else in this Sheet. Death Save marks and the
+// Spell Slot +/-, both used far less often and already small glyphs even
+// in their original full-size panels, step down to a smaller (but still
+// real, `aria-label`led) target -- a deliberate density trade-off for a
+// dashboard that has to hold five clusters of controls in the space one
+// used to occupy, not an accessibility oversight.
 //
 // MATERIAL -- WELL, UNCHANGED. Every cluster here is something the player
 // DOES; `eldra-well` was already CharacterRecoveryPanel's and the Spell
 // Slots block's own material (Material Phase 1) and is simply carried
 // over into the new compact layout.
+//
+// ---------------------------------------------------------------------------
+// CHARACTER SHEET HEADER CLEANUP 1 -- "HP CORRECTION" REMOVED
+// ---------------------------------------------------------------------------
+// "HP Correction" (a separate block with raw Current HP/Temporary HP number
+// inputs, PUT-ing a direct override with no rules applied) was confusing,
+// non-player-facing terminology occupying its own header block -- real-
+// browser feedback flagged it directly. Traced before editing: those two
+// inputs were the ONLY controls on this Sheet that bypassed the Recovery
+// System's domain mutations entirely (see health.ts/character-recovery.ts).
+// Removed outright; Temp HP is now the third action in the renamed
+// DAMAGE / HEAL block below, going through the SAME `recovery` emit
+// Damage/Heal already use (POST .../recovery -> a real domain mutation,
+// `grantTemporaryHp`), not a client-side-only state change. Its semantic
+// (replace-if-higher, matching 5e RAW -- temporary HP never stacks) was
+// confirmed with the product owner before implementing, since nothing in
+// this repository's rules package or domain layer declared a Temp-HP-
+// granting contract beforehand.
 
 import type { StoredCharacterHealth } from '~/lib/characters/health'
 
 export type RecoveryActionType =
-  | 'damage' | 'heal' | 'spend-hit-die' | 'short-rest' | 'long-rest' | 'reset-death-saves'
+  | 'damage' | 'heal' | 'temp-hp' | 'spend-hit-die' | 'short-rest' | 'long-rest' | 'reset-death-saves'
 
 const props = withDefaults(defineProps<{
   health: StoredCharacterHealth
@@ -73,44 +90,22 @@ const emit = defineEmits<{
   'restore-slot': [number]
 }>()
 
-// --- Health correction (direct override) -----------------------------------
-// Local drafts so typing never fights a prop the parent may re-assign
-// mid-edit -- unchanged from CharacterRecoveryPanel.vue's own reasoning.
-const currentHpDraft = ref(String(props.health.currentHp))
-const temporaryHpDraft = ref(String(props.health.temporaryHp))
-
-watch(
-  () => props.health,
-  (value) => {
-    currentHpDraft.value = String(value.currentHp)
-    temporaryHpDraft.value = String(value.temporaryHp)
-  }
-)
-
-function clampNonNegative(raw: string): number {
-  const parsed = Math.trunc(Number(raw))
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
-}
-
 function saveWith(patch: Partial<StoredCharacterHealth>) {
   emit('save', { ...props.health, ...patch })
 }
 
-function commitCurrentHp() {
-  const next = clampNonNegative(currentHpDraft.value)
-  currentHpDraft.value = String(next)
-  if (next === props.health.currentHp) return
-  saveWith({ currentHp: next })
-}
-
-function commitTemporaryHp() {
-  const next = clampNonNegative(temporaryHpDraft.value)
-  temporaryHpDraft.value = String(next)
-  if (next === props.health.temporaryHp) return
-  saveWith({ temporaryHp: next })
-}
-
-// --- Damage / Healing: one shared Amount field, two actions -----------------
+// --- Damage / Heal / Temp HP: one shared Amount field, three actions -------
+// Character Sheet Header Cleanup 1: "HP Correction" (raw current/temp HP
+// override inputs, a direct PUT with no rules applied) is gone from this
+// normal header -- see this file's own header comment. Every action here
+// instead goes through the Recovery System's domain mutations (`recovery`
+// emit -> POST .../recovery -> server/utils/character-recovery.ts), so
+// Damage/Heal/Temp HP always obey the same rules the Rules Engine and
+// Encounter resolution already agree on. One real capability is
+// intentionally lost with HP Correction's removal: there is no longer any
+// control that sets Current HP to an arbitrary typed number (including
+// above Maximum HP, which Heal deliberately never allows) -- an accepted,
+// explicit product decision, not an oversight.
 
 const amountDraft = ref('')
 
@@ -132,6 +127,12 @@ function applyDamageAction() {
 function applyHealingAction() {
   if (parsedAmount.value === null) return
   emitRecovery('heal', parsedAmount.value)
+  amountDraft.value = ''
+}
+
+function applyTempHpAction() {
+  if (parsedAmount.value === null) return
+  emitRecovery('temp-hp', parsedAmount.value)
   amountDraft.value = ''
 }
 
@@ -163,41 +164,13 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
     </p>
 
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      <!-- HP correction -------------------------------------------------- -->
-      <div class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1">
-        <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
-          HP Correction
-        </div>
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
-          <label class="block">
-            <span class="sr-only">Current HP</span>
-            <input
-              v-model="currentHpDraft"
-              inputmode="numeric"
-              aria-label="Current HP"
-              class="eldra-input min-h-11 w-full rounded-none px-2 py-1 text-center text-sm font-semibold tabular-nums text-white"
-              :disabled="recoverySaving"
-              @blur="commitCurrentHp"
-              @keyup.enter="($event.target as HTMLInputElement).blur()"
-            >
-          </label>
-          <label class="block">
-            <span class="sr-only">Temporary HP</span>
-            <input
-              v-model="temporaryHpDraft"
-              inputmode="numeric"
-              aria-label="Temporary HP"
-              class="eldra-input min-h-11 w-full rounded-none px-2 py-1 text-center text-sm font-semibold tabular-nums text-white"
-              :disabled="recoverySaving"
-              @blur="commitTemporaryHp"
-              @keyup.enter="($event.target as HTMLInputElement).blur()"
-            >
-          </label>
-        </div>
-      </div>
-
-      <!-- Damage / Healing ------------------------------------------------ -->
-      <div class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1">
+      <!-- Damage / Heal ----------------------------------------------------
+           Header Cleanup 1: absorbs the space freed by removing "HP
+           Correction" -- col-span-2 of 4 (was col-span-1), giving three
+           actions room instead of two, on the exact same 4-track grid the
+           header already used (Hit Dice and Death Saves, below, are
+           untouched). -->
+      <div class="eldra-well col-span-2 rounded-none p-2">
         <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
           Damage / Heal
         </div>
@@ -209,7 +182,7 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
           class="eldra-input mt-1.5 min-h-11 w-full rounded-none px-2 py-1 text-center text-sm font-semibold tabular-nums text-white"
           :disabled="recoverySaving"
         >
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+        <div class="mt-1.5 grid grid-cols-3 gap-1.5">
           <button
             type="button"
             class="min-h-11 rounded-none border border-red-900/60 bg-red-950/20 text-xs font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-red-500/60 disabled:cursor-not-allowed disabled:opacity-50"
@@ -225,6 +198,14 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
             @click="applyHealingAction"
           >
             Heal
+          </button>
+          <button
+            type="button"
+            class="min-h-11 rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] text-xs font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="recoverySaving || parsedAmount === null"
+            @click="applyTempHpAction"
+          >
+            Temp HP
           </button>
         </div>
       </div>

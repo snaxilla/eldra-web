@@ -458,6 +458,8 @@ const {
   inventoryOptions,
   noteDraft,
   healthDraft,
+  characterImageUrlDraft,
+  canEditCharacter,
   spellItems,
   spellOptions,
   slotLevels,
@@ -793,7 +795,10 @@ function openSkillContext(skill: CharacterSkillRow) {
             class="sticky top-0 z-20"
             :world-id="worldId"
             :character-title="identity.characterTitle"
-            :image-url="identity.characterImageUrl"
+            :image-url="characterImageUrlDraft"
+            :can-edit-portrait="canEditCharacter"
+            :portrait-saving="mutations.portrait.saving"
+            :portrait-error="mutations.portrait.error"
             :level="characterLevel"
             :class-name="characterClassName"
             :identity-rows="identity.identityRows"
@@ -823,6 +828,8 @@ function openSkillContext(skill: CharacterSkillRow) {
             @recovery="mutations.recovery.apply"
             @expend-slot="mutations.spellcasting.expendSlot"
             @restore-slot="mutations.spellcasting.restoreSlot"
+            @update-portrait="mutations.portrait.update"
+            @clear-portrait="mutations.portrait.clear"
           />
         </template>
 

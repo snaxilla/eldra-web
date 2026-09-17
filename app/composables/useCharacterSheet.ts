@@ -63,6 +63,11 @@ export type AssemblyBlueprint = {
   // note on this field. Already resolved to a URL (or `null`, a legal "no
   // portrait set" state) by the server; this file relays it verbatim.
   characterImageUrl: string | null
+  // Header Cleanup 1 -- see character-assembly.ts's own note. Relayed
+  // verbatim so Play-Mode portrait changes can round-trip through the
+  // existing character update endpoint without corrupting either field.
+  characterType: string
+  characterSummary: string | null
   species: AssemblySlot
   class: AssemblySlot
   background: AssemblySlot
@@ -172,6 +177,24 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     { default: () => [], lazy: true }
   )
 
+  // Header Cleanup 1 (Play-Mode Portrait Management). The one existing
+  // client-side capability-gating pattern in this codebase
+  // (world-workspace.vue's own `canBuild`, reading `world.capabilities`
+  // from this exact endpoint) -- reused verbatim rather than inventing a
+  // new permission model. `world.character.edit_any` is the SAME
+  // capability every write route this Sheet already calls enforces
+  // server-side (health.put/recovery.post/update.post/etc.); this is only
+  // a client-side hint to avoid showing an edit control a write would
+  // reject, never the actual authority.
+  const { data: worldCapabilitiesResponse } = useFetch<{ capabilities?: string[] }>(
+    () => `/api/worlds/${worldId.value}`,
+    { lazy: true }
+  )
+  const canEditCharacter = computed(() =>
+    Array.isArray(worldCapabilitiesResponse.value?.capabilities) &&
+    worldCapabilitiesResponse.value!.capabilities!.includes('world.character.edit_any')
+  )
+
   const [
     { data: assembly, pending, error, refresh: refreshAssembly },
     { data: derivedResponse, pending: derivedPending, refresh: refreshDerived },
@@ -224,6 +247,8 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   const identity = computed(() => ({
     characterTitle: blueprint.value?.characterTitle || '',
     characterImageUrl: blueprint.value?.characterImageUrl || null,
+    characterType: blueprint.value?.characterType || 'pc',
+    characterSummary: blueprint.value?.characterSummary ?? null,
     sections: sections.value,
     identityRows: identityRows.value
   }))
@@ -295,6 +320,11 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   const healthDraft = ref<StoredCharacterHealth>(emptyCharacterHealth())
   const spellItems = ref<AssembledSpellEntry[]>([])
   const spellcastingExpendedSlots = ref<Record<string, number>>({})
+  // Header Cleanup 1 -- same "decoupled draft ref" shape as healthDraft
+  // above, so a Play-Mode portrait change updates immediately without
+  // waiting on a full assembly refetch, and rolls back on failure the same
+  // way every other mutation here already does.
+  const characterImageUrlDraft = ref<string | null>(null)
 
   watch(
     blueprint,
@@ -304,6 +334,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
       healthDraft.value = value?.health ? { ...value.health } : emptyCharacterHealth()
       spellItems.value = [...(value?.spells ?? [])]
       spellcastingExpendedSlots.value = { ...(value?.expendedSlots ?? {}) }
+      characterImageUrlDraft.value = value?.characterImageUrl ?? null
     },
     { immediate: true }
   )
@@ -465,6 +496,8 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     inventoryOptions,
     noteDraft,
     healthDraft,
+    characterImageUrlDraft,
+    canEditCharacter,
     spellItems,
     spellOptions,
     spellcastingExpendedSlots,

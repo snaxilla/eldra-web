@@ -15,6 +15,7 @@ import {
   applyDamage,
   applyHealing,
   emptyCharacterHealth,
+  grantTemporaryHp,
   normalizeStoredCharacterHealth,
   resetDeathSaves,
   spendHitDie,
@@ -209,6 +210,45 @@ describe('spendHitDie', () => {
     const frozen = JSON.stringify(original)
     spendHitDie(original, 3, 8, 20)
     expect(JSON.stringify(original)).toBe(frozen)
+  })
+})
+
+describe('grantTemporaryHp', () => {
+  // Character Sheet Header Cleanup 1. 5e RAW: temporary HP never stacks --
+  // a character keeps whichever value is higher, confirmed with the
+  // product owner since nothing in this repository declared the contract
+  // beforehand (see this function's own header note).
+  it('replaces temporary HP when the granted amount is higher', () => {
+    expect(grantTemporaryHp(health({ temporaryHp: 2 }), 5).temporaryHp).toBe(5)
+  })
+
+  it('keeps the existing (higher) temporary HP rather than stacking or replacing downward', () => {
+    expect(grantTemporaryHp(health({ temporaryHp: 8 }), 3).temporaryHp).toBe(8)
+  })
+
+  it('sets temporary HP when there was none', () => {
+    expect(grantTemporaryHp(health({ temporaryHp: 0 }), 4).temporaryHp).toBe(4)
+  })
+
+  it('an equal amount is a no-op value-wise', () => {
+    expect(grantTemporaryHp(health({ temporaryHp: 5 }), 5).temporaryHp).toBe(5)
+  })
+
+  it('does not touch current HP or any other field', () => {
+    const result = grantTemporaryHp(health({ currentHp: 7, temporaryHp: 0, hitDiceSpent: 2 }), 5)
+    expect(result.currentHp).toBe(7)
+    expect(result.hitDiceSpent).toBe(2)
+  })
+
+  it('never mutates the input record', () => {
+    const original = health({ temporaryHp: 2 })
+    const frozen = JSON.stringify(original)
+    grantTemporaryHp(original, 5)
+    expect(JSON.stringify(original)).toBe(frozen)
+  })
+
+  it('needs no Rules Engine input -- works with plain numbers alone', () => {
+    expect(grantTemporaryHp(health(), 1)).toBeDefined()
   })
 })
 

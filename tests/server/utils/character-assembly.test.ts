@@ -117,6 +117,37 @@ describe('assembleCharacter', () => {
     expect(result.blueprint.abilityScores).toBeNull()
   })
 
+  // Character Sheet Header Cleanup 1 (Play-Mode Portrait Management) --
+  // see this file's own note on why these two round-trip verbatim from
+  // the entity row.
+  it('relays entity_type and summary verbatim as characterType/characterSummary', async () => {
+    getWorldContentCatalogueMock.mockResolvedValue(fullCatalogue())
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria', entity_type: 'npc', summary: 'A wandering merchant' },
+      { species: selectionRef(fullCatalogue().species[0]), class: selectionRef(fullCatalogue().classes[0]), background: selectionRef(fullCatalogue().backgrounds[0]) }
+    )
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+    expect(result.blueprint.characterType).toBe('npc')
+    expect(result.blueprint.characterSummary).toBe('A wandering merchant')
+  })
+
+  it('defaults characterType to "pc" and characterSummary to null when the entity has neither', async () => {
+    getWorldContentCatalogueMock.mockResolvedValue(fullCatalogue())
+    mockEntityAndBlock(
+      { id: 42, world_id: 5, title: 'Aria' },
+      { species: selectionRef(fullCatalogue().species[0]), class: selectionRef(fullCatalogue().classes[0]), background: selectionRef(fullCatalogue().backgrounds[0]) }
+    )
+
+    const result = await assembleCharacter('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+    expect(result.blueprint.characterType).toBe('pc')
+    expect(result.blueprint.characterSummary).toBeNull()
+  })
+
   it('reports character-not-found for an entity that does not exist', async () => {
     getWorldContentCatalogueMock.mockResolvedValue(fullCatalogue())
     directusServiceRequestMock.mockImplementation(async (path: string) => {

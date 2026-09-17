@@ -7,6 +7,12 @@
 // composable so the page calls `mutations.inventory.add(...)` instead of
 // owning `persistInventory`/`onInventoryAdd` itself.
 //
+// Portrait was added later, by Character Sheet Header Cleanup 1
+// (Play-Mode Portrait Management) -- see that domain's own header comment
+// below for why it lives here rather than as a sixth unlisted addition:
+// it is the same shape of "one cohesive unit of mutable Sheet state"
+// Recovery's own header argues for, just for the portrait instead of HP.
+//
 // Reuses existing server routes exactly as they were called before --
 // no endpoint here is new, redesigned, or given a different method/body
 // shape. No optimistic-persistence behavior is invented either: every
@@ -124,6 +130,75 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
     error: recoveryError,
     save: saveHealth,
     apply: applyRecovery
+  })
+
+  // -------------------------------------------------------------------
+  // Portrait -- Character Sheet Header Cleanup 1 (Play-Mode Portrait
+  // Management). Reuses the EXACT same endpoint Build Mode's own portrait
+  // upload and the World roster's Edit Character form already POST to
+  // (`.../characters/:id/update`) -- no second upload system. That
+  // endpoint is a full character-metadata update, so `title`/
+  // `characterType` (and, when present, `summary`) are always sent
+  // verbatim from `sheet.identity`/`sheet.blueprint` alongside the image,
+  // or a portrait-only request would silently blank the summary or
+  // misclassify the character (see character-assembly.ts's own note on
+  // why those fields were added to the blueprint for this task). Same
+  // "optimistic set, persist, roll back on failure" shape as saveHealth
+  // above -- no new pattern.
+  // -------------------------------------------------------------------
+
+  const portraitSaving = ref(false)
+  const portraitError = ref('')
+
+  async function sendPortraitUpdate(body: FormData) {
+    if (portraitSaving.value) return
+
+    const previous = sheet.characterImageUrlDraft.value
+    portraitSaving.value = true
+    portraitError.value = ''
+
+    try {
+      const result = await $fetch<{ imageUrl: string | null }>(
+        `/api/worlds/${worldId.value}/characters/${characterId.value}/update`,
+        { method: 'POST', body }
+      )
+      sheet.characterImageUrlDraft.value = result.imageUrl ?? null
+    } catch (portraitErr: any) {
+      sheet.characterImageUrlDraft.value = previous
+      portraitError.value =
+        portraitErr?.data?.statusMessage || portraitErr?.statusMessage || 'Failed to update portrait'
+    } finally {
+      portraitSaving.value = false
+    }
+  }
+
+  function portraitFormBase(): FormData {
+    const body = new FormData()
+    body.append('title', sheet.identity.value.characterTitle || 'Character')
+    body.append('characterType', sheet.identity.value.characterType || 'pc')
+    if (sheet.identity.value.characterSummary) {
+      body.append('summary', sheet.identity.value.characterSummary)
+    }
+    return body
+  }
+
+  function updatePortrait(file: File) {
+    const body = portraitFormBase()
+    body.append('image', file)
+    return sendPortraitUpdate(body)
+  }
+
+  function clearPortrait() {
+    const body = portraitFormBase()
+    body.append('clearImage', 'true')
+    return sendPortraitUpdate(body)
+  }
+
+  const portrait = reactive({
+    saving: portraitSaving,
+    error: portraitError,
+    update: updatePortrait,
+    clear: clearPortrait
   })
 
   // -------------------------------------------------------------------
@@ -425,6 +500,7 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
 
   return {
     recovery,
+    portrait,
     combat,
     inventory,
     spellcasting,

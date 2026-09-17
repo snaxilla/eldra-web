@@ -78,10 +78,13 @@ import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
 import CharacterHealthBar from '~/components/characters/CharacterHealthBar.vue'
 import CharacterCommandResources, { type RecoveryActionType } from '~/components/characters/CharacterCommandResources.vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   worldId: string
   characterTitle: string
   imageUrl?: string | null
+  canEditPortrait?: boolean
+  portraitSaving?: boolean
+  portraitError?: string
   level: number
   className: string
   identityRows: readonly { key: string; label: string; value: string; missing: boolean }[]
@@ -110,6 +113,9 @@ withDefaults(defineProps<{
   removeCondition: (conditionInstanceId: string) => void
 }>(), {
   imageUrl: null,
+  canEditPortrait: false,
+  portraitSaving: false,
+  portraitError: '',
   initiative: null,
   speed: null,
   proficiencyBonus: null,
@@ -125,7 +131,35 @@ const emit = defineEmits<{
   recovery: [{ type: RecoveryActionType; amount?: number }]
   'expend-slot': [number]
   'restore-slot': [number]
+  'update-portrait': [File]
+  'clear-portrait': []
 }>()
+
+// ---------------------------------------------------------------------------
+// PORTRAIT -- HEADER CLEANUP 1 (PLAY-MODE PORTRAIT MANAGEMENT)
+// ---------------------------------------------------------------------------
+// Play Mode no longer depends on Build Mode for portrait changes -- the
+// legacy sheet's own upload flow (a hidden native `<input type="file">`,
+// gated behind `mode === 'build'`) is replicated here verbatim, minus the
+// Build Mode gate, replaced by `canEditPortrait` (this Sheet's own
+// `world.character.edit_any` capability check -- see useCharacterSheet.ts's
+// own note on why this is the one reused pattern, not a new permission
+// model). No second upload system: this still just captures a `File` and
+// hands it to the page, which POSTs it through the exact same
+// `.../characters/:id/update` endpoint Build Mode already uses.
+const portraitFileInput = ref<HTMLInputElement | null>(null)
+
+function triggerPortraitUpload() {
+  if (!props.canEditPortrait) return
+  portraitFileInput.value?.click()
+}
+
+function handlePortraitFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) emit('update-portrait', file)
+  input.value = ''
+}
 </script>
 
 <template>
@@ -136,21 +170,89 @@ const emit = defineEmits<{
     <div class="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(96px,1fr)_5fr] xl:items-start xl:gap-5">
       <!-- Portrait: the folio's cover illustration, not an avatar. Always
            aspect-[4/5] -- sized by WIDTH at every breakpoint so the ratio
-           holds instead of being fixed-square below `xl`. -->
-      <div class="eldra-image-frame aspect-[4/5] w-16 h-auto shrink-0 overflow-hidden rounded-none border bg-black/25 sm:w-20 xl:w-full">
+           holds instead of being fixed-square below `xl`. Wrapped (rather
+           than being the grid item itself) so the error message below it
+           doesn't add a third child to a 2-column grid. `relative` on the
+           frame itself, plus an absolutely-positioned fill (img/
+           placeholder/overlay) rather than relying on `aspect-ratio`
+           alone to size a flex/grid child -- the reported "frame taller
+           than the image" defect -- so the portrait always fills its
+           frame exactly (`inset-0 h-full w-full object-cover`), cropping
+           gracefully instead of leaving a gap or stretching. -->
+      <div class="w-16 shrink-0 sm:w-20 xl:w-full">
+      <div class="eldra-image-frame group relative aspect-[4/5] w-full overflow-hidden rounded-none border bg-black/25">
         <img
           v-if="imageUrl"
           :src="imageUrl"
           :alt="characterTitle || 'Character portrait'"
-          class="h-full w-full object-cover object-top"
+          class="absolute inset-0 h-full w-full object-cover object-top"
           loading="lazy"
         >
+        <button
+          v-else-if="canEditPortrait"
+          type="button"
+          class="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-1 text-center text-[#9f9278] transition hover:bg-[rgba(201,164,90,0.1)] focus-visible:bg-[rgba(201,164,90,0.1)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
+          :disabled="portraitSaving"
+          aria-label="Add character portrait"
+          @click="triggerPortraitUpload"
+        >
+          <UIcon name="i-lucide-image-plus" class="h-4 w-4" />
+          <span class="text-[9px] uppercase tracking-[0.1em]">{{ portraitSaving ? 'Saving…' : 'Add portrait' }}</span>
+        </button>
         <div
           v-else
-          class="flex h-full w-full items-center justify-center text-center text-[9px] uppercase tracking-[0.1em] text-[#9f9278]"
+          class="absolute inset-0 flex h-full w-full items-center justify-center text-center text-[9px] uppercase tracking-[0.1em] text-[#9f9278]"
         >
           No portrait
         </div>
+
+        <!-- Hover/focus edit affordances, shown only over an EXISTING
+             portrait -- discoverable without a mouse: `opacity-100` by
+             default (touch has no hover), dimmed on pointer-capable/
+             desktop viewports until hover OR keyboard focus
+             (`md:opacity-0 md:group-hover:opacity-100
+             focus-visible:opacity-100`, the same pattern the legacy
+             sheet's own Build Mode portrait editor already used, minus
+             its Build Mode gate). -->
+        <button
+          v-if="canEditPortrait && imageUrl"
+          type="button"
+          class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-1 bg-black/80 px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#fff7df] opacity-100 transition focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed md:opacity-0 md:group-hover:opacity-100"
+          :disabled="portraitSaving"
+          aria-label="Change character portrait"
+          @click="triggerPortraitUpload"
+        >
+          <UIcon name="i-lucide-camera" class="h-3 w-3" />
+          <span>{{ portraitSaving ? 'Saving…' : 'Change' }}</span>
+        </button>
+
+        <button
+          v-if="canEditPortrait && imageUrl"
+          type="button"
+          class="absolute right-0 top-0 z-10 bg-black/70 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#d8ceb8] opacity-100 transition hover:text-red-300 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed md:opacity-0 md:group-hover:opacity-100"
+          :disabled="portraitSaving"
+          aria-label="Remove character portrait"
+          @click="emit('clear-portrait')"
+        >
+          ✕
+        </button>
+
+        <input
+          ref="portraitFileInput"
+          type="file"
+          accept="image/*"
+          class="sr-only"
+          tabindex="-1"
+          @change="handlePortraitFileChange"
+        >
+      </div>
+
+      <p
+        v-if="portraitError"
+        class="mt-1.5 text-[10px] text-red-300"
+      >
+        {{ portraitError }}
+      </p>
       </div>
 
       <div class="min-w-0">

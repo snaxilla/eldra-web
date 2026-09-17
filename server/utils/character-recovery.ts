@@ -28,16 +28,16 @@
 // without either module being "the Rules Engine."
 //
 // ---------------------------------------------------------------------------
-// TWO ACTIONS NEED NO RULES ENGINE AT ALL
+// THREE ACTIONS NEED NO RULES ENGINE AT ALL
 // ---------------------------------------------------------------------------
-// Damage (temporary HP absorbs, then current HP, floored at zero) and
-// Reset Death Saves need no derived value whatsoever -- see
-// health.ts's own note on `applyDamage`. Both work even in a World with no
-// Rules Package activated, which is a legal, common state
-// (world-configuration.md §10.2). The other four (Heal, Spend Hit Die,
-// Short Rest, Long Rest) all need at least Maximum HP to cap against, so
-// they fail informatively rather than silently computing a wrong number
-// when no package is active.
+// Damage (temporary HP absorbs, then current HP, floored at zero), Grant
+// Temporary HP (replace-if-higher, never additive -- see health.ts's own
+// note on `grantTemporaryHp`), and Reset Death Saves need no derived value
+// whatsoever. All three work even in a World with no Rules Package
+// activated, which is a legal, common state (world-configuration.md
+// §10.2). The other four (Heal, Spend Hit Die, Short Rest, Long Rest) all
+// need at least Maximum HP to cap against, so they fail informatively
+// rather than silently computing a wrong number when no package is active.
 //
 // ---------------------------------------------------------------------------
 // SHORT REST AND SPEND HIT DIE -- NO LONGER ALWAYS IDENTICAL
@@ -72,6 +72,7 @@ import {
   applyDamage,
   applyHealing,
   emptyCharacterHealth,
+  grantTemporaryHp,
   resetDeathSaves,
   spendHitDie,
   takeLongRest,
@@ -85,6 +86,7 @@ import {
 export type RecoveryAction =
   | { type: 'damage'; amount: number }
   | { type: 'heal'; amount: number }
+  | { type: 'temp-hp'; amount: number }
   | { type: 'spend-hit-die' }
   | { type: 'short-rest' }
   | { type: 'long-rest' }
@@ -190,7 +192,7 @@ export async function applyRecoveryAction(
 
   const current = (await loadCharacterHealth(characterId)) ?? emptyCharacterHealth()
 
-  if (action.type === 'damage' || action.type === 'heal') {
+  if (action.type === 'damage' || action.type === 'heal' || action.type === 'temp-hp') {
     if (!Number.isFinite(action.amount) || action.amount <= 0) {
       return { ok: false, reason: 'invalid-amount', message: 'Amount must be a positive number' }
     }
@@ -205,6 +207,10 @@ export async function applyRecoveryAction(
   switch (action.type) {
     case 'damage':
       next = applyDamage(current, action.amount)
+      break
+
+    case 'temp-hp':
+      next = grantTemporaryHp(current, action.amount)
       break
 
     case 'reset-death-saves':

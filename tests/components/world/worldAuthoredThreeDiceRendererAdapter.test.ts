@@ -1,24 +1,26 @@
 // Unit tests for
 // app/components/world/worldAuthoredThreeDiceRendererAdapter.ts -- Eldra
 // Roll System Phase 4B.1 (Authored Three.js d20 Proof of Concept,
-// ADR-024 Option 2).
+// ADR-024 Option 2) + Phase 4C (Authored Polyhedral Dice + Multi-Die
+// Presentation, the pool-dispatch tests below).
 //
 // No Vue SFC/DOM/WebGL is exercised here (this repo's Vitest setup has no
-// Vue component-rendering or WebGL-capable environment) -- `box` is a
-// plain `ref()` holding a hand-built stand-in for
-// WorldAuthoredThreeDiceRenderer.client.vue's own `defineExpose` shape,
-// matching every sibling adapter test's established boundary
-// (worldDiceThreeRendererAdapter.test.ts, worldAuthoredDiceRendererAdapter
-// .test.ts).
+// Vue component-rendering or WebGL-capable environment) -- `box`/
+// `polyhedralBox` are plain `ref()`s holding hand-built stand-ins for
+// each renderer's own `defineExpose` shape, matching every sibling
+// adapter test's established boundary.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { PLACEHOLDER_ANIMATION_MS } from '../../../app/composables/useDiceAnimationQueue'
 import {
   createAuthoredThreeDiceRendererAdapter,
+  extractPoolPresentation,
   extractSingleD20Face,
+  type WorldAuthoredPolyhedralDiceRendererExposed,
   type WorldAuthoredThreeDiceRendererExposed
 } from '../../../app/components/world/worldAuthoredThreeDiceRendererAdapter'
+import { MAX_POOL_SIZE } from '../../../app/components/world/authoredPolyhedralPoolTypes'
 import type { RollDieGroup, RollEventRecord } from '../../../app/lib/rolls/types'
 
 function dieGroup(overrides: Partial<RollDieGroup> = {}): RollDieGroup {
@@ -61,7 +63,7 @@ function roll(overrides: Partial<RollEventRecord> = {}): RollEventRecord {
   }
 }
 
-describe('extractSingleD20Face -- Phase 4B.1\'s own "single d20 rolls only" gate', () => {
+describe('extractSingleD20Face -- Phase 4B.1\'s own "single d20 rolls only" gate (unchanged by Phase 4C)', () => {
   it('extracts the face for every value 1-20 on a plain 1d20 roll', () => {
     for (let face = 1; face <= 20; face++) {
       const record = roll({ dice: [dieGroup({ sides: 20, results: [face], kept: [face] })] })
@@ -73,7 +75,7 @@ describe('extractSingleD20Face -- Phase 4B.1\'s own "single d20 rolls only" gate
     expect(extractSingleD20Face(roll({ dice: [] }))).toBeNull()
   })
 
-  it('returns null for a non-d20 die (out of scope)', () => {
+  it('returns null for a non-d20 die (out of this specific function\'s scope -- now handled by extractPoolPresentation instead)', () => {
     const record = roll({ dice: [dieGroup({ sides: 6, results: [4], kept: [4] })] })
     expect(extractSingleD20Face(record)).toBeNull()
   })
@@ -103,23 +105,133 @@ describe('extractSingleD20Face -- Phase 4B.1\'s own "single d20 rolls only" gate
   })
 })
 
-describe('createAuthoredThreeDiceRendererAdapter -- play()', () => {
-  function exposed(overrides: Partial<WorldAuthoredThreeDiceRendererExposed> = {}): WorldAuthoredThreeDiceRendererExposed {
-    return {
-      playD20: vi.fn().mockResolvedValue(undefined),
-      error: '',
-      ...overrides
+describe('extractPoolPresentation -- Phase 4C', () => {
+  it('a manual d4/d6/d8/d10/d12 roll produces one spec, kept=true', () => {
+    for (const sides of [4, 6, 8, 10, 12]) {
+      const record = roll({ expression: `1d${sides}`, dice: [dieGroup({ sides, results: [1], kept: [1] })] })
+      expect(extractPoolPresentation(record)).toEqual([{ sides, value: 1, kept: true }])
     }
+  })
+
+  it('individual RollEventRecord results map POSITIONALLY to individual specs -- 2d6 produces two specs in order, values untouched', () => {
+    const record = roll({
+      expression: '2d6',
+      dice: [dieGroup({ sides: 6, results: [3, 5], keptFlags: [true, true], kept: [3, 5], total: 8 })]
+    })
+    expect(extractPoolPresentation(record)).toEqual([
+      { sides: 6, value: 3, kept: true },
+      { sides: 6, value: 5, kept: true }
+    ])
+  })
+
+  it('4d6 produces four specs, no result duplicated or dropped from the presentation', () => {
+    const record = roll({
+      expression: '4d6',
+      dice: [dieGroup({ sides: 6, results: [1, 2, 3, 4], keptFlags: [true, true, true, true], kept: [1, 2, 3, 4] })]
+    })
+    expect(extractPoolPresentation(record)).toEqual([
+      { sides: 6, value: 1, kept: true },
+      { sides: 6, value: 2, kept: true },
+      { sides: 6, value: 3, kept: true },
+      { sides: 6, value: 4, kept: true }
+    ])
+  })
+
+  it('mixed dice groups (e.g. "1d8+1d4") flatten across groups, in order', () => {
+    const record = roll({
+      expression: '1d8+1d4',
+      dice: [
+        dieGroup({ sides: 8, results: [6], kept: [6] }),
+        dieGroup({ sides: 4, results: [2], kept: [2] })
+      ]
+    })
+    expect(extractPoolPresentation(record)).toEqual([
+      { sides: 8, value: 6, kept: true },
+      { sides: 4, value: 2, kept: true }
+    ])
+  })
+
+  it('advantage/disadvantage-style pools preserve authoritative kept/dropped metadata from keptFlags, not inferred', () => {
+    const record = roll({
+      dice: [dieGroup({ sides: 20, results: [11, 20], keptFlags: [false, true], kept: [20], naturalHigh: true })]
+    })
+    expect(extractPoolPresentation(record)).toEqual([
+      { sides: 20, value: 11, kept: false },
+      { sides: 20, value: 20, kept: true }
+    ])
+  })
+
+  it('a missing keptFlags entry defaults to kept=true, never inferring a false drop', () => {
+    const record = roll({
+      dice: [dieGroup({ sides: 20, results: [11, 20], keptFlags: [] as boolean[], kept: [20] })]
+    })
+    expect(extractPoolPresentation(record)).toEqual([
+      { sides: 20, value: 11, kept: true },
+      { sides: 20, value: 20, kept: true }
+    ])
+  })
+
+  it('rejects an unsupported die type (falls back honestly rather than misrepresenting the roll)', () => {
+    const record = roll({ expression: '1d3', dice: [dieGroup({ sides: 3, results: [2], kept: [2] })] })
+    expect(extractPoolPresentation(record)).toBeNull()
+  })
+
+  it('rejects a pool larger than MAX_POOL_SIZE', () => {
+    const results = Array.from({ length: MAX_POOL_SIZE + 1 }, () => 3)
+    const record = roll({
+      dice: [dieGroup({ sides: 6, results, keptFlags: results.map(() => true), kept: results })]
+    })
+    expect(extractPoolPresentation(record)).toBeNull()
+  })
+
+  it('accepts a pool at exactly MAX_POOL_SIZE', () => {
+    const results = Array.from({ length: MAX_POOL_SIZE }, () => 3)
+    const record = roll({
+      dice: [dieGroup({ sides: 6, results, keptFlags: results.map(() => true), kept: results })]
+    })
+    expect(extractPoolPresentation(record)).toHaveLength(MAX_POOL_SIZE)
+  })
+
+  it('a d100 roll produces exactly two d10 specs (tens, ones), never a third die and never a second random result', () => {
+    const record = roll({ expression: '1d100', dice: [dieGroup({ sides: 100, results: [73], kept: [73] })] })
+    const pool = extractPoolPresentation(record)
+    expect(pool).toHaveLength(2)
+    expect(pool![0]).toEqual({ sides: 10, value: 7, kept: true, labelRole: 'tens' })
+    expect(pool![1]).toEqual({ sides: 10, value: 3, kept: true })
+  })
+
+  it('d100 special cases: 1, 10, 20, 90, 99, 100 -- values are the AUTHORITATIVE 1-10 domain fed to the d10 orientation lookup (physical face 0 <- authoritative value 10, per authoredD10Three.ts\'s own convention)', () => {
+    // [authoritative d100 value, expected pool[0] (tens-die) value, expected pool[1] (ones-die) value]
+    const cases: Array<[number, number, number]> = [
+      [1, 10, 1], // tens digit 0 -> physical face 0 -> authoritative value 10; ones digit 1 -> value 1
+      [10, 1, 10], // tens digit 10 -> physical face 1 -> value 1; ones digit 0 -> physical face 0 -> value 10
+      [20, 2, 10],
+      [90, 9, 10],
+      [99, 9, 9],
+      [100, 10, 10] // tens digit 0 and ones digit 0 -- the conventional "00+0 = 100" reading
+    ]
+    for (const [value, tensValue, onesValue] of cases) {
+      const record = roll({ expression: '1d100', dice: [dieGroup({ sides: 100, results: [value], kept: [value] })] })
+      const pool = extractPoolPresentation(record)!
+      expect(pool[0]!.value).toBe(tensValue)
+      expect(pool[1]!.value).toBe(onesValue)
+    }
+  })
+
+  it('never generates a second random result for d100 -- calling twice with the same record is fully deterministic', () => {
+    const record = roll({ expression: '1d100', dice: [dieGroup({ sides: 100, results: [42], kept: [42] })] })
+    expect(extractPoolPresentation(record)).toEqual(extractPoolPresentation(record))
+  })
+})
+
+describe('createAuthoredThreeDiceRendererAdapter -- play() dispatch', () => {
+  function d20Exposed(overrides: Partial<WorldAuthoredThreeDiceRendererExposed> = {}): WorldAuthoredThreeDiceRendererExposed {
+    return { playD20: vi.fn().mockResolvedValue(undefined), error: '', ...overrides }
+  }
+  function poolExposed(overrides: Partial<WorldAuthoredPolyhedralDiceRendererExposed> = {}): WorldAuthoredPolyhedralDiceRendererExposed {
+    return { playPool: vi.fn().mockResolvedValue(undefined), error: '', ...overrides }
   }
 
-  // Phase 4B.7's own correction (worldAuthoredThreeDiceRendererAdapter.ts's
-  // own header): an out-of-scope roll now waits out
-  // PLACEHOLDER_ANIMATION_MS before resolving, rather than resolving
-  // instantly, so WorldDiceStage.vue's always-mounted placeholder chip gets
-  // a real beat to show instead of flashing. Fake timers keep these tests
-  // fast and deterministic; every OTHER test in this describe block mocks
-  // `playD20` as an already-resolved Promise, which fake timers do not
-  // affect.
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -128,68 +240,122 @@ describe('createAuthoredThreeDiceRendererAdapter -- play()', () => {
     vi.useRealTimers()
   })
 
-  it('throws when the renderer instance is not mounted -- never silently no-ops', async () => {
+  it('throws when the frozen d20 renderer is not mounted for a plain 1d20 roll', async () => {
     const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(null)
-    const adapter = createAuthoredThreeDiceRendererAdapter(box)
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed())
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
 
     await expect(adapter.play({ id: 'roll-1', roll: roll() })).rejects.toThrow('WorldAuthoredThreeDiceRenderer is not mounted')
   })
 
-  it('calls playD20 with the exact authoritative face for a plain 1d20 roll', async () => {
+  it('calls playD20 (the frozen path) with the exact authoritative face for a plain 1d20 roll -- never routed to the pool renderer', async () => {
     const playD20 = vi.fn().mockResolvedValue(undefined)
-    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ playD20 }))
-    const adapter = createAuthoredThreeDiceRendererAdapter(box)
+    const playPool = vi.fn().mockResolvedValue(undefined)
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed({ playD20 }))
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed({ playPool }))
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
 
     const record = roll({ dice: [dieGroup({ sides: 20, results: [17], kept: [17] })] })
     await adapter.play({ id: 'roll-1', roll: record })
 
     expect(playD20).toHaveBeenCalledWith(17)
     expect(playD20).toHaveBeenCalledTimes(1)
+    expect(playPool).not.toHaveBeenCalled()
   })
 
-  it('never calls playD20 for a roll outside this renderer\'s scope -- waits out the placeholder duration instead (Phase 4B.7)', async () => {
+  it('routes a manual d6 roll to the pool renderer, not the frozen d20 renderer', async () => {
     const playD20 = vi.fn().mockResolvedValue(undefined)
-    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ playD20 }))
-    const adapter = createAuthoredThreeDiceRendererAdapter(box)
+    const playPool = vi.fn().mockResolvedValue(undefined)
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed({ playD20 }))
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed({ playPool }))
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
 
-    const record = roll({ dice: [dieGroup({ sides: 6, results: [4], kept: [4] })] })
+    const record = roll({ expression: '1d6', dice: [dieGroup({ sides: 6, results: [4], kept: [4] })] })
+    await adapter.play({ id: 'roll-1', roll: record })
+
+    expect(playPool).toHaveBeenCalledWith([{ sides: 6, value: 4, kept: true }])
+    expect(playD20).not.toHaveBeenCalled()
+  })
+
+  it('routes a 2d20 advantage pool to the pool renderer, with both dice and their kept/dropped flags intact', async () => {
+    const playPool = vi.fn().mockResolvedValue(undefined)
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed())
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed({ playPool }))
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
+
+    const record = roll({
+      dice: [dieGroup({ sides: 20, results: [11, 20], keptFlags: [false, true], kept: [20], naturalHigh: true })]
+    })
+    await adapter.play({ id: 'roll-1', roll: record })
+
+    expect(playPool).toHaveBeenCalledWith([
+      { sides: 20, value: 11, kept: false },
+      { sides: 20, value: 20, kept: true }
+    ])
+  })
+
+  it('throws when the pool renderer is not mounted for an in-scope pool roll', async () => {
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed())
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(null)
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
+
+    const record = roll({ expression: '1d6', dice: [dieGroup({ sides: 6, results: [4], kept: [4] })] })
+    await expect(adapter.play({ id: 'roll-1', roll: record })).rejects.toThrow('WorldAuthoredPolyhedralDiceRenderer is not mounted')
+  })
+
+  it('waits out PLACEHOLDER_ANIMATION_MS for a roll neither renderer can present (unsupported die), calling neither playD20 nor playPool (Phase 4B.7\'s own fallback, preserved)', async () => {
+    const playD20 = vi.fn().mockResolvedValue(undefined)
+    const playPool = vi.fn().mockResolvedValue(undefined)
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed({ playD20 }))
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed({ playPool }))
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
+
+    const record = roll({ expression: '1d3', dice: [dieGroup({ sides: 3, results: [2], kept: [2] })] })
     const played = adapter.play({ id: 'roll-1', roll: record })
 
     await vi.advanceTimersByTimeAsync(PLACEHOLDER_ANIMATION_MS)
     await played
 
     expect(playD20).not.toHaveBeenCalled()
+    expect(playPool).not.toHaveBeenCalled()
   })
 
-  it('never calls onRendererFailed when the renderer reports no error', async () => {
+  it('never calls onRendererFailed when the frozen d20 renderer reports no error', async () => {
     const onRendererFailed = vi.fn()
-    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ error: '' }))
-    const adapter = createAuthoredThreeDiceRendererAdapter(box, onRendererFailed)
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed({ error: '' }))
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed())
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox, onRendererFailed)
 
     await adapter.play({ id: 'roll-1', roll: roll() })
     expect(onRendererFailed).not.toHaveBeenCalled()
   })
 
-  it('calls onRendererFailed when the renderer reports an error after playD20() resolves', async () => {
+  it('calls onRendererFailed when the frozen d20 renderer reports an error after playD20() resolves', async () => {
     const onRendererFailed = vi.fn()
-    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ error: 'WebGL unavailable' }))
-    const adapter = createAuthoredThreeDiceRendererAdapter(box, onRendererFailed)
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed({ error: 'WebGL unavailable' }))
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed())
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox, onRendererFailed)
 
     await adapter.play({ id: 'roll-1', roll: roll() })
     expect(onRendererFailed).toHaveBeenCalledTimes(1)
   })
 
-  it('does not throw when no onRendererFailed callback was provided, even if the renderer errored', async () => {
-    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ error: 'boom' }))
-    const adapter = createAuthoredThreeDiceRendererAdapter(box)
+  it('calls onRendererFailed when the pool renderer reports an error after playPool() resolves', async () => {
+    const onRendererFailed = vi.fn()
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed())
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed({ error: 'WebGL unavailable' }))
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox, onRendererFailed)
 
-    await expect(adapter.play({ id: 'roll-1', roll: roll() })).resolves.toBeUndefined()
+    const record = roll({ expression: '1d6', dice: [dieGroup({ sides: 6, results: [4], kept: [4] })] })
+    await adapter.play({ id: 'roll-1', roll: record })
+    expect(onRendererFailed).toHaveBeenCalledTimes(1)
   })
 
-  it('never calls onRendererFailed for an out-of-scope roll, even though playD20 was never called', async () => {
+  it('never calls onRendererFailed for an out-of-scope roll', async () => {
     const onRendererFailed = vi.fn()
-    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed({ error: '' }))
-    const adapter = createAuthoredThreeDiceRendererAdapter(box, onRendererFailed)
+    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed())
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed())
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox, onRendererFailed)
 
     const played = adapter.play({ id: 'roll-1', roll: roll({ dice: [] }) })
     await vi.advanceTimersByTimeAsync(PLACEHOLDER_ANIMATION_MS)
@@ -197,29 +363,13 @@ describe('createAuthoredThreeDiceRendererAdapter -- play()', () => {
 
     expect(onRendererFailed).not.toHaveBeenCalled()
   })
-
-  it('waits out PLACEHOLDER_ANIMATION_MS for an out-of-scope roll, giving WorldDiceStage.vue\'s placeholder chip a real beat (Phase 4B.7)', async () => {
-    const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(exposed())
-    const adapter = createAuthoredThreeDiceRendererAdapter(box)
-
-    let resolved = false
-    const played = adapter.play({ id: 'roll-1', roll: roll({ dice: [] }) }).then(() => {
-      resolved = true
-    })
-
-    await vi.advanceTimersByTimeAsync(PLACEHOLDER_ANIMATION_MS - 1)
-    expect(resolved).toBe(false)
-
-    await vi.advanceTimersByTimeAsync(1)
-    await played
-    expect(resolved).toBe(true)
-  })
 })
 
 describe('createAuthoredThreeDiceRendererAdapter -- prepare()/dispose()', () => {
   it('are both no-ops that never throw', async () => {
     const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(null)
-    const adapter = createAuthoredThreeDiceRendererAdapter(box)
+    const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(null)
+    const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
 
     await expect(adapter.prepare()).resolves.toBeUndefined()
     expect(() => adapter.dispose()).not.toThrow()

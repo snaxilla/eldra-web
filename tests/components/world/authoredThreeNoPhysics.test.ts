@@ -1,6 +1,8 @@
-// PHASE 4B.4 -- static "no physics imports" guard for the authored Three.js
-// d20 renderer family. This task's own TESTING section explicitly lists
-// "no physics imports" as a testable, non-visual invariant. Reads the
+// PHASE 4B.4, extended in PHASE 4C -- static "no physics imports" guard
+// for the entire authored Three.js dice family (d20's own frozen files
+// plus Phase 4C's d4/d6/d8/d10/d12/d100/pool files). Every dice phase's
+// own TESTING section explicitly lists "no physics imports" as a
+// testable, non-visual invariant. Reads the
 // actual source text of every file in this family (not a mocked/simulated
 // module graph) and asserts none of them actually IMPORT `cannon-es` (the
 // physics engine ADR-024 rejects) or `@3d-dice/dice-box-threejs` (the
@@ -31,12 +33,23 @@ const AUTHORED_THREE_FILES = [
   'app/components/world/authoredD20ThreeFaceUV.ts',
   'app/components/world/authoredD20ThreeOrientation.ts',
   'app/components/world/authoredD20ThreeSkin.ts',
-  'app/components/world/worldAuthoredThreeDiceRendererAdapter.ts'
+  'app/components/world/worldAuthoredThreeDiceRendererAdapter.ts',
+  // Phase 4C additions -- the rest of the standard dice family.
+  'app/components/world/WorldAuthoredPolyhedralDiceRenderer.client.vue',
+  'app/components/world/authoredD4Three.ts',
+  'app/components/world/authoredD6Three.ts',
+  'app/components/world/authoredD8Three.ts',
+  'app/components/world/authoredD10Three.ts',
+  'app/components/world/authoredD12Three.ts',
+  'app/components/world/authoredD100Percentile.ts',
+  'app/components/world/authoredPolyhedralGeometry.ts',
+  'app/components/world/authoredPolyhedralDiceRegistry.ts',
+  'app/components/world/authoredPolyhedralPoolTypes.ts'
 ]
 
 const FORBIDDEN_IMPORT_PATTERN = /(?:from|require|import)\s*\(?\s*['"][^'"]*(?:cannon-es|dice-box-threejs)[^'"]*['"]/i
 
-describe('authored Three.js d20 renderer family -- no physics imports (ADR-024\'s own core decision: "Eldra stops simulating dice")', () => {
+describe('authored Three.js dice family -- no physics imports (ADR-024\'s own core decision: "Eldra stops simulating dice")', () => {
   for (const relativePath of AUTHORED_THREE_FILES) {
     it(`${relativePath} does not import cannon-es or @3d-dice/dice-box-threejs`, () => {
       const source = readFileSync(resolve(__dirname, '../../..', relativePath), 'utf-8')

@@ -59,6 +59,8 @@ import type { DiceRendererAdapter } from '~/lib/dice-presentation/renderer'
 import type { DiceAnimationRequest } from '~/lib/dice-presentation/types'
 import type { RollEventRecord } from '~/lib/rolls/types'
 import { D20_FACE_VALUES } from './authoredD20ThreeOrientation'
+import { percentileDigitsForD100 } from './authoredD100Percentile'
+import { MAX_POOL_SIZE, type PoolDieSpec } from './authoredPolyhedralPoolTypes'
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -99,6 +101,87 @@ export function extractSingleD20Face(record: RollEventRecord): number | null {
   return face
 }
 
+// ---------------------------------------------------------------------------
+// Roll System Phase 4C -- POOL PRESENTATION. Everything below is NEW; the
+// single-d20 path above is byte-for-byte unchanged and remains the exact
+// route a plain "1d20" roll takes (see WorldAuthoredPolyhedralDiceRenderer
+// .client.vue's own header for why d20 stays frozen/reused rather than
+// rebuilt).
+// ---------------------------------------------------------------------------
+
+// Every side count the standard dice family's authored geometry supports
+// for POOL presentation -- d20 included (a pooled d20, e.g. 2d20
+// advantage, is presented here even though a SOLO d20 never reaches this
+// path at all). d100 is deliberately excluded: it is handled by its own
+// explicit branch below (`extractD100PoolPresentation`), never by
+// treating "sides: 100" as an ordinary pool member.
+const SUPPORTED_POOL_SIDES: ReadonlySet<number> = new Set([4, 6, 8, 10, 12, 20])
+
+// A d10 die's own authoritative domain is 1-10 (see authoredD10Three.ts's
+// own header) even when this file wants to land it on a specific PHYSICAL
+// face 0-9 for percentile presentation -- this is the one, explicit place
+// that translates "physical face" back into "the authoritative value that
+// lands on it" (physical face 0 <- authoritative value 10; faces 1-9 <-
+// the same-numbered value), so that translation exists exactly once.
+function d10ValueForPhysicalFace(face: number): number {
+  return face === 0 ? 10 : face
+}
+
+// d100 PRODUCT SEMANTICS (this task's own D100 PRODUCT SEMANTICS section):
+// the RollEvent remains a literal single `1d100` group with ONE
+// authoritative result 1-100 -- nothing here rolls a second die or
+// generates a second random value. `percentileDigitsForD100` (a pure
+// function of that one already-decided value) derives the conventional
+// tens/ones decomposition; this function only ever translates that
+// decomposition into two PRESENTATION-ONLY d10 specs.
+function extractD100PoolPresentation(record: RollEventRecord): PoolDieSpec[] | null {
+  const group = record.dice.length === 1 ? record.dice[0] : undefined
+  if (!group || group.sides !== 100 || group.results.length !== 1) return null
+
+  const value = group.results[0]
+  if (value === undefined || value < 1 || value > 100) return null
+
+  const { tens, ones } = percentileDigitsForD100(value)
+  return [
+    { sides: 10, value: d10ValueForPhysicalFace(tens / 10), kept: true, labelRole: 'tens' },
+    { sides: 10, value: d10ValueForPhysicalFace(ones), kept: true }
+  ]
+}
+
+// Extracts a general multi-die pool presentation -- EVERY die across
+// EVERY group, in order, each with its own already-authoritative value
+// and its own already-authoritative `keptFlags` entry (this task's own
+// KEPT/DROPPED section: "do not infer kept/dropped status if
+// RollEventRecord does not actually provide it" -- `keptFlags` always
+// provides it, defaulting a missing entry to `true`/kept, never to
+// `false`, so a malformed/short array can only ever OVER-show a die as
+// kept, never wrongly hide one as dropped). Returns `null` -- an honest
+// fallback to the placeholder, per this task's own FALLBACK section --
+// for any unsupported die type or a pool exceeding `MAX_POOL_SIZE`,
+// rather than rendering a partial or misleading presentation.
+export function extractPoolPresentation(record: RollEventRecord): PoolDieSpec[] | null {
+  const d100 = extractD100PoolPresentation(record)
+  if (d100) return d100
+
+  const specs: PoolDieSpec[] = []
+  for (const group of record.dice) {
+    if (!SUPPORTED_POOL_SIDES.has(group.sides)) return null
+    group.results.forEach((value, i) => {
+      specs.push({ sides: group.sides, value, kept: group.keptFlags[i] ?? true })
+    })
+  }
+
+  if (specs.length === 0 || specs.length > MAX_POOL_SIZE) return null
+  return specs
+}
+
+// The narrow slice of WorldAuthoredPolyhedralDiceRenderer.client.vue's own
+// `defineExpose` this adapter touches.
+export type WorldAuthoredPolyhedralDiceRendererExposed = {
+  playPool: (specs: PoolDieSpec[]) => Promise<void>
+  error: string
+}
+
 // `onRendererFailed` mirrors every sibling adapter's identical parameter
 // -- called after a `play()` call whose underlying
 // WorldAuthoredThreeDiceRenderer instance reports an `error` (WebGL
@@ -108,57 +191,61 @@ export function extractSingleD20Face(record: RollEventRecord): number | null {
 // future rolls keep animating instead of silently going dark --
 // satisfying this phase's own FAILURE/FALLBACK requirement: "Presentation
 // failure must never become gameplay failure."
+// Roll System Phase 4C -- `polyhedralBox` is the NEW general pool
+// renderer (WorldAuthoredPolyhedralDiceRenderer.client.vue); `box`
+// remains the frozen single-d20 renderer, completely unchanged in every
+// way including its own call signature (`playD20(face)`) and its own
+// dedicated `extractSingleD20Face` scope check above. Dispatch order:
+//   1. Exactly one d20 -> the frozen single-d20 path (unchanged from
+//      every prior phase -- this is the ONLY route a plain "1d20" roll
+//      has ever taken, and still is).
+//   2. Any other presentable pool (d4/d6/d8/d10/d12/d20-pools/d100) ->
+//      the new general renderer.
+//   3. Anything else (unsupported dice, an oversized pool, a
+//      multi-group custom expression this family can't represent) -> the
+//      SAME honest placeholder-wait fallback Phase 4B.7 already
+//      established, unchanged.
 export function createAuthoredThreeDiceRendererAdapter(
   box: Ref<WorldAuthoredThreeDiceRendererExposed | null>,
+  polyhedralBox: Ref<WorldAuthoredPolyhedralDiceRendererExposed | null>,
   onRendererFailed?: () => void
 ): DiceRendererAdapter {
   return {
-    // WorldAuthoredThreeDiceRenderer.client.vue lazily imports `three` and
-    // builds its scene on the FIRST roll, matching WorldDiceThreeRenderer
-    // .client.vue's own established "do not pay a 3D-library cost on
-    // pages that never roll dice" convention -- nothing for this adapter
-    // to do ahead of time.
+    // Both renderer components lazily import `three` and build their own
+    // scene on the FIRST roll each actually renders -- nothing for this
+    // adapter to do ahead of time.
     async prepare() {},
 
     async play(request: DiceAnimationRequest) {
-      const exposed = box.value
-      if (!exposed) {
-        // Matches every sibling adapter's posture exactly: throwing here
-        // is what makes useDiceAnimationQueue.ts's own try/catch around
-        // `renderer.play()` fall through to `complete` anyway -- a
-        // presentation failure is never a gameplay failure.
-        throw new Error('WorldAuthoredThreeDiceRenderer is not mounted')
-      }
-
       const face = extractSingleD20Face(request.roll)
-      if (face === null) {
-        // Roll System Phase 4B.7: out of this renderer's own explicit
-        // scope (not exactly one d20 -- a manual d4/d6/d8/d10/d12/d100,
-        // advantage, damage, or a multi-group custom roll). Resolving
-        // IMMEDIATELY here (the original Phase 4B.1 behavior) meant
-        // useDiceAnimationQueue.ts's 'animating' state lasted only a few
-        // milliseconds -- long enough that WorldDiceStage.vue's own
-        // always-mounted placeholder chip (Phase 3A) never got a real
-        // beat to show before the roll completed, which reads as "the die
-        // silently did nothing" rather than an honest fallback
-        // presentation. Waiting out the SAME PLACEHOLDER_ANIMATION_MS the
-        // queue itself already uses when NO renderer is registered at all
-        // gives that chip a normal-feeling animating beat -- this is the
-        // "smallest appropriate correction at the adapter/presentation
-        // seam" this phase's own CURRENT AUTHORED RENDERER LIMITATION
-        // section calls for, not a change to the renderer's own frozen
-        // d20 presentation contract, and not a route back through
-        // physics merely because this renderer lacks geometry for the
-        // die.
-        await wait(PLACEHOLDER_ANIMATION_MS)
+      if (face !== null) {
+        const exposed = box.value
+        if (!exposed) {
+          throw new Error('WorldAuthoredThreeDiceRenderer is not mounted')
+        }
+        await exposed.playD20(face)
+        if (exposed.error) onRendererFailed?.()
         return
       }
 
-      await exposed.playD20(face)
-
-      if (exposed.error) {
-        onRendererFailed?.()
+      const pool = extractPoolPresentation(request.roll)
+      if (pool !== null) {
+        const exposed = polyhedralBox.value
+        if (!exposed) {
+          throw new Error('WorldAuthoredPolyhedralDiceRenderer is not mounted')
+        }
+        await exposed.playPool(pool)
+        if (exposed.error) onRendererFailed?.()
+        return
       }
+
+      // Roll System Phase 4B.7's own reasoning, unchanged: resolving
+      // instantly here would give WorldDiceStage.vue's own always-mounted
+      // placeholder chip no visible beat at all. Waiting out the SAME
+      // PLACEHOLDER_ANIMATION_MS the queue itself already uses when no
+      // renderer is registered keeps that fallback feeling like a normal
+      // roll rather than "the die silently did nothing."
+      await wait(PLACEHOLDER_ANIMATION_MS)
     },
 
     dispose() {}

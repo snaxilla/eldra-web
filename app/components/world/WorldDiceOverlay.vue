@@ -98,17 +98,33 @@
 // mounted regardless of mode -- each dynamically imports its own 3D
 // library only on the FIRST roll it actually renders, so an unregistered,
 // never-called renderer costs nothing merely by being present in the DOM.
+//
+// ---------------------------------------------------------------------------
+// PHASE 4C (AUTHORED POLYHEDRAL DICE + MULTI-DIE PRESENTATION): A THIRD
+// COMPONENT, ONE ADAPTER
+// ---------------------------------------------------------------------------
+// WorldAuthoredPolyhedralDiceRenderer.client.vue mounts here too -- the
+// general d4/d6/d8/d10/d12/pooled-d20/d100 renderer. It does NOT get its
+// own `DiceRendererMode` branch: `createAuthoredThreeDiceRendererAdapter`
+// (see that file's own header) is the SAME single adapter registered for
+// `'authored-three'` mode as before, now taking a SECOND ref and
+// internally dispatching per-request between the frozen single-d20
+// renderer and this new general one. The frozen renderer's own file,
+// adapter scope check, and every one of its accepted behaviors are
+// completely unchanged by this addition.
 
+import WorldAuthoredPolyhedralDiceRenderer from '~/components/world/WorldAuthoredPolyhedralDiceRenderer.client.vue'
 import WorldAuthoredThreeDiceRenderer from '~/components/world/WorldAuthoredThreeDiceRenderer.client.vue'
 import WorldDiceStage from '~/components/world/WorldDiceStage.vue'
 import WorldDiceThreeRenderer from '~/components/world/WorldDiceThreeRenderer.client.vue'
-import { createAuthoredThreeDiceRendererAdapter, type WorldAuthoredThreeDiceRendererExposed } from '~/components/world/worldAuthoredThreeDiceRendererAdapter'
+import { createAuthoredThreeDiceRendererAdapter, type WorldAuthoredPolyhedralDiceRendererExposed, type WorldAuthoredThreeDiceRendererExposed } from '~/components/world/worldAuthoredThreeDiceRendererAdapter'
 import { createWorldDiceThreeRendererAdapter, type WorldDiceThreeRendererExposed } from '~/components/world/worldDiceThreeRendererAdapter'
 import { useDiceRendererMode } from '~/composables/useDiceRendererMode'
 import { useDiceAnimationQueue } from '~/composables/useDiceAnimationQueue'
 
 const diceBoxRef = ref<WorldDiceThreeRendererExposed | null>(null)
 const authoredThreeDiceBoxRef = ref<WorldAuthoredThreeDiceRendererExposed | null>(null)
+const authoredPolyhedralDiceBoxRef = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(null)
 const diceQueue = useDiceAnimationQueue()
 const diceRendererMode = useDiceRendererMode()
 
@@ -119,7 +135,7 @@ const diceRendererMode = useDiceRendererMode()
 // is harmless, not just safe.
 function registerActiveRenderer() {
   if (diceRendererMode.value === 'authored-three') {
-    diceQueue.setRenderer(createAuthoredThreeDiceRendererAdapter(authoredThreeDiceBoxRef, () => {
+    diceQueue.setRenderer(createAuthoredThreeDiceRendererAdapter(authoredThreeDiceBoxRef, authoredPolyhedralDiceBoxRef, () => {
       diceQueue.setRenderer(null)
     }))
   } else {
@@ -152,5 +168,6 @@ onBeforeUnmount(() => {
   <ClientOnly>
     <WorldDiceThreeRenderer ref="diceBoxRef" />
     <WorldAuthoredThreeDiceRenderer ref="authoredThreeDiceBoxRef" />
+    <WorldAuthoredPolyhedralDiceRenderer ref="authoredPolyhedralDiceBoxRef" />
   </ClientOnly>
 </template>

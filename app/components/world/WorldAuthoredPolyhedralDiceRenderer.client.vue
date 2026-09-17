@@ -40,6 +40,46 @@
 // simultaneously (small authored per-die variation in start position/
 // spin axis/turn count only) -- a 4d6 pool takes the same total ceremony
 // time as a single d6, never four times as long.
+//
+// ---------------------------------------------------------------------------
+// PHASE 4C.1 -- POLYHEDRAL VISUAL NORMALIZATION + FAMILY EDGE TREATMENT
+// ---------------------------------------------------------------------------
+// Real browser feedback: a manual d4 read as "dramatically smaller" than
+// the frozen d20, and d10/d12 lacked the frozen d20's gold edge-outline
+// treatment. Traced (not guessed) to TWO independent, provable causes --
+// see authoredDicePresentationScale.ts's own header for the full
+// geometric measurement:
+//   1. This file's own camera/canvas previously used DIFFERENT values
+//      than the frozen single-d20 renderer's (FOV 42 vs 40, distance 4.2
+//      vs 3.4, DIE_RADIUS 0.62 vs 1.0, canvas 220px vs 200px) -- fixed by
+//      adopting the frozen renderer's own FOV, canvas size, and base
+//      radius directly (`BASE_DIE_RADIUS`, below), and its own camera
+//      DISTANCE closely (3.8 vs 3.4 -- a small, deliberate, documented
+//      deviation; see `ensureScene`'s own comment for why a small amount
+//      of extra frustum headroom is required for item 2, below, not to
+//      be confused with the earlier, much larger, unintentional 4.2/42
+//      mismatch this replaces).
+//   2. Different Platonic/uniform solids built at the SAME circumradius
+//      have very different face-inradius ratios (a tetrahedron's landed
+//      face sits ~42% as far forward, relative to its own circumradius,
+//      as an icosahedron's) -- fixed by `presentationMeshScale`, an
+//      ADDITIONAL multiplicative factor on `Mesh.scale` (never baked
+//      into the cached geometry), applied at every scale-setting call
+//      site in `playPool` below.
+// The frozen d20 renderer (WorldAuthoredThreeDiceRenderer.client.vue) is
+// UNCHANGED by any of this -- a standalone "1d20" roll never reaches this
+// file at all.
+//
+// EDGE TREATMENT: `buildEdgeOutline`/`applySoftenedEdgeNormals` below are
+// RESTATED from the frozen d20 renderer's own identically-named functions
+// (not imported -- that file stays untouched), applied here to every
+// polyhedral die's own geometry. `THREE.EdgesGeometry`'s angle-threshold
+// filtering already excludes the internal fan-triangulation lines inside
+// d12's pentagons and d10's kites FOR FREE, because the two triangles
+// making up one physical face are exactly coplanar (proven in
+// authoredD12Three.ts's/authoredD10Three.ts's own derivation) -- verified
+// directly against the real generated geometry in this phase's own tests,
+// not assumed.
 import type { DiceSkin } from './authoredD20ThreeSkin'
 import { ELDRA_DEFAULT_D20_SKIN, resolveDiceSkin } from './authoredD20ThreeSkin'
 import { D20_THREE_FACE_VALUE_BY_INDEX, landingQuaternionForFace as landingQuaternionForD20Face } from './authoredD20ThreeOrientation'
@@ -53,13 +93,13 @@ import {
 import { polyhedralDieDefinitionForSides, type PolyhedralDieDefinition } from './authoredPolyhedralDiceRegistry'
 import { tensDieLabel } from './authoredD100Percentile'
 import { MAX_POOL_SIZE, type PoolDieSpec } from './authoredPolyhedralPoolTypes'
+import { BASE_DIE_RADIUS, presentationMeshScale } from './authoredDicePresentationScale'
 
 const error = ref('')
 const visible = ref(false)
 const containerEl = ref<HTMLDivElement | null>(null)
 
-const SCENE_PX = 220
-const DIE_RADIUS = 0.62 // smaller than the frozen d20's own 1.0 -- a pool of several dice needs headroom to spread without crowding the stage.
+const SCENE_PX = 200 // PHASE 4C.1 -- matches the frozen d20 renderer's own SCENE_PX exactly.
 const FACE_TEXTURE_SIZE = 384
 
 let ThreeMod: typeof import('three') | null = null
@@ -72,6 +112,7 @@ type DieRuntime = {
   mesh: import('three').Mesh
   shadow: import('three').Mesh
   spec: PoolDieSpec
+  presentationScale: number
   startPosition: { x: number; y: number; z: number }
   peakPosition: { x: number; y: number; z: number }
   landPosition: { x: number; y: number; z: number }
@@ -83,8 +124,64 @@ type DieRuntime = {
 
 const geometryCache = new Map<string, import('three').BufferGeometry>()
 const materialCache = new Map<string, import('three').MeshStandardMaterial[]>()
+const edgeGeometryCache = new Map<string, import('three').EdgesGeometry>()
+let sharedEdgeMaterial: import('three').LineBasicMaterial | null = null
 
 const activeSkin: DiceSkin = resolveDiceSkin(ELDRA_DEFAULT_D20_SKIN)
+
+// PHASE 4C.1 -- restated (not imported) from the frozen d20 renderer's
+// own identically-named function; see this file's own header for why.
+function applySoftenedEdgeNormals(three: typeof import('three'), geometry: import('three').BufferGeometry, blend: number): void {
+  const position = geometry.getAttribute('position')
+  const normal = geometry.getAttribute('normal')
+  const keyFor = (i: number): string =>
+    `${position.getX(i).toFixed(5)},${position.getY(i).toFixed(5)},${position.getZ(i).toFixed(5)}`
+
+  const groups = new Map<string, number[]>()
+  for (let i = 0; i < position.count; i++) {
+    const key = keyFor(i)
+    const list = groups.get(key)
+    if (list) list.push(i)
+    else groups.set(key, [i])
+  }
+
+  const smoothedByKey = new Map<string, import('three').Vector3>()
+  for (const [key, indices] of groups) {
+    const sum = new three.Vector3()
+    for (const i of indices) sum.add(new three.Vector3(normal.getX(i), normal.getY(i), normal.getZ(i)))
+    smoothedByKey.set(key, sum.normalize())
+  }
+
+  for (let i = 0; i < position.count; i++) {
+    const flat = new three.Vector3(normal.getX(i), normal.getY(i), normal.getZ(i))
+    const smooth = smoothedByKey.get(keyFor(i))!
+    const blended = flat.lerp(smooth, blend).normalize()
+    normal.setXYZ(i, blended.x, blended.y, blended.z)
+  }
+  normal.needsUpdate = true
+}
+
+// PHASE 4C.1 -- restated (not imported) from the frozen d20 renderer's
+// own `buildEdgeOutline`, same `EdgesGeometry(geometry, 1)` +
+// `LineBasicMaterial` construction, same opacity (0.85, Phase 4B.3's own
+// "raised via opacity, not linewidth" reasoning applies identically
+// here). `EdgesGeometry`'s angle threshold naturally excludes internal,
+// exactly-coplanar triangulation seams (d10's kite diagonal, d12's
+// pentagon fan lines) -- proven by this phase's own tests, not assumed.
+function buildEdgeGeometry(three: typeof import('three'), geometry: import('three').BufferGeometry): import('three').EdgesGeometry {
+  return new three.EdgesGeometry(geometry, 1)
+}
+
+function getEdgeMaterial(three: typeof import('three')): import('three').LineBasicMaterial {
+  if (!sharedEdgeMaterial) {
+    sharedEdgeMaterial = new three.LineBasicMaterial({
+      color: activeSkin.material.accentColor ?? activeSkin.material.baseColor,
+      transparent: true,
+      opacity: 0.85
+    })
+  }
+  return sharedEdgeMaterial
+}
 
 let animationGeneration = 0
 
@@ -235,15 +332,43 @@ function faceValueOrderFor(sides: number): readonly number[] {
   }
 }
 
+// PHASE 4C.1 -- edge-normal softening is applied to every die EXCEPT the
+// cube: a d6's faces are already flat, single quads with genuinely sharp
+// physical edges (a cube looks WRONG with softened edges -- this is the
+// "only adjust normals if a concrete shape visibly requires it" case
+// this task's own NORMALS/FACET READ section names). The SAME modest
+// 0.15 blend the frozen d20 uses is reused for the other four shapes --
+// they are, like d20, moderately-faceted convex solids for which the
+// frozen renderer's own value already reads correctly; this is a
+// restatement of an already-proven value, not "blindly copying" it onto
+// a shape that has never been evaluated.
+const EDGE_NORMAL_SOFTEN = 0.15
+
 function getGeometry(three: typeof import('three'), sides: number): import('three').BufferGeometry {
   const key = String(sides)
   const cached = geometryCache.get(key)
   if (cached) return cached
+
   const geometry = sides === 20
-    ? buildD20FaceGeometry(three, DIE_RADIUS)
-    : polyhedralDieDefinitionForSides(sides)!.buildGeometry(three, DIE_RADIUS)
+    ? buildD20FaceGeometry(three, BASE_DIE_RADIUS)
+    : polyhedralDieDefinitionForSides(sides)!.buildGeometry(three, BASE_DIE_RADIUS)
+
+  if (sides !== 6) applySoftenedEdgeNormals(three, geometry, EDGE_NORMAL_SOFTEN)
+
   geometryCache.set(key, geometry)
+  edgeGeometryCache.set(key, buildEdgeGeometry(three, geometry))
   return geometry
+}
+
+function getEdgeGeometry(three: typeof import('three'), sides: number): import('three').EdgesGeometry {
+  const key = String(sides)
+  const cached = edgeGeometryCache.get(key)
+  if (cached) return cached
+  // getGeometry() always populates edgeGeometryCache as a side effect --
+  // calling it here guarantees the entry exists without duplicating the
+  // build logic.
+  getGeometry(three, sides)
+  return edgeGeometryCache.get(key)!
 }
 
 function getMaterials(three: typeof import('three'), sides: number, labelRole: 'default' | 'tens', maxAnisotropy: number): import('three').MeshStandardMaterial[] {
@@ -303,8 +428,19 @@ async function ensureScene(): Promise<void> {
 
     const three = ThreeMod
     scene = new three.Scene()
-    camera = new three.PerspectiveCamera(42, 1, 0.1, 10)
-    camera.position.set(0, 0.4, 4.2)
+    // PHASE 4C.1 -- same FOV as the frozen d20 renderer (40), but pulled
+    // back slightly (distance 3.8 vs the frozen renderer's own 3.4) --
+    // a small, deliberate, disclosed deviation, not an oversight. The
+    // frozen camera's own frustum has almost no headroom beyond d20's own
+    // LAND_REST_SCALE footprint (verified arithmetically, see
+    // authoredDicePresentationScale.ts's own header); reusing it exactly
+    // would leave no room for ANY die-size correction without clipping.
+    // This modest pull-back keeps a pooled/manual d20 close to (not
+    // identical to) the frozen standalone d20's own apparent size, while
+    // creating the frustum headroom `presentationMeshScale` needs for
+    // d4/d6/d8/d10's own capped size correction.
+    camera = new three.PerspectiveCamera(40, 1, 0.1, 10)
+    camera.position.set(0, 0.35, 3.8)
     camera.lookAt(0, 0, 0)
 
     renderer = new three.WebGLRenderer({ antialias: true, alpha: true })
@@ -353,9 +489,13 @@ function animatePhase(generation: number, durationMs: number, onFrame: (t: numbe
   })
 }
 
-function updateShadow(shadow: import('three').Mesh, x: number, y: number, z: number) {
-  shadow.position.set(x, -0.7, z)
-  shadow.scale.setScalar(shadowScaleForHeight(y))
+function updateShadow(shadow: import('three').Mesh, x: number, y: number, z: number, presentationScale: number) {
+  // PHASE 4C.1 -- the floor offset scales WITH presentationScale (not a
+  // fixed -0.7 for every die), so an enlarged die (e.g. d4 at ~2.38x)
+  // still has its shadow sit just below its own, proportionally larger,
+  // visual footprint rather than floating above it.
+  shadow.position.set(x, -0.7 * presentationScale, z)
+  shadow.scale.setScalar(shadowScaleForHeight(y) * presentationScale)
   const material = shadow.material as import('three').MeshBasicMaterial
   material.opacity = shadowOpacityForHeight(y)
 }
@@ -401,6 +541,12 @@ async function playPool(specs: PoolDieSpec[]): Promise<void> {
       const geometry = getGeometry(three, spec.sides)
       const materials = getMaterials(three, spec.sides, spec.labelRole === 'tens' ? 'tens' : 'default', maxAnisotropy)
       const mesh = new three.Mesh(geometry, materials)
+      // PHASE 4C.1 -- the family gold edge treatment. A fresh
+      // `LineSegments` PER DIE INSTANCE (an Object3D can only have one
+      // parent), sharing the CACHED `EdgesGeometry` and the one shared
+      // `LineBasicMaterial` across every instance and every roll -- see
+      // this file's own PHASE 4C.1 header.
+      mesh.add(new three.LineSegments(getEdgeGeometry(three, spec.sides), getEdgeMaterial(three)))
       const shadow = buildContactShadow(three)
       scene!.add(mesh, shadow)
 
@@ -408,6 +554,7 @@ async function playPool(specs: PoolDieSpec[]): Promise<void> {
       const spread = specs.length > 1 ? 1 : 0
       return {
         mesh, shadow, spec,
+        presentationScale: presentationMeshScale(spec.sides, specs.length),
         startPosition: { x: THROW_START_POSITION.x + offset.x * 0.3, y: THROW_START_POSITION.y, z: THROW_START_POSITION.z - i * 0.05 },
         peakPosition: { x: THROW_PEAK_POSITION.x + offset.x * spread * 0.4, y: THROW_PEAK_POSITION.y, z: THROW_PEAK_POSITION.z },
         landPosition: { x: THROW_LAND_POSITION.x + offset.x, y: THROW_LAND_POSITION.y + offset.y, z: THROW_LAND_POSITION.z },
@@ -421,8 +568,8 @@ async function playPool(specs: PoolDieSpec[]): Promise<void> {
     for (const die of dice) {
       die.mesh.position.set(die.startPosition.x, die.startPosition.y, die.startPosition.z)
       die.mesh.quaternion.identity()
-      die.mesh.scale.setScalar(1)
-      updateShadow(die.shadow, die.startPosition.x, die.startPosition.y, die.startPosition.z)
+      die.mesh.scale.setScalar(die.presentationScale)
+      updateShadow(die.shadow, die.startPosition.x, die.startPosition.y, die.startPosition.z, die.presentationScale)
     }
     renderer.render(scene, camera)
     visible.value = true
@@ -433,7 +580,7 @@ async function playPool(specs: PoolDieSpec[]): Promise<void> {
       for (const die of dice) {
         const pos = bezierPoint(eased, die.startPosition, die.peakPosition, die.landPosition)
         die.mesh.position.set(pos.x, pos.y, pos.z)
-        updateShadow(die.shadow, pos.x, pos.y, pos.z)
+        updateShadow(die.shadow, pos.x, pos.y, pos.z, die.presentationScale)
         const qx = new three.Quaternion().setFromAxisAngle(die.spinAxisX, die.spinTurnsX * Math.PI * 2 * eased)
         const qy = new three.Quaternion().setFromAxisAngle(die.spinAxisY, die.spinTurnsY * Math.PI * 2 * eased)
         die.mesh.quaternion.copy(qy).multiply(qx)
@@ -448,24 +595,28 @@ async function playPool(specs: PoolDieSpec[]): Promise<void> {
         die.mesh.quaternion.slerpQuaternions(throwEndQuats[i]!, targets[i]!, eased)
         const y = die.landPosition.y - landBobOffset(t)
         die.mesh.position.set(die.landPosition.x, y, die.landPosition.z)
-        die.mesh.scale.set(landSquashScaleXZ(t), landSquashScaleY(t), landSquashScaleXZ(t))
-        updateShadow(die.shadow, die.landPosition.x, y, die.landPosition.z)
+        die.mesh.scale.set(
+          landSquashScaleXZ(t) * die.presentationScale,
+          landSquashScaleY(t) * die.presentationScale,
+          landSquashScaleXZ(t) * die.presentationScale
+        )
+        updateShadow(die.shadow, die.landPosition.x, y, die.landPosition.z, die.presentationScale)
       })
     })
 
     dice.forEach((die, i) => {
       die.mesh.quaternion.copy(targets[i]!)
       die.mesh.position.set(die.landPosition.x, die.landPosition.y, die.landPosition.z)
-      die.mesh.scale.setScalar(LAND_REST_SCALE)
-      updateShadow(die.shadow, die.landPosition.x, die.landPosition.y, die.landPosition.z)
+      die.mesh.scale.setScalar(LAND_REST_SCALE * die.presentationScale)
+      updateShadow(die.shadow, die.landPosition.x, die.landPosition.y, die.landPosition.z, die.presentationScale)
     })
     renderer.render(scene, camera)
 
     await animatePhase(myGeneration, FLOURISH_MS, (t) => {
-      for (const die of dice) die.mesh.scale.setScalar(flourishScale(t))
+      for (const die of dice) die.mesh.scale.setScalar(flourishScale(t) * die.presentationScale)
     })
     dice.forEach((die) => {
-      die.mesh.scale.setScalar(LAND_REST_SCALE)
+      die.mesh.scale.setScalar(LAND_REST_SCALE * die.presentationScale)
       // Kept/dropped presentation (this task's own KEPT/DROPPED section):
       // dropped dice dim at RESULT_HOLD -- normal materials otherwise, no
       // removal from the scene, so the player can still see what was rolled.
@@ -506,6 +657,8 @@ onBeforeUnmount(() => {
       }
     }
     for (const geometry of geometryCache.values()) geometry.dispose()
+    for (const edgeGeometry of edgeGeometryCache.values()) edgeGeometry.dispose()
+    sharedEdgeMaterial?.dispose()
   } catch {
     // Teardown of an already-broken renderer must never throw during unmount.
   }

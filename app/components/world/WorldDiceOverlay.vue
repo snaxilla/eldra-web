@@ -13,19 +13,22 @@
 // this component's own job is positioning chrome PLUS -- as of Phase
 // 3B -- registering the real renderer that queue plays through.
 //
-// LOCATION: docked bottom-right on desktop/tablet, sitting ABOVE where
-// WorldRollTray.vue itself docks (`bottom-6`) so a completed animation
-// visually settles into the tray beneath it once the queue reveals it --
-// the same "one, canonical, world-scoped celebration point" every future
-// gameplay system shares. Mobile centers it near the bottom, above the
-// same reserved space WorldRollTray.vue's own mobile sheet already
-// respects. `z-35` sits deliberately between WorldRollTray's `z-30` and
-// any modal-level `z-50+` surface -- never fighting either for stacking
-// order.
+// LOCATION -- ROLL SYSTEM PHASE 4C.2 (DICE STAGE POSITION
+// NORMALIZATION). Screen position now belongs entirely to
+// WorldDicePresentationStage.vue -- see that component's own header, and
+// app/lib/dice-presentation/placement.ts's own header, for the full
+// traced root cause (four independently hand-tuned `fixed` positions
+// across four renderer files) this centralizes. This file's own job is
+// unchanged: mount the stage once, register whichever adapter the
+// current DiceRendererMode selects, and let EVERY renderer -- the Phase
+// 3A placeholder, the physics comparison renderer, the frozen authored
+// d20, and the general authored polyhedral renderer -- render as the
+// stage's own children, sharing its one position/size/z-index instead of
+// each owning a separate one.
 //
 // RENDERS NOTHING VISIBLE WHEN IDLE: WorldDiceStage.vue's own `v-if`
-// means this fixed-position host is inert chrome (zero opacity, zero
-// pointer capture) until a roll is actually queued -- never a permanent
+// means the stage is inert chrome (zero opacity content, `pointer-events:
+// none` throughout) until a roll is actually queued -- never a permanent
 // panel.
 //
 // ---------------------------------------------------------------------------
@@ -115,6 +118,7 @@
 
 import WorldAuthoredPolyhedralDiceRenderer from '~/components/world/WorldAuthoredPolyhedralDiceRenderer.client.vue'
 import WorldAuthoredThreeDiceRenderer from '~/components/world/WorldAuthoredThreeDiceRenderer.client.vue'
+import WorldDicePresentationStage from '~/components/world/WorldDicePresentationStage.vue'
 import WorldDiceStage from '~/components/world/WorldDiceStage.vue'
 import WorldDiceThreeRenderer from '~/components/world/WorldDiceThreeRenderer.client.vue'
 import { createAuthoredThreeDiceRendererAdapter, type WorldAuthoredPolyhedralDiceRendererExposed, type WorldAuthoredThreeDiceRendererExposed } from '~/components/world/worldAuthoredThreeDiceRendererAdapter'
@@ -159,15 +163,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="pointer-events-none fixed inset-x-0 bottom-24 z-[35] flex justify-center sm:inset-x-auto sm:bottom-28 sm:right-6 sm:justify-end">
-    <div class="pointer-events-auto">
+  <WorldDicePresentationStage>
+    <div class="pointer-events-auto absolute inset-0 flex items-center justify-center">
       <WorldDiceStage />
     </div>
-  </div>
 
-  <ClientOnly>
-    <WorldDiceThreeRenderer ref="diceBoxRef" />
-    <WorldAuthoredThreeDiceRenderer ref="authoredThreeDiceBoxRef" />
-    <WorldAuthoredPolyhedralDiceRenderer ref="authoredPolyhedralDiceBoxRef" />
-  </ClientOnly>
+    <ClientOnly>
+      <WorldDiceThreeRenderer ref="diceBoxRef" />
+      <WorldAuthoredThreeDiceRenderer ref="authoredThreeDiceBoxRef" />
+      <WorldAuthoredPolyhedralDiceRenderer ref="authoredPolyhedralDiceBoxRef" />
+    </ClientOnly>
+  </WorldDicePresentationStage>
 </template>

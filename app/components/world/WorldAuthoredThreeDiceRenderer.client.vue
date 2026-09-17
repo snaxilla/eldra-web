@@ -1226,11 +1226,20 @@ defineExpose({
 </script>
 
 <template>
-  <!-- Roll System Phase 4B.1/4B.2 -- docked at the EXACT same shelf every
-       prior Dice Presentation Layer renderer uses -- see this file's own
-       header. -->
+  <!-- Roll System Phase 4C.2 -- SCREEN POSITION IS NO LONGER OWNED HERE.
+       This is the one, narrow, explicitly-sanctioned exception to "d20 is
+       frozen": moving the CONTAINER this renders into, without touching
+       any internal presentation math (geometry/UV/orientation/scale/
+       choreography/lifecycle, all completely unchanged below). The
+       previous `fixed z-[175] bottom-40 ... sm:right-6 sm:h-72 sm:w-72`
+       positioning is now WorldDicePresentationStage.vue's own job -- this
+       root element simply fills whatever box that shared stage provides
+       (`absolute inset-0`), centering the SAME, byte-for-byte-unchanged
+       200x200px inner scene wrapper within it. See
+       app/lib/dice-presentation/placement.ts's own header for the full
+       traced root cause this fixes. -->
   <div
-    class="eldra-authored-three-d20-stage pointer-events-none fixed z-[175] bottom-40 left-1/2 h-56 w-56 origin-bottom -translate-x-1/2 transition duration-150 ease-out sm:left-auto sm:right-6 sm:h-72 sm:w-72 sm:translate-x-0"
+    class="eldra-authored-three-d20-stage pointer-events-none absolute inset-0 flex origin-bottom items-center justify-center transition duration-150 ease-out"
     :class="visible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'"
   >
     <div

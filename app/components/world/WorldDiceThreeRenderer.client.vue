@@ -464,24 +464,26 @@ defineExpose({
 })
 </script>
 
+<!-- Roll System Phase 4C.2 -- DOCKED inside the shared
+     WorldDicePresentationStage.vue, not independently positioned (see
+     that component's own header, and
+     app/lib/dice-presentation/placement.ts's own header, for the full
+     traced root cause). This root element now fills whatever box the
+     stage provides (`absolute inset-0`) instead of covering the
+     viewport itself; the stage owns z-index. -->
 <template>
   <div
     :id="containerId"
-    class="eldra-dice-three-stage pointer-events-none fixed inset-0 z-[175]"
+    class="eldra-dice-three-stage pointer-events-none absolute inset-0"
   />
 </template>
 
 <style scoped>
-.eldra-dice-three-stage {
-  width: 100vw;
-  height: 100dvh;
-}
-
 .eldra-dice-three-stage :deep(canvas) {
   position: absolute !important;
   inset: 0 !important;
-  width: 100vw !important;
-  height: 100dvh !important;
+  width: 100% !important;
+  height: 100% !important;
   max-width: none !important;
   max-height: none !important;
 }

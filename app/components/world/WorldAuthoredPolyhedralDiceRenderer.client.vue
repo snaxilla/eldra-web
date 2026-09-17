@@ -668,8 +668,16 @@ defineExpose({ playPool, error })
 </script>
 
 <template>
+  <!-- Roll System Phase 4C.2 -- screen position now belongs entirely to
+       WorldDicePresentationStage.vue; this root element just fills
+       whatever box that shared stage provides. See
+       app/lib/dice-presentation/placement.ts's own header for the full
+       traced root cause (this file's own previous `bottom-40/sm:bottom-28
+       /z-[35]` diverged from the frozen d20 renderer's own
+       `bottom-40/sm:right-6/z-[175]`, which is exactly why die type
+       appeared to determine screen position). -->
   <div
-    class="pointer-events-none fixed bottom-40 z-[35] flex justify-center transition duration-150 sm:bottom-28 sm:right-6 sm:justify-end"
+    class="pointer-events-none absolute inset-0 flex items-center justify-center transition duration-150"
     :class="visible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'"
   >
     <div ref="containerEl" :style="{ width: `${SCENE_PX}px`, height: `${SCENE_PX}px` }" />

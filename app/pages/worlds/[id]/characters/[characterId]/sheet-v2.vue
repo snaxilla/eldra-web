@@ -560,14 +560,6 @@ const {
   closeContext
 } = useCharacterSheetLayout()
 
-// Rest buttons in the command center are a shortcut to the SAME mutation
-// CharacterRecoveryPanel.vue's own Rest buttons already call -- see
-// CharacterSheetCommandCenter.vue's own header for why this adds no new
-// validation logic.
-function handleCommandCenterRest(payload: { type: 'short-rest' | 'long-rest' }) {
-  mutations.recovery.apply(payload)
-}
-
 // ---------------------------------------------------------------------------
 // WHICH RULE CATEGORY RENDERS WHERE -- Desktop IA pass, corrected by
 // Header Phases H1 and H2
@@ -823,7 +815,6 @@ function openSkillContext(skill: CharacterSkillRow) {
             :recovery-error="mutations.recovery.error"
             :spell-saving="mutations.spellcasting.saving"
             :remove-condition="mutations.conditions.remove"
-            @rest="handleCommandCenterRest"
             @save="mutations.recovery.save"
             @recovery="mutations.recovery.apply"
             @expend-slot="mutations.spellcasting.expendSlot"

@@ -32,9 +32,18 @@
 // HP correction, Damage/Heal, Hit Dice, Death Saves, and (for casters)
 // Spell Slots, everything CharacterRecoveryPanel.vue and
 // CharacterSpellcastingPanel.vue's own Spell Slots block used to own
-// alone in a separate, scrolled-away section. Short Rest/Long Rest
-// already lived in this file's own button row since H1 and are
-// unchanged.
+// alone in a separate, scrolled-away section.
+//
+// HEADER CLEANUP 2: SHORT REST / LONG REST NO LONGER LIVE HERE. They sat
+// in this file's own top-right button row, beside Back, since H1 --
+// real-browser feedback flagged that as mixing navigation (Back) with a
+// character/gameplay action. Both buttons moved into
+// CharacterCommandResources.vue's own new Rest card (grouped with the Hit
+// Dice they are conceptually inseparable from in 5e play); this file's own
+// `rest` emit is gone along with them -- `recovery` (already relayed
+// below) is the only event this component emits for any recovery action
+// now, matching what CharacterCommandResources.vue already emitted for
+// Damage/Heal/Temp HP/Spend Hit Die/Death Saves all along.
 //
 // ---------------------------------------------------------------------------
 // PORTRAIT -- THE COVER OF THE FOLIO, NOT AN AVATAR
@@ -60,16 +69,6 @@
 // · Elf · Wizard · Sage" -- with an unresolved slot still rendered in the
 // same danger tint `identity.identityRows` already carries.
 //
-// ---------------------------------------------------------------------------
-// REST BUTTONS -- A SHORTCUT TO AN EXISTING MUTATION, NOT A NEW CONTROL
-// ---------------------------------------------------------------------------
-// `rest` emits the exact `{ type: 'short-rest' | 'long-rest' }` shape
-// `recovery` below also carries -- the page wires both to the SAME
-// `mutations.recovery.apply` handler. This component adds no validation
-// of its own (e.g. it does not check hit dice remaining before allowing
-// Short Rest); that validation lives server-side, exactly as it did when
-// the button lived in CharacterRecoveryPanel.vue.
-
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import type { StoredCharacterHealth } from '~/lib/characters/health'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
@@ -126,7 +125,6 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  rest: [{ type: 'short-rest' | 'long-rest' }]
   save: [StoredCharacterHealth]
   recovery: [{ type: RecoveryActionType; amount?: number }]
   'expend-slot': [number]
@@ -284,7 +282,13 @@ function handlePortraitFileChange(event: Event) {
             </p>
           </div>
 
-          <!-- Command buttons: tight, aligned with the identity block. -->
+          <!-- Command buttons: tight, aligned with the identity block.
+               Header Cleanup 2: Short Rest/Long Rest are gone from here --
+               navigation (Back) no longer shares this row with a character
+               action; both moved into CharacterCommandResources.vue's own
+               Rest card below. Not replaced with filler -- empty header
+               space here is acceptable and expected to hold a future
+               feature, not filled just because it is available. -->
           <div class="flex shrink-0 items-center gap-1.5">
             <CharacterSaveIndicator
               :saving="saving"
@@ -297,24 +301,6 @@ function handlePortraitFileChange(event: Event) {
             >
               Back
             </NuxtLink>
-
-            <button
-              type="button"
-              class="eldra-button rounded-none px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="saving"
-              @click="emit('rest', { type: 'short-rest' })"
-            >
-              Short Rest
-            </button>
-
-            <button
-              type="button"
-              class="eldra-button rounded-none px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="saving"
-              @click="emit('rest', { type: 'long-rest' })"
-            >
-              Long Rest
-            </button>
           </div>
         </div>
 

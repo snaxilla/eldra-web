@@ -7,10 +7,20 @@
 //
 // H5's own brief: "Health belongs together. Resources belong together.
 // Recovery belongs together." -- the player should rarely need to leave
-// the command center during combat. Short Rest/Long Rest already lived in
-// the command center's own button row since Header Phase H1; everything
-// else that used to live in CharacterRecoveryPanel.vue and
-// CharacterSpellcastingPanel.vue's own Spell Slots block moves here.
+// the command center during combat. Everything that used to live in
+// CharacterRecoveryPanel.vue and CharacterSpellcastingPanel.vue's own
+// Spell Slots block moves here.
+//
+// HEADER CLEANUP 2: SHORT REST / LONG REST MOVE IN, HIT DICE STOPS BEING
+// ISOLATED. Short Rest/Long Rest lived in the command center's own
+// top-right button row (beside Back) since Header Phase H1 -- real-browser
+// feedback flagged that as mixing navigation with a character action, and
+// that Hit Dice sat alone with no visual link to the rest action that, in
+// this domain, already spends one automatically (see the new Rest card's
+// own comment below for the full trace). Both buttons emit `recovery`
+// through the EXACT SAME `emitRecovery` helper Spend Hit Die already used
+// -- CharacterSheetCommandCenter.vue's own separate `rest` emit is now
+// unused and removed there, not duplicated here.
 //
 // KEEP BEHAVIOR, ONLY CHANGE PRESENTATION. Every prop and every emit below
 // is copied verbatim from CharacterRecoveryPanel.vue (`health`/`maxHp`/
@@ -214,13 +224,71 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
         </button>
       </div>
 
-      <!-- Hit Dice ---------------------------------------------------------- -->
-      <div class="eldra-well rounded-none p-2">
+      <!-- Rest ---------------------------------------------------------------
+           Character Sheet Header Cleanup 2: Short Rest/Long Rest move here
+           from the top header (CharacterSheetCommandCenter.vue's own
+           identity row) and replace the previously-isolated Hit Dice card.
+           Hit Dice belong conceptually INSIDE Rest -- a 5e player reaches
+           for a Hit Die WHILE resting, not as a standalone header stat --
+           not beside Back at the top of the sheet. Traced before building
+           this (server/utils/character-recovery.ts's own header/tests):
+           Short Rest and Long Rest are, and remain, atomic RecoveryActions
+           with no persisted "rest session" of any kind -- Short Rest
+           already auto-spends exactly one Hit Die server-side, so this
+           block does not invent an ordering requirement between the two
+           rest buttons and Spend Hit Die below; all three are simply
+           grouped because they are the same gameplay concept, not because
+           clicking one gates another. `col-span-2` at the base (mobile)
+           width, unlike every OTHER card here, because this one now holds
+           two real buttons plus the Hit Dice line/action -- narrower than
+           that and "Short Rest"/"Long Rest" would need to wrap or
+           truncate; `sm:col-span-1` restores the single-card footprint the
+           PRODUCT GOAL names ("[Damage/Heal] [Rest] [Death Saves]
+           [future/empty space]") once the row itself is wide enough. -->
+      <div class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1">
         <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
-          {{ hitDiceLabel }}
+          Rest
         </div>
-        <div class="mt-1.5 text-sm tabular-nums text-[#d8ceb8]">
-          {{ hitDiceAvailable ?? '—' }} / {{ hitDiceMax ?? '—' }}
+
+        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            class="eldra-button flex min-h-11 items-center justify-center gap-1.5 rounded-none text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="recoverySaving"
+            @click="emitRecovery('short-rest')"
+          >
+            <UIcon
+              name="i-lucide-coffee"
+              class="h-4 w-4 shrink-0"
+              aria-hidden="true"
+            />
+            <span class="truncate">Short Rest</span>
+          </button>
+
+          <button
+            type="button"
+            class="eldra-button flex min-h-11 items-center justify-center gap-1.5 rounded-none text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="recoverySaving"
+            @click="emitRecovery('long-rest')"
+          >
+            <!-- The installed Lucide set (@iconify-json/lucide) has no
+                 "campfire" glyph -- confirmed by inspecting its own
+                 icons.json before choosing this -- so "flame" is the
+                 closest semantically-correct alternative, per this task's
+                 own explicit instruction to prefer Campfire over Flame
+                 only when Campfire actually exists. -->
+            <UIcon
+              name="i-lucide-flame"
+              class="h-4 w-4 shrink-0"
+              aria-hidden="true"
+            />
+            <span class="truncate">Long Rest</span>
+          </button>
+        </div>
+
+        <div class="mt-2 flex items-center justify-between gap-2 border-t border-[rgba(201,164,90,0.14)] pt-1.5">
+          <span class="min-w-0 truncate text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">{{ hitDiceLabel }}</span>
+          <span class="shrink-0 text-sm tabular-nums text-[#d8ceb8]">{{ hitDiceAvailable ?? '—' }} / {{ hitDiceMax ?? '—' }}</span>
         </div>
         <button
           type="button"
@@ -228,7 +296,7 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
           :disabled="recoverySaving || (hitDiceAvailable != null && hitDiceAvailable <= 0)"
           @click="emitRecovery('spend-hit-die')"
         >
-          Spend
+          Spend Hit Die
         </button>
       </div>
 

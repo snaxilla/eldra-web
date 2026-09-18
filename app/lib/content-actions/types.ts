@@ -97,8 +97,18 @@ export type ContentAction = {
   // server/utils/character-actions.ts handles as its own special case
   // rather than forcing a `{count:1,faces:1}` fiction here).
   damageRoll?: { count: number; faces: number }
+  // The FLAT, non-dice base a `damage` expression states before any
+  // ability modifier is added -- Unarmed Strike's RAW 2024 "1" in "1 +
+  // Strength modifier bludgeoning". A content fact, the same status
+  // `damageRoll`'s own count/faces have, just for an action with no dice
+  // to roll -- never both present on the same action. Phase 1A.1 Browser
+  // Polish reads this (alongside the Rules-Engine-derived
+  // `CharacterAction.damageAbilityModifier`, server/utils/character-actions.ts)
+  // to resolve a player-facing number instead of the row showing raw
+  // formula prose; see app/lib/content-actions/damage-presentation.ts.
+  damageFlatBase?: number
   // The word a damage total is reported in -- "slashing", "fire". Absent
-  // exactly when `damageRoll` is.
+  // exactly when neither `damageRoll` nor `damageFlatBase` is.
   damageType?: string
 }
 

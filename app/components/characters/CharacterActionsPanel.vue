@@ -123,7 +123,7 @@
 // affordance that actually differs -- the Resolve control -- rather than by
 // the surface.
 
-import { isAttackCapableAction } from '~/lib/content-actions'
+import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
 import type { ActionCategory, ActionResolution as ContentActionResolution } from '~/lib/content-actions'
 
 export type CharacterActionCategory = ActionCategory
@@ -148,6 +148,18 @@ export type CharacterAction = {
   attackBonus?: number
   saveDc?: number
   resolution?: ActionResolution
+  // Phase 1A.1 Browser Polish -- structured damage fields `resolveActionDamage`
+  // (app/lib/content-actions/damage-presentation.ts) reads to present a
+  // RESOLVED expression ("1d6+2 piercing", "2 bludgeoning") instead of raw
+  // formula prose. `damageRoll`/`damageFlatBase`/`damageType` restate
+  // ContentAction's own content-derived fields; `damageAbilityModifier`
+  // restates CharacterAction's server-side Rules-Engine output (server/utils/
+  // character-actions.ts) -- same "restated, not re-derived" rule this
+  // file's own header already applies to `attackBonus`/`saveDc`.
+  damageRoll?: { count: number; faces: number }
+  damageFlatBase?: number
+  damageType?: string
+  damageAbilityModifier?: number
 }
 
 // Restated client-side from server/utils/character-combat.ts's own
@@ -278,6 +290,17 @@ function hitOrDc(action: CharacterAction): string {
   if (action.saveDc !== undefined) return `DC ${action.saveDc}`
   return '—'
 }
+
+// Phase 1A.1 Browser Polish -- the Damage column's RESOLVED text ("1d6+2
+// piercing", "2 bludgeoning") in place of raw formula prose. Falls back to
+// the presentation-only `damage` string exactly when `resolveActionDamage`
+// has nothing authoritative to resolve (a spell, or a weapon/unarmed action
+// whose ability modifier the Rules runtime hasn't supplied yet) -- never a
+// fabricated number, the same discipline `hitOrDc` above already applies.
+function resolvedDamageText(action: CharacterAction): string {
+  const resolved = resolveActionDamage(action)
+  return resolved ? formatActionDamage(resolved) : action.damage || '—'
+}
 </script>
 
 <template>
@@ -379,7 +402,7 @@ function hitOrDc(action: CharacterAction): string {
            already carries its own labelled values. -->
       <div
         aria-hidden="true"
-        class="hidden border-b border-[rgba(201,164,90,0.16)] px-3 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-[#6f6754] md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)_8.5rem] md:gap-3"
+        class="hidden border-b border-[rgba(201,164,90,0.16)] px-3 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-[#6f6754] md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem_7.75rem] md:gap-3"
       >
         <span>Action</span>
         <span>Range</span>
@@ -403,7 +426,7 @@ function hitOrDc(action: CharacterAction): string {
           >
             <button
               type="button"
-              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:items-center md:gap-3"
+              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
               :disabled="rolling"
               :aria-label="`Roll ${action.name} Attack, bonus ${hitOrDc(action)}`"
               @click="attack(action.id)"
@@ -416,17 +439,19 @@ function hitOrDc(action: CharacterAction): string {
               </span>
 
               <!-- Below `md` the four table columns become one wrapped meta
-                   line, each value still carrying its own label. -->
+                   line, each value still carrying its own label. Damage
+                   shows the RESOLVED mechanic (Phase 1A.1 Browser Polish),
+                   never raw formula prose -- see `resolvedDamageText`. -->
               <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
                 <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
                 <span><span class="text-[#6f6754]">Attack</span> {{ hitOrDc(action) }}</span>
-                <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
+                <span><span class="text-[#6f6754]">Damage</span> {{ resolvedDamageText(action) }}</span>
                 <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
               </span>
 
               <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
               <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
-              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
+              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ resolvedDamageText(action) }}</span>
               <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
             </button>
 
@@ -467,7 +492,7 @@ function hitOrDc(action: CharacterAction): string {
           <template v-else>
             <button
               type="button"
-              class="eldra-well block w-full rounded-none px-3 py-2 text-left transition md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:items-center md:gap-3"
+              class="eldra-well block w-full rounded-none px-3 py-2 text-left transition md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
               :aria-label="`${action.name} — open details`"
               @click="emit('select', action)"
             >

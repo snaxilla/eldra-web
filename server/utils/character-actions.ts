@@ -65,6 +65,17 @@ export type CharacterAction = ContentAction & {
   // row rather than the whole list.
   attackBonus?: number
   saveDc?: number
+  // Phase 1A.1 Browser Polish -- the SAME ability modifier
+  // `resolveAttackAction` below resolves for an actual Damage Roll (melee ->
+  // Strength, ranged -> Dexterity; see `resolveDamageAbilityModifier`),
+  // attached here too so the Actions list can present a RESOLVED damage
+  // expression ("1d6+2 piercing") instead of raw formula prose. Present only
+  // for weapon/unarmed actions (the only categories a damage roll ever adds
+  // an ability modifier to -- character-combat.ts's own `rollDamage` note);
+  // absent, never a fabricated zero, when the Rules runtime that supplies it
+  // is unavailable. See app/lib/content-actions/damage-presentation.ts,
+  // this field's one consumer.
+  damageAbilityModifier?: number
 }
 
 export type CharacterActionsResult =
@@ -85,6 +96,33 @@ function findNumber(byCategory: Record<string, Array<{ id: string; value?: unkno
   return undefined
 }
 
+const STR_MOD_ID = 'value:ability.str.mod'
+const DEX_MOD_ID = 'value:ability.dex.mod'
+
+// THE one place a weapon/unarmed action's damage ability modifier is
+// looked up -- melee reads Strength, ranged reads Dexterity, mirroring
+// character-combat.ts's own `rollDamage` exactly (no finesse modeling,
+// stated there and carried forward here unchanged). Called from BOTH
+// `getCharacterActions` below (for presentation -- Phase 1A.1 Browser
+// Polish) and `resolveAttackAction` further down (for an actual Damage
+// Roll's own authority), so a row's displayed damage and the number a
+// Damage Roll actually adds can never drift apart -- one lookup, two
+// readers, never duplicated.
+//
+// Returns `undefined`, never a fabricated 0, exactly like `findNumber`
+// itself -- matching `meleeBonus`/`rangedBonus` immediately below in
+// `getCharacterActions`, which apply the identical "absent means unknown"
+// rule for `attackBonus`. `resolveAttackAction` (an actual roll, which must
+// always add SOME number) applies its own `?? 0` at its own call site,
+// exactly as it already did before this helper existed -- a fallback
+// POLICY, not a second calculation.
+function resolveDamageAbilityModifier(
+  byCategory: Record<string, Array<{ id: string; value?: unknown }>>,
+  attackKind: 'melee' | 'ranged'
+): number | undefined {
+  return findNumber(byCategory, attackKind === 'melee' ? STR_MOD_ID : DEX_MOD_ID)
+}
+
 // Deterministic, stable within one character's list -- the same
 // "byte-identical on every read" discipline character-actor-bridge.ts's own
 // SourceInstance ids already follow. `key` is whatever the caller has that
@@ -101,13 +139,19 @@ function actionId(category: ActionCategory, key: string | number): string {
 // server/utils/character-combat.ts special-cases `category === 'unarmed'`
 // for exactly this reason, the one piece of Combat Resolution genuinely
 // specific to this one synthesized action rather than generic across every
-// `damageRoll`-carrying action.
+// `damageRoll`-carrying action. `damageFlatBase`/`damageType` restate the
+// SAME "1"/"bludgeoning" the prose `damage` string already states, in the
+// structured shape app/lib/content-actions/damage-presentation.ts needs to
+// resolve a player-facing number -- not a new rule, just a second
+// (structured) representation of the one already printed here.
 const UNARMED_STRIKE: ContentAction = {
   name: 'Unarmed Strike',
   category: 'unarmed',
   actionType: 'Melee Attack',
   range: '5 ft.',
   damage: '1 + Strength modifier bludgeoning',
+  damageFlatBase: 1,
+  damageType: 'bludgeoning',
   resolution: { kind: 'attack-roll', attackKind: 'melee' }
 }
 
@@ -140,7 +184,12 @@ export async function getCharacterActions(
 
   const actions: CharacterAction[] = []
 
-  actions.push({ ...UNARMED_STRIKE, id: actionId('unarmed', 'strike'), attackBonus: meleeBonus })
+  actions.push({
+    ...UNARMED_STRIKE,
+    id: actionId('unarmed', 'strike'),
+    attackBonus: meleeBonus,
+    damageAbilityModifier: resolveDamageAbilityModifier(byCategory, 'melee')
+  })
 
   // Species/Class/Background content actions (`ContentAction[]` on each
   // slot's catalogue entry, resolved by resolveSpeciesActions/
@@ -160,7 +209,12 @@ export async function getCharacterActions(
     if (!item.equipped) continue
     for (const action of (item.entry as { actions?: ContentAction[] } | undefined)?.actions ?? []) {
       const isRanged = action.actionType === 'Ranged Attack'
-      actions.push({ ...action, id: actionId('weapon', item.instanceId), attackBonus: isRanged ? rangedBonus : meleeBonus })
+      actions.push({
+        ...action,
+        id: actionId('weapon', item.instanceId),
+        attackBonus: isRanged ? rangedBonus : meleeBonus,
+        damageAbilityModifier: resolveDamageAbilityModifier(byCategory, isRanged ? 'ranged' : 'melee')
+      })
     }
   }
 
@@ -199,9 +253,6 @@ export async function getCharacterActions(
 // function and the Actions panel client-side (CharacterActionsPanel.vue)
 // use, so "does this row get Attack/Damage controls" and "will the server
 // actually roll them" can never disagree.
-
-const STR_MOD_ID = 'value:ability.str.mod'
-const DEX_MOD_ID = 'value:ability.dex.mod'
 
 export type AttackCapableAction = CharacterAction & {
   category: 'weapon' | 'unarmed'
@@ -274,8 +325,7 @@ export async function resolveAttackAction(
   // is 'melee' or 'ranged' (never 'spell') -- the cast below only narrows
   // the type back to what that predicate already proved at runtime.
   const attackKind = (action.resolution as { attackKind: 'melee' | 'ranged' }).attackKind
-  const damageAbilityModifier =
-    findNumber(derived.derived.byCategory, attackKind === 'melee' ? STR_MOD_ID : DEX_MOD_ID) ?? 0
+  const damageAbilityModifier = resolveDamageAbilityModifier(derived.derived.byCategory, attackKind) ?? 0
 
   return {
     ok: true,

@@ -143,6 +143,30 @@ describe('getCharacterActions -- Unarmed Strike', () => {
     expect(unarmed).toBeDefined()
     expect(unarmed?.attackBonus).toBeUndefined()
   })
+
+  // Phase 1A.1 Browser Polish -- structured fields
+  // app/lib/content-actions/damage-presentation.ts resolves into "2
+  // bludgeoning" instead of the raw "1 + Strength modifier bludgeoning"
+  // prose the tests immediately above assert unchanged.
+  it('carries a structured flat damage base, damage type, and the Strength modifier (STR 18 -> +4)', async () => {
+    const result = await getCharacterActions('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const unarmed = result.actions.find((action) => action.category === 'unarmed')
+    expect(unarmed).toMatchObject({ damageFlatBase: 1, damageType: 'bludgeoning', damageAbilityModifier: 4 })
+  })
+
+  it('leaves damageAbilityModifier undefined -- never a fabricated 0 -- with no Rules Package activated', async () => {
+    getWorldRuntimeMock.mockResolvedValue({ configured: false })
+
+    const result = await getCharacterActions('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const unarmed = result.actions.find((action) => action.category === 'unarmed')
+    expect(unarmed?.damageAbilityModifier).toBeUndefined()
+  })
 })
 
 describe('getCharacterActions -- Species / Class / Background (DND5E Playability Audit)', () => {
@@ -231,6 +255,59 @@ describe('getCharacterActions -- Weapons', () => {
 
     const weapon = result.actions.find((action) => action.category === 'weapon')
     expect(weapon).toMatchObject({ name: 'Longbow', attackBonus: 4 })
+  })
+
+  // Phase 1A.1 Browser Polish -- the SAME per-character ability modifier a
+  // Damage Roll adds (server/utils/roll-events.ts's own
+  // createActionDamageRollEvent, via resolveAttackAction), attached here so
+  // the Actions list can present resolved damage ("1d6+2 piercing").
+  it('a melee weapon carries the Strength modifier as damageAbilityModifier (STR 18 -> +4)', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Shortsword', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [SHORTSWORD_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const result = await getCharacterActions('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const weapon = result.actions.find((action) => action.category === 'weapon')
+    expect(weapon).toMatchObject({ name: 'Shortsword', damageAbilityModifier: 4, damageRoll: { count: 1, faces: 6 }, damageType: 'piercing' })
+  })
+
+  it('a ranged weapon carries the Dexterity modifier as damageAbilityModifier, not Strength (DEX 14 -> +2)', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Longbow', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [LONGBOW_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const result = await getCharacterActions('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const weapon = result.actions.find((action) => action.category === 'weapon')
+    expect(weapon).toMatchObject({ name: 'Longbow', damageAbilityModifier: 2 })
+  })
+
+  it('leaves damageAbilityModifier undefined -- never a fabricated 0 -- with no Rules Package activated', async () => {
+    getWorldRuntimeMock.mockResolvedValue({ configured: false })
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Shortsword', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [SHORTSWORD_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const result = await getCharacterActions('5', '42')
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const weapon = result.actions.find((action) => action.category === 'weapon')
+    expect(weapon?.damageAbilityModifier).toBeUndefined()
   })
 
   it('an unequipped weapon produces no action', async () => {
@@ -421,6 +498,31 @@ describe('resolveAttackAction -- weapons', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('not-attack-capable')
+  })
+
+  // Phase 1A.1 Browser Polish's own acceptance requirement: presentation
+  // (the Actions list's `damageAbilityModifier`) and roll authority
+  // (resolveAttackAction's own `damageAbilityModifier`) must never drift
+  // apart -- both call the exact same `resolveDamageAbilityModifier` helper.
+  it('presents the same damageAbilityModifier the actual Damage Roll would use', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Shortsword', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [SHORTSWORD_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const [listResult, rollResult] = await Promise.all([
+      getCharacterActions('5', '42'),
+      resolveAttackAction('5', '42', 'weapon:item-1')
+    ])
+
+    expect(listResult.available).toBe(true)
+    expect(rollResult.ok).toBe(true)
+    if (!listResult.available || !rollResult.ok) return
+
+    const listed = listResult.actions.find((action) => action.id === 'weapon:item-1')
+    expect(listed?.damageAbilityModifier).toBe(rollResult.resolved.damageAbilityModifier)
   })
 })
 

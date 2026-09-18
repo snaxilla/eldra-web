@@ -24,6 +24,8 @@ export type {
 
 export { isAttackCapableAction } from './attack-capability'
 
+export { resolveActionDamage, formatActionDamage, type ResolvedActionDamage } from './damage-presentation'
+
 const RESOLVERS: Record<string, ContentActionResolver> = {
   dnd5e: resolveDnd5eActions
 }

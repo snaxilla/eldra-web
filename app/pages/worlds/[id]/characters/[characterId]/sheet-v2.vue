@@ -334,6 +334,7 @@ import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawe
 import WorldRollTray from '~/components/world/WorldRollTray.vue'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
+import { resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
 import type { CharacterAbilityRow } from '~/components/characters/CharacterAbilityGrid.vue'
 import type { CharacterSaveRow } from '~/components/characters/CharacterSaveList.vue'
 import {
@@ -649,12 +650,27 @@ function signedNumber(value: number): string {
   return value >= 0 ? `+${value}` : String(value)
 }
 
+// Phase 1A.1 Browser Polish -- the Context Rail explains WHY/HOW ("this
+// action's formula, and the modifier your character actually applies"),
+// the Action row now only shows WHAT WILL HAPPEN (resolveDamageText in
+// CharacterActionsPanel.vue). Both read the exact same structured fields
+// via the exact same `resolveActionDamage` helper -- never a second
+// calculation, never prose-parsed.
 function openActionContext(action: CharacterAction) {
   const lines: string[] = []
   if (action.range) lines.push(`Range: ${action.range}`)
   if (action.attackBonus !== undefined) lines.push(`Attack Bonus: ${signedNumber(action.attackBonus)}`)
   if (action.saveDc !== undefined) lines.push(`Save DC: ${action.saveDc}`)
   if (action.damage) lines.push(`Damage: ${action.damage}`)
+
+  const resolvedDamage = resolveActionDamage(action)
+  if (resolvedDamage) {
+    if (action.damageAbilityModifier !== undefined) {
+      lines.push(`Damage Modifier: ${signedNumber(action.damageAbilityModifier)}`)
+    }
+    lines.push(`Resolved Damage: ${formatActionDamage(resolvedDamage)}`)
+  }
+
   if (action.usage) lines.push(`Usage: ${action.usage}`)
   if (action.sourceBook) lines.push(`Source: ${action.sourceBook}`)
 

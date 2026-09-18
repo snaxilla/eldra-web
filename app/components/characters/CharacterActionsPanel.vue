@@ -36,6 +36,26 @@
 // completely unchanged by this phase.
 //
 // ---------------------------------------------------------------------------
+// PHASE 1A.1 -- ROW INTERACTION POLISH: ROW CLICK = ATTACK
+// ---------------------------------------------------------------------------
+// Phase 1A rendered Attack/Damage as two buttons stacked BELOW the row,
+// leaving the row itself a `select` control (open details) -- visually
+// disconnected from the row it acted on and taller than it needed to be.
+// Corrected here to match CharacterSkillList.vue's own Phase 2B.1 "rolling
+// is the primary interaction" shape: for an attack-capable action, the
+// row's PRIMARY surface (name/category/range/attack-bonus/damage/notes) IS
+// the Attack button (`attack()`, the exact same Phase 1A handler, never a
+// second request path) -- Damage and Info are its semantic SIBLINGS, not
+// nested inside it (a button cannot legally contain a button), placed in
+// the same visual row exactly as CharacterSkillList.vue places its own
+// roll-button + info-button pair. Info reuses that component's exact
+// `i-lucide-info` visual language and, like there, opens the existing
+// Context Rail (`select`) rather than rolling anything. Every OTHER action
+// (spell, non-attack) is completely unchanged below: still one row-wide
+// button whose click opens details, per this file's own FILTERS/MATERIAL
+// notes above.
+//
+// ---------------------------------------------------------------------------
 // A TABLE, NOT A PILE OF CARDS -- Desktop IA pass
 // ---------------------------------------------------------------------------
 // Rebuilt against the reference sheet's own Actions tab, whose single
@@ -359,13 +379,14 @@ function hitOrDc(action: CharacterAction): string {
            already carries its own labelled values. -->
       <div
         aria-hidden="true"
-        class="hidden border-b border-[rgba(201,164,90,0.16)] px-3 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-[#6f6754] md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:gap-3"
+        class="hidden border-b border-[rgba(201,164,90,0.16)] px-3 pb-1 text-[0.55rem] uppercase tracking-[0.16em] text-[#6f6754] md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)_8.5rem] md:gap-3"
       >
         <span>Action</span>
         <span>Range</span>
         <span>Hit / DC</span>
         <span>Damage</span>
         <span>Notes</span>
+        <span />
       </div>
 
       <ul class="grid gap-1">
@@ -373,111 +394,154 @@ function hitOrDc(action: CharacterAction): string {
           v-for="action in visibleActions"
           :key="action.id"
         >
-          <button
-            type="button"
-            class="eldra-well block w-full rounded-none px-3 py-2 text-left transition md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:items-center md:gap-3"
-            :aria-label="`${action.name} — open details`"
-            @click="emit('select', action)"
+          <!-- Phase 1A.1: attack-capable weapon/unarmed row -- see this
+               file's own header. The primary button IS the Attack roll;
+               Damage/Info are its siblings, never nested inside it. -->
+          <div
+            v-if="isAttackCapableAction(action)"
+            class="eldra-well flex flex-col gap-1.5 rounded-none px-3 py-2 transition md:flex-row md:items-center md:gap-3"
           >
-            <span class="block min-w-0">
-              <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
-              <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
-                {{ CATEGORY_LABELS[action.category] }}
+            <button
+              type="button"
+              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:items-center md:gap-3"
+              :disabled="rolling"
+              :aria-label="`Roll ${action.name} Attack, bonus ${hitOrDc(action)}`"
+              @click="attack(action.id)"
+            >
+              <span class="block min-w-0">
+                <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
+                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                  {{ CATEGORY_LABELS[action.category] }}
+                </span>
               </span>
-            </span>
 
-            <!-- Below `md` the four table columns become one wrapped meta
-                 line, each value still carrying its own label. -->
-            <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
-              <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
-              <span><span class="text-[#6f6754]">Hit/DC</span> {{ hitOrDc(action) }}</span>
-              <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
-              <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
-            </span>
+              <!-- Below `md` the four table columns become one wrapped meta
+                   line, each value still carrying its own label. -->
+              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
+                <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
+                <span><span class="text-[#6f6754]">Attack</span> {{ hitOrDc(action) }}</span>
+                <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
+                <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
+              </span>
 
-            <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
-            <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
-            <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
-            <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
-          </button>
+              <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
+              <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
+              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
+              <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
+            </button>
 
-          <!-- Character Sheet Body Phase 1A: a weapon/unarmed attack gets
-               untargeted Attack/Damage rolls, not Combat Resolution's
-               targeted Resolve -- see this file's own header. Sits outside
-               the row button so activating it never also opens the detail
-               drawer. -->
-          <template v-if="isAttackCapableAction(action)">
-            <div class="mt-1 flex gap-1.5">
+            <!-- Info + Damage: independently focusable siblings of the
+                 Attack button above. Info reuses CharacterSkillList.vue's
+                 exact info-icon language and opens the existing Context
+                 Rail (`select`); Damage keeps Phase 1A's existing
+                 `damage()` handler, only relocated into this row. -->
+            <div class="flex w-full items-center gap-1.5 md:w-auto">
               <button
                 type="button"
-                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
-                :disabled="rolling"
-                @click="attack(action.id)"
+                class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-none text-[#6f6754] transition hover:text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+                :aria-label="`View ${action.name} details`"
+                @click="emit('select', action)"
               >
-                Attack
+                <UIcon
+                  name="i-lucide-info"
+                  class="h-3.5 w-3.5"
+                />
               </button>
+
               <button
                 type="button"
-                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
                 :disabled="rolling"
+                :aria-label="`Roll ${action.name} Damage`"
                 @click="damage(action.id)"
               >
                 Damage
               </button>
             </div>
-          </template>
+          </div>
 
-          <!-- Combat Resolution: every OTHER action with a resolution
-               mechanic (spell attack roll, spell saving throw) keeps the
-               original targeted Resolve control, unchanged. -->
-          <template v-else-if="action.resolution">
+          <!-- Every other action (spell, non-attack) -- unchanged: the
+               whole row opens details, and Combat Resolution's targeted
+               Resolve control (spell attack roll / saving throw) sits
+               below it. -->
+          <template v-else>
             <button
               type="button"
-              class="eldra-button mt-1 min-h-11 w-full rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:px-4"
-              :disabled="!targetCharacterId || resolving"
-              @click="resolve(action.id)"
+              class="eldra-well block w-full rounded-none px-3 py-2 text-left transition md:grid md:grid-cols-[minmax(0,1fr)_5.5rem_4.5rem_6.5rem_minmax(0,7rem)] md:items-center md:gap-3"
+              :aria-label="`${action.name} — open details`"
+              @click="emit('select', action)"
             >
-              {{ resolving ? 'Resolving…' : 'Resolve' }}
+              <span class="block min-w-0">
+                <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
+                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                  {{ CATEGORY_LABELS[action.category] }}
+                </span>
+              </span>
+
+              <!-- Below `md` the four table columns become one wrapped meta
+                   line, each value still carrying its own label. -->
+              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
+                <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
+                <span><span class="text-[#6f6754]">Hit/DC</span> {{ hitOrDc(action) }}</span>
+                <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
+                <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
+              </span>
+
+              <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
+              <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
+              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
+              <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
             </button>
 
-            <div
-              v-if="results[action.id]"
-              class="mt-1 rounded-none border p-2 text-xs leading-5"
-              :class="results[action.id]!.hit
-                ? 'border-[rgba(158,195,125,0.4)] bg-[rgba(158,195,125,0.08)] text-[#d8ceb8]'
-                : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.4)] text-[#9f9278]'"
-            >
-              <template v-if="results[action.id]!.attackRoll">
-                <div>
-                  Attack roll {{ results[action.id]!.attackRoll!.roll }}
-                  {{ signed(results[action.id]!.attackRoll!.bonus) }}
-                  = {{ results[action.id]!.attackRoll!.total }}
-                  vs AC {{ results[action.id]!.attackRoll!.targetArmorClass }}
-                  — <strong>{{ results[action.id]!.critical ? 'Critical Hit' : results[action.id]!.hit ? 'Hit' : 'Miss' }}</strong>
-                </div>
-              </template>
-              <template v-else-if="results[action.id]!.savingThrow">
-                <div>
-                  Target save {{ results[action.id]!.savingThrow!.roll }}
-                  {{ signed(results[action.id]!.savingThrow!.bonus) }}
-                  = {{ results[action.id]!.savingThrow!.total }}
-                  vs DC {{ results[action.id]!.savingThrow!.dc }}
-                  — <strong>{{ results[action.id]!.savingThrow!.success ? 'Save Succeeded' : 'Save Failed' }}</strong>
-                </div>
-              </template>
+            <template v-if="action.resolution">
+              <button
+                type="button"
+                class="eldra-button mt-1 min-h-11 w-full rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:px-4"
+                :disabled="!targetCharacterId || resolving"
+                @click="resolve(action.id)"
+              >
+                {{ resolving ? 'Resolving…' : 'Resolve' }}
+              </button>
 
-              <div v-if="results[action.id]!.damage && results[action.id]!.damage!.total > 0">
-                Damage: {{ results[action.id]!.damage!.total }}
-                <template v-if="results[action.id]!.damage!.type">({{ results[action.id]!.damage!.type }})</template>
-                <template v-if="results[action.id]!.damage!.halvedFrom">
-                  — halved from {{ results[action.id]!.damage!.halvedFrom }}
+              <div
+                v-if="results[action.id]"
+                class="mt-1 rounded-none border p-2 text-xs leading-5"
+                :class="results[action.id]!.hit
+                  ? 'border-[rgba(158,195,125,0.4)] bg-[rgba(158,195,125,0.08)] text-[#d8ceb8]'
+                  : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.4)] text-[#9f9278]'"
+              >
+                <template v-if="results[action.id]!.attackRoll">
+                  <div>
+                    Attack roll {{ results[action.id]!.attackRoll!.roll }}
+                    {{ signed(results[action.id]!.attackRoll!.bonus) }}
+                    = {{ results[action.id]!.attackRoll!.total }}
+                    vs AC {{ results[action.id]!.attackRoll!.targetArmorClass }}
+                    — <strong>{{ results[action.id]!.critical ? 'Critical Hit' : results[action.id]!.hit ? 'Hit' : 'Miss' }}</strong>
+                  </div>
                 </template>
-              </div>
+                <template v-else-if="results[action.id]!.savingThrow">
+                  <div>
+                    Target save {{ results[action.id]!.savingThrow!.roll }}
+                    {{ signed(results[action.id]!.savingThrow!.bonus) }}
+                    = {{ results[action.id]!.savingThrow!.total }}
+                    vs DC {{ results[action.id]!.savingThrow!.dc }}
+                    — <strong>{{ results[action.id]!.savingThrow!.success ? 'Save Succeeded' : 'Save Failed' }}</strong>
+                  </div>
+                </template>
 
-              <div class="mt-1 text-[#6f6754]">
-                Target HP remaining: {{ results[action.id]!.targetHealth.currentHp }}
+                <div v-if="results[action.id]!.damage && results[action.id]!.damage!.total > 0">
+                  Damage: {{ results[action.id]!.damage!.total }}
+                  <template v-if="results[action.id]!.damage!.type">({{ results[action.id]!.damage!.type }})</template>
+                  <template v-if="results[action.id]!.damage!.halvedFrom">
+                    — halved from {{ results[action.id]!.damage!.halvedFrom }}
+                  </template>
+                </div>
+
+                <div class="mt-1 text-[#6f6754]">
+                  Target HP remaining: {{ results[action.id]!.targetHealth.currentHp }}
+                </div>
               </div>
-            </div>
+            </template>
           </template>
         </li>
       </ul>

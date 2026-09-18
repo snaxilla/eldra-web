@@ -16,6 +16,7 @@ import {
   applyHealing,
   emptyCharacterHealth,
   grantTemporaryHp,
+  isCharacterDeceasedFromDeathSaves,
   normalizeStoredCharacterHealth,
   resetDeathSaves,
   spendHitDie,
@@ -326,5 +327,42 @@ describe('resetDeathSaves', () => {
     const frozen = JSON.stringify(original)
     resetDeathSaves(original)
     expect(JSON.stringify(original)).toBe(frozen)
+  })
+})
+
+describe('isCharacterDeceasedFromDeathSaves', () => {
+  // Character Sheet Header Cleanup 3. Pure derivation from the SAME
+  // authoritative `failures` count -- no second flag exists to drift, so
+  // "reset" and "Long Rest" are not separate cases here: they are just
+  // `failures` becoming < 3, already covered by the 0/1/2 cases below.
+  it('failures 0 -> not deceased', () => {
+    expect(isCharacterDeceasedFromDeathSaves({ successes: 0, failures: 0 })).toBe(false)
+  })
+
+  it('failures 1 -> not deceased', () => {
+    expect(isCharacterDeceasedFromDeathSaves({ successes: 0, failures: 1 })).toBe(false)
+  })
+
+  it('failures 2 -> not deceased', () => {
+    expect(isCharacterDeceasedFromDeathSaves({ successes: 0, failures: 2 })).toBe(false)
+  })
+
+  it('failures 3 -> deceased', () => {
+    expect(isCharacterDeceasedFromDeathSaves({ successes: 0, failures: 3 })).toBe(true)
+  })
+
+  it('successes do not independently trigger deceased presentation, even at 3', () => {
+    expect(isCharacterDeceasedFromDeathSaves({ successes: 3, failures: 0 })).toBe(false)
+    expect(isCharacterDeceasedFromDeathSaves({ successes: 3, failures: 2 })).toBe(false)
+  })
+
+  it('resetting failures to 0 (whatever the cause) immediately reads as not deceased -- nothing separate to clear', () => {
+    const afterReset = resetDeathSaves(health({ deathSaves: { successes: 1, failures: 3 } }))
+    expect(isCharacterDeceasedFromDeathSaves(afterReset.deathSaves)).toBe(false)
+  })
+
+  it('Long Rest clearing death saves also reads as not deceased, for the same reason', () => {
+    const afterLongRest = takeLongRest(health({ deathSaves: { successes: 0, failures: 3 } }), 20, 2)
+    expect(isCharacterDeceasedFromDeathSaves(afterLongRest.deathSaves)).toBe(false)
   })
 })

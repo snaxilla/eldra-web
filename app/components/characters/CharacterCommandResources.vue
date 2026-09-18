@@ -180,7 +180,19 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
       {{ recoveryError }}
     </p>
 
-    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <!-- Header Cleanup 3 root cause, traced not guessed: this grid never
+         set `items-*`, so it used CSS Grid's own default -- `stretch`.
+         With Damage/Heal, Rest, and Death Saves sharing one row at `sm:`,
+         every card's OUTER box stretched to match the row's tallest
+         member (Rest, the tallest by content), leaving Death Saves'
+         genuinely short content (two rows of circles) sitting inside a
+         box padded out to Rest's full height -- exactly the reported
+         "consumes too much header space for a control that is inactive/
+         irrelevant." `items-start` makes each card size to its OWN
+         content instead of the row's tallest, with zero effect on mobile
+         (each card already occupies its own full-width row there, alone,
+         so there is no taller sibling to have been stretching against). -->
+    <div class="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">
       <!-- Damage / Heal ----------------------------------------------------
            Header Cleanup 1 correction: back to col-span-1 at `sm:` (the
            same single-column footprint this block had before "HP
@@ -313,7 +325,13 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
         </button>
       </div>
 
-      <!-- Death Saves --------------------------------------------------- -->
+      <!-- Death Saves ---------------------------------------------------
+           Header Cleanup 3: this card's own markup is unchanged --
+           `items-start` on the parent grid (above) is what makes it
+           genuinely compact now, by letting it size to this content
+           instead of stretching to match Rest's taller card. Control
+           semantics (mark/Reset) are untouched; see this file's own
+           `setDeathSaveMarks` comment. -->
       <div class="eldra-well rounded-none p-2">
         <div class="flex items-center justify-between gap-2">
           <span class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">Death Saves</span>

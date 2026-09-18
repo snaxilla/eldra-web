@@ -69,8 +69,19 @@
 // · Elf · Wizard · Sage" -- with an unresolved slot still rendered in the
 // same danger tint `identity.identityRows` already carries.
 //
+// ---------------------------------------------------------------------------
+// DECEASED PORTRAIT PRESENTATION -- HEADER CLEANUP 3, FLAVOR ONLY
+// ---------------------------------------------------------------------------
+// Three failed Death Saves grays out and red-X's the portrait -- see
+// `isDeceased`'s own script comment and app/lib/characters/health.ts's
+// `isCharacterDeceasedFromDeathSaves` for the full trace/rationale. This is
+// derived PRESENTATION, not new gameplay authority: no persisted flag, no
+// Entity/Rules Engine change, no effect on HP/Rest/Actions/permissions.
+// Portrait edit affordances (Add/Change/Remove) remain fully usable while
+// deceased -- the overlay is `pointer-events-none` throughout.
+//
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
-import type { StoredCharacterHealth } from '~/lib/characters/health'
+import { isCharacterDeceasedFromDeathSaves, type StoredCharacterHealth } from '~/lib/characters/health'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterSaveIndicator from '~/components/characters/CharacterSaveIndicator.vue'
 import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
@@ -158,6 +169,21 @@ function handlePortraitFileChange(event: Event) {
   if (file) emit('update-portrait', file)
   input.value = ''
 }
+
+// ---------------------------------------------------------------------------
+// DECEASED PORTRAIT PRESENTATION -- HEADER CLEANUP 3, FLAVOR ONLY
+// ---------------------------------------------------------------------------
+// Derives directly from `props.health.deathSaves` -- the SAME authoritative
+// state Reset Death Saves/Long Rest/the mark buttons in
+// CharacterCommandResources.vue already mutate (see isCharacterDeceased
+// FromDeathSaves's own header in app/lib/characters/health.ts for the full
+// trace: no dead/deceased concept existed anywhere in this codebase before
+// this task, and this adds no persisted flag, no new gameplay authority --
+// a plain `computed`, not a second ref, so there is nothing that can drift
+// from `health` and nothing to reset separately. Resetting failures below
+// 3 (Reset Death Saves, Long Rest, or any future correction) makes this
+// `false` on the very next render, automatically.
+const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health.deathSaves))
 </script>
 
 <template>
@@ -192,7 +218,8 @@ function handlePortraitFileChange(event: Event) {
           v-if="imageUrl"
           :src="imageUrl"
           :alt="characterTitle || 'Character portrait'"
-          class="absolute inset-0 h-full w-full object-cover object-top"
+          class="absolute inset-0 h-full w-full object-cover object-top transition duration-200"
+          :class="isDeceased ? 'grayscale' : ''"
           loading="lazy"
         >
         <button
@@ -211,6 +238,37 @@ function handlePortraitFileChange(event: Event) {
           class="absolute inset-0 flex h-full w-full items-center justify-center text-center text-[9px] uppercase tracking-[0.1em] text-[#9f9278]"
         >
           No portrait
+        </div>
+
+        <!-- Deceased presentation -- Header Cleanup 3, flavor only (see
+             `isDeceased`'s own script comment above). Always in the DOM,
+             opacity-toggled rather than v-if, so the ~200ms transition
+             actually animates instead of snapping in/out. `pointer-
+             events-none` throughout: never intercepts the Add/Change/
+             Remove controls below, which keep working identically while
+             deceased (Change/Remove also carry their own `z-10`, so they
+             stay visually on top of this too, not just clickable through
+             it). Works with or without a portrait image -- the dark
+             overlay and red X render over the placeholder/"No portrait"
+             state exactly the same way, since neither depends on `imageUrl`. -->
+        <span
+          v-if="isDeceased"
+          class="sr-only"
+        >
+          Deceased
+        </span>
+        <div
+          class="pointer-events-none absolute inset-0 bg-black/35 transition-opacity duration-200"
+          :class="isDeceased ? 'opacity-100' : 'opacity-0'"
+          aria-hidden="true"
+        />
+        <div
+          class="pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-200"
+          :class="isDeceased ? 'opacity-100' : 'opacity-0'"
+          aria-hidden="true"
+        >
+          <div class="absolute left-1/2 top-1/2 h-1 w-[200%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-red-600 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
+          <div class="absolute left-1/2 top-1/2 h-1 w-[200%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-600 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
         </div>
 
         <!-- Hover/focus edit affordances, shown only over an EXISTING

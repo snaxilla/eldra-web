@@ -235,3 +235,26 @@ export function grantTemporaryHp(health: StoredCharacterHealth, amount: number):
 export function resetDeathSaves(health: StoredCharacterHealth): StoredCharacterHealth {
   return { ...health, deathSaves: { successes: 0, failures: 0 } }
 }
+
+// ---------------------------------------------------------------------------
+// Character Sheet Header Cleanup 3 -- derived PRESENTATION only.
+// ---------------------------------------------------------------------------
+// Three failed Death Saves already mean something in 5e play, but nothing
+// in this domain previously computed or stored that fact -- traced before
+// building this (this task's own Part A): no `dead`/`deceased`/
+// `unconscious`/`stable` concept exists anywhere in this codebase, and no
+// domain behavior fires at 3 failures OR 3 successes today. This function
+// adds none: it is a pure, total read of the SAME `failures` count Reset
+// Death Saves, Long Rest, and the failure-mark buttons already mutate --
+// never a second flag. There is nothing to keep in sync and nothing to
+// reset separately, by construction: if `failures` drops below
+// MAX_DEATH_SAVE_MARKS (Reset, Long Rest, a future correction), the very
+// next read of this function already returns `false`. Deliberately NOT
+// "isDead"/"isDeceased" as a STORED field -- see this task's own PRODUCT
+// DECISION section for why a persisted status flag is explicitly out of
+// scope, and a future real Character Status system (Healthy/Unconscious/
+// Dying/Stable/Dead/Revived) is expected to replace this function's one
+// caller with a real status read, not extend this function itself.
+export function isCharacterDeceasedFromDeathSaves(deathSaves: StoredDeathSaves): boolean {
+  return deathSaves.failures >= MAX_DEATH_SAVE_MARKS
+}

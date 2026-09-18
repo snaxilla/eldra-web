@@ -71,10 +71,10 @@ beforeEach(() => {
 })
 
 describe('recovery request validation -- the boundary that rejected temp-hp in production', () => {
-  it('accepts { type: "temp-hp", amount } and forwards it to applyRecoveryAction unchanged', async () => {
+  it('accepts { type: "temp-hp", amount } and forwards it to applyRecoveryAction unchanged, plus the authenticated roller', async () => {
     const result = await handler(fakeEvent('5', '42', gmPrincipal(), { type: 'temp-hp', amount: 5 }))
 
-    expect(applyRecoveryActionMock).toHaveBeenCalledWith('5', '42', { type: 'temp-hp', amount: 5 })
+    expect(applyRecoveryActionMock).toHaveBeenCalledWith('5', '42', { type: 'temp-hp', amount: 5 }, 'account-1')
     expect(result).toEqual({ success: true, health: expect.objectContaining({ temporaryHp: 5 }) })
   })
 
@@ -84,7 +84,7 @@ describe('recovery request validation -- the boundary that rejected temp-hp in p
       const body = type === 'damage' || type === 'heal' ? { type, amount: 3 } : { type }
 
       await handler(fakeEvent('5', '42', gmPrincipal(), body))
-      expect(applyRecoveryActionMock).toHaveBeenCalledWith('5', '42', body)
+      expect(applyRecoveryActionMock).toHaveBeenCalledWith('5', '42', body, 'account-1')
     }
   })
 

@@ -162,22 +162,33 @@ export function applyHealing(
 }
 
 // Spending a Hit Die: one die moves from "available" to "spent", and the
-// character heals by that die's average roll (Constitution modifier
-// included) -- both numbers are Rules Engine output, supplied by the
-// caller. A no-op, not an error, when no die is available: the button that
-// calls this is disabled at that point, but the function itself stays a
-// pure "what would this produce" rather than a place that throws.
+// character heals by `rollTotal` -- Character Sheet Header Cleanup 2.1: this
+// is now a REAL authoritative roll's total (raw die face + Constitution
+// modifier, from server/utils/roll-events.ts's `createHitDieRollEvent`),
+// not the deterministic Rules Engine average this function used before.
+// This module still computes nothing about dice -- `rollTotal`, like
+// `hitDiceMax`/`maxHp`, is supplied by the caller (server/utils/
+// character-recovery.ts), which is the one place that knows whether a roll
+// happened at all.
+//
+// Two no-ops, neither an error: no die available, or already at full
+// Current HP (spending a die at full HP would consume the resource for
+// zero benefit -- the caller is expected to check this SAME condition
+// before ever requesting a roll, so no roll or RollEvent is created for a
+// spend that could not possibly do anything; this guard is this function's
+// own defense-in-depth, not the only place it is enforced).
 export function spendHitDie(
   health: StoredCharacterHealth,
   hitDiceMax: number,
-  averageRoll: number,
+  rollTotal: number,
   maxHp: number
 ): StoredCharacterHealth {
   if (health.hitDiceSpent >= nonNegativeInt(hitDiceMax)) return { ...health }
+  if (health.currentHp >= nonNegativeInt(maxHp)) return { ...health }
 
   return applyHealing(
     { ...health, hitDiceSpent: health.hitDiceSpent + 1 },
-    averageRoll,
+    rollTotal,
     maxHp
   )
 }

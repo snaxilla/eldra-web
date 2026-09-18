@@ -277,6 +277,48 @@ describe('createAuthoredThreeDiceRendererAdapter -- play() dispatch', () => {
     expect(playD20).not.toHaveBeenCalled()
   })
 
+  // Character Sheet Header Cleanup 2.1 -- Spend Hit Die's new authoritative
+  // RollEvent (`sourceType: 'hit_die'`, server/utils/roll-events.ts's
+  // createHitDieRollEvent) must present through this SAME general pool
+  // route, exactly like any other authoritative single-die roll -- it is
+  // NOT a third, Hit-Die-specific presentation path, and it must NOT be
+  // intentionally treated as unsupported/placeholder-only. This dispatch
+  // function is sourceType-agnostic (it only inspects `dice`), so these
+  // tests exist to pin that behavior explicitly for this specific source,
+  // not to re-derive what `extractPoolPresentation`'s own describe block
+  // above already proves generically for every supported side count.
+  it.each([6, 8, 10, 12] as const)(
+    'routes a Hit Die RollEvent (sourceType: hit_die, 1d%i) to the pool renderer with the RAW face, not a placeholder',
+    async (sides) => {
+      const playPool = vi.fn().mockResolvedValue(undefined)
+      const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed())
+      const polyhedralBox = ref<WorldAuthoredPolyhedralDiceRendererExposed | null>(poolExposed({ playPool }))
+      const adapter = createAuthoredThreeDiceRendererAdapter(box, polyhedralBox)
+
+      // Bobbert: d8, CON +1, server rolls raw 5 -- generalized here across
+      // every supported Hit Die size. `total`/`modifier` carry the
+      // healing-relevant raw+CON sum (6 for the d8 case); the pool spec
+      // passed to the renderer must carry only the RAW face (5), never the
+      // healing total -- the authored die must show 5, not 6.
+      const rawFace = Math.min(5, sides)
+      const record = roll({
+        sourceType: 'hit_die',
+        sourceKey: null,
+        label: `Hit Die (d${sides})`,
+        expression: `1d${sides}+1`,
+        dice: [dieGroup({ sides, results: [rawFace], kept: [rawFace], total: rawFace })],
+        modifier: 1,
+        modifiers: [1],
+        total: rawFace + 1,
+        visibility: 'private'
+      })
+
+      await adapter.play({ id: 'roll-1', roll: record })
+
+      expect(playPool).toHaveBeenCalledWith([{ sides, value: rawFace, kept: true }])
+    }
+  )
+
   it('routes a 2d20 advantage pool to the pool renderer, with both dice and their kept/dropped flags intact', async () => {
     const playPool = vi.fn().mockResolvedValue(undefined)
     const box = ref<WorldAuthoredThreeDiceRendererExposed | null>(d20Exposed())

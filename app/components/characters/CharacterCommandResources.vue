@@ -147,6 +147,13 @@ function applyTempHpAction() {
 }
 
 // --- Hit Dice ----------------------------------------------------------------
+// Header Cleanup 2.1: "Spend Hit Die" is disabled with no Hit Die available
+// (unchanged) OR at full Current HP (new -- server/utils/character-
+// recovery.ts enforces the SAME guard authoritatively; this is a UI
+// convenience, not the only place it is checked) -- spending a die at full
+// HP would waste the resource and the roll it now produces for zero
+// benefit. Uses `health`/`maxHp`, both already props here for Damage/Heal;
+// no new prop was added for this.
 
 const hitDiceLabel = computed(() => {
   if (props.hitDieSize == null) return 'Hit Dice'
@@ -233,18 +240,24 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
            not beside Back at the top of the sheet. Traced before building
            this (server/utils/character-recovery.ts's own header/tests):
            Short Rest and Long Rest are, and remain, atomic RecoveryActions
-           with no persisted "rest session" of any kind -- Short Rest
-           already auto-spends exactly one Hit Die server-side, so this
-           block does not invent an ordering requirement between the two
-           rest buttons and Spend Hit Die below; all three are simply
-           grouped because they are the same gameplay concept, not because
-           clicking one gates another. `col-span-2` at the base (mobile)
-           width, unlike every OTHER card here, because this one now holds
-           two real buttons plus the Hit Dice line/action -- narrower than
-           that and "Short Rest"/"Long Rest" would need to wrap or
-           truncate; `sm:col-span-1` restores the single-card footprint the
-           PRODUCT GOAL names ("[Damage/Heal] [Rest] [Death Saves]
-           [future/empty space]") once the row itself is wide enough. -->
+           with no persisted "rest session" of any kind, so this block does
+           not invent an ordering requirement between the two rest buttons
+           and Spend Hit Die below; all three are simply grouped because
+           they are the same gameplay concept, not because clicking one
+           gates another. `col-span-2` at the base (mobile) width, unlike
+           every OTHER card here, because this one now holds two real
+           buttons plus the Hit Dice line/action -- narrower than that and
+           "Short Rest"/"Long Rest" would need to wrap or truncate;
+           `sm:col-span-1` restores the single-card footprint the PRODUCT
+           GOAL names ("[Damage/Heal] [Rest] [Death Saves]
+           [future/empty space]") once the row itself is wide enough.
+
+           HEADER CLEANUP 2.1 CORRECTION: Short Rest no longer auto-spends
+           a Hit Die (it used to, via the deterministic Rules Engine
+           average -- see character-recovery.ts's own header for why that
+           could not coexist with Spend Hit Die becoming a real
+           authoritative roll). Spending a Hit Die during a Short Rest is
+           now always this sheet's own explicit "Spend Hit Die" click. -->
       <div class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1">
         <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
           Rest
@@ -293,7 +306,7 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
         <button
           type="button"
           class="eldra-button mt-1.5 min-h-11 w-full rounded-none text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="recoverySaving || (hitDiceAvailable != null && hitDiceAvailable <= 0)"
+          :disabled="recoverySaving || (hitDiceAvailable != null && hitDiceAvailable <= 0) || (maxHp != null && health.currentHp >= maxHp)"
           @click="emitRecovery('spend-hit-die')"
         >
           Spend Hit Die

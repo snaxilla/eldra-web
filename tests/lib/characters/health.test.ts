@@ -205,7 +205,13 @@ describe('applyHealing', () => {
 })
 
 describe('spendHitDie', () => {
-  it('increments hitDiceSpent and heals by the average roll', () => {
+  // Header Cleanup 2.1: the third argument is now a real roll's total
+  // (raw die face + Constitution modifier, from server/utils/roll-events.ts's
+  // createHitDieRollEvent), not the deterministic Rules Engine average this
+  // function used to be handed -- the pure function itself is indifferent
+  // to where the number came from, so these tests still pass a plain
+  // number, unchanged in shape.
+  it('increments hitDiceSpent and heals by the roll total', () => {
     const result = spendHitDie(health({ currentHp: 5, hitDiceSpent: 0 }), 3, 8, 20)
     expect(result.hitDiceSpent).toBe(1)
     expect(result.currentHp).toBe(13)
@@ -219,6 +225,16 @@ describe('spendHitDie', () => {
   it('is a no-op when every Hit Die is already spent', () => {
     const result = spendHitDie(health({ currentHp: 5, hitDiceSpent: 3 }), 3, 8, 20)
     expect(result).toEqual(health({ currentHp: 5, hitDiceSpent: 3 }))
+  })
+
+  // New guard (Header Cleanup 2.1): a player at full Current HP must not
+  // be able to waste a Hit Die -- this function is the last line of
+  // defense for that rule, even though the caller (character-recovery.ts)
+  // is expected to check the identical condition before ever requesting a
+  // roll at all.
+  it('is a no-op at full Current HP, even with Hit Dice available', () => {
+    const result = spendHitDie(health({ currentHp: 20, hitDiceSpent: 0 }), 3, 8, 20)
+    expect(result).toEqual(health({ currentHp: 20, hitDiceSpent: 0 }))
   })
 
   it('never mutates the input record', () => {

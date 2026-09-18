@@ -40,19 +40,24 @@
 // rather than silently computing a wrong number when no package is active.
 //
 // ---------------------------------------------------------------------------
-// SHORT REST AND SPEND HIT DIE -- NO LONGER ALWAYS IDENTICAL
+// SHORT REST NO LONGER TOUCHES HIT DICE OR HP (Header Cleanup 2.1)
 // ---------------------------------------------------------------------------
 // Originally a deliberate simplification: 5e's Short Rest, reduced to what
 // this package could then express (no spell slot recovery, no class
 // features), WAS spending a Hit Die, and both actions called `spendHitDie`
-// unchanged. The Spellcasting System adds the first short-rest-specific
-// recovery this package can express -- Pact Magic (RAW: a Warlock's spell
-// slots return on a Short Rest, unlike every other caster's) -- so Short
-// Rest now ALSO resets a Pact caster's expended slots, which Spend Hit Die
-// never touches. For every character who is not a Pact caster (the common
-// case, and every character before this addition), the two remain
-// byte-identical in their effect, because there is no Pact Magic state for
-// the extra step to reset -- verified by this file's own tests.
+// unchanged, healing by the same deterministic Rules Engine AVERAGE.
+//
+// Header Cleanup 2.1 makes Spend Hit Die perform a REAL authoritative
+// die roll (see "SPEND HIT DIE IS NOW A REAL ROLL" below) -- and a hidden,
+// automatic average-roll heal riding along on Short Rest cannot coexist
+// with that: the same button-press outcome ("how much did resting heal
+// me") cannot mean two different kinds of number depending on which
+// button was pressed. Short Rest therefore no longer touches Hit Dice or
+// Current HP at all; spending a Hit Die during a Short Rest is now always
+// the player's own explicit "Spend Hit Die" click, never automatic. Pact
+// Magic recovery (below) is UNCHANGED -- it was never coupled to the
+// Hit-Die spend in the first place, only to whether this character is a
+// Pact caster.
 //
 // ---------------------------------------------------------------------------
 // LONG REST ALSO CLEARS EXPENDED SPELL SLOTS -- EVERY CASTER, EVERY TYPE
@@ -63,11 +68,39 @@
 // this one action (`character-spellcasting.ts`, alongside `character-health.ts`)
 // -- still zero Rules Engine mutation, exactly as Health's own writes always
 // were; this is state Recovery orchestrates, not state the engine computes.
+//
+// ---------------------------------------------------------------------------
+// SPEND HIT DIE IS NOW A REAL ROLL (Header Cleanup 2.1)
+// ---------------------------------------------------------------------------
+// Previously: `spendHitDie` healed by `value:hit_points.hit_die_average_roll`,
+// a deterministic Rules Engine formula -- never a die roll, never touching
+// the canonical Roll System at all (flagged, not silently kept, by Header
+// Cleanup 2's own trace). That average is UNCHANGED and still exists (Long
+// Rest's own recovery COUNT is a separate formula, `long_rest_hit_dice_
+// recovery`, untouched by this), but spending a die individually now rolls
+// for real: this module reads the character's Hit Die size and Constitution
+// modifier (both already-derived Rules Engine output, the same as every
+// other number this file reads) and calls `createHitDieRollEvent`
+// (server/utils/roll-events.ts) -- the SAME persisted-and-broadcast
+// RollEvent pipeline ability/saving_throw/skill checks already use. The
+// roll's own `total` (raw die face + Constitution modifier) becomes the
+// amount healed. Two guards run BEFORE any roll is requested, not after:
+// no available Hit Die, and already at full Current HP -- in both cases
+// there is no roll, no RollEvent, and no Hit Die consumed, matching this
+// task's own explicit "a player at full HP must not be able to waste a
+// Hit Die" and "zero available -> no roll" requirements. A roll that fails
+// (rollFormula rejects the formula) throws before any health mutation is
+// computed or persisted, mirroring createDerivedRollEvent's own "throws,
+// never a partial write" contract -- Recovery has never had its own
+// separate error vocabulary for a roll failure, and inventing one here
+// would diverge from how every other roll-producing code path already
+// reports this exact failure.
 
 import { assembleCharacter } from './character-assembly'
 import { loadCharacterHealth, saveCharacterHealth } from './character-health'
 import { loadCharacterSpellcasting, saveCharacterSpellcasting } from './character-spellcasting'
 import { getDerivedCharacter } from './character-derived'
+import { createHitDieRollEvent } from './roll-events'
 import {
   applyDamage,
   applyHealing,
@@ -105,6 +138,8 @@ const MAX_HP_ID = 'value:hit_points.max'
 const HIT_DICE_MAX_ID = 'value:hit_points.hit_dice_max'
 const AVERAGE_ROLL_ID = 'value:hit_points.hit_die_average_roll'
 const LONG_REST_RECOVERY_ID = 'value:hit_points.long_rest_hit_dice_recovery'
+const HIT_DIE_SIZE_ID = 'value:hit_points.hit_die_size'
+const CON_MOD_ID = 'value:ability.con.mod'
 const PACT_CASTER_ID = 'value:spellcasting.caster_type.pact'
 
 function findNumber(derived: { byCategory: Record<string, Array<{ id: string; value?: unknown }>> }, id: string): number | null {
@@ -135,7 +170,16 @@ async function loadRecoveryNumbers(
   worldId: string | number,
   characterId: string | number
 ): Promise<
-  | { ok: true; maxHp: number; hitDiceMax: number; averageRoll: number; longRestRecovery: number; isPactCaster: boolean }
+  | {
+      ok: true
+      maxHp: number
+      hitDiceMax: number
+      averageRoll: number
+      longRestRecovery: number
+      hitDieSize: number
+      conModifier: number
+      isPactCaster: boolean
+    }
   | RecoveryFailure
 > {
   const result = await getDerivedCharacter(worldId, characterId)
@@ -151,8 +195,16 @@ async function loadRecoveryNumbers(
   const hitDiceMax = findNumber(result.derived, HIT_DICE_MAX_ID)
   const averageRoll = findNumber(result.derived, AVERAGE_ROLL_ID)
   const longRestRecovery = findNumber(result.derived, LONG_REST_RECOVERY_ID)
+  // Read for Spend Hit Die's real roll (see this file's header) -- the
+  // exact same two Values `value:hit_points.hit_die_average_roll`'s own
+  // formula already reads, just not pre-combined into one average here.
+  const hitDieSize = findNumber(result.derived, HIT_DIE_SIZE_ID)
+  const conModifier = findNumber(result.derived, CON_MOD_ID)
 
-  if (maxHp === null || hitDiceMax === null || averageRoll === null || longRestRecovery === null) {
+  if (
+    maxHp === null || hitDiceMax === null || averageRoll === null || longRestRecovery === null
+    || hitDieSize === null || conModifier === null
+  ) {
     return {
       ok: false,
       reason: 'rules-broken',
@@ -166,17 +218,26 @@ async function loadRecoveryNumbers(
   // does not need for Health.
   const isPactCaster = findBoolean(result.derived, PACT_CASTER_ID)
 
-  return { ok: true, maxHp, hitDiceMax, averageRoll, longRestRecovery, isPactCaster }
+  return { ok: true, maxHp, hitDiceMax, averageRoll, longRestRecovery, hitDieSize, conModifier, isPactCaster }
 }
 
 // The canonical entry point. Loads current health (defaulting to "nothing
 // recorded yet" rather than failing -- a character predating the Health
 // System can still receive its first recovery action), applies exactly one
 // pure mutation, and persists the result.
+//
+// `rollerUserId` (Header Cleanup 2.1): the authenticated Principal's
+// account id, threaded through from the route exactly like every other
+// roll-creating write path (createCustomRollEvent/createDerivedRollEvent)
+// already requires -- needed only by 'spend-hit-die' (the one action that
+// can now create a RollEvent), but required for every call for the same
+// reason those two functions require it unconditionally: "who rolled this"
+// is never optional once a roll might happen.
 export async function applyRecoveryAction(
   worldId: string | number,
   characterId: string | number,
-  action: RecoveryAction
+  action: RecoveryAction,
+  rollerUserId: string
 ): Promise<RecoveryResult> {
   // Existence/scope is already checked by the route before this is called;
   // this call additionally confirms the character has a catalogue
@@ -227,17 +288,45 @@ export async function applyRecoveryAction(
     case 'spend-hit-die': {
       const numbers = await loadRecoveryNumbers(worldId, characterId)
       if (!numbers.ok) return numbers
-      next = spendHitDie(current, numbers.hitDiceMax, numbers.averageRoll, numbers.maxHp)
+
+      // Guards run BEFORE any roll is requested -- see this file's header.
+      // No available Hit Die, or already at full Current HP: no roll, no
+      // RollEvent, no consumption. `next` stays the unchanged `current`,
+      // the same no-op shape `spendHitDie` itself would produce for either
+      // condition (kept there too, as defense-in-depth for any other
+      // caller of that pure function).
+      if (current.hitDiceSpent >= numbers.hitDiceMax || current.currentHp >= numbers.maxHp) {
+        next = { ...current }
+        break
+      }
+
+      const rolled = await createHitDieRollEvent({
+        worldId,
+        rollerUserId,
+        actorCharacterId: characterId,
+        hitDieSize: numbers.hitDieSize,
+        conModifier: numbers.conModifier,
+        // Fail closed (eldra-roll-system.md §13, restated verbatim by
+        // server/api/worlds/[id]/rolls/index.post.ts's own visibility
+        // default): an action with no visibility control of its own
+        // defaults to the more restrictive state, never the more open one.
+        visibility: 'private'
+      })
+
+      next = spendHitDie(current, numbers.hitDiceMax, rolled.total, numbers.maxHp)
       break
     }
 
     case 'short-rest': {
-      // Same Hit Die spend as 'spend-hit-die' above, plus -- for a Pact
-      // caster only -- Pact Magic slot recovery. See this file's header for
-      // why these two are no longer literally the same action.
+      // No longer spends a Hit Die or heals -- see this file's header
+      // ("SHORT REST NO LONGER TOUCHES HIT DICE OR HP"). The only
+      // remaining Short-Rest-specific effect is Pact Magic recovery, for a
+      // Pact caster only; `loadRecoveryNumbers` is still called because
+      // `isPactCaster` comes from the same derived-character read every
+      // other action here already requires.
       const numbers = await loadRecoveryNumbers(worldId, characterId)
       if (!numbers.ok) return numbers
-      next = spendHitDie(current, numbers.hitDiceMax, numbers.averageRoll, numbers.maxHp)
+      next = { ...current }
       resetSpellSlots = numbers.isPactCaster
       break
     }

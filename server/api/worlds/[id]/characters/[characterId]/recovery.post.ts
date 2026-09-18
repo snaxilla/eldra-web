@@ -90,7 +90,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const result = await applyRecoveryAction(worldId, characterId, action)
+  const result = await applyRecoveryAction(worldId, characterId, action, principal.accountId)
 
   if (!result.ok) {
     const statusCode =

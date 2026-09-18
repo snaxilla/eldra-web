@@ -481,6 +481,14 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     derivedPending,
     derivedUnavailable,
     derivedRegions,
+    // Exposed on its own (Character Sheet Header Cleanup 2.1), alongside
+    // the existing combined `refresh` -- see useCharacterMutations.ts's
+    // `recovery.apply`, which refreshes ONLY this after a Recovery action
+    // that can change `value:hit_points.hit_dice_available` (a value this
+    // composable computes from `derived`, not from `healthDraft`), without
+    // also re-fetching `assembly`/`actions`, which never change from a
+    // Recovery action.
+    refreshDerived,
     maxHp,
     hitDiceMax,
     hitDiceAvailable,

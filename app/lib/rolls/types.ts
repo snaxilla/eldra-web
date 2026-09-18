@@ -45,6 +45,10 @@ export type RollSourceType =
   | 'spell_save'
   | 'damage'
   | 'custom'
+  // Character Sheet Header Cleanup 2.1: Spend Hit Die's authoritative roll
+  // (server-derived Hit Die size + Constitution modifier, never a client
+  // number) -- see server/utils/roll-events.ts's own `createHitDieRollEvent`.
+  | 'hit_die'
 
 // ---------------------------------------------------------------------------
 // Visibility -- eldra-roll-system.md §5. Only the two Phase 1 states are

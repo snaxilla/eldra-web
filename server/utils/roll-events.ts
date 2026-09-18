@@ -437,6 +437,93 @@ export async function createDerivedRollEvent(input: CreateDerivedRollInput): Pro
 }
 
 // ---------------------------------------------------------------------------
+// Write -- Hit Die rolls (Character Sheet Header Cleanup 2.1)
+// ---------------------------------------------------------------------------
+//
+// Spend Hit Die used to heal by a deterministic Rules-Engine AVERAGE
+// (`value:hit_points.hit_die_average_roll`), entirely bypassing this module.
+// That average is still what a Long Rest's own recovery count uses (no
+// change there), but the ACT of spending one die now produces a real,
+// visible, persisted RollEvent -- exactly the same "server derives, server
+// rolls, never trusts the client" shape createDerivedRollEvent already
+// established for ability/saving_throw/skill.
+//
+// UNLIKE createDerivedRollEvent, this function does NOT call
+// getDerivedCharacter itself -- server/utils/character-recovery.ts (its
+// only caller) already calls it once, for the SAME action, to read Maximum
+// HP and Hit Dice numbers it needs regardless of whether a roll happens at
+// all (the full-HP/no-dice-available guards run before this is ever
+// called). A second, redundant fetch of the same already-in-hand numbers
+// would add nothing; the caller passes `hitDieSize`/`conModifier` through
+// directly. This is still "the server derives it" -- character-recovery.ts
+// is server code, never the browser; no client request body ever reaches
+// this function's inputs.
+export type CreateHitDieRollInput = {
+  worldId: string | number
+  rollerUserId: string
+  actorCharacterId: string | number
+  encounterId?: string | number | null
+  hitDieSize: number
+  conModifier: number
+  visibility: RollVisibility
+  metadata?: Record<string, unknown>
+}
+
+// Rolls `1d<hitDieSize>` with the character's Constitution modifier as a
+// flat bonus, and persists the result exactly like createCustomRollEvent/
+// createDerivedRollEvent do -- same persistence row, same broadcast, same
+// "throws on a roll failure, never a partially-written record" contract.
+// `sourceKey` is null (matching a custom roll): no SINGLE Rules Engine
+// Value id names this whole roll, since it combines two (hit_die_size,
+// ability.con.mod) rather than re-reading one already-evaluated bonus.
+export async function createHitDieRollEvent(input: CreateHitDieRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
+  const rolled = rollFormula(`1d${input.hitDieSize}`, { bonuses: [input.conModifier] })
+  const tRolled = performance.now()
+
+  if (!rolled.ok) {
+    throw createError({ statusCode: 400, statusMessage: rolled.error })
+  }
+
+  const row = toPersistenceRow({
+    worldId: input.worldId,
+    encounterId: input.encounterId ?? null,
+    actorCharacterId: input.actorCharacterId,
+    rollerUserId: input.rollerUserId,
+    label: `Hit Die (d${input.hitDieSize})`,
+    sourceType: 'hit_die',
+    sourceKey: null,
+    sourceId: null,
+    expression: rolled.roll.expression,
+    dice: rolled.roll.dice,
+    modifier: rolled.roll.modifier,
+    modifiers: rolled.roll.modifiers,
+    total: rolled.roll.total,
+    visibility: input.visibility,
+    metadata: { ...(input.metadata ?? {}), conModifier: input.conModifier }
+  })
+
+  const tBeforePersist = performance.now()
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
+  const tAfterPersist = performance.now()
+
+  const roll = fromPersistenceRow(res?.data, displayName)
+  broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf('hit die roll', [
+    ['openDice', tRolled - tStart],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
+  return roll
+}
+
+// ---------------------------------------------------------------------------
 // Read -- cursor pagination, visibility filtering (§5/§7)
 // ---------------------------------------------------------------------------
 

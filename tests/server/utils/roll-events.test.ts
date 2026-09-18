@@ -41,6 +41,7 @@ vi.mock('../../../server/utils/roll-realtime-bridge', () => ({
 
 import {
   createCustomRollEvent,
+  createHitDieRollEvent,
   decodeRollEventsCursor,
   encodeRollEventsCursor,
   listRollEvents
@@ -231,6 +232,87 @@ describe('createCustomRollEvent', () => {
     expect(exportNames).not.toContain('updateRollEvent')
     expect(exportNames).not.toContain('deleteRollEvent')
     expect(exportNames).not.toContain('patchRollEvent')
+  })
+})
+
+// Character Sheet Header Cleanup 2.1: Spend Hit Die's authoritative roll.
+// Unlike createDerivedRollEvent, this function trusts its caller
+// (server/utils/character-recovery.ts, never a route/request body) for
+// `hitDieSize`/`conModifier` rather than calling getDerivedCharacter
+// itself -- see this function's own header comment for why. These tests
+// therefore assert on the ROLL and its persistence, the same shape
+// createCustomRollEvent's own tests already use, not on Rules Engine
+// derivation (character-recovery.test.ts covers that boundary).
+describe('createHitDieRollEvent', () => {
+  it('rolls 1d<hitDieSize> with the Constitution modifier as a flat bonus, and persists it', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
+      expect(path).toBe('/items/roll_events')
+      expect(options.method).toBe('POST')
+      return jsonResponse({ id: 'roll-hd-1', ...options.body })
+    })
+
+    const roll = await createHitDieRollEvent({
+      worldId: '5',
+      rollerUserId: 'account-1',
+      actorCharacterId: '42',
+      hitDieSize: 10,
+      conModifier: 3,
+      visibility: 'private'
+    })
+
+    expect(roll.id).toBe('roll-hd-1')
+    expect(roll.sourceType).toBe('hit_die')
+    expect(roll.sourceKey).toBeNull()
+    expect(roll.sourceId).toBeNull()
+    expect(roll.actorCharacterId).toBe('42')
+    expect(roll.visibility).toBe('private')
+    expect(roll.label).toBe('Hit Die (d10)')
+
+    // Real OpenDice output -- one d10, plus the +3 flat modifier.
+    expect(roll.dice).toHaveLength(1)
+    const group = roll.dice[0]!
+    expect(group.sides).toBe(10)
+    expect(group.results).toHaveLength(1)
+    expect(roll.modifier).toBe(3)
+    expect(roll.modifiers).toEqual([3])
+    expect(roll.total).toBe(group.total + 3)
+    expect(roll.metadata).toEqual(expect.objectContaining({ conModifier: 3 }))
+  })
+
+  it('broadcasts the persisted roll exactly like every other write path', async () => {
+    directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+      if (path === '/users') return noUsersFound()
+      return jsonResponse({ id: 'roll-hd-2', ...options.body })
+    })
+
+    const roll = await createHitDieRollEvent({
+      worldId: '5',
+      rollerUserId: 'account-1',
+      actorCharacterId: '42',
+      hitDieSize: 8,
+      conModifier: 1,
+      visibility: 'private'
+    })
+
+    expect(broadcastRollEventMock).toHaveBeenCalledTimes(1)
+    expect(broadcastRollEventMock).toHaveBeenCalledWith(roll)
+  })
+
+  it('never persists anything when the roll itself fails (an invalid die size)', async () => {
+    await expect(
+      createHitDieRollEvent({
+        worldId: '5',
+        rollerUserId: 'account-1',
+        actorCharacterId: '42',
+        hitDieSize: 0,
+        conModifier: 0,
+        visibility: 'private'
+      })
+    ).rejects.toMatchObject({ statusCode: 400 })
+
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
   })
 })
 

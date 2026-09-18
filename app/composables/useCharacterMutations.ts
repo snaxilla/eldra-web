@@ -103,8 +103,27 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
   // (reading Maximum HP and the other Rules Engine output each action
   // needs) and returns the new authoritative state, which replaces
   // `healthDraft` directly -- no separate recompute here, and no need to
-  // re-fetch `derived`, since none of these actions change Maximum HP,
-  // Hit Dice total, or Hit Die size.
+  // re-fetch `derived` for Maximum HP, Hit Dice total, or Hit Die size,
+  // none of which any recovery action changes.
+  //
+  // Character Sheet Header Cleanup 2.1 -- THE MISSING REFRESH, FOUND BY
+  // TRACING A REAL BROWSER BUG (a Long Rest that visibly failed to restore
+  // Hit Dice): the claim above was subtly wrong for exactly one displayed
+  // number, `value:hit_points.hit_dice_available` -- a DERIVED value
+  // (`useCharacterSheet.ts`'s own `hitDiceAvailable`), computed from
+  // `derived`, not from `healthDraft`. `derived` is fetched once and never
+  // re-fetched by anything in THIS function, so `hitDiceAvailable` stayed
+  // frozen at whatever it was on page load, however many times
+  // 'spend-hit-die'/'long-rest' actually changed `hitDiceSpent` server-side
+  // and correctly updated `healthDraft.hitDiceSpent` right here. The
+  // server-persisted number was always correct; only the SHEET's displayed
+  // "available / max" line never moved. Refreshing `derived` (not the
+  // heavier combined `refresh`, which would also needlessly re-fetch
+  // `assembly`/`actions`) after exactly the two action types that can
+  // change `hitDiceSpent` closes that gap with no change to what gets
+  // persisted or how any other action behaves.
+  const HIT_DICE_AFFECTING_ACTIONS = new Set(['spend-hit-die', 'long-rest'])
+
   async function applyRecovery(action: { type: string; amount?: number }) {
     if (recoverySaving.value) return
 
@@ -117,6 +136,9 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
         { method: 'POST', body: action }
       )
       sheet.healthDraft.value = result.health
+      if (HIT_DICE_AFFECTING_ACTIONS.has(action.type)) {
+        await sheet.refreshDerived()
+      }
     } catch (recoveryErr: any) {
       recoveryError.value =
         recoveryErr?.data?.statusMessage || recoveryErr?.statusMessage || 'Failed to apply recovery action'

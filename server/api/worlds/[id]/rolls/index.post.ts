@@ -6,9 +6,14 @@
 // (server/utils/roll-events.ts's own `createDerivedRollEvent`); the client
 // supplies only which Value to read (`actorCharacterId` + `sourceKey`),
 // never a modifier or expression.
-// action_attack/spell_attack/spell_save/damage derivation is still Phase 3
-// work and is rejected here with a clear 400, never silently accepted and
-// misinterpreted.
+// Character Sheet Body Phase 1A additionally accepts `sourceType:
+// 'action_attack' | 'damage'` for weapon/unarmed actions (`actorCharacterId`
+// + `actionId`, never a modifier or expression -- see roll-events.ts's own
+// createActionAttackRollEvent/createActionDamageRollEvent).
+// `spell_attack`/`spell_save` derivation remains unimplemented here and is
+// rejected with a clear 400, never silently accepted and misinterpreted --
+// spell resolution stays on character-combat.ts's existing targeted
+// "Resolve" control.
 //
 // Thin by design, matching server/api/worlds/[id]/rules/roll.post.ts's own
 // shape almost exactly: this file only parses/validates the request
@@ -23,10 +28,25 @@
 // shims.
 import { createError, defineEventHandler, getRouterParam, readBody, setResponseStatus } from 'h3'
 import { requireCapability } from '../../../../utils/authorization'
-import { createCustomRollEvent, createDerivedRollEvent, type DerivableRollSourceType } from '../../../../utils/roll-events'
+import {
+  createActionAttackRollEvent,
+  createActionDamageRollEvent,
+  createCustomRollEvent,
+  createDerivedRollEvent,
+  type DerivableRollSourceType
+} from '../../../../utils/roll-events'
 import type { RollVisibility } from '../../../../../app/lib/rolls/types'
 
 const DERIVABLE_SOURCE_TYPES: readonly DerivableRollSourceType[] = ['ability', 'saving_throw', 'skill']
+
+// Character Sheet Body Phase 1A (Authoritative Attack + Damage Rolls):
+// weapon/unarmed attack and damage rolls, resolved server-side from an
+// `actionId` rather than a `sourceKey` -- see roll-events.ts's own
+// createActionAttackRollEvent/createActionDamageRollEvent. `spell_attack`/
+// `spell_save` remain unimplemented here (still routed through
+// server/utils/character-combat.ts's existing targeted "Resolve" control).
+const ACTION_ROLL_SOURCE_TYPES = ['action_attack', 'damage'] as const
+type ActionRollSourceType = (typeof ACTION_ROLL_SOURCE_TYPES)[number]
 
 // eldra-roll-system.md §7's own trust boundary, restated as a literal
 // rejection list: a client that tries to hand over any of these has
@@ -45,6 +65,20 @@ const FORBIDDEN_CLIENT_FIELDS = ['total', 'dice', 'seed', 'results'] as const
 // is known to be derivable, since `expression` is legitimately required
 // for `custom`.
 const FORBIDDEN_DERIVED_ROLL_FIELDS = ['expression', 'modifier', 'modifiers', 'bonus'] as const
+
+// The identical trust boundary, restated for `action_attack`/`damage`:
+// `sourceKey` is additionally forbidden here (unlike a derived roll, which
+// REQUIRES one) because an action roll names WHICH action to roll
+// (`actionId`), never which already-evaluated Rules Engine Value to read --
+// resolveAttackAction (server/utils/character-actions.ts) decides that
+// itself. `attackBonus`/`damage`/`damageType`/`damageRoll` are also
+// rejected even though no real request shape has ever included them --
+// exactly the fields the Actions table's own display columns could tempt a
+// caller into re-sending, matching this task's own trust-boundary example.
+const FORBIDDEN_ACTION_ROLL_FIELDS = [
+  'expression', 'modifier', 'modifiers', 'bonus', 'sourceKey',
+  'attackBonus', 'damage', 'damageType', 'damageRoll'
+] as const
 
 export default defineEventHandler(async (event) => {
   const worldId = String(getRouterParam(event, 'id') || '')
@@ -74,10 +108,11 @@ export default defineEventHandler(async (event) => {
 
   const sourceType = typeof body?.sourceType === 'string' ? body.sourceType : ''
   const isDerivable = (DERIVABLE_SOURCE_TYPES as readonly string[]).includes(sourceType)
-  if (sourceType !== 'custom' && !isDerivable) {
+  const isActionRoll = (ACTION_ROLL_SOURCE_TYPES as readonly string[]).includes(sourceType)
+  if (sourceType !== 'custom' && !isDerivable && !isActionRoll) {
     throw createError({
       statusCode: 400,
-      statusMessage: `sourceType '${sourceType || '(missing)'}' is not supported yet -- only 'custom', 'ability', 'saving_throw', and 'skill' are implemented (see .github/docs/architecture/eldra-roll-system.md §4/§14)`
+      statusMessage: `sourceType '${sourceType || '(missing)'}' is not supported yet -- only 'custom', 'ability', 'saving_throw', 'skill', 'action_attack', and 'damage' are implemented (see .github/docs/architecture/eldra-roll-system.md §4/§14 and character-sheet-beauty-pass.md's Phase 1A)`
     })
   }
 
@@ -130,6 +165,46 @@ export default defineEventHandler(async (event) => {
       sourceType: sourceType as DerivableRollSourceType,
       sourceKey,
       label: label || undefined,
+      visibility,
+      metadata
+    })
+
+    setResponseStatus(event, 201)
+    return roll
+  }
+
+  if (isActionRoll) {
+    for (const field of FORBIDDEN_ACTION_ROLL_FIELDS) {
+      if (body && Object.prototype.hasOwnProperty.call(body, field)) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `'${field}' may not be supplied by the client -- the server re-derives every mechanic for this action`
+        })
+      }
+    }
+
+    if (!actorCharacterId) {
+      throw createError({ statusCode: 400, statusMessage: 'actorCharacterId is required for this sourceType' })
+    }
+
+    const actionId = typeof body?.actionId === 'string' ? body.actionId.trim() : ''
+    if (!actionId) {
+      throw createError({ statusCode: 400, statusMessage: 'actionId is required for this sourceType' })
+    }
+
+    // No `label` passed through, on purpose -- the display label is always
+    // server-derived from the action's own authoritative name (this task's
+    // "do not trust a client-supplied action label as authority"), never
+    // the client-supplied override an ability/saving_throw/skill roll
+    // accepts above.
+    const roll = await ((sourceType as ActionRollSourceType) === 'action_attack'
+      ? createActionAttackRollEvent
+      : createActionDamageRollEvent)({
+      worldId,
+      rollerUserId: principal.accountId,
+      actorCharacterId,
+      encounterId,
+      actionId,
       visibility,
       metadata
     })

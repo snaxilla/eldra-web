@@ -300,9 +300,20 @@
 // `useWorldRolls()` instance -- the Tray is purely a display component fed
 // by that composable's `history`/`pending`/`error`/pagination state; see
 // WorldRollTray.vue's own header for the full location/animation/pagination
-// design. Still no 3D dice, no realtime, no table broadcast, no Combat
-// Roll integration (§14 Phase 3, not started here) -- only a reserved,
-// empty `dice-stage` slot for a later phase to fill.
+// design.
+//
+// ---------------------------------------------------------------------------
+// CHARACTER SHEET BODY PHASE 1A: WEAPON/UNARMED ATTACK + DAMAGE ROLLS
+// ---------------------------------------------------------------------------
+// `rollActionAttack`/`rollActionDamage` below extend this exact same
+// pipeline (`requestRoll`, `rollVisibility`, the Roll Tray) to
+// `sourceType: 'action_attack' | 'damage'` -- CharacterActionsPanel.vue's
+// weapon/unarmed rows emit `{ actionId }`, never a modifier or expression.
+// This is deliberately NOT Combat Resolution (`mutations.combat`, still
+// used below for spell actions): no target, no Armor Class comparison, no
+// hit/miss, no HP applied to anyone -- see roll-events.ts's own
+// createActionAttackRollEvent/createActionDamageRollEvent for why that
+// split exists.
 
 import CharacterInventoryPanel from '~/components/characters/CharacterInventoryPanel.vue'
 import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue'
@@ -421,6 +432,32 @@ function rollSave(row: CharacterSaveRow) {
 
 function rollSkill(row: CharacterSkillRow) {
   requestSheetRoll('skill', row.sourceKey)
+}
+
+// Character Sheet Body Phase 1A -- weapon/unarmed Attack/Damage rolls.
+// Same pipeline as ability/save/skill above (useWorldRolls().requestRoll,
+// same rollVisibility, same Roll Tray) -- the only difference is `actionId`
+// in place of `sourceKey`, since the server names the roll by WHICH action
+// to resolve, not which single already-evaluated Value to read (see
+// server/utils/roll-events.ts's own createActionAttackRollEvent/
+// createActionDamageRollEvent). Spell actions stay on
+// `mutations.combat.resolve` below, untouched.
+function rollActionAttack({ actionId }: { actionId: string }) {
+  requestRoll({
+    sourceType: 'action_attack',
+    actorCharacterId: characterId.value,
+    actionId,
+    visibility: rollVisibility.value
+  }).catch(() => {})
+}
+
+function rollActionDamage({ actionId }: { actionId: string }) {
+  requestRoll({
+    sourceType: 'damage',
+    actorCharacterId: characterId.value,
+    actionId,
+    visibility: rollVisibility.value
+  }).catch(() => {})
 }
 
 // Phase 4B.7 -- the Roll Tray's manual dice rack. Same visibility, same
@@ -875,11 +912,14 @@ function openSkillContext(skill: CharacterSkillRow) {
                 <CharacterActionsPanel
                   :actions="characterActions"
                   :pending="actionsPending"
-                  :error-message="actionsUnavailableMessage || mutations.combat.error"
+                  :error-message="actionsUnavailableMessage || mutations.combat.error || rollError"
                   :target-options="combatTargetOptions"
                   :results="mutations.combat.results"
                   :resolving="mutations.combat.resolving"
+                  :rolling="rollPending"
                   @resolve="mutations.combat.resolve"
+                  @attack="rollActionAttack"
+                  @damage="rollActionDamage"
                   @select="openActionContext"
                 />
               </div>

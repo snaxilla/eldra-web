@@ -91,6 +91,7 @@ import { directusServiceRequest } from './directus'
 import { getDerivedCharacter, type DerivedCharacterResult } from './character-derived'
 import { resolveDisplayNames } from './world-memberships'
 import { broadcastRollEvent } from './roll-realtime-bridge'
+import { resolveAttackAction, type ResolveAttackActionResult } from './character-actions'
 
 const COLLECTION = 'roll_events'
 
@@ -516,6 +517,232 @@ export async function createHitDieRollEvent(input: CreateHitDieRollInput): Promi
 
   logRollPerf('hit die roll', [
     ['openDice', tRolled - tStart],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
+  return roll
+}
+
+// ---------------------------------------------------------------------------
+// Write -- weapon/unarmed Attack and Damage rolls (Character Sheet Body
+// Phase 1A, character-sheet-beauty-pass.md's own IMPLEMENT section).
+// ---------------------------------------------------------------------------
+//
+// UNTARGETED, ON PURPOSE. These two functions produce exactly one d20 (or
+// one damage expression) plus its authoritative modifier -- no target, no
+// Armor Class comparison, no hit/miss, no HP applied to anyone.
+// server/utils/character-combat.ts's existing `resolveCombatAction` already
+// does the full targeted version (attack vs AC, damage applied to a
+// target's HP) for the "Resolve" control on spell actions; these functions
+// are Phase 1A's deliberately smaller sibling for weapon/unarmed actions --
+// see character-actions.ts's own `resolveAttackAction` for why the two
+// never disagree about which actions qualify.
+//
+// Both share `resolveAttackAction`'s one lookup (never a second, separate
+// action-resolution path) and never accept a label from the caller -- the
+// display label is always `<action name> Attack`/`<action name> Damage`,
+// server-derived from the same authoritative action name Combat Resolution
+// already trusts, never a client-supplied string.
+
+const MELEE_ATTACK_BONUS_ID = 'value:combat.melee_attack_bonus'
+const RANGED_ATTACK_BONUS_ID = 'value:combat.ranged_attack_bonus'
+
+// Maps resolveAttackAction's own rejection reasons onto an HTTP status,
+// mirroring statusForDerivedCharacterFailure's shape immediately above for
+// the identical reason: this module throws directly rather than returning a
+// result for the route to translate.
+function statusForAttackActionFailure(
+  result: Extract<ResolveAttackActionResult, { ok: false }>
+): { statusCode: number; statusMessage: string } {
+  switch (result.reason) {
+    case 'character-not-found':
+      return { statusCode: 404, statusMessage: result.message }
+    case 'action-not-found':
+      return { statusCode: 404, statusMessage: result.message }
+    case 'no-catalogue-selection':
+      return { statusCode: 409, statusMessage: result.message }
+    case 'not-attack-capable':
+      return { statusCode: 400, statusMessage: result.message }
+    case 'rules-unavailable':
+      return { statusCode: 409, statusMessage: result.message }
+    default: {
+      const exhaustive: never = result.reason
+      return exhaustive
+    }
+  }
+}
+
+export type CreateActionAttackRollInput = {
+  worldId: string | number
+  rollerUserId: string
+  actorCharacterId: string | number
+  encounterId?: string | number | null
+  // Client-supplied INTENT ("roll this action's attack"), never a modifier
+  // or a bonus -- resolveAttackAction re-derives everything this rolls.
+  actionId: string
+  visibility: RollVisibility
+  metadata?: Record<string, unknown>
+}
+
+// `1d20` against the action's own already-Rules-Engine-derived Attack Bonus
+// (`action.attackBonus`, attached by getCharacterActions) -- no target, no
+// Armor Class, no hit/miss decision. Persists and broadcasts exactly like
+// every other write path in this module.
+export async function createActionAttackRollEvent(input: CreateActionAttackRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
+  const resolved = await resolveAttackAction(input.worldId, input.actorCharacterId, input.actionId)
+  const tResolved = performance.now()
+
+  if (!resolved.ok) {
+    throw createError(statusForAttackActionFailure(resolved))
+  }
+
+  const { action } = resolved.resolved
+  const bonusId = action.resolution.attackKind === 'melee' ? MELEE_ATTACK_BONUS_ID : RANGED_ATTACK_BONUS_ID
+
+  const rolled = rollFormula('1d20', { bonuses: [action.attackBonus] })
+  const tRolled = performance.now()
+  if (!rolled.ok) {
+    throw createError({ statusCode: 400, statusMessage: rolled.error })
+  }
+
+  const row = toPersistenceRow({
+    worldId: input.worldId,
+    encounterId: input.encounterId ?? null,
+    actorCharacterId: input.actorCharacterId,
+    rollerUserId: input.rollerUserId,
+    label: `${action.name} Attack`,
+    sourceType: 'action_attack',
+    sourceKey: bonusId,
+    sourceId: action.id,
+    expression: rolled.roll.expression,
+    dice: rolled.roll.dice,
+    modifier: rolled.roll.modifier,
+    modifiers: rolled.roll.modifiers,
+    total: rolled.roll.total,
+    visibility: input.visibility,
+    metadata: { ...(input.metadata ?? {}), actionCategory: action.category, attackKind: action.resolution.attackKind }
+  })
+
+  const tBeforePersist = performance.now()
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
+  const tAfterPersist = performance.now()
+
+  const roll = fromPersistenceRow(res?.data, displayName)
+  broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf('action attack roll', [
+    ['actionResolution', tResolved - tStart],
+    ['openDice', tRolled - tResolved],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
+  return roll
+}
+
+export type CreateActionDamageRollInput = {
+  worldId: string | number
+  rollerUserId: string
+  actorCharacterId: string | number
+  encounterId?: string | number | null
+  actionId: string
+  visibility: RollVisibility
+  metadata?: Record<string, unknown>
+}
+
+// The action's own damage dice (a weapon's `damageRoll`) or, for Unarmed
+// Strike (which carries no dice at all -- RAW 2024's flat "1 + Strength
+// modifier"), a fixed `1d1` -- a real, single, always-1 die roll rather
+// than a bare modifier, so Unarmed Strike's damage still travels through
+// the exact same dice-based RollEventRecord/Roll Tray/dice-presentation
+// pipeline every other roll in this app uses, with no special-cased
+// "modifier-only" record shape. OpenDice itself requires at least one die
+// per formula (confirmed against the library directly) -- `1d1` is the
+// smallest expression that satisfies that while still reporting an
+// authoritative, always-reproducible-from-its-own-seed die group. Never
+// doubles dice for a critical -- Phase 1A has no target/hit context to know
+// whether this damage followed a critical Attack roll (see this module's
+// own header on why hit/miss stays out of scope).
+export async function createActionDamageRollEvent(input: CreateActionDamageRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
+  const resolved = await resolveAttackAction(input.worldId, input.actorCharacterId, input.actionId)
+  const tResolved = performance.now()
+
+  if (!resolved.ok) {
+    throw createError(statusForAttackActionFailure(resolved))
+  }
+
+  const { action, damageAbilityModifier } = resolved.resolved
+
+  let expression: string
+  let damageType: string | undefined
+
+  if (action.category === 'unarmed') {
+    // RAW 2024: flat "1 + Strength modifier bludgeoning" -- see
+    // character-combat.ts's own identical special case for why this is the
+    // one action Phase 1A hand-derives a damage type for rather than
+    // reading `action.damageType` (UNARMED_STRIKE carries none).
+    expression = '1d1'
+    damageType = 'bludgeoning'
+  } else {
+    if (!action.damageRoll) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `'${action.name}' has no damage dice declared by its Content Pack -- this World's content is missing structured damage data for it`
+      })
+    }
+    expression = `${action.damageRoll.count}d${action.damageRoll.faces}`
+    damageType = action.damageType
+  }
+
+  const rolled = rollFormula(expression, { bonuses: [damageAbilityModifier] })
+  const tRolled = performance.now()
+  if (!rolled.ok) {
+    throw createError({ statusCode: 400, statusMessage: rolled.error })
+  }
+
+  const row = toPersistenceRow({
+    worldId: input.worldId,
+    encounterId: input.encounterId ?? null,
+    actorCharacterId: input.actorCharacterId,
+    rollerUserId: input.rollerUserId,
+    label: `${action.name} Damage`,
+    sourceType: 'damage',
+    sourceKey: null,
+    sourceId: action.id,
+    expression: rolled.roll.expression,
+    dice: rolled.roll.dice,
+    modifier: rolled.roll.modifier,
+    modifiers: rolled.roll.modifiers,
+    total: rolled.roll.total,
+    visibility: input.visibility,
+    metadata: {
+      ...(input.metadata ?? {}),
+      actionCategory: action.category,
+      ...(damageType ? { damageType } : {})
+    }
+  })
+
+  const tBeforePersist = performance.now()
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
+  const tAfterPersist = performance.now()
+
+  const roll = fromPersistenceRow(res?.data, displayName)
+  broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf('action damage roll', [
+    ['actionResolution', tResolved - tStart],
+    ['openDice', tRolled - tResolved],
     ['persistence+displayName', tAfterPersist - tBeforePersist],
     ['broadcast', tAfterBroadcast - tAfterPersist]
   ])

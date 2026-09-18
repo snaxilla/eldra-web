@@ -16,10 +16,13 @@ import type { ActionCategory, ContentAction, ContentActionResolver, ContentSourc
 
 export type {
   ActionCategory,
+  ActionResolution,
   ContentAction,
   ContentActionResolver,
   ContentSourceCategory
 } from './types'
+
+export { isAttackCapableAction } from './attack-capability'
 
 const RESOLVERS: Record<string, ContentActionResolver> = {
   dnd5e: resolveDnd5eActions

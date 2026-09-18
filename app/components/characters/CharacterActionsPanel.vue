@@ -18,6 +18,24 @@
 // shape CharacterHealthPanel.vue's own Recovery actions already use.
 //
 // ---------------------------------------------------------------------------
+// ATTACK / DAMAGE -- Character Sheet Body Phase 1A, WEAPON/UNARMED ONLY
+// ---------------------------------------------------------------------------
+// A weapon or unarmed attack-roll action (`isAttackCapableAction`, shared
+// with server/utils/character-actions.ts's own gate so the two can never
+// disagree) no longer gets the targeted "Resolve" control at all -- it gets
+// two untargeted rolls instead: `attack` ({ actionId }) rolls 1d20 against
+// this action's own Attack Bonus, `damage` ({ actionId }) rolls its damage
+// dice/modifier. Neither compares to a target's Armor Class, decides
+// hit/miss, or touches anyone's HP -- both are plain roll INTENT, handled
+// exactly like an ability/save/skill click (the page's own `useWorldRolls()`
+// call, not `mutations.combat`), and their result surfaces through the
+// existing Roll Tray, never a result box in this row. Spell actions (a
+// spell attack roll or a saving-throw spell) are unaffected: they still
+// carry a `resolution` but fail `isAttackCapableAction`, so they keep the
+// original targeted Resolve control and its inline CombatOutcome box below,
+// completely unchanged by this phase.
+//
+// ---------------------------------------------------------------------------
 // A TABLE, NOT A PILE OF CARDS -- Desktop IA pass
 // ---------------------------------------------------------------------------
 // Rebuilt against the reference sheet's own Actions tab, whose single
@@ -57,13 +75,13 @@
 // A SINGLE SHARED TARGET, NOT A TARGETING UI
 // ---------------------------------------------------------------------------
 // One plain `<select>` of the World's other characters, shared by every
-// resolvable row -- "a simple way to execute an action", deliberately not a
-// spatial/map-based target picker (explicitly out of scope). Only actions
-// carrying a `resolution` (an attack roll or a saving throw) get a
-// "Resolve" control at all; a non-attack/non-save spell (Shield, Cure
-// Wounds) has none, matching `attackBonus`/`saveDc`'s own "absent means not
-// applicable" rule -- it is still a real, castable action, just not one
-// this system resolves automatically.
+// SPELL resolvable row -- "a simple way to execute an action", deliberately
+// not a spatial/map-based target picker (explicitly out of scope). Weapon/
+// unarmed rows no longer use this target at all (see this file's own ATTACK
+// / DAMAGE note above). A non-attack/non-save spell (Shield, Cure Wounds)
+// gets no control either, matching `attackBonus`/`saveDc`'s own "absent
+// means not applicable" rule -- it is still a real, castable action, just
+// not one this system resolves automatically.
 //
 // ---------------------------------------------------------------------------
 // MOBILE
@@ -85,11 +103,17 @@
 // affordance that actually differs -- the Resolve control -- rather than by
 // the surface.
 
-export type CharacterActionCategory = 'weapon' | 'unarmed' | 'spell' | 'species' | 'class' | 'background'
+import { isAttackCapableAction } from '~/lib/content-actions'
+import type { ActionCategory, ActionResolution as ContentActionResolution } from '~/lib/content-actions'
 
-export type ActionResolution =
-  | { kind: 'attack-roll'; attackKind: 'melee' | 'ranged' | 'spell' }
-  | { kind: 'saving-throw'; savingAbility: string }
+export type CharacterActionCategory = ActionCategory
+// Restated (not hand-duplicated) from app/lib/content-actions/types.ts --
+// unlike server/utils/character-combat.ts's own CombatOutcome shape below,
+// this is already an app/lib module, so importing it directly (rather than
+// re-declaring it by hand) carries none of the "app/ must never import from
+// server/" risk this file's own header warns about for the server-shaped
+// prop.
+export type ActionResolution = ContentActionResolution
 
 export type CharacterAction = {
   id: string
@@ -130,17 +154,27 @@ const props = withDefaults(defineProps<{
   // history, no log).
   results?: Record<string, CombatOutcome>
   resolving?: boolean
+  // Character Sheet Body Phase 1A -- true while an Attack/Damage roll this
+  // panel emitted is in flight (the page's own `useWorldRolls().pending`,
+  // the same shared flag every ability/save/skill click already disables
+  // against). One flag for both buttons on every row, matching `resolving`
+  // above -- no per-row/per-action-id tracking, since a player only ever
+  // has one roll in flight at a time.
+  rolling?: boolean
 }>(), {
   actions: () => [],
   pending: false,
   errorMessage: '',
   targetOptions: () => [],
   results: () => ({}),
-  resolving: false
+  resolving: false,
+  rolling: false
 })
 
 const emit = defineEmits<{
   resolve: [{ actionId: string; targetCharacterId: string }]
+  attack: [{ actionId: string }]
+  damage: [{ actionId: string }]
   select: [CharacterAction]
 }>()
 
@@ -205,6 +239,16 @@ const visibleActions = computed(() =>
 function resolve(actionId: string) {
   if (!targetCharacterId.value || props.resolving) return
   emit('resolve', { actionId, targetCharacterId: targetCharacterId.value })
+}
+
+function attack(actionId: string) {
+  if (props.rolling) return
+  emit('attack', { actionId })
+}
+
+function damage(actionId: string) {
+  if (props.rolling) return
+  emit('damage', { actionId })
 }
 
 // The "Hit / DC" column carries whichever of the two the action declares --
@@ -357,10 +401,36 @@ function hitOrDc(action: CharacterAction): string {
             <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
           </button>
 
-          <!-- Combat Resolution: only actions with a resolution mechanic get
-               a control at all. It sits outside the row button so activating
-               it never also opens the detail drawer. -->
-          <template v-if="action.resolution">
+          <!-- Character Sheet Body Phase 1A: a weapon/unarmed attack gets
+               untargeted Attack/Damage rolls, not Combat Resolution's
+               targeted Resolve -- see this file's own header. Sits outside
+               the row button so activating it never also opens the detail
+               drawer. -->
+          <template v-if="isAttackCapableAction(action)">
+            <div class="mt-1 flex gap-1.5">
+              <button
+                type="button"
+                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                :disabled="rolling"
+                @click="attack(action.id)"
+              >
+                Attack
+              </button>
+              <button
+                type="button"
+                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                :disabled="rolling"
+                @click="damage(action.id)"
+              >
+                Damage
+              </button>
+            </div>
+          </template>
+
+          <!-- Combat Resolution: every OTHER action with a resolution
+               mechanic (spell attack roll, spell saving throw) keeps the
+               original targeted Resolve control, unchanged. -->
+          <template v-else-if="action.resolution">
             <button
               type="button"
               class="eldra-button mt-1 min-h-11 w-full rounded-none px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:px-4"

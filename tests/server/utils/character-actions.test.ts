@@ -27,7 +27,7 @@ vi.mock('../../../server/utils/world-runtime-service', () => ({
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../app/lib/rules/types'
-import { getCharacterActions } from '../../../server/utils/character-actions'
+import { getCharacterActions, resolveAttackAction } from '../../../server/utils/character-actions'
 import { findRulesFacet } from '../../../app/lib/content-rules'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
@@ -67,6 +67,23 @@ const LONGBOW_ACTION = { name: 'Longbow', category: 'weapon' as const, actionTyp
 const BREATH_WEAPON_ACTION = { name: 'Breath Weapon', category: 'species' as const, actionType: 'Feature', description: 'Exhale magical energy.' }
 const SECOND_WIND_ACTION = { name: 'Second Wind', category: 'class' as const, actionType: 'Feature', usage: 'Class Feature (Level 1)' }
 const FIREBALL_ACTION = { name: 'Fireball', category: 'spell' as const, actionType: 'Level 3 Spell (Evocation)', range: '150 ft.' }
+
+// Character Sheet Body Phase 1A fixtures -- carries `resolution`/`damageRoll`/
+// `damageType`, the structured fields resolveAttackAction reads (unlike the
+// plain LONGSWORD_ACTION/LONGBOW_ACTION above, which predate Combat
+// Resolution and carry only the presentation-only `damage` string).
+const SHORTSWORD_ACTION_ATTACK = {
+  name: 'Shortsword', category: 'weapon' as const, actionType: 'Melee Attack', range: '5 ft.', damage: '1d6 piercing',
+  damageRoll: { count: 1, faces: 6 }, damageType: 'piercing', resolution: { kind: 'attack-roll' as const, attackKind: 'melee' as const }
+}
+const LONGBOW_ACTION_ATTACK = {
+  name: 'Longbow', category: 'weapon' as const, actionType: 'Ranged Attack', range: '150/600 ft.', damage: '1d8 piercing',
+  damageRoll: { count: 1, faces: 8 }, damageType: 'piercing', resolution: { kind: 'attack-roll' as const, attackKind: 'ranged' as const }
+}
+// A "weapon" action with no resolution at all -- not realistic content, but
+// proves resolveAttackAction rejects on the resolution gate, not merely the
+// category one.
+const INERT_WEAPON_ACTION = { name: 'Ceremonial Dagger', category: 'weapon' as const, actionType: 'Melee Attack', range: '5 ft.', damage: '1d4 piercing' }
 
 // FIGHTER_CON_16_BLUEPRINT-shaped, STR 18 (+4), DEX 14 (+2), level 1 ->
 // PB +2. Melee bonus = 6, Ranged bonus = 4.
@@ -338,5 +355,135 @@ describe('getCharacterActions -- character existence', () => {
     expect(result.available).toBe(false)
     if (result.available) return
     expect(result.reason).toBe('character-not-found')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveAttackAction -- Character Sheet Body Phase 1A (Authoritative
+// Attack + Damage Rolls). Reuses the same blueprint()/baseEntry() fixtures:
+// STR 18 (+4), DEX 14 (+2), level 1 -> PB +2. Melee bonus = 6, Ranged
+// bonus = 4.
+// ---------------------------------------------------------------------------
+
+describe('resolveAttackAction -- Unarmed Strike', () => {
+  it('resolves with the Melee Attack Bonus and the Strength modifier for damage', async () => {
+    const result = await resolveAttackAction('5', '42', 'unarmed:strike')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.resolved.action).toMatchObject({ name: 'Unarmed Strike', category: 'unarmed', attackBonus: 6 })
+    expect(result.resolved.damageAbilityModifier).toBe(4)
+  })
+})
+
+describe('resolveAttackAction -- weapons', () => {
+  it('resolves an equipped melee weapon with its Attack Bonus and Strength modifier', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Shortsword', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [SHORTSWORD_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const result = await resolveAttackAction('5', '42', 'weapon:item-1')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.resolved.action).toMatchObject({ name: 'Shortsword', attackBonus: 6, damageRoll: { count: 1, faces: 6 }, damageType: 'piercing' })
+    expect(result.resolved.damageAbilityModifier).toBe(4) // STR mod, melee
+  })
+
+  it('resolves an equipped ranged weapon with the Ranged Attack Bonus and Dexterity modifier', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Longbow', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [LONGBOW_ACTION_ATTACK] }) }]
+      })
+    })
+
+    const result = await resolveAttackAction('5', '42', 'weapon:item-1')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.resolved.action).toMatchObject({ name: 'Longbow', attackBonus: 4 })
+    expect(result.resolved.damageAbilityModifier).toBe(2) // DEX mod, ranged
+  })
+
+  it('rejects a weapon action with no resolution as not-attack-capable', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        inventory: [{ instanceId: 'item-1', status: 'resolved', title: 'Ceremonial Dagger', equipped: true, attuned: false, quantity: 1, entry: baseEntry({ actions: [INERT_WEAPON_ACTION] }) }]
+      })
+    })
+
+    const result = await resolveAttackAction('5', '42', 'weapon:item-1')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-attack-capable')
+  })
+})
+
+describe('resolveAttackAction -- spells are out of Phase 1A scope', () => {
+  it('rejects a spell attack roll as not-attack-capable, even though it shares the attack-roll mechanism', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        class: {
+          status: 'resolved',
+          entry: baseEntry({ title: 'Wizard', slug: 'wizard-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb') ?? undefined })
+        },
+        spells: [{
+          instanceId: 'spell-1', status: 'resolved', title: 'Fire Bolt', known: true, prepared: true,
+          entry: baseEntry({ actions: [{ name: 'Fire Bolt', category: 'spell' as const, actionType: 'Cantrip', damageRoll: { count: 1, faces: 10 }, damageType: 'fire', resolution: { kind: 'attack-roll' as const, attackKind: 'spell' as const } }] })
+        }]
+      })
+    })
+
+    const result = await resolveAttackAction('5', '42', 'spell:spell-1')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-attack-capable')
+  })
+
+  it('rejects a non-attack, non-resolvable spell (e.g. Shield) as not-attack-capable', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: blueprint({
+        spells: [{ instanceId: 'spell-1', status: 'resolved', title: 'Shield', known: true, prepared: true, entry: baseEntry({ actions: [{ name: 'Shield', category: 'spell' as const, actionType: 'Level 1 Spell (Abjuration)' }] }) }]
+      })
+    })
+
+    const result = await resolveAttackAction('5', '42', 'spell:spell-1')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-attack-capable')
+  })
+})
+
+describe('resolveAttackAction -- errors', () => {
+  it('reports character-not-found', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: false, reason: 'character-not-found' })
+
+    const result = await resolveAttackAction('5', '999', 'unarmed:strike')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('character-not-found')
+  })
+
+  it('reports action-not-found for an id the character does not have', async () => {
+    const result = await resolveAttackAction('5', '42', 'weapon:does-not-exist')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('action-not-found')
+  })
+
+  it('reports rules-unavailable when no Rules Package is activated', async () => {
+    getWorldRuntimeMock.mockResolvedValue({ configured: false })
+
+    const result = await resolveAttackAction('5', '42', 'unarmed:strike')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('rules-unavailable')
   })
 })

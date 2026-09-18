@@ -75,6 +75,11 @@ export type RollRequestInput = {
   // 'value:skill.stealth.bonus'. Never a modifier or a number.
   sourceKey?: string
   sourceId?: string
+  // Required for 'action_attack' | 'damage' ONLY (Character Sheet Body
+  // Phase 1A) -- names WHICH of this character's own actions to roll;
+  // server/utils/character-actions.ts's `resolveAttackAction` re-derives
+  // every mechanic from it, never trusting a modifier or expression.
+  actionId?: string
   // Required for 'custom' ONLY -- every other sourceType derives its own
   // expression server-side and this field must not be sent for those (the
   // route rejects it, §7).

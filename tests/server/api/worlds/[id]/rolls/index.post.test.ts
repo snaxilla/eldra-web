@@ -15,14 +15,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-const { createCustomRollEventMock, createDerivedRollEventMock } = vi.hoisted(() => ({
+const { createCustomRollEventMock, createDerivedRollEventMock, createActionAttackRollEventMock, createActionDamageRollEventMock } = vi.hoisted(() => ({
   createCustomRollEventMock: vi.fn(),
-  createDerivedRollEventMock: vi.fn()
+  createDerivedRollEventMock: vi.fn(),
+  createActionAttackRollEventMock: vi.fn(),
+  createActionDamageRollEventMock: vi.fn()
 }))
 
 vi.mock('../../../../../../server/utils/roll-events', () => ({
   createCustomRollEvent: createCustomRollEventMock,
-  createDerivedRollEvent: createDerivedRollEventMock
+  createDerivedRollEvent: createDerivedRollEventMock,
+  createActionAttackRollEvent: createActionAttackRollEventMock,
+  createActionDamageRollEvent: createActionDamageRollEventMock
 }))
 
 // h3's real readBody needs a live Node request stream this test has no
@@ -68,6 +72,8 @@ function fakeEvent(worldId: string, principal: Principal | null, body: unknown):
 beforeEach(() => {
   createCustomRollEventMock.mockReset()
   createDerivedRollEventMock.mockReset()
+  createActionAttackRollEventMock.mockReset()
+  createActionDamageRollEventMock.mockReset()
 })
 
 describe('POST /api/worlds/:id/rolls', () => {
@@ -85,12 +91,14 @@ describe('POST /api/worlds/:id/rolls', () => {
     expect(createCustomRollEventMock).not.toHaveBeenCalled()
   })
 
-  it('rejects a sourceType nothing implements yet with 400 -- action_attack/spell_attack/spell_save/damage are still Phase 3', async () => {
+  it('rejects a sourceType nothing implements yet with 400 -- spell_attack/spell_save remain unimplemented here (Combat Resolution\'s own targeted Resolve control handles spells)', async () => {
     await expect(
-      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'action_attack', sourceId: 'action-1', actorCharacterId: '42' }))
+      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'spell_attack', sourceId: 'action-1', actorCharacterId: '42' }))
     ).rejects.toMatchObject({ statusCode: 400 })
     expect(createCustomRollEventMock).not.toHaveBeenCalled()
     expect(createDerivedRollEventMock).not.toHaveBeenCalled()
+    expect(createActionAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createActionDamageRollEventMock).not.toHaveBeenCalled()
   })
 
   it('rejects a missing sourceType with 400', async () => {
@@ -289,5 +297,120 @@ describe('POST /api/worlds/:id/rolls -- Phase 2 (ability/saving_throw/skill)', (
     )
 
     expect(createDerivedRollEventMock).toHaveBeenCalledWith(expect.objectContaining({ rollerUserId: 'real-account' }))
+  })
+})
+
+describe('POST /api/worlds/:id/rolls -- Character Sheet Body Phase 1A (action_attack/damage)', () => {
+  it.each(['action_attack', 'damage'] as const)(
+    'succeeds for a %s roll, sending only actorCharacterId/actionId/visibility to the action-roll layer',
+    async (sourceType) => {
+      const mock = sourceType === 'action_attack' ? createActionAttackRollEventMock : createActionDamageRollEventMock
+      mock.mockResolvedValue({ id: 'roll-1', sourceType, total: 17 })
+
+      const result = await handler(
+        fakeEvent('5', playerPrincipal('5'), {
+          sourceType,
+          actorCharacterId: '42',
+          actionId: 'weapon:item-1',
+          visibility: 'table'
+        })
+      )
+
+      expect(result).toEqual({ id: 'roll-1', sourceType, total: 17 })
+      expect(mock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          worldId: '5',
+          rollerUserId: 'account-1',
+          actorCharacterId: '42',
+          actionId: 'weapon:item-1',
+          visibility: 'table'
+        })
+      )
+      expect(createCustomRollEventMock).not.toHaveBeenCalled()
+      expect(createDerivedRollEventMock).not.toHaveBeenCalled()
+      const other = sourceType === 'action_attack' ? createActionDamageRollEventMock : createActionAttackRollEventMock
+      expect(other).not.toHaveBeenCalled()
+    }
+  )
+
+  it('defaults visibility to private (fail closed) when omitted', async () => {
+    createActionAttackRollEventMock.mockResolvedValue({ id: 'roll-2' })
+
+    await handler(
+      fakeEvent('5', playerPrincipal('5'), { sourceType: 'action_attack', actorCharacterId: '42', actionId: 'unarmed:strike' })
+    )
+
+    expect(createActionAttackRollEventMock).toHaveBeenCalledWith(expect.objectContaining({ visibility: 'private' }))
+  })
+
+  it('rejects a missing actorCharacterId with 400', async () => {
+    await expect(
+      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'action_attack', actionId: 'unarmed:strike' }))
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(createActionAttackRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a missing actionId with 400', async () => {
+    await expect(
+      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'damage', actorCharacterId: '42' }))
+    ).rejects.toMatchObject({ statusCode: 400 })
+    expect(createActionDamageRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['expression', 'modifier', 'modifiers', 'bonus', 'sourceKey', 'attackBonus', 'damage', 'damageType', 'damageRoll'])(
+    'rejects a body supplying "%s" with 400 -- no client-side mechanics for an action roll',
+    async (field) => {
+      await expect(
+        handler(
+          fakeEvent('5', playerPrincipal('5'), {
+            sourceType: 'action_attack',
+            actorCharacterId: '42',
+            actionId: 'weapon:item-1',
+            [field]: field === 'modifiers' || field === 'damageRoll' ? [1] : field === 'expression' ? '1d20+99' : 99
+          })
+        )
+      ).rejects.toMatchObject({ statusCode: 400 })
+      expect(createActionAttackRollEventMock).not.toHaveBeenCalled()
+    }
+  )
+
+  it('propagates a rejection from createActionAttackRollEvent (e.g. an unknown action) unchanged', async () => {
+    createActionAttackRollEventMock.mockRejectedValue(Object.assign(new Error('No such action'), { statusCode: 404 }))
+
+    await expect(
+      handler(fakeEvent('5', playerPrincipal('5'), { sourceType: 'action_attack', actorCharacterId: '42', actionId: 'weapon:does-not-exist' }))
+    ).rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  it('never derives rollerUserId from the request body for an action roll either', async () => {
+    createActionDamageRollEventMock.mockResolvedValue({ id: 'roll-3' })
+
+    await handler(
+      fakeEvent('5', playerPrincipal('5', 'real-account'), {
+        sourceType: 'damage',
+        actorCharacterId: '42',
+        actionId: 'unarmed:strike',
+        rollerUserId: 'someone-else'
+      })
+    )
+
+    expect(createActionDamageRollEventMock).toHaveBeenCalledWith(expect.objectContaining({ rollerUserId: 'real-account' }))
+  })
+
+  it('never forwards a client-supplied label -- the display label is always server-derived from the action\'s own name', async () => {
+    createActionAttackRollEventMock.mockResolvedValue({ id: 'roll-4' })
+
+    await handler(
+      fakeEvent('5', playerPrincipal('5'), {
+        sourceType: 'action_attack',
+        actorCharacterId: '42',
+        actionId: 'unarmed:strike',
+        label: 'Definitely The Real Attack Bonus'
+      })
+    )
+
+    expect(createActionAttackRollEventMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({ label: expect.anything() })
+    )
   })
 })

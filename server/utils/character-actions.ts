@@ -49,6 +49,7 @@
 import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
 import { getDerivedCharacter } from './character-derived'
 import type { ActionCategory, ContentAction } from '../../app/lib/content-actions'
+import { isAttackCapableAction } from '../../app/lib/content-actions'
 
 export type CharacterAction = ContentAction & {
   // Stable within one character's assembled list -- the `:key` a Sheet's
@@ -180,4 +181,104 @@ export async function getCharacterActions(
   }
 
   return { available: true, actions }
+}
+
+// ---------------------------------------------------------------------------
+// resolveAttackAction -- Character Sheet Body Phase 1A (Authoritative
+// Attack + Damage Rolls, server/utils/roll-events.ts's own
+// createActionAttackRollEvent/createActionDamageRollEvent).
+// ---------------------------------------------------------------------------
+// The untargeted counterpart to server/utils/character-combat.ts's
+// `resolveCombatAction`: this module states what a weapon/unarmed attack
+// action's own numbers ARE (Attack Bonus, damage dice, the ability modifier
+// its damage uses); it never compares to a target's AC, never decides
+// hit/miss, never touches anyone's HP. Spell actions (category 'spell',
+// including a spell attack roll) are out of Phase 1A's scope and are
+// rejected here exactly like a weapon/unarmed action with no attack-roll
+// resolution -- `isAttackCapableAction` is the single gate both this
+// function and the Actions panel client-side (CharacterActionsPanel.vue)
+// use, so "does this row get Attack/Damage controls" and "will the server
+// actually roll them" can never disagree.
+
+const STR_MOD_ID = 'value:ability.str.mod'
+const DEX_MOD_ID = 'value:ability.dex.mod'
+
+export type AttackCapableAction = CharacterAction & {
+  category: 'weapon' | 'unarmed'
+  resolution: { kind: 'attack-roll'; attackKind: 'melee' | 'ranged' }
+  attackBonus: number
+}
+
+export type ResolvedAttackAction = {
+  action: AttackCapableAction
+  // The ability modifier this action's DAMAGE uses -- melee reads Strength,
+  // ranged reads Dexterity, mirroring character-combat.ts's own
+  // `rollDamage` (unchanged, untouched by this module) exactly. Resolved
+  // here (rather than by each roll-events.ts write path separately) so an
+  // Attack roll and a Damage roll for the same action always agree on which
+  // ability the character used, even though only Damage actually needs it.
+  damageAbilityModifier: number
+}
+
+export type ResolveAttackActionResult =
+  | { ok: true; resolved: ResolvedAttackAction }
+  | {
+      ok: false
+      reason: 'character-not-found' | 'no-catalogue-selection' | 'action-not-found' | 'not-attack-capable' | 'rules-unavailable'
+      message: string
+    }
+
+export async function resolveAttackAction(
+  worldId: string | number,
+  characterId: string | number,
+  actionId: string
+): Promise<ResolveAttackActionResult> {
+  const actionsResult = await getCharacterActions(worldId, characterId)
+  if (!actionsResult.available) {
+    if (actionsResult.reason === 'character-not-found') {
+      return { ok: false, reason: 'character-not-found', message: 'Character not found in this world' }
+    }
+    return { ok: false, reason: 'no-catalogue-selection', message: actionsResult.message }
+  }
+
+  const action = actionsResult.actions.find((candidate) => candidate.id === actionId)
+  if (!action) {
+    return { ok: false, reason: 'action-not-found', message: `No action '${actionId}' on this character` }
+  }
+
+  if (!isAttackCapableAction(action)) {
+    return {
+      ok: false,
+      reason: 'not-attack-capable',
+      message: `'${action.name}' is not a weapon or unarmed attack -- Attack/Damage rolls only support those in this phase`
+    }
+  }
+  if (action.attackBonus === undefined) {
+    return {
+      ok: false,
+      reason: 'rules-unavailable',
+      message: `This World's active Rules Package does not declare the Attack Bonus '${action.name}' needs`
+    }
+  }
+
+  const derived = await getDerivedCharacter(worldId, characterId)
+  if (!derived.available) {
+    return {
+      ok: false,
+      reason: 'rules-unavailable',
+      message: derived.reason === 'character-not-found' ? 'Character not found in this world' : derived.message
+    }
+  }
+
+  // `isAttackCapableAction` above already guarantees `resolution.attackKind`
+  // is 'melee' or 'ranged' (never 'spell') -- the cast below only narrows
+  // the type back to what that predicate already proved at runtime.
+  const attackKind = (action.resolution as { attackKind: 'melee' | 'ranged' }).attackKind
+  const damageAbilityModifier =
+    findNumber(derived.derived.byCategory, attackKind === 'melee' ? STR_MOD_ID : DEX_MOD_ID) ?? 0
+
+  return {
+    ok: true,
+    resolved: { action: action as AttackCapableAction, damageAbilityModifier }
+  }
 }

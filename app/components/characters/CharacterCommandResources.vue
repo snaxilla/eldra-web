@@ -70,6 +70,8 @@
 // granting contract beforehand.
 
 import type { StoredCharacterHealth } from '~/lib/characters/health'
+import { spellSlotsToCharacterResources } from './characterResourcePresentation'
+import CharacterResourceOrbs from './CharacterResourceOrbs.vue'
 
 export type RecoveryActionType =
   | 'damage' | 'heal' | 'temp-hp' | 'spend-hit-die' | 'short-rest' | 'long-rest' | 'reset-death-saves'
@@ -82,27 +84,26 @@ const props = withDefaults(defineProps<{
   hitDieSize: number | null
   recoverySaving?: boolean
   recoveryError?: string
-  isCaster?: boolean | null
   slotLevels?: readonly { level: number; max: number; expended: number }[]
   spellSaving?: boolean
 }>(), {
   recoverySaving: false,
   recoveryError: '',
-  isCaster: null,
   slotLevels: () => [],
   spellSaving: false
 })
 
+// Caster Pass 0.1: Death Saves moved out of this component entirely -- see
+// CharacterVitalsBar.vue, which now owns them (contextual, shown only at
+// Current HP <= 0). This was the only consumer of a direct `save` (PUT
+// .../health) emit anywhere in this file; nothing else here bypasses the
+// Recovery System's own `recovery` emit, so `save` is removed rather than
+// kept unused.
 const emit = defineEmits<{
-  save: [StoredCharacterHealth]
   recovery: [{ type: RecoveryActionType; amount?: number }]
   'expend-slot': [number]
   'restore-slot': [number]
 }>()
-
-function saveWith(patch: Partial<StoredCharacterHealth>) {
-  emit('save', { ...props.health, ...patch })
-}
 
 // --- Damage / Heal / Temp HP: one shared Amount field, three actions -------
 // Character Sheet Header Cleanup 1: "HP Correction" (raw current/temp HP
@@ -160,14 +161,32 @@ const hitDiceLabel = computed(() => {
   return `Hit Dice (d${props.hitDieSize})`
 })
 
-// --- Death Saves ---------------------------------------------------------
-// Clicking mark N sets the count to N -- clicking an already-filled mark
-// clears back down to just before it, unchanged from CharacterRecoveryPanel.
+// --- Spell Slots -> Character Resource orbs -------------------------------
+// Caster Pass 0.1: adapts the EXISTING `slotLevels` prop (unchanged --
+// still Rules Engine Table rows + persisted `expendedSlots`, see
+// useCharacterSheet.ts's own `slotLevels` computed) into the generic
+// Character Resource presentation contract (characterResourcePresentation.ts).
+// `resourceGroups` is `[]` for a non-caster (or a caster with no levels),
+// which is exactly what makes CharacterResourceOrbs.vue render nothing --
+// no empty "Resources" card for Bobbert.
+//
+// A resource-orb click carries only `{groupId, poolId}` -- generic
+// identifiers a future Sorcery Points/Rage group would use identically.
+// Today there is exactly ONE group ('spell-slots', from the adapter above),
+// so routing an orb click back to the existing `expend-slot`/`restore-slot`
+// emits (unchanged -- still plain slot-level numbers, still relayed to
+// mutations.spellcasting.expendSlot/restoreSlot exactly as before) only
+// needs to parse `poolId` back into the level number the adapter derived
+// it from. A second real resource group would need this switch extended
+// by its own group id -- not before one exists.
+const resourceGroups = computed(() => spellSlotsToCharacterResources(props.slotLevels))
 
-function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
-  const current = props.health.deathSaves[kind]
-  const next = current === count ? count - 1 : count
-  saveWith({ deathSaves: { ...props.health.deathSaves, [kind]: next } })
+function handleResourceExpend({ groupId, poolId }: { groupId: string; poolId: string }) {
+  if (groupId === 'spell-slots') emit('expend-slot', Number(poolId))
+}
+
+function handleResourceRestore({ groupId, poolId }: { groupId: string; poolId: string }) {
+  if (groupId === 'spell-slots') emit('restore-slot', Number(poolId))
 }
 </script>
 
@@ -182,16 +201,22 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
 
     <!-- Header Cleanup 3 root cause, traced not guessed: this grid never
          set `items-*`, so it used CSS Grid's own default -- `stretch`.
-         With Damage/Heal, Rest, and Death Saves sharing one row at `sm:`,
-         every card's OUTER box stretched to match the row's tallest
-         member (Rest, the tallest by content), leaving Death Saves'
-         genuinely short content (two rows of circles) sitting inside a
-         box padded out to Rest's full height -- exactly the reported
-         "consumes too much header space for a control that is inactive/
-         irrelevant." `items-start` makes each card size to its OWN
-         content instead of the row's tallest, with zero effect on mobile
-         (each card already occupies its own full-width row there, alone,
-         so there is no taller sibling to have been stretching against). -->
+         `items-start` makes each card size to its OWN content instead of
+         the row's tallest, with zero effect on mobile (each card already
+         occupies its own full-width row there, alone, so there is no
+         taller sibling to have been stretching against).
+
+         Caster Pass 0.1: Death Saves no longer live in this grid at all
+         (see CharacterVitalsBar.vue -- they are now contextual, shown only
+         at Current HP <= 0, in the header's vitals row instead of
+         permanent resource-grid space). The row is now
+         [ Damage/Heal ] [ Rest ] [ Character Resources ], and Resources
+         gets the two columns Death Saves and the old Spell Slots card used
+         to split between them -- "use the available half-header
+         intelligently" rather than four equal 1/4-width cards, since
+         resource density varies wildly between characters (a non-caster
+         has none; a high-level caster may have up to nine spell-slot
+         pools). -->
     <div class="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">
       <!-- Damage / Heal ----------------------------------------------------
            Header Cleanup 1 correction: back to col-span-1 at `sm:` (the
@@ -260,9 +285,9 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
            every OTHER card here, because this one now holds two real
            buttons plus the Hit Dice line/action -- narrower than that and
            "Short Rest"/"Long Rest" would need to wrap or truncate;
-           `sm:col-span-1` restores the single-card footprint the PRODUCT
-           GOAL names ("[Damage/Heal] [Rest] [Death Saves]
-           [future/empty space]") once the row itself is wide enough.
+           `sm:col-span-1` restores the single-card footprint the current
+           layout ("[Damage/Heal] [Rest] [Character Resources]") gives it
+           once the row itself is wide enough.
 
            HEADER CLEANUP 2.1 CORRECTION: Short Rest no longer auto-spends
            a Hit Die (it used to, via the deterministic Rules Engine
@@ -325,112 +350,38 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
         </button>
       </div>
 
-      <!-- Death Saves ---------------------------------------------------
-           Header Cleanup 3: this card's own markup is unchanged --
-           `items-start` on the parent grid (above) is what makes it
-           genuinely compact now, by letting it size to this content
-           instead of stretching to match Rest's taller card. Control
-           semantics (mark/Reset) are untouched; see this file's own
-           `setDeathSaveMarks` comment. -->
-      <div class="eldra-well rounded-none p-2">
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">Death Saves</span>
-          <button
-            type="button"
-            class="text-[0.6rem] uppercase tracking-[0.1em] text-[#9f9278] underline-offset-2 hover:text-[#d8ceb8] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
-            :disabled="recoverySaving || (health.deathSaves.successes === 0 && health.deathSaves.failures === 0)"
-            @click="emitRecovery('reset-death-saves')"
-          >
-            Reset
-          </button>
-        </div>
+      <!-- Character Resources -- Caster Pass 0.1. Replaces both the old
+           Spell Slots stepper card AND the old permanent Death Saves card
+           (moved to CharacterVitalsBar.vue, contextual at Current HP <= 0
+           -- see this file's OWN removal of that markup in this same
+           diff). `col-span-2 sm:col-span-2` (not `sm:col-span-1`): with
+           only three cards left in this row, Resources takes the TWO
+           columns Death Saves and Spell Slots used to split between them
+           -- "use the available half-header intelligently" rather than a
+           tiny 1/4-width card, since resource density varies wildly (zero
+           groups for a non-caster, up to nine spell-slot pools for a
+           high-level full caster). `v-if="resourceGroups.length"` (not
+           `isCaster`) is deliberate: `spellSlotsToCharacterResources`
+           already returns `[]` for a non-caster OR a caster with no levels
+           this character currently has, so checking the ADAPTER's own
+           output is the one true source of "is there anything to show",
+           not a second, possibly-drifting `isCaster` check.
 
-        <div
-          v-for="kind in (['successes', 'failures'] as const)"
-          :key="kind"
-          class="mt-1.5 flex items-center justify-between gap-2"
-        >
-          <span class="text-[0.65rem] capitalize text-[#d8ceb8]">{{ kind === 'successes' ? 'Succ.' : 'Fail.' }}</span>
-          <div class="flex gap-1">
-            <button
-              v-for="mark in [1, 2, 3]"
-              :key="mark"
-              type="button"
-              class="size-8 shrink-0 rounded-full border text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
-              :class="mark <= health.deathSaves[kind]
-                ? (kind === 'successes'
-                  ? 'border-[#9ec37d] bg-[rgba(158,195,125,0.22)]'
-                  : 'border-red-500 bg-red-950/40')
-                : 'border-[rgba(201,164,90,0.24)] bg-transparent'"
-              :disabled="recoverySaving"
-              :aria-label="`${kind} mark ${mark}`"
-              :aria-pressed="mark <= health.deathSaves[kind]"
-              @click="setDeathSaveMarks(kind, mark)"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- Spell Slots -- Caster Pass 0: a COMPACT resource card, same
-           footprint as Damage/Heal and Rest, not a full-width row anymore.
-           Real-browser feedback: a level-1 caster's single "L1 2/2" row was
-           still claiming the entire header width, dramatically increasing
-           header height for every spellcaster. `col-span-2 sm:col-span-1`
-           (identical to Damage/Heal's and Rest's own classing above) gives
-           this its own full row on mobile -- plenty of room for many slot
-           levels to wrap -- and the fourth slot in the `[ Damage/Heal ]
-           [ Rest ] [ Death Saves ] [ Spell Slots ]` row once the grid is
-           wide enough for four, landing in exactly the intentional empty
-           space Header Cleanup 2 already reserved rather than forcing a
-           new placement to exist.
-
-           Nothing about WHAT is rendered or WHAT a click does changed:
-           `slotLevels` is still the same generic `{level, max, expended}`
-           array useCharacterSheet.ts derives from the active Rules
-           Package's own Table rows (no slot-count table lives here or ever
-           has), and every chip below is byte-identical markup to before --
-           only the OUTER card's width and the chips' own horizontal gap
-           (tightened from gap-x-4 to gap-x-2, so more chips fit one row in
-           a narrower card) changed. A caster with many slot levels (up to
-           9) wraps onto additional lines within this ONE card -- the
-           parent grid's own `items-start` (Header Cleanup 3) already keeps
-           a taller Spell Slots card from stretching its siblings. -->
+           CharacterResourceOrbs.vue owns the actual orb rendering/click
+           semantics (see that file's own header) -- this component's job
+           is only the adapter call and routing an orb click back to the
+           EXACT SAME `expend-slot`/`restore-slot` emits this file already
+           had, unchanged in shape (still a plain slot-level `number`). -->
       <div
-        v-if="isCaster && slotLevels.length"
-        class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1"
+        v-if="resourceGroups.length"
+        class="eldra-well col-span-2 rounded-none p-2 sm:col-span-2"
       >
-        <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
-          Spell Slots
-        </div>
-
-        <div class="mt-1.5 flex flex-wrap gap-x-2 gap-y-2">
-          <div
-            v-for="slot in slotLevels"
-            :key="slot.level"
-            class="flex items-center gap-1.5"
-          >
-            <span class="text-xs font-semibold uppercase tracking-[0.08em] text-[#d8ceb8]">L{{ slot.level }}</span>
-            <span class="text-xs tabular-nums text-[#9f9278]">{{ slot.max - slot.expended }}/{{ slot.max }}</span>
-            <button
-              type="button"
-              class="min-h-9 min-w-9 rounded-none border border-[rgba(201,164,90,0.24)] text-xs font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="spellSaving || slot.expended <= 0"
-              :aria-label="`Restore a level ${slot.level} spell slot`"
-              @click="emit('restore-slot', slot.level)"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              class="min-h-9 min-w-9 rounded-none border border-[rgba(201,164,90,0.24)] text-xs font-semibold text-[#fff7df] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="spellSaving || slot.expended >= slot.max"
-              :aria-label="`Expend a level ${slot.level} spell slot`"
-              @click="emit('expend-slot', slot.level)"
-            >
-              +
-            </button>
-          </div>
-        </div>
+        <CharacterResourceOrbs
+          :groups="resourceGroups"
+          :saving="spellSaving"
+          @expend="handleResourceExpend"
+          @restore="handleResourceRestore"
+        />
       </div>
     </div>
   </div>

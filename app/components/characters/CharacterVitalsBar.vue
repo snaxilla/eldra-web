@@ -27,11 +27,19 @@
 // budget (~250 lines) already expects this file to own, not a missing
 // generic primitive to invent.
 //
-// Death Saves are deliberately NOT duplicated here -- this task's own
-// DISPLAY list does not name them, and (as of Command Center
-// Reconstruction, Phase H5) CharacterCommandResources.vue owns that
-// tracker in full, in the command center itself. HP shifts to a danger
-// tint at 0 (§7.9), which is the one HP=0 signal this bar surfaces.
+// Death Saves used to be deliberately NOT duplicated here -- Command
+// Center Reconstruction Phase H5 gave CharacterCommandResources.vue that
+// tracker in full, as a PERMANENT resource-grid card. Character Sheet
+// Caster Pass 0.1 reverses that placement decision (not the underlying
+// reasoning that Death Saves are sheet-header state, never Roll Tray/
+// Context Rail): browser review found permanent resource-grid space for a
+// control that matters only when a character is at 0 HP -- and irrelevant
+// the rest of the time -- a worse use of that space than the contextual
+// vitals-row placement below. See "DEATH SAVES -- CASTER PASS 0.1" further
+// down for the full trace. HP still shifts to a danger tint at 0 (§7.9),
+// unchanged -- that signal and the Death Save controls' own visibility are
+// two independent things that both happen to trigger at the same
+// threshold, not one mechanism serving both.
 //
 // ---------------------------------------------------------------------------
 // `bare` -- CORRECTIVE PHASE 2R, FOLIO SHELL
@@ -59,6 +67,8 @@
 // Package category yet -- see character-sheet-beauty-pass.md §1.8b/§3.3).
 
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
+import type { StoredDeathSaves } from '~/lib/characters/health'
+import type { RecoveryActionType } from '~/components/characters/CharacterCommandResources.vue'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
 import CharacterSaveIndicator from '~/components/characters/CharacterSaveIndicator.vue'
@@ -77,6 +87,8 @@ const props = withDefaults(defineProps<{
   isCaster: boolean | null
   spellSaveDc: number | null
   spellAttackBonus: number | null
+  deathSaves: StoredDeathSaves
+  deathSavesSaving?: boolean
   conditions: EncounterConditionView[]
   inEncounter: boolean
   isMyTurn: boolean
@@ -89,8 +101,14 @@ const props = withDefaults(defineProps<{
   initiative: null,
   speed: null,
   proficiencyBonus: null,
+  deathSavesSaving: false,
   bare: false
 })
+
+const emit = defineEmits<{
+  'mark-death-save': [{ kind: 'successes' | 'failures'; nextCount: number }]
+  recovery: [{ type: RecoveryActionType }]
+}>()
 
 const wrapper = computed(() => (props.bare ? 'div' : CharacterSheetSection))
 const wrapperProps = computed(() => (props.bare ? {} : { elevation: 'feature' as const, density: 'compact' as const }))
@@ -111,6 +129,35 @@ const combatEmphasisClass = computed(() => {
 function formatBonus(value: number | null): string {
   if (value == null) return '—'
   return value >= 0 ? `+${value}` : String(value)
+}
+
+// ---------------------------------------------------------------------------
+// DEATH SAVES -- CASTER PASS 0.1 (CONTEXTUAL)
+// ---------------------------------------------------------------------------
+// Visible ONLY at Current HP <= 0 -- reusing `atZeroHp` above verbatim
+// rather than a second `currentHp <= 0` check: that computed already
+// encodes the one refinement worth keeping ("0 is only meaningful once a
+// REAL Max HP exists" -- a character with no Health record yet also reads
+// `currentHp: 0`, and should not flash Death Save controls before its own
+// data has loaded). Preserves ALL existing semantics -- clicking mark N
+// sets the count to N, clicking an already-filled mark clears back down to
+// just before it (byte-identical toggle logic to CharacterCommandResources
+// .vue's OLD `setDeathSaveMarks`, which owned this before Caster Pass
+// 0.1); Reset still zeroes both counts through the SAME 'reset-death-saves'
+// Recovery action. Visibility and mutation are deliberately independent:
+// healing above zero hides this control (this component simply stops
+// rendering it), but does NOT itself clear `deathSaves` -- `applyHealing`
+// (app/lib/characters/health.ts) never touches death saves, only Long
+// Rest and Reset do, and neither of those changed here. A character
+// dropped back to 0 HP later will see whatever marks were already there.
+function markDeathSave(kind: 'successes' | 'failures', count: number) {
+  const current = props.deathSaves[kind]
+  const nextCount = current === count ? count - 1 : count
+  emit('mark-death-save', { kind, nextCount })
+}
+
+function resetDeathSaves() {
+  emit('recovery', { type: 'reset-death-saves' })
 }
 </script>
 
@@ -230,6 +277,66 @@ function formatBonus(value: number | null): string {
           </div>
         </div>
       </template>
+
+      <!-- Death Saves -- Caster Pass 0.1, contextual (see `atZeroHp`'s own
+           comment above and the DEATH SAVES script section below). Fails
+           on the LEFT, Successes on the RIGHT (product preference), Reset
+           last -- compact enough to sit in this numbers row rather than
+           claiming a card of its own. Same red/green Eldra color language
+           CharacterCommandResources.vue's marks used, same aria-label/
+           aria-pressed semantics, same click-to-toggle behavior -- only
+           WHERE this lives, and WHEN it renders, changed. -->
+      <div
+        v-if="atZeroHp"
+        class="flex flex-wrap items-center gap-3"
+      >
+        <div class="flex items-center gap-1.5">
+          <span class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">Fails</span>
+          <div class="flex gap-1">
+            <button
+              v-for="mark in [1, 2, 3]"
+              :key="`failures-${mark}`"
+              type="button"
+              class="size-6 shrink-0 rounded-full border text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
+              :class="mark <= deathSaves.failures
+                ? 'border-red-500 bg-red-950/40'
+                : 'border-[rgba(201,164,90,0.24)] bg-transparent'"
+              :disabled="deathSavesSaving"
+              :aria-label="`Death save failure mark ${mark}`"
+              :aria-pressed="mark <= deathSaves.failures"
+              @click="markDeathSave('failures', mark)"
+            />
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <span class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">Succ</span>
+          <div class="flex gap-1">
+            <button
+              v-for="mark in [1, 2, 3]"
+              :key="`successes-${mark}`"
+              type="button"
+              class="size-6 shrink-0 rounded-full border text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
+              :class="mark <= deathSaves.successes
+                ? 'border-[#9ec37d] bg-[rgba(158,195,125,0.22)]'
+                : 'border-[rgba(201,164,90,0.24)] bg-transparent'"
+              :disabled="deathSavesSaving"
+              :aria-label="`Death save success mark ${mark}`"
+              :aria-pressed="mark <= deathSaves.successes"
+              @click="markDeathSave('successes', mark)"
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="text-[0.65rem] uppercase tracking-[0.15em] text-[#9f9278] underline-offset-2 hover:text-[#d8ceb8] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="deathSavesSaving || (deathSaves.successes === 0 && deathSaves.failures === 0)"
+          @click="resetDeathSaves"
+        >
+          Reset
+        </button>
+      </div>
 
       <!-- Conditions: same eldra-gold-chip treatment CharacterConditionsPanel.vue
            uses, so a condition looks identical wherever it appears. -->

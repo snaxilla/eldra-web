@@ -174,16 +174,38 @@ function handlePortraitFileChange(event: Event) {
 // DECEASED PORTRAIT PRESENTATION -- HEADER CLEANUP 3, FLAVOR ONLY
 // ---------------------------------------------------------------------------
 // Derives directly from `props.health.deathSaves` -- the SAME authoritative
-// state Reset Death Saves/Long Rest/the mark buttons in
-// CharacterCommandResources.vue already mutate (see isCharacterDeceased
-// FromDeathSaves's own header in app/lib/characters/health.ts for the full
-// trace: no dead/deceased concept existed anywhere in this codebase before
-// this task, and this adds no persisted flag, no new gameplay authority --
-// a plain `computed`, not a second ref, so there is nothing that can drift
-// from `health` and nothing to reset separately. Resetting failures below
-// 3 (Reset Death Saves, Long Rest, or any future correction) makes this
-// `false` on the very next render, automatically.
+// state Reset Death Saves/Long Rest/the mark buttons (now in
+// CharacterVitalsBar, see Caster Pass 0.1 below) already mutate (see
+// isCharacterDeceasedFromDeathSaves's own header in app/lib/characters/
+// health.ts for the full trace: no dead/deceased concept existed anywhere
+// in this codebase before this task, and this adds no persisted flag, no
+// new gameplay authority -- a plain `computed`, not a second ref, so there
+// is nothing that can drift from `health` and nothing to reset separately.
+// Resetting failures below 3 (Reset Death Saves, Long Rest, or any future
+// correction) makes this `false` on the very next render, automatically.
+// This computed is completely UNCHANGED by Caster Pass 0.1 -- it reads the
+// same `health.deathSaves`, regardless of whether the mark CONTROLS are
+// currently visible; visibility and the deceased flavor rule are
+// deliberately separate concerns.
 const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health.deathSaves))
+
+// ---------------------------------------------------------------------------
+// DEATH SAVES -- CASTER PASS 0.1 (CONTEXTUAL, MOVED FROM
+// CharacterCommandResources.vue INTO CharacterVitalsBar)
+// ---------------------------------------------------------------------------
+// CharacterVitalsBar.vue owns the mark-click TOGGLE semantics (it already
+// has `deathSaves` as a prop and resolves "click mark N" into the already-
+// intended next count, byte-identical logic to the one this file used to
+// relay from CharacterCommandResources.vue's own `setDeathSaveMarks`) and
+// emits the RESOLVED `{ kind, nextCount }`. This file is the one that owns
+// the full authoritative `health` object every other mutation here already
+// reads/patches (`saveWith`'s old job), so it is the natural place to
+// build the patched record and reuse the EXACT SAME `save` emit (PUT
+// .../health) Damage/Heal/Temp HP's old "HP Correction" removal already
+// established as this Sheet's one direct-health-write path.
+function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failures'; nextCount: number }) {
+  emit('save', { ...props.health, deathSaves: { ...props.health.deathSaves, [kind]: nextCount } })
+}
 </script>
 
 <template>
@@ -371,7 +393,12 @@ const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health
           />
         </div>
 
-        <!-- Vitals: current state and immediate play state. -->
+        <!-- Vitals: current state and immediate play state. Caster Pass
+             0.1: also carries the now-contextual Death Saves (see
+             CharacterVitalsBar's own header for the visibility rule) --
+             `health`/`recovery-saving` are the same props/emit vocabulary
+             CharacterCommandResources already used for them, just relayed
+             from a different mount point now. -->
         <div class="mt-3">
           <CharacterVitalsBar
             bare
@@ -388,6 +415,8 @@ const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health
             :is-caster="isCaster"
             :spell-save-dc="spellSaveDc"
             :spell-attack-bonus="spellAttackBonus"
+            :death-saves="health.deathSaves"
+            :death-saves-saving="recoverySaving"
             :conditions="conditions"
             :in-encounter="inEncounter"
             :is-my-turn="isMyTurn"
@@ -395,13 +424,17 @@ const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health
             :saving="saving"
             :error="error"
             :remove-condition="removeCondition"
+            @mark-death-save="handleMarkDeathSave"
+            @recovery="emit('recovery', $event)"
           />
         </div>
 
-        <!-- The combat HUD: Health correction, Damage/Heal, Hit Dice,
-             Death Saves, and (for casters) Spell Slots -- everything H5
-             moves out of the Play tab's own Recovery section and the
-             Spells tab's Spell Slots block. -->
+        <!-- The combat HUD: Health correction, Damage/Heal, Hit Dice, and
+             Character Resources (Spell Slots today) -- everything H5 moves
+             out of the Play tab's own Recovery section and the Spells
+             tab's Spell Slots block. Death Saves no longer live here as of
+             Caster Pass 0.1 -- see CharacterVitalsBar's own mount below,
+             which now owns them contextually. -->
         <div class="mt-3">
           <CharacterCommandResources
             :health="health"
@@ -411,10 +444,8 @@ const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health
             :hit-die-size="hitDieSize"
             :recovery-saving="recoverySaving"
             :recovery-error="recoveryError"
-            :is-caster="isCaster"
             :slot-levels="slotLevels"
             :spell-saving="spellSaving"
-            @save="emit('save', $event)"
             @recovery="emit('recovery', $event)"
             @expend-slot="emit('expend-slot', $event)"
             @restore-slot="emit('restore-slot', $event)"

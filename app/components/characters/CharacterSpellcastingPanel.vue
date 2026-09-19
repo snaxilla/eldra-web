@@ -126,6 +126,48 @@ function submitAdd() {
 
 const knownCount = computed(() => props.spells.filter((entry) => entry.known).length)
 const preparedCount = computed(() => props.spells.filter((entry) => entry.prepared).length)
+
+// --- Level grouping -- Character Sheet Body Phase 1B.1 --------------------
+// Groups the flat spell list by `entry.entry?.spellMechanics?.level` (the
+// canonical, structural level -- never derived from a label string). An
+// entry with no resolved catalogue match (homebrew, missing/unpublished)
+// has no `spellMechanics` at all and lands in "Ungrouped" -- ALWAYS shown,
+// never hidden, exactly matching this phase's own "unsupported-yet spells
+// remain visible/referenceable" requirement. Cantrips first, then 1st
+// through 9th, then Ungrouped last; an empty level is simply skipped
+// rather than rendered as an empty section.
+const LEVEL_LABELS: Record<number, string> = {
+  0: 'Cantrips',
+  1: '1st Level', 2: '2nd Level', 3: '3rd Level', 4: '4th Level', 5: '5th Level',
+  6: '6th Level', 7: '7th Level', 8: '8th Level', 9: '9th Level'
+}
+
+type SpellGroup = { key: string; label: string; entries: AssembledSpellEntry[] }
+
+const groupedSpells = computed<SpellGroup[]>(() => {
+  const byLevel = new Map<number, AssembledSpellEntry[]>()
+  const ungrouped: AssembledSpellEntry[] = []
+
+  for (const entry of props.spells) {
+    const level = entry.entry?.spellMechanics?.level
+    if (level == null || !(level in LEVEL_LABELS)) {
+      ungrouped.push(entry)
+      continue
+    }
+    const bucket = byLevel.get(level)
+    if (bucket) bucket.push(entry)
+    else byLevel.set(level, [entry])
+  }
+
+  const groups: SpellGroup[] = []
+  for (let level = 0; level <= 9; level++) {
+    const entries = byLevel.get(level)
+    if (entries?.length) groups.push({ key: String(level), label: LEVEL_LABELS[level]!, entries })
+  }
+  if (ungrouped.length) groups.push({ key: 'ungrouped', label: 'Ungrouped', entries: ungrouped })
+
+  return groups
+})
 </script>
 
 <template>
@@ -261,71 +303,93 @@ const preparedCount = computed(() => props.spells.filter((entry) => entry.prepar
         No spells recorded yet.
       </p>
 
+      <!-- Character Sheet Body Phase 1B.1: grouped by canonical spell level
+           (see `groupedSpells`'s own comment) instead of one flat grid.
+           "Ungrouped" (homebrew/missing/unresolved entries) always renders
+           last and is never hidden -- an unsupported-yet spell remains
+           fully visible and manageable, per this phase's own requirement. -->
       <div
         v-else
-        class="mt-3 grid gap-2 md:grid-cols-2"
+        class="mt-3 grid gap-5"
       >
-        <article
-          v-for="entry in spells"
-          :key="entry.instanceId"
-          class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
-          :class="entry.status === 'missing'
-            ? 'border border-red-900/60 bg-red-950/20'
-            : 'eldra-well'"
+        <div
+          v-for="group in groupedSpells"
+          :key="group.key"
         >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <button
-                type="button"
-                class="block w-full truncate text-left font-semibold text-[#fff7df] underline-offset-4 transition hover:underline"
-                :aria-label="`${entry.title} — open details`"
-                @click="emit('select', entry)"
-              >
-                {{ entry.title }}
-              </button>
-              <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
-                <span v-if="entry.entry?.sourceBook">{{ entry.entry.sourceBook }}</span>
-                <span v-else-if="entry.status === 'custom'">Homebrew</span>
+          <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+            {{ group.label }}
+          </div>
+
+          <div class="mt-2 grid gap-2 md:grid-cols-2">
+            <article
+              v-for="entry in group.entries"
+              :key="entry.instanceId"
+              class="min-w-0 rounded-none p-3 text-sm text-[#d8ceb8]"
+              :class="entry.status === 'missing'
+                ? 'border border-red-900/60 bg-red-950/20'
+                : 'eldra-well'"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <button
+                    type="button"
+                    class="block w-full truncate text-left font-semibold text-[#fff7df] underline-offset-4 transition hover:underline"
+                    :aria-label="`${entry.title} — open details`"
+                    @click="emit('select', entry)"
+                  >
+                    {{ entry.title }}
+                  </button>
+                  <div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[#9f9278]">
+                    <span v-if="entry.entry?.sourceBook">{{ entry.entry.sourceBook }}</span>
+                    <span v-else-if="entry.status === 'custom'">Homebrew</span>
+                    <!-- School, where useful -- only when the canonical
+                         mechanics resolved one, never fabricated. Kept to a
+                         single small muted line alongside source, not a
+                         second badge, so this stays reference information
+                         rather than clutter. -->
+                    <span v-if="entry.entry?.spellMechanics?.school">{{ entry.entry.spellMechanics.school }}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  class="min-h-11 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-xs font-semibold text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:opacity-50"
+                  :disabled="saving"
+                  @click="emit('remove', entry.instanceId)"
+                >
+                  Remove
+                </button>
               </div>
-            </div>
 
-            <button
-              type="button"
-              class="min-h-11 shrink-0 rounded-none border border-[rgba(201,164,90,0.24)] px-3 text-xs font-semibold text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:opacity-50"
-              :disabled="saving"
-              @click="emit('remove', entry.instanceId)"
-            >
-              Remove
-            </button>
-          </div>
-
-          <p
-            v-if="entry.status === 'missing'"
-            class="mt-2 text-xs leading-5 text-red-300"
-          >
-            {{ entry.reason || 'This spell is no longer published by any Content Pack bound to this World.' }}
-          </p>
-
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <label
-              v-for="flag in (['known', 'prepared'] as const)"
-              :key="flag"
-              class="flex min-h-11 cursor-pointer items-center gap-2 rounded-none border px-3 text-xs font-semibold capitalize"
-              :class="entry[flag]
-                ? 'border-[rgba(201,164,90,0.65)] bg-[rgba(201,164,90,0.12)] text-[#fff7df]'
-                : 'border-[rgba(201,164,90,0.24)] text-[#d8ceb8]'"
-            >
-              <input
-                type="checkbox"
-                class="size-4 accent-[#c9a45a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(201,164,90,0.65)]"
-                :checked="entry[flag]"
-                :disabled="saving"
-                @change="emit('toggle-flag', { instanceId: entry.instanceId, flag })"
+              <p
+                v-if="entry.status === 'missing'"
+                class="mt-2 text-xs leading-5 text-red-300"
               >
-              {{ flag }}
-            </label>
+                {{ entry.reason || 'This spell is no longer published by any Content Pack bound to this World.' }}
+              </p>
+
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <label
+                  v-for="flag in (['known', 'prepared'] as const)"
+                  :key="flag"
+                  class="flex min-h-11 cursor-pointer items-center gap-2 rounded-none border px-3 text-xs font-semibold capitalize"
+                  :class="entry[flag]
+                    ? 'border-[rgba(201,164,90,0.65)] bg-[rgba(201,164,90,0.12)] text-[#fff7df]'
+                    : 'border-[rgba(201,164,90,0.24)] text-[#d8ceb8]'"
+                >
+                  <input
+                    type="checkbox"
+                    class="size-4 accent-[#c9a45a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(201,164,90,0.65)]"
+                    :checked="entry[flag]"
+                    :disabled="saving"
+                    @change="emit('toggle-flag', { instanceId: entry.instanceId, flag })"
+                  >
+                  {{ flag }}
+                </label>
+              </div>
+            </article>
           </div>
-        </article>
+        </div>
       </div>
     </div>
   </div>

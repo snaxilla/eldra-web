@@ -47,6 +47,7 @@
 // real table.
 
 import type { ContentAction } from '../content-actions'
+import type { CanonicalSpellMechanics } from '../spell-mechanics'
 
 export type SpellRef = {
   packageId: string
@@ -192,6 +193,14 @@ export type SpellCatalogueEntry = {
   // spreads the resolved catalogue entry verbatim). Every resolved spell
   // carries exactly one.
   actions?: ContentAction[]
+  // Character Sheet Body Phase 1B.1 addition -- relayed the same way
+  // `actions` above is (character-assembly.ts's own `resolveSpells` spreads
+  // the resolved server/utils/world-content-catalogue.ts entry verbatim,
+  // this field included). `CanonicalSpellMechanics` already lives in
+  // app/lib/ (app/lib/spell-mechanics), so -- unlike `ContentAction`, which
+  // has its own client-side restatement one file up -- this is a direct
+  // import, not a second copy of the type.
+  spellMechanics?: CanonicalSpellMechanics | null
 }
 
 export type AssembledSpellEntry = StoredSpellEntry & {

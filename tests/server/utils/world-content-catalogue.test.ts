@@ -113,7 +113,8 @@ describe('getWorldContentCatalogue', () => {
       // decision 1's original three). 'actions' IS present: the Character
       // Actions System resolves spell actions for the same category
       // 'presentation' still does not cover -- see this file's own note on
-      // ACTION_CATEGORY_BY_CATALOGUE_CATEGORY.
+      // ACTION_CATEGORY_BY_CATALOGUE_CATEGORY. 'spellMechanics' is present
+      // for the identical reason, added by Character Sheet Body Phase 1B.1.
       'actions',
       'externalId',
       'packageId',
@@ -122,6 +123,7 @@ describe('getWorldContentCatalogue', () => {
       'slug',
       'sourceBook',
       'sourcePage',
+      'spellMechanics',
       'systemKey',
       'title'
     ])
@@ -135,7 +137,13 @@ describe('getWorldContentCatalogue', () => {
       provider: '5etools-json',
       sourceBook: 'PHB',
       sourcePage: '211',
-      actions: [expect.objectContaining({ name: 'Fire Bolt', category: 'spell' })]
+      actions: [expect.objectContaining({ name: 'Fire Bolt', category: 'spell' })],
+      // This fixture's `data` has no `entries`/`spellAttack`/`savingThrow`
+      // fields (it is a minimal synthetic row, not a real 5etools spell
+      // shape) -- resolveDnd5eSpellMechanics degrades every optional field
+      // to `undefined` rather than fabricating one, exactly the same
+      // "absence is legal" posture `actions`/`presentation` already have.
+      spellMechanics: { level: 0, concentration: false, ritual: false, resolution: null }
     })
   })
 

@@ -81,6 +81,7 @@
 
 import { resolveContentPresentation, type PresentationEntry, type PresentationKind } from '../../app/lib/content-presentation'
 import { resolveContentActions, type ContentAction, type ContentSourceCategory } from '../../app/lib/content-actions'
+import { resolveSpellMechanics, type CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
 
@@ -121,6 +122,17 @@ export type ContentCatalogueEntry = {
   // resolver found none, mirroring `rulesFacet`'s own "assigned only when
   // present" rule to keep an unfaceted entry's key set small.
   actions?: ContentAction[]
+  // Character Sheet Body Phase 1B.1 addition -- Eldra's own normalized
+  // spell shape (app/lib/spell-mechanics), computed the SAME way
+  // `presentation`/`actions` are: a pure resolver reads `data` at READ
+  // TIME, never at publish time, so no existing bound pack needs
+  // republishing to gain this field. Present only for `spells` entries.
+  // `null` means the category IS spellMechanics-eligible but this entry's
+  // `data` could not be normalized (unreadable payload, or a system this
+  // module has no spell-mechanics resolver for) -- absent entirely means
+  // this entry is not even a spell. Mirrors `presentation`'s own
+  // `null`-vs-absent distinction exactly.
+  spellMechanics?: CanonicalSpellMechanics | null
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -240,6 +252,20 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
       // Degrades silently to no `actions` key, mirroring `rulesFacet`'s own
       // "absent means none" reading -- there is no meaningful "broken"
       // state to report for a list that is legitimately often empty.
+    }
+  }
+
+  // Character Sheet Body Phase 1B.1 -- spells only, for the same reason
+  // `actions` above was added for items/spells specifically rather than
+  // every category: no other category has a spell-shaped mechanic to
+  // normalize yet. Same posture as `presentation`/`actions`: `data` read
+  // only here, a throwing resolver degrades this ONE entry to
+  // `spellMechanics: null` and leaves the rest of the catalogue intact.
+  if (category === 'spells') {
+    try {
+      base.spellMechanics = resolveSpellMechanics(entry.systemKey, entry.data)
+    } catch {
+      base.spellMechanics = null
     }
   }
 

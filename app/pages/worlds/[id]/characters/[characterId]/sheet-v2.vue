@@ -685,11 +685,31 @@ function openActionContext(action: CharacterAction) {
   })
 }
 
+// Character Sheet Body Phase 1B.1 -- reads the canonical spell mechanics
+// (spell.entry?.spellMechanics), when a Content Pack resolved one, for
+// richer reference lines and the description this drawer used to hardcode
+// to '' even though a resolved spell's description was one property access
+// away. Reuses the EXACT same Context Rail (`openContext`) every other tab
+// already opens through -- no second drawer, no new component.
 function openSpellContext(spell: AssembledSpellEntry) {
+  const mechanics = spell.entry?.spellMechanics
   const lines: string[] = []
+
+  if (mechanics?.level != null) lines.push(`Level: ${mechanics.level === 0 ? 'Cantrip' : mechanics.level}`)
+  if (mechanics?.school) lines.push(`School: ${mechanics.school}`)
+  if (mechanics?.castingTime) lines.push(`Casting Time: ${mechanics.castingTime}`)
+  if (mechanics?.range) lines.push(`Range: ${mechanics.range}`)
+  if (mechanics?.components) lines.push(`Components: ${mechanics.components}`)
+  if (mechanics?.duration) lines.push(`Duration: ${mechanics.duration}${mechanics.concentration ? ' (Concentration)' : ''}`)
+  if (mechanics?.ritual) lines.push('Ritual')
   if (spell.entry?.sourceBook) lines.push(`Source: ${spell.entry.sourceBook}`)
-  if (spell.entry) lines.push(`Resolved from: ${spell.entry.packageId}@${spell.entry.packageVersion}`)
   if (spell.status === 'missing' && spell.reason) lines.push(spell.reason)
+
+  // Prefer the canonical mechanics' own description; fall back to the
+  // Actions-projection's description (the same text, when spellMechanics
+  // itself is unavailable -- an older/unresolved entry) rather than the
+  // permanently-blank '' this used to hardcode.
+  const summary = mechanics?.description || spell.entry?.actions?.[0]?.description || ''
 
   openContext({
     kind: 'spell',
@@ -697,7 +717,7 @@ function openSpellContext(spell: AssembledSpellEntry) {
     title: spell.title,
     eyebrow: spell.status === 'custom' ? 'Homebrew Spell' : 'Spell',
     detailLines: lines,
-    summary: '',
+    summary,
     tags: spell.prepared ? ['Prepared'] : []
   })
 }

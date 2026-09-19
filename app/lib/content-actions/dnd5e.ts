@@ -65,11 +65,10 @@ import {
   asArray,
   cleanText,
   describeProficiencyGroups,
-  flattenEntries,
   readPrintedItem,
   sectionsFromEntries
 } from '../content-presentation/dnd5e'
-import type { AbilityKey } from '../characters/ability-scores'
+import { resolveDnd5eSpellMechanics } from '../spell-mechanics/dnd5e'
 import type { ActionResolution, ContentAction, ContentSourceCategory } from './types'
 
 function sourceBookOf(raw: Record<string, unknown>): string | undefined {
@@ -151,111 +150,64 @@ function resolveWeaponAction(raw: Record<string, unknown>): ContentAction | null
 }
 
 // ---------------------------------------------------------------------------
-// Spells
+// Spells -- Character Sheet Body Phase 1B.1: a PROJECTION, no longer a
+// second independent parse
 // ---------------------------------------------------------------------------
-
-const SCHOOL_LABELS: Record<string, string> = {
-  A: 'Abjuration', C: 'Conjuration', D: 'Divination', E: 'Enchantment',
-  V: 'Evocation', I: 'Illusion', N: 'Necromancy', T: 'Transmutation'
-}
-
-const CASTING_TIME_UNIT_LABELS: Record<string, string> = {
-  action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction',
-  minute: 'Minute', hour: 'Hour'
-}
-
-function describeSpellRange(range: unknown): string | undefined {
-  if (!range || typeof range !== 'object') return undefined
-  const node = range as Record<string, unknown>
-  if (node.type !== 'point') return 'Special'
-
-  const distance = node.distance as Record<string, unknown> | undefined
-  if (!distance) return undefined
-
-  if (distance.type === 'self') return 'Self'
-  if (distance.type === 'touch') return 'Touch'
-  if (distance.type === 'feet' && typeof distance.amount === 'number') return `${distance.amount} ft.`
-  return undefined
-}
-
-function describeSpellTime(time: unknown): string | undefined {
-  const first = asArray(time)[0] as Record<string, unknown> | undefined
-  if (!first) return undefined
-
-  const unitLabel = CASTING_TIME_UNIT_LABELS[String(first.unit)] ?? cleanText(first.unit)
-  const number = typeof first.number === 'number' ? first.number : 1
-  const label = number > 1 ? `${number} ${unitLabel}s` : unitLabel
-  const condition = typeof first.condition === 'string' ? cleanText(first.condition) : ''
-
-  return condition ? `${label} (${condition})` : label
-}
-
-// 5etools' `savingThrow` array names the ability in full ("dexterity"); the
-// Rules Engine's own Definition ids use the three-letter key ("dex") --
-// packages/eldra-dnd5e-2024/definitions.json's own `value:save.<key>.bonus`
-// family. A spell offering more than one saving throw ability (rare, and
-// none of XPHB's measured rows do) takes the first -- a stated
-// simplification, matching this codebase's own posture on the rest.
-const SAVING_THROW_ABILITY_KEYS: Record<string, AbilityKey> = {
-  strength: 'str', dexterity: 'dex', constitution: 'con',
-  intelligence: 'int', wisdom: 'wis', charisma: 'cha'
-}
-
-function resolveSpellResolution(raw: Record<string, unknown>): ActionResolution | undefined {
-  // `spellAttack` ('M'|'R', 5etools) always wins when a spell somehow
-  // carries both -- none of XPHB's measured rows do, but a spell attack and
-  // a saving throw are mutually exclusive mechanics, so a definite answer is
-  // preferred over silently picking one at random via object key order.
-  const spellAttack = asArray(raw.spellAttack)[0]
-  if (typeof spellAttack === 'string') {
-    return { kind: 'attack-roll', attackKind: 'spell' }
-  }
-
-  const savingThrow = asArray(raw.savingThrow)[0]
-  if (typeof savingThrow === 'string') {
-    const ability = SAVING_THROW_ABILITY_KEYS[savingThrow.toLowerCase()]
-    if (ability) return { kind: 'saving-throw', savingAbility: ability }
-  }
-
-  return undefined
-}
-
-// A spell's damage dice are TAGGED, not merely mentioned -- 5etools marks
-// them `{@damage NdM ...}` specifically (as opposed to `{@dice NdM}` for a
-// non-damage roll like healing), a reliable, narrow signal this function
-// reads directly rather than through `cleanText`/`flattenEntries` (which
-// intentionally throw the tag identity away, keeping only display text --
-// see this file's header). Only the spell's BASE `entries` are scanned,
-// never `entriesHigherLevel`'s upcast scaling text, and only the FIRST tag
-// found -- a stated simplification for the rare multi-damage-roll spell,
-// matching this codebase's own posture elsewhere in this file.
-const DAMAGE_TAG_PATTERN = /\{@damage\s+(\d+d\d+)/
-
-function extractDamageDice(entries: unknown): { count: number; faces: number } | undefined {
-  const text = JSON.stringify(entries ?? '')
-  const match = DAMAGE_TAG_PATTERN.exec(text)
-  return match ? parseDiceExpression(match[1]!) : undefined
-}
-
+// This used to re-parse the raw 5etools row itself (school labels, casting
+// time, saving-throw ability, a `{@damage}` regex...). All of that now
+// lives exactly once, in app/lib/spell-mechanics/dnd5e.ts's
+// `resolveDnd5eSpellMechanics` -- Eldra's own canonical, source-independent
+// spell shape. This function's only remaining job is mapping THAT shape
+// onto `ContentAction`'s generic, weapon-shaped-too vocabulary, the same
+// way `resolveWeaponAction` maps a weapon's own fields.
+//
+// `ActionResolution` (this file's own type) has no 'automatic' member --
+// Combat Resolution's existing attack-roll/saving-throw paths
+// (server/utils/character-combat.ts) are unchanged by this phase, so a
+// canonical 'automatic' resolution (Magic Missile: damage with neither an
+// attack nor a save) projects to `undefined` here, exactly like a
+// genuinely unresolved spell (Shield) does -- both mean "this file's
+// existing Resolve control has nothing to do with this action yet." The
+// canonical fact itself is NOT lost: `SpellCatalogueEntry.spellMechanics`
+// (server/utils/world-content-catalogue.ts) still reports `resolution:
+// {kind:'automatic'}` for Magic Missile; 1B.2 is where a consumer of THAT
+// field, not of `ContentAction`, is expected to appear.
+//
+// The flat damage MODIFIER (Magic Missile's "+1") is preserved in
+// `CanonicalSpellMechanics.damage.modifier` -- the actual normalization
+// regression this phase exists to fix -- but is deliberately NOT added as
+// a new field on `ContentAction` here. `ContentAction.damageRoll` keeps its
+// existing `{count,faces}` shape unchanged (no consumer reads a modifier
+// from it today, and `character-combat.ts`'s `rollDamage` has no parameter
+// for one -- adding it there is explicitly 1B.2 work). A caller that needs
+// the modifier reads it from the catalogue entry's own `spellMechanics`
+// field directly.
 function resolveSpellAction(raw: Record<string, unknown>): ContentAction | null {
   const name = cleanText(raw.name)
   if (!name) return null
 
-  const level = typeof raw.level === 'number' ? raw.level : 0
-  const levelLabel = level === 0 ? 'Cantrip' : `Level ${level} Spell`
-  const school = SCHOOL_LABELS[String(raw.school)]
-  const damageInflict = asArray(raw.damageInflict)[0]
+  const mechanics = resolveDnd5eSpellMechanics(raw)
+  if (!mechanics) return null
+
+  const levelLabel = mechanics.level === 0 ? 'Cantrip' : `Level ${mechanics.level} Spell`
+
+  const resolution: ActionResolution | undefined =
+    mechanics.resolution?.kind === 'attack-roll'
+      ? { kind: 'attack-roll', attackKind: 'spell' }
+      : mechanics.resolution?.kind === 'saving-throw'
+        ? { kind: 'saving-throw', savingAbility: mechanics.resolution.savingAbility }
+        : undefined
 
   return {
     name,
     category: 'spell',
-    actionType: school ? `${levelLabel} (${school})` : levelLabel,
-    range: describeSpellRange(raw.range),
-    usage: describeSpellTime(raw.time),
-    description: flattenEntries(raw.entries).join(' ') || undefined,
-    resolution: resolveSpellResolution(raw),
-    damageRoll: extractDamageDice(raw.entries),
-    damageType: typeof damageInflict === 'string' ? damageInflict : undefined,
+    actionType: mechanics.school ? `${levelLabel} (${mechanics.school})` : levelLabel,
+    range: mechanics.range,
+    usage: mechanics.castingTime,
+    description: mechanics.description,
+    resolution,
+    damageRoll: mechanics.damage?.dice,
+    damageType: mechanics.damage?.type,
     sourceBook: sourceBookOf(raw)
   }
 }

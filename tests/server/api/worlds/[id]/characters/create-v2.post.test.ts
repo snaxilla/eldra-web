@@ -9,11 +9,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H3Event } from 'h3'
 
-const { getWorldContentCatalogueMock, createEntityRecordMock, dxFetchMock, saveCharacterAbilityScoresMock } = vi.hoisted(() => ({
+const {
+  getWorldContentCatalogueMock, createEntityRecordMock, dxFetchMock, saveCharacterAbilityScoresMock,
+  getDerivedCharacterMock, saveCharacterHealthMock
+} = vi.hoisted(() => ({
   getWorldContentCatalogueMock: vi.fn(),
   createEntityRecordMock: vi.fn(),
   dxFetchMock: vi.fn(),
-  saveCharacterAbilityScoresMock: vi.fn()
+  saveCharacterAbilityScoresMock: vi.fn(),
+  getDerivedCharacterMock: vi.fn(),
+  saveCharacterHealthMock: vi.fn()
 }))
 
 vi.mock('../../../../../../server/utils/world-content-catalogue', () => ({
@@ -27,6 +32,18 @@ vi.mock('../../../../../../server/utils/entity-factory', () => ({
 
 vi.mock('../../../../../../server/utils/character-ability-scores', () => ({
   saveCharacterAbilityScores: saveCharacterAbilityScoresMock
+}))
+
+// Character Sheet Caster Pass 0 -- mocked at the module boundary, matching
+// every sibling mock above: this file is about request handling/validation,
+// not Rules Engine derivation (already covered by character-derived.test.ts)
+// or health persistence (character-health's own tests).
+vi.mock('../../../../../../server/utils/character-derived', () => ({
+  getDerivedCharacter: getDerivedCharacterMock
+}))
+
+vi.mock('../../../../../../server/utils/character-health', () => ({
+  saveCharacterHealth: saveCharacterHealthMock
 }))
 
 import handler from '../../../../../../server/api/worlds/[id]/characters/create-v2.post'
@@ -106,6 +123,16 @@ beforeEach(() => {
   dxFetchMock.mockResolvedValue({ data: {} })
   saveCharacterAbilityScoresMock.mockReset()
   saveCharacterAbilityScoresMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
+  getDerivedCharacterMock.mockReset()
+  // Default: unavailable (e.g. no Rules Package activated), matching this
+  // route's own real-world default World state -- every EXISTING test in
+  // this file (written before Caster Pass 0) asserts on behavior that must
+  // hold regardless of Rules Engine availability, so none of them should
+  // incidentally start seeding health. Tests that specifically exercise
+  // health seeding override this per-test.
+  getDerivedCharacterMock.mockResolvedValue({ available: false, reason: 'rules-unconfigured', message: 'no rules package' })
+  saveCharacterHealthMock.mockReset()
+  saveCharacterHealthMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
 })
 
 describe('POST /api/worlds/:id/characters/create-v2', () => {
@@ -304,5 +331,129 @@ describe('POST /api/worlds/:id/characters/create-v2 -- ability scores', () => {
 
     const [, stored] = saveCharacterAbilityScoresMock.mock.calls[0]
     expect(stored).toEqual({ method: 'point-buy', scores: SCORES })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Sheet Caster Pass 0 -- initial health.
+// ---------------------------------------------------------------------------
+// A newly-created playable character's Current HP must start at the active
+// Rules Package's own authoritative `value:hit_points.max`, never at the
+// `emptyCharacterHealth()` fallback (currentHp: 0) the Sheet otherwise shows
+// for "nothing recorded yet". This route never computes what that number
+// IS -- these tests exist to prove exactly that: no class name, no hit-die
+// size, and no Constitution formula appears anywhere in this route: it only
+// asks `getDerivedCharacter` for one already-evaluated number and seeds
+// Current HP at it.
+
+describe('POST /api/worlds/:id/characters/create-v2 -- initial health', () => {
+  function bodyWith(abilities?: unknown) {
+    const catalogue = fullCatalogue()
+    getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+    createEntityRecordMock.mockResolvedValue({ id: 42, title: 'Aria' })
+
+    const body: Record<string, unknown> = {
+      title: 'Aria',
+      species: selectionOf(catalogue.species[0]),
+      class: selectionOf(catalogue.classes[0]),
+      background: selectionOf(catalogue.backgrounds[0])
+    }
+    if (abilities !== undefined) body.abilities = abilities
+    return body
+  }
+
+  function derivedWithMaxHp(maxHp: number) {
+    return {
+      available: true as const,
+      derived: {
+        worldId: '5',
+        characterId: '42',
+        characterTitle: 'Aria',
+        packageId: 'eldra.dnd5e-2024',
+        packageVersion: '1.0.0',
+        byCategory: {
+          'core.health': [{ id: 'value:hit_points.max', category: 'core.health', value: maxHp }]
+        },
+        collections: [],
+        tables: [],
+        choices: [],
+        pendingChoices: [],
+        unresolvedGrants: []
+      }
+    }
+  }
+
+  it('seeds Current HP at the derived Max HP (6, a Wizard\'s real value) -- proving the route reads it, not computes it', async () => {
+    getDerivedCharacterMock.mockResolvedValue(derivedWithMaxHp(6))
+
+    await handler(fakeEvent('5', playerPrincipal(), bodyWith()))
+
+    expect(getDerivedCharacterMock).toHaveBeenCalledWith('5', 42)
+    expect(saveCharacterHealthMock).toHaveBeenCalledWith(42, {
+      currentHp: 6,
+      temporaryHp: 0,
+      hitDiceSpent: 0,
+      deathSaves: { successes: 0, failures: 0 }
+    })
+  })
+
+  it('seeds Current HP at a completely different Max HP (23) -- proving this is not accidentally Wizard/d6-specific', async () => {
+    getDerivedCharacterMock.mockResolvedValue(derivedWithMaxHp(23))
+
+    await handler(fakeEvent('5', playerPrincipal(), bodyWith()))
+
+    expect(saveCharacterHealthMock).toHaveBeenCalledWith(42, expect.objectContaining({ currentHp: 23 }))
+  })
+
+  it('does not seed health when the World has no Rules Package activated -- never fabricates a 5e-shaped number', async () => {
+    getDerivedCharacterMock.mockResolvedValue({ available: false, reason: 'rules-unconfigured', message: 'no rules package' })
+
+    await handler(fakeEvent('5', playerPrincipal(), bodyWith()))
+
+    expect(saveCharacterHealthMock).not.toHaveBeenCalled()
+  })
+
+  it('does not seed health when the active package does not declare Max HP', async () => {
+    getDerivedCharacterMock.mockResolvedValue({
+      available: true,
+      derived: {
+        worldId: '5', characterId: '42', characterTitle: 'Aria',
+        packageId: 'x', packageVersion: '1.0.0',
+        byCategory: {},
+        collections: [], tables: [], choices: [], pendingChoices: [], unresolvedGrants: []
+      }
+    })
+
+    await handler(fakeEvent('5', playerPrincipal(), bodyWith()))
+
+    expect(saveCharacterHealthMock).not.toHaveBeenCalled()
+  })
+
+  // FAILURE SEMANTICS (required pre-commit correction): Health is optional
+  // exactly when derivation legitimately has nothing to report (the two
+  // tests above), but once a real `maxHp` exists, failing to persist it
+  // must fail the request honestly rather than silently returning a
+  // 200 for an incompletely-initialized character -- the same "fails
+  // loudly, not silently" precedent server/utils/worlds.ts's own
+  // createWorld/createOwnerMembership pair already establishes for an
+  // identical non-atomic, cross-collection Directus write.
+
+  it('propagates an unexpected derivation failure rather than silently succeeding -- an entity/catalogue row may already be persisted', async () => {
+    getDerivedCharacterMock.mockRejectedValue(new Error('derivation exploded'))
+
+    await expect(handler(fakeEvent('5', playerPrincipal(), bodyWith()))).rejects.toThrow('derivation exploded')
+
+    // The entity itself was already created before this step -- proving
+    // the documented residual partial-write risk, not a hypothetical one.
+    expect(createEntityRecordMock).toHaveBeenCalled()
+    expect(saveCharacterHealthMock).not.toHaveBeenCalled()
+  })
+
+  it('propagates a saveCharacterHealth failure once a real Max HP was derived -- never swallows a REQUIRED write', async () => {
+    getDerivedCharacterMock.mockResolvedValue(derivedWithMaxHp(6))
+    saveCharacterHealthMock.mockRejectedValue(new Error('directus write failed'))
+
+    await expect(handler(fakeEvent('5', playerPrincipal(), bodyWith()))).rejects.toThrow('directus write failed')
+    expect(createEntityRecordMock).toHaveBeenCalled()
   })
 })

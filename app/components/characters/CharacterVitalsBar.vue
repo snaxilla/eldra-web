@@ -215,8 +215,15 @@ function formatBonus(value: number | null): string {
         </div>
 
         <div>
+          <!-- Character Sheet Caster Pass 0: label only, "Attack" ->
+               "Spell Atk" -- a bare "Attack" beside Save DC read as
+               ambiguous with a weapon attack bonus once a caster's header
+               was actually seen in the browser. `spellAttackBonus` itself
+               is unchanged (still exactly this prop, still Rules Engine
+               output) -- this is a presentation-only correction, not a
+               vitals bar redesign. -->
           <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
-            Attack
+            Spell Atk
           </div>
           <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
             {{ formatBonus(spellAttackBonus) }}

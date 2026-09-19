@@ -371,16 +371,39 @@ function setDeathSaveMarks(kind: 'successes' | 'failures', count: number) {
         </div>
       </div>
 
-      <!-- Spell Slots -- casters only, full width so every level fits. ---- -->
+      <!-- Spell Slots -- Caster Pass 0: a COMPACT resource card, same
+           footprint as Damage/Heal and Rest, not a full-width row anymore.
+           Real-browser feedback: a level-1 caster's single "L1 2/2" row was
+           still claiming the entire header width, dramatically increasing
+           header height for every spellcaster. `col-span-2 sm:col-span-1`
+           (identical to Damage/Heal's and Rest's own classing above) gives
+           this its own full row on mobile -- plenty of room for many slot
+           levels to wrap -- and the fourth slot in the `[ Damage/Heal ]
+           [ Rest ] [ Death Saves ] [ Spell Slots ]` row once the grid is
+           wide enough for four, landing in exactly the intentional empty
+           space Header Cleanup 2 already reserved rather than forcing a
+           new placement to exist.
+
+           Nothing about WHAT is rendered or WHAT a click does changed:
+           `slotLevels` is still the same generic `{level, max, expended}`
+           array useCharacterSheet.ts derives from the active Rules
+           Package's own Table rows (no slot-count table lives here or ever
+           has), and every chip below is byte-identical markup to before --
+           only the OUTER card's width and the chips' own horizontal gap
+           (tightened from gap-x-4 to gap-x-2, so more chips fit one row in
+           a narrower card) changed. A caster with many slot levels (up to
+           9) wraps onto additional lines within this ONE card -- the
+           parent grid's own `items-start` (Header Cleanup 3) already keeps
+           a taller Spell Slots card from stretching its siblings. -->
       <div
         v-if="isCaster && slotLevels.length"
-        class="eldra-well col-span-2 rounded-none p-2 sm:col-span-4"
+        class="eldra-well col-span-2 rounded-none p-2 sm:col-span-1"
       >
         <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
           Spell Slots
         </div>
 
-        <div class="mt-1.5 flex flex-wrap gap-x-4 gap-y-2">
+        <div class="mt-1.5 flex flex-wrap gap-x-2 gap-y-2">
           <div
             v-for="slot in slotLevels"
             :key="slot.level"

@@ -66,6 +66,32 @@ export function emptyCharacterHealth(): StoredCharacterHealth {
   }
 }
 
+// Character Sheet Caster Pass 0 -- the INITIALIZATION constructor, distinct
+// from `emptyCharacterHealth()` above on purpose. `emptyCharacterHealth()`
+// means "nothing recorded yet" -- the read-time fallback for a character
+// predating the Health System, or for any character whose `health` block
+// simply hasn't been written. `initializeCharacterHealth(maxHp)` means "a
+// brand-new playable character's FIRST runtime health state", used exactly
+// once, by whichever character-creation route seeds it -- never on an
+// ordinary sheet read, and never as a substitute for `emptyCharacterHealth()`
+// elsewhere.
+//
+// `maxHp` is the caller's own already-derived number (the active Rules
+// Package's `value:hit_points.max`, or the current canonical equivalent) --
+// this function performs no Rules Engine lookup, no class/species/hit-die
+// knowledge, and no formula of any kind. It only answers "what does a fresh
+// character's stored health record look like, given that ONE number" --
+// generic lifecycle knowledge, not a rule. Every OTHER field reuses
+// `emptyCharacterHealth()`'s own defaults verbatim rather than restating
+// them, so this can never drift from what "nothing spent/nothing marked"
+// already means there.
+export function initializeCharacterHealth(maxHp: number): StoredCharacterHealth {
+  return {
+    ...emptyCharacterHealth(),
+    currentHp: nonNegativeInt(maxHp)
+  }
+}
+
 function nonNegativeInt(value: unknown, fallback = 0): number {
   const parsed = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(parsed)) return fallback

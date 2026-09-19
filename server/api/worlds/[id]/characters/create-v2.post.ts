@@ -66,12 +66,36 @@ import { getWorldContentCatalogue, type ContentCatalogueEntry } from '../../../.
 import { createEntityRecord, dxFetch } from '../../../../utils/entity-factory'
 import { saveCharacterAbilityScores } from '../../../../utils/character-ability-scores'
 import { saveCharacterRulesChoices } from '../../../../utils/character-rules-choices'
+import { getDerivedCharacter } from '../../../../utils/character-derived'
+import { saveCharacterHealth } from '../../../../utils/character-health'
 import {
   emptyStoredRulesChoices,
   toResolvableChoice,
   validateChoiceSelection
 } from '../../../../../app/lib/characters/rules-choices'
 import { normalizeStoredAbilityScores } from '../../../../../app/lib/characters/ability-scores'
+import { initializeCharacterHealth } from '../../../../../app/lib/characters/health'
+
+// Character Sheet Caster Pass 0 -- restated, not shared, from
+// server/utils/character-recovery.ts's own identically-shaped, module-private
+// `findNumber` (same "no Rules Engine value id crosses a domain boundary via
+// import" discipline this codebase already applies elsewhere, e.g.
+// worldAuthoredThreeDiceRendererAdapter.ts's own header on why it duplicates
+// rather than imports a sibling's tiny helper). Scans every category,
+// ignoring which one declares the id, because this route -- like Recovery --
+// has no reason to know or care which Rule Category a Value belongs to.
+const MAX_HP_ID = 'value:hit_points.max'
+
+function findDerivedNumber(
+  derived: { byCategory: Record<string, Array<{ id: string; value?: unknown }>> },
+  id: string
+): number | null {
+  for (const entries of Object.values(derived.byCategory)) {
+    const entry = entries.find((candidate) => candidate.id === id)
+    if (entry) return typeof entry.value === 'number' ? entry.value : null
+  }
+  return null
+}
 
 type CatalogueSelectionInput = {
   packageId?: unknown
@@ -241,6 +265,59 @@ export default defineEventHandler(async (event) => {
 
     if (Object.keys(rulesChoices.selections).length > 0) {
       await saveCharacterRulesChoices(created.id, rulesChoices).catch(() => null)
+    }
+
+    // Character Sheet Caster Pass 0 -- INITIAL HEALTH. A newly-created
+    // playable character begins at its authoritative MAXIMUM hp, never the
+    // `emptyCharacterHealth()` fallback the Sheet otherwise shows for
+    // "nothing recorded yet" (character-health.ts's own documented state
+    // for a character predating the Health System -- never meant to
+    // describe a character one second old, which is exactly what this
+    // route was leaving every new character as before this task). This
+    // reads the SAME already-tested Rules Engine projection every other
+    // Health-adjacent server util reads (getDerivedCharacter), for the
+    // SAME Value id server/utils/character-recovery.ts's own MAX_HP_ID
+    // already names -- no class, no hit die size, no Constitution formula
+    // is computed here; this route only asks "what does the active Rules
+    // Package say Max HP is" and seeds Current HP at that number.
+    //
+    // FAILURE SEMANTICS -- deliberately NOT `.catch(() => null)` like the
+    // three writes above, and this split matters:
+    //
+    //   getDerivedCharacter returning `available: false` (no Rules Package
+    //   activated in this World, or this character still missing data the
+    //   active package needs -- e.g. no ability scores yet, a state this
+    //   very route already treats as legal, see PHASE 3's own note above)
+    //   is NOT a failure. It is the SAME "absence is a legal state"
+    //   degradation every Health-adjacent server util already documents
+    //   (character-recovery.ts's own header). This character is left
+    //   exactly as EVERY character was before this task -- no health block
+    //   yet -- and creation still succeeds. `findDerivedNumber` returning
+    //   `null` (the active package derives something but does not declare
+    //   Max HP at all) is treated identically, for the same reason.
+    //
+    //   But once `maxHp` IS a real number, Health is no longer optional --
+    //   it is the exact fact this task exists to guarantee. Swallowing a
+    //   `saveCharacterHealth` failure here would silently recreate the
+    //   precise bug this task fixes (entity + derivable Max HP exist,
+    //   Health does not). Directus has no cross-collection transaction --
+    //   the identical, already-accepted precedent server/utils/worlds.ts's
+    //   own `createWorld` establishes for `createOwnerMembership` ("fails
+    //   loudly (500) rather than silently... a state worth surfacing, not
+    //   swallowing") -- so a thrown error here propagates uncaught,
+    //   failing this request honestly rather than returning 200 for an
+    //   incompletely-initialized character. The residual risk is the SAME
+    //   one that precedent already accepts: `entities`/`catalogue_
+    //   selection`/(optional `ability_scores`/`rules_choices`) rows already
+    //   persisted above remain even though the overall request now reports
+    //   failure -- true cross-collection atomicity does not exist anywhere
+    //   in this codebase, and this task does not invent it.
+    const derivedResult = await getDerivedCharacter(worldId, created.id)
+    if (derivedResult.available) {
+      const maxHp = findDerivedNumber(derivedResult.derived, MAX_HP_ID)
+      if (maxHp !== null) {
+        await saveCharacterHealth(created.id, initializeCharacterHealth(maxHp))
+      }
     }
   }
 

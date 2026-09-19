@@ -16,6 +16,7 @@ import {
   applyHealing,
   emptyCharacterHealth,
   grantTemporaryHp,
+  initializeCharacterHealth,
   isCharacterDeceasedFromDeathSaves,
   normalizeStoredCharacterHealth,
   resetDeathSaves,
@@ -32,6 +33,35 @@ describe('emptyCharacterHealth', () => {
       hitDiceSpent: 0,
       deathSaves: { successes: 0, failures: 0 }
     })
+  })
+})
+
+// Character Sheet Caster Pass 0 -- distinct from emptyCharacterHealth()
+// above: this is the ONE-TIME constructor for a brand-new character's first
+// runtime health state, not the "nothing recorded yet" read fallback.
+describe('initializeCharacterHealth', () => {
+  it('seeds Current HP at the supplied Max HP (6, a real Wizard value)', () => {
+    expect(initializeCharacterHealth(6)).toEqual({
+      currentHp: 6,
+      temporaryHp: 0,
+      hitDiceSpent: 0,
+      deathSaves: { successes: 0, failures: 0 }
+    })
+  })
+
+  it('seeds Current HP at a completely different Max HP (23) -- not hardcoded to any one class\'s value', () => {
+    expect(initializeCharacterHealth(23).currentHp).toBe(23)
+  })
+
+  it('every other field matches emptyCharacterHealth()\'s own defaults, not restated independently', () => {
+    const { currentHp: _currentHp, ...rest } = initializeCharacterHealth(6)
+    const { currentHp: _empty, ...emptyRest } = emptyCharacterHealth()
+    expect(rest).toEqual(emptyRest)
+  })
+
+  it('clamps a negative or non-finite Max HP to zero, same as every other Health field', () => {
+    expect(initializeCharacterHealth(-5).currentHp).toBe(0)
+    expect(initializeCharacterHealth(Number.NaN).currentHp).toBe(0)
   })
 })
 

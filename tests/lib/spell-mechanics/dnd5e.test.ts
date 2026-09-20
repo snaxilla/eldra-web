@@ -150,6 +150,32 @@ describe('resolveDnd5eSpellMechanics -- Bless (concentration, buff, target-count
   })
 })
 
+describe('resolveDnd5eSpellMechanics -- Chromatic Orb (unresolved damage-type choice, Phase 1B.2)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['Chromatic Orb'])!
+
+  it('flags the choice rather than silently picking the first listed type', () => {
+    expect(mechanics.hasUnresolvedChoice).toBe(true)
+  })
+
+  it('preserves the dice, but leaves damage.type undefined -- never "acid" by default', () => {
+    expect(mechanics.damage).toEqual({ dice: { count: 3, faces: 8 }, modifier: 0, type: undefined })
+  })
+
+  it('is still a real attack-roll resolution -- the choice concerns damage type, not resolution kind', () => {
+    expect(mechanics.resolution).toEqual({ kind: 'attack-roll' })
+  })
+})
+
+describe('resolveDnd5eSpellMechanics -- single damage type never flags a choice', () => {
+  it('Fireball (one type) has hasUnresolvedChoice undefined/false', () => {
+    expect(resolveDnd5eSpellMechanics(spells.Fireball)!.hasUnresolvedChoice).toBeFalsy()
+  })
+
+  it('Magic Missile (one type) has hasUnresolvedChoice undefined/false', () => {
+    expect(resolveDnd5eSpellMechanics(spells['Magic Missile'])!.hasUnresolvedChoice).toBeFalsy()
+  })
+})
+
 describe('resolveDnd5eSpellMechanics -- dice parser variants (NdM, NdM+K, NdM-K, whitespace)', () => {
   function withEntry(text: string) {
     return { name: 'Test Spell', level: 1, entries: [text] }

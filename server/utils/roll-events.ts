@@ -751,6 +751,184 @@ export async function createActionDamageRollEvent(input: CreateActionDamageRollI
 }
 
 // ---------------------------------------------------------------------------
+// Write -- spell attack/damage rolls (Character Sheet Body Phase 1B.2,
+// Authoritative Cast Foundation)
+// ---------------------------------------------------------------------------
+//
+// UNTARGETED, matching createActionAttackRollEvent/createActionDamageRollEvent's
+// own posture exactly (see that section's own header): one d20 (or one
+// damage expression) plus its authoritative modifier, no target, no Armor
+// Class comparison, no hit/miss decision, no HP applied to anyone. Spell
+// saving-throw resolution is out of this phase's scope entirely and stays
+// on character-combat.ts's existing targeted "Resolve" control, untouched.
+//
+// THE ONE REAL DIFFERENCE FROM createActionAttackRollEvent/
+// createActionDamageRollEvent: those two resolve an actionId THEMSELVES
+// (calling resolveAttackAction internally). These two take an
+// ALREADY-DERIVED attack bonus / damage dice+modifier as input instead.
+// That is deliberate, not a shortcut: server/utils/character-cast.ts is
+// the one place that resolves a spell action's numbers (reusing
+// server/utils/character-actions.ts's own getCharacterActions for the
+// SAME "is this prepared" authority every other spell-reading server util
+// already trusts), because a LEVELED Cast also needs those exact numbers
+// for its own resource-authority decision BEFORE any roll happens.
+// Resolving twice (once here, once there) would risk exactly the kind of
+// drift this module's sibling functions already avoid by resolving only
+// once -- so the resolution stays in character-cast.ts, and these two
+// functions are pure "given the numbers, roll and persist" primitives.
+//
+// `broadcast` -- Cast's own atomicity requirement (this task's own
+// "IMPORTANT -- BROADCAST ORDERING" section). A cantrip Cast has no
+// resource step at all, so it broadcasts immediately (`broadcast: true`),
+// exactly like every other roll in this module. A LEVELED Cast must not
+// let a connected client see a successful-looking RollEvent before the
+// matching slot expenditure is known to have persisted --
+// character-cast.ts calls these with `broadcast: false`, then calls
+// `broadcastRollEvent` (already a standalone export, imported above)
+// itself, ONLY once the slot mutation has actually succeeded. The row is
+// still PERSISTED either way -- RollEvents are append-only (this file's
+// own header), there is no "undo" once the POST below succeeds -- so a
+// LATER mutation failure cannot un-happen the roll; withholding the
+// broadcast only limits who finds out about it before the server has
+// finished deciding whether the whole Cast succeeded. See
+// character-cast.ts's own header for the full ordering and the residual
+// risk that remains once no further step can fail.
+//
+// `sourceType`: 'spell_attack' is an EXISTING, previously-reserved-but-
+// unused member of RollSourceType (app/lib/rolls/types.ts) -- using it now
+// is not introducing a new taxonomy member, it is finally implementing one
+// this app already declared room for. Spell DAMAGE reuses the existing
+// generic 'damage' sourceType unchanged (the same one weapon/unarmed
+// damage already uses) rather than adding a 'spell_damage' variant --
+// there is nothing about a spell's damage roll that needs its own
+// taxonomy slot; the `label` ("<Spell Name> Damage") already gives the
+// Roll Tray everything it needs to tell it apart from a weapon's, exactly
+// as this task's own ROLL EVENT TAXONOMY section prefers.
+
+export type CreateSpellAttackRollInput = {
+  worldId: string | number
+  rollerUserId: string
+  actorCharacterId: string | number
+  encounterId?: string | number | null
+  // Display only, server-derived by the caller from the character's own
+  // prepared spell -- never a client-supplied label.
+  spellName: string
+  sourceId: string
+  attackBonus: number
+  visibility: RollVisibility
+  metadata?: Record<string, unknown>
+  broadcast: boolean
+}
+
+export async function createSpellAttackRollEvent(input: CreateSpellAttackRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
+  const rolled = rollFormula('1d20', { bonuses: [input.attackBonus] })
+  const tRolled = performance.now()
+  if (!rolled.ok) {
+    throw createError({ statusCode: 400, statusMessage: rolled.error })
+  }
+
+  const row = toPersistenceRow({
+    worldId: input.worldId,
+    encounterId: input.encounterId ?? null,
+    actorCharacterId: input.actorCharacterId,
+    rollerUserId: input.rollerUserId,
+    label: `${input.spellName} Attack`,
+    sourceType: 'spell_attack',
+    sourceKey: null,
+    sourceId: input.sourceId,
+    expression: rolled.roll.expression,
+    dice: rolled.roll.dice,
+    modifier: rolled.roll.modifier,
+    modifiers: rolled.roll.modifiers,
+    total: rolled.roll.total,
+    visibility: input.visibility,
+    metadata: input.metadata ?? {}
+  })
+
+  const tBeforePersist = performance.now()
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
+  const tAfterPersist = performance.now()
+
+  const roll = fromPersistenceRow(res?.data, displayName)
+  if (input.broadcast) broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf('spell attack roll', [
+    ['openDice', tRolled - tStart],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
+  return roll
+}
+
+export type CreateSpellDamageRollInput = {
+  worldId: string | number
+  rollerUserId: string
+  actorCharacterId: string | number
+  encounterId?: string | number | null
+  spellName: string
+  sourceId: string
+  dice: { count: number; faces: number }
+  modifier: number
+  damageType?: string
+  visibility: RollVisibility
+  metadata?: Record<string, unknown>
+  broadcast: boolean
+}
+
+export async function createSpellDamageRollEvent(input: CreateSpellDamageRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
+  const expression = `${input.dice.count}d${input.dice.faces}`
+  const rolled = rollFormula(expression, { bonuses: [input.modifier] })
+  const tRolled = performance.now()
+  if (!rolled.ok) {
+    throw createError({ statusCode: 400, statusMessage: rolled.error })
+  }
+
+  const row = toPersistenceRow({
+    worldId: input.worldId,
+    encounterId: input.encounterId ?? null,
+    actorCharacterId: input.actorCharacterId,
+    rollerUserId: input.rollerUserId,
+    label: `${input.spellName} Damage`,
+    sourceType: 'damage',
+    sourceKey: null,
+    sourceId: input.sourceId,
+    expression: rolled.roll.expression,
+    dice: rolled.roll.dice,
+    modifier: rolled.roll.modifier,
+    modifiers: rolled.roll.modifiers,
+    total: rolled.roll.total,
+    visibility: input.visibility,
+    metadata: { ...(input.metadata ?? {}), ...(input.damageType ? { damageType: input.damageType } : {}) }
+  })
+
+  const tBeforePersist = performance.now()
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
+  const tAfterPersist = performance.now()
+
+  const roll = fromPersistenceRow(res?.data, displayName)
+  if (input.broadcast) broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf('spell damage roll', [
+    ['openDice', tRolled - tStart],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
+  return roll
+}
+
+// ---------------------------------------------------------------------------
 // Read -- cursor pagination, visibility filtering (§5/§7)
 // ---------------------------------------------------------------------------
 

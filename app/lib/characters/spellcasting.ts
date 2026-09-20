@@ -296,3 +296,72 @@ export function restoreSlot(
 export function resetAllSlots(): Record<string, number> {
   return {}
 }
+
+// ---------------------------------------------------------------------------
+// Slot-level derivation -- Character Sheet Body Phase 1B.2 extraction.
+// ---------------------------------------------------------------------------
+// Moved here, UNCHANGED, from app/composables/useCharacterSheet.ts's own
+// `slotLevels` computed -- that composable now calls this exact function
+// instead of computing the same loop inline. Extracted because Phase 1B.2's
+// authoritative Cast command needs the IDENTICAL max/available derivation
+// SERVER-SIDE, and this task's own explicit instruction ("do NOT duplicate
+// slot-bound arithmetic") makes restating this loop a second time -- one
+// copy the client trusts for display, a second copy the server trusts for
+// authority -- the exact drift risk that instruction exists to prevent. A
+// pure function of already-fetched Rules Engine output (a caster type
+// already resolved from `value:spellcasting.caster_type.*`, and the ONE
+// Table row matching this character's level), never itself deriving either
+// -- the caller (useCharacterSheet.ts client-side, character-cast.ts
+// server-side) still owns finding those two facts with its own idiom, the
+// same "restate the tiny id lookup, share the actual arithmetic" split this
+// codebase already draws everywhere else (character-recovery.ts's own
+// MAX_HP_ID vs. the shared applyHealing/spendHitDie functions it calls).
+
+export type SpellSlotLevel = { level: number; max: number; expended: number }
+
+// The three Rules Engine Table ids a caster type's own slot progression
+// lives under -- exported so server/utils/character-cast.ts and
+// useCharacterSheet.ts both name the SAME three ids rather than each
+// typing their own copy of the strings.
+export const SLOT_TABLE_BY_CASTER_TYPE: Record<'full' | 'half' | 'pact', string> = {
+  full: 'table:spellcasting.slots_full',
+  half: 'table:spellcasting.slots_half',
+  pact: 'table:spellcasting.slots_pact'
+}
+
+export function deriveSpellSlotLevels(input: {
+  casterType: 'full' | 'half' | 'pact' | null
+  // The ALREADY-SELECTED table (SLOT_TABLE_BY_CASTER_TYPE[casterType])'s
+  // rows -- callers on both sides already have a `DerivedTable`-shaped
+  // value in hand (client: `derived.tables`; server: `getDerivedCharacter`'s
+  // identical `.derived.tables`), so this only ever indexes into rows
+  // already fetched, never fetches anything itself.
+  tableRows: readonly Record<string, unknown>[] | undefined
+  characterLevel: number
+  expendedSlots: Record<string, number>
+}): SpellSlotLevel[] {
+  const { casterType, tableRows, characterLevel, expendedSlots } = input
+  if (!casterType) return []
+
+  const row = tableRows?.find((candidate) => candidate.key === characterLevel)
+  if (!row) return []
+
+  // Pact Magic (`table:spellcasting.slots_pact`) declares `slots`/
+  // `slot_level` rather than one column per spell level -- every slot the
+  // character has shares that one level. Full/Half declare `slot_1`..
+  // `slot_9` directly.
+  if (casterType === 'pact') {
+    const level = Number(row.slot_level)
+    const max = Number(row.slots)
+    if (!level || !max) return []
+    return [{ level, max, expended: expendedSlots[String(level)] ?? 0 }]
+  }
+
+  const levels: SpellSlotLevel[] = []
+  for (let level = 1; level <= 9; level++) {
+    const max = Number(row[`slot_${level}`] ?? 0)
+    if (max <= 0) continue
+    levels.push({ level, max, expended: expendedSlots[String(level)] ?? 0 })
+  }
+  return levels
+}

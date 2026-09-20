@@ -32,7 +32,11 @@ import type { PresentationEntry } from '~/lib/content-presentation'
 import { emptyCharacterNotes, type StoredCharacterNotes } from '~/lib/characters/character-notes'
 import { emptyCharacterHealth, type StoredCharacterHealth } from '~/lib/characters/health'
 import type { AssembledInventoryItem } from '~/lib/characters/inventory'
-import type { AssembledSpellEntry } from '~/lib/characters/spellcasting'
+import {
+  deriveSpellSlotLevels,
+  SLOT_TABLE_BY_CASTER_TYPE,
+  type AssembledSpellEntry
+} from '~/lib/characters/spellcasting'
 
 export type CatalogueEntry = {
   packageId: string
@@ -127,12 +131,6 @@ const SECTION_LABELS: Record<'species' | 'class' | 'background', string> = {
   species: 'Species',
   class: 'Class',
   background: 'Background'
-}
-
-const SLOT_TABLE_BY_CASTER_TYPE: Record<'full' | 'half' | 'pact', string> = {
-  full: 'table:spellcasting.slots_full',
-  half: 'table:spellcasting.slots_half',
-  pact: 'table:spellcasting.slots_pact'
 }
 
 export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<string>) {
@@ -349,36 +347,29 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
 
   // Which of the three Spell Slot progression Tables applies -- the ONE
   // piece of interpretation this page performs itself; see sheet-v2.vue's
-  // original SPELLCASTING header note (preserved there) for why.
+  // original SPELLCASTING header note (preserved there) for why. The
+  // actual max/available ARITHMETIC now lives in
+  // app/lib/characters/spellcasting.ts's `deriveSpellSlotLevels` --
+  // Character Sheet Body Phase 1B.2 extracted it there so
+  // server/utils/character-cast.ts's authoritative Cast command can derive
+  // the IDENTICAL numbers this display already trusts, rather than a
+  // second, independently-drifting copy of this loop.
   const slotLevels = computed(() => {
     const byCategory = derived.value?.byCategory ?? {}
     const casterType = (['full', 'half', 'pact'] as const).find((type) =>
       findDerivedBoolean(byCategory, 'spellcasting', `value:spellcasting.caster_type.${type}`)
-    )
-    if (!casterType) return []
+    ) ?? null
 
-    const table = derived.value?.tables?.find((entry) => entry.id === SLOT_TABLE_BY_CASTER_TYPE[casterType])
-    const row = table?.rows.find((candidate) => candidate.key === characterLevel.value)
-    if (!row) return []
+    const tableRows = casterType
+      ? derived.value?.tables?.find((entry) => entry.id === SLOT_TABLE_BY_CASTER_TYPE[casterType])?.rows
+      : undefined
 
-    // Pact Magic (`table:spellcasting.slots_pact`) declares `slots`/
-    // `slot_level` rather than one column per spell level -- every slot
-    // the character has shares that one level. Full/Half declare
-    // `slot_1`..`slot_9` directly.
-    if (casterType === 'pact') {
-      const level = Number(row.slot_level)
-      const max = Number(row.slots)
-      if (!level || !max) return []
-      return [{ level, max, expended: spellcastingExpendedSlots.value[String(level)] ?? 0 }]
-    }
-
-    const levels: { level: number; max: number; expended: number }[] = []
-    for (let level = 1; level <= 9; level++) {
-      const max = Number(row[`slot_${level}`] ?? 0)
-      if (max <= 0) continue
-      levels.push({ level, max, expended: spellcastingExpendedSlots.value[String(level)] ?? 0 })
-    }
-    return levels
+    return deriveSpellSlotLevels({
+      casterType,
+      tableRows,
+      characterLevel: characterLevel.value,
+      expendedSlots: spellcastingExpendedSlots.value
+    })
   })
 
   // -------------------------------------------------------------------

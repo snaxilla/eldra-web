@@ -125,6 +125,8 @@
 
 import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
 import type { ActionCategory, ActionResolution as ContentActionResolution } from '~/lib/content-actions'
+import { classifySpellCastCapability } from '~/lib/spell-mechanics'
+import type { CanonicalSpellMechanics } from '~/lib/spell-mechanics'
 
 export type CharacterActionCategory = ActionCategory
 // Restated (not hand-duplicated) from app/lib/content-actions/types.ts --
@@ -160,6 +162,16 @@ export type CharacterAction = {
   damageFlatBase?: number
   damageType?: string
   damageAbilityModifier?: number
+  // Character Sheet Body Phase 1B.2 (Authoritative Cast Foundation) --
+  // present only for `category === 'spell'` actions, restated verbatim from
+  // server/utils/character-actions.ts's own identical field. Read ONLY by
+  // `classifySpellCastCapability` below, the SAME predicate
+  // server/utils/character-cast.ts calls -- this panel decides "does this
+  // row get a Cast button" with the exact rule the server will use to
+  // decide "will Cast actually succeed", so the two can never disagree.
+  // `CanonicalSpellMechanics` already lives in app/lib/ (app/lib/spell-mechanics),
+  // so this is a direct import, not a second hand-copied type.
+  spellMechanics?: CanonicalSpellMechanics | null
 }
 
 // Restated client-side from server/utils/character-combat.ts's own
@@ -193,6 +205,14 @@ const props = withDefaults(defineProps<{
   // above -- no per-row/per-action-id tracking, since a player only ever
   // has one roll in flight at a time.
   rolling?: boolean
+  // Character Sheet Body Phase 1B.2 -- true while a Cast/spell-Damage
+  // request this panel emitted is in flight (the page's own mutation
+  // against POST .../cast). Separate from `rolling` because a Cast is a
+  // different request (it can mutate spellcasting state) than a plain
+  // roll, even though the UI shape is nearly identical -- mirrors
+  // `resolving`/`rolling` already being two separate flags for the
+  // identical reason (Resolve vs. Attack/Damage are different requests too).
+  casting?: boolean
 }>(), {
   actions: () => [],
   pending: false,
@@ -200,7 +220,8 @@ const props = withDefaults(defineProps<{
   targetOptions: () => [],
   results: () => ({}),
   resolving: false,
-  rolling: false
+  rolling: false,
+  casting: false
 })
 
 const emit = defineEmits<{
@@ -208,6 +229,18 @@ const emit = defineEmits<{
   attack: [{ actionId: string }]
   damage: [{ actionId: string }]
   select: [CharacterAction]
+  // Character Sheet Body Phase 1B.2 -- `cast` is the primary Cast/Attack
+  // control for a supported spell (server decides which archetype from the
+  // SAME actionId, see server/utils/character-cast.ts's own `castSpell`);
+  // `spellDamage` is the independent Damage roll for an attack-roll spell
+  // ONLY (never offered for an automatic-damage spell -- see this file's
+  // own CAST ROW note below). Deliberately separate emit names from
+  // `attack`/`damage` even though the UI shape is nearly identical: those
+  // two hit the existing untargeted-roll path (POST .../rolls,
+  // weapon/unarmed only), these two hit the new POST .../cast route -- the
+  // page needs to tell them apart to call the right endpoint.
+  cast: [{ actionId: string }]
+  spellDamage: [{ actionId: string }]
 }>()
 
 const CATEGORY_LABELS: Record<CharacterActionCategory, string> = {
@@ -281,6 +314,50 @@ function attack(actionId: string) {
 function damage(actionId: string) {
   if (props.rolling) return
   emit('damage', { actionId })
+}
+
+// ---------------------------------------------------------------------------
+// Cast row -- Character Sheet Body Phase 1B.2, Authoritative Cast Foundation
+// ---------------------------------------------------------------------------
+// `classifySpellCastCapability` is the SAME predicate server/utils/character-cast.ts
+// calls -- this panel decides "does this row get a Cast button" with the
+// identical rule the server uses to decide "will Cast actually succeed", so
+// client and server can never invent different support rules (this task's
+// own requirement). A spell whose capability is not one of the two
+// supported kinds (a saving-throw spell, a healing/effect/choice/unknown
+// spell) falls through to the existing `v-else` branch below, unchanged --
+// it keeps its own targeted Resolve control if it has one, or a plain
+// inspectable row if it doesn't. Never fabricates a Cast for anything this
+// phase does not honestly support.
+function castCapabilityOf(action: CharacterAction) {
+  return classifySpellCastCapability({ category: action.category, spellMechanics: action.spellMechanics })
+}
+
+function isCastableSpell(action: CharacterAction): boolean {
+  const capability = castCapabilityOf(action)
+  return capability?.kind === 'supported-spell-attack' || capability?.kind === 'supported-automatic-damage'
+}
+
+// Damage stays an independent control ONLY for an attack-roll spell (Fire
+// Bolt): its resource (none, for a cantrip) is already settled by Cast, so
+// an extra Damage roll spends nothing further -- mirrors the weapon
+// Attack/Damage split exactly. An automatic-damage spell (Magic Missile)
+// NEVER gets this control: Cast already rolls its damage AND spends its
+// slot in one step, so a second, independent Damage button would let a
+// player roll it again for free with no slot spent -- this task's own
+// "avoid a free-resource loophole" requirement.
+function showsIndependentSpellDamage(action: CharacterAction): boolean {
+  return castCapabilityOf(action)?.kind === 'supported-spell-attack'
+}
+
+function cast(actionId: string) {
+  if (props.casting) return
+  emit('cast', { actionId })
+}
+
+function spellDamage(actionId: string) {
+  if (props.casting) return
+  emit('spellDamage', { actionId })
 }
 
 // The "Hit / DC" column carries whichever of the two the action declares --
@@ -479,6 +556,71 @@ function resolvedDamageText(action: CharacterAction): string {
                 :disabled="rolling"
                 :aria-label="`Roll ${action.name} Damage`"
                 @click="damage(action.id)"
+              >
+                Damage
+              </button>
+            </div>
+          </div>
+
+          <!-- Character Sheet Body Phase 1B.2: a supported spell (Fire
+               Bolt-shaped attack-roll, or Magic Missile-shaped automatic
+               damage) -- mirrors the attack-capable row immediately above
+               almost exactly (same "primary button IS the roll, Info/Damage
+               are its siblings" shape), but Cast hits the new
+               POST .../cast route instead of .../rolls, and Damage is only
+               offered when it cannot create a free-resource loophole (see
+               `showsIndependentSpellDamage` above). -->
+          <div
+            v-else-if="isCastableSpell(action)"
+            class="eldra-well flex flex-col gap-1.5 rounded-none px-3 py-2 transition md:flex-row md:items-center md:gap-3"
+          >
+            <button
+              type="button"
+              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
+              :disabled="casting"
+              :aria-label="`Cast ${action.name}`"
+              @click="cast(action.id)"
+            >
+              <span class="block min-w-0">
+                <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
+                <span class="mt-0.5 block truncate text-[0.6rem] uppercase tracking-[0.12em] text-[#9f9278]">
+                  {{ CATEGORY_LABELS[action.category] }}
+                </span>
+              </span>
+
+              <span class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[#d8ceb8] md:hidden">
+                <span v-if="action.range"><span class="text-[#6f6754]">Range</span> {{ action.range }}</span>
+                <span><span class="text-[#6f6754]">Hit/DC</span> {{ hitOrDc(action) }}</span>
+                <span v-if="action.damage"><span class="text-[#6f6754]">Damage</span> {{ action.damage }}</span>
+                <span v-if="action.actionType"><span class="text-[#6f6754]">Timing</span> {{ action.actionType }}</span>
+              </span>
+
+              <span class="hidden truncate text-xs text-[#d8ceb8] md:block">{{ action.range || '—' }}</span>
+              <span class="hidden text-sm font-semibold tabular-nums text-[#fff7df] md:block">{{ hitOrDc(action) }}</span>
+              <span class="hidden truncate text-xs tabular-nums text-[#d8ceb8] md:block">{{ action.damage || '—' }}</span>
+              <span class="hidden truncate text-xs text-[#9f9278] md:block">{{ action.usage || action.actionType || '—' }}</span>
+            </button>
+
+            <div class="flex w-full items-center gap-1.5 md:w-auto">
+              <button
+                type="button"
+                class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-none text-[#6f6754] transition hover:text-[#d8ceb8] focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+                :aria-label="`View ${action.name} details`"
+                @click="emit('select', action)"
+              >
+                <UIcon
+                  name="i-lucide-info"
+                  class="h-3.5 w-3.5"
+                />
+              </button>
+
+              <button
+                v-if="showsIndependentSpellDamage(action)"
+                type="button"
+                class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                :disabled="casting"
+                :aria-label="`Roll ${action.name} Damage`"
+                @click="spellDamage(action.id)"
               >
                 Damage
               </button>

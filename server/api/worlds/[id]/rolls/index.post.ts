@@ -10,10 +10,16 @@
 // 'action_attack' | 'damage'` for weapon/unarmed actions (`actorCharacterId`
 // + `actionId`, never a modifier or expression -- see roll-events.ts's own
 // createActionAttackRollEvent/createActionDamageRollEvent).
-// `spell_attack`/`spell_save` derivation remains unimplemented here and is
-// rejected with a clear 400, never silently accepted and misinterpreted --
-// spell resolution stays on character-combat.ts's existing targeted
-// "Resolve" control.
+// `spell_attack`/`spell_save` derivation remains unimplemented HERE and is
+// rejected with a clear 400, never silently accepted and misinterpreted.
+// Saving-throw spells still resolve through character-combat.ts's existing
+// targeted "Resolve" control, unchanged. Character Sheet Body Phase 1B.2
+// adds authoritative spell Attack/automatic-Damage Casting, but on its OWN
+// dedicated route (`POST .../characters/:characterId/cast`,
+// server/utils/character-cast.ts) rather than here -- a leveled Cast
+// mutates the character's persisted spellcasting state (expended slots), a
+// real side effect this route's own contract ("the server always computes
+// it, no side effects beyond the roll") deliberately excludes.
 //
 // Thin by design, matching server/api/worlds/[id]/rules/roll.post.ts's own
 // shape almost exactly: this file only parses/validates the request

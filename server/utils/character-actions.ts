@@ -50,6 +50,8 @@ import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-
 import { getDerivedCharacter } from './character-derived'
 import type { ActionCategory, ContentAction } from '../../app/lib/content-actions'
 import { isAttackCapableAction } from '../../app/lib/content-actions'
+import type { CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
+import type { SpellCatalogueEntry } from '../../app/lib/characters/spellcasting'
 
 export type CharacterAction = ContentAction & {
   // Stable within one character's assembled list -- the `:key` a Sheet's
@@ -76,6 +78,18 @@ export type CharacterAction = ContentAction & {
   // is unavailable. See app/lib/content-actions/damage-presentation.ts,
   // this field's one consumer.
   damageAbilityModifier?: number
+  // Character Sheet Body Phase 1B.2 (Authoritative Cast Foundation) --
+  // present ONLY for `category === 'spell'` actions, read verbatim off the
+  // prepared spell's own catalogue entry (never re-resolved here -- see
+  // world-content-catalogue.ts's `toCatalogueEntry`, the one place raw
+  // source data becomes this shape). `undefined` for every non-spell
+  // action; `null` for a spell whose entry resolved but carries no
+  // canonical mechanics (a homebrew/custom spell, or a resolution failure)
+  // -- `server/utils/character-cast.ts` treats both the same way
+  // (`classifySpellCastCapability` returns `unsupported-mechanic` for
+  // either), so this field is never used to distinguish "absent" from
+  // "present but empty."
+  spellMechanics?: CanonicalSpellMechanics | null
 }
 
 export type CharacterActionsResult =
@@ -220,7 +234,14 @@ export async function getCharacterActions(
 
   for (const spell of blueprint.spells) {
     if (!spell.prepared) continue
-    const resolved = (spell.entry as { actions?: ContentAction[] } | undefined)?.actions ?? []
+    const entry = spell.entry as SpellCatalogueEntry | undefined
+    const resolved = entry?.actions ?? []
+    // Threaded straight from the catalogue entry Phase 1B.1 already
+    // computes at read time -- never re-derived here. `undefined` (no
+    // entry resolved) and `null` (entry resolved, mechanics didn't) both
+    // pass through unchanged; see this field's own doc comment above on
+    // `CharacterAction` for why the two are treated identically downstream.
+    const spellMechanics = entry?.spellMechanics
 
     // A prepared spell always shows SOMETHING, even without a resolved
     // catalogue action (a homebrew spell, or one whose Content Pack went
@@ -230,7 +251,13 @@ export async function getCharacterActions(
       : [{ name: spell.title, category: 'spell' as const, actionType: 'Spell' }]
 
     for (const action of spellActions) {
-      actions.push({ ...action, id: actionId('spell', spell.instanceId), attackBonus: spellAttackBonus, saveDc: spellSaveDc })
+      actions.push({
+        ...action,
+        id: actionId('spell', spell.instanceId),
+        attackBonus: spellAttackBonus,
+        saveDc: spellSaveDc,
+        spellMechanics
+      })
     }
   }
 

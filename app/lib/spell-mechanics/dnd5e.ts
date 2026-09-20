@@ -239,9 +239,23 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
 
   const level = typeof raw.level === 'number' ? raw.level : 0
   const school = SCHOOL_LABELS[String(raw.school)]
-  const damageType = typeof raw.damageInflict === 'object' && Array.isArray(raw.damageInflict)
-    ? (typeof raw.damageInflict[0] === 'string' ? raw.damageInflict[0] : undefined)
-    : undefined
+
+  // Character Sheet Body Phase 1B.2 -- THE CHROMATIC ORB FINDING. 5etools'
+  // `damageInflict` names every LEGAL damage type a spell can deal, not
+  // necessarily one authoritative type -- Chromatic Orb states
+  // `["acid","cold","fire","lightning","poison","thunder"]`, one of which
+  // the PLAYER chooses at cast time. Picking `[0]` unconditionally (this
+  // module's own 1B.1 behavior, corrected here) would silently assert
+  // "acid" as if the choice had already been made -- exactly the invented
+  // fact this phase's own investigation was scoped to catch. A single
+  // listed type (Magic Missile: `["force"]`, Fireball: `["fire"]`) is
+  // unambiguous and used directly; more than one sets `hasUnresolvedChoice`
+  // and leaves `damage.type` honestly `undefined` instead of guessing.
+  const damageInflict = Array.isArray(raw.damageInflict)
+    ? raw.damageInflict.filter((entry): entry is string => typeof entry === 'string')
+    : []
+  const hasUnresolvedChoice = damageInflict.length > 1
+  const damageType = damageInflict.length === 1 ? damageInflict[0] : undefined
 
   const damage = extractDamageRoll(raw.entries, damageType)
 
@@ -257,8 +271,9 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     description: flattenEntries(raw.entries).join(' ') || undefined,
     resolution: resolveResolution(raw, Boolean(damage)),
     damage,
-    // Never populated in 1B.1 -- see this file's own header.
+    // Never populated in 1B.1/1B.2 -- see this file's own header.
     healing: undefined,
-    scaling: resolveScaling(raw.entriesHigherLevel)
+    scaling: resolveScaling(raw.entriesHigherLevel),
+    ...(hasUnresolvedChoice ? { hasUnresolvedChoice: true } : {})
   }
 }

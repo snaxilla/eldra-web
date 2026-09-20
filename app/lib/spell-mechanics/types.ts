@@ -110,6 +110,20 @@ export type CanonicalSpellMechanics = {
   healing?: SpellRoll
 
   scaling?: SpellScaling
+
+  // Character Sheet Body Phase 1B.2 addition -- the Chromatic Orb finding.
+  // `true` exactly when the source itself states more than one legal value
+  // for a mechanic THIS phase's Cast runtime would otherwise need to pick
+  // ONE of (today: `damageInflict` naming multiple damage types, e.g.
+  // Chromatic Orb's "Acid, Cold, Fire, Lightning, Poison, or Thunder").
+  // When this is `true`, `damage.type` is deliberately left `undefined`
+  // rather than silently defaulting to the first listed option -- see
+  // resolveDnd5eSpellMechanics's own header for why "pick the first one"
+  // is exactly the dishonest behavior this field exists to prevent.
+  // Generic on purpose (not `unresolvedDamageType` specifically): the next
+  // kind of unresolved source choice a future spell reveals sets this same
+  // flag, rather than each one growing its own boolean.
+  hasUnresolvedChoice?: boolean
 }
 
 // One game system's translation of raw Content Pack `data` into this

@@ -27,6 +27,8 @@ export type {
   SpellMechanicsResolver
 } from './types'
 
+export { classifySpellCastCapability, type SpellCastCapability } from './cast-capability'
+
 const RESOLVERS: Record<string, SpellMechanicsResolver> = {
   dnd5e: resolveDnd5eSpellMechanics
 }

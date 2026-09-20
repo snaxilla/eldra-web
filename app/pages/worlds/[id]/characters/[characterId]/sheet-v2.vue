@@ -353,7 +353,7 @@ import type { AssembledSpellEntry } from '~/lib/characters/spellcasting'
 import type { PresentationEntry } from '~/lib/content-presentation/types'
 import type { StoredCharacterNotes } from '~/lib/characters/character-notes'
 import { buildManualRollRequestBody, type ManualDieOption } from '~/lib/rolls/requests'
-import type { RollVisibility } from '~/lib/rolls/types'
+import type { RollEventRecord, RollVisibility } from '~/lib/rolls/types'
 
 definePageMeta({
   layout: 'world-workspace'
@@ -391,6 +391,7 @@ const {
   historyPending: rollHistoryPending,
   historyError: rollHistoryError,
   requestRoll,
+  ingestRoll,
   refreshHistory: refreshRollHistory,
   loadMoreHistory: loadMoreRollHistory
 } = useWorldRolls(worldId)
@@ -459,6 +460,63 @@ function rollActionDamage({ actionId }: { actionId: string }) {
     actionId,
     visibility: rollVisibility.value
   }).catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
+// CHARACTER SHEET BODY PHASE 1B.2 -- AUTHORITATIVE CAST FOUNDATION
+// ---------------------------------------------------------------------------
+// `castPending`/`castError` mirror `rollPending`/`rollError`'s own shape,
+// kept separate because a Cast is a different request (POST .../cast, which
+// can mutate spellcasting state) than a plain untargeted roll (POST .../rolls)
+// -- CharacterActionsPanel.vue's own `casting` prop and `cast`/`spellDamage`
+// emits are the client half of that same split. Cast never sends a spell's
+// attack bonus, level, damage dice, or slot cost -- only which action to
+// Cast and this page's own shared roll visibility, exactly like
+// `rollActionAttack`/`rollActionDamage` immediately above.
+const castPending = ref(false)
+const castError = ref('')
+
+type CastResponse = { ok: true; roll: RollEventRecord; spellcasting?: { spells: unknown[]; expendedSlots: Record<string, number> } }
+
+async function postCast(actionId: string, intent: 'cast' | 'damage') {
+  if (castPending.value) return
+  castPending.value = true
+  castError.value = ''
+  const clickedAt = performance.now()
+
+  try {
+    const response = await $fetch<CastResponse>(
+      `/api/worlds/${worldId.value}/characters/${characterId.value}/cast`,
+      { method: 'POST', body: { actionId, intent, visibility: rollVisibility.value } }
+    )
+    // Feeds the SAME animation-queue-then-history pipeline `requestRoll`
+    // uses for its own POST .../rolls response -- the Roll Tray needs no
+    // second ingestion path and cannot tell a Cast's roll apart from any
+    // other (see useWorldRolls.ts's own `ingestRoll` header).
+    ingestRoll(response.roll, clickedAt, performance.now())
+
+    // Authoritative resource refresh, no reload: present ONLY when this
+    // Cast actually expended a slot (server/utils/character-cast.ts's own
+    // `CastSpellResult.spellcasting`) -- assigning the server's own
+    // already-computed record directly, never re-deriving or re-PUTting a
+    // client-computed guess, which is exactly the duplicate-arithmetic/
+    // drift risk this task's own instructions warn against.
+    if (response.spellcasting) {
+      sheet.spellcastingExpendedSlots.value = response.spellcasting.expendedSlots
+    }
+  } catch (caught: any) {
+    castError.value = caught?.data?.statusMessage || caught?.statusMessage || 'Failed to cast this spell'
+  } finally {
+    castPending.value = false
+  }
+}
+
+function castSpell({ actionId }: { actionId: string }) {
+  postCast(actionId, 'cast')
+}
+
+function rollSpellDamage({ actionId }: { actionId: string }) {
+  postCast(actionId, 'damage')
 }
 
 // Phase 4B.7 -- the Roll Tray's manual dice rack. Same visibility, same
@@ -948,14 +1006,17 @@ function openSkillContext(skill: CharacterSkillRow) {
                 <CharacterActionsPanel
                   :actions="characterActions"
                   :pending="actionsPending"
-                  :error-message="actionsUnavailableMessage || mutations.combat.error || rollError"
+                  :error-message="actionsUnavailableMessage || mutations.combat.error || rollError || castError"
                   :target-options="combatTargetOptions"
                   :results="mutations.combat.results"
                   :resolving="mutations.combat.resolving"
                   :rolling="rollPending"
+                  :casting="castPending"
                   @resolve="mutations.combat.resolve"
                   @attack="rollActionAttack"
                   @damage="rollActionDamage"
+                  @cast="castSpell"
+                  @spell-damage="rollSpellDamage"
                   @select="openActionContext"
                 />
               </div>

@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   addSpell,
+  deriveSpellSlotLevels,
   emptyCharacterSpellcasting,
   expendSlot,
   isValidSlotLevel,
@@ -181,5 +182,75 @@ describe('expendSlot / restoreSlot / resetAllSlots', () => {
 
   it('resetAllSlots always returns an empty map', () => {
     expect(resetAllSlots()).toEqual({})
+  })
+})
+
+// Character Sheet Body Phase 1B.2 -- extracted verbatim from
+// useCharacterSheet.ts's own `slotLevels` computed, so
+// server/utils/character-cast.ts's authoritative Cast command derives the
+// IDENTICAL max/available numbers the Sheet already displays.
+describe('deriveSpellSlotLevels', () => {
+  it('returns [] with no caster type at all', () => {
+    expect(deriveSpellSlotLevels({
+      casterType: null, tableRows: [{ key: 1, slot_1: 2 }], characterLevel: 1, expendedSlots: {}
+    })).toEqual([])
+  })
+
+  it('returns [] when no row matches this character level', () => {
+    expect(deriveSpellSlotLevels({
+      casterType: 'full', tableRows: [{ key: 5, slot_1: 4 }], characterLevel: 1, expendedSlots: {}
+    })).toEqual([])
+  })
+
+  it('a level-1 full caster (Fighter/Wizard-shaped row): one L1 pool, matching the "level" Rules Engine table key', () => {
+    const levels = deriveSpellSlotLevels({
+      casterType: 'full',
+      tableRows: [{ key: 1, slot_1: 2, slot_2: 0 }],
+      characterLevel: 1,
+      expendedSlots: {}
+    })
+    expect(levels).toEqual([{ level: 1, max: 2, expended: 0 }])
+  })
+
+  it('reads expended from the stored map, keyed by level as a string', () => {
+    const levels = deriveSpellSlotLevels({
+      casterType: 'full',
+      tableRows: [{ key: 1, slot_1: 1 }],
+      characterLevel: 1,
+      expendedSlots: { '1': 1 }
+    })
+    expect(levels).toEqual([{ level: 1, max: 1, expended: 1 }])
+  })
+
+  it('a higher-level full caster produces multiple pools, skipping any level with zero max', () => {
+    const levels = deriveSpellSlotLevels({
+      casterType: 'full',
+      tableRows: [{ key: 5, slot_1: 4, slot_2: 3, slot_3: 2, slot_4: 0, slot_5: 0 }],
+      characterLevel: 5,
+      expendedSlots: { '2': 1 }
+    })
+    expect(levels).toEqual([
+      { level: 1, max: 4, expended: 0 },
+      { level: 2, max: 3, expended: 1 },
+      { level: 3, max: 2, expended: 0 }
+    ])
+  })
+
+  it('a Pact caster gets exactly one pool, at the table row\'s own declared slot_level', () => {
+    const levels = deriveSpellSlotLevels({
+      casterType: 'pact',
+      tableRows: [{ key: 3, slot_level: 2, slots: 2 }],
+      characterLevel: 3,
+      expendedSlots: { '2': 1 }
+    })
+    expect(levels).toEqual([{ level: 2, max: 2, expended: 1 }])
+  })
+
+  it('does not mutate its inputs', () => {
+    const expendedSlots = { '1': 1 }
+    const tableRows = [{ key: 1, slot_1: 2 }]
+    deriveSpellSlotLevels({ casterType: 'full', tableRows, characterLevel: 1, expendedSlots })
+    expect(expendedSlots).toEqual({ '1': 1 })
+    expect(tableRows).toEqual([{ key: 1, slot_1: 2 }])
   })
 })

@@ -205,6 +205,24 @@ export function useWorldRolls(worldId: Ref<string> | string) {
     }
   }
 
+  // Character Sheet Body Phase 1B.2 -- feeds a roll this composable did NOT
+  // itself POST (a Cast's own RollEventRecord, returned by
+  // POST .../characters/:characterId/cast rather than POST .../rolls, since
+  // Cast can mutate spellcasting state and therefore cannot honestly live
+  // on this route -- see server/api/worlds/[id]/characters/[characterId]/cast.post.ts's
+  // own header) through the EXACT SAME animation-queue-then-history
+  // pipeline `requestRoll` uses for its own POST response, so the Roll Tray
+  // never needs a second ingestion path and a Cast's result looks, animates,
+  // and paginates identically to every other roll. `clickedAt` is optional
+  // for the identical reason `revealAfterAnimation` already treats it as
+  // optional for a broadcast-arrived roll -- a caller that already has its
+  // own `performance.now()` from the moment of the click may pass it for
+  // accurate perf logging; one is not fabricated here if omitted.
+  function ingestRoll(roll: RollEventRecord, clickedAt?: number, respondedAt?: number): void {
+    result.value = roll
+    revealAfterAnimation(roll, clickedAt, respondedAt)
+  }
+
   type RollsListQuery = {
     actorCharacterId?: string | number
     encounterId?: string | number
@@ -315,6 +333,7 @@ export function useWorldRolls(worldId: Ref<string> | string) {
     historyPending,
     historyError,
     requestRoll,
+    ingestRoll,
     refreshHistory,
     loadMoreHistory
   }

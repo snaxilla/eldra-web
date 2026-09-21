@@ -125,8 +125,9 @@
 
 import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
 import type { ActionCategory, ActionResolution as ContentActionResolution } from '~/lib/content-actions'
-import { classifySpellCastCapability } from '~/lib/spell-mechanics'
-import type { CanonicalSpellMechanics } from '~/lib/spell-mechanics'
+import { classifySpellCastCapability, resolveCastConfiguration } from '~/lib/spell-mechanics'
+import type { CanonicalSpellMechanics, CastConfigurationViewModel } from '~/lib/spell-mechanics'
+import type { SpellSlotLevel } from '~/lib/characters/spellcasting'
 
 export type CharacterActionCategory = ActionCategory
 // Restated (not hand-duplicated) from app/lib/content-actions/types.ts --
@@ -213,6 +214,19 @@ const props = withDefaults(defineProps<{
   // `resolving`/`rolling` already being two separate flags for the
   // identical reason (Resolve vs. Attack/Damage are different requests too).
   casting?: boolean
+  // Character Sheet Body Phase 1B.2.1 (Cast Configuration) -- this
+  // character's own already-derived Spell Slot levels
+  // (app/lib/characters/spellcasting.ts's `SpellSlotLevel[]`, the page's
+  // own `useCharacterSheet().slotLevels`), read-only here. This panel
+  // computes NO Rules Engine arithmetic itself -- `resolveCastConfiguration`
+  // (app/lib/spell-mechanics) is a pure function of exactly this array plus
+  // a spell's own `spellMechanics`, the same shared primitive
+  // server/utils/character-cast.ts uses for its own authoritative
+  // validation. Client data can be stale (another tab just cast the last
+  // slot); the server independently re-validates every Cast regardless --
+  // this prop only drives what the PICKER shows, never what the server
+  // accepts.
+  slotLevels?: readonly SpellSlotLevel[]
 }>(), {
   actions: () => [],
   pending: false,
@@ -221,7 +235,8 @@ const props = withDefaults(defineProps<{
   results: () => ({}),
   resolving: false,
   rolling: false,
-  casting: false
+  casting: false,
+  slotLevels: () => []
 })
 
 const emit = defineEmits<{
@@ -239,8 +254,13 @@ const emit = defineEmits<{
   // two hit the existing untargeted-roll path (POST .../rolls,
   // weapon/unarmed only), these two hit the new POST .../cast route -- the
   // page needs to tell them apart to call the right endpoint.
-  cast: [{ actionId: string }]
-  spellDamage: [{ actionId: string }]
+  //
+  // Character Sheet Body Phase 1B.2.1 -- both payloads gain optional
+  // `castLevel`/`choices`, populated ONLY when this spell's own Cast
+  // Configuration actually has one to send (a cantrip with no choices sends
+  // neither, exactly Fire Bolt's original Phase 1B.2 payload, unchanged).
+  cast: [{ actionId: string; castLevel?: number; choices?: Record<string, string> }]
+  spellDamage: [{ actionId: string; castLevel?: number; choices?: Record<string, string> }]
 }>()
 
 const CATEGORY_LABELS: Record<CharacterActionCategory, string> = {
@@ -350,14 +370,130 @@ function showsIndependentSpellDamage(action: CharacterAction): boolean {
   return castCapabilityOf(action)?.kind === 'supported-spell-attack'
 }
 
-function cast(actionId: string) {
-  if (props.casting) return
-  emit('cast', { actionId })
+// ---------------------------------------------------------------------------
+// Cast Configuration -- Character Sheet Body Phase 1B.2.1
+// ---------------------------------------------------------------------------
+// `resolveCastConfiguration` is the SAME pure primitive server/utils/character-cast.ts
+// reuses for its own authoritative validation (`legalCastLevelsFor`) -- this
+// panel derives NO Rules Engine arithmetic of its own, it only decides what
+// to SHOW and what to let the player SELECT. `props.slotLevels` can be
+// stale (another tab just spent the last slot); the server independently
+// re-derives and re-validates on every actual Cast/Damage request
+// regardless -- sharing this calculation is about avoiding a second,
+// possibly-drifting copy of the arithmetic, never about the client being
+// authoritative.
+function castConfigurationOf(action: CharacterAction): CastConfigurationViewModel {
+  return resolveCastConfiguration({ mechanics: action.spellMechanics as CanonicalSpellMechanics, slotLevels: props.slotLevels })
 }
 
-function spellDamage(actionId: string) {
+// Which spell's Cast Configuration panel is currently open -- at most one
+// at a time (matching `targetCharacterId`'s own single-shared-state
+// precedent above). Selections persist keyed by actionId even after the
+// panel closes, so a player who configured Chromatic Orb's damage type via
+// Cast can click the row's own (closed-panel) Damage control afterward and
+// have it reuse that exact selection -- see `onSpellDamageRowClick` below,
+// and this task's own manual acceptance sequence (Cast, then Damage,
+// without reopening configuration).
+const openConfigActionId = ref<string | null>(null)
+const selectedCastLevel = reactive<Record<string, number>>({})
+const selectedChoices = reactive<Record<string, Record<string, string>>>({})
+
+function selectedCastLevelFor(action: CharacterAction): number | null {
+  return selectedCastLevel[action.id] ?? castConfigurationOf(action).defaultCastLevel
+}
+
+// Only a spell-defined CHOICE ever blocks confirmation -- a castLevel
+// selection always has a sane fallback (`selectedCastLevelFor`'s own
+// default), matching this task's own "does not fabricate a default type"
+// rule applying to choices specifically, never to level selection.
+function hasCompleteSelection(action: CharacterAction, config: CastConfigurationViewModel): boolean {
+  return config.choices.every((choice) => selectedChoices[action.id]?.[choice.id] !== undefined)
+}
+
+function openConfiguration(action: CharacterAction, config: CastConfigurationViewModel) {
+  if (openConfigActionId.value === action.id) {
+    openConfigActionId.value = null
+    return
+  }
+  openConfigActionId.value = action.id
+  if (config.defaultCastLevel !== null && selectedCastLevel[action.id] === undefined) {
+    selectedCastLevel[action.id] = config.defaultCastLevel
+  }
+}
+
+function selectCastLevel(action: CharacterAction, level: number) {
+  selectedCastLevel[action.id] = level
+}
+
+function selectChoiceOption(action: CharacterAction, choiceId: string, optionId: string) {
+  selectedChoices[action.id] = { ...(selectedChoices[action.id] ?? {}), [choiceId]: optionId }
+}
+
+function castPayload(action: CharacterAction, config: CastConfigurationViewModel) {
+  const level = config.castLevels.length ? selectedCastLevelFor(action) : null
+  return {
+    actionId: action.id,
+    ...(level !== null ? { castLevel: level } : {}),
+    ...(config.choices.length ? { choices: { ...selectedChoices[action.id] } } : {})
+  }
+}
+
+// SIMPLE CASTS MUST REMAIN SIMPLE: no required choice and no meaningful
+// casting-level selection means the primary surface Casts immediately --
+// Fire Bolt, and a Magic Missile with only one legal slot level, never see
+// a configuration panel at all, byte-identical to Phase 1B.2's own
+// accepted one-click behavior. A spell requiring configuration opens (or
+// closes) the panel instead; the confirm button INSIDE it is the only
+// thing that ever actually Casts, matching "the user must still confirm
+// Cast from the configuration surface."
+function onCastPrimaryClick(action: CharacterAction) {
   if (props.casting) return
-  emit('spellDamage', { actionId })
+  const config = castConfigurationOf(action)
+  if (!config.canCast) return
+  if (!config.requiresConfiguration) {
+    emit('cast', { actionId: action.id })
+    return
+  }
+  openConfiguration(action, config)
+}
+
+function confirmCast(action: CharacterAction) {
+  if (props.casting) return
+  const config = castConfigurationOf(action)
+  if (!hasCompleteSelection(action, config)) return
+  emit('cast', castPayload(action, config))
+  openConfigActionId.value = null
+}
+
+// The row's OWN (closed-panel) Damage control reuses whatever selection
+// already exists for this row (from a prior Cast or a prior Damage
+// confirmation) -- see this function's own header note above. Only opens
+// configuration when nothing has ever been selected yet, since Damage must
+// never silently default a choice (this task's own "no type was silently
+// defaulted" requirement) any more than Cast may.
+function onSpellDamageRowClick(action: CharacterAction) {
+  if (props.casting) return
+  const config = castConfigurationOf(action)
+  if (config.requiresConfiguration && !hasCompleteSelection(action, config)) {
+    openConfiguration(action, config)
+    return
+  }
+  emit('spellDamage', castPayload(action, config))
+}
+
+function confirmSpellDamage(action: CharacterAction) {
+  if (props.casting) return
+  const config = castConfigurationOf(action)
+  if (!hasCompleteSelection(action, config)) return
+  emit('spellDamage', castPayload(action, config))
+  openConfigActionId.value = null
+}
+
+const ORDINAL_SUFFIXES: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' }
+function ordinal(level: number): string {
+  const mod100 = level % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${level}th`
+  return `${level}${ORDINAL_SUFFIXES[level % 10] ?? 'th'}`
 }
 
 // The "Hit / DC" column carries whichever of the two the action declares --
@@ -562,24 +698,28 @@ function resolvedDamageText(action: CharacterAction): string {
             </div>
           </div>
 
-          <!-- Character Sheet Body Phase 1B.2: a supported spell (Fire
-               Bolt-shaped attack-roll, or Magic Missile-shaped automatic
-               damage) -- mirrors the attack-capable row immediately above
+          <!-- Character Sheet Body Phase 1B.2/1B.2.1: a supported spell
+               (Fire Bolt-shaped attack-roll, or Magic Missile-shaped
+               automatic damage) -- mirrors the attack-capable row above
                almost exactly (same "primary button IS the roll, Info/Damage
                are its siblings" shape), but Cast hits the new
-               POST .../cast route instead of .../rolls, and Damage is only
+               POST .../cast route instead of .../rolls, Damage is only
                offered when it cannot create a free-resource loophole (see
-               `showsIndependentSpellDamage` above). -->
+               `showsIndependentSpellDamage` above), and a spell requiring
+               Cast Configuration (a spell-defined choice, or more than one
+               legal casting level) opens an inline panel below the row
+               instead of Casting immediately -- see this file's own Cast
+               Configuration header. -->
           <div
             v-else-if="isCastableSpell(action)"
-            class="eldra-well flex flex-col gap-1.5 rounded-none px-3 py-2 transition md:flex-row md:items-center md:gap-3"
+            class="eldra-well flex flex-col gap-1.5 rounded-none px-3 py-2 transition md:flex-row md:flex-wrap md:items-center md:gap-3"
           >
             <button
               type="button"
               class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] md:items-center md:gap-3"
-              :disabled="casting"
+              :disabled="casting || !castConfigurationOf(action).canCast"
               :aria-label="`Cast ${action.name}`"
-              @click="cast(action.id)"
+              @click="onCastPrimaryClick(action)"
             >
               <span class="block min-w-0">
                 <span class="block truncate text-sm font-semibold text-[#fff7df]">{{ action.name }}</span>
@@ -620,10 +760,89 @@ function resolvedDamageText(action: CharacterAction): string {
                 class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
                 :disabled="casting"
                 :aria-label="`Roll ${action.name} Damage`"
-                @click="spellDamage(action.id)"
+                @click="onSpellDamageRowClick(action)"
               >
                 Damage
               </button>
+            </div>
+
+            <!-- Cast Configuration -- Character Sheet Body Phase 1B.2.1. A
+                 compact panel attached to this row, never a modal/new page/
+                 Context Rail workflow (that stays reference-only, via Info
+                 above). Casting level pills only render when more than one
+                 legal level actually exists (SIMPLE CASTS MUST REMAIN
+                 SIMPLE); every declared spell choice renders unconditionally
+                 -- both share one Cast/Damage confirm pair at the bottom. -->
+            <div
+              v-if="openConfigActionId === action.id"
+              class="w-full border-t border-[rgba(201,164,90,0.16)] pt-2"
+            >
+              <div
+                v-if="castConfigurationOf(action).castLevels.length > 1"
+                class="mb-2"
+              >
+                <span class="mb-1 block text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">Cast At</span>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-for="level in castConfigurationOf(action).castLevels"
+                    :key="level.level"
+                    type="button"
+                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-40"
+                    :class="selectedCastLevelFor(action) === level.level
+                      ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
+                      : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+                    :disabled="!level.available"
+                    :aria-pressed="selectedCastLevelFor(action) === level.level"
+                    @click="selectCastLevel(action, level.level)"
+                  >
+                    {{ ordinal(level.level) }}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                v-for="choice in castConfigurationOf(action).choices"
+                :key="choice.id"
+                class="mb-2"
+              >
+                <span class="mb-1 block text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">{{ choice.label }}</span>
+                <div class="flex flex-wrap gap-1.5">
+                  <button
+                    v-for="option in choice.options"
+                    :key="option.id"
+                    type="button"
+                    class="min-h-9 rounded-none border px-3 text-xs uppercase tracking-[0.08em] transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+                    :class="selectedChoices[action.id]?.[choice.id] === option.id
+                      ? 'border-[rgba(201,164,90,0.55)] text-[#fff7df]'
+                      : 'border-[rgba(201,164,90,0.20)] text-[#9f9278] hover:text-[#d8ceb8]'"
+                    :aria-pressed="selectedChoices[action.id]?.[choice.id] === option.id"
+                    @click="selectChoiceOption(action, choice.id, option.id)"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex gap-1.5">
+                <button
+                  type="button"
+                  class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                  :disabled="casting || !hasCompleteSelection(action, castConfigurationOf(action))"
+                  @click="confirmCast(action)"
+                >
+                  {{ casting ? 'Casting…' : 'Cast' }}
+                </button>
+
+                <button
+                  v-if="showsIndependentSpellDamage(action)"
+                  type="button"
+                  class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
+                  :disabled="casting || !hasCompleteSelection(action, castConfigurationOf(action))"
+                  @click="confirmSpellDamage(action)"
+                >
+                  Damage
+                </button>
+              </div>
             </div>
           </div>
 

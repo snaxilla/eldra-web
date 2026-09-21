@@ -31,16 +31,22 @@
 //   the same reason `/combat` uses one capability for its whole surface.
 //
 // REQUEST SHAPE -- deliberately minimal (this task's own CAST REQUEST
-// SHAPE requirement): `{ actionId, intent?, visibility? }`. `intent`
-// selects which of the character's own request-shaped BUTTONS was
-// pressed ('cast', the default -- the primary Cast/Attack control; or
-// 'damage' -- the independent Damage control on an attack-roll spell like
-// Fire Bolt) -- this is caller INTENT ("which control did the player
-// press"), exactly like `combat.post.ts`'s own `actionId` is intent, never
-// a mechanics fact. No spell name, level, attack bonus, damage dice, slot
-// cost, or save DC is ever accepted -- FORBIDDEN_CAST_FIELDS below rejects
-// the whole request if a caller tries, matching rolls/index.post.ts's own
-// "reject the whole request, never silently drop a field" precedent.
+// SHAPE requirement): `{ actionId, intent?, castLevel?, choices?,
+// visibility? }`. `intent` selects which of the character's own
+// request-shaped BUTTONS was pressed ('cast', the default -- the primary
+// Cast/Attack control; or 'damage' -- the independent Damage control on an
+// attack-roll spell like Fire Bolt) -- this is caller INTENT ("which
+// control did the player press"), exactly like `combat.post.ts`'s own
+// `actionId` is intent, never a mechanics fact. `castLevel` (Character
+// Sheet Body Phase 1B.2.1) is the RESOURCE decision -- which slot level to
+// consume -- and `choices` is the spell's own structured decisions (today:
+// Chromatic Orb's damage type); both are independently re-verified against
+// this character's own authoritative state by
+// server/utils/character-cast.ts, never trusted as the mechanics they
+// select. No spell name, level, attack bonus, damage dice, slot cost, or
+// save DC is ever accepted -- FORBIDDEN_CAST_FIELDS below rejects the whole
+// request if a caller tries, matching rolls/index.post.ts's own "reject the
+// whole request, never silently drop a field" precedent.
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { requireCapability } from '../../../../../utils/authorization'
 import {
@@ -103,6 +109,35 @@ export default defineEventHandler(async (event): Promise<CastSpellResult> => {
 
   const intent = body?.intent === 'damage' ? 'damage' : 'cast'
 
+  // Character Sheet Body Phase 1B.2.1 (Cast Configuration) additions.
+  // `castLevel` -- structural parsing only (a positive integer 1-9,
+  // matching spellcasting.ts's own `isValidSlotLevel` range); absent stays
+  // absent (character-cast.ts's own `resolveRequestedCastLevel` defaults it
+  // to the spell's base level). `choices` -- a plain string-to-string map;
+  // WHICH choices a spell declares, whether an id/option is legal, is
+  // entirely character-cast.ts's own job (CHOICE AUTHORITY) -- this route
+  // only rejects a structurally-wrong shape before it gets there.
+  let castLevel: number | undefined
+  if (body?.castLevel !== undefined) {
+    const parsed = body.castLevel
+    if (typeof parsed !== 'number' || !Number.isInteger(parsed) || parsed < 1 || parsed > 9) {
+      throw createError({ statusCode: 400, statusMessage: 'castLevel must be an integer from 1 to 9' })
+    }
+    castLevel = parsed
+  }
+
+  let choices: Record<string, string> | undefined
+  if (body?.choices !== undefined) {
+    if (!body.choices || typeof body.choices !== 'object' || Array.isArray(body.choices)) {
+      throw createError({ statusCode: 400, statusMessage: 'choices must be an object of { choiceId: optionId }' })
+    }
+    const entries = Object.entries(body.choices as Record<string, unknown>)
+    if (entries.some(([key, value]) => typeof key !== 'string' || typeof value !== 'string')) {
+      throw createError({ statusCode: 400, statusMessage: 'choices must map string choice ids to string option ids' })
+    }
+    choices = Object.fromEntries(entries as [string, string][])
+  }
+
   // Fail closed, matching rolls/index.post.ts's own identical default.
   let visibility: RollVisibility = 'private'
   if (body?.visibility !== undefined) {
@@ -117,7 +152,7 @@ export default defineEventHandler(async (event): Promise<CastSpellResult> => {
 
   const rollerUserId = principal.accountId
 
-  const input = { worldId, characterId, rollerUserId, actionId, visibility }
+  const input = { worldId, characterId, rollerUserId, actionId, visibility, castLevel, choices }
   const result = intent === 'damage'
     ? await rollIndependentSpellDamage(input)
     : await castSpell(input)

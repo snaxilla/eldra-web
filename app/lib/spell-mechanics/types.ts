@@ -86,6 +86,49 @@ export type SpellScaling =
   | { kind: 'cantrip-level'; text: string }
   | { kind: 'slot-level'; text: string }
 
+// ---------------------------------------------------------------------------
+// GENERIC SPELL-DEFINED CHOICES -- Character Sheet Body Phase 1B.2.1 (Cast
+// Configuration: Casting-Level Selection + Generic Structured Cast Choices +
+// Chromatic Orb First Acceptance Case)
+// ---------------------------------------------------------------------------
+// The smallest generic shape for "this spell requires the PLAYER to pick one
+// of several legal mechanical values before it can be Cast" -- Chromatic
+// Orb's damage type is the first (and, per this phase's own corpus audit,
+// currently only reliably-structured) real example, but nothing below names
+// damage or Chromatic Orb: a future spell whose source reveals a DIFFERENT
+// choice-shaped mechanic (an ability, an effect mode) populates a second
+// `SpellChoice` with a different `id`, and the exact same Cast Configuration
+// machinery (app/lib/spell-mechanics/cast-configuration.ts) collects and
+// validates it with no new generic code -- only a new resolver-side
+// extraction, exactly like this phase's own `resolveDnd5eSpellMechanics`
+// extraction for damage type.
+//
+// `SpellChoiceOption.id` is the value BOTH the client submits and the server
+// independently re-validates against this exact array -- never a client-
+// trusted free-form mechanical value (a submitted `damage-type: 'lightning'`
+// is only ever accepted because 'lightning' is verified to be one of THESE
+// options' own ids, sourced from canonical content, never because the
+// client's string was trusted directly). `label` is presentation only
+// ("Lightning"); `id` is the value ("lightning") -- kept identical today
+// (5etools' own lowercase damage-type strings need no further mapping) but
+// typed separately so a future choice kind whose id and label genuinely
+// differ (e.g. an ability key 'str' vs. label 'Strength') needs no shape
+// change here.
+export type SpellChoiceOption = {
+  id: string
+  label: string
+}
+
+export type SpellChoice = {
+  // A stable, well-known id for WHICH mechanic this choice resolves --
+  // 'damage-type' is the one kind this phase populates. Never a spell name,
+  // never spell-specific: any future spell whose source reveals the exact
+  // same "which damage type" mechanic reuses this identical id.
+  id: string
+  label: string
+  options: SpellChoiceOption[]
+}
+
 export type CanonicalSpellMechanics = {
   // IDENTITY / DISPLAY
   level: number
@@ -111,18 +154,37 @@ export type CanonicalSpellMechanics = {
 
   scaling?: SpellScaling
 
-  // Character Sheet Body Phase 1B.2 addition -- the Chromatic Orb finding.
-  // `true` exactly when the source itself states more than one legal value
-  // for a mechanic THIS phase's Cast runtime would otherwise need to pick
-  // ONE of (today: `damageInflict` naming multiple damage types, e.g.
-  // Chromatic Orb's "Acid, Cold, Fire, Lightning, Poison, or Thunder").
-  // When this is `true`, `damage.type` is deliberately left `undefined`
-  // rather than silently defaulting to the first listed option -- see
-  // resolveDnd5eSpellMechanics's own header for why "pick the first one"
-  // is exactly the dishonest behavior this field exists to prevent.
-  // Generic on purpose (not `unresolvedDamageType` specifically): the next
-  // kind of unresolved source choice a future spell reveals sets this same
-  // flag, rather than each one growing its own boolean.
+  // Character Sheet Body Phase 1B.2.1 addition -- the STRUCTURED upgrade of
+  // the Chromatic Orb finding (see `hasUnresolvedChoice` immediately below
+  // for the compatibility flag this supersedes as the primary signal).
+  // Populated ONLY when the source reliably represents a real player choice
+  // structurally (today: `damageInflict` naming more than one legal type
+  // AND exactly one `{@damage}` tag in the spell's base entries -- see
+  // resolveDnd5eSpellMechanics's own header for why the second condition
+  // matters: several spells list multiple `damageInflict` types because
+  // they deal SEVERAL DIFFERENT typed damage components at once, which is
+  // not a player choice at all and must never be represented as one).
+  // Absent, never an empty array, when this phase found no reliably-
+  // structured choice -- the same "absence is legal" rule every optional
+  // field in this codebase already follows.
+  choices?: SpellChoice[]
+
+  // Character Sheet Body Phase 1B.2 addition, REDEFINED by 1B.2.1 as a
+  // DERIVED compatibility/capability flag rather than an independently
+  // computed one -- see this file's own new `choices` field above, now the
+  // primary structured representation. `true` exactly when the source shows
+  // evidence of a choice-shaped mechanic (`damageInflict` naming more than
+  // one legal type) that `choices` above did NOT end up structurally
+  // representing (the multiple-simultaneous-damage-types case, e.g. Ice
+  // Storm's bludgeoning-AND-cold, where "pick one" would misrepresent a
+  // spell that in fact deals both) -- i.e. `damageInflict.length > 1 &&
+  // !choices?.length`, computed once in resolveDnd5eSpellMechanics, never a
+  // second independently-drifting boolean. `server/utils/character-cast.ts`'s
+  // `classifySpellCastCapability` still gates on this exactly as before:
+  // Chromatic Orb's `hasUnresolvedChoice` is now `false` (its choice moved
+  // into `choices`), which is what lets its capability classification
+  // proceed to `supported-spell-attack` with no change to that classifier's
+  // own code at all.
   hasUnresolvedChoice?: boolean
 }
 

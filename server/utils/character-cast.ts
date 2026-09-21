@@ -135,7 +135,14 @@ import {
   createSpellDamageRollEvent
 } from './roll-events'
 import { broadcastRollEvent } from './roll-realtime-bridge'
-import { classifySpellCastCapability, type SpellCastCapability, type CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
+import {
+  classifySpellCastCapability,
+  applyResolvedChoicesToDamage,
+  legalCastLevelsFor,
+  validateSpellChoices,
+  type SpellCastCapability,
+  type CanonicalSpellMechanics
+} from '../../app/lib/spell-mechanics'
 import {
   deriveSpellSlotLevels,
   emptyCharacterSpellcasting,
@@ -191,6 +198,14 @@ export type CastFailureReason =
   | 'not-castable'
   | 'rules-unavailable'
   | 'resource-unavailable'
+  // Character Sheet Body Phase 1B.2.1 (Cast Configuration) additions -- a
+  // client-supplied CONFIGURATION input, not a mechanics fact, was invalid.
+  // Both 400s: the caller sent something this specific request cannot use,
+  // distinct from 'rules-unavailable' (409, the Rules Engine itself has
+  // nothing to say) and 'resource-unavailable' (409, a legitimate request
+  // for a resource this character has simply run out of).
+  | 'invalid-cast-level'
+  | 'invalid-choice'
 
 export function statusForCastFailure(reason: CastFailureReason): number {
   switch (reason) {
@@ -200,6 +215,8 @@ export function statusForCastFailure(reason: CastFailureReason): number {
     case 'not-castable': return 400
     case 'rules-unavailable': return 409
     case 'resource-unavailable': return 409
+    case 'invalid-cast-level': return 400
+    case 'invalid-choice': return 400
     default: {
       const exhaustive: never = reason
       return exhaustive
@@ -213,6 +230,16 @@ export type CastableSpell = {
   action: CharacterAction
   mechanics: CanonicalSpellMechanics
   capability: CastableCapability
+  // Character Sheet Body Phase 1B.2.1 -- the validated `{choiceId:
+  // optionId}` map (`{}` when the spell declares no choices), and
+  // `mechanics.damage` with any resolved 'damage-type' choice substituted
+  // in. Every caller that rolls damage (castSpellAutomaticDamage,
+  // rollIndependentSpellDamage) uses THIS, never `mechanics.damage`
+  // directly, so a Chromatic-Orb-shaped spell's damage type is resolved in
+  // exactly one place regardless of which of the three Cast entry points
+  // reached it.
+  resolvedChoices: Record<string, string>
+  resolvedDamage: CanonicalSpellMechanics['damage']
 }
 
 export type ResolveCastableSpellResult =
@@ -222,7 +249,8 @@ export type ResolveCastableSpellResult =
 async function resolveCastableSpell(
   worldId: string | number,
   characterId: string | number,
-  actionId: string
+  actionId: string,
+  choices: Record<string, string> | undefined
 ): Promise<ResolveCastableSpellResult> {
   const actionsResult = await getCharacterActions(worldId, characterId)
   if (!actionsResult.available) {
@@ -269,7 +297,24 @@ async function resolveCastableSpell(
     }
   }
 
-  return { ok: true, castable: { action, mechanics, capability } }
+  // CHOICE AUTHORITY -- the client may submit a choiceId/optionId pair; the
+  // server independently verifies the spell actually declares that choice,
+  // that the option exists, and that nothing extra/unauthorized was
+  // submitted. `validateSpellChoices` (app/lib/spell-mechanics/cast-configuration.ts)
+  // is the single function both this module and CharacterActionsPanel.vue's
+  // own local Cast-button enablement can call -- only THIS call is
+  // authoritative.
+  const choiceValidation = validateSpellChoices(mechanics.choices ?? [], choices)
+  if (!choiceValidation.ok) {
+    return { ok: false, reason: 'invalid-choice', message: choiceValidation.message }
+  }
+
+  const resolvedDamage = applyResolvedChoicesToDamage(mechanics.damage, choiceValidation.resolved)
+
+  return {
+    ok: true,
+    castable: { action, mechanics, capability, resolvedChoices: choiceValidation.resolved, resolvedDamage }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,11 +327,19 @@ type SlotAvailability =
   | { ok: true; max: number; expended: number }
   | { ok: false; reason: 'resource-unavailable'; message: string }
   | { ok: false; reason: 'rules-unavailable'; message: string }
+  | { ok: false; reason: 'invalid-cast-level'; message: string }
 
+// `requestedLevel` is whatever `resolveRequestedCastLevel` below decided
+// this Cast should use -- the spell's own base level when the client sent
+// no explicit `castLevel` (preserving Phase 1B.2's exact prior behavior for
+// every existing caller), or a client-CHOSEN higher level, independently
+// re-validated here against THIS character's own freshly-loaded Spell Slot
+// progression -- never trusted merely because a client-side picker offered
+// it as an option.
 async function checkSpellSlotAvailability(
   worldId: string | number,
   characterId: string | number,
-  level: number
+  requestedLevel: number
 ): Promise<SlotAvailability> {
   const derived = await getDerivedCharacter(worldId, characterId)
   if (!derived.available) {
@@ -304,37 +357,87 @@ async function checkSpellSlotAvailability(
     ? derived.derived.tables.find((entry) => entry.id === SLOT_TABLE_BY_CASTER_TYPE[casterType])?.rows
     : undefined
 
+  // `expendedSlots: {}` here deliberately reads only `max`/legality from
+  // this derivation -- the ACTUAL expended count is read fresh from
+  // persistence below, immediately before the mutating write, rather than
+  // trusted from this earlier read (see this file's own KNOWN, UN-SOLVED
+  // RACE header). `legalCastLevelsFor` is the SAME shared helper
+  // CharacterActionsPanel.vue's own Cast Configuration view model calls for
+  // display -- one calculation, two readers, never duplicated (this file's
+  // own established discipline, e.g. `resolveDamageAbilityModifier` in
+  // character-actions.ts).
   const levels = deriveSpellSlotLevels({ casterType, tableRows, characterLevel, expendedSlots: {} })
-  const slot = levels.find((entry) => entry.level === level)
+  const slot = legalCastLevelsFor(requestedLevel, levels).find((entry) => entry.level === requestedLevel)
 
   if (!slot) {
     return {
       ok: false,
-      reason: 'rules-unavailable',
-      message: `This character has no level ${level} spell slots according to this World's active Rules Package`
+      reason: 'invalid-cast-level',
+      message: `This character has no level ${requestedLevel} spell slots according to this World's active Rules Package`
     }
   }
 
-  // `expendedSlots: {}` above deliberately reads only `max` from this
-  // derivation -- the ACTUAL expended count is read fresh from persistence
-  // in `expendSpellSlotAuthoritatively` below, immediately before the
-  // mutating write, rather than trusted from this earlier read. This keeps
-  // the read-only availability check and the eventual write looking at the
-  // freshest expended count available to each, without pretending a
-  // single read protects against the race this file's header already
-  // documents.
-  const stored = await loadCharacterSpellcasting(characterId)
-  const expended = stored?.expendedSlots[String(level)] ?? 0
+  const maxForLevel = levels.find((entry) => entry.level === requestedLevel)!.max
 
-  if (expended >= slot.max) {
+  const stored = await loadCharacterSpellcasting(characterId)
+  const expended = stored?.expendedSlots[String(requestedLevel)] ?? 0
+
+  if (expended >= maxForLevel) {
     return {
       ok: false,
       reason: 'resource-unavailable',
-      message: `No level ${level} spell slots remaining (${expended}/${slot.max} expended)`
+      message: `No level ${requestedLevel} spell slots remaining (${expended}/${maxForLevel} expended)`
     }
   }
 
-  return { ok: true, max: slot.max, expended }
+  return { ok: true, max: maxForLevel, expended }
+}
+
+// ---------------------------------------------------------------------------
+// Casting-level resolution -- CASTING LEVEL IS SPECIAL
+// ---------------------------------------------------------------------------
+// The one place a client-supplied `castLevel` is checked for basic legality
+// BEFORE anything else fetches derived character state -- a pure, cheap
+// input check. `null` in the success case means "this spell is a cantrip,
+// no slot-level concept applies" (never a fabricated `castLevel: 0`,
+// matching CanonicalSpellMechanics.level's own "0 means cantrip" contract
+// and this phase's own explicit "prefer absence/null" instruction).
+//
+// Omitting `castLevel` entirely for a LEVELED spell defaults to the spell's
+// own base level -- this is what keeps every Phase 1B.2 caller that never
+// knew about `castLevel` (Magic Missile's existing accepted single-slot-
+// level Cast) working completely unchanged: the client only ever needs to
+// send an explicit `castLevel` when it wants something OTHER than the
+// spell's own base level.
+type ResolveCastLevelResult =
+  | { ok: true; level: number | null }
+  | { ok: false; reason: 'invalid-cast-level'; message: string }
+
+function resolveRequestedCastLevel(
+  mechanics: CanonicalSpellMechanics,
+  requestedLevel: number | undefined
+): ResolveCastLevelResult {
+  if (mechanics.level === 0) {
+    if (requestedLevel !== undefined) {
+      return {
+        ok: false,
+        reason: 'invalid-cast-level',
+        message: 'This spell is a cantrip and does not use a spell slot -- castLevel must not be supplied'
+      }
+    }
+    return { ok: true, level: null }
+  }
+
+  const level = requestedLevel ?? mechanics.level
+  if (level < mechanics.level) {
+    return {
+      ok: false,
+      reason: 'invalid-cast-level',
+      message: `castLevel ${level} is below this spell's base level ${mechanics.level} -- upcasting only ever goes up`
+    }
+  }
+
+  return { ok: true, level }
 }
 
 async function expendSpellSlotAuthoritatively(
@@ -359,6 +462,41 @@ export type CastSpellInput = {
   actionId: string
   visibility: RollVisibility
   metadata?: Record<string, unknown>
+  // Character Sheet Body Phase 1B.2.1 (Cast Configuration) additions.
+  // `castLevel` -- absent means "this spell's own base level" (preserving
+  // every Phase 1B.2 caller's existing behavior unchanged); present and
+  // re-validated independently against this character's OWN Spell Slot
+  // progression, never trusted merely because a client-side picker offered
+  // it (see `resolveRequestedCastLevel`). `choices` -- the client's
+  // `{choiceId: optionId}` selection for this spell's own declared
+  // `SpellChoice[]`, independently re-verified against
+  // `action.spellMechanics.choices` (see `resolveCastableSpell`'s own
+  // CHOICE AUTHORITY note) -- never a trusted mechanical value like
+  // `damageType: 'lightning'` directly.
+  castLevel?: number
+  choices?: Record<string, string>
+}
+
+// 5etools' own damage-type strings are lowercase -- restated here (not
+// imported) because it is a one-line, zero-domain-logic text transform, the
+// same "restate the tiny thing, share the actual arithmetic" split this
+// codebase already draws everywhere (character-actions.ts's own
+// findNumber/findBoolean local copies).
+function capitalizeWord(value: string): string {
+  return value.length ? value[0]!.toUpperCase() + value.slice(1) : value
+}
+
+// A Roll Tray label suffix ("— Lightning") ONLY when the damage type came
+// from an actual player CHOICE (Chromatic Orb-shaped) -- never for an
+// ordinary fixed-type spell (Fire Bolt, Magic Missile), whose label stays
+// exactly `"<name> Damage"`, byte-identical to Phase 1B.2's own accepted
+// output. This task's own explicit "do not make labels absurdly verbose"
+// instruction is why this is conditional rather than a suffix every spell
+// damage roll grows.
+function damageTypeLabelFor(mechanics: CanonicalSpellMechanics, resolvedChoices: Record<string, string>): string | undefined {
+  if (!mechanics.choices?.length) return undefined
+  const chosen = resolvedChoices['damage-type']
+  return chosen ? capitalizeWord(chosen) : undefined
 }
 
 export type CastSpellResult =
@@ -379,11 +517,12 @@ export type CastSpellResult =
   | { ok: false; reason: CastFailureReason; message: string }
 
 // Fire Bolt's archetype: an untargeted spell attack roll. Free (no resource
-// step) for a cantrip; one slot of `mechanics.level` for a leveled attack-roll
-// spell (architecture-only generalization -- 1B.2's required corpus has no
-// such spell, see this file's own header).
+// step) for a cantrip; one slot of the resolved cast level for a leveled
+// attack-roll spell (architecture-only generalization -- 1B.2's required
+// corpus had no such spell; Chromatic Orb, 1B.2.1's required acceptance
+// case, is the first real one).
 export async function castSpellAttack(input: CastSpellInput): Promise<CastSpellResult> {
-  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId)
+  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
   if (!resolved.ok) return resolved
 
   const { action, mechanics, capability } = resolved.castable
@@ -395,7 +534,16 @@ export async function castSpellAttack(input: CastSpellInput): Promise<CastSpellR
     }
   }
 
-  const metadata = { ...(input.metadata ?? {}), actionCategory: 'spell', spellLevel: mechanics.level }
+  const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
+  if (!levelResolution.ok) return levelResolution
+
+  const metadata = {
+    ...(input.metadata ?? {}),
+    actionCategory: 'spell',
+    spellLevel: mechanics.level,
+    ...(levelResolution.level !== null ? { castLevel: levelResolution.level } : {}),
+    ...(Object.keys(resolved.castable.resolvedChoices).length ? { choices: resolved.castable.resolvedChoices } : {})
+  }
   const createRoll = (broadcast: boolean) => createSpellAttackRollEvent({
     worldId: input.worldId,
     rollerUserId: input.rollerUserId,
@@ -409,24 +557,22 @@ export async function castSpellAttack(input: CastSpellInput): Promise<CastSpellR
     broadcast
   })
 
-  if (mechanics.level === 0) {
+  if (levelResolution.level === null) {
     const roll = await createRoll(true)
     return { ok: true, roll }
   }
 
-  return castLeveledSpell(input.worldId, input.characterId, mechanics.level, createRoll)
+  return castLeveledSpell(input.worldId, input.characterId, levelResolution.level, createRoll)
 }
 
 // Magic Missile's archetype: automatic damage, no attack roll, no save.
-// Always leveled in the required corpus (a cantrip with automatic-damage
-// resolution is not part of this phase's supported set; `mechanics.level`
-// is trusted from the server-derived mechanics either way, never a client
-// value).
+// Chromatic Orb is NOT this archetype (it is a spell attack, above) --
+// automatic-damage remains leveled-only in the required corpus.
 export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<CastSpellResult> {
-  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId)
+  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
   if (!resolved.ok) return resolved
 
-  const { action, mechanics, capability } = resolved.castable
+  const { action, mechanics, capability, resolvedChoices, resolvedDamage } = resolved.castable
   if (capability.kind !== 'supported-automatic-damage') {
     return {
       ok: false,
@@ -435,10 +581,21 @@ export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<C
     }
   }
 
+  const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
+  if (!levelResolution.ok) return levelResolution
+
   // classifySpellCastCapability only returns 'supported-automatic-damage'
-  // when `mechanics.damage` is present.
-  const damage = mechanics.damage!
-  const metadata = { ...(input.metadata ?? {}), actionCategory: 'spell', spellLevel: mechanics.level }
+  // when `mechanics.damage` is present, and `resolveCastableSpell`'s own
+  // `applyResolvedChoicesToDamage` never removes a present damage roll --
+  // only substitutes its `type` when a choice resolved one.
+  const damage = resolvedDamage!
+  const metadata = {
+    ...(input.metadata ?? {}),
+    actionCategory: 'spell',
+    spellLevel: mechanics.level,
+    ...(levelResolution.level !== null ? { castLevel: levelResolution.level } : {}),
+    ...(Object.keys(resolvedChoices).length ? { choices: resolvedChoices } : {})
+  }
   const createRoll = (broadcast: boolean) => createSpellDamageRollEvent({
     worldId: input.worldId,
     rollerUserId: input.rollerUserId,
@@ -449,19 +606,20 @@ export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<C
     dice: damage.dice ?? { count: 0, faces: 0 },
     modifier: damage.modifier,
     damageType: damage.type,
+    damageTypeLabel: damageTypeLabelFor(mechanics, resolvedChoices),
     visibility: input.visibility,
     metadata,
     broadcast
   })
 
-  if (mechanics.level === 0) {
+  if (levelResolution.level === null) {
     // Not part of the required corpus, but handled honestly rather than
     // assumed impossible: a cantrip with automatic damage costs nothing.
     const roll = await createRoll(true)
     return { ok: true, roll }
   }
 
-  return castLeveledSpell(input.worldId, input.characterId, mechanics.level, createRoll)
+  return castLeveledSpell(input.worldId, input.characterId, levelResolution.level, createRoll)
 }
 
 // castSpell -- the single entry point cast.post.ts's "Cast" intent calls.
@@ -471,7 +629,7 @@ export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<C
 // is this" is decided in exactly the one place `classifySpellCastCapability`
 // already lives, never duplicated into the route's own request parsing.
 export async function castSpell(input: CastSpellInput): Promise<CastSpellResult> {
-  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId)
+  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
   if (!resolved.ok) return resolved
 
   return resolved.castable.capability.kind === 'supported-spell-attack'
@@ -536,11 +694,25 @@ async function castLeveledSpell(
 // to the identical damage roll would let a player roll Magic Missile's
 // damage for free, repeatedly, with no slot ever spent. See this file's own
 // header and this task's own "LEVELED SPELL DAMAGE BUTTONS" requirement.
+//
+// CHARACTER SHEET BODY PHASE 1B.2.1 -- CHROMATIC ORB'S OWN DAMAGE BUTTON.
+// Stateless re-validation, the "PREFERRED DAMAGE-CHOICE CONTRACT": this
+// request independently re-resolves the spell and re-validates its OWN
+// `choices` (never trusting a value the client remembers from a prior Cast,
+// and never inventing a Cast Session to remember it server-side either) --
+// see `resolveCastableSpell`'s own CHOICE AUTHORITY note, the exact same
+// validation Cast itself runs. `castLevel`, if supplied, is validated for
+// basic legality (never below the spell's base level, never sent for a
+// cantrip) but NEVER checked against slot availability and NEVER spent --
+// Damage costs no resource, matching this task's own explicit "FREE
+// DAMAGE / RESOURCE SEMANTICS" rule. Preserved in metadata only, so a
+// future castLevel-aware scaling phase (1B.5) has the context already
+// flowing through without another request-shape change.
 export async function rollIndependentSpellDamage(input: CastSpellInput): Promise<CastSpellResult> {
-  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId)
+  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
   if (!resolved.ok) return resolved
 
-  const { action, mechanics, capability } = resolved.castable
+  const { action, mechanics, capability, resolvedChoices, resolvedDamage } = resolved.castable
   if (capability.kind !== 'supported-spell-attack') {
     return {
       ok: false,
@@ -549,13 +721,16 @@ export async function rollIndependentSpellDamage(input: CastSpellInput): Promise
     }
   }
 
-  if (!mechanics.damage) {
+  if (!resolvedDamage) {
     return {
       ok: false,
       reason: 'not-castable',
       message: `'${action.name}' has no canonical damage to roll`
     }
   }
+
+  const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
+  if (!levelResolution.ok) return levelResolution
 
   const roll = await createSpellDamageRollEvent({
     worldId: input.worldId,
@@ -564,11 +739,18 @@ export async function rollIndependentSpellDamage(input: CastSpellInput): Promise
     encounterId: input.encounterId ?? null,
     spellName: action.name,
     sourceId: action.id,
-    dice: mechanics.damage.dice ?? { count: 0, faces: 0 },
-    modifier: mechanics.damage.modifier,
-    damageType: mechanics.damage.type,
+    dice: resolvedDamage.dice ?? { count: 0, faces: 0 },
+    modifier: resolvedDamage.modifier,
+    damageType: resolvedDamage.type,
+    damageTypeLabel: damageTypeLabelFor(mechanics, resolvedChoices),
     visibility: input.visibility,
-    metadata: { ...(input.metadata ?? {}), actionCategory: 'spell', spellLevel: mechanics.level },
+    metadata: {
+      ...(input.metadata ?? {}),
+      actionCategory: 'spell',
+      spellLevel: mechanics.level,
+      ...(levelResolution.level !== null ? { castLevel: levelResolution.level } : {}),
+      ...(Object.keys(resolvedChoices).length ? { choices: resolvedChoices } : {})
+    },
     broadcast: true
   })
 

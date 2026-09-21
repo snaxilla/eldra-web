@@ -150,19 +150,83 @@ describe('resolveDnd5eSpellMechanics -- Bless (concentration, buff, target-count
   })
 })
 
-describe('resolveDnd5eSpellMechanics -- Chromatic Orb (unresolved damage-type choice, Phase 1B.2)', () => {
+describe('resolveDnd5eSpellMechanics -- Chromatic Orb (structured damage-type choice, Phase 1B.2.1)', () => {
   const mechanics = resolveDnd5eSpellMechanics(spells['Chromatic Orb'])!
 
-  it('flags the choice rather than silently picking the first listed type', () => {
-    expect(mechanics.hasUnresolvedChoice).toBe(true)
+  // 1B.2.1 upgrades this from a boolean warning into a structured choice --
+  // no longer "unresolved" once it is representable. See `choices` below.
+  it('is no longer flagged as an unresolved choice, now that it is structurally represented', () => {
+    expect(mechanics.hasUnresolvedChoice).toBeFalsy()
   })
 
-  it('preserves the dice, but leaves damage.type undefined -- never "acid" by default', () => {
+  it('exposes a structured damage-type choice with all six real legal types, never fabricating an order or a default', () => {
+    expect(mechanics.choices).toEqual([{
+      id: 'damage-type',
+      label: 'Damage Type',
+      options: [
+        { id: 'acid', label: 'Acid' },
+        { id: 'cold', label: 'Cold' },
+        { id: 'fire', label: 'Fire' },
+        { id: 'lightning', label: 'Lightning' },
+        { id: 'poison', label: 'Poison' },
+        { id: 'thunder', label: 'Thunder' }
+      ]
+    }])
+  })
+
+  it('still preserves the dice, but leaves damage.type undefined -- never "acid" by default', () => {
     expect(mechanics.damage).toEqual({ dice: { count: 3, faces: 8 }, modifier: 0, type: undefined })
   })
 
   it('is still a real attack-roll resolution -- the choice concerns damage type, not resolution kind', () => {
     expect(mechanics.resolution).toEqual({ kind: 'attack-roll' })
+  })
+})
+
+describe('resolveDnd5eSpellMechanics -- structured choice precision (1B.2.1 corpus audit)', () => {
+  function withEntry(overrides: Record<string, unknown>) {
+    return { name: 'Test Spell', level: 1, entries: ['Deals damage.'], ...overrides }
+  }
+
+  // Sorcerous Burst's real shape: multiple damageInflict types, exactly one
+  // {@damage} tag -- structurally identical to Chromatic Orb, proving the
+  // rule generalizes with no spell-specific code (this phase's own
+  // "NO SPELL-NAME LOGIC" requirement).
+  it('a single damage tag with multiple listed types is a genuine structured choice, regardless of spell', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      damageInflict: ['acid', 'cold', 'fire', 'lightning', 'poison', 'psychic', 'thunder'],
+      entries: ['You cast sorcerous energy. Make a ranged attack roll. On a hit, {@damage 1d8} damage of a type you choose.']
+    }))!
+    expect(mechanics.hasUnresolvedChoice).toBeFalsy()
+    expect(mechanics.choices?.[0]?.options).toHaveLength(7)
+    expect(mechanics.damage).toEqual({ dice: { count: 1, faces: 8 }, modifier: 0, type: undefined })
+  })
+
+  // Ice Storm's real shape: multiple damageInflict types, but TWO {@damage}
+  // tags -- two simultaneous damage components, never a player choice. Must
+  // NOT populate `choices`, and `hasUnresolvedChoice` correctly reports the
+  // genuine ambiguity this phase cannot safely resolve (never silently
+  // "fixed" by picking one of the two types).
+  it('multiple damage tags with multiple listed types is NOT a choice -- simultaneous components, never populated as one', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      damageInflict: ['bludgeoning', 'cold'],
+      entries: ['Each creature takes {@damage 2d8} bludgeoning damage and {@damage 4d6} cold damage.']
+    }))!
+    expect(mechanics.choices).toBeUndefined()
+    expect(mechanics.hasUnresolvedChoice).toBe(true)
+    // The first tag's dice are still preserved (unchanged 1B.1 behavior) --
+    // only the TYPE stays undefined, since damageInflict order does not
+    // reliably correspond to the first extracted tag.
+    expect(mechanics.damage).toEqual({ dice: { count: 2, faces: 8 }, modifier: 0, type: undefined })
+  })
+
+  it('a single listed damage type never populates choices, regardless of tag count', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      damageInflict: ['fire'],
+      entries: ['Deals {@damage 8d6} fire damage.']
+    }))!
+    expect(mechanics.choices).toBeUndefined()
+    expect(mechanics.hasUnresolvedChoice).toBeFalsy()
   })
 })
 

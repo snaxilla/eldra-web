@@ -65,9 +65,13 @@ describe('classifySpellCastCapability -- the six-spell suite', () => {
     expect(capability?.kind).toBe('unsupported-effect')
   })
 
-  it('Chromatic Orb -- an attack-roll spell with an unresolved damage-type choice -- is NOT treated as fully supported (test 5)', () => {
+  // Phase 1B.2.1 upgrade: Chromatic Orb's damage-type choice is now
+  // structurally represented (app/lib/spell-mechanics/dnd5e.ts), so
+  // `hasUnresolvedChoice` is false and this classifier -- UNCHANGED code --
+  // naturally falls through to its attack-roll resolution.
+  it('Chromatic Orb -- an attack-roll spell with a structured damage-type choice -- classifies as supported-spell-attack (test 5, 1B.2.1)', () => {
     const capability = classifySpellCastCapability(actionOf('Chromatic Orb'))
-    expect(capability).toEqual({ kind: 'unsupported-choice' })
+    expect(capability).toEqual({ kind: 'supported-spell-attack' })
   })
 })
 

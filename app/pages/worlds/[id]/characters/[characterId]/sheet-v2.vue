@@ -478,7 +478,14 @@ const castError = ref('')
 
 type CastResponse = { ok: true; roll: RollEventRecord; spellcasting?: { spells: unknown[]; expendedSlots: Record<string, number> } }
 
-async function postCast(actionId: string, intent: 'cast' | 'damage') {
+// Character Sheet Body Phase 1B.2.1 (Cast Configuration) -- `castLevel`/
+// `choices` are the player's own Cast Configuration selections
+// (CharacterActionsPanel.vue's own `castPayload`), forwarded verbatim.
+// This page performs no validation of either -- server/utils/character-cast.ts
+// independently re-derives and re-verifies both against this character's
+// own authoritative state; the page is a pass-through, exactly like it
+// already is for `actionId`/`intent`.
+async function postCast(actionId: string, intent: 'cast' | 'damage', castLevel?: number, choices?: Record<string, string>) {
   if (castPending.value) return
   castPending.value = true
   castError.value = ''
@@ -487,7 +494,7 @@ async function postCast(actionId: string, intent: 'cast' | 'damage') {
   try {
     const response = await $fetch<CastResponse>(
       `/api/worlds/${worldId.value}/characters/${characterId.value}/cast`,
-      { method: 'POST', body: { actionId, intent, visibility: rollVisibility.value } }
+      { method: 'POST', body: { actionId, intent, castLevel, choices, visibility: rollVisibility.value } }
     )
     // Feeds the SAME animation-queue-then-history pipeline `requestRoll`
     // uses for its own POST .../rolls response -- the Roll Tray needs no
@@ -511,12 +518,12 @@ async function postCast(actionId: string, intent: 'cast' | 'damage') {
   }
 }
 
-function castSpell({ actionId }: { actionId: string }) {
-  postCast(actionId, 'cast')
+function castSpell({ actionId, castLevel, choices }: { actionId: string; castLevel?: number; choices?: Record<string, string> }) {
+  postCast(actionId, 'cast', castLevel, choices)
 }
 
-function rollSpellDamage({ actionId }: { actionId: string }) {
-  postCast(actionId, 'damage')
+function rollSpellDamage({ actionId, castLevel, choices }: { actionId: string; castLevel?: number; choices?: Record<string, string> }) {
+  postCast(actionId, 'damage', castLevel, choices)
 }
 
 // Phase 4B.7 -- the Roll Tray's manual dice rack. Same visibility, same
@@ -1012,6 +1019,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                   :resolving="mutations.combat.resolving"
                   :rolling="rollPending"
                   :casting="castPending"
+                  :slot-levels="slotLevels"
                   @resolve="mutations.combat.resolve"
                   @attack="rollActionAttack"
                   @damage="rollActionDamage"

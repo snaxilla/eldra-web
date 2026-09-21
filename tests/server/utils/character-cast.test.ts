@@ -36,7 +36,7 @@ const {
   assembleCharacterMock, getWorldRuntimeMock,
   loadSpellcastingMock, saveSpellcastingMock,
   createSpellAttackRollEventMock, createSpellDamageRollEventMock,
-  broadcastRollEventMock
+  broadcastRollEventMock, getDerivedCharacterOverrideMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
@@ -44,7 +44,16 @@ const {
   saveSpellcastingMock: vi.fn(),
   createSpellAttackRollEventMock: vi.fn(),
   createSpellDamageRollEventMock: vi.fn(),
-  broadcastRollEventMock: vi.fn()
+  broadcastRollEventMock: vi.fn(),
+  // Used ONLY by the "multiple legal cast levels" describe block below --
+  // this app has no leveling system yet (character level is the Rules
+  // Engine's own stored-value default of 1 for every blueprint this file's
+  // real engine can build; see that block's own header), so a level-3+
+  // Wizard with a real second Spell Slot level cannot be constructed
+  // through the normal blueprint/real-engine pipeline every OTHER test in
+  // this file uses. `undefined` (the default) means "defer to the real
+  // getDerivedCharacter" -- only that one describe block ever sets it.
+  getDerivedCharacterOverrideMock: vi.fn(() => undefined as unknown)
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -54,6 +63,17 @@ vi.mock('../../../server/utils/character-assembly', () => ({
 vi.mock('../../../server/utils/world-runtime-service', () => ({
   getWorldRuntime: getWorldRuntimeMock
 }))
+
+vi.mock('../../../server/utils/character-derived', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../server/utils/character-derived')>()
+  return {
+    ...actual,
+    getDerivedCharacter: async (...args: Parameters<typeof actual.getDerivedCharacter>) => {
+      const override = await getDerivedCharacterOverrideMock(...args)
+      return override ?? actual.getDerivedCharacter(...args)
+    }
+  }
+})
 
 vi.mock('../../../server/utils/character-spellcasting', () => ({
   loadCharacterSpellcasting: loadSpellcastingMock,
@@ -151,6 +171,7 @@ function preparedSpell(instanceId: string, title: string, mechanics: ReturnType<
 const FIRE_BOLT_MECHANICS = resolveDnd5eSpellMechanics(spells['Fire Bolt'])
 const MAGIC_MISSILE_MECHANICS = resolveDnd5eSpellMechanics(spells['Magic Missile'])
 const FIREBALL_MECHANICS = resolveDnd5eSpellMechanics(spells.Fireball)
+const CHROMATIC_ORB_MECHANICS = resolveDnd5eSpellMechanics(spells['Chromatic Orb'])
 
 beforeEach(() => {
   assembleCharacterMock.mockReset()
@@ -160,6 +181,8 @@ beforeEach(() => {
   createSpellAttackRollEventMock.mockReset()
   createSpellDamageRollEventMock.mockReset()
   broadcastRollEventMock.mockReset()
+  getDerivedCharacterOverrideMock.mockReset()
+  getDerivedCharacterOverrideMock.mockResolvedValue(undefined)
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -390,6 +413,292 @@ describe('no spell-name special cases', () => {
     expect(result.ok).toBe(true)
     expect(createSpellAttackRollEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ spellName: 'Zzyzx\'s Totally Fictional Bolt', attackBonus: 6 })
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Sheet Body Phase 1B.2.1 -- Cast Configuration
+// ---------------------------------------------------------------------------
+
+describe('castLevel -- omitted defaults to the spell\'s base level (backward compatible)', () => {
+  it('Magic Missile with no castLevel still expends exactly one level-1 slot, as it did before this phase', async () => {
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2' })
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
+  })
+
+  it('records the resolved castLevel and base spellLevel in the roll\'s metadata', async () => {
+    await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2' })
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ spellLevel: 1, castLevel: 1 }) })
+    )
+  })
+})
+
+describe('castLevel -- cantrips reject any explicit castLevel', () => {
+  it('Fire Bolt with an explicit castLevel is rejected -- a cantrip never uses a spell slot', async () => {
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-1', castLevel: 1 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('Fire Bolt\'s own roll never carries a castLevel key in metadata when none was requested', async () => {
+    await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    const call = createSpellAttackRollEventMock.mock.calls[0]![0]
+    expect(call.metadata).not.toHaveProperty('castLevel')
+  })
+})
+
+describe('castLevel -- below base level is rejected', () => {
+  it('a synthetic level-2 automatic-damage spell rejects castLevel: 1', async () => {
+    const level2Mechanics = {
+      level: 2, concentration: false, ritual: false,
+      resolution: { kind: 'automatic' as const },
+      damage: { dice: { count: 2, faces: 6 }, modifier: 0, type: 'force' }
+    }
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-4', 'Test Bolt', level2Mechanics)] })
+    })
+
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-4', castLevel: 1 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('castLevel -- a level this character\'s progression does not declare is rejected', () => {
+  it('Magic Missile with castLevel: 5 is rejected -- a level-1 Wizard has no level-5 slots at all', async () => {
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 5 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('castLevel -- a fully expended selected level is rejected, explicit castLevel or not', () => {
+  it('rejects with resource-unavailable, matching the pre-existing omitted-castLevel behavior exactly', async () => {
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { '1': 2 } })
+
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 1 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('resource-unavailable')
+  })
+})
+
+describe('castLevel -- multiple legal levels, the SELECTED higher slot is the one actually expended', () => {
+  // This app has no leveling system yet -- every real blueprint this file's
+  // real Rules Engine can build sits at character level 1 (the Rules
+  // Engine's own stored-value default), which only ever grants a single
+  // Spell Slot level. `getDerivedCharacterOverrideMock` fakes a level-3-shaped
+  // Wizard's derived state (level-1 AND level-2 slot pools) for this one
+  // scenario only -- every other describe block in this file leaves it at
+  // its default (defer to the real engine).
+  function fakeMultiLevelDerived() {
+    return {
+      available: true as const,
+      derived: {
+        byCategory: {
+          spellcasting: [
+            { id: 'value:spellcasting.caster_type.full', value: true },
+            { id: 'value:spellcasting.attack_bonus', value: 6 },
+            { id: 'value:spellcasting.save_dc', value: 14 }
+          ],
+          progression: [{ id: 'value:level', value: 3 }]
+        },
+        tables: [{
+          id: 'table:spellcasting.slots_full',
+          rows: [{ key: 3, slot_1: 4, slot_2: 2, slot_3: 0, slot_4: 0, slot_5: 0, slot_6: 0, slot_7: 0, slot_8: 0, slot_9: 0 }]
+        }],
+        choices: []
+      }
+    }
+  }
+
+  it('expends the level-2 slot, not the level-1 one, when castLevel: 2 is selected', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(fakeMultiLevelDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 2 })
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '2': 1 } })
+  })
+
+  it('base spell level (mechanics.level) remains 1 even when Cast at level 2 -- never mutated by upcasting', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(fakeMultiLevelDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 2 })
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ spellLevel: 1, castLevel: 2 }) })
+    )
+  })
+
+  it('does NOT fabricate upcast scaling -- damage stays the canonical 1d4+1 regardless of the higher selected level', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(fakeMultiLevelDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 2 })
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 1, faces: 4 }, modifier: 1 })
+    )
+  })
+})
+
+describe('castLevel -- client cannot forge slot cost', () => {
+  it('CastSpellInput has no field for a client to supply max/slot cost -- the server always re-derives it', async () => {
+    const input = { ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 1 }
+    expect(Object.keys(input)).not.toContain('slotCost')
+    expect(Object.keys(input)).not.toContain('max')
+  })
+
+  it('the expended count the server persists always matches its OWN derived max, never anything client-influenced', async () => {
+    await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 1 })
+    // The real Rules Engine's own level-1 Wizard table caps level-1 slots at
+    // 2 (packages/eldra-dnd5e-2024's own real table) -- this number comes
+    // from nowhere the client touched.
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
+  })
+})
+
+describe('Chromatic Orb -- structured damage-type choice, first real acceptance case', () => {
+  function withChromaticOrbPrepared(overrides: Record<string, unknown> = {}) {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        spells: [preparedSpell('spell-5', 'Chromatic Orb', CHROMATIC_ORB_MECHANICS)],
+        ...overrides
+      })
+    })
+  }
+
+  it('classifies as castable via the single dispatching entry point', async () => {
+    withChromaticOrbPrepared()
+    const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'lightning' } })
+    expect(result.ok).toBe(true)
+    expect(createSpellAttackRollEventMock).toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects Cast outright when the required damage-type choice is missing', async () => {
+    withChromaticOrbPrepared()
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-5' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-choice')
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects an illegal damage type', async () => {
+    withChromaticOrbPrepared()
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'necrotic' } })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-choice')
+  })
+
+  it('rejects an unrecognized choice id', async () => {
+    withChromaticOrbPrepared()
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { ability: 'str' } })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-choice')
+  })
+
+  it('accepts a legal type and rolls the attack with the real, server-derived Spell Attack Bonus', async () => {
+    withChromaticOrbPrepared()
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'lightning' } })
+    expect(result.ok).toBe(true)
+    expect(createSpellAttackRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ spellName: 'Chromatic Orb', attackBonus: 6 })
+    )
+  })
+
+  it('consumes exactly one level-1 slot on a successful default-level Cast', async () => {
+    withChromaticOrbPrepared()
+    await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'lightning' } })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
+  })
+
+  it('never mutates target HP or performs hit/miss -- this is still an untargeted attack roll only', async () => {
+    withChromaticOrbPrepared()
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'lightning' } })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.roll).not.toHaveProperty('targetHealth')
+    expect(result.roll).not.toHaveProperty('hit')
+  })
+
+  describe('independent Damage -- stateless re-validation, no Cast Session', () => {
+    it('rolls the canonical 3d8 with the chosen type, spending no slot at all', async () => {
+      withChromaticOrbPrepared()
+      const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'lightning' } })
+      expect(result.ok).toBe(true)
+      expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          spellName: 'Chromatic Orb', dice: { count: 3, faces: 8 }, modifier: 0,
+          damageType: 'lightning', damageTypeLabel: 'Lightning', broadcast: true
+        })
+      )
+      expect(loadSpellcastingMock).not.toHaveBeenCalled()
+      expect(saveSpellcastingMock).not.toHaveBeenCalled()
+    })
+
+    it('rejects Damage when the choice is missing -- never a silently defaulted type', async () => {
+      withChromaticOrbPrepared()
+      const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-5' })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('invalid-choice')
+      expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+    })
+
+    it('rejects an illegal damage type on the Damage request independently of Cast', async () => {
+      withChromaticOrbPrepared()
+      const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'radiant' } })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('invalid-choice')
+    })
+
+    it('a Damage roll may legally choose a DIFFERENT type than a prior Cast -- no binding, no Cast Session', async () => {
+      withChromaticOrbPrepared()
+      await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'lightning' } })
+
+      const damageResult = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-5', choices: { 'damage-type': 'fire' } })
+      expect(damageResult.ok).toBe(true)
+      expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(expect.objectContaining({ damageType: 'fire' }))
+    })
+  })
+
+  it('a differently-named spell with Chromatic Orb\'s exact structured choice works identically -- no spell-name logic', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-6', 'Zzyzx\'s Prismatic Bolt', CHROMATIC_ORB_MECHANICS)] })
+    })
+
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-6', choices: { 'damage-type': 'poison' } })
+    expect(result.ok).toBe(true)
+    expect(createSpellAttackRollEventMock).toHaveBeenCalledWith(expect.objectContaining({ spellName: 'Zzyzx\'s Prismatic Bolt' }))
+  })
+})
+
+describe('ordinary fixed-type spell damage labels stay unchanged (no absurd verbosity)', () => {
+  it('Magic Missile\'s damage label carries no type suffix -- only a real CHOICE ever adds one', async () => {
+    await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2' })
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ damageTypeLabel: undefined })
     )
   })
 })

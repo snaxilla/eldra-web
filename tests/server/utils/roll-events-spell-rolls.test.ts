@@ -123,4 +123,20 @@ describe('createSpellDamageRollEvent', () => {
 
     expect(roll.metadata.damageType).toBeUndefined()
   })
+
+  // Character Sheet Body Phase 1B.2.1 (Cast Configuration) -- Chromatic
+  // Orb's own acceptance case: the label gains a suffix ONLY when the
+  // caller (character-cast.ts's own `damageTypeLabelFor`) supplies one,
+  // never for an ordinary fixed-type spell (see the two tests above, both
+  // still asserting the exact unsuffixed `"<name> Damage"` label).
+  it('appends a "— Type" suffix to the label when damageTypeLabel is supplied', async () => {
+    const roll = await createSpellDamageRollEvent({
+      worldId: '5', rollerUserId: 'account-1', actorCharacterId: '42',
+      spellName: 'Chromatic Orb', sourceId: 'spell:spell-5',
+      dice: { count: 3, faces: 8 }, modifier: 0, damageType: 'lightning', damageTypeLabel: 'Lightning',
+      visibility: 'private', broadcast: true
+    })
+
+    expect(roll.label).toBe('Chromatic Orb Damage — Lightning')
+  })
 })

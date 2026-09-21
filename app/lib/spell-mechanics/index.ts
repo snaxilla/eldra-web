@@ -20,6 +20,8 @@ import type { CanonicalSpellMechanics, SpellMechanicsResolver } from './types'
 
 export type {
   CanonicalSpellMechanics,
+  SpellChoice,
+  SpellChoiceOption,
   SpellDice,
   SpellResolutionKind,
   SpellRoll,
@@ -28,6 +30,16 @@ export type {
 } from './types'
 
 export { classifySpellCastCapability, type SpellCastCapability } from './cast-capability'
+
+export {
+  legalCastLevelsFor,
+  resolveCastConfiguration,
+  validateSpellChoices,
+  applyResolvedChoicesToDamage,
+  type CastConfigurationCastLevel,
+  type CastConfigurationViewModel,
+  type ValidateSpellChoicesResult
+} from './cast-configuration'
 
 const RESOLVERS: Record<string, SpellMechanicsResolver> = {
   dnd5e: resolveDnd5eSpellMechanics

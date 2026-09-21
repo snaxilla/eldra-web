@@ -876,6 +876,14 @@ export type CreateSpellDamageRollInput = {
   dice: { count: number; faces: number }
   modifier: number
   damageType?: string
+  // Character Sheet Body Phase 1B.2.1 (Cast Configuration) addition --
+  // server-computed (character-cast.ts's own `damageTypeLabelFor`), never a
+  // client-supplied label. Present ONLY when this spell's damage type came
+  // from an actual player CHOICE (Chromatic Orb-shaped); absent for every
+  // ordinary fixed-type spell, whose label stays exactly `"<name> Damage"`
+  // -- byte-identical to Phase 1B.2's own accepted output, matching this
+  // task's own "do not make labels absurdly verbose" instruction.
+  damageTypeLabel?: string
   visibility: RollVisibility
   metadata?: Record<string, unknown>
   broadcast: boolean
@@ -890,12 +898,14 @@ export async function createSpellDamageRollEvent(input: CreateSpellDamageRollInp
     throw createError({ statusCode: 400, statusMessage: rolled.error })
   }
 
+  const label = input.damageTypeLabel ? `${input.spellName} Damage — ${input.damageTypeLabel}` : `${input.spellName} Damage`
+
   const row = toPersistenceRow({
     worldId: input.worldId,
     encounterId: input.encounterId ?? null,
     actorCharacterId: input.actorCharacterId,
     rollerUserId: input.rollerUserId,
-    label: `${input.spellName} Damage`,
+    label,
     sourceType: 'damage',
     sourceKey: null,
     sourceId: input.sourceId,

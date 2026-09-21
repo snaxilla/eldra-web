@@ -70,11 +70,18 @@
 
 import { cleanText, flattenEntries } from '../content-presentation/dnd5e'
 import type { AbilityKey } from '../characters/ability-scores'
-import type { CanonicalSpellMechanics, SpellResolutionKind, SpellRoll, SpellScaling } from './types'
+import type { CanonicalSpellMechanics, SpellChoice, SpellResolutionKind, SpellRoll, SpellScaling } from './types'
 
 const SCHOOL_LABELS: Record<string, string> = {
   A: 'Abjuration', C: 'Conjuration', D: 'Divination', E: 'Enchantment',
   V: 'Evocation', I: 'Illusion', N: 'Necromancy', T: 'Transmutation'
+}
+
+// 5etools' own damageInflict strings are lowercase ('lightning') -- the
+// label a `SpellChoiceOption` shows a player is the same word, capitalized,
+// never a second hand-typed vocabulary that could drift from the id.
+function capitalizeWord(value: string): string {
+  return value.length ? value[0]!.toUpperCase() + value.slice(1) : value
 }
 
 const CASTING_TIME_UNIT_LABELS: Record<string, string> = {
@@ -194,6 +201,27 @@ function resolveResolution(raw: Record<string, unknown>, hasDamage: boolean): Sp
 // general-purpose dice engine.
 const DAMAGE_TAG_PATTERN = /\{@damage\s+(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/
 
+// Character Sheet Body Phase 1B.2.1's own corpus audit finding: several
+// spells with `damageInflict.length > 1` are NOT a player choice at all --
+// Ice Storm deals bludgeoning AND cold together (two `{@damage}` tags, one
+// per component), Fire Shield deals cold OR fire depending on which of the
+// spell's OWN two modes is active (also two tags), and so on. Counting every
+// `{@damage}` tag (global, unlike DAMAGE_TAG_PATTERN's own single `.exec()`
+// above) distinguishes that shape from Chromatic Orb's real one: a SINGLE
+// roll whose type genuinely is the player's choice. Verified directly
+// against the real XPHB spell corpus (see this file's own resolver header
+// for the dataset) -- every `damageInflict.length > 1` spell with exactly
+// one damage tag in its base entries (Chromatic Orb, Sorcerous Burst, and a
+// handful of others whose resolution this phase does not otherwise support)
+// is a genuine single-roll type choice; every one with two or more is a
+// multi-component spell, never a choice.
+const DAMAGE_TAG_PATTERN_GLOBAL = /\{@damage\s+\d+d\d+/g
+
+function countDamageTags(entries: unknown): number {
+  const text = JSON.stringify(entries ?? '')
+  return text.match(DAMAGE_TAG_PATTERN_GLOBAL)?.length ?? 0
+}
+
 function extractDamageRoll(entries: unknown, damageType: string | undefined): SpellRoll | undefined {
   const text = JSON.stringify(entries ?? '')
   const match = DAMAGE_TAG_PATTERN.exec(text)
@@ -240,22 +268,45 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
   const level = typeof raw.level === 'number' ? raw.level : 0
   const school = SCHOOL_LABELS[String(raw.school)]
 
-  // Character Sheet Body Phase 1B.2 -- THE CHROMATIC ORB FINDING. 5etools'
-  // `damageInflict` names every LEGAL damage type a spell can deal, not
-  // necessarily one authoritative type -- Chromatic Orb states
-  // `["acid","cold","fire","lightning","poison","thunder"]`, one of which
-  // the PLAYER chooses at cast time. Picking `[0]` unconditionally (this
-  // module's own 1B.1 behavior, corrected here) would silently assert
-  // "acid" as if the choice had already been made -- exactly the invented
-  // fact this phase's own investigation was scoped to catch. A single
-  // listed type (Magic Missile: `["force"]`, Fireball: `["fire"]`) is
-  // unambiguous and used directly; more than one sets `hasUnresolvedChoice`
-  // and leaves `damage.type` honestly `undefined` instead of guessing.
+  // Character Sheet Body Phase 1B.2 -- THE CHROMATIC ORB FINDING, structured
+  // by 1B.2.1. 5etools' `damageInflict` names every LEGAL damage type a
+  // spell can deal, not necessarily one authoritative type -- Chromatic Orb
+  // states `["acid","cold","fire","lightning","poison","thunder"]`, one of
+  // which the PLAYER chooses at cast time. Picking `[0]` unconditionally
+  // (this module's own 1B.1 behavior) would silently assert "acid" as if
+  // the choice had already been made -- exactly the invented fact this
+  // phase's own investigation was scoped to catch. A single listed type
+  // (Magic Missile: `["force"]`, Fireball: `["fire"]`) is unambiguous and
+  // used directly.
+  //
+  // More than one listed type is NOT automatically a player choice --
+  // `countDamageTags`'s own header explains why: Ice Storm's two types are
+  // two SIMULTANEOUS damage components, never a pick-one. Only when exactly
+  // ONE `{@damage}` tag exists alongside multiple listed types is this
+  // genuinely Chromatic Orb's shape, structurally represented in `choices`
+  // below; damage.type stays honestly `undefined` either way (a choice this
+  // phase cannot resolve, and a multi-component spell this phase was never
+  // going to safely attribute a single type to).
   const damageInflict = Array.isArray(raw.damageInflict)
     ? raw.damageInflict.filter((entry): entry is string => typeof entry === 'string')
     : []
-  const hasUnresolvedChoice = damageInflict.length > 1
+  const damageTagCount = countDamageTags(raw.entries)
+  const isSingleRollTypeChoice = damageInflict.length > 1 && damageTagCount === 1
   const damageType = damageInflict.length === 1 ? damageInflict[0] : undefined
+
+  const choices: SpellChoice[] = isSingleRollTypeChoice
+    ? [{
+        id: 'damage-type',
+        label: 'Damage Type',
+        options: damageInflict.map((type) => ({ id: type, label: capitalizeWord(type) }))
+      }]
+    : []
+
+  // Derived, not independently computed -- see CanonicalSpellMechanics's
+  // own header on `hasUnresolvedChoice` for why: true exactly when the
+  // source shows a choice-shaped ambiguity `choices` above did not end up
+  // structurally representing (the multi-component case).
+  const hasUnresolvedChoice = damageInflict.length > 1 && choices.length === 0
 
   const damage = extractDamageRoll(raw.entries, damageType)
 
@@ -274,6 +325,7 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     // Never populated in 1B.1/1B.2 -- see this file's own header.
     healing: undefined,
     scaling: resolveScaling(raw.entriesHigherLevel),
+    ...(choices.length ? { choices } : {}),
     ...(hasUnresolvedChoice ? { hasUnresolvedChoice: true } : {})
   }
 }

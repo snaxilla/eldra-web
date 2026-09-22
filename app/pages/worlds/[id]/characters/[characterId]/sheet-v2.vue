@@ -475,8 +475,46 @@ function rollActionDamage({ actionId }: { actionId: string }) {
 // `rollActionAttack`/`rollActionDamage` immediately above.
 const castPending = ref(false)
 const castError = ref('')
+// Character Sheet Body Phase 1B.3 -- see CharacterActionsPanel.vue's own
+// `notice` prop header for why this exists and why it is styled neutrally,
+// never as an error. Cleared automatically a few seconds after being set;
+// a fresh Cast (success OR failure) also clears it immediately, so it never
+// lingers describing a stale Cast.
+const castNotice = ref('')
+let castNoticeTimeout: ReturnType<typeof setTimeout> | undefined
 
-type CastResponse = { ok: true; roll: RollEventRecord; spellcasting?: { spells: unknown[]; expendedSlots: Record<string, number> } }
+// Character Sheet Body Phase 1B.3 -- restated (not imported) from
+// app/lib/spell-mechanics/character-cast.ts's own `CastSaveContext`: this
+// page never imports server types (`server/` -> `app/` is the one-way
+// boundary every sibling panel's own restated prop already follows, e.g.
+// CharacterActionsPanel.vue's own CombatOutcome).
+type CastSaveContext = {
+  savingAbility: string
+  saveDc: number
+  spellLevel: number
+  castLevel: number | null
+  damage?: { dice?: { count: number; faces: number }; modifier: number; type?: string; saveOutcome?: string }
+  choices?: Record<string, string>
+}
+
+type CastResponse = {
+  ok: true
+  // Character Sheet Body Phase 1B.3 -- optional now that a saving-throw
+  // Cast may legitimately produce no dice roll at all (see
+  // character-cast.ts's own `castSpellSave`).
+  roll?: RollEventRecord
+  saveContext?: CastSaveContext
+  spellcasting?: { spells: unknown[]; expendedSlots: Record<string, number> }
+}
+
+const SAVE_ABILITY_LABELS: Record<string, string> = {
+  str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'
+}
+
+function describeSaveContext(actionName: string, saveContext: CastSaveContext): string {
+  const ability = SAVE_ABILITY_LABELS[saveContext.savingAbility] ?? saveContext.savingAbility.toUpperCase()
+  return `${actionName} cast — ${ability} Save, DC ${saveContext.saveDc}`
+}
 
 // Character Sheet Body Phase 1B.2.1 (Cast Configuration) -- `castLevel`/
 // `choices` are the player's own Cast Configuration selections
@@ -489,6 +527,8 @@ async function postCast(actionId: string, intent: 'cast' | 'damage', castLevel?:
   if (castPending.value) return
   castPending.value = true
   castError.value = ''
+  castNotice.value = ''
+  if (castNoticeTimeout) clearTimeout(castNoticeTimeout)
   const clickedAt = performance.now()
 
   try {
@@ -499,8 +539,18 @@ async function postCast(actionId: string, intent: 'cast' | 'damage', castLevel?:
     // Feeds the SAME animation-queue-then-history pipeline `requestRoll`
     // uses for its own POST .../rolls response -- the Roll Tray needs no
     // second ingestion path and cannot tell a Cast's roll apart from any
-    // other (see useWorldRolls.ts's own `ingestRoll` header).
-    ingestRoll(response.roll, clickedAt, performance.now())
+    // other (see useWorldRolls.ts's own `ingestRoll` header). A
+    // saving-throw Cast (Fireball/Acid Splash's own Cast, not Damage) may
+    // have no roll at all -- see character-cast.ts's own "WHAT DOES CAST
+    // ROLL?" note. Never fed an undefined roll into the Roll Tray pipeline;
+    // never a fabricated d20 just so Cast "feels" active.
+    if (response.roll) {
+      ingestRoll(response.roll, clickedAt, performance.now())
+    } else if (response.saveContext) {
+      const action = characterActions.value.find((candidate) => candidate.id === actionId)
+      castNotice.value = describeSaveContext(action?.name ?? 'Spell', response.saveContext)
+      castNoticeTimeout = setTimeout(() => { castNotice.value = '' }, 6000)
+    }
 
     // Authoritative resource refresh, no reload: present ONLY when this
     // Cast actually expended a slot (server/utils/character-cast.ts's own
@@ -725,6 +775,13 @@ function openActionContext(action: CharacterAction) {
   const lines: string[] = []
   if (action.range) lines.push(`Range: ${action.range}`)
   if (action.attackBonus !== undefined) lines.push(`Attack Bonus: ${signedNumber(action.attackBonus)}`)
+  // Character Sheet Body Phase 1B.3 -- the saving ability alongside the DC
+  // the row already glances ("DEX DC 13"), spelled out for the Rail's own
+  // "why/how" reference role.
+  if (action.spellMechanics?.resolution?.kind === 'saving-throw') {
+    const ability = action.spellMechanics.resolution.savingAbility
+    lines.push(`Saving Ability: ${SAVE_ABILITY_LABELS[ability] ?? ability.toUpperCase()}`)
+  }
   if (action.saveDc !== undefined) lines.push(`Save DC: ${action.saveDc}`)
   if (action.damage) lines.push(`Damage: ${action.damage}`)
 
@@ -735,6 +792,15 @@ function openActionContext(action: CharacterAction) {
     }
     lines.push(`Resolved Damage: ${formatActionDamage(resolvedDamage)}`)
   }
+
+  // Character Sheet Body Phase 1B.3 -- structured, source-reliable save
+  // outcome ONLY (see app/lib/spell-mechanics/types.ts's own
+  // SpellSaveOutcome header); never shown when the source's own phrasing
+  // did not reliably match either pattern -- silence there is honest, not
+  // a gap to fill with a guess.
+  const saveOutcome = action.spellMechanics?.damage?.saveOutcome
+  if (saveOutcome === 'half-on-save') lines.push('On Save: Half Damage')
+  else if (saveOutcome === 'no-damage-on-save') lines.push('On Save: No Damage')
 
   if (action.usage) lines.push(`Usage: ${action.usage}`)
   if (action.sourceBook) lines.push(`Source: ${action.sourceBook}`)
@@ -1014,6 +1080,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                   :actions="characterActions"
                   :pending="actionsPending"
                   :error-message="actionsUnavailableMessage || mutations.combat.error || rollError || castError"
+                  :notice="castNotice"
                   :target-options="combatTargetOptions"
                   :results="mutations.combat.results"
                   :resolving="mutations.combat.resolving"

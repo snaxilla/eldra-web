@@ -26,10 +26,23 @@ import type { CanonicalSpellMechanics } from './types'
 // every `unsupported-*` member exists so a caller can say WHY, not just
 // "no" -- both for an honest UI (§ "UNSUPPORTED SPELL UX") and for a
 // future phase to know which bucket it is closing.
+//
+// Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) --
+// `unsupported-save` is RETIRED (no code path below produces it anymore),
+// replaced by two supported kinds. A saving-throw spell's Cast operation
+// (validate, consume the selected resource, return the authoritative Save
+// DC/ability -- never a caster d20, never a target save, never HP
+// mutation) is EQUALLY honest whether or not the spell has damage to roll
+// independently afterward: Fireball's Cast is no more or less truthful
+// than Hold Person's, only Fireball also gets a row-level Damage control.
+// `supported-save-damage` vs `supported-save-context` exists so a consumer
+// (CharacterActionsPanel.vue's own `showsIndependentSpellDamage`) can tell
+// the two apart without re-deriving `Boolean(mechanics.damage)` itself.
 export type SpellCastCapability =
   | { kind: 'supported-spell-attack' }
   | { kind: 'supported-automatic-damage' }
-  | { kind: 'unsupported-save' }
+  | { kind: 'supported-save-damage' }
+  | { kind: 'supported-save-context' }
   | { kind: 'unsupported-healing' }
   | { kind: 'unsupported-effect' }
   | { kind: 'unsupported-choice' }
@@ -71,8 +84,16 @@ export function classifySpellCastCapability(
     return { kind: 'supported-spell-attack' }
   }
 
+  // Character Sheet Body Phase 1B.3: an untargeted, no-caster-d20 Cast is
+  // honestly executable for EVERY well-formed saving-throw spell -- the
+  // operation only ever claims "spell was cast, resource consumed, here is
+  // the authoritative Save DC/ability", never "the target failed" or "the
+  // target took damage" (that stays entirely with the existing targeted
+  // Resolve control, character-combat.ts, untouched). Whether the spell
+  // ALSO exposes an independent Damage roll depends only on whether it has
+  // structured damage at all -- see this file's own header.
   if (mechanics.resolution?.kind === 'saving-throw') {
-    return { kind: 'unsupported-save' }
+    return mechanics.damage ? { kind: 'supported-save-damage' } : { kind: 'supported-save-context' }
   }
 
   if (mechanics.resolution?.kind === 'automatic') {

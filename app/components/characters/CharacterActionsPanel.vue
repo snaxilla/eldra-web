@@ -227,10 +227,21 @@ const props = withDefaults(defineProps<{
   // this prop only drives what the PICKER shows, never what the server
   // accepts.
   slotLevels?: readonly SpellSlotLevel[]
+  // Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) --
+  // lightweight, transient feedback for a Cast that produced no dice roll
+  // (Fireball/Acid Splash's own Cast, `castSpellSave` server-side): the
+  // page sets this to a short "spell + Save DC/ability" confirmation after
+  // a successful no-roll Cast and clears it itself after a few seconds.
+  // Neutral styling, never red -- this is success feedback, not an error;
+  // the SMALLEST addition that satisfies "the user still needs clear
+  // feedback that Cast succeeded" without a toast framework or a new
+  // Cast-result card (this task's own explicit constraints).
+  notice?: string
 }>(), {
   actions: () => [],
   pending: false,
   errorMessage: '',
+  notice: '',
   targetOptions: () => [],
   results: () => ({}),
   resolving: false,
@@ -337,37 +348,54 @@ function damage(actionId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Cast row -- Character Sheet Body Phase 1B.2, Authoritative Cast Foundation
+// Cast row -- Character Sheet Body Phase 1B.2/1B.2.1/1B.3
 // ---------------------------------------------------------------------------
 // `classifySpellCastCapability` is the SAME predicate server/utils/character-cast.ts
 // calls -- this panel decides "does this row get a Cast button" with the
 // identical rule the server uses to decide "will Cast actually succeed", so
 // client and server can never invent different support rules (this task's
-// own requirement). A spell whose capability is not one of the two
-// supported kinds (a saving-throw spell, a healing/effect/choice/unknown
-// spell) falls through to the existing `v-else` branch below, unchanged --
-// it keeps its own targeted Resolve control if it has one, or a plain
-// inspectable row if it doesn't. Never fabricates a Cast for anything this
-// phase does not honestly support.
+// own requirement). A spell whose capability is not one of the four
+// supported kinds (a healing/effect/choice/unknown spell) falls through to
+// the existing `v-else` branch below, unchanged -- it keeps its own
+// targeted Resolve control if it has one, or a plain inspectable row if it
+// doesn't. Never fabricates a Cast for anything this phase does not
+// honestly support.
+//
+// Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) --
+// `supported-save-damage` (Fireball) and `supported-save-context` (Hold
+// Person) join the two existing kinds: a saving-throw spell's row now
+// reuses this exact same Cast/Cast-Configuration/Info/Damage shape, never
+// a separate save-specific component -- see `castConfigurationOf`, already
+// generic over resolution kind. character-combat.ts's existing targeted
+// Resolve remains real, working functionality; it is simply no longer the
+// row's default/primary interaction for these newly-supported spells (see
+// this file's own header for the fuller relationship).
 function castCapabilityOf(action: CharacterAction) {
   return classifySpellCastCapability({ category: action.category, spellMechanics: action.spellMechanics })
 }
 
 function isCastableSpell(action: CharacterAction): boolean {
-  const capability = castCapabilityOf(action)
-  return capability?.kind === 'supported-spell-attack' || capability?.kind === 'supported-automatic-damage'
+  const kind = castCapabilityOf(action)?.kind
+  return kind === 'supported-spell-attack'
+    || kind === 'supported-automatic-damage'
+    || kind === 'supported-save-damage'
+    || kind === 'supported-save-context'
 }
 
-// Damage stays an independent control ONLY for an attack-roll spell (Fire
-// Bolt): its resource (none, for a cantrip) is already settled by Cast, so
-// an extra Damage roll spends nothing further -- mirrors the weapon
-// Attack/Damage split exactly. An automatic-damage spell (Magic Missile)
-// NEVER gets this control: Cast already rolls its damage AND spends its
-// slot in one step, so a second, independent Damage button would let a
-// player roll it again for free with no slot spent -- this task's own
-// "avoid a free-resource loophole" requirement.
+// Damage stays an independent control ONLY for a spell with structured
+// damage that Cast itself does not already roll -- an attack-roll spell
+// (Fire Bolt) or a saving-throw spell with damage (Fireball): both settle
+// their resource (if any) in Cast, so an extra Damage roll spends nothing
+// further, mirroring the weapon Attack/Damage split exactly. An
+// automatic-damage spell (Magic Missile) NEVER gets this control: Cast
+// already rolls its damage AND spends its slot in one step, so a second,
+// independent Damage button would let a player roll it again for free with
+// no slot spent -- this task's own "avoid a free-resource loophole"
+// requirement. A save-context-only spell (Hold Person) has no damage to
+// roll at all.
 function showsIndependentSpellDamage(action: CharacterAction): boolean {
-  return castCapabilityOf(action)?.kind === 'supported-spell-attack'
+  const kind = castCapabilityOf(action)?.kind
+  return kind === 'supported-spell-attack' || kind === 'supported-save-damage'
 }
 
 // ---------------------------------------------------------------------------
@@ -492,11 +520,27 @@ function ordinal(level: number): string {
   return `${level}${ORDINAL_SUFFIXES[level % 10] ?? 'th'}`
 }
 
+// Character Sheet Body Phase 1B.3 -- a saving-throw spell's own ability
+// key ('dex'), read directly off the same canonical `resolution` the row
+// already carries for Cast capability -- never a second lookup, never a
+// name-derived guess.
+const SAVE_ABILITY_ABBREVIATIONS: Record<string, string> = {
+  str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA'
+}
+
 // The "Hit / DC" column carries whichever of the two the action declares --
-// absent stays absent, never a fabricated zero.
+// absent stays absent, never a fabricated zero. Phase 1B.3: a saving-throw
+// spell's DC is shown WITH its ability ("DEX DC 13"), the one glance-able
+// fact this task's own SAVE OUTCOME UX section asks for, without adding a
+// new column or growing the row.
 function hitOrDc(action: CharacterAction): string {
   if (action.attackBonus !== undefined) return signed(action.attackBonus)
-  if (action.saveDc !== undefined) return `DC ${action.saveDc}`
+  if (action.saveDc !== undefined) {
+    const ability = action.spellMechanics?.resolution?.kind === 'saving-throw'
+      ? SAVE_ABILITY_ABBREVIATIONS[action.spellMechanics.resolution.savingAbility]
+      : undefined
+    return ability ? `${ability} DC ${action.saveDc}` : `DC ${action.saveDc}`
+  }
   return '—'
 }
 
@@ -519,6 +563,13 @@ function resolvedDamageText(action: CharacterAction): string {
       class="rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
     >
       {{ errorMessage }}
+    </p>
+
+    <p
+      v-else-if="notice"
+      class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.4)] p-3 text-sm text-[#d8ceb8]"
+    >
+      {{ notice }}
     </p>
 
     <!-- Filter bar. Pills are All / Attacks / Spells -- the one distinction

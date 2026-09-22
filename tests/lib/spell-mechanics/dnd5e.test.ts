@@ -82,7 +82,14 @@ describe('resolveDnd5eSpellMechanics -- Fireball (saving-throw, half-on-save dam
   })
 
   it('preserves 8d6 fire damage with no flat modifier', () => {
-    expect(mechanics.damage).toEqual({ dice: { count: 8, faces: 6 }, modifier: 0, type: 'fire' })
+    expect(mechanics.damage).toEqual({ dice: { count: 8, faces: 6 }, modifier: 0, type: 'fire', saveOutcome: 'half-on-save' })
+  })
+
+  // Character Sheet Body Phase 1B.3 -- the required half-on-save
+  // acceptance case, verified against Fireball's own real printed text
+  // ("...on a failed save or half as much damage on a successful one").
+  it('resolves saveOutcome as half-on-save -- the required acceptance case', () => {
+    expect(mechanics.damage?.saveOutcome).toBe('half-on-save')
   })
 
   it('preserves slot-level scaling text -- damage-scaling shape, not lost', () => {
@@ -93,6 +100,59 @@ describe('resolveDnd5eSpellMechanics -- Fireball (saving-throw, half-on-save dam
   it('is concentration: false, ritual: false', () => {
     expect(mechanics.concentration).toBe(false)
     expect(mechanics.ritual).toBe(false)
+  })
+})
+
+// Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) -- the
+// required cantrip acceptance case: "succeed... or take Xd Y damage" is the
+// no-damage-on-save shape, structurally distinct from Fireball's
+// half-on-save above.
+describe('resolveDnd5eSpellMechanics -- Acid Splash (cantrip, save-for-no-damage, required acceptance)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['Acid Splash'])!
+
+  it('is a cantrip (level 0)', () => {
+    expect(mechanics.level).toBe(0)
+  })
+
+  it('is a saving-throw resolution against Dexterity', () => {
+    expect(mechanics.resolution).toEqual({ kind: 'saving-throw', savingAbility: 'dex' })
+  })
+
+  it('preserves 1d6 acid damage', () => {
+    expect(mechanics.damage).toMatchObject({ dice: { count: 1, faces: 6 }, modifier: 0, type: 'acid' })
+  })
+
+  it('resolves saveOutcome as no-damage-on-save -- the required acceptance case', () => {
+    expect(mechanics.damage?.saveOutcome).toBe('no-damage-on-save')
+  })
+
+  it('identifies cantrip-level scaling, not slot-level', () => {
+    expect(mechanics.scaling?.kind).toBe('cantrip-level')
+  })
+})
+
+// Character Sheet Body Phase 1B.3 -- the required save-context-only
+// acceptance case: a concentration save spell with NO structured damage at
+// all, proving `saveOutcome` extraction correctly does nothing when there
+// is no damage roll to attach it to.
+describe('resolveDnd5eSpellMechanics -- Hold Person (saving-throw, effect-only, concentration, required acceptance)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['Hold Person'])!
+
+  it('level 2, Wisdom save', () => {
+    expect(mechanics.level).toBe(2)
+    expect(mechanics.resolution).toEqual({ kind: 'saving-throw', savingAbility: 'wis' })
+  })
+
+  it('is concentration: true', () => {
+    expect(mechanics.concentration).toBe(true)
+  })
+
+  it('has no structured damage -- a genuinely effect-only saving-throw spell, honestly represented', () => {
+    expect(mechanics.damage).toBeUndefined()
+  })
+
+  it('never fabricates a saveOutcome with no damage roll to attach it to', () => {
+    expect(mechanics.damage?.saveOutcome).toBeUndefined()
   })
 })
 
@@ -283,6 +343,38 @@ describe('resolveDnd5eSpellMechanics -- dice parser variants (NdM, NdM+K, NdM-K,
     expect(resolveDnd5eSpellMechanics(withEntry('First {@damage 1d6} then {@damage 2d8}.'))!.damage).toEqual({
       dice: { count: 1, faces: 6 }, modifier: 0, type: undefined
     })
+  })
+})
+
+// Character Sheet Body Phase 1B.3 -- the corpus audit's own "ambiguous"
+// bucket (Disintegrate, the smite spells, ...): a saving-throw spell with
+// real structured damage whose prose matches NEITHER reliable pattern.
+// `saveOutcome` must stay honestly absent rather than guessing either way.
+describe('resolveDnd5eSpellMechanics -- save outcome degrades honestly when the source is ambiguous', () => {
+  function savingThrowEntry(text: string) {
+    return { name: 'Test Spell', level: 3, savingThrow: ['constitution'], entries: [text] }
+  }
+
+  it('a save spell whose prose states neither "half" nor the "or take" shape leaves saveOutcome undefined', () => {
+    const mechanics = resolveDnd5eSpellMechanics(savingThrowEntry(
+      'The target must make a Constitution saving throw. On a failed save, the target takes {@damage 10d6} force damage and is turned to dust. On a successful save, the target takes the same damage but is not turned to dust.'
+    ))!
+    expect(mechanics.damage).toMatchObject({ dice: { count: 10, faces: 6 } })
+    expect(mechanics.damage?.saveOutcome).toBeUndefined()
+  })
+
+  it('a saving-throw spell with NO damage at all never populates saveOutcome', () => {
+    const mechanics = resolveDnd5eSpellMechanics(savingThrowEntry('The target must succeed on a saving throw or be frightened.'))!
+    expect(mechanics.damage).toBeUndefined()
+  })
+
+  it('an attack-roll spell (not saving-throw) never populates saveOutcome even with "half" in its text', () => {
+    const mechanics = resolveDnd5eSpellMechanics({
+      name: 'Test Spell', level: 1, spellAttack: ['R'],
+      entries: ['Make a ranged spell attack. On a hit, the target takes {@damage 2d6} damage, or half that on a miracle.']
+    })!
+    expect(mechanics.resolution).toEqual({ kind: 'attack-roll' })
+    expect(mechanics.damage?.saveOutcome).toBeUndefined()
   })
 })
 

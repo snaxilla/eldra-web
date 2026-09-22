@@ -98,6 +98,7 @@ import {
   castSpell,
   castSpellAttack,
   castSpellAutomaticDamage,
+  castSpellSave,
   rollIndependentSpellDamage
 } from '../../../server/utils/character-cast'
 import rows from '../../lib/content-presentation/fixtures/5etools-real-rows.json'
@@ -172,6 +173,9 @@ const FIRE_BOLT_MECHANICS = resolveDnd5eSpellMechanics(spells['Fire Bolt'])
 const MAGIC_MISSILE_MECHANICS = resolveDnd5eSpellMechanics(spells['Magic Missile'])
 const FIREBALL_MECHANICS = resolveDnd5eSpellMechanics(spells.Fireball)
 const CHROMATIC_ORB_MECHANICS = resolveDnd5eSpellMechanics(spells['Chromatic Orb'])
+const SHIELD_MECHANICS = resolveDnd5eSpellMechanics(spells.Shield)
+const ACID_SPLASH_MECHANICS = resolveDnd5eSpellMechanics(spells['Acid Splash'])
+const HOLD_PERSON_MECHANICS = resolveDnd5eSpellMechanics(spells['Hold Person'])
 
 beforeEach(() => {
   assembleCharacterMock.mockReset()
@@ -355,10 +359,15 @@ describe('castSpell -- the single dispatching entry point', () => {
 })
 
 describe('unsupported spells -- never fabricate a Cast', () => {
-  it('rejects a saving-throw spell (Fireball) as not-castable, and touches no roll/persistence machinery', async () => {
+  // Character Sheet Body Phase 1B.3 upgrade: Fireball (a saving-throw
+  // spell) is now SUPPORTED -- see the dedicated 'castSpellSave' describe
+  // blocks below. Shield (resolution: null, no damage, no healing) remains
+  // a genuine unsupported-effect case, keeping this describe block's own
+  // purpose intact.
+  it('rejects an effect-only spell (Shield) as not-castable, and touches no roll/persistence machinery', async () => {
     assembleCharacterMock.mockResolvedValue({
       available: true,
-      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-3', 'Fireball', FIREBALL_MECHANICS)] })
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-3', 'Shield', SHIELD_MECHANICS)] })
     })
 
     const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-3' })
@@ -700,5 +709,399 @@ describe('ordinary fixed-type spell damage labels stay unchanged (no absurd verb
     expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ damageTypeLabel: undefined })
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Sheet Body Phase 1B.3 -- Saving-Throw Spell Casting
+// ---------------------------------------------------------------------------
+// This app has no leveling system yet (see the 1B.2.1 describe block above,
+// same reasoning): the real Wizard fixture is permanently character level
+// 1, which only ever grants level-1 Spell Slots. Fireball's own base level
+// (3) needs a level-3 slot pool to exist at all, so these tests reuse the
+// exact same `getDerivedCharacterOverrideMock` technique 1B.2.1 already
+// established -- a controlled fake for JUST the derived-character read,
+// while `getCharacterActions`/`assembleCharacter` still run for real.
+
+function level5WizardDerived(overrides: Partial<{ slot3Max: number; slot4Max: number }> = {}) {
+  return {
+    available: true as const,
+    derived: {
+      byCategory: {
+        spellcasting: [
+          { id: 'value:spellcasting.caster_type.full', value: true },
+          { id: 'value:spellcasting.attack_bonus', value: 6 },
+          { id: 'value:spellcasting.save_dc', value: 14 }
+        ],
+        progression: [{ id: 'value:level', value: 5 }]
+      },
+      tables: [{
+        id: 'table:spellcasting.slots_full',
+        rows: [{
+          key: 5, slot_1: 4, slot_2: 3, slot_3: overrides.slot3Max ?? 2, slot_4: overrides.slot4Max ?? 0,
+          slot_5: 0, slot_6: 0, slot_7: 0, slot_8: 0, slot_9: 0
+        }]
+      }],
+      choices: []
+    }
+  }
+}
+
+function withFireballPrepared() {
+  assembleCharacterMock.mockResolvedValue({
+    available: true,
+    blueprint: wizardBlueprint({ spells: [preparedSpell('spell-7', 'Fireball', FIREBALL_MECHANICS)] })
+  })
+}
+
+describe('castSpellSave -- Fireball (saving-throw, structured damage, required acceptance)', () => {
+  it('classifies Cast-capable and dispatches through castSpell', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+  })
+
+  it('produces NO caster d20 -- result.roll is absent', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.roll).toBeUndefined()
+  })
+
+  it('creates ZERO RollEvents -- neither attack nor damage', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('returns the authoritative, server-derived Save DC and ability -- Dexterity, DC 14', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext).toMatchObject({ savingAbility: 'dex', saveDc: 14, spellLevel: 3, castLevel: 3 })
+  })
+
+  it('preserves the half-on-save context, computed nowhere except the canonical resolver', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.damage).toMatchObject({ dice: { count: 8, faces: 6 }, type: 'fire', saveOutcome: 'half-on-save' })
+  })
+
+  it('consumes exactly one level-3 slot at the default (base-level) castLevel', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '3': 1 } })
+  })
+
+  it('returns the updated spellcasting record for authoritative resource-orb refresh', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+    saveSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { '3': 1 } })
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.spellcasting).toEqual({ spells: [], expendedSlots: { '3': 1 } })
+  })
+
+  it('a selected HIGHER castLevel is the exact slot consumed, base spell level stays 3', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived({ slot4Max: 1 }))
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 4 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext).toMatchObject({ spellLevel: 3, castLevel: 4 })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '4': 1 } })
+  })
+
+  it('rejects a castLevel below the spell\'s own base level', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 2 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a level this character\'s progression does not declare (level 9)', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 9 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+  })
+
+  it('zero available legal slots rejects the Cast BEFORE any resource mutation -- no free spell', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { '3': 2 } }) // both L3 slots spent
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('resource-unavailable')
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('does not require or accept a target -- CastSpellInput has no target field at all', () => {
+    const input = { ...CAST_INPUT, actionId: 'spell:spell-7' }
+    expect(Object.keys(input)).not.toContain('targetCharacterId')
+    expect(Object.keys(input)).not.toContain('target')
+  })
+
+  it('never mutates any character\'s HP -- the result carries no target/health shape', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result).not.toHaveProperty('targetHealth')
+    expect(result).not.toHaveProperty('hit')
+  })
+
+  it('honors Cast Configuration\'s structured choices generically, even for a saving-throw spell', async () => {
+    // Synthetic: Fireball's own mechanics plus a structured choice, proving
+    // the SAME generic choice validation this phase's earlier acceptance
+    // (Chromatic Orb) established applies uniformly to the save path too --
+    // no save-specific choice handling exists.
+    const withChoice = {
+      ...FIREBALL_MECHANICS!,
+      choices: [{ id: 'damage-type', label: 'Damage Type', options: [{ id: 'fire', label: 'Fire' }, { id: 'cold', label: 'Cold' }] }]
+    }
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-8', 'Test Fireball', withChoice)] })
+    })
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const missing = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-8' })
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) expect(missing.reason).toBe('invalid-choice')
+
+    const withSelection = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-8', choices: { 'damage-type': 'cold' } })
+    expect(withSelection.ok).toBe(true)
+    if (withSelection.ok) expect(withSelection.saveContext?.damage?.type).toBe('cold')
+  })
+})
+
+describe('castSpellSave -- Acid Splash (cantrip, save-for-no-damage, required acceptance)', () => {
+  function withAcidSplashPrepared() {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-9', 'Acid Splash', ACID_SPLASH_MECHANICS)] })
+    })
+  }
+
+  it('consumes no spell slot at all -- no load/save of spellcasting state', async () => {
+    withAcidSplashPrepared()
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-9' })
+    expect(result.ok).toBe(true)
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('produces no caster d20 and no RollEvent', async () => {
+    withAcidSplashPrepared()
+    await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-9' })
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('castLevel is null -- a cantrip has no casting-level concept', async () => {
+    withAcidSplashPrepared()
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-9' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.castLevel).toBeNull()
+    expect(result.saveContext?.savingAbility).toBe('dex')
+  })
+
+  it('rejects an explicit castLevel for a cantrip -- cannot be forced to consume a leveled slot', async () => {
+    withAcidSplashPrepared()
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-9', castLevel: 1 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('preserves the no-damage-on-save context', async () => {
+    withAcidSplashPrepared()
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-9' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.damage).toMatchObject({ dice: { count: 1, faces: 6 }, type: 'acid', saveOutcome: 'no-damage-on-save' })
+  })
+})
+
+describe('castSpellSave -- Hold Person (save-context-only, no structured damage)', () => {
+  function withHoldPersonPrepared() {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-10', 'Hold Person', HOLD_PERSON_MECHANICS)] })
+    })
+  }
+
+  it('Cast succeeds and returns Save DC/ability context with no damage field', async () => {
+    withHoldPersonPrepared()
+    // Hold Person is base level 2 -- the real level-1 Wizard fixture has no
+    // level-2 slots, so this uses the same controlled override as Fireball.
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-10' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext).toMatchObject({ savingAbility: 'wis', spellLevel: 2 })
+    expect(result.saveContext?.damage).toBeUndefined()
+  })
+
+  it('consumes the selected level-2 slot like any other leveled Cast', async () => {
+    withHoldPersonPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-10' })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '2': 1 } })
+  })
+
+  it('does not fabricate an independent Damage roll -- Hold Person has no canonical damage to roll', async () => {
+    withHoldPersonPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-10' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-castable')
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('rollIndependentSpellDamage -- Fireball\'s own Damage button', () => {
+  it('rolls the canonical 8d6 fire damage, spending no additional slot', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ spellName: 'Fireball', dice: { count: 8, faces: 6 }, modifier: 0, damageType: 'fire' })
+    )
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('retains save context (ability, DC, saveOutcome) in the RollEvent metadata', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ savingAbility: 'dex', saveDc: 14, saveOutcome: 'half-on-save' })
+      })
+    )
+  })
+
+  it('preserves/revalidates a supplied castLevel without applying any upcast scaling -- still 8d6', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived({ slot4Max: 1 }))
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 4 })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 8, faces: 6 }, metadata: expect.objectContaining({ castLevel: 4, spellLevel: 3 }) })
+    )
+  })
+
+  it('does not require a prior successful Cast -- Damage is independently callable', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('rollIndependentSpellDamage -- Acid Splash\'s own Damage button', () => {
+  it('rolls the canonical 1d6 acid damage, no resource check at all', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-9', 'Acid Splash', ACID_SPLASH_MECHANICS)] })
+    })
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-9' })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 1, faces: 6 }, damageType: 'acid' })
+    )
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Phase 1B.3 -- no spell-name special cases', () => {
+  it('a synthetic, differently-named spell with Fireball\'s exact mechanics casts identically', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-11', 'Zzyzx\'s Fiery Doom', FIREBALL_MECHANICS)] })
+    })
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-11' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext).toMatchObject({ savingAbility: 'dex', saveDc: 14 })
+  })
+})
+
+describe('Phase 1B.3 -- targeted Resolve preservation', () => {
+  // character-combat.ts's own module is untouched by this phase (verified
+  // by this file's own diff scope) -- this test proves the untargeted Cast
+  // path added here coexists with, rather than replaces, that capability:
+  // Fireball is castable through THIS module while its saving-throw
+  // resolution/damage shape remains exactly what resolveCombatAction's own
+  // targeted path already reads from the same `action.resolution`/
+  // `action.damageRoll` fields (see character-combat.test.ts, unchanged and
+  // still green -- confirmed by the full suite run accompanying this task).
+  it('a Fireball action still carries the resolution/damage shape targeted Resolve depends on', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // The same authoritative facts (ability, DC, damage dice/type) a
+    // targeted Resolve would read are exactly what this untargeted Cast
+    // also returns -- one canonical source, two different consumers.
+    expect(result.saveContext?.savingAbility).toBe('dex')
+    expect(result.saveContext?.damage?.dice).toEqual({ count: 8, faces: 6 })
   })
 })

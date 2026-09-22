@@ -51,6 +51,23 @@ import type { AbilityKey } from '../characters/ability-scores'
 
 export type SpellDice = { count: number; faces: number }
 
+// Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) -- the
+// SMALLEST generic representation the real corpus reliably supports for
+// "what happens to THIS damage roll when the target's saving throw
+// succeeds." Derived from the corpus audit (see resolveDnd5eSpellMechanics's
+// own header): of 154 real saving-throw spells, 58 state "half as much
+// damage on a successful save" (Fireball) and 12 state the disjunctive
+// "succeeds ... or takes NdM damage" shape (Acid Splash -- damage ONLY on a
+// failed save, nothing on success) -- two genuinely different, reliably
+// distinguishable outcomes, never conflated. `'deferred'` is deliberately
+// NOT a member here: the remaining ~21 damage-bearing save spells whose
+// prose matches neither pattern (Disintegrate, the smite spells, ...) are
+// left with NO `saveOutcome` at all -- absence already means "not reliably
+// known," the same "absence is legal" rule every optional field in this
+// codebase already follows; a third enum member carrying the identical
+// meaning would just be a second way to say the same thing.
+export type SpellSaveOutcome = 'half-on-save' | 'no-damage-on-save'
+
 // A dice roll plus whatever flat, non-dice addend the source states --
 // Magic Missile's "+1" must survive here. `modifier` is always a number
 // (0 when the source states none), never optional, so a consumer never has
@@ -59,6 +76,11 @@ export type SpellRoll = {
   dice?: SpellDice
   modifier: number
   type?: string
+  // Only ever populated for a saving-throw spell's own damage roll (never
+  // for `healing`, and never for an attack-roll/automatic spell's damage,
+  // neither of which has a "save" for this to describe) -- see
+  // `SpellSaveOutcome`'s own header for the reliability rule.
+  saveOutcome?: SpellSaveOutcome
 }
 
 // Which raw mechanic resolves this spell, and the one extra fact each

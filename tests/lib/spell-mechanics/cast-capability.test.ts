@@ -45,9 +45,27 @@ describe('classifySpellCastCapability -- the six-spell suite', () => {
     expect(classifySpellCastCapability(actionOf('Magic Missile'))).toEqual({ kind: 'supported-automatic-damage' })
   })
 
-  it('Fireball (a saving-throw spell) does NOT classify as supported (test 3)', () => {
+  // Character Sheet Body Phase 1B.3 upgrade: a saving-throw spell with
+  // structured damage is now honestly Cast-capable -- see this file's own
+  // header update and cast-capability.ts's own SAVING-THROW note. This
+  // does NOT touch character-combat.ts's existing targeted Resolve, which
+  // remains real, untouched functionality for a future Encounter system.
+  it('Fireball (saving-throw, structured damage) classifies as supported-save-damage (test 3, 1B.3)', () => {
     const capability = classifySpellCastCapability(actionOf('Fireball'))
-    expect(capability?.kind).toBe('unsupported-save')
+    expect(capability).toEqual({ kind: 'supported-save-damage' })
+  })
+
+  it('Acid Splash (cantrip, saving-throw, structured damage) classifies as supported-save-damage', () => {
+    const capability = classifySpellCastCapability(actionOf('Acid Splash'))
+    expect(capability).toEqual({ kind: 'supported-save-damage' })
+  })
+
+  // Hold Person has NO structured damage at all -- Cast is still honestly
+  // executable (resource + authoritative Save DC/ability context), it just
+  // has nothing further to independently roll.
+  it('Hold Person (saving-throw, no structured damage) classifies as supported-save-context', () => {
+    const capability = classifySpellCastCapability(actionOf('Hold Person'))
+    expect(capability).toEqual({ kind: 'supported-save-context' })
   })
 
   it('Shield (an effect-only spell) does not fabricate Cast support (test 4)', () => {
@@ -110,6 +128,23 @@ describe('classifySpellCastCapability -- synthetic edge cases the real corpus do
       category: 'spell',
       spellMechanics: mechanics({ resolution: { kind: 'attack-roll' }, hasUnresolvedChoice: true })
     })).toEqual({ kind: 'unsupported-choice' })
+  })
+
+  // Character Sheet Body Phase 1B.3 -- the identical gate applies uniformly
+  // regardless of resolution kind, never re-checked or bypassed for the
+  // newly-supported saving-throw branch.
+  it('an unresolved choice also overrides an otherwise-supported saving-throw resolution', () => {
+    expect(classifySpellCastCapability({
+      category: 'spell',
+      spellMechanics: mechanics({ resolution: { kind: 'saving-throw', savingAbility: 'dex' }, hasUnresolvedChoice: true })
+    })).toEqual({ kind: 'unsupported-choice' })
+  })
+
+  it('a saving-throw spell with no damage AND no healing is supported-save-context, never unsupported-mechanic', () => {
+    expect(classifySpellCastCapability({
+      category: 'spell',
+      spellMechanics: mechanics({ resolution: { kind: 'saving-throw', savingAbility: 'wis' } })
+    })).toEqual({ kind: 'supported-save-context' })
   })
 })
 

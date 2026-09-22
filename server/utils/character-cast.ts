@@ -26,16 +26,27 @@
 // ---------------------------------------------------------------------------
 // SUPPORTED ARCHETYPES ONLY -- see app/lib/spell-mechanics/cast-capability.ts
 // ---------------------------------------------------------------------------
-// Only `supported-spell-attack` (Fire Bolt: an untargeted spell attack roll)
-// and `supported-automatic-damage` (Magic Missile: a damage roll with
-// neither an attack nor a save) can be Cast through this module. Every other
-// capability (`unsupported-save`, `unsupported-healing`, `unsupported-effect`,
+// Four capabilities can be Cast through this module: `supported-spell-attack`
+// (Fire Bolt: an untargeted spell attack roll), `supported-automatic-damage`
+// (Magic Missile: a damage roll with neither an attack nor a save), and, as
+// of Character Sheet Body Phase 1B.3, `supported-save-damage`/
+// `supported-save-context` (Fireball/Hold Person: a saving-throw spell,
+// Cast entirely UNTARGETED -- see `castSpellSave`'s own header for why this
+// creates no caster d20 and possibly no RollEvent at all). Every other
+// capability (`unsupported-healing`, `unsupported-effect`,
 // `unsupported-choice`, `unsupported-mechanic`) is rejected with
 // `reason: 'not-castable'` -- `classifySpellCastCapability` is the ONE
 // predicate this module and CharacterActionsPanel.vue both call, so client
-// and server can never independently invent different support rules. A
-// saving-throw spell (Fireball) stays on character-combat.ts's existing
-// targeted "Resolve" control, entirely untouched by this module.
+// and server can never independently invent different support rules.
+//
+// character-combat.ts's existing targeted "Resolve" control (attacker +
+// target, target save roll, target HP mutation) is UNTOUCHED by this
+// module and by Phase 1B.3 -- it remains real, tested, working
+// functionality for whenever a future Encounter system wants to apply a
+// Cast against a specific target. This module's own saving-throw path
+// answers a narrower, deliberately different question: "what does the
+// CASTER'S side of this spell look like right now", never "did the target
+// make its save."
 //
 // ---------------------------------------------------------------------------
 // RESOURCE RULE: LEVEL 0 = FREE, LEVEL > 0 = ONE SLOT OF THAT LEVEL
@@ -150,6 +161,7 @@ import {
   SLOT_TABLE_BY_CASTER_TYPE
 } from '../../app/lib/characters/spellcasting'
 import type { RollEventRecord, RollVisibility } from '../../app/lib/rolls/types'
+import type { AbilityKey } from '../../app/lib/characters/ability-scores'
 
 // ---------------------------------------------------------------------------
 // Number/boolean lookups -- restated locally rather than imported, matching
@@ -224,7 +236,9 @@ export function statusForCastFailure(reason: CastFailureReason): number {
   }
 }
 
-type CastableCapability = Extract<SpellCastCapability, { kind: 'supported-spell-attack' | 'supported-automatic-damage' }>
+type CastableCapability = Extract<SpellCastCapability, {
+  kind: 'supported-spell-attack' | 'supported-automatic-damage' | 'supported-save-damage' | 'supported-save-context'
+}>
 
 export type CastableSpell = {
   action: CharacterAction
@@ -275,7 +289,12 @@ async function resolveCastableSpell(
 
   const capability = classifySpellCastCapability({ category: action.category, spellMechanics: action.spellMechanics })
 
-  if (!capability || (capability.kind !== 'supported-spell-attack' && capability.kind !== 'supported-automatic-damage')) {
+  const isCastableKind = capability?.kind === 'supported-spell-attack'
+    || capability?.kind === 'supported-automatic-damage'
+    || capability?.kind === 'supported-save-damage'
+    || capability?.kind === 'supported-save-context'
+
+  if (!isCastableKind) {
     return {
       ok: false,
       reason: 'not-castable',
@@ -283,17 +302,33 @@ async function resolveCastableSpell(
     }
   }
 
-  // classifySpellCastCapability only returns 'supported-spell-attack' when
-  // `mechanics.resolution.kind === 'attack-roll'` and only
-  // 'supported-automatic-damage' when `mechanics.damage` is present -- so
-  // `action.spellMechanics` is guaranteed non-null/non-undefined here.
+  // classifySpellCastCapability only returns one of the four `isCastableKind`
+  // members when `action.spellMechanics` is genuinely present -- so it is
+  // guaranteed non-null/non-undefined here regardless of which one this is.
   const mechanics = action.spellMechanics as CanonicalSpellMechanics
+  const castableCapability = capability as CastableCapability
 
-  if (capability.kind === 'supported-spell-attack' && action.attackBonus === undefined) {
+  if (castableCapability.kind === 'supported-spell-attack' && action.attackBonus === undefined) {
     return {
       ok: false,
       reason: 'rules-unavailable',
       message: `This World's active Rules Package does not declare the Spell Attack Bonus '${action.name}' needs`
+    }
+  }
+
+  // Character Sheet Body Phase 1B.3 -- the identical "Rules Engine has
+  // nothing to say" gate `supported-spell-attack` already has above,
+  // restated for a saving-throw spell's own required number (Save DC,
+  // attached to every spell action uniformly by character-actions.ts's own
+  // `getCharacterActions`, unconditionally on resolution kind).
+  if (
+    (castableCapability.kind === 'supported-save-damage' || castableCapability.kind === 'supported-save-context')
+    && action.saveDc === undefined
+  ) {
+    return {
+      ok: false,
+      reason: 'rules-unavailable',
+      message: `This World's active Rules Package does not declare the Spell Save DC '${action.name}' needs`
     }
   }
 
@@ -499,10 +534,44 @@ function damageTypeLabelFor(mechanics: CanonicalSpellMechanics, resolvedChoices:
   return chosen ? capitalizeWord(chosen) : undefined
 }
 
+// Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) -- the
+// authoritative caster-side facts a saving-throw Cast returns IN PLACE OF a
+// dice roll (see this file's own "WHAT DOES CAST ROLL?" note on
+// `castSpellSave` below for why there is no RollEvent to attach these to).
+// Deliberately NOT a target-facing result: no save is rolled, no hit/miss
+// is decided, no HP changes -- this is exactly the same "caster-side
+// authority only" boundary `action.attackBonus`/`action.saveDc` already
+// draw everywhere else in this codebase, just carried on a dedicated
+// response shape instead of a RollEvent.
+export type CastSaveContext = {
+  savingAbility: AbilityKey
+  saveDc: number
+  spellLevel: number
+  // `null` for a cantrip -- mirrors `resolveRequestedCastLevel`'s own
+  // level-or-null contract exactly.
+  castLevel: number | null
+  // Present only when this spell has structured damage (the
+  // `supported-save-damage` case, e.g. Fireball) -- absent for a pure
+  // context spell (`supported-save-context`, e.g. Hold Person), which has
+  // nothing further to roll. `saveOutcome` is copied straight from
+  // `resolvedDamage`, never recomputed.
+  damage?: CanonicalSpellMechanics['damage']
+  choices?: Record<string, string>
+}
+
 export type CastSpellResult =
   | {
       ok: true
-      roll: RollEventRecord
+      // Character Sheet Body Phase 1B.3 -- OPTIONAL now that a saving-throw
+      // Cast (`castSpellSave`) may legitimately produce no dice roll at
+      // all. Every OTHER Cast path (`castSpellAttack`,
+      // `castSpellAutomaticDamage`, `rollIndependentSpellDamage`) still
+      // always populates this -- the type only widened to accommodate the
+      // one genuinely rollless path, never weakened for the rolling ones.
+      roll?: RollEventRecord
+      // Present ONLY for a saving-throw Cast -- see `CastSaveContext`'s own
+      // header. Absent for every other archetype.
+      saveContext?: CastSaveContext
       // Present only when this Cast actually expended a slot -- the
       // client's own "resource presentation must update from authoritative
       // state, no reload" requirement, satisfied by handing back the exact
@@ -622,19 +691,102 @@ export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<C
   return castLeveledSpell(input.worldId, input.characterId, levelResolution.level, createRoll)
 }
 
+// ---------------------------------------------------------------------------
+// castSpellSave -- Fireball's archetype (Character Sheet Body Phase 1B.3).
+// ---------------------------------------------------------------------------
+// WHAT DOES CAST ROLL? Nothing, on the caster's side. A saving-throw spell's
+// d20 belongs to the TARGET, who does not exist yet in this untargeted Cast
+// path (no Encounter selection required -- this phase's own central
+// product goal). Fireball is castable the instant it is prepared, with no
+// victim identified at all. So this function creates NO RollEvent -- not a
+// dummy d20, not a fabricated "cast succeeded" roll -- only the
+// authoritative `CastSaveContext` (Save DC, saving ability, base/cast
+// level, damage+saveOutcome where structured) a DM can read directly, and
+// (for a leveled spell) the exact same resource expenditure every other
+// leveled Cast performs.
+//
+// FAILURE ORDERING FOR THIS PATH SPECIFICALLY (see this file's own header
+// ORDERING section for the ROLLING paths, which this does NOT use): validate
+// -> [availability check] -> persist resource expenditure -> return success.
+// There is no roll to persist-then-broadcast, so `castLeveledSpell`'s own
+// roll-first/broadcast-last sequence does not apply here -- a mutation
+// failure after a successful availability check is reported the identical
+// way (502, "the cast was not completed"), just without an orphaned
+// RollEvent ever having existed to begin with.
+//
+// No target save, no target HP, no Encounter selection -- all deliberately
+// out of this function's scope; see this file's own header and
+// character-combat.ts's existing, untouched targeted Resolve control for
+// where target-side resolution already lives.
+export async function castSpellSave(input: CastSpellInput): Promise<CastSpellResult> {
+  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
+  if (!resolved.ok) return resolved
+
+  const { action, mechanics, capability, resolvedChoices, resolvedDamage } = resolved.castable
+  if (capability.kind !== 'supported-save-damage' && capability.kind !== 'supported-save-context') {
+    return {
+      ok: false,
+      reason: 'not-castable',
+      message: `'${action.name}' does not resolve as a saving-throw spell -- use one of Cast's other paths instead`
+    }
+  }
+
+  // classifySpellCastCapability's own saving-throw branch is the only
+  // caller of `resolution.kind === 'saving-throw'` -- guaranteed here.
+  const savingAbility = (mechanics.resolution as { kind: 'saving-throw'; savingAbility: AbilityKey }).savingAbility
+  const saveDc = action.saveDc as number
+
+  const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
+  if (!levelResolution.ok) return levelResolution
+
+  const saveContext: CastSaveContext = {
+    savingAbility,
+    saveDc,
+    spellLevel: mechanics.level,
+    castLevel: levelResolution.level,
+    ...(resolvedDamage ? { damage: resolvedDamage } : {}),
+    ...(Object.keys(resolvedChoices).length ? { choices: resolvedChoices } : {})
+  }
+
+  if (levelResolution.level === null) {
+    // Cantrip: no resource step at all -- Acid Splash's own required
+    // acceptance case.
+    return { ok: true, saveContext }
+  }
+
+  const availability = await checkSpellSlotAvailability(input.worldId, input.characterId, levelResolution.level)
+  if (!availability.ok) return availability
+
+  let spellcasting: StoredCharacterSpellcasting
+  try {
+    spellcasting = await expendSpellSlotAuthoritatively(input.characterId, levelResolution.level, availability.max)
+  } catch {
+    // No roll was ever created for this path -- nothing to have persisted
+    // unbroadcast, nothing orphaned. The resource mutation simply did not
+    // happen, and the Cast honestly reports that it did not complete.
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'The spell could not be recorded as cast -- its spell slot could not be recorded as spent'
+    })
+  }
+
+  return { ok: true, saveContext, spellcasting }
+}
+
 // castSpell -- the single entry point cast.post.ts's "Cast" intent calls.
 // The client asks to Cast an actionId; it never states (and the route never
-// asks it to state) which of the two supported archetypes that action is --
-// this function resolves that itself, then dispatches, so "which capability
-// is this" is decided in exactly the one place `classifySpellCastCapability`
+// asks it to state) which supported archetype that action is -- this
+// function resolves that itself, then dispatches, so "which capability is
+// this" is decided in exactly the one place `classifySpellCastCapability`
 // already lives, never duplicated into the route's own request parsing.
 export async function castSpell(input: CastSpellInput): Promise<CastSpellResult> {
   const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
   if (!resolved.ok) return resolved
 
-  return resolved.castable.capability.kind === 'supported-spell-attack'
-    ? castSpellAttack(input)
-    : castSpellAutomaticDamage(input)
+  const kind = resolved.castable.capability.kind
+  if (kind === 'supported-spell-attack') return castSpellAttack(input)
+  if (kind === 'supported-automatic-damage') return castSpellAutomaticDamage(input)
+  return castSpellSave(input)
 }
 
 // The shared guard-then-roll-then-mutate-then-broadcast sequence for any
@@ -708,16 +860,26 @@ async function castLeveledSpell(
 // DAMAGE / RESOURCE SEMANTICS" rule. Preserved in metadata only, so a
 // future castLevel-aware scaling phase (1B.5) has the context already
 // flowing through without another request-shape change.
+//
+// CHARACTER SHEET BODY PHASE 1B.3 -- FIREBALL'S OWN DAMAGE BUTTON.
+// `supported-save-damage` reuses this exact function unchanged in shape:
+// `castSpellSave` (Cast) never rolls damage itself, so a saving-throw
+// spell's structured damage is rolled here, independently, exactly like an
+// attack-roll spell's -- no target save is required or assumed (RAW's
+// "half on a success" is preserved as `resolvedDamage.saveOutcome` CONTEXT
+// in the RollEvent's metadata for a DM to apply manually, never computed or
+// applied to any target's HP here). Rolling still spends no resource --
+// Cast already did, for a leveled save spell.
 export async function rollIndependentSpellDamage(input: CastSpellInput): Promise<CastSpellResult> {
   const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
   if (!resolved.ok) return resolved
 
   const { action, mechanics, capability, resolvedChoices, resolvedDamage } = resolved.castable
-  if (capability.kind !== 'supported-spell-attack') {
+  if (capability.kind !== 'supported-spell-attack' && capability.kind !== 'supported-save-damage') {
     return {
       ok: false,
       reason: 'not-castable',
-      message: `'${action.name}' does not expose an independent Damage roll -- its damage is already rolled by Cast`
+      message: `'${action.name}' does not expose an independent Damage roll -- its damage is already rolled by Cast, or it has none`
     }
   }
 
@@ -731,6 +893,18 @@ export async function rollIndependentSpellDamage(input: CastSpellInput): Promise
 
   const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
   if (!levelResolution.ok) return levelResolution
+
+  // Save context (ability/DC/outcome) is CONTEXT ONLY here -- see this
+  // function's own header. Absent entirely for a non-saving-throw spell
+  // (Fire Bolt, Chromatic Orb), matching every other conditional metadata
+  // field in this module.
+  const saveMetadata = mechanics.resolution?.kind === 'saving-throw'
+    ? {
+        savingAbility: mechanics.resolution.savingAbility,
+        ...(action.saveDc !== undefined ? { saveDc: action.saveDc } : {}),
+        ...(resolvedDamage.saveOutcome ? { saveOutcome: resolvedDamage.saveOutcome } : {})
+      }
+    : {}
 
   const roll = await createSpellDamageRollEvent({
     worldId: input.worldId,
@@ -749,7 +923,8 @@ export async function rollIndependentSpellDamage(input: CastSpellInput): Promise
       actionCategory: 'spell',
       spellLevel: mechanics.level,
       ...(levelResolution.level !== null ? { castLevel: levelResolution.level } : {}),
-      ...(Object.keys(resolvedChoices).length ? { choices: resolvedChoices } : {})
+      ...(Object.keys(resolvedChoices).length ? { choices: resolvedChoices } : {}),
+      ...saveMetadata
     },
     broadcast: true
   })

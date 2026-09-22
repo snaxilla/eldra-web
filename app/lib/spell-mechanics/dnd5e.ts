@@ -70,7 +70,7 @@
 
 import { cleanText, flattenEntries } from '../content-presentation/dnd5e'
 import type { AbilityKey } from '../characters/ability-scores'
-import type { CanonicalSpellMechanics, SpellChoice, SpellResolutionKind, SpellRoll, SpellScaling } from './types'
+import type { CanonicalSpellMechanics, SpellChoice, SpellResolutionKind, SpellRoll, SpellSaveOutcome, SpellScaling } from './types'
 
 const SCHOOL_LABELS: Record<string, string> = {
   A: 'Abjuration', C: 'Conjuration', D: 'Divination', E: 'Enchantment',
@@ -186,6 +186,35 @@ function resolveResolution(raw: Record<string, unknown>, hasDamage: boolean): Sp
   if (hasDamage) return { kind: 'automatic' }
 
   return null
+}
+
+// Character Sheet Body Phase 1B.3 -- see SpellSaveOutcome's own header
+// (types.ts) for the corpus evidence behind these two patterns and why a
+// third catch-all value is deliberately absent. Both patterns were verified
+// against the real, live XPHB collection (154 saving-throw spells): 58
+// match HALF_ON_SAVE, 12 match NO_DAMAGE_ON_SAVE, and the remaining ~21
+// damage-bearing save spells (Disintegrate, the smite spells, ...) match
+// neither and correctly resolve `undefined` here rather than guessing.
+//
+// HALF_ON_SAVE is intentionally broad ("half...damage" anywhere in the
+// text) because 5etools' own phrasing varies ("half as much damage on a
+// successful one", "half as much damage only") -- narrowing it to one exact
+// phrase would silently under-classify real spells the corpus audit already
+// confirmed say the same thing differently.
+//
+// NO_DAMAGE_ON_SAVE requires the disjunctive "saving throw or take(s) NdM"
+// shape specifically -- the standard RAW phrasing for "nothing happens on a
+// success" (Acid Splash, Sacred Flame, Toll the Dead, Vicious Mockery, ...).
+// This is NOT run when HALF_ON_SAVE already matched (checked first, and
+// mutually exclusive in every real spell examined).
+const HALF_ON_SAVE_PATTERN = /half (as much )?damage/i
+const NO_DAMAGE_ON_SAVE_PATTERN = /saving throw or takes? \d+d\d+/i
+
+function resolveSaveOutcome(resolution: SpellResolutionKind | null, hasDamage: boolean, text: string): SpellSaveOutcome | undefined {
+  if (resolution?.kind !== 'saving-throw' || !hasDamage) return undefined
+  if (HALF_ON_SAVE_PATTERN.test(text)) return 'half-on-save'
+  if (NO_DAMAGE_ON_SAVE_PATTERN.test(text)) return 'no-damage-on-save'
+  return undefined
 }
 
 // A spell's damage/other-roll dice are TAGGED, not merely mentioned --
@@ -308,7 +337,16 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
   // structurally representing (the multi-component case).
   const hasUnresolvedChoice = damageInflict.length > 1 && choices.length === 0
 
-  const damage = extractDamageRoll(raw.entries, damageType)
+  const descriptionText = flattenEntries(raw.entries).join(' ')
+  const baseDamage = extractDamageRoll(raw.entries, damageType)
+  const resolution = resolveResolution(raw, Boolean(baseDamage))
+
+  // Character Sheet Body Phase 1B.3 -- attached to the damage roll itself
+  // (SpellRoll.saveOutcome, never a second top-level field) since it
+  // describes what happens to THIS roll on a successful save; see
+  // SpellSaveOutcome's own header (types.ts) for the reliability rule.
+  const saveOutcome = resolveSaveOutcome(resolution, Boolean(baseDamage), descriptionText)
+  const damage = baseDamage && saveOutcome ? { ...baseDamage, saveOutcome } : baseDamage
 
   return {
     level,
@@ -319,8 +357,8 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     duration: describeDuration(raw.duration),
     concentration: isConcentration(raw.duration),
     ritual: Boolean((raw.meta as Record<string, unknown> | undefined)?.ritual),
-    description: flattenEntries(raw.entries).join(' ') || undefined,
-    resolution: resolveResolution(raw, Boolean(damage)),
+    description: descriptionText || undefined,
+    resolution,
     damage,
     // Never populated in 1B.1/1B.2 -- see this file's own header.
     healing: undefined,

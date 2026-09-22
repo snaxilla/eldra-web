@@ -25,6 +25,7 @@ export type {
   SpellDice,
   SpellResolutionKind,
   SpellRoll,
+  SpellSaveOutcome,
   SpellScaling,
   SpellMechanicsResolver
 } from './types'

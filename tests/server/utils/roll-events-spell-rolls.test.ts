@@ -29,7 +29,7 @@ vi.mock('../../../server/utils/roll-realtime-bridge', () => ({
   broadcastRollEvent: broadcastRollEventMock
 }))
 
-import { createSpellAttackRollEvent, createSpellDamageRollEvent } from '../../../server/utils/roll-events'
+import { createSpellAttackRollEvent, createSpellDamageRollEvent, createSpellHealingRollEvent } from '../../../server/utils/roll-events'
 
 function jsonResponse(data: unknown) {
   return { data }
@@ -138,5 +138,76 @@ describe('createSpellDamageRollEvent', () => {
     })
 
     expect(roll.label).toBe('Chromatic Orb Damage — Lightning')
+  })
+})
+
+// Character Sheet Body Phase 1B.4 (Healing Spell Foundation) -- Cure
+// Wounds/Healing Word's own roll. `server/utils/character-cast.ts`'s own
+// `castSpellHeal` covers resolution-and-orchestration (including folding
+// in the character's authoritative Spellcasting Ability Modifier); these
+// tests cover only the roll+persist+conditional-broadcast mechanics, the
+// exact same split `createSpellAttackRollEvent`/`createSpellDamageRollEvent`
+// above already have from their own orchestration layer.
+describe('createSpellHealingRollEvent', () => {
+  it('rolls the caller-supplied dice plus modifier, tagged with the dedicated \'healing\' sourceType', async () => {
+    const roll = await createSpellHealingRollEvent({
+      worldId: '5', rollerUserId: 'account-1', actorCharacterId: '42',
+      spellName: 'Cure Wounds', sourceId: 'spell:spell-6',
+      dice: { count: 2, faces: 8 }, modifier: 3,
+      visibility: 'private', broadcast: true
+    })
+
+    expect(roll.sourceType).toBe('healing')
+    expect(roll.label).toBe('Cure Wounds Healing')
+    expect(roll.expression).toBe('2d8')
+    expect(roll.dice).toHaveLength(1)
+    expect(roll.dice[0]!.sides).toBe(8)
+    expect(roll.dice[0]!.results).toHaveLength(2)
+    // The "+3" here stands in for the caller's own already-folded-in
+    // spellcasting ability modifier -- this function has no opinion on
+    // where the number came from, it only rolls whatever flat modifier it
+    // is handed (see this describe block's own header).
+    expect(roll.modifier).toBe(3)
+    expect(roll.total).toBe(roll.dice[0]!.total + 3)
+  })
+
+  it('broadcasts immediately when broadcast: true', async () => {
+    const roll = await createSpellHealingRollEvent({
+      worldId: '5', rollerUserId: 'account-1', actorCharacterId: '42',
+      spellName: 'Cure Wounds', sourceId: 'spell:spell-6',
+      dice: { count: 2, faces: 8 }, modifier: 3,
+      visibility: 'private', broadcast: true
+    })
+
+    expect(broadcastRollEventMock).toHaveBeenCalledTimes(1)
+    expect(broadcastRollEventMock).toHaveBeenCalledWith(roll)
+  })
+
+  it('persists but withholds the broadcast when broadcast: false -- the leveled-Cast ordering primitive', async () => {
+    await createSpellHealingRollEvent({
+      worldId: '5', rollerUserId: 'account-1', actorCharacterId: '42',
+      spellName: 'Cure Wounds', sourceId: 'spell:spell-6',
+      dice: { count: 2, faces: 8 }, modifier: 3,
+      visibility: 'private', broadcast: false
+    })
+
+    expect(directusServiceRequestMock).toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
+  })
+
+  // Healing Word's own required acceptance case -- a different die size,
+  // proving the function has no Cure-Wounds-specific shape baked in.
+  it('rolls Healing Word\'s own 2d4 dice shape with no modifier (Prayer of Healing-shaped, no ability modifier addend)', async () => {
+    const roll = await createSpellHealingRollEvent({
+      worldId: '5', rollerUserId: 'account-1', actorCharacterId: '42',
+      spellName: 'Healing Word', sourceId: 'spell:spell-7',
+      dice: { count: 2, faces: 4 }, modifier: 0,
+      visibility: 'private', broadcast: true
+    })
+
+    expect(roll.sourceType).toBe('healing')
+    expect(roll.label).toBe('Healing Word Healing')
+    expect(roll.expression).toBe('2d4')
+    expect(roll.modifier).toBe(0)
   })
 })

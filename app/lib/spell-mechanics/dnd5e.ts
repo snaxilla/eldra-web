@@ -39,34 +39,82 @@
 // this resolver reads the field CORRECTLY from the start, from `duration`.
 //
 // ---------------------------------------------------------------------------
-// HEALING -- INVESTIGATED, NOT GUESSED (see this phase's own required
-// clarification)
+// HEALING -- 1B.1's BLOCKER, RESOLVED IN 1B.4 BY A THREE-SIGNAL RULE
 // ---------------------------------------------------------------------------
-// 5etools has no `{@heal}`-equivalent tag -- healing rolls share the same
-// generic `{@dice NdM}` tag used for many unrelated non-damage rolls (Bane's
-// d4 penalty, Bless's own d4 bonus, Sleep's hit-point pool, False Life's
-// temporary hit points, Reincarnate's d100 REINCARNATION-TABLE roll).
-// `miscTags` does carry an `'HL'` ("healing") theme tag, but it is neither
-// necessary (Vampiric Touch heals via "half the damage dealt", stated only
-// in prose, with no `{@dice}` tag of its own to find) nor sufficient
-// (Reincarnate and Wish both carry `HL` AND an unrelated `{@dice}` tag that
-// is NOT a healing amount) to safely identify which specific tag, if any,
-// is the healing roll. A phrase-adjacency heuristic ("regain... hit points
-// equal to {@dice ...}") was tested against the real dataset and found to
-// work for 2014-era text but to FAIL SILENTLY against 2024/XPHB phrasing,
-// which replaces the literal words "hit points" with a `{@variantrule Hit
-// Points|XPHB}` reference tag -- and even within XPHB alone, Prayer of
-// Healing reverses the token order ("regain {@dice 2d8} {@variantrule Hit
-// Points...}") relative to Cure Wounds/Healing Word/Mass Cure Wounds
-// ("regains ...{@variantrule Hit Points...} equal to {@dice ...}"). No
-// single reliable rule was found across the two real, live source
-// collections this app already binds. Per this phase's own explicit
-// instruction, this is reported rather than shipped as a guess:
-// `healing` is a real field on CanonicalSpellMechanics (see ./types.ts) but
-// this resolver NEVER populates it in 1B.1. A future phase with a larger,
-// curated spell sample (or a per-book-version rule, verified the same way)
-// is the correct place to revisit this, not a heuristic added under time
-// pressure here.
+// 1B.1's own investigation (preserved here for the record) found no SINGLE
+// reliable signal: 5etools has no `{@heal}`-equivalent tag (healing shares
+// the generic `{@dice NdM}` tag with Bane's d4 penalty, Bless's own d4
+// bonus, Sleep's 2014-era hit-point pool, False Life's temporary hit
+// points, Reincarnate's d100 REINCARNATION-TABLE roll); `miscTags`' own
+// `'HL'` theme tag is neither necessary (Vampiric Touch heals via "half the
+// damage dealt", pure prose, no `{@dice}` tag of its own) nor sufficient
+// (Reincarnate and Wish both carry `HL` alongside an unrelated `{@dice}`
+// tag); and a bare phrase-adjacency check ("regain... hit points equal to
+// {@dice ...}") silently breaks on real XPHB token-order variance (Prayer
+// of Healing: "regain {@dice 2d8} {@variantrule Hit Points...}", dice
+// BEFORE the Hit Points reference, reversed from Cure Wounds/Healing
+// Word/Mass Cure Wounds/Mass Healing Word's own "regains ...{@variantrule
+// Hit Points...} equal to {@dice ...}").
+//
+// Character Sheet Body Phase 1B.4 re-ran this investigation against the
+// FULL real XPHB corpus (391 spells, not one hand-picked example) and found
+// a THREE-signal combination that isolates exactly the right 5 spells with
+// zero false positives/negatives across the entire corpus:
+//
+//   1. A `{@dice NdM}` tag within a bounded window (80 chars, either
+//      direction -- fixes the Prayer of Healing token-order break above) of
+//      a `{@variantrule Hit Point` reference tag -- narrower and more
+//      reliable than matching the literal, translatable prose word
+//      "hit points" (this IS the specific structural markup 5etools uses
+//      for that exact rules-glossary entry, not incidental text). This tag
+//      NAME match is itself already precise enough to exclude False Life's
+//      own Temporary Hit Points for free: its real tag is
+//      `{@variantrule Temporary Hit Points|XPHB}`, a DIFFERENT glossary
+//      entry the "Hit Point" prefix match never fires on -- no separate
+//      Temp-HP exclusion rule was needed.
+//   2. `duration.type === 'instant'` (already read by `describeDuration`/
+//      `isConcentration` below, no new parsing) -- excludes every spell
+//      whose "Hit Points" mention describes something that happens LATER
+//      or REPEATEDLY rather than immediately at cast time: Aura of
+//      Vitality (a 1-minute-concentration aura granting a repeatable
+//      bonus-action heal, not an instant one), Conjure Celestial (a
+//      10-minute-concentration summon whose healing comes from the
+//      conjured spirit's LATER turns), and Regenerate (a 1-hour-duration
+//      spell whose printed healing is a genuine immediate-plus-ongoing
+//      HYBRID -- correctly excluded rather than flattened into one number).
+//   3. The RAW-defined "regain(s)" verb specifically, present within the
+//      same local window as signal 1 -- the 2024 PHB's own Rules Glossary
+//      reserves "regain" for recovering LOST hit points, distinct from
+//      "gain" (acquiring NEW/Temporary ones -- False Life's own "You gain
+//      2d4+4 Temporary Hit Points" uses "gain", though it is already
+//      excluded by signal 1's own tag-name specificity regardless, see
+//      below) or other verbs entirely. This is what correctly excludes
+//      Heroes' Feast, the one
+//      spell signals 1+2 alone do NOT: it has `duration: instant` AND a
+//      dice-tag-near-Hit-Points-tag match ("it gains the same number of
+//      Hit Points"), but states "gains", never "regains" -- a real,
+//      book-consistent rules distinction (a creature must first spend an
+//      hour partaking of the feast; the HP gain is not this spell's own
+//      immediate effect), not incidental phrasing.
+//
+// Result, verified against the real corpus: Cure Wounds, Healing Word, Mass
+// Cure Wounds, Mass Healing Word, and Prayer of Healing pass all three
+// signals -- the entire required acceptance set, plus a bonus real spell
+// Phase 1B.4 did not need to add fixtures for. Every other `{@dice}`-
+// bearing, `Hit Point`-mentioning spell in the corpus (Aura of Vitality,
+// Conjure Celestial, Regenerate, Heroes' Feast, plus every non-healing
+// dice-bearing spell checked: Bane, Bless, Sleep, Wish, Reincarnate, ...)
+// correctly resolves NO healing. Temp HP (False Life, a distinct
+// `{@variantrule Temporary Hit Points}` tag), resurrection (Revivify/Raise
+// Dead/Resurrection/True Resurrection, none of which even carry a
+// `{@dice}` tag), and pure-prose healing (Vampiric Touch) are excluded
+// structurally, never guessed.
+//
+// `usesSpellcastingModifier` (types.ts) is a SEPARATE, equally narrow
+// check: the literal phrase "spellcasting ability modifier" within the same
+// local window -- present for Cure Wounds/Healing Word/Mass Cure Wounds/
+// Mass Healing Word, correctly absent for Prayer of Healing (RAW: it heals
+// a flat 2d8 with no ability modifier added at all).
 
 import { cleanText, flattenEntries } from '../content-presentation/dnd5e'
 import type { AbilityKey } from '../characters/ability-scores'
@@ -157,6 +205,15 @@ function describeDuration(duration: unknown): string | undefined {
 function isConcentration(duration: unknown): boolean {
   if (!Array.isArray(duration)) return false
   return duration.some((entry) => entry && typeof entry === 'object' && (entry as Record<string, unknown>).concentration === true)
+}
+
+// Character Sheet Body Phase 1B.4 -- signal 2 of `extractHealingRoll`'s own
+// three-signal rule (see this file's own HEALING header). Reads the exact
+// same `duration` array `describeDuration`/`isConcentration` already read,
+// never a second duration parse.
+function isInstantDuration(duration: unknown): boolean {
+  const first = Array.isArray(duration) ? (duration[0] as Record<string, unknown> | undefined) : undefined
+  return first?.type === 'instant'
 }
 
 const SAVING_THROW_ABILITY_KEYS: Record<string, AbilityKey> = {
@@ -266,6 +323,60 @@ function extractDamageRoll(entries: unknown, damageType: string | undefined): Sp
   return { dice: { count, faces }, modifier, type: damageType }
 }
 
+// Character Sheet Body Phase 1B.4 -- see this file's own header (HEALING)
+// for the full three-signal evidence this implements. `{@dice}`, not
+// `{@damage}` -- healing is never tagged as damage in 5etools' own markup.
+const HEALING_DICE_TAG_PATTERN = /\{@dice\s+(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/g
+const HIT_POINT_VARIANTRULE_PATTERN = /\{@variantrule Hit Point/g
+const REGAIN_VERB_PATTERN = /\bregains?\b/i
+const SPELLCASTING_MODIFIER_PATTERN = /spellcasting ability modifier/i
+
+// Signal 1+3 combined: a bounded proximity window (80 chars, order-
+// independent -- fixes the real Prayer-of-Healing token-order reversal)
+// between a healing dice tag and the Hit Point rules-glossary reference,
+// with the RAW "regain(s)" verb confirmed in that same local neighborhood.
+// Signal 2 (`duration.type === 'instant'`) is the caller's own job --
+// this function is never even invoked otherwise, see its one call site.
+const HEALING_PROXIMITY_WINDOW = 80
+
+function extractHealingRoll(entries: unknown): SpellRoll | undefined {
+  const text = JSON.stringify(entries ?? '')
+
+  const diceMatches = [...text.matchAll(HEALING_DICE_TAG_PATTERN)]
+  const hpMatches = [...text.matchAll(HIT_POINT_VARIANTRULE_PATTERN)]
+  if (!diceMatches.length || !hpMatches.length) return undefined
+
+  for (const dice of diceMatches) {
+    const diceStart = dice.index ?? 0
+    const nearbyHp = hpMatches.find((hp) => Math.abs((hp.index ?? 0) - diceStart) <= HEALING_PROXIMITY_WINDOW)
+    if (!nearbyHp) continue
+
+    const hpStart = nearbyHp.index ?? 0
+    const windowStart = Math.max(0, Math.min(diceStart, hpStart) - HEALING_PROXIMITY_WINDOW)
+    const windowEnd = Math.max(diceStart, hpStart) + HEALING_PROXIMITY_WINDOW
+    const localText = text.slice(windowStart, windowEnd)
+
+    // Signal 3 -- see this file's own header on why "regain(s)" (never
+    // "gain(s)") is the deciding verb, not incidental phrasing.
+    if (!REGAIN_VERB_PATTERN.test(localText)) continue
+
+    const count = Number(dice[1])
+    const faces = Number(dice[2])
+    if (!Number.isInteger(count) || count <= 0 || !Number.isInteger(faces) || faces <= 0) continue
+
+    const sign = dice[3] === '-' ? -1 : 1
+    const modifier = dice[4] ? sign * Number(dice[4]) : 0
+
+    return {
+      dice: { count, faces },
+      modifier,
+      ...(SPELLCASTING_MODIFIER_PATTERN.test(localText) ? { usesSpellcastingModifier: true } : {})
+    }
+  }
+
+  return undefined
+}
+
 // Scaling/upcast text, tagged by its broad shape -- never computed. A
 // cantrip's own "Cantrip Upgrade"/level-based entry is distinguished from a
 // leveled spell's "Using a Higher-Level Spell Slot" entry by NAME, which is
@@ -348,6 +459,11 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
   const saveOutcome = resolveSaveOutcome(resolution, Boolean(baseDamage), descriptionText)
   const damage = baseDamage && saveOutcome ? { ...baseDamage, saveOutcome } : baseDamage
 
+  // Character Sheet Body Phase 1B.4 -- signal 2 (instant duration) gates
+  // the call itself; signals 1 and 3 live inside `extractHealingRoll`. See
+  // this file's own HEALING header for the full three-signal evidence.
+  const healing = isInstantDuration(raw.duration) ? extractHealingRoll(raw.entries) : undefined
+
   return {
     level,
     school,
@@ -360,8 +476,7 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     description: descriptionText || undefined,
     resolution,
     damage,
-    // Never populated in 1B.1/1B.2 -- see this file's own header.
-    healing: undefined,
+    healing,
     scaling: resolveScaling(raw.entriesHigherLevel),
     ...(choices.length ? { choices } : {}),
     ...(hasUnresolvedChoice ? { hasUnresolvedChoice: true } : {})

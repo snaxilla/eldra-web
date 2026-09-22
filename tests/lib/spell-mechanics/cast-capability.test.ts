@@ -4,12 +4,13 @@
 // (server/utils/character-cast.ts) both consume, so they can never
 // independently invent different support rules.
 //
-// Uses the real six-plus-Chromatic-Orb corpus already established in
-// dnd5e.test.ts, via the real `resolveDnd5eSpellMechanics` output -- never
+// Uses the real corpus already established in dnd5e.test.ts (including,
+// as of Character Sheet Body Phase 1B.4, Cure Wounds/Healing Word/False
+// Life/Revivify), via the real `resolveDnd5eSpellMechanics` output -- never
 // hand-built CanonicalSpellMechanics fixtures that could drift from what
 // the resolver actually produces -- plus a few synthetic
-// CanonicalSpellMechanics values for edge cases (a saving-throw spell, a
-// healing-flagged spell) the current real corpus does not exercise.
+// CanonicalSpellMechanics values for edge cases (an automatic-resolution
+// healing spell) the current real corpus does not exercise.
 
 import { describe, expect, it } from 'vitest'
 
@@ -73,8 +74,29 @@ describe('classifySpellCastCapability -- the six-spell suite', () => {
     expect(capability?.kind).toBe('unsupported-effect')
   })
 
-  it('Cure Wounds is not supported either -- healing is not yet structurally extracted (1B.1/1B.2 honesty)', () => {
+  // Character Sheet Body Phase 1B.4 upgrade: healing is now structurally
+  // extracted (see dnd5e.test.ts's own healing describe blocks), so Cure
+  // Wounds -- the required primary acceptance case -- is now honestly
+  // Cast-capable.
+  it('Cure Wounds (healing) classifies as supported-healing (1B.4)', () => {
     const capability = classifySpellCastCapability(actionOf('Cure Wounds'))
+    expect(capability).toEqual({ kind: 'supported-healing' })
+  })
+
+  // The required SECOND healing acceptance case -- proves this is not
+  // Cure-Wounds-specific.
+  it('Healing Word (healing) classifies as supported-healing (1B.4)', () => {
+    const capability = classifySpellCastCapability(actionOf('Healing Word'))
+    expect(capability).toEqual({ kind: 'supported-healing' })
+  })
+
+  it('False Life (Temp HP, not healing) does not fabricate Cast support', () => {
+    const capability = classifySpellCastCapability(actionOf('False Life'))
+    expect(capability?.kind).toBe('unsupported-effect')
+  })
+
+  it('Revivify (resurrection, not healing) does not fabricate Cast support', () => {
+    const capability = classifySpellCastCapability(actionOf('Revivify'))
     expect(capability?.kind).toBe('unsupported-effect')
   })
 
@@ -109,18 +131,23 @@ describe('classifySpellCastCapability -- synthetic edge cases the real corpus do
     })).toEqual({ kind: 'unsupported-mechanic' })
   })
 
-  it('a future healing-flagged automatic spell reports unsupported-healing specifically, once 1B.4 populates it', () => {
+  // Character Sheet Body Phase 1B.4 -- `unsupported-healing` is retired; a
+  // healing-flagged spell (whether its own `resolution` happens to be
+  // 'automatic' or null -- not part of the required real corpus, but
+  // handled honestly per cast-capability.ts's own comment) now classifies
+  // as `supported-healing` in both branches.
+  it('a healing-flagged automatic-resolution spell classifies as supported-healing', () => {
     expect(classifySpellCastCapability({
       category: 'spell',
       spellMechanics: mechanics({ resolution: { kind: 'automatic' }, healing: { modifier: 0 } })
-    })).toEqual({ kind: 'unsupported-healing' })
+    })).toEqual({ kind: 'supported-healing' })
   })
 
-  it('a non-automatic (resolution: null) spell with a healing flag also reports unsupported-healing', () => {
+  it('a non-automatic (resolution: null) spell with a healing flag also classifies as supported-healing', () => {
     expect(classifySpellCastCapability({
       category: 'spell',
       spellMechanics: mechanics({ resolution: null, healing: { modifier: 0 } })
-    })).toEqual({ kind: 'unsupported-healing' })
+    })).toEqual({ kind: 'supported-healing' })
   })
 
   it('an unresolved choice overrides an otherwise-supported attack-roll resolution', () => {

@@ -802,6 +802,27 @@ function openActionContext(action: CharacterAction) {
   if (saveOutcome === 'half-on-save') lines.push('On Save: Half Damage')
   else if (saveOutcome === 'no-damage-on-save') lines.push('On Save: No Damage')
 
+  // Character Sheet Body Phase 1B.4 -- a healing spell's own resolved roll
+  // (Cure Wounds/Healing Word), read directly from spellMechanics/
+  // healingAbilityModifier -- never a second calculation, mirroring
+  // `resolveActionDamage`'s own "restated, not re-derived" discipline
+  // above. The row's own Damage/text column deliberately shows nothing for
+  // a healing spell (no separate Healing button, per this phase's own UX
+  // requirement); this Rail is where its resolved expression lives.
+  const healing = action.spellMechanics?.healing
+  if (healing) {
+    if (healing.usesSpellcastingModifier && action.healingAbilityModifier !== undefined) {
+      lines.push(`Healing Modifier: ${signedNumber(action.healingAbilityModifier)}`)
+    }
+    if (healing.dice) {
+      const totalModifier = healing.usesSpellcastingModifier
+        ? healing.modifier + (action.healingAbilityModifier ?? 0)
+        : healing.modifier
+      const expression = `${healing.dice.count}d${healing.dice.faces}${totalModifier ? signedNumber(totalModifier) : ''}`
+      lines.push(`Resolved Healing: ${expression}`)
+    }
+  }
+
   if (action.usage) lines.push(`Usage: ${action.usage}`)
   if (action.sourceBook) lines.push(`Source: ${action.sourceBook}`)
 

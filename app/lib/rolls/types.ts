@@ -49,6 +49,15 @@ export type RollSourceType =
   // (server-derived Hit Die size + Constitution modifier, never a client
   // number) -- see server/utils/roll-events.ts's own `createHitDieRollEvent`.
   | 'hit_die'
+  // Character Sheet Body Phase 1B.4 (Healing Spell Foundation): a spell's
+  // own immediate healing roll (Cure Wounds, Healing Word). A DEDICATED
+  // member, not a reuse of 'damage', for the same reason 'hit_die' above is
+  // dedicated rather than reusing 'damage' or 'ability': it is a distinct
+  // game-mechanical roll PURPOSE (restoring HP, never removing it), and the
+  // Roll Tray/history should be able to tell "this character was healed"
+  // apart from "this character dealt damage" without parsing the label
+  // string -- see server/utils/roll-events.ts's own `createSpellHealingRollEvent`.
+  | 'healing'
 
 // ---------------------------------------------------------------------------
 // Visibility -- eldra-roll-system.md §5. Only the two Phase 1 states are

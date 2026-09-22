@@ -938,6 +938,80 @@ export async function createSpellDamageRollEvent(input: CreateSpellDamageRollInp
   return roll
 }
 
+// Character Sheet Body Phase 1B.4 (Healing Spell Foundation) -- Cure
+// Wounds/Healing Word's own roll. Field-for-field the same shape as
+// `CreateSpellDamageRollInput` above (dice + a flat modifier, no target,
+// no HP mutation anywhere in this module or its caller) except for
+// `sourceType: 'healing'` (a dedicated RollSourceType member -- see
+// app/lib/rolls/types.ts's own header on why this is not a reuse of
+// 'damage') and the absence of any damage-type concept (healing has none).
+// `modifier` already has this specific spell's OWN authoritative
+// Spellcasting Ability Modifier folded in by the caller
+// (server/utils/character-cast.ts's own `castSpellHeal`) when
+// `mechanics.healing.usesSpellcastingModifier` is true -- this function
+// itself has no opinion on whether that modifier applies to any given
+// spell, it only rolls whatever flat modifier it is handed.
+export type CreateSpellHealingRollInput = {
+  worldId: string | number
+  rollerUserId: string
+  actorCharacterId: string | number
+  encounterId?: string | number | null
+  spellName: string
+  sourceId: string
+  dice: { count: number; faces: number }
+  modifier: number
+  visibility: RollVisibility
+  metadata?: Record<string, unknown>
+  broadcast: boolean
+}
+
+export async function createSpellHealingRollEvent(input: CreateSpellHealingRollInput): Promise<RollEventRecord> {
+  const tStart = performance.now()
+  const expression = `${input.dice.count}d${input.dice.faces}`
+  const rolled = rollFormula(expression, { bonuses: [input.modifier] })
+  const tRolled = performance.now()
+  if (!rolled.ok) {
+    throw createError({ statusCode: 400, statusMessage: rolled.error })
+  }
+
+  const row = toPersistenceRow({
+    worldId: input.worldId,
+    encounterId: input.encounterId ?? null,
+    actorCharacterId: input.actorCharacterId,
+    rollerUserId: input.rollerUserId,
+    label: `${input.spellName} Healing`,
+    sourceType: 'healing',
+    sourceKey: null,
+    sourceId: input.sourceId,
+    expression: rolled.roll.expression,
+    dice: rolled.roll.dice,
+    modifier: rolled.roll.modifier,
+    modifiers: rolled.roll.modifiers,
+    total: rolled.roll.total,
+    visibility: input.visibility,
+    metadata: input.metadata ?? {}
+  })
+
+  const tBeforePersist = performance.now()
+  const [res, displayName]: [any, string] = await Promise.all([
+    directusServiceRequest(`/items/${COLLECTION}`, { method: 'POST', body: row }),
+    resolveOneDisplayName(input.rollerUserId)
+  ])
+  const tAfterPersist = performance.now()
+
+  const roll = fromPersistenceRow(res?.data, displayName)
+  if (input.broadcast) broadcastRollEvent(roll)
+  const tAfterBroadcast = performance.now()
+
+  logRollPerf('spell healing roll', [
+    ['openDice', tRolled - tStart],
+    ['persistence+displayName', tAfterPersist - tBeforePersist],
+    ['broadcast', tAfterBroadcast - tAfterPersist]
+  ])
+
+  return roll
+}
+
 // ---------------------------------------------------------------------------
 // Read -- cursor pagination, visibility filtering (§5/§7)
 // ---------------------------------------------------------------------------

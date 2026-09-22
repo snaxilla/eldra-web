@@ -35,7 +35,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   assembleCharacterMock, getWorldRuntimeMock,
   loadSpellcastingMock, saveSpellcastingMock,
-  createSpellAttackRollEventMock, createSpellDamageRollEventMock,
+  createSpellAttackRollEventMock, createSpellDamageRollEventMock, createSpellHealingRollEventMock,
   broadcastRollEventMock, getDerivedCharacterOverrideMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
@@ -44,6 +44,7 @@ const {
   saveSpellcastingMock: vi.fn(),
   createSpellAttackRollEventMock: vi.fn(),
   createSpellDamageRollEventMock: vi.fn(),
+  createSpellHealingRollEventMock: vi.fn(),
   broadcastRollEventMock: vi.fn(),
   // Used ONLY by the "multiple legal cast levels" describe block below --
   // this app has no leveling system yet (character level is the Rules
@@ -82,7 +83,8 @@ vi.mock('../../../server/utils/character-spellcasting', () => ({
 
 vi.mock('../../../server/utils/roll-events', () => ({
   createSpellAttackRollEvent: createSpellAttackRollEventMock,
-  createSpellDamageRollEvent: createSpellDamageRollEventMock
+  createSpellDamageRollEvent: createSpellDamageRollEventMock,
+  createSpellHealingRollEvent: createSpellHealingRollEventMock
 }))
 
 vi.mock('../../../server/utils/roll-realtime-bridge', () => ({
@@ -99,6 +101,7 @@ import {
   castSpellAttack,
   castSpellAutomaticDamage,
   castSpellSave,
+  castSpellHeal,
   rollIndependentSpellDamage
 } from '../../../server/utils/character-cast'
 import rows from '../../lib/content-presentation/fixtures/5etools-real-rows.json'
@@ -184,6 +187,7 @@ beforeEach(() => {
   saveSpellcastingMock.mockReset()
   createSpellAttackRollEventMock.mockReset()
   createSpellDamageRollEventMock.mockReset()
+  createSpellHealingRollEventMock.mockReset()
   broadcastRollEventMock.mockReset()
   getDerivedCharacterOverrideMock.mockReset()
   getDerivedCharacterOverrideMock.mockResolvedValue(undefined)
@@ -206,6 +210,7 @@ beforeEach(() => {
   saveSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
   createSpellAttackRollEventMock.mockResolvedValue({ id: 'roll-attack-1', total: 15 })
   createSpellDamageRollEventMock.mockResolvedValue({ id: 'roll-damage-1', total: 5 })
+  createSpellHealingRollEventMock.mockResolvedValue({ id: 'roll-healing-1', total: 12 })
 })
 
 const CAST_INPUT = {
@@ -1103,5 +1108,380 @@ describe('Phase 1B.3 -- targeted Resolve preservation', () => {
     // also returns -- one canonical source, two different consumers.
     expect(result.saveContext?.savingAbility).toBe('dex')
     expect(result.saveContext?.damage?.dice).toEqual({ count: 8, faces: 6 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Sheet Body Phase 1B.4 -- Healing Spell Foundation
+// ---------------------------------------------------------------------------
+// Cure Wounds and Healing Word are both real BASE-LEVEL-1 spells, so (like
+// Fire Bolt/Magic Missile above, and unlike Fireball/Hold Person's own
+// level5WizardDerived fake) these tests use the DEFAULT real level-1 Wizard
+// fixture and the real Rules Engine throughout -- INT 18 -> +4 ability
+// modifier, the exact same number `character-actions.test.ts`'s own Wizard
+// fixture already proves against `value:spellcasting.attack_bonus`/
+// `value:spellcasting.save_dc` (prof +2, so 6/14 respectively; the
+// Spellcasting Ability Modifier itself, folded into neither of those, is
+// +4). Only the one test that deliberately simulates an unavailable Rules
+// Package number uses a controlled override.
+
+const CURE_WOUNDS_MECHANICS = resolveDnd5eSpellMechanics(spells['Cure Wounds'])
+const HEALING_WORD_MECHANICS = resolveDnd5eSpellMechanics(spells['Healing Word'])
+
+function withCureWoundsPrepared() {
+  assembleCharacterMock.mockResolvedValue({
+    available: true,
+    blueprint: wizardBlueprint({ spells: [preparedSpell('spell-12', 'Cure Wounds', CURE_WOUNDS_MECHANICS)] })
+  })
+}
+
+function withHealingWordPrepared() {
+  assembleCharacterMock.mockResolvedValue({
+    available: true,
+    blueprint: wizardBlueprint({ spells: [preparedSpell('spell-13', 'Healing Word', HEALING_WORD_MECHANICS)] })
+  })
+}
+
+// Mirrors `level5WizardDerived` above exactly, except at level 1 (matching
+// Cure Wounds/Healing Word's own base level, so no other Spell Slot
+// behavior changes) and, deliberately, WITHOUT a
+// `value:spellcasting.ability_mod` entry -- simulating a Rules Package that
+// does not declare this character's Spellcasting Ability Modifier at all,
+// the one scenario the 'rules-unavailable' gate below needs to construct.
+function level1WizardDerivedNoAbilityMod() {
+  return {
+    available: true as const,
+    derived: {
+      byCategory: {
+        spellcasting: [
+          { id: 'value:spellcasting.caster_type.full', value: true },
+          { id: 'value:spellcasting.attack_bonus', value: 6 },
+          { id: 'value:spellcasting.save_dc', value: 14 }
+        ],
+        progression: [{ id: 'value:level', value: 1 }]
+      },
+      tables: [{
+        id: 'table:spellcasting.slots_full',
+        rows: [{ key: 1, slot_1: 2, slot_2: 0, slot_3: 0, slot_4: 0, slot_5: 0, slot_6: 0, slot_7: 0, slot_8: 0, slot_9: 0 }]
+      }],
+      choices: []
+    }
+  }
+}
+
+describe('castSpellHeal -- Cure Wounds (leveled, required primary acceptance)', () => {
+  it('classifies Cast-capable and dispatches through castSpell', async () => {
+    withCureWoundsPrepared()
+    const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(true)
+    expect(createSpellHealingRollEventMock).toHaveBeenCalled()
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+
+  // THE required acceptance case: the content-authored 2d8 (no flat
+  // modifier stated) PLUS the real, server-derived Spellcasting Ability
+  // Modifier (+4) -- never a client-sent number, never hardcoded to
+  // "Wisdom for Cleric" or any other class-specific assumption (this
+  // Wizard's own spellcasting ability is Intelligence, and the resolver
+  // never needed to know that).
+  it('rolls 2d8 healing plus the real, server-derived Spellcasting Ability Modifier, unbroadcast until the slot mutation succeeds', async () => {
+    withCureWoundsPrepared()
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(true)
+
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spellName: 'Cure Wounds', sourceId: 'spell:spell-12',
+        dice: { count: 2, faces: 8 }, modifier: 4,
+        broadcast: false
+      })
+    )
+  })
+
+  it('expends exactly one level-1 slot on success', async () => {
+    withCureWoundsPrepared()
+    await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
+  })
+
+  it('returns the updated spellcasting record for authoritative resource-orb refresh', async () => {
+    withCureWoundsPrepared()
+    saveSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { '1': 1 } })
+
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.spellcasting).toEqual({ spells: [], expendedSlots: { '1': 1 } })
+  })
+
+  it('broadcasts the roll only AFTER the slot mutation has succeeded -- identical ordering to every other rolling Cast', async () => {
+    withCureWoundsPrepared()
+    const callOrder: string[] = []
+    saveSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => {
+      callOrder.push('save')
+      return stored
+    })
+    broadcastRollEventMock.mockImplementation(() => { callOrder.push('broadcast') })
+
+    await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+
+    expect(callOrder).toEqual(['save', 'broadcast'])
+    expect(broadcastRollEventMock).toHaveBeenCalledWith({ id: 'roll-healing-1', total: 12 })
+  })
+
+  it('rejects the Cast outright when no level-1 slots remain -- BEFORE any roll happens', async () => {
+    withCureWoundsPrepared()
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { '1': 2 } })
+
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('resource-unavailable')
+    expect(createSpellHealingRollEventMock).not.toHaveBeenCalled()
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('a failed slot mutation reports failure (502) and never broadcasts -- the roll was already rolled, never a free spell', async () => {
+    withCureWoundsPrepared()
+    saveSpellcastingMock.mockRejectedValue(new Error('Directus write failed'))
+
+    await expect(castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })).rejects.toMatchObject({ statusCode: 502 })
+
+    expect(createSpellHealingRollEventMock).toHaveBeenCalled()
+    expect(broadcastRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('does not require or accept a target -- CastSpellInput has no target field at all', () => {
+    const input = { ...CAST_INPUT, actionId: 'spell:spell-12' }
+    expect(Object.keys(input)).not.toContain('targetCharacterId')
+    expect(Object.keys(input)).not.toContain('target')
+  })
+
+  it('never mutates any character\'s HP -- the result carries no target/health shape', async () => {
+    withCureWoundsPrepared()
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result).not.toHaveProperty('targetHealth')
+    expect(result.roll).not.toHaveProperty('targetHealth')
+  })
+
+  it('records the resolved castLevel and base spellLevel in the roll\'s metadata, like every other leveled Cast', async () => {
+    withCureWoundsPrepared()
+    await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ spellLevel: 1, castLevel: 1 }) })
+    )
+  })
+
+  it('honors Cast Configuration\'s structured choices generically, even for a healing spell (synthetic, proves genericity)', async () => {
+    const withChoice = {
+      ...CURE_WOUNDS_MECHANICS!,
+      choices: [{ id: 'damage-type', label: 'Damage Type', options: [{ id: 'fire', label: 'Fire' }, { id: 'cold', label: 'Cold' }] }]
+    }
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-14', 'Test Cure Wounds', withChoice)] })
+    })
+
+    const missing = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-14' })
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) expect(missing.reason).toBe('invalid-choice')
+
+    const withSelection = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-14', choices: { 'damage-type': 'cold' } })
+    expect(withSelection.ok).toBe(true)
+  })
+})
+
+// The required SECOND acceptance case -- proves castSpellHeal is not
+// Cure-Wounds-specific: a different die size (2d4), a different slot cost
+// arithmetic path exercised identically.
+describe('castSpellHeal -- Healing Word (leveled, required second acceptance)', () => {
+  it('rolls 2d4 healing plus the real Spellcasting Ability Modifier', async () => {
+    withHealingWordPrepared()
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-13' })
+    expect(result.ok).toBe(true)
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ spellName: 'Healing Word', dice: { count: 2, faces: 4 }, modifier: 4 })
+    )
+  })
+
+  it('expends exactly one level-1 slot on success', async () => {
+    withHealingWordPrepared()
+    await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-13' })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
+  })
+})
+
+// Prayer of Healing's own real RAW shape: all three extraction signals
+// present, but the source states NO spellcasting-ability-modifier addend.
+// Proves `usesSpellcastingModifier: undefined` means exactly what it says --
+// the roll uses ONLY the content-authored dice/modifier, no number folded
+// in from character-actions.ts at all, even though this character's own
+// Spellcasting Ability Modifier (+4) is perfectly available.
+describe('castSpellHeal -- Prayer-of-Healing-shaped (no usesSpellcastingModifier, synthetic)', () => {
+  it('rolls the flat content-authored dice with no ability modifier added', async () => {
+    const prayerShaped = { ...CURE_WOUNDS_MECHANICS!, healing: { dice: { count: 2, faces: 8 }, modifier: 0 } }
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-15', 'Test Prayer of Healing', prayerShaped)] })
+    })
+
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-15' })
+    expect(result.ok).toBe(true)
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 2, faces: 8 }, modifier: 0 })
+    )
+  })
+
+  // The 'rules-unavailable' gate must NOT trigger for a spell that does not
+  // need the modifier at all, even when the Rules Package genuinely has
+  // nothing to say about it.
+  it('Casts successfully even when the Rules Package does not declare a Spellcasting Ability Modifier at all', async () => {
+    const prayerShaped = { ...CURE_WOUNDS_MECHANICS!, healing: { dice: { count: 2, faces: 8 }, modifier: 0 } }
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-15', 'Test Prayer of Healing', prayerShaped)] })
+    })
+    getDerivedCharacterOverrideMock.mockResolvedValue(level1WizardDerivedNoAbilityMod())
+
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-15' })
+    expect(result.ok).toBe(true)
+  })
+})
+
+// The gate this phase's own character-cast.ts adds: when a healing spell's
+// canonical shape DOES require the Spellcasting Ability Modifier
+// (usesSpellcastingModifier: true, e.g. Cure Wounds), but this World's
+// active Rules Package does not declare one, Cast must fail honestly rather
+// than silently rolling with a missing/zero modifier.
+describe('castSpellHeal -- rules-unavailable gate', () => {
+  it('rejects Cure Wounds when the Rules Package does not declare a Spellcasting Ability Modifier', async () => {
+    withCureWoundsPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level1WizardDerivedNoAbilityMod())
+
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('rules-unavailable')
+    expect(createSpellHealingRollEventMock).not.toHaveBeenCalled()
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+})
+
+// Not part of the required 1B.4 corpus (no real healing cantrip exists in
+// the audited XPHB corpus -- see this file's own header and dnd5e.ts's own
+// HEALING header), but the architecture must degrade gracefully rather than
+// silently break -- the identical "handled honestly, not assumed
+// impossible" posture castSpellAutomaticDamage's own cantrip branch already
+// takes.
+describe('castSpellHeal -- cantrip healing (not part of the required corpus, synthetic)', () => {
+  it('a synthetic level-0 healing spell rolls immediately, broadcasts immediately, and touches no spellcasting state', async () => {
+    const cantripHealing = {
+      level: 0, concentration: false, ritual: false, resolution: null,
+      healing: { dice: { count: 1, faces: 4 }, modifier: 0 }
+    }
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-16', 'Test Healing Cantrip', cantripHealing)] })
+    })
+
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-16' })
+    expect(result.ok).toBe(true)
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 1, faces: 4 }, broadcast: true })
+    )
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+})
+
+// Upcasting: a spell cast at a higher-than-base level still rolls exactly
+// its base healing expression -- executable scaling is explicitly deferred
+// to a future phase (see this file's own header on `fakeMultiLevelDerived`/
+// `level5WizardDerived` for why this app has no real leveling system to
+// construct a genuine multi-slot-level character through, hence the same
+// controlled derived-character fake technique).
+describe('castSpellHeal -- upcasting does not scale the healing roll (executable scaling deferred)', () => {
+  function fakeMultiLevelDerived() {
+    return {
+      available: true as const,
+      derived: {
+        byCategory: {
+          spellcasting: [
+            { id: 'value:spellcasting.caster_type.full', value: true },
+            { id: 'value:spellcasting.attack_bonus', value: 6 },
+            { id: 'value:spellcasting.save_dc', value: 14 },
+            { id: 'value:spellcasting.ability_mod', value: 4 }
+          ],
+          progression: [{ id: 'value:level', value: 3 }]
+        },
+        tables: [{
+          id: 'table:spellcasting.slots_full',
+          rows: [{ key: 3, slot_1: 4, slot_2: 2, slot_3: 0, slot_4: 0, slot_5: 0, slot_6: 0, slot_7: 0, slot_8: 0, slot_9: 0 }]
+        }],
+        choices: []
+      }
+    }
+  }
+
+  it('Cast at castLevel: 2 expends the level-2 slot but still rolls the base 2d8 dice, recording castLevel in metadata', async () => {
+    withCureWoundsPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(fakeMultiLevelDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12', castLevel: 2 })
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '2': 1 } })
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dice: { count: 2, faces: 8 }, modifier: 4,
+        metadata: expect.objectContaining({ spellLevel: 1, castLevel: 2 })
+      })
+    )
+  })
+})
+
+describe('castSpell -- routes supported-healing through castSpellHeal', () => {
+  it('Cure Wounds is dispatched through the healing path, not attack/automatic-damage/save', async () => {
+    withCureWoundsPrepared()
+    await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(createSpellHealingRollEventMock).toHaveBeenCalled()
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('rollIndependentSpellDamage -- never exposes a free roll for a pure-healing spell', () => {
+  // Healing has NO separate Damage/Healing button at all (this phase's own
+  // UX requirement) -- Cast itself performs the healing roll. Proven here
+  // structurally: the one existing "independent roll" entry point still
+  // refuses a supported-healing spell outright, exactly like it already
+  // refuses Magic Missile's automatic-damage above.
+  it('rejects Cure Wounds as not-castable through the independent-damage entry point', async () => {
+    withCureWoundsPrepared()
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-castable')
+    expect(createSpellHealingRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Phase 1B.4 -- no spell-name special cases', () => {
+  it('a synthetic, differently-named spell with Cure Wounds\' exact mechanics casts identically', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-17', 'Zzyzx\'s Restorative Bolt', CURE_WOUNDS_MECHANICS)] })
+    })
+
+    const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-17' })
+    expect(result.ok).toBe(true)
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ spellName: 'Zzyzx\'s Restorative Bolt', dice: { count: 2, faces: 8 }, modifier: 4 })
+    )
   })
 })

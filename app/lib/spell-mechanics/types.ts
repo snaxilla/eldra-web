@@ -33,13 +33,19 @@
 // mechanic this task forbids), and damage (dice + flat modifier + type,
 // the Magic Missile regression: "1d4 + 1" must not become "1d4"). Healing
 // is a typed, present-but-possibly-absent field for the identical reason:
-// this phase's own investigation (see resolveDnd5eSpellMechanics's own
-// header) found no reliable source signal that safely distinguishes a
-// healing `{@dice}` roll from every OTHER non-damage `{@dice}` roll (Bane's
-// d4 penalty, Sleep's hit-point pool, Reincarnate's d100 species table),
-// so it is normalized ONLY where the evidence genuinely supports it, never
-// guessed. Scaling is preserved as SOURCE TEXT plus a coarse shape tag
-// (never a computed transformation) -- 1B.5's job, not this phase's.
+// 1B.1's own investigation (see resolveDnd5eSpellMechanics's own header)
+// found no reliable source signal that safely distinguishes a healing
+// `{@dice}` roll from every OTHER non-damage `{@dice}` roll (Bane's d4
+// penalty, Sleep's hit-point pool, Reincarnate's d100 species table) using
+// a SINGLE heuristic -- so it stayed unnormalized until Character Sheet
+// Body Phase 1B.4 found a THREE-signal combination (dice-tag proximity to
+// a `{@variantrule Hit Point}` tag, `duration.type === 'instant'`, and the
+// RAW-defined "regain(s)" healing verb) that, cross-validated against the
+// full real corpus, correctly identifies every genuine one-shot heal with
+// zero false positives -- see resolveDnd5eSpellMechanics's own updated
+// header for the full evidence. Scaling is preserved as SOURCE TEXT plus a
+// coarse shape tag (never a computed transformation) -- 1B.5's job, not
+// this phase's.
 //
 // NOT modeled at all, on purpose (not even an empty placeholder field):
 // target count, area/shape, buff/debuff numeric effects, persistent-effect
@@ -81,6 +87,18 @@ export type SpellRoll = {
   // neither of which has a "save" for this to describe) -- see
   // `SpellSaveOutcome`'s own header for the reliability rule.
   saveOutcome?: SpellSaveOutcome
+  // Character Sheet Body Phase 1B.4 (Healing Spell Foundation) -- `true`
+  // when the source states this roll ALSO adds the caster's spellcasting
+  // ability modifier ("...plus your spellcasting ability modifier", Cure
+  // Wounds/Healing Word's own real printed text). Deliberately a BOOLEAN,
+  // never a number: the actual modifier is a Rules-Engine-derived,
+  // per-character fact (`value:spellcasting.ability_mod`, already generic
+  // over which ability a class uses -- see character-actions.ts's own
+  // `healingAbilityModifier`), never baked into canonical CONTENT. Absent
+  // (not `false`) when the source states no such addend -- Prayer of
+  // Healing's own real text ("regain 2d8 Hit Points") names no modifier at
+  // all, a genuine RAW distinction from Cure Wounds, not an extraction gap.
+  usesSpellcastingModifier?: boolean
 }
 
 // Which raw mechanic resolves this spell, and the one extra fact each
@@ -170,8 +188,20 @@ export type CanonicalSpellMechanics = {
   // overloaded to mean either, so "this heals" and "this damages" can
   // never be confused even though both share the SpellRoll shape.
   damage?: SpellRoll
-  // Absent in every 1B.1 output today -- see this file's header on why.
-  // Typed now so 1B.4 does not need a schema migration to populate it.
+  // Absent in every 1B.1/1B.2/1B.2.1/1B.3 output -- reserved then, POPULATED
+  // now (Character Sheet Body Phase 1B.4), for the small, cross-validated
+  // set of spells whose immediate, one-shot healing the real corpus
+  // reliably represents structurally (Cure Wounds, Healing Word, Mass Cure
+  // Wounds, Mass Healing Word, Prayer of Healing). `SpellRoll.dice` is the
+  // content-stated healing dice; `SpellRoll.modifier` a literal flat
+  // addend if the source states one (none do, in the required corpus);
+  // `SpellRoll.usesSpellcastingModifier` -- see that field's own header --
+  // is how "plus your spellcasting ability modifier" survives without
+  // baking a number into content. Still absent for every spell this
+  // phase's own corpus audit found to be something OTHER than immediate
+  // one-shot healing (temp HP, resurrection, regeneration/healing-over-
+  // time, delayed/conditional restoration) -- see
+  // resolveDnd5eSpellMechanics's own header for the full classification.
   healing?: SpellRoll
 
   scaling?: SpellScaling

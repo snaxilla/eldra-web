@@ -163,6 +163,14 @@ export type CharacterAction = {
   damageFlatBase?: number
   damageType?: string
   damageAbilityModifier?: number
+  // Character Sheet Body Phase 1B.4 (Healing Spell Foundation) -- restated
+  // verbatim from server/utils/character-actions.ts's own identical field,
+  // the exact same "restated, not re-derived" rule `damageAbilityModifier`
+  // above already follows. Read only for the Context Rail's own reference
+  // presentation (sheet-v2.vue's `openActionContext`) -- `castSpellHeal`
+  // (server-side) is the only place this number is ever actually APPLIED
+  // to a roll.
+  healingAbilityModifier?: number
   // Character Sheet Body Phase 1B.2 (Authoritative Cast Foundation) --
   // present only for `category === 'spell'` actions, restated verbatim from
   // server/utils/character-actions.ts's own identical field. Read ONLY by
@@ -354,12 +362,11 @@ function damage(actionId: string) {
 // calls -- this panel decides "does this row get a Cast button" with the
 // identical rule the server uses to decide "will Cast actually succeed", so
 // client and server can never invent different support rules (this task's
-// own requirement). A spell whose capability is not one of the four
-// supported kinds (a healing/effect/choice/unknown spell) falls through to
-// the existing `v-else` branch below, unchanged -- it keeps its own
-// targeted Resolve control if it has one, or a plain inspectable row if it
-// doesn't. Never fabricates a Cast for anything this phase does not
-// honestly support.
+// own requirement). A spell whose capability is not one of the supported
+// kinds (an effect/choice/unknown spell) falls through to the existing
+// `v-else` branch below, unchanged -- it keeps its own targeted Resolve
+// control if it has one, or a plain inspectable row if it doesn't. Never
+// fabricates a Cast for anything this phase does not honestly support.
 //
 // Character Sheet Body Phase 1B.3 (Saving-Throw Spell Casting) --
 // `supported-save-damage` (Fireball) and `supported-save-context` (Hold
@@ -370,6 +377,14 @@ function damage(actionId: string) {
 // Resolve remains real, working functionality; it is simply no longer the
 // row's default/primary interaction for these newly-supported spells (see
 // this file's own header for the fuller relationship).
+//
+// Character Sheet Body Phase 1B.4 (Healing Spell Foundation) --
+// `supported-healing` (Cure Wounds/Healing Word) joins the same shared
+// shape, with one deliberate difference this row template does NOT need to
+// special-case: `showsIndependentSpellDamage` below never returns true for
+// it, so a healing spell's row shows Cast (or Cast Configuration) with no
+// separate Damage/Healing button at all -- Cast itself performs the
+// healing roll, exactly this task's own UX requirement.
 function castCapabilityOf(action: CharacterAction) {
   return classifySpellCastCapability({ category: action.category, spellMechanics: action.spellMechanics })
 }
@@ -380,6 +395,7 @@ function isCastableSpell(action: CharacterAction): boolean {
     || kind === 'supported-automatic-damage'
     || kind === 'supported-save-damage'
     || kind === 'supported-save-context'
+    || kind === 'supported-healing'
 }
 
 // Damage stays an independent control ONLY for a spell with structured

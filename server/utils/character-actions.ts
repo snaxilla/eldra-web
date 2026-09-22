@@ -90,6 +90,21 @@ export type CharacterAction = ContentAction & {
   // either), so this field is never used to distinguish "absent" from
   // "present but empty."
   spellMechanics?: CanonicalSpellMechanics | null
+  // Character Sheet Body Phase 1B.4 (Healing Spell Foundation) -- present
+  // ONLY for spell actions, the Rules-Engine-derived spellcasting ability
+  // modifier (`value:spellcasting.ability_mod`, ALREADY generic over which
+  // ability a class uses -- picks Intelligence/Wisdom/Charisma from the
+  // class's own `spellcasting.ability.*` grants, never hardcoded here).
+  // Attached uniformly to every spell action (mirroring `attackBonus`/
+  // `saveDc`'s own "attach regardless of whether THIS action needs it"
+  // convention), even though only a healing action
+  // (`mechanics.healing?.usesSpellcastingModifier`) actually reads it --
+  // see app/lib/spell-mechanics/types.ts's own `SpellRoll.usesSpellcastingModifier`
+  // header for why the character's own numeric modifier is never baked
+  // into canonical CONTENT. Absent, never a fabricated zero, when the
+  // Rules runtime is unavailable -- the same discipline `damageAbilityModifier`
+  // above already follows.
+  healingAbilityModifier?: number
 }
 
 export type CharacterActionsResult =
@@ -101,6 +116,11 @@ const MELEE_ATTACK_BONUS_ID = 'value:combat.melee_attack_bonus'
 const RANGED_ATTACK_BONUS_ID = 'value:combat.ranged_attack_bonus'
 const SPELL_ATTACK_BONUS_ID = 'value:spellcasting.attack_bonus'
 const SPELL_SAVE_DC_ID = 'value:spellcasting.save_dc'
+// Character Sheet Body Phase 1B.4 -- ALREADY generic over which ability a
+// class uses (packages/eldra-dnd5e-2024/definitions.json's own formula
+// picks Intelligence/Wisdom/Charisma from the class's own
+// `spellcasting.ability.*` grants) -- this module names no ability.
+const SPELLCASTING_ABILITY_MOD_ID = 'value:spellcasting.ability_mod'
 
 function findNumber(byCategory: Record<string, Array<{ id: string; value?: unknown }>>, id: string): number | undefined {
   for (const entries of Object.values(byCategory)) {
@@ -195,6 +215,7 @@ export async function getCharacterActions(
   const rangedBonus = findNumber(byCategory, RANGED_ATTACK_BONUS_ID)
   const spellAttackBonus = findNumber(byCategory, SPELL_ATTACK_BONUS_ID)
   const spellSaveDc = findNumber(byCategory, SPELL_SAVE_DC_ID)
+  const spellcastingAbilityMod = findNumber(byCategory, SPELLCASTING_ABILITY_MOD_ID)
 
   const actions: CharacterAction[] = []
 
@@ -256,7 +277,8 @@ export async function getCharacterActions(
         id: actionId('spell', spell.instanceId),
         attackBonus: spellAttackBonus,
         saveDc: spellSaveDc,
-        spellMechanics
+        spellMechanics,
+        healingAbilityModifier: spellcastingAbilityMod
       })
     }
   }

@@ -156,15 +156,19 @@ describe('resolveDnd5eSpellMechanics -- Hold Person (saving-throw, effect-only, 
   })
 })
 
-describe('resolveDnd5eSpellMechanics -- Cure Wounds (healing investigation outcome)', () => {
+// Character Sheet Body Phase 1B.4 -- 1B.1's own healing blocker, resolved.
+// Cure Wounds is the primary required acceptance case: a three-signal rule
+// (dice-tag/Hit-Point-tag proximity, instant duration, a local "regain(s)"
+// verb -- see dnd5e.ts's own HEALING header for the full corpus evidence)
+// now reliably extracts its healing roll, including the spellcasting
+// ability modifier as a BOOLEAN flag (never a baked-in number -- the actual
+// modifier is a per-character Rules Engine fact, derived at Cast runtime by
+// server/utils/character-cast.ts, never here).
+describe('resolveDnd5eSpellMechanics -- Cure Wounds (healing, the required primary acceptance case)', () => {
   const mechanics = resolveDnd5eSpellMechanics(spells['Cure Wounds'])!
 
-  // Per this phase's own required healing investigation (see dnd5e.ts's own
-  // header for the full evidence): no reliable source signal was found, so
-  // this MUST remain undefined rather than a guess -- proving the "STOP and
-  // report" branch was actually taken, not silently skipped.
-  it('does not fabricate a healing roll -- no reliable source signal exists (see resolver header)', () => {
-    expect(mechanics.healing).toBeUndefined()
+  it('extracts 2d8 healing with no flat modifier, and flags that it uses the spellcasting ability modifier', () => {
+    expect(mechanics.healing).toEqual({ dice: { count: 2, faces: 8 }, modifier: 0, usesSpellcastingModifier: true })
   })
 
   it('does not fabricate an attack or save resolution -- Cure Wounds has neither', () => {
@@ -173,6 +177,128 @@ describe('resolveDnd5eSpellMechanics -- Cure Wounds (healing investigation outco
 
   it('does not fabricate a damage roll either -- {@dice} is not {@damage}', () => {
     expect(mechanics.damage).toBeUndefined()
+  })
+})
+
+// The required SECOND acceptance case -- proves the rule is not
+// Cure-Wounds-specific: a different die size (2d4, not 2d8), a differently
+// worded target clause ("a creature of your choice that you can see within
+// range" vs. "a creature you touch"), the identical three signals still
+// resolving it correctly with no spell-name-specific code anywhere in the
+// resolver.
+describe('resolveDnd5eSpellMechanics -- Healing Word (healing, the required second acceptance case)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['Healing Word'])!
+
+  it('extracts 2d4 healing with no flat modifier, and flags that it uses the spellcasting ability modifier', () => {
+    expect(mechanics.healing).toEqual({ dice: { count: 2, faces: 4 }, modifier: 0, usesSpellcastingModifier: true })
+  })
+
+  it('does not fabricate an attack or save resolution', () => {
+    expect(mechanics.resolution).toBeNull()
+  })
+})
+
+// Character Sheet Body Phase 1B.4 -- the required negative case for
+// Temporary Hit Points. False Life's real tag is
+// "{@variantrule Temporary Hit Points|XPHB}", a DIFFERENT tag name than
+// "{@variantrule Hit Point...}" -- signal 1's own tag-name specificity
+// excludes it "for free", with no separate miscTags/theme-tag check needed.
+// A false positive here would mean Cast could one day silently apply Temp
+// HP as ordinary healing, which this phase's own DO-NOT-TOUCH list
+// forbids.
+describe('resolveDnd5eSpellMechanics -- False Life (Temp HP, required negative case)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['False Life'])!
+
+  it('never extracts a healing roll -- Temporary Hit Points is not healing', () => {
+    expect(mechanics.healing).toBeUndefined()
+  })
+})
+
+// Character Sheet Body Phase 1B.4 -- the required negative case for
+// resurrection. Revivify's real text has NO {@dice} tag at all (it revives
+// with a flat, un-rolled "1 Hit Point"), so signal 1 never matches and no
+// healing is ever extracted -- proving resurrection spells fail closed
+// without needing any resurrection-specific exclusion logic.
+describe('resolveDnd5eSpellMechanics -- Revivify (resurrection, required negative case)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells.Revivify)!
+
+  it('never extracts a healing roll -- no {@dice} tag exists to find', () => {
+    expect(mechanics.healing).toBeUndefined()
+  })
+})
+
+// Character Sheet Body Phase 1B.4 -- synthetic edge cases for each of the
+// three signals individually, proving the rule is a genuine three-signal
+// AND, not any single signal alone (the same "cross-validate against
+// non-matching shapes, not just the positive corpus" discipline this file's
+// own "save outcome degrades honestly" describe block above already
+// applies to 1B.3's saveOutcome rule).
+describe('resolveDnd5eSpellMechanics -- healing three-signal rule, synthetic edge cases', () => {
+  function withEntry(overrides: Record<string, unknown>) {
+    return { name: 'Test Spell', level: 1, ...overrides }
+  }
+
+  // Regeneration-shaped: dice + Hit Point tag + "regains" verb, but NOT an
+  // instant duration (a real regeneration/heal-over-time spell resolves
+  // over multiple rounds/minutes) -- must fail closed.
+  it('a dice+HP+"regains" spell with a non-instant duration is never extracted as healing', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      duration: [{ type: 'timed', duration: { type: 'minute', amount: 1 } }],
+      entries: ['At the start of each of its turns, the target regains {@dice 1d6} {@variantrule Hit Points|XPHB}.']
+    }))!
+    expect(mechanics.healing).toBeUndefined()
+  })
+
+  // Heroes'-Feast-shaped: dice + Hit Point tag + instant duration, but the
+  // real verb used is "gains", never "regain(s)" -- must fail closed rather
+  // than treat every HP-adjacent dice roll as healing.
+  it('a dice+HP+instant spell using "gains" instead of "regain(s)" is never extracted as healing', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      duration: [{ type: 'instant' }],
+      entries: ['Each creature that partakes of the feast gains {@dice 2d10} {@variantrule Hit Points|XPHB} maximum for 24 hours.']
+    }))!
+    expect(mechanics.healing).toBeUndefined()
+  })
+
+  // A dice tag and an unrelated Hit-Point-tagged rules reference that are
+  // far apart in the same spell's text (well outside the 80-char proximity
+  // window) must not be paired into a false-positive healing roll.
+  it('a dice tag and an unrelated distant Hit Point reference are not paired', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      duration: [{ type: 'instant' }],
+      entries: [
+        'The target takes {@dice 3d6} necrotic damage and is frightened until the end of its next turn, '
+        + 'unable to regain any benefit from a long rest for that same duration. Separately, see the rules on '
+        + '{@variantrule Hit Points|XPHB} for how damage interacts with temporary effects in general.'
+      ]
+    }))!
+    expect(mechanics.healing).toBeUndefined()
+  })
+
+  // Prayer-of-Healing-shaped: all three signals present, but the source
+  // states NO spellcasting-ability-modifier addend at all -- a genuine RAW
+  // distinction (Prayer of Healing's own real text is flat "regain 2d8 Hit
+  // Points", no "plus your spellcasting ability modifier" clause), not an
+  // extraction gap. `usesSpellcastingModifier` must stay ABSENT, never
+  // fabricated as `false`.
+  it('a healing spell with no stated modifier addend omits usesSpellcastingModifier entirely', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      duration: [{ type: 'instant' }],
+      entries: ['Up to six creatures of your choice that you can see within range each regain {@dice 2d8} {@variantrule Hit Points|XPHB}.']
+    }))!
+    expect(mechanics.healing).toEqual({ dice: { count: 2, faces: 8 }, modifier: 0 })
+    expect(mechanics.healing?.usesSpellcastingModifier).toBeUndefined()
+  })
+
+  // A malformed/zero-faces dice tag near a valid Hit Point reference must
+  // be rejected, not coerced -- the same discipline the dice-parser-variant
+  // describe block above already requires of {@damage}.
+  it('malformed healing dice (zero faces) is rejected, not coerced', () => {
+    const mechanics = resolveDnd5eSpellMechanics(withEntry({
+      duration: [{ type: 'instant' }],
+      entries: ['The target regains {@dice 1d0} {@variantrule Hit Points|XPHB}.']
+    }))!
+    expect(mechanics.healing).toBeUndefined()
   })
 })
 
@@ -390,4 +516,31 @@ describe('resolveDnd5eSpellMechanics -- malformed/absent data degrades honestly'
     expect(resolveDnd5eSpellMechanics({ level: 1 })).toBeNull()
     expect(resolveDnd5eSpellMechanics({ name: '   ', level: 1 })).toBeNull()
   })
+})
+
+// Character Sheet Body Phase 1B.4 -- a corpus-wide sweep across every real
+// spell checked into the fixture (not just the two intended healing
+// spells): guards against a FUTURE change to the three-signal rule
+// accidentally widening it to match a spell it should not. Only Cure
+// Wounds and Healing Word are expected to produce a healing roll from this
+// fixture; every other real spell here (Fireball, Shield, Fire Bolt, Magic
+// Missile, Chromatic Orb, Bless, Acid Splash, Hold Person, False Life,
+// Revivify) must not. The full 391-spell real XPHB corpus was independently
+// verified by hand during this phase's own investigation (see dnd5e.ts's
+// own HEALING header) -- this sweep is the permanent, automated subset of
+// that evidence.
+describe('resolveDnd5eSpellMechanics -- healing corpus sweep (regression guard)', () => {
+  const HEALING_SPELL_NAMES = new Set(['Cure Wounds', 'Healing Word'])
+
+  for (const name of Object.keys(spells)) {
+    const expectHealing = HEALING_SPELL_NAMES.has(name)
+    it(`${name}: healing is ${expectHealing ? 'populated' : 'absent'}`, () => {
+      const mechanics = resolveDnd5eSpellMechanics(spells[name])!
+      if (expectHealing) {
+        expect(mechanics.healing).toBeDefined()
+      } else {
+        expect(mechanics.healing).toBeUndefined()
+      }
+    })
+  }
 })

@@ -26,14 +26,16 @@
 // ---------------------------------------------------------------------------
 // SUPPORTED ARCHETYPES ONLY -- see app/lib/spell-mechanics/cast-capability.ts
 // ---------------------------------------------------------------------------
-// Four capabilities can be Cast through this module: `supported-spell-attack`
+// Five capabilities can be Cast through this module: `supported-spell-attack`
 // (Fire Bolt: an untargeted spell attack roll), `supported-automatic-damage`
-// (Magic Missile: a damage roll with neither an attack nor a save), and, as
-// of Character Sheet Body Phase 1B.3, `supported-save-damage`/
-// `supported-save-context` (Fireball/Hold Person: a saving-throw spell,
-// Cast entirely UNTARGETED -- see `castSpellSave`'s own header for why this
-// creates no caster d20 and possibly no RollEvent at all). Every other
-// capability (`unsupported-healing`, `unsupported-effect`,
+// (Magic Missile: a damage roll with neither an attack nor a save),
+// `supported-save-damage`/`supported-save-context` (Fireball/Hold Person: a
+// saving-throw spell, Cast entirely UNTARGETED -- see `castSpellSave`'s own
+// header for why this creates no caster d20 and possibly no RollEvent at
+// all), and, as of Character Sheet Body Phase 1B.4, `supported-healing`
+// (Cure Wounds/Healing Word: an immediate healing roll, Cast performing the
+// roll itself with no separate free button -- see `castSpellHeal`'s own
+// header). Every other capability (`unsupported-effect`,
 // `unsupported-choice`, `unsupported-mechanic`) is rejected with
 // `reason: 'not-castable'` -- `classifySpellCastCapability` is the ONE
 // predicate this module and CharacterActionsPanel.vue both call, so client
@@ -143,7 +145,8 @@ import {
 } from './character-spellcasting'
 import {
   createSpellAttackRollEvent,
-  createSpellDamageRollEvent
+  createSpellDamageRollEvent,
+  createSpellHealingRollEvent
 } from './roll-events'
 import { broadcastRollEvent } from './roll-realtime-bridge'
 import {
@@ -237,7 +240,7 @@ export function statusForCastFailure(reason: CastFailureReason): number {
 }
 
 type CastableCapability = Extract<SpellCastCapability, {
-  kind: 'supported-spell-attack' | 'supported-automatic-damage' | 'supported-save-damage' | 'supported-save-context'
+  kind: 'supported-spell-attack' | 'supported-automatic-damage' | 'supported-save-damage' | 'supported-save-context' | 'supported-healing'
 }>
 
 export type CastableSpell = {
@@ -293,6 +296,7 @@ async function resolveCastableSpell(
     || capability?.kind === 'supported-automatic-damage'
     || capability?.kind === 'supported-save-damage'
     || capability?.kind === 'supported-save-context'
+    || capability?.kind === 'supported-healing'
 
   if (!isCastableKind) {
     return {
@@ -329,6 +333,23 @@ async function resolveCastableSpell(
       ok: false,
       reason: 'rules-unavailable',
       message: `This World's active Rules Package does not declare the Spell Save DC '${action.name}' needs`
+    }
+  }
+
+  // Character Sheet Body Phase 1B.4 -- the identical gate, restated for
+  // healing's own required number, and ONLY when this specific spell's
+  // canonical healing actually states it adds one (Prayer of Healing's
+  // real RAW text adds none at all -- see SpellRoll.usesSpellcastingModifier's
+  // own header -- so it needs no Rules Engine number here to Cast honestly).
+  if (
+    castableCapability.kind === 'supported-healing'
+    && mechanics.healing?.usesSpellcastingModifier
+    && action.healingAbilityModifier === undefined
+  ) {
+    return {
+      ok: false,
+      reason: 'rules-unavailable',
+      message: `This World's active Rules Package does not declare the Spellcasting Ability Modifier '${action.name}' needs`
     }
   }
 
@@ -692,6 +713,101 @@ export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<C
 }
 
 // ---------------------------------------------------------------------------
+// castSpellHeal -- Cure Wounds/Healing Word's archetype (Character Sheet
+// Body Phase 1B.4).
+// ---------------------------------------------------------------------------
+// Unlike the Attack/Damage split (Fire Bolt) or the untargeted Save split
+// (Fireball), healing has NO separate free roll button at all -- Cast
+// itself performs the healing roll immediately, in the exact same
+// roll-then-persist-unbroadcast-then-expend-then-broadcast ordering every
+// other ROLLING leveled Cast already uses (`castLeveledSpell`, shared
+// unchanged). This task's own explicit UX instruction is why: a second,
+// independent "Healing" button would let a player roll (and see) healing
+// numbers without ever spending the spell slot that roll's own existence
+// implies, exactly the "free spell" outcome this file's own ORDERING
+// section already guards against for damage.
+//
+// The healing EXPRESSION itself is entirely content-authored
+// (`mechanics.healing.dice`/`.modifier`, produced by
+// app/lib/spell-mechanics/dnd5e.ts's own three-signal extraction) --
+// nothing here parses prose or guesses a number. The only thing THIS
+// function adds beyond the content's own dice is the character's
+// authoritative Spellcasting Ability Modifier, and only when the spell's
+// own canonical shape says it applies (`mechanics.healing.usesSpellcastingModifier`
+// -- Prayer of Healing has NO such modifier per its real RAW text, and
+// `resolveCastableSpell`'s own gate already refuses to Cast a spell that
+// DOES need one from a Rules Package that cannot supply it).
+//
+// No target, no HP mutation: this function's RollEventRecord is the
+// caster's own healing roll TOTAL only -- applying it to any character's
+// current HP remains entirely a DM/player manual action (or a future,
+// separately-approved phase's job), identical in spirit to
+// `castSpellSave`'s own "no target HP mutation" boundary above.
+export async function castSpellHeal(input: CastSpellInput): Promise<CastSpellResult> {
+  const resolved = await resolveCastableSpell(input.worldId, input.characterId, input.actionId, input.choices)
+  if (!resolved.ok) return resolved
+
+  const { action, mechanics, capability, resolvedChoices } = resolved.castable
+  if (capability.kind !== 'supported-healing') {
+    return {
+      ok: false,
+      reason: 'not-castable',
+      message: `'${action.name}' does not resolve as healing -- use one of Cast's other paths instead`
+    }
+  }
+
+  // classifySpellCastCapability only returns 'supported-healing' when
+  // `mechanics.healing` is present.
+  const healing = mechanics.healing!
+
+  const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
+  if (!levelResolution.ok) return levelResolution
+
+  // Character Sheet Body Phase 1B.4 -- upcast healing SCALING is explicitly
+  // deferred to a future phase (see this task's own "DO NOT implement
+  // executable upcast healing scaling" instruction); a spell cast at a
+  // higher level still rolls exactly its base healing expression, and
+  // `castLevel` is recorded in metadata purely as CONTEXT (identical to
+  // `castSpellAutomaticDamage`'s own un-scaled `castLevel` metadata today),
+  // never used to alter the dice rolled here.
+  const modifier = healing.usesSpellcastingModifier
+    ? healing.modifier + (action.healingAbilityModifier as number)
+    : healing.modifier
+
+  const metadata = {
+    ...(input.metadata ?? {}),
+    actionCategory: 'spell',
+    spellLevel: mechanics.level,
+    ...(levelResolution.level !== null ? { castLevel: levelResolution.level } : {}),
+    ...(Object.keys(resolvedChoices).length ? { choices: resolvedChoices } : {})
+  }
+  const createRoll = (broadcast: boolean) => createSpellHealingRollEvent({
+    worldId: input.worldId,
+    rollerUserId: input.rollerUserId,
+    actorCharacterId: input.characterId,
+    encounterId: input.encounterId ?? null,
+    spellName: action.name,
+    sourceId: action.id,
+    dice: healing.dice ?? { count: 0, faces: 0 },
+    modifier,
+    visibility: input.visibility,
+    metadata,
+    broadcast
+  })
+
+  if (levelResolution.level === null) {
+    // Not part of the required 1B.4 corpus (no real healing cantrip exists
+    // in the audited XPHB corpus), but handled honestly rather than assumed
+    // impossible -- the identical "architecture degrades gracefully" posture
+    // `castSpellAutomaticDamage`'s own cantrip branch already takes.
+    const roll = await createRoll(true)
+    return { ok: true, roll }
+  }
+
+  return castLeveledSpell(input.worldId, input.characterId, levelResolution.level, createRoll)
+}
+
+// ---------------------------------------------------------------------------
 // castSpellSave -- Fireball's archetype (Character Sheet Body Phase 1B.3).
 // ---------------------------------------------------------------------------
 // WHAT DOES CAST ROLL? Nothing, on the caster's side. A saving-throw spell's
@@ -786,6 +902,7 @@ export async function castSpell(input: CastSpellInput): Promise<CastSpellResult>
   const kind = resolved.castable.capability.kind
   if (kind === 'supported-spell-attack') return castSpellAttack(input)
   if (kind === 'supported-automatic-damage') return castSpellAutomaticDamage(input)
+  if (kind === 'supported-healing') return castSpellHeal(input)
   return castSpellSave(input)
 }
 

@@ -38,12 +38,22 @@ import type { CanonicalSpellMechanics } from './types'
 // `supported-save-damage` vs `supported-save-context` exists so a consumer
 // (CharacterActionsPanel.vue's own `showsIndependentSpellDamage`) can tell
 // the two apart without re-deriving `Boolean(mechanics.damage)` itself.
+//
+// Character Sheet Body Phase 1B.4 (Healing Spell Foundation) --
+// `unsupported-healing` is likewise RETIRED. It existed only as a
+// placeholder for the day `CanonicalSpellMechanics.healing` became
+// reliably populated (1B.1's own explicit deferral); now that it is (see
+// app/lib/spell-mechanics/dnd5e.ts's own HEALING header for the
+// three-signal evidence), a spell whose immediate healing is structurally
+// known is honestly Cast-capable, exactly the same "resource + roll,
+// never a fabricated target effect" posture every other supported kind
+// already has.
 export type SpellCastCapability =
   | { kind: 'supported-spell-attack' }
   | { kind: 'supported-automatic-damage' }
   | { kind: 'supported-save-damage' }
   | { kind: 'supported-save-context' }
-  | { kind: 'unsupported-healing' }
+  | { kind: 'supported-healing' }
   | { kind: 'unsupported-effect' }
   | { kind: 'unsupported-choice' }
   | { kind: 'unsupported-mechanic' }
@@ -96,18 +106,23 @@ export function classifySpellCastCapability(
     return mechanics.damage ? { kind: 'supported-save-damage' } : { kind: 'supported-save-context' }
   }
 
+  // Not part of the required 1B.4 corpus (no real spell combines a
+  // `{@damage}` automatic-damage roll with a structurally-recognized
+  // healing roll), but handled honestly rather than assumed impossible --
+  // the same posture `resolveCastConfiguration`'s own "not part of the
+  // required corpus" branches already take elsewhere in this family.
   if (mechanics.resolution?.kind === 'automatic') {
     if (mechanics.damage) return { kind: 'supported-automatic-damage' }
-    if (mechanics.healing) return { kind: 'unsupported-healing' }
+    if (mechanics.healing) return { kind: 'supported-healing' }
     return { kind: 'unsupported-mechanic' }
   }
 
   // `resolution === null` -- no attack, no save, no automatic damage.
-  // Still distinguished from "healing" for the day `healing` actually
-  // gets populated (1B.4): a spell whose ONLY resolved mechanic is
-  // healing reports that specifically, rather than the generic
-  // "effect-only" bucket every other utility/buff spell (Shield, Bless)
-  // falls into today.
-  if (mechanics.healing) return { kind: 'unsupported-healing' }
+  // Character Sheet Body Phase 1B.4: Cure Wounds/Healing Word/Mass Cure
+  // Wounds/Mass Healing Word/Prayer of Healing all land here (their own
+  // canonical `resolution` is `null` -- pure utility spells with a
+  // separately-normalized `healing` roll, never miscoded as 'automatic'
+  // just because they resolve something).
+  if (mechanics.healing) return { kind: 'supported-healing' }
   return { kind: 'unsupported-effect' }
 }

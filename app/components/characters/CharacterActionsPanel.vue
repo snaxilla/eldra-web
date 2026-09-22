@@ -465,12 +465,16 @@ function confirmCast(action: CharacterAction) {
   openConfigActionId.value = null
 }
 
-// The row's OWN (closed-panel) Damage control reuses whatever selection
-// already exists for this row (from a prior Cast or a prior Damage
-// confirmation) -- see this function's own header note above. Only opens
+// The Cast Configuration panel's own Damage control was removed (Phase
+// 1B.2.1 browser acceptance correction) -- Damage stays the row's single,
+// independent control, never duplicated inside configuration. This handler
+// reuses whatever selection already exists for this row (from a prior
+// Cast) -- see this file's own Cast Configuration header. Only opens
 // configuration when nothing has ever been selected yet, since Damage must
 // never silently default a choice (this task's own "no type was silently
-// defaulted" requirement) any more than Cast may.
+// defaulted" requirement) any more than Cast may; the player confirms that
+// selection by Casting, matching this component's one remaining
+// confirmation control.
 function onSpellDamageRowClick(action: CharacterAction) {
   if (props.casting) return
   const config = castConfigurationOf(action)
@@ -479,14 +483,6 @@ function onSpellDamageRowClick(action: CharacterAction) {
     return
   }
   emit('spellDamage', castPayload(action, config))
-}
-
-function confirmSpellDamage(action: CharacterAction) {
-  if (props.casting) return
-  const config = castConfigurationOf(action)
-  if (!hasCompleteSelection(action, config)) return
-  emit('spellDamage', castPayload(action, config))
-  openConfigActionId.value = null
 }
 
 const ORDINAL_SUFFIXES: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd' }
@@ -772,7 +768,12 @@ function resolvedDamageText(action: CharacterAction): string {
                  above). Casting level pills only render when more than one
                  legal level actually exists (SIMPLE CASTS MUST REMAIN
                  SIMPLE); every declared spell choice renders unconditionally
-                 -- both share one Cast/Damage confirm pair at the bottom. -->
+                 -- both feed the single Cast confirm button at the bottom.
+                 Damage is NOT duplicated in here (browser acceptance
+                 correction): it stays exclusively the row-level control
+                 above, the same one every other supported spell already
+                 uses, reusing whatever this panel's own Cast most recently
+                 selected. -->
             <div
               v-if="openConfigActionId === action.id"
               class="w-full border-t border-[rgba(201,164,90,0.16)] pt-2"
@@ -831,16 +832,6 @@ function resolvedDamageText(action: CharacterAction): string {
                   @click="confirmCast(action)"
                 >
                   {{ casting ? 'Casting…' : 'Cast' }}
-                </button>
-
-                <button
-                  v-if="showsIndependentSpellDamage(action)"
-                  type="button"
-                  class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:opacity-50 md:flex-none md:px-4"
-                  :disabled="casting || !hasCompleteSelection(action, castConfigurationOf(action))"
-                  @click="confirmSpellDamage(action)"
-                >
-                  Damage
                 </button>
               </div>
             </div>

@@ -44,8 +44,13 @@
 // full real corpus, correctly identifies every genuine one-shot heal with
 // zero false positives -- see resolveDnd5eSpellMechanics's own updated
 // header for the full evidence. Scaling is preserved as SOURCE TEXT plus a
-// coarse shape tag (never a computed transformation) -- 1B.5's job, not
-// this phase's.
+// coarse shape tag (`scaling` below, unchanged since 1B.1) for every
+// spell, and ADDITIONALLY as an executable, cross-validated
+// `SpellRoll.diceScaling` (Character Sheet Body Phase 1B.5) for the subset
+// of the corpus whose dice-scaling shape is structurally reliable enough to
+// execute rather than merely preserve -- see `SpellDiceScaling`'s own
+// header and resolveDnd5eSpellMechanics's own updated SCALING header for
+// the full corpus evidence and what remains prose-only.
 //
 // NOT modeled at all, on purpose (not even an empty placeholder field):
 // target count, area/shape, buff/debuff numeric effects, persistent-effect
@@ -74,6 +79,51 @@ export type SpellDice = { count: number; faces: number }
 // meaning would just be a second way to say the same thing.
 export type SpellSaveOutcome = 'half-on-save' | 'no-damage-on-save'
 
+// Character Sheet Body Phase 1B.5 (Executable Spell Scaling + Upcasting) --
+// the SMALLEST generic representation the real corpus reliably supports
+// for "how this roll's own dice grow", attached directly to the `SpellRoll`
+// they scale (never a disconnected top-level field a consumer would have
+// to re-match back to "damage or healing"). Two shapes, not one, because
+// the corpus proves cantrip and slot scaling are genuinely different
+// mechanics, never interchangeable:
+//
+// `'character-level'` -- a cantrip's RAW "Cantrip Upgrade" (Fire Bolt: 1d10
+// at level 1, 2d10 at 5, 3d10 at 11, 4d10 at 17). A discrete THRESHOLD
+// TABLE, not a formula -- 5etools' own `scalingLevelDice` field states each
+// tier's resulting dice explicitly, and this resolver preserves it exactly
+// that way rather than trying to infer a "+1 die every 6 levels" rule that
+// happens to fit today's four tiers but is not what the source actually
+// states. `tiers` is sorted ascending and always includes the base
+// (level-1) tier -- deliberately redundant with the roll's own `dice`, so
+// an effective-mechanics resolver never has to special-case "below the
+// first tier" as a separate code path from every other tier lookup.
+//
+// `'cast-level'` -- a leveled spell's RAW "Using a Higher-Level Spell Slot"
+// (Fireball: +1d6 per slot level above 3; Cure Wounds: +2d8 per slot level
+// above 1). A genuine LINEAR formula, verified across the full corpus: the
+// per-level increment's own die SIZE always equals the roll's own base die
+// size (never a die-size change on upcast -- that only happens for a
+// cantrip, and only for Shillelagh, which has no spell damage roll to
+// scale in the first place, see resolveDnd5eSpellMechanics's own SCALING
+// header), but the increment's own die COUNT is NOT always 1 (several real
+// spells add 2 or 3 dice per level) -- `perLevelDiceCount` is that
+// per-spell coefficient, never hardcoded.
+//
+// Absent (not a third "none" variant) for the many real spells whose
+// scaling is target count, instance/projectile count, flat numeric
+// magnitude, duration, range/area, or a non-arithmetic tiered threshold --
+// see resolveDnd5eSpellMechanics's own SCALING header for why the corpus
+// gives this resolver no safe, non-prose-parsing way to normalize those
+// into a structured number, and app/lib/spell-mechanics/effective-mechanics.ts's
+// own header for what 1B.5 executes versus defers as a result. Those spells
+// keep exactly the same `CanonicalSpellMechanics.scaling` prose-preservation
+// (unchanged since 1B.1) they always had -- this field is a strictly
+// ADDITIVE refinement for the subset the corpus supports, never a
+// replacement for the prose fallback every spell still gets.
+export type SpellDiceScaling =
+  | { trigger: 'character-level'; tiers: readonly { level: number; dice: SpellDice }[] }
+  | { trigger: 'cast-level'; perLevelDiceCount: number }
+
 // A dice roll plus whatever flat, non-dice addend the source states --
 // Magic Missile's "+1" must survive here. `modifier` is always a number
 // (0 when the source states none), never optional, so a consumer never has
@@ -99,6 +149,11 @@ export type SpellRoll = {
   // Healing's own real text ("regain 2d8 Hit Points") names no modifier at
   // all, a genuine RAW distinction from Cure Wounds, not an extraction gap.
   usesSpellcastingModifier?: boolean
+  // Character Sheet Body Phase 1B.5 -- see `SpellDiceScaling`'s own header
+  // immediately above. Absent means exactly what it always meant before
+  // this phase: this roll's dice are fixed, whatever `dice`/`modifier`
+  // already state, for every legal cast level/character level alike.
+  diceScaling?: SpellDiceScaling
 }
 
 // Which raw mechanic resolves this spell, and the one extra fact each

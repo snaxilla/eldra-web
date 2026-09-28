@@ -23,6 +23,7 @@ export type {
   SpellChoice,
   SpellChoiceOption,
   SpellDice,
+  SpellDiceScaling,
   SpellResolutionKind,
   SpellRoll,
   SpellSaveOutcome,
@@ -41,6 +42,14 @@ export {
   type CastConfigurationViewModel,
   type ValidateSpellChoicesResult
 } from './cast-configuration'
+
+export {
+  resolveEffectiveSpellRoll,
+  resolveEffectiveDamage,
+  resolveEffectiveHealing,
+  type SpellEffectiveContext,
+  type EffectiveSpellRoll
+} from './effective-mechanics'
 
 const RESOLVERS: Record<string, SpellMechanicsResolver> = {
   dnd5e: resolveDnd5eSpellMechanics

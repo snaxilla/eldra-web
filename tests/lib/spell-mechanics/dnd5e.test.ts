@@ -34,7 +34,11 @@ describe('resolveDnd5eSpellMechanics -- Fire Bolt (cantrip, attack-roll, cantrip
   })
 
   it('preserves the damage dice and type, with no flat modifier stated', () => {
-    expect(mechanics.damage).toEqual({ dice: { count: 1, faces: 10 }, modifier: 0, type: 'fire' })
+    // Character Sheet Body Phase 1B.5 -- `diceScaling` is now also present
+    // (see this file's own dedicated Fire Bolt scaling describe block
+    // below); `toMatchObject` keeps this 1B.1 assertion proving exactly
+    // what it always proved.
+    expect(mechanics.damage).toMatchObject({ dice: { count: 1, faces: 10 }, modifier: 0, type: 'fire' })
   })
 
   it('identifies its scaling as cantrip-level, preserving the source text, without computing the per-level steps', () => {
@@ -82,7 +86,11 @@ describe('resolveDnd5eSpellMechanics -- Fireball (saving-throw, half-on-save dam
   })
 
   it('preserves 8d6 fire damage with no flat modifier', () => {
-    expect(mechanics.damage).toEqual({ dice: { count: 8, faces: 6 }, modifier: 0, type: 'fire', saveOutcome: 'half-on-save' })
+    // Character Sheet Body Phase 1B.5 -- `diceScaling` is now also present
+    // (see this file's own dedicated Fireball scaling describe block
+    // below); `toMatchObject` keeps this 1B.3 assertion proving exactly
+    // what it always proved.
+    expect(mechanics.damage).toMatchObject({ dice: { count: 8, faces: 6 }, modifier: 0, type: 'fire', saveOutcome: 'half-on-save' })
   })
 
   // Character Sheet Body Phase 1B.3 -- the required half-on-save
@@ -168,7 +176,11 @@ describe('resolveDnd5eSpellMechanics -- Cure Wounds (healing, the required prima
   const mechanics = resolveDnd5eSpellMechanics(spells['Cure Wounds'])!
 
   it('extracts 2d8 healing with no flat modifier, and flags that it uses the spellcasting ability modifier', () => {
-    expect(mechanics.healing).toEqual({ dice: { count: 2, faces: 8 }, modifier: 0, usesSpellcastingModifier: true })
+    // Character Sheet Body Phase 1B.5 -- `diceScaling` is now also present
+    // (see this file's own dedicated Cure Wounds scaling describe block
+    // below); `toMatchObject` keeps this 1B.4 assertion proving exactly
+    // what it always proved.
+    expect(mechanics.healing).toMatchObject({ dice: { count: 2, faces: 8 }, modifier: 0, usesSpellcastingModifier: true })
   })
 
   it('does not fabricate an attack or save resolution -- Cure Wounds has neither', () => {
@@ -190,7 +202,11 @@ describe('resolveDnd5eSpellMechanics -- Healing Word (healing, the required seco
   const mechanics = resolveDnd5eSpellMechanics(spells['Healing Word'])!
 
   it('extracts 2d4 healing with no flat modifier, and flags that it uses the spellcasting ability modifier', () => {
-    expect(mechanics.healing).toEqual({ dice: { count: 2, faces: 4 }, modifier: 0, usesSpellcastingModifier: true })
+    // Character Sheet Body Phase 1B.5 -- `diceScaling` is now also present
+    // (see this file's own dedicated Healing Word scaling describe block
+    // below); `toMatchObject` keeps this 1B.4 assertion proving exactly
+    // what it always proved.
+    expect(mechanics.healing).toMatchObject({ dice: { count: 2, faces: 4 }, modifier: 0, usesSpellcastingModifier: true })
   })
 
   it('does not fabricate an attack or save resolution', () => {
@@ -361,7 +377,12 @@ describe('resolveDnd5eSpellMechanics -- Chromatic Orb (structured damage-type ch
   })
 
   it('still preserves the dice, but leaves damage.type undefined -- never "acid" by default', () => {
-    expect(mechanics.damage).toEqual({ dice: { count: 3, faces: 8 }, modifier: 0, type: undefined })
+    // Character Sheet Body Phase 1B.5 -- `diceScaling` is now also present
+    // (see this file's own dedicated Chromatic Orb scaling describe block
+    // below); `toMatchObject` here so this 1B.2.1 assertion keeps proving
+    // exactly what it always proved (dice/modifier/type) without also
+    // having to restate the new field.
+    expect(mechanics.damage).toMatchObject({ dice: { count: 3, faces: 8 }, modifier: 0, type: undefined })
   })
 
   it('is still a real attack-roll resolution -- the choice concerns damage type, not resolution kind', () => {
@@ -543,4 +564,326 @@ describe('resolveDnd5eSpellMechanics -- healing corpus sweep (regression guard)'
       }
     })
   }
+})
+
+// ---------------------------------------------------------------------------
+// Character Sheet Body Phase 1B.5 -- Executable Spell Scaling + Upcasting
+// ---------------------------------------------------------------------------
+// `SpellRoll.diceScaling` extraction: Fire Bolt/Acid Splash (cantrip,
+// character-level trigger) and Fireball/Cure Wounds/Healing Word/Chromatic
+// Orb (leveled, cast-level trigger) are the task's own required acceptance
+// spells; the negative/edge cases below (Ice Knife-shaped mismatch,
+// Shillelagh-shaped no-damage-to-scale, Bigby's-Hand-shaped valid multi-tag)
+// are synthetic, built from the REAL shapes this phase's own corpus audit
+// found in the full XPHB dataset (see dnd5e.ts's own SCALING header for the
+// exact spell names and evidence) -- reproduced here as constructed
+// `entries`/`entriesHigherLevel`/`scalingLevelDice` fixtures rather than
+// pulling six more large real spells into the fixture file, the same
+// "cross-validate against non-matching shapes via synthetic constructed
+// entries" precedent this file's own "save outcome degrades honestly"
+// describe block above already established for 1B.3.
+
+describe('resolveDnd5eSpellMechanics -- Fire Bolt (cantrip character-level dice scaling, required acceptance)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['Fire Bolt'])!
+
+  it('extracts the full 1/5/11/17 threshold table, byte-identical to the real scalingLevelDice field', () => {
+    expect(mechanics.damage?.diceScaling).toEqual({
+      trigger: 'character-level',
+      tiers: [
+        { level: 1, dice: { count: 1, faces: 10 } },
+        { level: 5, dice: { count: 2, faces: 10 } },
+        { level: 11, dice: { count: 3, faces: 10 } },
+        { level: 17, dice: { count: 4, faces: 10 } }
+      ]
+    })
+  })
+
+  it('the base tier is byte-identical to damage.dice itself -- deliberately redundant, never drifting', () => {
+    const tiers = mechanics.damage!.diceScaling as Extract<typeof mechanics.damage.diceScaling, { trigger: 'character-level' }>
+    expect(tiers.tiers[0]).toEqual({ level: 1, dice: mechanics.damage!.dice })
+  })
+
+  it('never attaches slot-level (cast-level) scaling to a cantrip', () => {
+    expect(mechanics.damage?.diceScaling?.trigger).not.toBe('cast-level')
+  })
+})
+
+describe('resolveDnd5eSpellMechanics -- Acid Splash (cantrip character-level dice scaling, required acceptance)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['Acid Splash'])!
+
+  it('extracts the full 1/5/11/17 threshold table, proving the mechanism is not Fire-Bolt-specific (different die size)', () => {
+    expect(mechanics.damage?.diceScaling).toEqual({
+      trigger: 'character-level',
+      tiers: [
+        { level: 1, dice: { count: 1, faces: 6 } },
+        { level: 5, dice: { count: 2, faces: 6 } },
+        { level: 11, dice: { count: 3, faces: 6 } },
+        { level: 17, dice: { count: 4, faces: 6 } }
+      ]
+    })
+  })
+
+  it('still preserves its own no-damage-on-save outcome alongside the new scaling field', () => {
+    expect(mechanics.damage?.saveOutcome).toBe('no-damage-on-save')
+  })
+})
+
+describe('resolveDnd5eSpellMechanics -- Fireball (slot-level cast-level dice scaling, required acceptance)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells.Fireball)!
+
+  it('extracts a linear cast-level scaling of +1d6 per slot level above base level 3', () => {
+    expect(mechanics.damage?.diceScaling).toEqual({ trigger: 'cast-level', perLevelDiceCount: 1 })
+  })
+
+  it('still preserves half-on-save alongside the new scaling field', () => {
+    expect(mechanics.damage?.saveOutcome).toBe('half-on-save')
+  })
+
+  it('never attaches character-level (cantrip) scaling to a leveled spell', () => {
+    expect(mechanics.damage?.diceScaling?.trigger).not.toBe('character-level')
+  })
+})
+
+describe('resolveDnd5eSpellMechanics -- Cure Wounds / Healing Word (slot-level healing-dice scaling, required acceptance)', () => {
+  it('Cure Wounds extracts +2d8 per slot level above base level 1 (a per-level COUNT of 2, never hardcoded to 1)', () => {
+    const mechanics = resolveDnd5eSpellMechanics(spells['Cure Wounds'])!
+    expect(mechanics.healing?.diceScaling).toEqual({ trigger: 'cast-level', perLevelDiceCount: 2 })
+  })
+
+  it('Healing Word extracts +2d4 per slot level above base level 1 -- proves genericity, not Cure-Wounds-specific', () => {
+    const mechanics = resolveDnd5eSpellMechanics(spells['Healing Word'])!
+    expect(mechanics.healing?.diceScaling).toEqual({ trigger: 'cast-level', perLevelDiceCount: 2 })
+  })
+
+  it('never attaches diceScaling to damage for a pure-healing spell (there is no damage roll to scale)', () => {
+    expect(resolveDnd5eSpellMechanics(spells['Cure Wounds'])!.damage).toBeUndefined()
+  })
+})
+
+describe('resolveDnd5eSpellMechanics -- Chromatic Orb (scaling composes with a structured choice, required investigation)', () => {
+  const mechanics = resolveDnd5eSpellMechanics(spells['Chromatic Orb'])!
+
+  it('extracts +1d8 per slot level above base level 1', () => {
+    expect(mechanics.damage?.diceScaling).toEqual({ trigger: 'cast-level', perLevelDiceCount: 1 })
+  })
+
+  it('the structured damage-type choice survives alongside scaling, type still undefined until resolved', () => {
+    expect(mechanics.choices).toHaveLength(1)
+    expect(mechanics.damage?.type).toBeUndefined()
+  })
+})
+
+describe('resolveDnd5eSpellMechanics -- Magic Missile / Bless (non-dice scaling, required investigation: classified, never faked as dice)', () => {
+  it('Magic Missile never gets diceScaling -- "one more dart" is instance scaling, not dice scaling', () => {
+    const mechanics = resolveDnd5eSpellMechanics(spells['Magic Missile'])!
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+    // The base per-dart mechanic is completely unaffected -- proving 1B.5
+    // introduces no fake "extra dart = extra die" shortcut anywhere in the
+    // canonical layer.
+    expect(mechanics.damage).toEqual({ dice: { count: 1, faces: 4 }, modifier: 1, type: 'force' })
+  })
+
+  it('Bless has no damage roll at all to attach scaling to -- "one more target" is never modeled as dice', () => {
+    const mechanics = resolveDnd5eSpellMechanics(spells.Bless)!
+    expect(mechanics.damage).toBeUndefined()
+    expect(mechanics.resolution).toBeNull()
+  })
+
+  it('both still preserve their own prose-only scaling text (1B.1 behavior, unchanged)', () => {
+    expect(resolveDnd5eSpellMechanics(spells['Magic Missile'])!.scaling?.kind).toBe('slot-level')
+    expect(resolveDnd5eSpellMechanics(spells.Bless)!.scaling?.kind).toBe('slot-level')
+  })
+})
+
+// Character Sheet Body Phase 1B.5 -- synthetic cross-validation edge cases,
+// reproducing REAL corpus shapes this phase's own audit found (see
+// dnd5e.ts's own SCALING header) without pulling six more large real spells
+// into the fixture.
+describe('resolveDnd5eSpellMechanics -- diceScaling cross-validation, synthetic edge cases', () => {
+  function cantripEntry(overrides: Record<string, unknown>) {
+    return {
+      name: 'Test Cantrip', level: 0, spellAttack: ['R'],
+      entries: ['Deals {@damage 1d6} damage.'],
+      ...overrides
+    }
+  }
+
+  function leveledEntry(overrides: Record<string, unknown>) {
+    return {
+      name: 'Test Spell', level: 3, spellAttack: ['R'],
+      entries: ['Deals {@damage 8d6} damage.'],
+      ...overrides
+    }
+  }
+
+  // Shillelagh/True Strike's real shape: a `scalingLevelDice` table exists,
+  // but the spell has no `{@damage}` tag of its own (their real effect
+  // modifies a WEAPON's damage die, not a spell roll) -- diceScaling must
+  // never attach to a roll that does not exist.
+  it('a scalingLevelDice table with no underlying damage roll attaches nothing (Shillelagh/True Strike-shaped)', () => {
+    const mechanics = resolveDnd5eSpellMechanics({
+      name: 'Test Weapon Buff', level: 0,
+      entries: ['Your weapon damage die becomes a d8.'],
+      scalingLevelDice: { label: 'damage', scaling: { 1: '1d8', 5: '1d10', 11: '1d12', 17: '2d6' } }
+    })!
+    expect(mechanics.damage).toBeUndefined()
+  })
+
+  // Shillelagh's own real anomaly: the tiers themselves change FACE size
+  // (die-size change), not just count -- even if a damage roll DID exist
+  // with base 1d8, this would be refused because the base tier's dice must
+  // match `damage.dice` exactly AND every other real corpus scaling table
+  // never changes face size, so a cross-validated match here would be
+  // coincidental at best. Verified here as: base tier face size differs
+  // from actual damage -> refused.
+  it('a scalingLevelDice base tier that does not match the extracted damage dice is refused (die-size-change-shaped)', () => {
+    const mechanics = resolveDnd5eSpellMechanics(cantripEntry({
+      entries: ['Deals {@damage 1d8} damage.'],
+      scalingLevelDice: { label: 'damage', scaling: { 1: '1d6', 5: '1d10', 11: '1d12', 17: '2d6' } }
+    }))!
+    expect(mechanics.damage?.dice).toEqual({ count: 1, faces: 8 })
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // True Strike's own real anomaly: the tiers start at level 5, no level-1
+  // entry at all -- with no damage to cross-validate against anyway
+  // (True Strike has none), but proven independently here: even WITH a
+  // damage roll present, a table missing its lowest tier's own match to
+  // `damage.dice` is refused, never assumed.
+  it('a scalingLevelDice table whose lowest tier does not match extracted damage is refused, even with damage present', () => {
+    const mechanics = resolveDnd5eSpellMechanics(cantripEntry({
+      entries: ['Deals {@damage 1d6} damage.'],
+      scalingLevelDice: { label: 'extra damage', scaling: { 5: '1d6', 11: '2d6', 17: '3d6' } }
+    }))!
+    expect(mechanics.damage?.dice).toEqual({ count: 1, faces: 6 })
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // Ice Knife's real shape: the {@scaledamage} tag describes a DIFFERENT
+  // damage component (a 2d6 secondary explosion) than the FIRST {@damage}
+  // tag this resolver's own established "first tag wins" rule extracts
+  // (a 1d10 direct hit) -- cross-validation must refuse rather than
+  // silently scale the wrong roll.
+  it('a {@scaledamage} tag describing a different component than the extracted damage is refused (Ice-Knife-shaped)', () => {
+    const mechanics = resolveDnd5eSpellMechanics({
+      name: 'Test Knife', level: 1, spellAttack: ['R'],
+      entries: ['On a hit, the target takes {@damage 1d10} Piercing damage. Each creature within 5 feet takes {@damage 2d6} Cold damage.'],
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The Cold damage increases by {@scaledamage 2d6|1-9|1d6} for each spell slot level above 1.']
+      }]
+    })!
+    expect(mechanics.damage?.dice).toEqual({ count: 1, faces: 10 })
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // Ice Storm's real shape: TWO simultaneous {@damage} tags (never a
+  // choice, per the existing 1B.2.1 precedent this file's own "structured
+  // choice precision" describe block above already tests), and the
+  // {@scaledamage} tag's own base (2d8) matches NEITHER of them (2d10
+  // bludgeoning, 4d6 cold) -- refused.
+  it('a {@scaledamage} tag matching neither of two simultaneous damage components is refused (Ice-Storm-shaped)', () => {
+    const mechanics = resolveDnd5eSpellMechanics({
+      name: 'Test Storm', level: 4, savingThrow: ['dexterity'],
+      damageInflict: ['bludgeoning', 'cold'],
+      entries: ['Each creature takes {@damage 2d10} Bludgeoning damage and {@damage 4d6} Cold damage on a failed save or half as much damage on a successful one.'],
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The damage increases by {@scaledamage 2d8|4-9|1d10} for each spell slot level above 4.']
+      }]
+    })!
+    expect(mechanics.damage?.dice).toEqual({ count: 2, faces: 10 })
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // Bigby's Hand/Wall of Ice's real shape: TWO {@scaledamage} tags, but the
+  // FIRST one genuinely does describe the same component the resolver's own
+  // "first tag" rule extracted -- multi-tag alone must never be
+  // disqualifying, only a base-dice/min-level mismatch is.
+  it('multiple {@scaledamage} tags are not themselves disqualifying when the first one matches (Bigby\'s-Hand-shaped)', () => {
+    const mechanics = resolveDnd5eSpellMechanics({
+      name: 'Test Hand', level: 5, spellAttack: ['M'],
+      entries: ['On a hit, the hand deals {@damage 5d8} Force damage.'],
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The damage of the first mode increases by {@scaledamage 5d8|5-9|2d8} and the damage of the second mode increases by {@scaledamage 4d6|5-9|2d6} for each spell slot level above 5.']
+      }]
+    })!
+    expect(mechanics.damage?.diceScaling).toEqual({ trigger: 'cast-level', perLevelDiceCount: 2 })
+  })
+
+  // Disintegrate's real shape: the {@scaledamage} tag's own BASE carries a
+  // flat "+K" modifier suffix ("10d6 + 40"), not a bare NdM -- this
+  // resolver's own dice-notation parser refuses anything but bare `NdM`
+  // rather than guessing how a modifier should scale.
+  it('a {@scaledamage} base with a flat modifier suffix is refused rather than guessed (Disintegrate-shaped)', () => {
+    const mechanics = resolveDnd5eSpellMechanics(leveledEntry({
+      level: 6,
+      entries: ['The target takes {@damage 10d6 + 40} Force damage.'],
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The damage increases by {@scaledamage 10d6 + 40|6-9|3d6} for each spell slot level above 6.']
+      }]
+    }))!
+    expect(mechanics.damage?.dice).toEqual({ count: 10, faces: 6 })
+    expect(mechanics.damage?.modifier).toBe(40)
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // Conjure Elemental/Lightning Arrow/Melf's Acid Arrow's real shape: a
+  // semicolon-separated dual base ("8d8;4d8", a hit/miss or two-mode
+  // variant) -- not a bare NdM, refused rather than guessing which half
+  // applies.
+  it('a semicolon-separated dual {@scaledamage} base is refused rather than guessed (Conjure-Elemental-shaped)', () => {
+    const mechanics = resolveDnd5eSpellMechanics(leveledEntry({
+      level: 5,
+      entries: ['The creature deals {@damage 8d8} damage.'],
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The damage increases by {@scaledamage 8d8;4d8|5-9|1d8} for each spell slot level above 5.']
+      }]
+    }))!
+    expect(mechanics.damage?.dice).toEqual({ count: 8, faces: 8 })
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // The per-level increment's own die SIZE must match the base roll's die
+  // size -- refused if it does not (no real corpus example exists, but the
+  // guard itself is verified directly rather than trusted untested).
+  it('a per-level increment whose die size differs from the base roll is refused', () => {
+    const mechanics = resolveDnd5eSpellMechanics(leveledEntry({
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The damage increases by {@scaledamage 8d6|3-9|1d8} for each spell slot level above 3.']
+      }]
+    }))!
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // A {@scaledamage} tag whose own stated minimum level does not match this
+  // spell's own base level is refused -- proves the range-start check is
+  // real, not a no-op.
+  it('a {@scaledamage} tag whose stated minimum level does not match the spell\'s own base level is refused', () => {
+    const mechanics = resolveDnd5eSpellMechanics(leveledEntry({
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The damage increases by {@scaledamage 8d6|4-9|1d6} for each spell slot level above 4.']
+      }]
+    }))!
+    expect(mechanics.damage?.diceScaling).toBeUndefined()
+  })
+
+  // A per-level increment count that is NOT 1 must be preserved exactly,
+  // never hardcoded to "+1 die" -- several real spells (Circle of Death,
+  // Disintegrate's own valid siblings, Cure Wounds itself) add 2 or 3 dice
+  // per level.
+  it('a per-level increment count other than 1 is preserved exactly, never coerced to 1', () => {
+    const mechanics = resolveDnd5eSpellMechanics(leveledEntry({
+      entriesHigherLevel: [{
+        type: 'entries', name: 'Using a Higher-Level Spell Slot',
+        entries: ['The damage increases by {@scaledamage 8d6|3-9|3d6} for each spell slot level above 3.']
+      }]
+    }))!
+    expect(mechanics.damage?.diceScaling).toEqual({ trigger: 'cast-level', perLevelDiceCount: 3 })
+  })
 })

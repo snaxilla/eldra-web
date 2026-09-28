@@ -1035,14 +1035,20 @@ describe('rollIndependentSpellDamage -- Fireball\'s own Damage button', () => {
     )
   })
 
-  it('preserves/revalidates a supplied castLevel without applying any upcast scaling -- still 8d6', async () => {
+  // Character Sheet Body Phase 1B.5 upgrade: upcast damage scaling is now
+  // EXECUTABLE (Fireball's own `{@scaledamage 8d6|3-9|1d6}` cross-validated
+  // reliably -- see app/lib/spell-mechanics/dnd5e.ts's own SCALING header),
+  // superseding 1B.2.1/1B.3's own "no upcast scaling yet" limitation this
+  // test used to assert. See tests/lib/spell-mechanics/effective-mechanics.test.ts
+  // for the pure-resolver-level version of this exact case.
+  it('preserves/revalidates a supplied castLevel and applies the required executable damage scaling -- 9d6 at L4', async () => {
     withFireballPrepared()
     getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived({ slot4Max: 1 }))
 
     const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 4 })
     expect(result.ok).toBe(true)
     expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({ dice: { count: 8, faces: 6 }, metadata: expect.objectContaining({ castLevel: 4, spellLevel: 3 }) })
+      expect.objectContaining({ dice: { count: 9, faces: 6 }, metadata: expect.objectContaining({ castLevel: 4, spellLevel: 3 }) })
     )
   })
 
@@ -1404,7 +1410,12 @@ describe('castSpellHeal -- cantrip healing (not part of the required corpus, syn
 // `level5WizardDerived` for why this app has no real leveling system to
 // construct a genuine multi-slot-level character through, hence the same
 // controlled derived-character fake technique).
-describe('castSpellHeal -- upcasting does not scale the healing roll (executable scaling deferred)', () => {
+// Character Sheet Body Phase 1B.5 upgrade: upcast healing scaling is now
+// EXECUTABLE (Cure Wounds' own `{@scaledice 2d8|1-9|2d8}` cross-validated
+// reliably -- see app/lib/spell-mechanics/dnd5e.ts's own SCALING header),
+// superseding 1B.4's own "executable upcast healing scaling deferred"
+// limitation this describe block used to assert (renamed accordingly).
+describe('castSpellHeal -- upcasting applies the required executable healing-dice scaling', () => {
   function fakeMultiLevelDerived() {
     return {
       available: true as const,
@@ -1427,7 +1438,7 @@ describe('castSpellHeal -- upcasting does not scale the healing roll (executable
     }
   }
 
-  it('Cast at castLevel: 2 expends the level-2 slot but still rolls the base 2d8 dice, recording castLevel in metadata', async () => {
+  it('Cast at castLevel: 2 expends the level-2 slot and rolls the scaled 4d8 dice (+2d8 above base), modifier applied exactly once', async () => {
     withCureWoundsPrepared()
     getDerivedCharacterOverrideMock.mockResolvedValue(fakeMultiLevelDerived())
     loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
@@ -1437,7 +1448,7 @@ describe('castSpellHeal -- upcasting does not scale the healing roll (executable
     expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '2': 1 } })
     expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        dice: { count: 2, faces: 8 }, modifier: 4,
+        dice: { count: 4, faces: 8 }, modifier: 4,
         metadata: expect.objectContaining({ spellLevel: 1, castLevel: 2 })
       })
     )
@@ -1483,5 +1494,377 @@ describe('Phase 1B.4 -- no spell-name special cases', () => {
     expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ spellName: 'Zzyzx\'s Restorative Bolt', dice: { count: 2, faces: 8 }, modifier: 4 })
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Sheet Body Phase 1B.5 -- Executable Spell Scaling + Upcasting
+// ---------------------------------------------------------------------------
+// Reuses every existing fixture/mock (`wizardBlueprint`, `preparedSpell`,
+// `level5WizardDerived`, `getDerivedCharacterOverrideMock`) exactly as
+// 1B.2.1/1B.3/1B.4 already established -- no second test-authority
+// mechanism invented for this phase. Fire Bolt/Acid Splash/Cure
+// Wounds/Healing Word's own real fixture rows already carry `diceScaling`
+// (see tests/lib/spell-mechanics/dnd5e.test.ts's own dedicated scaling
+// describe blocks for the extraction-correctness coverage); these tests
+// verify only that character-cast.ts actually APPLIES it through the full
+// Cast/Damage pipeline.
+
+const ACID_SPLASH_MECHANICS_1B5 = resolveDnd5eSpellMechanics(spells['Acid Splash'])
+const CHROMATIC_ORB_MECHANICS_1B5 = resolveDnd5eSpellMechanics(spells['Chromatic Orb'])
+const BLESS_MECHANICS_1B5 = resolveDnd5eSpellMechanics(spells.Bless)
+
+// A level-5 (or level-11/level-17) character's own derived state -- the
+// exact same fake-derived-character technique `level5WizardDerived`/
+// `fakeMultiLevelDerived` above already establish for constructing a
+// character shape this app's own no-leveling-system real engine cannot
+// build. `slot_1`/`slot_3` stay generous (4/2) so a leveled-spell test at
+// the same character level never accidentally hits `resource-unavailable`.
+function characterLevelDerived(characterLevel: number) {
+  return {
+    available: true as const,
+    derived: {
+      byCategory: {
+        spellcasting: [
+          { id: 'value:spellcasting.caster_type.full', value: true },
+          { id: 'value:spellcasting.attack_bonus', value: 6 },
+          { id: 'value:spellcasting.save_dc', value: 14 },
+          { id: 'value:spellcasting.ability_mod', value: 4 }
+        ],
+        progression: [{ id: 'value:level', value: characterLevel }]
+      },
+      tables: [{
+        id: 'table:spellcasting.slots_full',
+        rows: [{ key: characterLevel, slot_1: 4, slot_2: 3, slot_3: 2, slot_4: 0, slot_5: 0, slot_6: 0, slot_7: 0, slot_8: 0, slot_9: 0 }]
+      }],
+      choices: []
+    }
+  }
+}
+
+describe('Fire Bolt -- cantrip character-level damage scaling (required acceptance)', () => {
+  it('a level-1 character\'s Damage rolls the base 1d10', async () => {
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 1, faces: 10 } })
+    )
+  })
+
+  it('a level-5 character\'s Damage rolls the scaled 2d10 -- the required threshold acceptance', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(5))
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 2, faces: 10 } })
+    )
+  })
+
+  it('a level-17 character\'s Damage rolls the scaled 4d10 -- the highest threshold', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(17))
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 4, faces: 10 } })
+    )
+  })
+
+  it('still consumes no spell slot at a higher character level -- a cantrip is always free', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(5))
+
+    await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('the Attack roll itself is completely unaffected by character-level scaling -- still 1d20+6', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(17))
+
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    expect(result.ok).toBe(true)
+    expect(createSpellAttackRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ spellName: 'Fire Bolt', attackBonus: 6 })
+    )
+  })
+})
+
+describe('Acid Splash -- cantrip character-level scaling, save-context Cast unaffected (required acceptance)', () => {
+  function withAcidSplashPrepared1B5() {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-18', 'Acid Splash', ACID_SPLASH_MECHANICS_1B5)] })
+    })
+  }
+
+  it('a level-5 character\'s Damage rolls the scaled 2d6, via the same generic mechanism as Fire Bolt', async () => {
+    withAcidSplashPrepared1B5()
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(5))
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-18' })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 2, faces: 6 }, damageType: 'acid' })
+    )
+  })
+
+  it('Cast (the save-context path) still consumes no slot and produces no RollEvent at any character level', async () => {
+    withAcidSplashPrepared1B5()
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(5))
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-18' })
+    expect(result.ok).toBe(true)
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+  })
+
+  it('Cast\'s own saveContext.damage reflects the same character-level scaling -- one canonical source, two consumers', async () => {
+    withAcidSplashPrepared1B5()
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(11))
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-18' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.damage).toMatchObject({ dice: { count: 3, faces: 6 }, saveOutcome: 'no-damage-on-save' })
+  })
+})
+
+describe('Fireball -- slot-level damage scaling, saveContext reflects it (required acceptance)', () => {
+  it('saveContext.damage at the default (base) castLevel is the base 8d6', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.damage).toMatchObject({ dice: { count: 8, faces: 6 } })
+  })
+
+  it('saveContext.damage at castLevel 4 is the scaled 9d6, half-on-save preserved', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived({ slot4Max: 1 }))
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 4 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.damage).toMatchObject({ dice: { count: 9, faces: 6 }, saveOutcome: 'half-on-save', type: 'fire' })
+  })
+
+  it('the correct level-4 slot is still consumed, exactly once, for the scaled Cast', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived({ slot4Max: 1 }))
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 4 })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '4': 1 } })
+  })
+
+  it('independent Damage at castLevel 5 also rolls 10d6, consuming no additional slot', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 5 })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 10, faces: 6 } })
+    )
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('never mutates any character\'s HP regardless of scaling', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived({ slot4Max: 1 }))
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 4 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result).not.toHaveProperty('targetHealth')
+  })
+})
+
+describe('Chromatic Orb -- structured choice composes with executable slot-level damage scaling (required investigation)', () => {
+  function withChromaticOrbPrepared1B5() {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-19', 'Chromatic Orb', CHROMATIC_ORB_MECHANICS_1B5)] })
+    })
+  }
+
+  it('at the default (base) castLevel with a chosen type, rolls the base 3d8 with the chosen type', async () => {
+    withChromaticOrbPrepared1B5()
+
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-19', choices: { 'damage-type': 'lightning' } })
+    expect(result.ok).toBe(true)
+  })
+
+  it('independent Damage at castLevel 3 with the chosen type rolls the scaled 5d8, type preserved', async () => {
+    withChromaticOrbPrepared1B5()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-19', castLevel: 3, choices: { 'damage-type': 'lightning' } })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 5, faces: 8 }, damageType: 'lightning', damageTypeLabel: 'Lightning' })
+    )
+  })
+
+  it('Cast at castLevel 3 with the chosen type consumes the correct level-3 slot exactly once', async () => {
+    withChromaticOrbPrepared1B5()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-19', castLevel: 3, choices: { 'damage-type': 'lightning' } })
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '3': 1 } })
+  })
+
+  it('still rejects Cast outright when the required damage-type choice is missing, scaling notwithstanding', async () => {
+    withChromaticOrbPrepared1B5()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-19', castLevel: 3 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-choice')
+  })
+})
+
+describe('Magic Missile -- no fake instance-to-dice scaling shortcut (required investigation, regression)', () => {
+  it('rolls the identical canonical 1d4+1 per dart at every legal castLevel -- no dart/darts fabricated as extra damage dice', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(characterLevelDerived(5))
+
+    const atBase = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2' })
+    expect(atBase.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 1, faces: 4 }, modifier: 1 })
+    )
+  })
+
+  it('castLevel is still correctly consumed/recorded even though it changes nothing about the dice rolled', async () => {
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2', castLevel: 2 })
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '2': 1 } })
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 1, faces: 4 }, modifier: 1, metadata: expect.objectContaining({ castLevel: 2 }) })
+    )
+  })
+})
+
+describe('Bless -- non-dice (target-count) scaling classified correctly, never Cast (required investigation)', () => {
+  it('remains not-castable through the single dispatching entry point -- no fake dice, no fake Cast support', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-20', 'Bless', BLESS_MECHANICS_1B5)] })
+    })
+
+    const result = await castSpell({ ...CAST_INPUT, actionId: 'spell:spell-20' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('not-castable')
+    expect(createSpellAttackRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellDamageRollEventMock).not.toHaveBeenCalled()
+    expect(createSpellHealingRollEventMock).not.toHaveBeenCalled()
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Phase 1B.5 -- security/authority: no new client-trusted fact', () => {
+  it('CastSpellInput has no field for a client to submit pre-scaled dice, a trusted character level, or an effective mechanics override', () => {
+    const input = { ...CAST_INPUT, actionId: 'spell:spell-1' }
+    expect(Object.keys(input)).not.toContain('dice')
+    expect(Object.keys(input)).not.toContain('scaledDice')
+    expect(Object.keys(input)).not.toContain('characterLevel')
+    expect(Object.keys(input)).not.toContain('effectiveDamage')
+  })
+
+  it('a higher character level only ever comes from the server\'s own derived character state, never from the request', async () => {
+    // No characterLevel-shaped field exists on CastSpellInput for this test
+    // to even attempt to forge (see the structural test above) -- this
+    // confirms the OUTCOME: Fire Bolt still rolls the level-1 base damage
+    // for the default mocked (level-1) character, regardless of what a
+    // malicious extra request field might have claimed.
+    const result = await rollIndependentSpellDamage({ ...CAST_INPUT, actionId: 'spell:spell-1', ...({ characterLevel: 20 } as object) })
+    expect(result.ok).toBe(true)
+    expect(createSpellDamageRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 1, faces: 10 } })
+    )
+  })
+
+  it('an invalid selected castLevel is still rejected before any resource mutation, scaling notwithstanding', async () => {
+    withFireballPrepared()
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-7', castLevel: 9 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-cast-level')
+    expect(saveSpellcastingMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Phase 1B.5 -- no spell-name special cases', () => {
+  it('a synthetic, differently-named spell with Fireball\'s exact scaling mechanics scales identically', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-21', 'Zzyzx\'s Scaling Fiery Doom', FIREBALL_MECHANICS)] })
+    })
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived({ slot4Max: 1 }))
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-21', castLevel: 4 })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.damage).toMatchObject({ dice: { count: 9, faces: 6 } })
+  })
+})
+
+describe('Phase 1B.5 -- regression: every prior archetype/resource/orchestration behavior unchanged', () => {
+  it('Fire Bolt Cast/Attack UX unchanged (attack bonus, no slot) at the default character level', async () => {
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    expect(result.ok).toBe(true)
+    expect(loadSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('Chromatic Orb Cast Configuration UX unchanged: an illegal damage type is still rejected', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-19', 'Chromatic Orb', CHROMATIC_ORB_MECHANICS_1B5)] })
+    })
+    const result = await castSpellAttack({ ...CAST_INPUT, actionId: 'spell:spell-19', choices: { 'damage-type': 'necrotic' } })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('invalid-choice')
+  })
+
+  it('Magic Missile\'s base Cast (no explicit castLevel) is unchanged: 1d4+1, one level-1 slot', async () => {
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2' })
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
+  })
+
+  it('Hold Person\'s save-context-only Cast is unchanged: no damage field at all', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ spells: [preparedSpell('spell-10', 'Hold Person', HOLD_PERSON_MECHANICS)] })
+    })
+    getDerivedCharacterOverrideMock.mockResolvedValue(level5WizardDerived())
+    loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: {} })
+
+    const result = await castSpellSave({ ...CAST_INPUT, actionId: 'spell:spell-10' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.saveContext?.damage).toBeUndefined()
+  })
+
+  it('Cure Wounds Cast at its own default (base) level is unchanged apart from now-legitimate scaling being a no-op there', async () => {
+    withCureWoundsPrepared()
+    const result = await castSpellHeal({ ...CAST_INPUT, actionId: 'spell:spell-12' })
+    expect(result.ok).toBe(true)
+    expect(createSpellHealingRollEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ dice: { count: 2, faces: 8 }, modifier: 4 })
+    )
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
   })
 })

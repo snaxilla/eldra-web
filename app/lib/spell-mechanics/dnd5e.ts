@@ -115,10 +115,132 @@
 // local window -- present for Cure Wounds/Healing Word/Mass Cure Wounds/
 // Mass Healing Word, correctly absent for Prayer of Healing (RAW: it heals
 // a flat 2d8 with no ability modifier added at all).
+//
+// ---------------------------------------------------------------------------
+// SCALING -- 1B.5's OWN CORPUS AUDIT (EXECUTABLE DICE SCALING ONLY)
+// ---------------------------------------------------------------------------
+// The full real XPHB corpus (391 spells) was swept for every scaling shape.
+// 154 spells declare `entriesHigherLevel` at all, split cleanly by its own
+// `name` field into two, and only two, buckets: 20 'Cantrip Upgrade' and 134
+// 'Using a Higher-Level Spell Slot' -- `resolveScaling` above already reads
+// this same split for its own prose-only `SpellScaling.kind`.
+//
+// CANTRIP DICE (character-level trigger): 18 of the 20 Cantrip Upgrade
+// spells (Fire Bolt, Acid Splash, Sacred Flame, ...) carry a SEPARATE,
+// already-structured raw field this resolver had not read before --
+// `scalingLevelDice: { label, scaling: { "1": "1d10", "5": "2d10", ... } }`
+// -- a genuine level-threshold TABLE, not a linear formula (RAW cantrip
+// damage is stepped at levels 1/5/11/17, never "+1 die per level"). The
+// remaining 2 (Eldritch Blast: more attack-roll BEAMS, not bigger dice;
+// Spare the Dying: range doubling, no damage at all) correctly have no
+// `scalingLevelDice` and are left exactly as before -- prose-only, via the
+// existing `scaling` field, never forced into a dice shape they do not have.
+// Of the 18 WITH `scalingLevelDice`, exactly 16 cross-validate and attach
+// `diceScaling` -- Shillelagh and True Strike are refused (see category H
+// below): both modify a WEAPON's damage die, not a spell damage roll of
+// their own, so `damage` is absent and there is nothing to attach scaling
+// to.
+//
+// SLOT-LEVEL DICE (cast-level trigger): of the 134 Using-a-Higher-Level-
+// Spell-Slot spells, 62 carry `{@scaledamage BASE|MIN-MAX|PERLEVEL}` and 6
+// carry `{@scaledice BASE|MIN-MAX|PERLEVEL}` inside that entry's own prose
+// -- e.g. Fireball's own `{@scaledamage 8d6|3-9|1d6}` (base 8d6 at the
+// spell's own level 3, +1d6 per slot level above 3) and Cure Wounds' own
+// `{@scaledice 2d8|1-9|2d8}`. Verified across every match: the per-level
+// increment's own die SIZE always equals the base roll's die size (never a
+// die-size change on upcast -- that only ever happens for a cantrip, see
+// H below), and the increment's own die COUNT is NOT always 1 (Cure
+// Wounds/Healing Word add 2 dice per level; Circle of Death/Cloud of
+// Daggers/Vitriolic Sphere add 2, Disintegrate/Bigby's Hand/Wall of Ice
+// would add 2 or 3 if their own base were parseable at all -- see
+// CROSS-VALIDATION below for why those three specifically are refused
+// anyway -- a linear formula with a per-spell coefficient, never hardcoded
+// to "+1").
+//
+// CROSS-VALIDATION (why extraction refuses six of the 62 real
+// `{@scaledamage}` spells, and one of the 6 real `{@scaledice}` ones): a
+// tag's own BASE dice and MIN level are checked against this resolver's
+// OWN independently-extracted `damage`/`healing` (the exact same "first
+// tag in `entries`" roll every other caller already trusts) before the tag
+// is ever trusted, and the tag's own BASE must parse as bare `NdM` -- no
+// flat-modifier suffix, no multi-value shape -- before that comparison
+// even runs. Six real spells fail one of these checks, each for a
+// genuinely different reason, all correctly left prose-only rather than
+// silently scaling the wrong (or an unparseable) number:
+//   - Ice Knife: the tag describes a SECOND damage component (a 2d6 Cold
+//     explosion), not the 1d10 Piercing hit this resolver's own "first
+//     tag" rule extracts as `damage`.
+//   - Ice Storm: the tag describes a component neither of its own two
+//     SIMULTANEOUS `{@damage}` tags is (its own `damage` is the first,
+//     2d10 Bludgeoning, per the existing Ice Storm precedent in
+//     dnd5e.test.ts).
+//   - Conjure Elemental, Lightning Arrow, Melf's Acid Arrow: each tag's
+//     own BASE is a semicolon-separated DUAL value ("8d8;4d8", a hit/miss
+//     or two-mode variant) -- not bare `NdM`, refused by the dice-notation
+//     parser itself rather than guessing which half applies.
+//   - Disintegrate: the tag's own BASE carries a flat "+40" modifier
+//     suffix ("10d6 + 40") -- also not bare `NdM`, refused the same way.
+// One real `{@scaledice}` spell, Heal, is refused for a related but
+// distinct reason: its own tag BASE is a bare flat number ("70", no dice
+// at all) -- but Heal was never in scope regardless, since it has no
+// `{@dice}` tag in its main `entries` either and so never gets a `healing`
+// roll to begin with (Character Sheet Body Phase 1B.4's own healing
+// extraction). 56 of 62 damage spells and 5 of 6 healing spells
+// cross-validate successfully. Two OTHER real spells (Bigby's Hand, Wall
+// of Ice) have TWO `{@scaledamage}` tags each but PASS cross-validation on
+// the first one (it genuinely does describe the same component `damage`
+// extracted) -- multi-tag alone is never disqualifying, only a base-parse
+// failure or a base-dice/min-level mismatch is.
+//
+// NON-DICE SCALING (target count, instance/projectile count, effect
+// magnitude, range/area/duration, tiered thresholds): the remaining 66 of
+// 134 slot-scaling spells (Bless: "+1 target"; Magic Missile: "+1 dart";
+// Scorching Ray/Chain Lightning: "+1 ray"/"+1 bolt"; Aid/False Life/Armor of
+// Agathys: flat "+5 HP"/"+5 Temp HP"; Animal Messenger/Magic Circle: "+N
+// hours" duration; Confusion/Fog Cloud/Creation: "+N feet" radius; the
+// Summon spells' "use the slot's level for the stat block's level"; and
+// several genuinely tiered, non-arithmetic thresholds like Elemental
+// Weapon's "+1 at level 3-5, +2 at level 6+") were swept for ANY other
+// structured (non-prose) tag 5etools might use for a number -- there is
+// none. Every `{@...}` tag appearing anywhere in `entriesHigherLevel`
+// across the full corpus is one of `book`/`creature`/`damage`/
+// `scaledamage`/`scaledice`/`status`/`variantrule` -- no `{@scaletarget}`,
+// no structured instance-count tag, nothing. The per-level INCREMENT is
+// reliable prose ("one additional", consistently), but the BASE quantity
+// ("up to three creatures", "three darts") is stated only as an English
+// number word with no consistent structural marker across this bucket --
+// parsing it would mean parsing arbitrary prose at Cast runtime, exactly
+// what this resolver's own established discipline (and this phase's own
+// explicit instruction) refuses to do. These 66 spells are left exactly as
+// 1B.1 already left them: prose-only, via the existing `scaling` field,
+// with NO new structured field invented for target/instance count. See
+// app/lib/spell-mechanics/effective-mechanics.ts's own header for how this
+// shapes what 1B.5 can and cannot execute.
+//
+// CANTRIP DIE-SIZE CHANGE (category H): exactly one real spell,
+// Shillelagh, whose own `scalingLevelDice` changes FACE size across tiers
+// (1d8 -> 1d10 -> 1d12 -> 2d6) rather than just die COUNT -- but Shillelagh
+// (and True Strike, whose own `scalingLevelDice` tiers start at level 5,
+// no level-1 entry at all) modify a WEAPON's damage die, not a spell damage
+// roll of their own; neither has an attack-roll/automatic resolution or a
+// `damage` field under this resolver's existing rules (no `spellAttack`/
+// `savingThrow` field, no `{@damage}` tag in their `entries`). Both are
+// excluded from cantrip dice-scaling extraction "for free": the extractor
+// below refuses to attach `diceScaling` whenever `damage` itself is absent,
+// and separately cross-validates dice SHAPE, so a die-size-changing table
+// could never silently masquerade as a same-size count-scaling one either.
 
 import { cleanText, flattenEntries } from '../content-presentation/dnd5e'
 import type { AbilityKey } from '../characters/ability-scores'
-import type { CanonicalSpellMechanics, SpellChoice, SpellResolutionKind, SpellRoll, SpellSaveOutcome, SpellScaling } from './types'
+import type {
+  CanonicalSpellMechanics,
+  SpellChoice,
+  SpellDiceScaling,
+  SpellResolutionKind,
+  SpellRoll,
+  SpellSaveOutcome,
+  SpellScaling
+} from './types'
 
 const SCHOOL_LABELS: Record<string, string> = {
   A: 'Abjuration', C: 'Conjuration', D: 'Divination', E: 'Enchantment',
@@ -399,6 +521,129 @@ function resolveScaling(entriesHigherLevel: unknown): SpellScaling | undefined {
   return { kind: 'prose-only', text }
 }
 
+// A bare `NdM` dice expression, nothing else -- every BASE and PER-LEVEL
+// value this file's own scaling tags carry is plain (no `+K` modifier has
+// ever been observed in a `scalingLevelDice`/`{@scaledamage}`/`{@scaledice}`
+// value across the full corpus; a modifier lives on the base roll itself,
+// untouched by scaling). Rejects anything else rather than guessing.
+function parseDiceNotation(text: string): { count: number; faces: number } | undefined {
+  const match = text.trim().match(/^(\d+)d(\d+)$/)
+  if (!match) return undefined
+  const count = Number(match[1])
+  const faces = Number(match[2])
+  if (!Number.isInteger(count) || count <= 0 || !Number.isInteger(faces) || faces <= 0) return undefined
+  return { count, faces }
+}
+
+// The one entriesHigherLevel block matching `blockName` exactly (5etools'
+// own stable section name, the same field `resolveScaling` above already
+// reads) -- never a second, looser text search across every block.
+//
+// RAW text, deliberately NOT `flattenEntries`/`cleanText` -- those strip a
+// `{@tag ...}` down to its own first display segment for PROSE rendering
+// (`{@scaledamage 8d6|3-9|1d6}` becomes the bare, unusable "8d6", discarding
+// exactly the range/per-level fields this extraction needs), the same
+// "tag, not mention" distinction `extractDamageRoll`/`extractHealingRoll`
+// above already draw against `flattenEntries`' own stripped output by using
+// `JSON.stringify(entries)` instead.
+function entriesHigherLevelTextFor(entriesHigherLevel: unknown, blockName: string): string | undefined {
+  if (!Array.isArray(entriesHigherLevel)) return undefined
+  const block = entriesHigherLevel.find((entry) => (entry as Record<string, unknown> | undefined)?.name === blockName) as Record<string, unknown> | undefined
+  if (!block) return undefined
+  const text = JSON.stringify(block.entries ?? '')
+  return text || undefined
+}
+
+// Character Sheet Body Phase 1B.5 -- Cantrip damage-dice scaling by
+// character level (Fire Bolt/Acid Splash-shaped), see this file's own
+// SCALING header for the full corpus evidence. `damage` is this resolver's
+// OWN already-extracted roll (never re-derived here) -- `scalingLevelDice`
+// is trusted ONLY when its own level-1 tier's dice exactly match `damage`,
+// which is what excludes Shillelagh/True Strike (no `damage` to match at
+// all) without any spell-name-specific code.
+function extractCantripLevelScaling(raw: Record<string, unknown>, damage: SpellRoll | undefined): SpellDiceScaling | undefined {
+  if (!damage?.dice) return undefined
+
+  const rawScalingLevelDice = raw.scalingLevelDice
+  const first = Array.isArray(rawScalingLevelDice) ? rawScalingLevelDice[0] : rawScalingLevelDice
+  const scaling = (first as Record<string, unknown> | undefined)?.scaling
+  if (!scaling || typeof scaling !== 'object' || Array.isArray(scaling)) return undefined
+
+  const tiers = Object.entries(scaling as Record<string, unknown>)
+    .map(([levelKey, diceText]) => {
+      const level = Number(levelKey)
+      const dice = typeof diceText === 'string' ? parseDiceNotation(diceText) : undefined
+      return Number.isInteger(level) && dice ? { level, dice } : undefined
+    })
+    .filter((tier): tier is { level: number; dice: { count: number; faces: number } } => Boolean(tier))
+    .sort((a, b) => a.level - b.level)
+
+  if (!tiers.length) return undefined
+
+  const baseTier = tiers[0]!
+  // A level-1 character has never reached any upgrade threshold yet, so
+  // the table's own lowest tier must genuinely BE level 1 -- not merely
+  // "whatever this table's lowest entry happens to be" (True Strike's own
+  // real table starts at level 5, no level-1 entry at all; without this
+  // check, a table missing its floor could still cross-validate on dice
+  // shape alone if its lowest listed tier happened to numerically match
+  // `damage.dice`, which would silently under-represent every character
+  // below that table's own first threshold).
+  if (baseTier.level !== 1) return undefined
+  if (baseTier.dice.count !== damage.dice.count || baseTier.dice.faces !== damage.dice.faces) return undefined
+
+  return { trigger: 'character-level', tiers }
+}
+
+// Character Sheet Body Phase 1B.5 -- slot-level damage/healing-dice scaling
+// (Fireball/Cure Wounds-shaped), see this file's own SCALING header for the
+// full corpus evidence including the two real spells this cross-validation
+// deliberately excludes (Ice Knife, Ice Storm). `roll` is this resolver's
+// own already-extracted `damage` or `healing` (never re-derived); `tagName`
+// selects `{@scaledamage}` (for damage) or `{@scaledice}` (for healing) --
+// the same prose block, two different 5etools tag names for the same
+// shape. Only the block named 'Using a Higher-Level Spell Slot' is ever
+// read, matching `resolveScaling`'s own name-based split.
+const SCALE_TAG_PATTERN_SOURCE = (tagName: string): RegExp =>
+  new RegExp(`\\{@${tagName}\\s+([^|]+)\\|([^|]+)\\|([^}]+)\\}`)
+
+function extractSlotLevelDiceScaling(
+  raw: Record<string, unknown>,
+  baseLevel: number,
+  roll: SpellRoll | undefined,
+  tagName: 'scaledamage' | 'scaledice'
+): SpellDiceScaling | undefined {
+  if (!roll?.dice) return undefined
+
+  const text = entriesHigherLevelTextFor(raw.entriesHigherLevel, 'Using a Higher-Level Spell Slot')
+  if (!text) return undefined
+
+  const match = SCALE_TAG_PATTERN_SOURCE(tagName).exec(text)
+  if (!match) return undefined
+
+  const base = parseDiceNotation(match[1]!)
+  const rangeMatch = match[2]!.trim().match(/^(\d+)-(\d+)$/)
+  const perLevel = parseDiceNotation(match[3]!)
+  if (!base || !rangeMatch || !perLevel) return undefined
+
+  // Cross-validation: the tag's own stated base dice must be THIS roll's
+  // own dice, and the tag's own stated minimum level must be this spell's
+  // own base level -- both checked before the tag is trusted at all. This
+  // is what correctly refuses Ice Knife (tag describes a different damage
+  // component than `damage` extracted) and Ice Storm (tag describes a
+  // third component neither of the spell's two simultaneous `{@damage}`
+  // tags is) without any spell-name-specific code.
+  if (base.count !== roll.dice.count || base.faces !== roll.dice.faces) return undefined
+  if (Number(rangeMatch[1]) !== baseLevel) return undefined
+  // The per-level increment's own die SIZE always matches the base roll's
+  // die size across the entire verified corpus (never a die-size change on
+  // upcast) -- refused rather than silently applied if that ever does not
+  // hold, since this resolver has no real example to model such a case on.
+  if (perLevel.faces !== roll.dice.faces) return undefined
+
+  return { trigger: 'cast-level', perLevelDiceCount: perLevel.count }
+}
+
 export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechanics | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null
 
@@ -464,6 +709,19 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
   // this file's own HEALING header for the full three-signal evidence.
   const healing = isInstantDuration(raw.duration) ? extractHealingRoll(raw.entries) : undefined
 
+  // Character Sheet Body Phase 1B.5 -- executable dice scaling, attached
+  // directly to the roll it scales (never a disconnected top-level field)
+  // so a consumer never has to separately match a scaling record back to
+  // "damage or healing." A cantrip (`level === 0`) can only ever scale by
+  // character level; a leveled spell can only ever scale by cast level --
+  // never both, matching the corpus's own mutually-exclusive
+  // Cantrip-Upgrade/Using-a-Higher-Level-Spell-Slot split. See this file's
+  // own SCALING header for the full evidence and cross-validation rules.
+  const damageScaling = level === 0
+    ? extractCantripLevelScaling(raw, damage)
+    : extractSlotLevelDiceScaling(raw, level, damage, 'scaledamage')
+  const healingScaling = level > 0 ? extractSlotLevelDiceScaling(raw, level, healing, 'scaledice') : undefined
+
   return {
     level,
     school,
@@ -475,8 +733,8 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     ritual: Boolean((raw.meta as Record<string, unknown> | undefined)?.ritual),
     description: descriptionText || undefined,
     resolution,
-    damage,
-    healing,
+    damage: damage && damageScaling ? { ...damage, diceScaling: damageScaling } : damage,
+    healing: healing && healingScaling ? { ...healing, diceScaling: healingScaling } : healing,
     scaling: resolveScaling(raw.entriesHigherLevel),
     ...(choices.length ? { choices } : {}),
     ...(hasUnresolvedChoice ? { hasUnresolvedChoice: true } : {})

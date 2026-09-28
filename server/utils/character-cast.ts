@@ -154,8 +154,10 @@ import {
   applyResolvedChoicesToDamage,
   legalCastLevelsFor,
   validateSpellChoices,
+  resolveEffectiveSpellRoll,
   type SpellCastCapability,
-  type CanonicalSpellMechanics
+  type CanonicalSpellMechanics,
+  type EffectiveSpellRoll
 } from '../../app/lib/spell-mechanics'
 import {
   deriveSpellSlotLevels,
@@ -575,8 +577,11 @@ export type CastSaveContext = {
   // `supported-save-damage` case, e.g. Fireball) -- absent for a pure
   // context spell (`supported-save-context`, e.g. Hold Person), which has
   // nothing further to roll. `saveOutcome` is copied straight from
-  // `resolvedDamage`, never recomputed.
-  damage?: CanonicalSpellMechanics['damage']
+  // `resolvedDamage`, never recomputed. Character Sheet Body Phase 1B.5 --
+  // this is the EFFECTIVE (scaled, at this Cast's own `castLevel`) roll,
+  // never the raw canonical base -- `EffectiveSpellRoll` rather than
+  // `CanonicalSpellMechanics['damage']` for exactly that reason.
+  damage?: EffectiveSpellRoll
   choices?: Record<string, string>
 }
 
@@ -677,8 +682,19 @@ export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<C
   // classifySpellCastCapability only returns 'supported-automatic-damage'
   // when `mechanics.damage` is present, and `resolveCastableSpell`'s own
   // `applyResolvedChoicesToDamage` never removes a present damage roll --
-  // only substitutes its `type` when a choice resolved one.
-  const damage = resolvedDamage!
+  // only substitutes its `type` when a choice resolved one. Character
+  // Sheet Body Phase 1B.5 -- effective (scaled) damage, resolved from
+  // `resolvedDamage` (so a choice-resolved type composes with scaling, not
+  // just the base `mechanics.damage`) at the exact castLevel this Cast just
+  // resolved. Not part of the required corpus (no real automatic-damage
+  // spell has dice-scaling this phase's own corpus audit found reliable --
+  // see app/lib/spell-mechanics/dnd5e.ts's own SCALING header), so this is
+  // a no-op for Magic Missile specifically, applied uniformly for
+  // architectural consistency with every other Cast path.
+  const damage = resolveEffectiveSpellRoll(resolvedDamage, mechanics.level, {
+    castLevel: levelResolution.level,
+    characterLevel: action.characterLevel ?? 1
+  })!
   const metadata = {
     ...(input.metadata ?? {}),
     actionCategory: 'spell',
@@ -730,13 +746,20 @@ export async function castSpellAutomaticDamage(input: CastSpellInput): Promise<C
 // The healing EXPRESSION itself is entirely content-authored
 // (`mechanics.healing.dice`/`.modifier`, produced by
 // app/lib/spell-mechanics/dnd5e.ts's own three-signal extraction) --
-// nothing here parses prose or guesses a number. The only thing THIS
-// function adds beyond the content's own dice is the character's
-// authoritative Spellcasting Ability Modifier, and only when the spell's
-// own canonical shape says it applies (`mechanics.healing.usesSpellcastingModifier`
-// -- Prayer of Healing has NO such modifier per its real RAW text, and
-// `resolveCastableSpell`'s own gate already refuses to Cast a spell that
-// DOES need one from a Rules Package that cannot supply it).
+// nothing here parses prose or guesses a number. Character Sheet Body Phase
+// 1B.5 makes the SELECTED castLevel mechanically real for the healing dice
+// themselves: `resolveEffectiveSpellRoll` (app/lib/spell-mechanics/effective-mechanics.ts)
+// scales `dice.count` for the spells whose own `{@scaledice}` tag
+// cross-validated reliably (Cure Wounds/Healing Word/Mass Cure Wounds/Mass
+// Healing Word/Prayer of Healing, all five, via the identical generic
+// mechanism -- no spell-name code); every other field passes through
+// unchanged. The only thing THIS function adds beyond the (now possibly
+// scaled) dice is the character's authoritative Spellcasting Ability
+// Modifier, applied exactly ONCE and only when the spell's own canonical
+// shape says it applies (`usesSpellcastingModifier` -- Prayer of Healing
+// has NO such modifier per its real RAW text, and `resolveCastableSpell`'s
+// own gate already refuses to Cast a spell that DOES need one from a Rules
+// Package that cannot supply it).
 //
 // No target, no HP mutation: this function's RollEventRecord is the
 // caster's own healing roll TOTAL only -- applying it to any character's
@@ -758,21 +781,26 @@ export async function castSpellHeal(input: CastSpellInput): Promise<CastSpellRes
 
   // classifySpellCastCapability only returns 'supported-healing' when
   // `mechanics.healing` is present.
-  const healing = mechanics.healing!
-
   const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
   if (!levelResolution.ok) return levelResolution
 
-  // Character Sheet Body Phase 1B.4 -- upcast healing SCALING is explicitly
-  // deferred to a future phase (see this task's own "DO NOT implement
-  // executable upcast healing scaling" instruction); a spell cast at a
-  // higher level still rolls exactly its base healing expression, and
-  // `castLevel` is recorded in metadata purely as CONTEXT (identical to
-  // `castSpellAutomaticDamage`'s own un-scaled `castLevel` metadata today),
-  // never used to alter the dice rolled here.
-  const modifier = healing.usesSpellcastingModifier
-    ? healing.modifier + (action.healingAbilityModifier as number)
-    : healing.modifier
+  // Character Sheet Body Phase 1B.5 -- upcast healing scaling, EXECUTABLE
+  // now that app/lib/spell-mechanics/dnd5e.ts's own corpus audit found a
+  // reliable structured signal for it (Cure Wounds/Healing Word's own
+  // `{@scaledice}` tag -- see that file's own SCALING header). The
+  // character's own Spellcasting Ability Modifier is still applied exactly
+  // ONCE, entirely independently of scaling: `healing.modifier` (the
+  // content-authored flat addend, always 0 in the required corpus) is
+  // scaled by nothing, only `dice.count` grows with castLevel -- the
+  // modifier addend below reads `effectiveHealing.modifier`, the SAME
+  // untouched value `resolveEffectiveSpellRoll` passes through unchanged.
+  const effectiveHealing = resolveEffectiveSpellRoll(mechanics.healing, mechanics.level, {
+    castLevel: levelResolution.level,
+    characterLevel: action.characterLevel ?? 1
+  })!
+  const modifier = effectiveHealing.usesSpellcastingModifier
+    ? effectiveHealing.modifier + (action.healingAbilityModifier as number)
+    : effectiveHealing.modifier
 
   const metadata = {
     ...(input.metadata ?? {}),
@@ -788,7 +816,7 @@ export async function castSpellHeal(input: CastSpellInput): Promise<CastSpellRes
     encounterId: input.encounterId ?? null,
     spellName: action.name,
     sourceId: action.id,
-    dice: healing.dice ?? { count: 0, faces: 0 },
+    dice: effectiveHealing.dice ?? { count: 0, faces: 0 },
     modifier,
     visibility: input.visibility,
     metadata,
@@ -855,12 +883,23 @@ export async function castSpellSave(input: CastSpellInput): Promise<CastSpellRes
   const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
   if (!levelResolution.ok) return levelResolution
 
+  // Character Sheet Body Phase 1B.5 -- Fireball's own required acceptance:
+  // `saveContext.damage` reflects the EFFECTIVE (scaled) roll at the
+  // castLevel this Cast just resolved, not the raw canonical base --
+  // `resolveEffectiveSpellRoll` preserves `saveOutcome`/`type` unchanged
+  // (only `dice.count` moves), so "half-on-save at L4" stays exactly as
+  // true as "half-on-save at L3", just with more dice.
+  const effectiveDamage = resolveEffectiveSpellRoll(resolvedDamage, mechanics.level, {
+    castLevel: levelResolution.level,
+    characterLevel: action.characterLevel ?? 1
+  })
+
   const saveContext: CastSaveContext = {
     savingAbility,
     saveDc,
     spellLevel: mechanics.level,
     castLevel: levelResolution.level,
-    ...(resolvedDamage ? { damage: resolvedDamage } : {}),
+    ...(effectiveDamage ? { damage: effectiveDamage } : {}),
     ...(Object.keys(resolvedChoices).length ? { choices: resolvedChoices } : {})
   }
 
@@ -1011,15 +1050,37 @@ export async function rollIndependentSpellDamage(input: CastSpellInput): Promise
   const levelResolution = resolveRequestedCastLevel(mechanics, input.castLevel)
   if (!levelResolution.ok) return levelResolution
 
+  // Character Sheet Body Phase 1B.5 -- INDEPENDENT DAMAGE'S OWN REQUIRED
+  // SCALING: this is the ONE place a cantrip's character-level scaling
+  // (Fire Bolt/Acid Splash) and a leveled spell's cast-level scaling
+  // (Fireball/Chromatic Orb) both actually execute, since Cast itself never
+  // rolls damage for either archetype (`castSpellAttack` only rolls the
+  // attack d20; `castSpellSave` rolls nothing at all) -- damage has always
+  // lived here, and now so does the number it should actually be. Uses the
+  // SAME authoritative, re-validated `levelResolution.level` the slot-cost
+  // logic below already trusts (one selected level, one source of truth --
+  // see this file's own RESOURCE EXPENDITURE discipline) and this
+  // character's own `characterLevel` for the cantrip branch; a leveled
+  // spell's `resolveEffectiveSpellRoll` call ignores `characterLevel`
+  // entirely (its own `diceScaling.trigger`, if any, is always
+  // 'cast-level'), so passing it unconditionally is never a hazard.
+  const effectiveDamage = resolveEffectiveSpellRoll(resolvedDamage, mechanics.level, {
+    castLevel: levelResolution.level,
+    characterLevel: action.characterLevel ?? 1
+  })!
+
   // Save context (ability/DC/outcome) is CONTEXT ONLY here -- see this
   // function's own header. Absent entirely for a non-saving-throw spell
   // (Fire Bolt, Chromatic Orb), matching every other conditional metadata
-  // field in this module.
+  // field in this module. `saveOutcome` reads from the EFFECTIVE roll --
+  // `resolveEffectiveSpellRoll` never alters it, so this is byte-identical
+  // to reading it from `resolvedDamage` directly, just consistently sourced
+  // from the same roll the dice below actually come from.
   const saveMetadata = mechanics.resolution?.kind === 'saving-throw'
     ? {
         savingAbility: mechanics.resolution.savingAbility,
         ...(action.saveDc !== undefined ? { saveDc: action.saveDc } : {}),
-        ...(resolvedDamage.saveOutcome ? { saveOutcome: resolvedDamage.saveOutcome } : {})
+        ...(effectiveDamage.saveOutcome ? { saveOutcome: effectiveDamage.saveOutcome } : {})
       }
     : {}
 
@@ -1030,9 +1091,9 @@ export async function rollIndependentSpellDamage(input: CastSpellInput): Promise
     encounterId: input.encounterId ?? null,
     spellName: action.name,
     sourceId: action.id,
-    dice: resolvedDamage.dice ?? { count: 0, faces: 0 },
-    modifier: resolvedDamage.modifier,
-    damageType: resolvedDamage.type,
+    dice: effectiveDamage.dice ?? { count: 0, faces: 0 },
+    modifier: effectiveDamage.modifier,
+    damageType: effectiveDamage.type,
     damageTypeLabel: damageTypeLabelFor(mechanics, resolvedChoices),
     visibility: input.visibility,
     metadata: {

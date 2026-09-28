@@ -105,6 +105,33 @@ export type CharacterAction = ContentAction & {
   // Rules runtime is unavailable -- the same discipline `damageAbilityModifier`
   // above already follows.
   healingAbilityModifier?: number
+  // Character Sheet Body Phase 1B.5 (Executable Spell Scaling + Upcasting)
+  // -- present ONLY for spell actions, this character's own authoritative
+  // TOTAL level (`value:level`), the same fact server/utils/character-cast.ts's
+  // own `checkSpellSlotAvailability` already reads for Spell Slot
+  // progression, restated here for a different purpose: a cantrip's dice
+  // scale by CHARACTER level, never spell slot level (see
+  // app/lib/spell-mechanics/effective-mechanics.ts's own header). Optional
+  // on this shared type for the same reason `attackBonus`/`saveDc`/
+  // `healingAbilityModifier` are (irrelevant/absent on a non-spell action),
+  // but UNLIKE those three, always populated (never a fabricated-vs-
+  // genuinely-absent distinction to make) for every spell action -- `value:level`
+  // is a stored fact with a Rules Package default of 1, not a formula that
+  // can go undeclared, so a missing Rules runtime degrades this to `1` (a
+  // level-1 character's own honest base case) rather than blocking Cast the
+  // way a genuinely undeclared formula does.
+  //
+  // SINGLE-CLASS-BIASED, ON PURPOSE, FOR NOW: this app has no
+  // multiclassing yet, so "total character level" and "the one class's
+  // level" are identical today -- there is no second number to conflate
+  // them with. A future multiclass phase would need to decide which of
+  // several per-class levels a cantrip's OWN scaling actually keys off
+  // (5e RAW: total character level, not any single class's), but nothing
+  // here hardcodes that assumption away -- `SpellEffectiveContext.characterLevel`
+  // (effective-mechanics.ts) is already a plain, named input a future
+  // multiclass-aware `getCharacterActions` could populate differently
+  // without changing the pure scaling resolver itself at all.
+  characterLevel?: number
 }
 
 export type CharacterActionsResult =
@@ -121,6 +148,16 @@ const SPELL_SAVE_DC_ID = 'value:spellcasting.save_dc'
 // picks Intelligence/Wisdom/Charisma from the class's own
 // `spellcasting.ability.*` grants) -- this module names no ability.
 const SPELLCASTING_ABILITY_MOD_ID = 'value:spellcasting.ability_mod'
+// Character Sheet Body Phase 1B.5 -- the SAME `value:level` fact
+// server/utils/character-cast.ts's own `checkSpellSlotAvailability` already
+// reads for Spell Slot progression (that constant is restated there, not
+// imported from here, matching this module's own "restate the tiny id
+// string, never re-derive the arithmetic" split -- see this file's own
+// findNumber/findBoolean header). `storage: 'stored'`, `default: 1` in the
+// active Rules Package -- a single TOTAL character level, not a per-class
+// one, because this app has no multiclassing yet (see this field's own doc
+// comment on `CharacterAction` for the future seam this leaves open).
+const CHARACTER_LEVEL_ID = 'value:level'
 
 function findNumber(byCategory: Record<string, Array<{ id: string; value?: unknown }>>, id: string): number | undefined {
   for (const entries of Object.values(byCategory)) {
@@ -216,6 +253,7 @@ export async function getCharacterActions(
   const spellAttackBonus = findNumber(byCategory, SPELL_ATTACK_BONUS_ID)
   const spellSaveDc = findNumber(byCategory, SPELL_SAVE_DC_ID)
   const spellcastingAbilityMod = findNumber(byCategory, SPELLCASTING_ABILITY_MOD_ID)
+  const characterLevel = findNumber(byCategory, CHARACTER_LEVEL_ID) ?? 1
 
   const actions: CharacterAction[] = []
 
@@ -278,7 +316,8 @@ export async function getCharacterActions(
         attackBonus: spellAttackBonus,
         saveDc: spellSaveDc,
         spellMechanics,
-        healingAbilityModifier: spellcastingAbilityMod
+        healingAbilityModifier: spellcastingAbilityMod,
+        characterLevel
       })
     }
   }

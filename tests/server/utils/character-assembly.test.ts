@@ -66,7 +66,8 @@ function mockEntityAndBlock(
   inventoryBlockData: any = null,
   notesBlockData: any = null,
   healthBlockData: any = null,
-  spellcastingBlockData: any = null
+  spellcastingBlockData: any = null,
+  progressionBlockData: any = null
 ) {
   directusServiceRequestMock.mockImplementation(async (path: string) => {
     if (path === '/items/entities/42') {
@@ -80,6 +81,7 @@ function mockEntityAndBlock(
       if (notesBlockData) rows.push({ block_key: 'notes', data: notesBlockData })
       if (healthBlockData) rows.push({ block_key: 'health', data: healthBlockData })
       if (spellcastingBlockData) rows.push({ block_key: 'spellcasting', data: spellcastingBlockData })
+      if (progressionBlockData) rows.push({ block_key: 'progression', data: progressionBlockData })
       return { data: rows }
     }
     throw new Error(`Unexpected Directus path in test: ${path}`)
@@ -115,6 +117,77 @@ describe('assembleCharacter', () => {
     expect(result.blueprint.packs).toEqual(catalogue.packs)
     // No ability_scores block in this fixture -- absent, never defaulted.
     expect(result.blueprint.abilityScores).toBeNull()
+  })
+
+  // Character Progression Phase 1A
+  describe('progression', () => {
+    it('synthesizes exactly one class entry at level 1 from the resolved class, when no progression block was ever recorded', async () => {
+      const catalogue = fullCatalogue()
+      getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+      mockEntityAndBlock(
+        { id: 42, world_id: 5, title: 'Aria' },
+        { species: selectionRef(catalogue.species[0]), class: selectionRef(catalogue.classes[0]), background: selectionRef(catalogue.backgrounds[0]) }
+      )
+
+      const result = await assembleCharacter('5', '42')
+      expect(result.available).toBe(true)
+      if (!result.available) return
+
+      expect(result.blueprint.progression).toEqual({
+        classes: [{ classRef: { packageId: catalogue.classes[0].packageId, slug: catalogue.classes[0].slug }, level: 1 }]
+      })
+    })
+
+    it('reads a stored progression block verbatim (through normalization) rather than re-synthesizing it', async () => {
+      const catalogue = fullCatalogue()
+      getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+      const stored = { classes: [{ classRef: { packageId: catalogue.classes[0].packageId, slug: catalogue.classes[0].slug }, level: 5 }] }
+      mockEntityAndBlock(
+        { id: 42, world_id: 5, title: 'Aria' },
+        { species: selectionRef(catalogue.species[0]), class: selectionRef(catalogue.classes[0]), background: selectionRef(catalogue.backgrounds[0]) },
+        null, null, null, null, null,
+        stored
+      )
+
+      const result = await assembleCharacter('5', '42')
+      expect(result.available).toBe(true)
+      if (!result.available) return
+
+      expect(result.blueprint.progression).toEqual(stored)
+    })
+
+    it('still synthesizes from the recorded classRef even when that class no longer resolves against the current catalogue -- the raw choice is a real fact independent of catalogue drift', async () => {
+      const catalogue = fullCatalogue()
+      getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+      mockEntityAndBlock(
+        { id: 42, world_id: 5, title: 'Aria' },
+        { species: selectionRef(catalogue.species[0]), class: { packageId: 'eldra.content.gone', slug: 'ghost-class' }, background: selectionRef(catalogue.backgrounds[0]) }
+      )
+
+      const result = await assembleCharacter('5', '42')
+      expect(result.available).toBe(true)
+      if (!result.available) return
+
+      expect(result.blueprint.class.status).toBe('missing')
+      expect(result.blueprint.progression).toEqual({
+        classes: [{ classRef: { packageId: 'eldra.content.gone', slug: 'ghost-class' }, level: 1 }]
+      })
+    })
+
+    it('synthesizes an empty classes list when no class was ever recorded at all -- nothing honest to seed a level entry from', async () => {
+      const catalogue = fullCatalogue()
+      getWorldContentCatalogueMock.mockResolvedValue(catalogue)
+      mockEntityAndBlock(
+        { id: 42, world_id: 5, title: 'Aria' },
+        { species: selectionRef(catalogue.species[0]), background: selectionRef(catalogue.backgrounds[0]) }
+      )
+
+      const result = await assembleCharacter('5', '42')
+      expect(result.available).toBe(true)
+      if (!result.available) return
+
+      expect(result.blueprint.progression).toEqual({ classes: [] })
+    })
   })
 
   // Character Sheet Header Cleanup 1 (Play-Mode Portrait Management) --
@@ -362,7 +435,7 @@ describe('assembleCharacter -- ability scores', () => {
     expect(result.blueprint.species.status).toBe('resolved')
   })
 
-  it('reads all seven blocks in ONE Directus round trip', async () => {
+  it('reads all eight blocks in ONE Directus round trip', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
@@ -380,7 +453,7 @@ describe('assembleCharacter -- ability scores', () => {
     const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
     expect(blockCalls).toHaveLength(1)
     expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual([
-      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes', 'health', 'spellcasting'
+      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes', 'health', 'spellcasting', 'progression'
     ])
   })
 })

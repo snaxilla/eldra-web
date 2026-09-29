@@ -74,6 +74,7 @@ import { INVENTORY_BLOCK_KEY } from './character-inventory'
 import { CHARACTER_NOTES_BLOCK_KEY } from './character-notes'
 import { CHARACTER_HEALTH_BLOCK_KEY } from './character-health'
 import { CHARACTER_SPELLCASTING_BLOCK_KEY } from './character-spellcasting'
+import { CHARACTER_PROGRESSION_BLOCK_KEY } from './character-progression'
 import {
   normalizeStoredCharacterHealth,
   type StoredCharacterHealth
@@ -96,6 +97,7 @@ import {
 } from '../../app/lib/characters/inventory'
 import { normalizeStoredRulesChoices, type StoredRulesChoices } from '../../app/lib/characters/rules-choices'
 import { normalizeStoredAbilityScores, type StoredAbilityScores } from '../../app/lib/characters/ability-scores'
+import { normalizeStoredProgression, type StoredCharacterProgression } from '../../app/lib/characters/progression'
 import type { WorldContentPackResolution } from './world-content-runtime'
 
 const CATALOGUE_SELECTION_BLOCK_KEY = 'catalogue_selection'
@@ -155,6 +157,21 @@ export type CharacterAssemblyBlueprint = {
   species: CharacterAssemblySlot
   class: CharacterAssemblySlot
   background: CharacterAssemblySlot
+  // Character Progression Phase 1A -- which class levels this character has
+  // (see app/lib/characters/progression.ts's own header for why this is an
+  // array, not a bare number, even though every character today has exactly
+  // one entry). NEVER null: a character created before this phase has no
+  // stored progression block yet, and that absence is synthesized here into
+  // exactly one entry -- this character's own already-resolved `class`
+  // reference above, at level 1 -- rather than left as a genuinely-empty
+  // "no class, no level" state, mirroring `totalCharacterLevel`'s own
+  // "absent means level 1" reading (app/lib/characters/progression.ts) one
+  // layer up. The FIRST time the Level Manager actually confirms a
+  // transition, this synthesized value is what gets persisted for real
+  // (server/utils/character-progression-plan.ts's own `confirmProgression`)
+  // -- never before that, so a character nobody has ever leveled up stays
+  // exactly as unwritten as it always was.
+  progression: StoredCharacterProgression
   // Phase 3. `null` when this character has no scores recorded -- true of
   // every character created before Phase 3, and a first-class state the
   // Sheet renders rather than an error. Never derived, never defaulted to
@@ -351,7 +368,7 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
-  // All six blocks in ONE query rather than six round trips -- they
+  // All seven blocks in ONE query rather than seven round trips -- they
   // differ only by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
   // `fields` because the rows now have to be told apart.
   const blockRes: any = await directusServiceRequest('/items/block_instances', {
@@ -369,13 +386,14 @@ export async function assembleCharacter(
                 INVENTORY_BLOCK_KEY,
                 CHARACTER_NOTES_BLOCK_KEY,
                 CHARACTER_HEALTH_BLOCK_KEY,
-                CHARACTER_SPELLCASTING_BLOCK_KEY
+                CHARACTER_SPELLCASTING_BLOCK_KEY,
+                CHARACTER_PROGRESSION_BLOCK_KEY
               ]
             }
           }
         ]
       },
-      limit: 7,
+      limit: 8,
       fields: 'block_key,data'
     }
   })
@@ -396,6 +414,7 @@ export async function assembleCharacter(
   const notes = normalizeStoredCharacterNotes(findBlock(CHARACTER_NOTES_BLOCK_KEY)?.data ?? null)
   const health = normalizeStoredCharacterHealth(findBlock(CHARACTER_HEALTH_BLOCK_KEY)?.data ?? null)
   const spellcasting = normalizeStoredSpellcasting(findBlock(CHARACTER_SPELLCASTING_BLOCK_KEY)?.data ?? null)
+  const storedProgression = normalizeStoredProgression(findBlock(CHARACTER_PROGRESSION_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -406,6 +425,28 @@ export async function assembleCharacter(
   }
 
   const catalogue = await getWorldContentCatalogue(worldId)
+  const classRef = extractRef(selection.class)
+  const classPackageId = typeof classRef?.packageId === 'string' ? classRef.packageId : ''
+  const classSlug = typeof classRef?.slug === 'string' ? classRef.slug : ''
+
+  // Character Progression Phase 1A -- see this blueprint's own `progression`
+  // field doc comment for why an absent stored record synthesizes exactly
+  // one entry (this character's own recorded class, at level 1) rather than
+  // staying genuinely empty. Synthesized from the RAW recorded (packageId,
+  // slug) -- the same ref `class` above resolves against the catalogue --
+  // deliberately independent of whether that class still resolves: a class
+  // whose Content Pack has since gone missing is still a real fact about
+  // this character (`class.status === 'missing'` already reports that
+  // separately), not a reason to also erase its level. An empty pair means
+  // no class was ever recorded at all, in which case there is nothing
+  // honest to synthesize a level-bearing entry FOR, and `classes: []`
+  // (totalCharacterLevel's own "no entries -> level 1" default) is the
+  // correct, unforced result.
+  const progression = storedProgression ?? (
+    classPackageId && classSlug
+      ? { classes: [{ classRef: { packageId: classPackageId, slug: classSlug }, level: 1 }] }
+      : { classes: [] }
+  )
 
   const blueprint: CharacterAssemblyBlueprint = {
     worldId: String(worldId),
@@ -415,7 +456,7 @@ export async function assembleCharacter(
     characterType: String(entity.entity_type || 'pc'),
     characterSummary: entity.summary != null ? String(entity.summary) : null,
     species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species'),
-    class: resolveSlot(extractRef(selection.class), catalogue.classes, catalogue.packs, 'Class'),
+    class: resolveSlot(classRef, catalogue.classes, catalogue.packs, 'Class'),
     background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),
     abilityScores,
     rulesChoices,
@@ -424,6 +465,7 @@ export async function assembleCharacter(
     health,
     spells: resolveSpells(spellcasting?.spells ?? [], catalogue.spells, catalogue.packs),
     expendedSlots: spellcasting?.expendedSlots ?? {},
+    progression,
     packs: catalogue.packs
   }
 

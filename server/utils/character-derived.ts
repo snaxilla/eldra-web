@@ -194,6 +194,31 @@ export async function getDerivedCharacter(
   worldId: string | number,
   characterId: string | number
 ): Promise<DerivedCharacterResult> {
+  return getDerivedCharacterInternal(worldId, characterId, undefined)
+}
+
+// Character Progression Phase 1A -- SIMULATES this character's derived
+// state as if their total level were `levelOverride`, without persisting
+// anything (`buildActorState`'s own `levelOverride` input, threaded through
+// unchanged). Used only by server/utils/character-progression-plan.ts to
+// preview each level a Progression Plan would pass through, one evaluation
+// per level, before anything is confirmed. Identical in every other respect
+// to `getDerivedCharacter` above -- same assembly, same runtime, same
+// evaluation -- so a preview and the real post-confirmation read can never
+// honestly disagree about what a given level produces.
+export async function getDerivedCharacterAtLevel(
+  worldId: string | number,
+  characterId: string | number,
+  levelOverride: number
+): Promise<DerivedCharacterResult> {
+  return getDerivedCharacterInternal(worldId, characterId, levelOverride)
+}
+
+async function getDerivedCharacterInternal(
+  worldId: string | number,
+  characterId: string | number,
+  levelOverride: number | undefined
+): Promise<DerivedCharacterResult> {
   const assembly = await assembleCharacter(worldId, characterId)
   if (!assembly.available) {
     return assembly
@@ -234,7 +259,15 @@ export async function getDerivedCharacter(
     stateSchemaVersion: runtime.runtime.manifest.stateSchemaVersion,
     knownDefinition: (id) => registry.has(id),
     rulesChoices: assembly.blueprint.rulesChoices,
-    lookupChoiceSet: choiceSetFor
+    lookupChoiceSet: choiceSetFor,
+    // Character Progression Phase 1A -- resolved via the active package's
+    // OWN semantic-role binding (manifest.json's `semanticRoles.level`),
+    // never hardcoded to `'value:level'` here: a future non-level-based
+    // package simply has no 'level' role bound, and `levelDefinitionId`
+    // is then `undefined`, which `buildActorState` already treats as a
+    // no-op (see that function's own doc comment on this field).
+    levelDefinitionId: registry.getBySemanticRole('level')?.id,
+    levelOverride
   })
 
   // Labels are looked up ONCE per definition here rather than per consumer.

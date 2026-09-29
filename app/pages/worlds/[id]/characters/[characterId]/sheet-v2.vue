@@ -320,6 +320,7 @@ import CharacterNotesPanel from '~/components/characters/CharacterNotesPanel.vue
 import CharacterSpellcastingPanel from '~/components/characters/CharacterSpellcastingPanel.vue'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
 import CharacterActionsPanel from '~/components/characters/CharacterActionsPanel.vue'
+import CharacterProgressionPanel from '~/components/characters/CharacterProgressionPanel.vue'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
@@ -346,6 +347,7 @@ import {
 } from '~/components/characters/characterDerivedValues'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
+import { useCharacterProgression } from '~/composables/useCharacterProgression'
 import { useCharacterSheetLayout } from '~/composables/useCharacterSheetLayout'
 import { useWorldRolls } from '~/composables/useWorldRolls'
 import type { AssembledInventoryItem } from '~/lib/characters/inventory'
@@ -373,6 +375,33 @@ const sheet = await useCharacterSheet(worldId, characterId)
 // One mutation surface for Recovery/Combat/Inventory/Spellcasting/
 // Conditions -- see app/composables/useCharacterMutations.ts.
 const mutations = useCharacterMutations(worldId, characterId, sheet)
+
+// Character Progression Phase 1A -- the Game Admin Level Manager's own
+// composable (not folded into `mutations`: see useCharacterProgression.ts's
+// own header for why). Rendered behind `canEditCharacter` further down.
+const progression = useCharacterProgression(worldId, characterId)
+
+function requestProgressionPreview({ targetLevel }: { targetLevel: number }) {
+  progression.previewPlan(targetLevel)
+}
+
+// A successful Level Up changes far more than this page's own local state
+// -- Proficiency Bonus, Max HP, Hit Dice Max, Spell Save DC/Attack, Spell
+// Slot maxima, and 1B.5's own cantrip scaling ALL move because the
+// character's authoritative level changed, not because anything here
+// patches them individually (this task's own "the Level Manager should not
+// individually PATCH every derived number" requirement). `sheet.refresh()`
+// -- the SAME combined assembly+derived+actions refresh every other
+// sweeping mutation in this file already uses -- is what makes all of that
+// visible with no manual synchronization.
+async function confirmProgressionLevelUp() {
+  const ok = await progression.confirm()
+  if (ok) await sheet.refresh()
+}
+
+function clearProgressionPlan() {
+  progression.clearPlan()
+}
 
 // ---------------------------------------------------------------------------
 // Roll System Phase 2 -- ability/save/skill click-to-roll. `useWorldRolls`
@@ -1190,6 +1219,34 @@ function openSkillContext(skill: CharacterSkillRow) {
                 {{ blueprint.abilityScores ? 'Edit ability scores' : 'Assign ability scores' }}
               </NuxtLink>
             </p>
+
+            <!-- Character Progression Phase 1A -- Game Admin only, hidden
+                 entirely for a player (client hint; the server independently
+                 re-enforces `world.character.edit_any` on every
+                 progression/* route -- see CharacterProgressionPanel.vue's
+                 own header). Placed in this tab (reference/depth/admin
+                 material), not the Play tab, per this task's own "do not
+                 clutter normal player Play Mode." -->
+            <CharacterSheetSection
+              v-if="canEditCharacter"
+              heading="Level Manager"
+            >
+              <div class="mt-3">
+                <CharacterProgressionPanel
+                  :current-level="characterLevel"
+                  :pending="derivedPending"
+                  :error-message="derived ? '' : derivedUnavailable"
+                  :plan="progression.plan.value"
+                  :plan-pending="progression.planPending.value"
+                  :plan-error-message="progression.planError.value"
+                  :confirming="progression.confirming.value"
+                  :confirm-error-message="progression.confirmError.value"
+                  @preview="requestProgressionPreview"
+                  @confirm="confirmProgressionLevelUp"
+                  @clear-plan="clearProgressionPlan"
+                />
+              </div>
+            </CharacterSheetSection>
 
             <CharacterSheetSection heading="Derived">
               <template #heading-end>

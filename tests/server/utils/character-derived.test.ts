@@ -37,7 +37,7 @@ vi.mock('../../../server/utils/world-runtime-service', () => ({
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../app/lib/rules/types'
-import { getDerivedCharacter } from '../../../server/utils/character-derived'
+import { getDerivedCharacter, getDerivedCharacterAtLevel } from '../../../server/utils/character-derived'
 import type { CharacterAssemblyBlueprint, CharacterAssemblySlot } from '../../../server/utils/character-assembly'
 import { findRulesFacet } from '../../../app/lib/content-rules'
 
@@ -101,6 +101,7 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
     health: null,
     spells: [],
     expendedSlots: {},
+    progression: { classes: [] },
     packs: [],
     ...overrides
   }
@@ -416,5 +417,43 @@ describe('getDerivedCharacter -- Health System (DND5E Playability Audit)', () =>
     // blueprint()'s defaults: Fighter, CON 13 (standard array) -> mod +1.
     expect(byId['value:hit_points.hit_die_size']).toBe(10)
     expect(byId['value:hit_points.max']).toBe(11)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Progression Phase 1A -- getDerivedCharacterAtLevel
+// ---------------------------------------------------------------------------
+
+describe('getDerivedCharacterAtLevel -- simulates a level without persisting anything', () => {
+  it('produces the exact numbers a real stored progression at that level would produce', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint() })
+
+    const atLevel1 = await getDerivedCharacter('5', '42')
+    const atLevel5 = await getDerivedCharacterAtLevel('5', '42', 5)
+    expect(atLevel1.available).toBe(true)
+    expect(atLevel5.available).toBe(true)
+    if (!atLevel1.available || !atLevel5.available) return
+
+    const profAt = (result: typeof atLevel1.derived) =>
+      (result.byCategory['core.proficiency'] ?? []).find((entry) => entry.id === 'value:proficiency_bonus')?.value
+
+    expect(profAt(atLevel1.derived)).toBe(2)
+    expect(profAt(atLevel5.derived)).toBe(3) // 2 + floor((5-1)/4)
+  })
+
+  it('never mutates or reads a different assembly than getDerivedCharacter itself -- assembleCharacter is called with the identical ids', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint() })
+
+    await getDerivedCharacterAtLevel('5', '42', 11)
+    expect(assembleCharacterMock).toHaveBeenCalledWith('5', '42')
+  })
+
+  it('propagates the same character-not-found/rules-unconfigured results getDerivedCharacter itself would', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: false, reason: 'character-not-found' })
+
+    const result = await getDerivedCharacterAtLevel('5', '999', 5)
+    expect(result.available).toBe(false)
+    if (result.available) return
+    expect(result.reason).toBe('character-not-found')
   })
 })

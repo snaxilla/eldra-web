@@ -85,6 +85,7 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
     inventory: [],
     notes: null,
     health: null,
+    progression: { classes: [] },
     packs: [],
     ...overrides
   }
@@ -108,7 +109,11 @@ function derive(bp: CharacterAssemblyBlueprint) {
     lookupChoiceSet: (id) => {
       const definition = registry.registry.getById(id)
       return definition && definition.kind === 'choiceSet' ? definition : null
-    }
+    },
+    // Character Progression Phase 1A -- exactly what character-derived.ts
+    // supplies in production, via the active package's own semantic-role
+    // binding.
+    levelDefinitionId: registry.registry.getBySemanticRole('level')?.id
   })
 
   const session = new EvaluationSession(registry.registry, graph.graph, bridged.actorState, {})
@@ -375,7 +380,13 @@ describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
       const isAbilityScore = /^value:ability\.(str|dex|con|int|wis|cha)$/.test(id)
       const isProficiencyFlag = id.endsWith('.proficient')
       const isHitDieGrant = id === 'value:hit_points.hit_die_size'
-      expect(isAbilityScore || isProficiencyFlag || isHitDieGrant, `unexpected stored value '${id}'`).toBe(true)
+      // Character Progression Phase 1A -- `value:level` is exactly the same
+      // kind of input as an ability score: a stored, per-character fact
+      // (see character-progression.ts's own StoredCharacterProgression),
+      // never something the engine computed. Its presence here is the SAME
+      // ADR-003 invariant this test checks, not an exception to it.
+      const isLevel = id === 'value:level'
+      expect(isAbilityScore || isProficiencyFlag || isHitDieGrant || isLevel, `unexpected stored value '${id}'`).toBe(true)
     }
 
     // ...and the derived values the sheet will show exist only in the
@@ -383,6 +394,88 @@ describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
     expect(stored).not.toContain('value:ability.str.mod')
     expect(stored).not.toContain('value:proficiency_bonus')
     expect(stored).not.toContain('value:save.str.bonus')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Progression Phase 1A -- `value:level`
+// ---------------------------------------------------------------------------
+
+describe('Character Progression: level writes into ActorState, and everything level-derived responds', () => {
+  it('a character with no progression block at all evaluates at level 1 (value:level\'s own Rules Engine default)', () => {
+    const { value } = derive(blueprint())
+    expect(value('value:level')).toBe(1)
+    expect(value('value:proficiency_bonus')).toBe(2)
+  })
+
+  it('a stored progression entry raises value:level, and proficiency_bonus (a real formula reading it) responds', () => {
+    const { value } = derive(blueprint({
+      progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 5 }] }
+    }))
+    expect(value('value:level')).toBe(5)
+    // 2 + floor((5-1)/4) = 3
+    expect(value('value:proficiency_bonus')).toBe(3)
+  })
+
+  it('total level is the SUM across every class entry -- the multiclass-ready shape, even with one entry today', () => {
+    const { value } = derive(blueprint({
+      progression: {
+        classes: [
+          { classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 3 },
+          { classRef: { packageId: 'eldra.content.xphb', slug: 'wizard-xphb' }, level: 2 }
+        ]
+      }
+    }))
+    expect(value('value:level')).toBe(5)
+  })
+
+  it('levelOverride simulates a different level without touching the stored progression the blueprint carries', () => {
+    const bp = blueprint({
+      progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 1 }] }
+    })
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    if (!registry.ok) throw new Error('registry failed')
+    const graph = DependencyGraph.build(registry.registry)
+    if (!graph.ok) throw new Error('graph failed')
+
+    const bridged = buildActorState({
+      blueprint: bp,
+      packageId: manifest.packageId,
+      packageVersion: manifest.version,
+      stateSchemaVersion: manifest.stateSchemaVersion,
+      knownDefinition: (id) => registry.registry.has(id),
+      rulesChoices: bp.rulesChoices,
+      lookupChoiceSet: () => null,
+      levelDefinitionId: registry.registry.getBySemanticRole('level')?.id,
+      levelOverride: 11
+    })
+    const session = new EvaluationSession(registry.registry, graph.graph, bridged.actorState, {})
+    expect(evaluate('value:level', session)).toBe(11)
+    // The blueprint's own stored progression is untouched -- this was a
+    // one-evaluation simulation, never a mutation.
+    expect(bp.progression).toEqual({ classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 1 }] })
+  })
+
+  it('omitting levelDefinitionId entirely is a no-op -- a package with no \'level\' semantic role bound gets no value:level write at all', () => {
+    const bp = blueprint({
+      progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 9 }] }
+    })
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    if (!registry.ok) throw new Error('registry failed')
+
+    const bridged = buildActorState({
+      blueprint: bp,
+      packageId: manifest.packageId,
+      packageVersion: manifest.version,
+      stateSchemaVersion: manifest.stateSchemaVersion,
+      knownDefinition: (id) => registry.registry.has(id),
+      rulesChoices: bp.rulesChoices,
+      lookupChoiceSet: () => null
+      // levelDefinitionId deliberately omitted.
+    })
+    expect(bridged.actorState.values['value:level']).toBeUndefined()
   })
 })
 

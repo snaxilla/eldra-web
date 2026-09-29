@@ -143,6 +143,7 @@ import {
   type StoredRulesChoices
 } from '../../app/lib/characters/rules-choices'
 import { ABILITY_KEYS } from '../../app/lib/characters/ability-scores'
+import { totalCharacterLevel } from '../../app/lib/characters/progression'
 import type { ActorState, CollectionInstanceItem, RuleValue, SourceInstance } from '../../app/lib/rules/types'
 
 // The three catalogue-backed slots, in the order their grants are applied.
@@ -212,6 +213,21 @@ export type ActorBridgeInput = {
   // since a facet's `from` is typed `DefinitionId[]` (see
   // resolveChoiceTarget).
   lookupChoiceSet?: (id: string) => { writesTo: string } | null | undefined
+  // Character Progression Phase 1A -- the active package's own Definition
+  // id for "the level concept," resolved via `registry.getBySemanticRole('level')`
+  // by character-derived.ts (never hardcoded here, matching this module's
+  // own "no game vocabulary" rule -- a future non-level-based package simply
+  // has no such role bound, and this stays a no-op for it). Optional for the
+  // same reason `lookupChoiceSet` is: this module stays pure and
+  // registry-free.
+  levelDefinitionId?: string
+  // Character Progression Phase 1A -- overrides `blueprint.progression`'s own
+  // total level for ONE evaluation, without persisting anything. Used only
+  // by server/utils/character-progression-plan.ts to simulate what an
+  // UNCOMMITTED target level would produce (the Progression Plan's own
+  // per-level automatic-consequence preview) -- omitted (the default,
+  // ordinary read path) uses this character's own actually-stored level.
+  levelOverride?: number
 }
 
 function facetFor(slot: CharacterAssemblySlot): RulesFacet | null {
@@ -299,6 +315,22 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     for (const key of ABILITY_KEYS) {
       values[abilityValueId(key)] = blueprint.abilityScores.scores[key]
     }
+  }
+
+  // --- Level: the player's own data (or a simulated override), copied
+  // verbatim -- Character Progression Phase 1A ------------------------------
+  // Mirrors ability scores/health immediately above and below: a stored
+  // fact, copied through, never computed here. `totalCharacterLevel` already
+  // defaults to 1 when `blueprint.progression` has no entries (every
+  // character predating this phase) -- the identical number `value:level`'s
+  // own Rules Engine default would produce if this were omitted entirely, so
+  // writing it explicitly here changes nothing for those characters and is
+  // only ever a real override once a Level Manager transition has actually
+  // been confirmed. Skipped entirely when the active package has no 'level'
+  // semantic role bound (`levelDefinitionId` absent) -- this module must
+  // never assume every package has a level concept at all.
+  if (input.levelDefinitionId) {
+    values[input.levelDefinitionId] = input.levelOverride ?? totalCharacterLevel(blueprint.progression)
   }
 
   // --- Health: the player's own data, copied verbatim ---------------------

@@ -152,6 +152,7 @@ export function create5eToolsCollectionProvider(input: FiveEToolsCollectionInput
     gameSystemKey: 'dnd5e',
     collectionKey: input.collectionKey,
     adapterId: '5etools-json',
+    vocabulary: input.vocabulary,
     categories,
     checkAvailability,
     loadCategory

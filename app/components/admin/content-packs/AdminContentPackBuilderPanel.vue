@@ -126,6 +126,7 @@ import {
   totalSelected as totalSelectedInSelection,
   type PreviewEntrySelection
 } from './contentPackBuilderSelection'
+import { findLatestPublishedPack } from './contentPackRefreshMatch'
 
 // Purely derived from the two selected keys -- no source, provider, or
 // dataset name is ever named here. See this file's header GAME SYSTEM /
@@ -255,7 +256,10 @@ function selectContentSource(source: SourceCollectionDefinition) {
 // Preview/Curate/Publish state below; only needs the two selected keys.
 // ---------------------------------------------------------------------------
 
-type PublishedPackSummary = { packageId: string; version: string }
+// `origin` added for Package Sync Phase 1's REFRESH BUTTON ROOT CAUSE FIX --
+// see content-packs.ts's own ContentPackListing.origin doc comment. `null`
+// for a pack published before origin was tracked.
+type PublishedPackSummary = { packageId: string; version: string; origin: { adapterId: string; sourceId: string } | null }
 
 const publishedPacks = ref<PublishedPackSummary[]>([])
 const publishedPacksLoaded = ref(false)
@@ -276,41 +280,29 @@ async function loadPublishedPacksForRefresh() {
 
 onMounted(loadPublishedPacksForRefresh)
 
-function parseVersionTripleForDisplay(version: string): [number, number, number] | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version)
-  if (!match) return null
-  return [Number(match[1]), Number(match[2]), Number(match[3])]
-}
+// REFRESH BUTTON ROOT CAUSE FIX (Package Sync Phase 1) -- see
+// contentPackRefreshMatch.ts's own header for the full bug/fix writeup.
+// Extracted to a pure module (this repo's established pattern for
+// component logic -- see contentPackBuilderSelection.ts) so it is
+// unit-tested directly rather than only indirectly through this component.
+//
+// The MATCHED pack's own `packageId` (never the registry's suggested
+// default) is what a Refresh must target, since that is the packageId
+// every existing version actually lives under.
+const latestPublishedPack = computed<PublishedPackSummary | null>(() =>
+  findLatestPublishedPack(publishedPacks.value, selectedContentSource.value?.key)
+)
 
-function compareVersionsForDisplay(a: string, b: string): number {
-  const pa = parseVersionTripleForDisplay(a)
-  const pb = parseVersionTripleForDisplay(b)
-  if (!pa || !pb) return a.localeCompare(b)
-  const [aMajor, aMinor, aPatch] = pa
-  const [bMajor, bMinor, bPatch] = pb
-  if (aMajor !== bMajor) return aMajor - bMajor
-  if (aMinor !== bMinor) return aMinor - bMinor
-  return aPatch - bPatch
-}
+// The packageId a Refresh click targets -- the REAL packageId the latest
+// published version was found under (see latestPublishedPack above), never
+// the registry's suggested default. `refreshContentPackage` below sends
+// this explicitly in the request body rather than relying on the server
+// route's own suggestedPackageId fallback, which is exactly the same bug
+// one layer deeper (refresh.post.ts:43-44 defaults an omitted packageId to
+// `collection.suggestedPackageId` too).
+const refreshTargetPackageId = computed(() => latestPublishedPack.value?.packageId ?? '')
 
-// The packageId a Refresh click targets -- always the registry's own
-// suggestedPackageId for the selected source, exactly what the server
-// route defaults an omitted packageId to. Refresh never asks the developer
-// to type a Package Name (this task's own "no manual preview inspection
-// required" extends to not asking for identity either -- refreshing IS
-// the identity).
-const refreshTargetPackageId = computed(() => selectedContentSource.value?.suggestedPackageId ?? '')
-
-const latestPublishedVersion = computed<string | null>(() => {
-  const packageId = refreshTargetPackageId.value
-  if (!packageId) return null
-  let latest: string | null = null
-  for (const pack of publishedPacks.value) {
-    if (pack.packageId !== packageId) continue
-    if (!latest || compareVersionsForDisplay(pack.version, latest) > 0) latest = pack.version
-  }
-  return latest
-})
+const latestPublishedVersion = computed<string | null>(() => latestPublishedPack.value?.version ?? null)
 
 const refreshPending = ref(false)
 const refreshError = ref('')
@@ -334,7 +326,12 @@ async function refreshContentPackage() {
         method: 'POST',
         body: {
           gameSystemKey: selectedGameSystemKey.value,
-          collectionKey: selectedContentSource.value.key
+          collectionKey: selectedContentSource.value.key,
+          // Explicit, never omitted -- see refreshTargetPackageId's own doc
+          // comment. Omitting this let the server fall back to the
+          // registry's suggested default, which is the same identity bug
+          // this fix closes.
+          packageId: refreshTargetPackageId.value
         }
       }
     )

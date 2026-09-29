@@ -43,6 +43,15 @@ export type SourceCollectionProvider = {
   // content-pack-5etools-adapter.ts and content-pack-publishing.ts's own
   // ContentPackOrigin.
   adapterId: string
+  // Package Sync Phase 1 -- the Rules Vocabulary this provider's candidates
+  // are compiled against (FiveEToolsCollectionInput.vocabulary,
+  // 5etools-collection.ts), when it declares one. Exposed here, not just
+  // held in that factory's closure, so a generic caller (content-sources/
+  // publish.ts, computing a compilation fingerprint) can read it without
+  // depending on any one provider's construction details. `undefined` for a
+  // collection that declares no vocabulary (SRD 5.1 today), matching
+  // attachRulesFacets' own "no vocabulary -> unaffected" rule.
+  vocabulary?: string
   categories: readonly SourceCategory[]
   checkAvailability(): Promise<SourceAvailability>
   loadCategory(categoryKey: string): Promise<SourceCategoryLoadResult>

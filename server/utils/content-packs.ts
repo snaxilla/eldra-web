@@ -105,6 +105,16 @@ export type ContentPackOrigin = {
   adapterVersion?: string
   sourceId?: string
   sourceHash?: string
+  // Package Sync Phase 1 -- see server/utils/content-sources/
+  // compilation-fingerprint.ts's own header for what this captures (the
+  // RulesFacet corpus + a hand-maintained compiler version, deliberately
+  // NOT raw source content, which the pack's own `integrity_hash` already
+  // covers) and why it exists (server/utils/content-sources/refresh.ts's
+  // own "FUTURE FINGERPRINT EXTENSION POINT" note names this exact field).
+  // Optional and additive: every pack published before this field existed
+  // simply has none, and callers must read that as "unknown," never as a
+  // staleness signal on its own.
+  compilerFingerprint?: string
 }
 
 export type ContentPackAuthor = {
@@ -206,6 +216,28 @@ export type ContentPackListing = {
   // the row's own `license_id` column, never the manifest's embedded
   // license object.
   licenseId: string | null
+  // Package Sync Phase 1 -- REFRESH BUTTON ROOT CAUSE FIX. The Refresh
+  // Content Package panel (AdminContentPackBuilderPanel.vue) previously
+  // decided "has this Content Source ever been published?" by comparing a
+  // published row's `packageId` against the Content Source registry's
+  // *suggested default* packageId (SourceCollectionDefinition.
+  // suggestedPackageId) -- which only holds when nobody ever published
+  // under a different, manually-chosen packageId. Solaris's actual XPHB
+  // pack was published as `eldra.solaris.xphb`, not the suggested
+  // `eldra.content.xphb`, so that comparison always missed and the panel
+  // reported "not yet published" despite five real published versions.
+  //
+  // `origin` (adapterId/sourceId) is the Content Source's own STABLE
+  // identity, written into every published pack's manifest at publish time
+  // (content-sources/publish.ts) regardless of what packageId string was
+  // chosen -- the correct thing to match a Content Source against. Reading
+  // it here costs one extra small JSON column (`manifest`, not the large
+  // `content` column); still METADATA-shaped in spirit (no `content`, no
+  // license/description/authors text -- just the two identity fields a
+  // listing consumer needs). `null` for a pack published before origin was
+  // introduced (Content Pack Publishing Phase 2's own precedent: absence is
+  // legal, never fabricated).
+  origin: { adapterId: string; sourceId: string } | null
 }
 
 // PUBLISH (Phase 2). Everything publishContentPackRelease needs to insert
@@ -301,20 +333,28 @@ export async function listPublishedContentPacks(): Promise<ContentPackListing[]>
     method: 'GET',
     query: {
       filter: { status: { _eq: 'published' } },
-      fields: 'package_id,version,title,content_schema_version,license_id',
+      fields: 'package_id,version,title,content_schema_version,license_id,manifest',
       sort: ['package_id', '-version'],
       limit: -1
     }
   })
 
   const rows = Array.isArray(res?.data) ? res.data : []
-  return rows.map((row: any) => ({
-    packageId: String(row.package_id ?? ''),
-    version: String(row.version ?? ''),
-    title: String(row.title ?? ''),
-    contentSchemaVersion: Number(row.content_schema_version ?? 0),
-    licenseId: row.license_id ?? null
-  }))
+  return rows.map((row: any) => {
+    const manifestResult = parseJsonField<ContentPackManifest>(row.manifest, 'manifest')
+    const origin = manifestResult.ok ? manifestResult.value.origin : undefined
+    const adapterId = origin?.adapterId
+    const sourceId = origin?.sourceId
+
+    return {
+      packageId: String(row.package_id ?? ''),
+      version: String(row.version ?? ''),
+      title: String(row.title ?? ''),
+      contentSchemaVersion: Number(row.content_schema_version ?? 0),
+      licenseId: row.license_id ?? null,
+      origin: adapterId && sourceId ? { adapterId, sourceId } : null
+    }
+  })
 }
 
 // MANIFEST loading -- the manifest alone, status-checked but NOT integrity-

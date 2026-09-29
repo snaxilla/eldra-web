@@ -45,6 +45,7 @@ import type { ContentPackPublicationIssue, ContentPublicationCandidate } from '.
 import { publishContentPack } from '../content-pack-publishing'
 import type { SourceCollectionDefinition } from '../../../app/lib/content-sources/registry'
 import type { SourceCollectionProvider } from './types'
+import { computeContentCompilationFingerprint } from './compilation-fingerprint'
 
 export type ContentSourcePublishSelection = Record<string, unknown>
 
@@ -119,7 +120,13 @@ export async function publishContentSourceSelection(input: ContentSourcePublishI
     origin: {
       kind: 'translated',
       adapterId: provider.adapterId,
-      sourceId: provider.collectionKey
+      sourceId: provider.collectionKey,
+      // Package Sync Phase 1 -- see compilation-fingerprint.ts's own header.
+      // Written on every publish (including a refresh, which flows through
+      // this same function) so a future sync/refresh check has something to
+      // compare against; absent on every pack published before this field
+      // existed, which callers must read as "unknown," not "stale."
+      compilerFingerprint: computeContentCompilationFingerprint({ vocabulary: provider.vocabulary })
     },
     candidates,
     warnings

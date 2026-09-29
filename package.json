@@ -20,7 +20,8 @@
     "directus:create-world-content-pack-bindings": "node scripts/directus/create-world-content-pack-bindings-schema.mjs",
     "directus:bootstrap": "node scripts/directus/bootstrap.mjs",
     "directus:publish-starter-package": "node scripts/directus/publish-starter-package.mjs",
-    "directus:publish-rules-package": "node scripts/directus/publish-rules-package.mjs"
+    "directus:publish-rules-package": "node scripts/directus/publish-rules-package.mjs",
+    "packages:sync": "node scripts/directus/packages-sync.mjs"
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",

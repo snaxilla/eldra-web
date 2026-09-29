@@ -47,3 +47,16 @@ export function findRulesFacet(
 export function hasRulesFacetCorpus(vocabulary: string | undefined): boolean {
   return Boolean(vocabulary && CORPORA[vocabulary])
 }
+
+// Package Sync Phase 1 -- the whole corpus for one vocabulary, not a single
+// entry's lookup. Needed so a compilation fingerprint (server/utils/
+// content-sources/compilation-fingerprint.ts) can hash "the entire authored
+// RulesFacet corpus this Content Source compiles against" to detect the
+// exact staleness case that broke Phase 1B: a facet gained a `progression`
+// reference with no change to the underlying 5etools source file. Read-only
+// -- returns the same corpus object findRulesFacet already reads from,
+// never a copy, so hashing it reflects the exact code currently loaded.
+export function getRulesFacetCorpus(vocabulary: string | undefined): RulesFacetCorpus | null {
+  if (!vocabulary) return null
+  return CORPORA[vocabulary] ?? null
+}

@@ -1,17 +1,30 @@
 // useCharacterProgression -- Character Progression Phase 1A (Game Admin
-// Level Manager). The one client composable the Level Manager panel calls;
-// mirrors useWorldRolls.ts's own "one focused composable per feature area"
-// shape rather than folding into useCharacterMutations.ts, since Progression
-// is not one of that composable's own five named domains (Recovery/Combat/
-// Inventory/Spellcasting/Conditions) and has its own two-step preview/
-// confirm lifecycle none of those five share.
+// Level Manager), extended by Phase 1B (Package-Authored Progression
+// Declarations + Level-Triggered Choices). The one client composable the
+// Level Manager panel calls; mirrors useWorldRolls.ts's own "one focused
+// composable per feature area" shape rather than folding into
+// useCharacterMutations.ts, since Progression is not one of that
+// composable's own five named domains (Recovery/Combat/Inventory/
+// Spellcasting/Conditions) and has its own two-step preview/confirm
+// lifecycle none of those five share.
 //
 // PURELY A CLIENT FOR THE PROGRESSION API. No level-transition logic, no
 // Rules Engine knowledge, no game vocabulary -- a caller previews a target
 // level, reads back a plan the SERVER computed
 // (server/utils/character-progression-plan.ts), and confirms that exact
-// plan. This file never decides what a level grants; it only relays intent
-// and renders what the server already decided.
+// plan. This file never decides what a level grants, never decides whether
+// a choice is legal, and never computes a choice's own answered/valid state
+// -- it only relays intent (which level, which tentative answers) and
+// renders what the server already decided.
+//
+// CHOICE ANSWERS DURING PREVIEW (Character Progression Phase 1B) --
+// `answers` below is TENTATIVE, client-only state until `confirm()` sends
+// it as the transition's own final selections; nothing here ever persists
+// it independently. `setAnswer` immediately re-previews the ALREADY-loaded
+// plan's own `targetLevel` with the updated answer merged in -- "select an
+// option" and "re-evaluate the plan" are the same user action, matching
+// this task's own "select answers -> re-evaluate plan -> choices resolve"
+// flow without a separate manual re-preview step.
 //
 // FUTURE PLAYER LEVEL UP WIZARD CONTRACT: `previewPlan`/`confirm` below call
 // the EXACT SAME two routes (POST .../progression/plan,
@@ -63,6 +76,14 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
   const confirming = ref(false)
   const confirmError = ref('')
 
+  // Character Progression Phase 1B -- this transition's own TENTATIVE
+  // choice selections, keyed by `ProgressionChoice.id` (the SAME stable key
+  // the server both reads them back by and, on a successful `confirm()`,
+  // persists them under). Client-only state until `confirm()` sends it;
+  // never written anywhere on its own -- see this file's own CHOICE
+  // ANSWERS DURING PREVIEW header.
+  const answers = ref<Record<string, string[]>>({})
+
   // Clears any previously-previewed plan -- a stale plan object sitting in
   // memory while the admin picks a NEW target level would be confusing to
   // render and is never valid to confirm against a level they didn't just
@@ -77,7 +98,7 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
     try {
       const response = await $fetch<{ ok: true; plan: ProgressionPlan }>(
         `/api/worlds/${resolvedWorldId()}/characters/${resolvedCharacterId()}/progression/plan`,
-        { method: 'POST', body: { targetLevel } }
+        { method: 'POST', body: { targetLevel, answers: answers.value } }
       )
       plan.value = response.plan
     } catch (caught) {
@@ -87,9 +108,22 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
     }
   }
 
+  // Character Progression Phase 1B -- records a tentative answer and
+  // immediately re-previews the CURRENTLY LOADED plan's own `targetLevel`
+  // with it applied -- "select an option" and "re-evaluate the plan" are
+  // the same user action (this file's own header). A no-op with no plan
+  // loaded yet, since there is nothing to re-preview against.
+  async function setAnswer(choiceId: string, selected: string[]): Promise<void> {
+    const targetLevel = plan.value?.targetLevel
+    answers.value = { ...answers.value, [choiceId]: selected }
+    if (targetLevel !== undefined) await previewPlan(targetLevel)
+  }
+
   // Confirms EXACTLY the plan currently held (its own targetLevel and
-  // fingerprint) -- never a caller-supplied level, so a stray click can
-  // never confirm something other than what was just previewed.
+  // fingerprint), submitting this composable's own tentative `answers` as
+  // that transition's final selections -- never a caller-supplied level, so
+  // a stray click can never confirm something other than what was just
+  // previewed.
   async function confirm(): Promise<boolean> {
     if (confirming.value || !plan.value) return false
     const { targetLevel, fingerprint } = plan.value
@@ -101,13 +135,15 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
       // The response IS read (typed here for callers who might want it
       // later), but this composable itself only needs to know the write
       // succeeded -- the page's own post-confirm `sheet.refresh()` is what
-      // makes the new level (and everything Rules-Engine-derived from it)
-      // visible, not anything held here.
+      // makes the new level (and everything Rules-Engine-derived from it,
+      // including any newly-answered progression choice) visible, not
+      // anything held here.
       await $fetch<ConfirmProgressionResponse>(
         `/api/worlds/${resolvedWorldId()}/characters/${resolvedCharacterId()}/progression/confirm`,
-        { method: 'POST', body: { targetLevel, fingerprint } }
+        { method: 'POST', body: { targetLevel, fingerprint, answers: answers.value } }
       )
       plan.value = null
+      answers.value = {}
       return true
     } catch (caught) {
       confirmError.value = extractErrorMessage(caught)
@@ -120,6 +156,7 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
   function clearPlan(): void {
     plan.value = null
     planError.value = ''
+    answers.value = {}
   }
 
   return {
@@ -128,6 +165,8 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
     planError,
     confirming,
     confirmError,
+    answers,
+    setAnswer,
     previewPlan,
     confirm,
     clearPlan

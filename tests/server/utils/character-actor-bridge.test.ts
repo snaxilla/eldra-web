@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { choiceKey } from '../../../app/lib/characters/rules-choices'
+import { choiceKey, progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 import { findRulesFacet } from '../../../app/lib/content-rules'
 import { DND5E_2024_RULES_FACETS } from '../../../app/lib/content-rules/dnd5e-2024'
 import { DependencyGraph } from '../../../app/lib/rules/dependency-graph'
@@ -24,7 +24,7 @@ import { EvaluationSession } from '../../../app/lib/rules/evaluation-session'
 import { evaluate } from '../../../app/lib/rules/evaluator'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import { RulesRegistry } from '../../../app/lib/rules/registry'
-import type { Definition, RuleValue, RulesPackageManifest } from '../../../app/lib/rules/types'
+import type { Definition, ProgressionDefinition, RuleValue, RulesPackageManifest } from '../../../app/lib/rules/types'
 import { buildActorState } from '../../../server/utils/character-actor-bridge'
 import type { AssembledInventoryItem, CharacterAssemblyBlueprint, CharacterAssemblySlot } from '../../../server/utils/character-assembly'
 
@@ -1275,5 +1275,242 @@ describe('Health System: stored decisions translate, Maximum HP derives', () => 
     expect(value('value:death_saves.successes')).toBe(1)
     expect(value('value:death_saves.failures')).toBe(2)
     expect(value('value:hit_points.current')).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Progression Phase 1B -- the dormant `kind:'progression'` seam,
+// now a real consumer
+// ---------------------------------------------------------------------------
+// `derive()` above never wires `lookupProgression`/`levelOverride`, so every
+// test below uses its own small helper rather than risk changing that
+// shared fixture's behavior for the 82 tests already passing against it.
+
+function deriveWithProgression(
+  bp: CharacterAssemblyBlueprint,
+  levelOverride: number,
+  progressionOverrides: Record<string, Pick<ProgressionDefinition, 'keyedBy' | 'rows'>> = {}
+) {
+  const { manifest, definitions } = loadRulesPackage()
+  const registry = RulesRegistry.create(manifest, definitions)
+  if (!registry.ok) throw new Error('registry failed')
+
+  const lookupProgression = (id: string) => {
+    if (progressionOverrides[id]) return progressionOverrides[id]
+    const definition = registry.registry.getById(id)
+    return definition && definition.kind === 'progression' ? definition : null
+  }
+
+  const bridged = buildActorState({
+    blueprint: bp,
+    packageId: manifest.packageId,
+    packageVersion: manifest.version,
+    stateSchemaVersion: manifest.stateSchemaVersion,
+    knownDefinition: (id) => registry.registry.has(id),
+    rulesChoices: bp.rulesChoices,
+    lookupChoiceSet: (id) => {
+      const definition = registry.registry.getById(id)
+      return definition && definition.kind === 'choiceSet' ? definition : null
+    },
+    lookupProgression,
+    levelDefinitionId: registry.registry.getBySemanticRole('level')?.id,
+    levelOverride
+  })
+
+  return { bridged }
+}
+
+describe('Character Progression Phase 1B -- real Wizard Scholar/Expertise choice, end to end', () => {
+  const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+
+  it('a level-1 Wizard has no Scholar choice declared at all -- the row has not been reached', () => {
+    const { bridged } = deriveWithProgression(wizardBp, 1)
+    expect(bridged.declaredChoices.some((c) => c.key.includes('progression'))).toBe(false)
+  })
+
+  it('a level-2 Wizard declares the real Scholar choice, unanswered by default', () => {
+    const { bridged } = deriveWithProgression(wizardBp, 2)
+    const key = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+    const declared = bridged.declaredChoices.find((c) => c.key === key)
+    expect(declared).toBeDefined()
+    expect(declared?.count).toBe(1)
+    expect(declared?.options).toHaveLength(6)
+    expect(declared?.options).toContain('value:skill.arcana.expertise')
+    expect(bridged.pendingChoices.some((c) => c.key === key)).toBe(true)
+  })
+
+  it('stays declared (cumulative) at level 5 -- once reached, never "expires"', () => {
+    const { bridged } = deriveWithProgression(wizardBp, 5)
+    const key = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+    expect(bridged.declaredChoices.some((c) => c.key === key)).toBe(true)
+  })
+
+  it('a valid answer resolves the choice and sets the real Expertise value', () => {
+    const key = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+    const withAnswer = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      rulesChoices: { selections: { [key]: ['value:skill.arcana.expertise'] } }
+    })
+    const { bridged } = deriveWithProgression(withAnswer, 2)
+
+    expect(bridged.pendingChoices.some((c) => c.key === key)).toBe(false)
+    expect(bridged.actorState.choices[key]).toEqual(['value:skill.arcana.expertise'])
+    expect(bridged.actorState.values['value:skill.arcana.expertise']).toBe(true)
+  })
+
+  it('an invalid answer (illegal option) is ignored -- the choice stays pending, no value is set', () => {
+    const key = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+    const withBadAnswer = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      rulesChoices: { selections: { [key]: ['value:skill.athletics.proficient'] } }
+    })
+    const { bridged } = deriveWithProgression(withBadAnswer, 2)
+
+    expect(bridged.pendingChoices.some((c) => c.key === key)).toBe(true)
+    expect(bridged.actorState.values['value:skill.arcana.expertise']).toBeUndefined()
+  })
+
+  it('a Fighter (no `progression` on its own facet) declares no progression choice at any level', () => {
+    const fighterBp = blueprint({ class: slot('class', 'fighter-xphb') })
+    const { bridged } = deriveWithProgression(fighterBp, 5)
+    expect(bridged.declaredChoices.some((c) => c.key.includes('progression'))).toBe(false)
+  })
+
+  it('creation-time and progression answers coexist -- one does not shadow or overwrite the other', () => {
+    const progressionKey = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+    const creationKey = choiceKey('class', 'choice:skill.proficiency')
+    const bp = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      rulesChoices: {
+        selections: {
+          [creationKey]: ['value:skill.history.proficient', 'value:skill.medicine.proficient'],
+          [progressionKey]: ['value:skill.arcana.expertise']
+        }
+      }
+    })
+    const { bridged } = deriveWithProgression(bp, 2)
+
+    expect(bridged.actorState.choices[creationKey]).toEqual(['value:skill.history.proficient', 'value:skill.medicine.proficient'])
+    expect(bridged.actorState.choices[progressionKey]).toEqual(['value:skill.arcana.expertise'])
+    expect(bridged.actorState.values['value:skill.history.proficient']).toBe(true)
+    expect(bridged.actorState.values['value:skill.arcana.expertise']).toBe(true)
+  })
+})
+
+describe('Character Progression Phase 1B -- generic Progression mechanism, synthetic content', () => {
+  // Proves the mechanism itself (trigger ownership, automatic grants,
+  // keyedBy scoping, no-op fallbacks) against constructed Progression
+  // definitions -- the real authored corpus has exactly one real case
+  // (Scholar/Expertise, tested above); these prove the GENERIC machinery
+  // works for shapes the real corpus does not currently exercise, the same
+  // "synthetic edge cases beyond the real corpus" precedent 1B.5's own
+  // scaling resolver tests already established.
+
+  it('a row\'s `sets` become direct values once its own `at` threshold is reached, never before', () => {
+    const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+    const synthetic = {
+      keyedBy: 'value:level',
+      rows: [{ at: 3, sets: { 'value:skill.arcana.expertise': true } }]
+    }
+
+    const below = deriveWithProgression(wizardBp, 2, { 'progression:class.skill-expertise': synthetic })
+    expect(below.bridged.actorState.values['value:skill.arcana.expertise']).toBeUndefined()
+
+    const at = deriveWithProgression(wizardBp, 3, { 'progression:class.skill-expertise': synthetic })
+    expect(at.bridged.actorState.values['value:skill.arcana.expertise']).toBe(true)
+
+    const above = deriveWithProgression(wizardBp, 4, { 'progression:class.skill-expertise': synthetic })
+    expect(above.bridged.actorState.values['value:skill.arcana.expertise']).toBe(true)
+  })
+
+  it('a row\'s `grants` become SourceInstances, mirroring `facet.sources` exactly, deterministic id', () => {
+    const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+    const synthetic = {
+      keyedBy: 'value:level',
+      rows: [{ at: 3, grants: ['source:equipment.armor'] }]
+    }
+
+    const { bridged } = deriveWithProgression(wizardBp, 3, { 'progression:class.skill-expertise': synthetic })
+    expect(bridged.actorState.sources).toContainEqual({
+      instanceId: 'class:progression:3:source:equipment.armor',
+      sourceRef: 'source:equipment.armor',
+      origin: { kind: 'declared' }
+    })
+  })
+
+  it('an unresolved `sets`/`grants` target is reported, never silently written', () => {
+    const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+    const synthetic = {
+      keyedBy: 'value:level',
+      rows: [{ at: 2, sets: { 'value:not.a.real.definition': true }, grants: ['source:also.not.real'] }]
+    }
+
+    const { bridged } = deriveWithProgression(wizardBp, 2, { 'progression:class.skill-expertise': synthetic })
+    expect(bridged.unresolvedGrants).toContain('value:not.a.real.definition')
+    expect(bridged.unresolvedGrants).toContain('source:also.not.real')
+    expect(bridged.actorState.values['value:not.a.real.definition']).toBeUndefined()
+  })
+
+  it('a Progression whose `keyedBy` does not match the bridge\'s own known level Definition is never evaluated', () => {
+    const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+    const synthetic = {
+      keyedBy: 'value:not-the-level-definition',
+      rows: [{ at: 1, sets: { 'value:skill.arcana.expertise': true } }]
+    }
+
+    const { bridged } = deriveWithProgression(wizardBp, 5, { 'progression:class.skill-expertise': synthetic })
+    expect(bridged.actorState.values['value:skill.arcana.expertise']).toBeUndefined()
+  })
+
+  it('with no `lookupProgression` supplied at all, a facet\'s `progression` is a pure no-op (backward compatible)', () => {
+    const { manifest, definitions } = loadRulesPackage()
+    const registry = RulesRegistry.create(manifest, definitions)
+    if (!registry.ok) throw new Error('registry failed')
+    const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+
+    const bridged = buildActorState({
+      blueprint: wizardBp,
+      packageId: manifest.packageId,
+      packageVersion: manifest.version,
+      stateSchemaVersion: manifest.stateSchemaVersion,
+      knownDefinition: (id) => registry.registry.has(id),
+      levelDefinitionId: registry.registry.getBySemanticRole('level')?.id,
+      levelOverride: 5
+      // lookupProgression intentionally omitted.
+    })
+
+    expect(bridged.declaredChoices.some((c) => c.key.includes('progression'))).toBe(false)
+    expect(bridged.actorState.values['value:skill.arcana.expertise']).toBeUndefined()
+  })
+
+  // DEPENDENT CHOICES -- an earlier row's own choice answer can influence a
+  // LATER row's own `sets`/`grants` in the SAME Progression, because both
+  // rows are evaluated against the SAME already-merged `rulesChoices` input
+  // in one `buildActorState` call -- no special-casing needed for this to
+  // already work.
+  it('an earlier row\'s answered choice is visible (already applied to values) while a LATER row is evaluated', () => {
+    const expertiseKey = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+    const wizardBp = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      rulesChoices: { selections: { [expertiseKey]: ['value:skill.arcana.expertise'] } }
+    })
+    // A synthetic level-4 row whose own `sets` is irrelevant to the
+    // answer's own value, but proves the SAME evaluation pass sees BOTH:
+    // the level-2 answer's own value (from the real Scholar row) AND this
+    // synthetic level-4 row's own grant, together.
+    const synthetic = {
+      keyedBy: 'value:level',
+      rows: [
+        { at: 2, choices: [{ choiceSet: 'choice:skill.expertise', count: 1, from: ['value:skill.arcana.expertise', 'value:skill.history.expertise'] }] },
+        { at: 4, sets: { 'value:skill.history.expertise': false } }
+      ]
+    }
+
+    const { bridged } = deriveWithProgression(wizardBp, 4, { 'progression:class.skill-expertise': synthetic })
+    // The level-2 answer's own effect (set by the FIRST row) is still
+    // visible in the SAME resulting ActorState the level-4 row's own `sets`
+    // also wrote into.
+    expect(bridged.actorState.values['value:skill.arcana.expertise']).toBe(true)
+    expect(bridged.actorState.values['value:skill.history.expertise']).toBe(false)
   })
 })

@@ -13,9 +13,11 @@ import {
   emptyStoredRulesChoices,
   isChoiceAnswered,
   normalizeStoredRulesChoices,
+  progressionChoiceKey,
   resolveChoiceTarget,
   selectionsFor,
   toResolvableChoice,
+  toResolvableProgressionChoice,
   validateChoiceSelection,
   type ResolvableChoice
 } from '../../../app/lib/characters/rules-choices'
@@ -69,6 +71,51 @@ describe('choice identity', () => {
 
   it('treats a facet with no option list as offering nothing', () => {
     expect(toResolvableChoice('class', { choiceSet: 'c', count: 0 }).options).toEqual([])
+  })
+})
+
+// Character Progression Phase 1B -- the progression-time counterpart of
+// `choiceKey`/`toResolvableChoice` above.
+describe('progression choice identity', () => {
+  it('keys by slot, "progression", the row\'s own `at`, AND the ChoiceSet -- never collides with a creation-time key', () => {
+    const progressionKey = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+    const creationKey = choiceKey('class', 'choice:skill.expertise')
+    expect(progressionKey).toBe('class:progression:2:choice:skill.expertise')
+    expect(progressionKey).not.toBe(creationKey)
+  })
+
+  it('two different rows referencing the SAME ChoiceSet at different `at` values never collide', () => {
+    expect(progressionChoiceKey('class', 2, 'choice:skill.expertise'))
+      .not.toBe(progressionChoiceKey('class', 6, 'choice:skill.expertise'))
+  })
+
+  it('takes count and options from the ROW, not the ChoiceSet, mirroring toResolvableChoice exactly', () => {
+    expect(toResolvableProgressionChoice('class', 2, {
+      choiceSet: 'choice:skill.expertise',
+      count: 1,
+      from: ['value:skill.arcana.expertise', 'value:skill.history.expertise']
+    })).toEqual({
+      key: 'class:progression:2:choice:skill.expertise',
+      slot: 'class',
+      choiceSetId: 'choice:skill.expertise',
+      count: 1,
+      options: ['value:skill.arcana.expertise', 'value:skill.history.expertise']
+    })
+  })
+
+  it('copies the option list rather than aliasing the row\'s own array', () => {
+    const from = ['value:skill.arcana.expertise']
+    const resolvable = toResolvableProgressionChoice('class', 2, { choiceSet: 'c', count: 1, from })
+    resolvable.options.push('value:skill.history.expertise')
+    expect(from).toEqual(['value:skill.arcana.expertise'])
+  })
+
+  it('treats a row with no option list as offering nothing', () => {
+    expect(toResolvableProgressionChoice('class', 2, { choiceSet: 'c', count: 0 }).options).toEqual([])
+  })
+
+  it('stringifies a non-numeric `at` deterministically rather than throwing', () => {
+    expect(progressionChoiceKey('class', 'threshold-a', 'choice:x')).toBe('class:progression:threshold-a:choice:x')
   })
 })
 

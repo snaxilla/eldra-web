@@ -57,6 +57,46 @@ export function choiceKey(slot: string, choiceSetId: DefinitionId): string {
   return `${slot}:${choiceSetId}`
 }
 
+// Character Progression Phase 1B -- the progression-time counterpart of
+// `choiceKey` immediately above. A `progression:<at>` infix (never present
+// in a creation-time key, which is always exactly `${slot}:${choiceSetId}`
+// with no colon-separated middle segment) makes a progression choice's key
+// syntactically impossible to collide with a creation choice's key, even
+// when both happen to name the SAME ChoiceSet from the SAME slot -- the two
+// answers live at two different keys in the identical flat
+// `StoredRulesChoices.selections` map, so persisting one can never silently
+// overwrite the other (see server/utils/character-progression-plan.ts's own
+// PERSISTENCE header for how a confirm write merges rather than replaces).
+// `at` (the row's own package-declared threshold, e.g. a level number) is
+// included because the SAME ChoiceSet id could in principle be reused by
+// more than one row in the same Progression -- unlikely today, but the key
+// must stay unique per ROW, not merely per ChoiceSet, to remain honestly
+// stable and collision-free.
+export function progressionChoiceKey(slot: string, at: unknown, choiceSetId: DefinitionId): string {
+  return `${slot}:progression:${String(at)}:${choiceSetId}`
+}
+
+// The progression-time counterpart of `toResolvableChoice` above -- the
+// SAME question-building rule, restated for a Progression row's own
+// `{choiceSet, count, from?}` instead of a facet's, with the row's own `at`
+// folded into the identity via `progressionChoiceKey`. Called by
+// server/utils/character-actor-bridge.ts's own Progression-consuming loop;
+// no Builder counterpart exists yet (progression choices are answered
+// post-creation, through the Level Manager, never at character creation).
+export function toResolvableProgressionChoice(
+  slot: string,
+  at: unknown,
+  choice: { choiceSet: DefinitionId; count: number; from?: readonly DefinitionId[] }
+): ResolvableChoice {
+  return {
+    key: progressionChoiceKey(slot, at, choice.choiceSet),
+    slot,
+    choiceSetId: choice.choiceSet,
+    count: choice.count,
+    options: [...(choice.from ?? [])]
+  }
+}
+
 // A question ready to be asked: what the facet declared, plus the identity
 // the answer will be stored under. Built by the caller that knows both the
 // slot and the facet; this module never reads a facet itself.

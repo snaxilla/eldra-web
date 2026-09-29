@@ -206,18 +206,30 @@ export async function getDerivedCharacter(
 // to `getDerivedCharacter` above -- same assembly, same runtime, same
 // evaluation -- so a preview and the real post-confirmation read can never
 // honestly disagree about what a given level produces.
+//
+// Character Progression Phase 1B -- `tentativeAnswers` (optional, additive
+// on top of this character's own REAL persisted `rulesChoices`, never
+// replacing them) is how a Progression Plan preview evaluates "what would
+// this level produce if the player picks THIS option" without persisting
+// anything -- see server/utils/character-progression-plan.ts's own
+// DEPENDENT CHOICES header for why an earlier step's tentative answer must
+// stay applied while a LATER step is evaluated (this function is called
+// once per level in that walk, always with the SAME full tentative-answer
+// set, not just the one belonging to the step currently being built).
 export async function getDerivedCharacterAtLevel(
   worldId: string | number,
   characterId: string | number,
-  levelOverride: number
+  levelOverride: number,
+  tentativeAnswers?: Record<string, string[]>
 ): Promise<DerivedCharacterResult> {
-  return getDerivedCharacterInternal(worldId, characterId, levelOverride)
+  return getDerivedCharacterInternal(worldId, characterId, levelOverride, tentativeAnswers)
 }
 
 async function getDerivedCharacterInternal(
   worldId: string | number,
   characterId: string | number,
-  levelOverride: number | undefined
+  levelOverride: number | undefined,
+  tentativeAnswers?: Record<string, string[]>
 ): Promise<DerivedCharacterResult> {
   const assembly = await assembleCharacter(worldId, characterId)
   if (!assembly.available) {
@@ -252,14 +264,38 @@ async function getDerivedCharacterInternal(
     return definition && definition.kind === 'choiceSet' ? definition : null
   }
 
+  // Character Progression Phase 1B -- the identical pattern, one kind over:
+  // resolves a Progression id against the SAME active-package registry, so
+  // a facet's `progression` reference is honored (or reported unresolved)
+  // against the rules the World is actually running.
+  const progressionFor = (id: string) => {
+    const definition = registry.getById(id)
+    return definition && definition.kind === 'progression' ? definition : null
+  }
+
+  // Character Progression Phase 1B -- tentative answers are laid ON TOP OF
+  // this character's own real persisted `rulesChoices`, never replacing
+  // them (a spread of the real `selections` map, then overwritten only by
+  // the keys `tentativeAnswers` names) -- so a Plan preview can simulate
+  // "what if I pick X" for a NOT-YET-CONFIRMED choice while every other
+  // real, already-answered choice (creation-time or a prior CONFIRMED
+  // progression level) still reads exactly as persisted. `undefined` (the
+  // ordinary read path, every caller before this phase) is a no-op spread,
+  // producing the exact same object `assembly.blueprint.rulesChoices`
+  // already was.
+  const rulesChoicesForEvaluation = tentativeAnswers && Object.keys(tentativeAnswers).length
+    ? { selections: { ...(assembly.blueprint.rulesChoices?.selections ?? {}), ...tentativeAnswers } }
+    : assembly.blueprint.rulesChoices
+
   const bridged = buildActorState({
     blueprint: assembly.blueprint,
     packageId,
     packageVersion,
     stateSchemaVersion: runtime.runtime.manifest.stateSchemaVersion,
     knownDefinition: (id) => registry.has(id),
-    rulesChoices: assembly.blueprint.rulesChoices,
+    rulesChoices: rulesChoicesForEvaluation,
     lookupChoiceSet: choiceSetFor,
+    lookupProgression: progressionFor,
     // Character Progression Phase 1A -- resolved via the active package's
     // OWN semantic-role binding (manifest.json's `semanticRoles.level`),
     // never hardcoded to `'value:level'` here: a future non-level-based

@@ -15,9 +15,14 @@
 // writes, mirroring cast.post.ts's own identical reasoning for its
 // stateless independent-damage-roll request.
 //
-// REQUEST SHAPE: `{ targetLevel }` -- the only input this route accepts.
+// REQUEST SHAPE: `{ targetLevel, answers? }`. `answers` (Character
+// Progression Phase 1B) is a map of TENTATIVE choice selections -- see
+// server/utils/character-progression-plan.ts's own CHOICE ANSWERS DURING
+// PREVIEW header -- laid on top of this character's own real persisted
+// choices for THIS preview only, never persisted anywhere by this route.
 // Every other fact (current level, automatic consequences, required
-// choices) is entirely server-derived; the client cannot submit a plan.
+// choices, whether a submitted answer is even legal) is entirely
+// server-derived; the client cannot submit a plan.
 
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { requireCapability } from '../../../../../../utils/authorization'
@@ -55,7 +60,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Expected { targetLevel: number }' })
   }
 
-  const result = await planProgression(worldId, characterId, targetLevel)
+  // Character Progression Phase 1B -- structurally validated only (a map of
+  // string keys to string-array values); WHETHER a given key/selection is
+  // legal is planProgression's own job (it is applied only alongside the
+  // real declared choices this exact plan produces, never trusted as a
+  // fact on its own). An absent/malformed `answers` degrades to `{}`,
+  // reproducing Phase 1A's own exact no-choice behavior.
+  const rawAnswers = body?.answers
+  const answers: Record<string, string[]> = {}
+  if (rawAnswers && typeof rawAnswers === 'object' && !Array.isArray(rawAnswers)) {
+    for (const [key, value] of Object.entries(rawAnswers)) {
+      if (typeof key === 'string' && Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+        answers[key] = value as string[]
+      }
+    }
+  }
+
+  const result = await planProgression(worldId, characterId, targetLevel, answers)
 
   if (!result.ok) {
     throw createError({ statusCode: statusForProgressionFailure(result.reason), statusMessage: result.message })

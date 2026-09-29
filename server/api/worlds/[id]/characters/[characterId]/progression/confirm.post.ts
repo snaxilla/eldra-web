@@ -8,21 +8,32 @@
 // server/utils/character-progression.ts), matching combat.post.ts/
 // cast.post.ts's own capability choice exactly.
 //
-// REQUEST SHAPE: `{ targetLevel, fingerprint }`. `fingerprint` is the
-// STALE-PLAN PROTECTION this task's own "do not blindly trust a
+// REQUEST SHAPE: `{ targetLevel, fingerprint, answers? }`. `fingerprint` is
+// the STALE-PLAN PROTECTION this task's own "do not blindly trust a
 // client-generated plan" requirement demands -- the exact string
-// `progression/plan`'s own response returned as `plan.fingerprint`, itself
-// nothing more than the character's current level at preview time. This
-// route re-reads that level fresh and rejects if it no longer matches (see
-// character-progression-plan.ts's own `confirmProgression` for the full
-// re-validation sequence) -- the client's own plan is never treated as
-// authority, only as the caller's stated intent of "this is the plan I
-// previewed."
+// `progression/plan`'s own response returned as `plan.fingerprint` (as of
+// Character Progression Phase 1B: the character's current level AND the
+// active Rules Package's own integrity hash at preview time, not level
+// alone). This route re-reads both fresh and rejects if either no longer
+// matches (see character-progression-plan.ts's own `confirmProgression` for
+// the full re-validation sequence) -- the client's own plan is never
+// treated as authority, only as the caller's stated intent of "this is the
+// plan I previewed."
 //
-// No client-supplied automatic consequence, required choice, or derived
-// number is ever accepted here -- only `targetLevel` (intent: which level
-// to advance to) and `fingerprint` (intent: which starting state this was
-// planned against). Everything else is re-derived.
+// `answers` (Character Progression Phase 1B) -- this transition's own
+// FINAL choice selections, the same map a caller would have sent as
+// `progression/plan`'s own `answers` for its last preview, resubmitted here
+// to become authoritative. Re-validated entirely fresh against a plan this
+// route re-builds from scratch (never the client's own remembered
+// resolution); an answer naming a choice this plan does not actually
+// require is silently ignored, never persisted (see
+// character-progression-plan.ts's own `confirmProgression`).
+//
+// No client-supplied automatic consequence or derived number is ever
+// accepted here -- only `targetLevel` (intent: which level to advance to),
+// `fingerprint` (intent: which starting state this was planned against),
+// and `answers` (intent: how to resolve this transition's own required
+// choices). Everything else is re-derived.
 
 import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { requireCapability } from '../../../../../../utils/authorization'
@@ -64,7 +75,21 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Expected { targetLevel: number, fingerprint: string }' })
   }
 
-  const result = await confirmProgression(worldId, characterId, targetLevel, fingerprint)
+  // Character Progression Phase 1B -- structurally validated only, the
+  // identical shape/degradation rule plan.post.ts's own `answers` parsing
+  // already follows (see that route's own header for why this is safe:
+  // WHICH answers are legal is entirely confirmProgression's own job).
+  const rawAnswers = body?.answers
+  const answers: Record<string, string[]> = {}
+  if (rawAnswers && typeof rawAnswers === 'object' && !Array.isArray(rawAnswers)) {
+    for (const [key, value] of Object.entries(rawAnswers)) {
+      if (typeof key === 'string' && Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+        answers[key] = value as string[]
+      }
+    }
+  }
+
+  const result = await confirmProgression(worldId, characterId, targetLevel, fingerprint, answers)
 
   if (!result.ok) {
     throw createError({ statusCode: statusForProgressionFailure(result.reason), statusMessage: result.message })

@@ -39,6 +39,12 @@ export type ProgressionChoiceRow = {
   label: string
   options: ProgressionChoiceOptionRow[]
   count: number
+  // Character Progression Phase 1B additions -- this choice's own current
+  // (possibly tentative) selection and whether it validly answers the
+  // choice, mirroring app/lib/characters/progression-plan.ts's own
+  // `ProgressionChoice` exactly.
+  selected: string[]
+  answered: boolean
 }
 
 export type ProgressionLevelStepRow = {
@@ -80,6 +86,12 @@ const emit = defineEmits<{
   preview: [{ targetLevel: number }]
   confirm: []
   clearPlan: []
+  // Character Progression Phase 1B -- a generic "this choice's own
+  // selection changed" event, never named per-choice/per-class. The page
+  // (sheet-v2.vue) relays this straight to useCharacterProgression.ts's own
+  // `setAnswer`, which re-previews automatically -- this panel never calls
+  // the Progression API directly, matching every other emit above.
+  answer: [{ choiceId: string; selected: string[] }]
 }>()
 
 // Advancement only -- see character-progression-plan.ts's own LEVEL DOWN
@@ -111,6 +123,31 @@ function requestPreview() {
 function requestConfirm() {
   if (props.confirming || !props.plan?.valid) return
   emit('confirm')
+}
+
+// Character Progression Phase 1B -- GENERIC CHOICE UX. Renders a
+// single-select (radio) control when a choice needs exactly one pick and a
+// multi-select (checkbox list) otherwise -- the SAME two-shape rule
+// app/lib/spell-mechanics's own Cast Configuration choices already use for
+// an identical reason (SpellChoice's own `count`-driven control), never a
+// per-choice-id/per-class special case. No universal form engine: a choice
+// needing more exotic input than "pick N from a list" is not something the
+// current package/content model produces at all (see this phase's own
+// audit), so nothing here anticipates one.
+function isSingleSelect(choice: ProgressionChoiceRow): boolean {
+  return choice.count === 1
+}
+
+function selectSingle(choice: ProgressionChoiceRow, optionId: string) {
+  emit('answer', { choiceId: choice.id, selected: [optionId] })
+}
+
+function toggleMulti(choice: ProgressionChoiceRow, optionId: string) {
+  const already = choice.selected.includes(optionId)
+  const next = already
+    ? choice.selected.filter((id) => id !== optionId)
+    : [...choice.selected, optionId]
+  emit('answer', { choiceId: choice.id, selected: next })
 }
 
 function formatValue(value: unknown): string {
@@ -230,21 +267,51 @@ function formatValue(value: unknown): string {
           </p>
 
           <!-- Rendered generically from whatever the server sends -- see
-               this file's own header. Always empty against the current
-               Rules Package, never hidden entirely: the moment a future
-               package declares one, it appears here with no template
-               change. -->
+               this file's own header. Empty for the overwhelming majority
+               of levels/characters, never hidden entirely: the moment
+               package content declares one, it appears here with no
+               template change (Character Progression Phase 1B's own one
+               real authored case: Wizard Level 2's Scholar/Expertise
+               choice). GENERIC CHOICE UX: single-select (radio) when
+               `count === 1`, multi-select (checkbox list) otherwise -- see
+               `isSingleSelect`'s own header. -->
           <div
             v-if="step.requiredChoices.length"
             class="mt-2 grid gap-2"
           >
-            <p
+            <div
               v-for="choice in step.requiredChoices"
               :key="choice.id"
-              class="text-xs text-[#e0a94a]"
+              class="eldra-well rounded-none p-2"
             >
-              Requires: {{ choice.label }} (choose {{ choice.count }})
-            </p>
+              <p class="text-xs font-semibold text-[#e0a94a]">
+                Requires: {{ choice.label }} (choose {{ choice.count }})
+                <span v-if="choice.answered">✓</span>
+              </p>
+
+              <div class="mt-1.5 grid gap-1">
+                <label
+                  v-for="option in choice.options"
+                  :key="option.id"
+                  class="flex min-h-8 cursor-pointer items-center gap-2 text-xs text-[#d8ceb8]"
+                >
+                  <input
+                    v-if="isSingleSelect(choice)"
+                    type="radio"
+                    :name="choice.id"
+                    :checked="choice.selected.includes(option.id)"
+                    @change="selectSingle(choice, option.id)"
+                  >
+                  <input
+                    v-else
+                    type="checkbox"
+                    :checked="choice.selected.includes(option.id)"
+                    @change="toggleMulti(choice, option.id)"
+                  >
+                  {{ option.label }}
+                </label>
+              </div>
+            </div>
           </div>
         </div>
 

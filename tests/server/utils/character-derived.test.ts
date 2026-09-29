@@ -457,3 +457,72 @@ describe('getDerivedCharacterAtLevel -- simulates a level without persisting any
     expect(result.reason).toBe('character-not-found')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Character Progression Phase 1B -- getDerivedCharacterAtLevel's own
+// `tentativeAnswers`
+// ---------------------------------------------------------------------------
+
+describe('getDerivedCharacterAtLevel -- tentative answers (Progression Plan preview)', () => {
+  function wizardBlueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}) {
+    return blueprint({ class: slot('class', 'wizard-xphb'), ...overrides })
+  }
+
+  it('a tentative answer resolves the real Scholar choice for this evaluation only, never persisted anywhere', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
+
+    const key = 'class:progression:2:choice:skill.expertise'
+    const result = await getDerivedCharacterAtLevel('5', '42', 2, { [key]: ['value:skill.arcana.expertise'] })
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const pending = result.derived.pendingChoices.find((c) => c.key === key)
+    expect(pending).toBeUndefined()
+    const declared = result.derived.choices.find((c) => c.key === key)
+    expect(declared?.answered).toBe(true)
+    expect(declared?.selected).toEqual(['value:skill.arcana.expertise'])
+  })
+
+  it('with no tentative answer, the same choice reads as declared but unanswered', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
+
+    const key = 'class:progression:2:choice:skill.expertise'
+    const result = await getDerivedCharacterAtLevel('5', '42', 2)
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const declared = result.derived.choices.find((c) => c.key === key)
+    expect(declared?.answered).toBe(false)
+    expect(declared?.selected).toEqual([])
+  })
+
+  it('a tentative answer is laid OVER real persisted answers, never replacing the ones it does not name', async () => {
+    const creationKey = 'class:choice:skill.proficiency'
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        rulesChoices: { selections: { [creationKey]: ['value:skill.history.proficient', 'value:skill.medicine.proficient'] } }
+      })
+    })
+
+    const progressionKey = 'class:progression:2:choice:skill.expertise'
+    const result = await getDerivedCharacterAtLevel('5', '42', 2, { [progressionKey]: ['value:skill.arcana.expertise'] })
+    expect(result.available).toBe(true)
+    if (!result.available) return
+
+    const creationChoice = result.derived.choices.find((c) => c.key === creationKey)
+    expect(creationChoice?.answered).toBe(true)
+    expect(creationChoice?.selected).toEqual(['value:skill.history.proficient', 'value:skill.medicine.proficient'])
+  })
+
+  it('an empty tentativeAnswers object behaves identically to omitting it entirely', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
+
+    const withEmpty = await getDerivedCharacterAtLevel('5', '42', 2, {})
+    const withNone = await getDerivedCharacterAtLevel('5', '42', 2)
+    expect(withEmpty.available).toBe(true)
+    expect(withNone.available).toBe(true)
+    if (!withEmpty.available || !withNone.available) return
+    expect(withEmpty.derived.choices).toEqual(withNone.derived.choices)
+  })
+})

@@ -1,23 +1,40 @@
 // Unit tests for server/utils/character-progression-plan.ts -- Character
 // Progression Phase 1A (Game Admin Level Manager + Authoritative Level
-// Transition Engine).
+// Transition Engine) and Phase 1B (Package-Authored Progression
+// Declarations + Level-Triggered Choices + Progression Choice Persistence).
 //
 // `assembleCharacter`/`getWorldRuntime` mocked at the module boundary, the
 // Rules Runtime REAL (built via createWorldRuntime from the actual
 // eldra-dnd5e-2024 package on disk) -- matching character-recovery.test.ts's/
 // character-cast.test.ts's own precedent exactly, so every Proficiency
-// Bonus/Max HP/Hit Dice number these tests assert on is the real formula,
-// and `getDerivedCharacterAtLevel`'s own simulation runs for real.
-// `saveCharacterProgression` (server/utils/character-progression.ts) is
-// mocked -- the one real Directus write this module ever performs.
+// Bonus/Max HP/Hit Dice number, AND every Phase 1B Progression/ChoiceSet
+// (`progression:class.skill-expertise`, `choice:skill.expertise`) these
+// tests assert on is the real, shipped package content -- not a hand-typed
+// fixture that could drift from it. `saveCharacterProgression`
+// (server/utils/character-progression.ts) and `loadCharacterRulesChoices`/
+// `saveCharacterRulesChoices` (server/utils/character-rules-choices.ts) are
+// mocked -- the only real Directus writes/reads this module ever performs.
+//
+// Every fingerprint used below is obtained from a REAL `planProgression()`
+// call's own `.fingerprint`, never a hand-typed string -- Phase 1B folds
+// the active package's own integrity hash into it (this file's own
+// PACKAGE VERSIONING header), so a hardcoded fingerprint would silently
+// stop matching the moment that format changes again, exactly the
+// "client never invents its own plan" discipline this module's own header
+// already requires of every real caller.
 
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock } = vi.hoisted(() => ({
+const {
+  assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock,
+  loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock
+} = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
-  saveCharacterProgressionMock: vi.fn()
+  saveCharacterProgressionMock: vi.fn(),
+  loadCharacterRulesChoicesMock: vi.fn(),
+  saveCharacterRulesChoicesMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -32,6 +49,11 @@ vi.mock('../../../server/utils/character-progression', () => ({
   saveCharacterProgression: saveCharacterProgressionMock
 }))
 
+vi.mock('../../../server/utils/character-rules-choices', () => ({
+  loadCharacterRulesChoices: loadCharacterRulesChoicesMock,
+  saveCharacterRulesChoices: saveCharacterRulesChoicesMock
+}))
+
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../app/lib/rules/types'
@@ -41,9 +63,18 @@ import {
   planProgression,
   resolveCurrentProgression
 } from '../../../server/utils/character-progression-plan'
+import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 const CLASS_REF = { packageId: 'eldra.content.xphb', slug: 'wizard-xphb' }
+
+// Character Progression Phase 1B -- the real, package-declared identity of
+// the one real Wizard choice this phase authors (Level 2's real XPHB
+// "Scholar" feature): `progressionChoiceKey('class', 2, 'choice:skill.expertise')`,
+// computed here via the real function rather than hand-typed, so a rename
+// on either side fails this file loudly instead of silently drifting.
+const SCHOLAR_CHOICE_KEY = progressionChoiceKey('class', 2, 'choice:skill.expertise')
+const SCHOLAR_ARCANA_OPTION = 'value:skill.arcana.expertise'
 
 function hydrate(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(hydrate)
@@ -107,6 +138,8 @@ beforeEach(() => {
   assembleCharacterMock.mockReset()
   getWorldRuntimeMock.mockReset()
   saveCharacterProgressionMock.mockReset()
+  loadCharacterRulesChoicesMock.mockReset()
+  saveCharacterRulesChoicesMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -115,6 +148,10 @@ beforeEach(() => {
   })
   assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
   saveCharacterProgressionMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
+  // No creation-time rules choices recorded, by default -- matching
+  // `wizardBlueprint`'s own `rulesChoices: null` above.
+  loadCharacterRulesChoicesMock.mockResolvedValue(null)
+  saveCharacterRulesChoicesMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
 })
 
 describe('resolveCurrentProgression', () => {
@@ -161,16 +198,62 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
     }
   })
 
-  it('has zero required choices at every level -- honest, given the current Rules Package declares none', () => {
-    return planProgression('5', '42', 5).then((result) => {
-      expect(result.ok).toBe(true)
-      if (!result.ok) return
-      for (const step of result.plan.steps) {
-        expect(step.requiredChoices).toEqual([])
-      }
-      expect(result.plan.unresolvedChoiceIds).toEqual([])
-      expect(result.plan.valid).toBe(true)
-    })
+  // Character Progression Phase 1B upgrade: Level 2 now surfaces exactly
+  // ONE real required choice (Scholar/skill Expertise) -- see
+  // app/lib/content-rules/dnd5e-2024.ts's own header for the corpus
+  // evidence. Levels 3/4/5 remain honestly empty (no other real Wizard 1-5
+  // fact is structurally authored this phase -- subclass/ASI remain
+  // documented content-authoring gaps).
+  it('surfaces exactly the real Scholar/Expertise choice at level 2, and nothing at levels 3/4/5', async () => {
+    const result = await planProgression('5', '42', 5)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const level2 = result.plan.steps.find((step) => step.level === 2)!
+    expect(level2.requiredChoices).toEqual([{
+      id: SCHOLAR_CHOICE_KEY,
+      label: expect.any(String),
+      count: 1,
+      selected: [],
+      answered: false,
+      options: expect.arrayContaining([
+        { id: SCHOLAR_ARCANA_OPTION, label: expect.any(String) }
+      ])
+    }])
+    expect(level2.requiredChoices[0]!.options).toHaveLength(6)
+
+    for (const level of [3, 4, 5]) {
+      const step = result.plan.steps.find((s) => s.level === level)!
+      expect(step.requiredChoices).toEqual([])
+    }
+
+    expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY])
+    expect(result.plan.valid).toBe(false)
+  })
+
+  it('a tentative answer to the Scholar choice resolves it and makes the plan valid, without persisting anything', async () => {
+    const result = await planProgression('5', '42', 5, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const level2 = result.plan.steps.find((step) => step.level === 2)!
+    expect(level2.requiredChoices).toEqual([expect.objectContaining({
+      id: SCHOLAR_CHOICE_KEY, selected: [SCHOLAR_ARCANA_OPTION], answered: true
+    })])
+    expect(result.plan.unresolvedChoiceIds).toEqual([])
+    expect(result.plan.valid).toBe(true)
+
+    // Tentative means tentative -- nothing was written anywhere.
+    expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+  })
+
+  it('an invalid tentative answer (illegal option) leaves the choice unresolved rather than silently accepted', async () => {
+    const result = await planProgression('5', '42', 5, { [SCHOLAR_CHOICE_KEY]: ['value:skill.athletics.expertise'] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY])
+    expect(result.plan.valid).toBe(false)
   })
 
   it('base mechanics are unaffected by planning -- the character\'s own stored level is never mutated by a preview', async () => {
@@ -229,25 +312,134 @@ describe('planProgression -- validation', () => {
   })
 })
 
-describe('confirmProgression -- commits exactly one write', () => {
-  it('persists the new target level for the character\'s existing class', async () => {
-    const result = await confirmProgression('5', '42', 5, '1')
+// A real preview's own fingerprint -- the fresh, current value, never a
+// hand-typed guess (see this file's own header). Every test below that
+// needs "a valid fingerprint for the DragoWizard fixture as it currently
+// stands" calls this rather than repeating the same three lines.
+async function freshFingerprint(targetLevel = 5): Promise<string> {
+  const plan = await planProgression('5', '42', targetLevel)
+  if (!plan.ok) throw new Error('expected a valid plan')
+  return plan.plan.fingerprint
+}
+
+describe('confirmProgression -- persistence, ordering, and idempotency', () => {
+  // Character Progression Phase 1B -- DragoWizard's own real 1->5 walk now
+  // crosses the real Scholar/Expertise choice at level 2, so confirming it
+  // requires supplying that answer -- exactly the real end-to-end path this
+  // phase's own vertical slice exists to prove.
+  it('persists the new target level AND the answered progression choice, choices written before level (the safer ordering)', async () => {
+    const fingerprint = await freshFingerprint()
+    const callOrder: string[] = []
+    saveCharacterRulesChoicesMock.mockImplementation(async (_id: unknown, stored: unknown) => {
+      callOrder.push('choices')
+      return stored
+    })
+    saveCharacterProgressionMock.mockImplementation(async (_id: unknown, stored: unknown) => {
+      callOrder.push('progression')
+      return stored
+    })
+
+    const result = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.currentLevel).toBe(5)
+
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: CLASS_REF, level: 5 }] })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
+    expect(saveCharacterRulesChoicesMock).toHaveBeenCalledWith('42', { selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
+    expect(saveCharacterRulesChoicesMock).toHaveBeenCalledTimes(1)
+    expect(callOrder).toEqual(['choices', 'progression'])
+  })
+
+  // Character Progression Phase 1B -- CREATION CHOICES VS PROGRESSION
+  // CHOICES, tested explicitly: a character with REAL creation-time answers
+  // already on record must keep them, byte-identical, after a progression
+  // confirm writes a DIFFERENT key into the same block.
+  it('never overwrites or deletes existing creation-time rules choices when persisting a progression answer', async () => {
+    loadCharacterRulesChoicesMock.mockResolvedValue({
+      selections: { 'class:choice:skill.proficiency': ['value:skill.history.proficient', 'value:skill.medicine.proficient'] }
+    })
+    const fingerprint = await freshFingerprint()
+
+    const result = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    expect(result.ok).toBe(true)
+
+    expect(saveCharacterRulesChoicesMock).toHaveBeenCalledWith('42', {
+      selections: {
+        'class:choice:skill.proficiency': ['value:skill.history.proficient', 'value:skill.medicine.proficient'],
+        [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION]
+      }
+    })
+  })
+
+  it('rejects with unresolved-choices, and writes nothing, when the required Scholar choice is not answered', async () => {
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('unresolved-choices')
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+    expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects with unresolved-choices when the submitted answer picks an option this choice does not offer', async () => {
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: ['value:skill.athletics.expertise'] })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('unresolved-choices')
+    expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
+  })
+
+  // Idempotency: confirming the SAME already-answered transition a second
+  // time (a retried request) must not duplicate anything or corrupt state
+  // -- the merge write reproduces the identical final selections map, and
+  // the level write reproduces the identical target level.
+  it('retrying an identical confirm reproduces the exact same writes, never a duplicate or an incremented level', async () => {
+    const fingerprint = await freshFingerprint()
+    const first = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    expect(first.ok).toBe(true)
+
+    // The retry re-reads current state fresh, including the choice this
+    // module's own first call just persisted -- loadCharacterRulesChoicesMock
+    // is updated here to reflect that, the same way a real Directus read
+    // would on a genuine retry.
+    loadCharacterRulesChoicesMock.mockResolvedValue({ selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
+
+    const second = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+    expect(second.currentLevel).toBe(5)
+    expect(saveCharacterRulesChoicesMock).toHaveBeenLastCalledWith('42', { selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
   })
 
   it('rejects a stale fingerprint -- the character\'s level has moved since the plan was previewed', async () => {
-    // Plan was generated when the character was level 1 (fingerprint '1'),
-    // but by confirm time the character is actually level 3.
+    // Plan was generated when the character was level 1, but by confirm
+    // time the character is actually level 3.
+    const fingerprint = await freshFingerprint()
     assembleCharacterMock.mockResolvedValue({
       available: true,
       blueprint: wizardBlueprint({ progression: { classes: [{ classRef: CLASS_REF, level: 3 }] } })
     })
 
-    const result = await confirmProgression('5', '42', 5, '1')
+    const result = await confirmProgression('5', '42', 5, fingerprint)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('stale-plan')
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+  })
+
+  // Character Progression Phase 1B -- PACKAGE VERSIONING: a fingerprint
+  // built against one package integrity hash is stale against a different
+  // one, even when the character's own level has not moved at all.
+  it('rejects a fingerprint whose package integrity hash no longer matches the currently active package', async () => {
+    const fingerprint = await freshFingerprint()
+    getWorldRuntimeMock.mockResolvedValue({
+      configured: true, ok: true, runtime: loadRealRuntime(),
+      integrityHash: 'sha256-different-version', settings: {}, rollTypeOverrides: {}
+    })
+
+    const result = await confirmProgression('5', '42', 5, fingerprint)
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('stale-plan')
@@ -255,7 +447,8 @@ describe('confirmProgression -- commits exactly one write', () => {
   })
 
   it('rejects a non-advancing target level even with a fresh fingerprint', async () => {
-    const result = await confirmProgression('5', '42', 1, '1')
+    const fingerprint = await freshFingerprint(2)
+    const result = await confirmProgression('5', '42', 1, fingerprint)
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('not-advancement')
@@ -263,11 +456,23 @@ describe('confirmProgression -- commits exactly one write', () => {
   })
 
   it('rejects when no class is recorded at all', async () => {
+    // A genuinely class-less character -- the `class` slot itself
+    // unresolved (never a Wizard facet in this specific scenario), matching
+    // what `assembleCharacter`'s own synthesis actually produces for a
+    // character with no class assigned at all (character-assembly.ts's own
+    // "an empty pair means no class was ever recorded" note) -- unlike a
+    // resolved Wizard with an empty `progression.classes`, which
+    // `assembleCharacter` would have synthesized a level-1 entry for
+    // already and therefore cannot really reach this branch in production.
     assembleCharacterMock.mockResolvedValue({
       available: true,
-      blueprint: wizardBlueprint({ progression: { classes: [] } })
+      blueprint: wizardBlueprint({
+        class: { status: 'missing', packageId: '', slug: '', reason: 'No class selected' },
+        progression: { classes: [] }
+      })
     })
-    const result = await confirmProgression('5', '42', 5, '1')
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint)
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('no-class-recorded')
@@ -286,7 +491,8 @@ describe('confirmProgression -- commits exactly one write', () => {
         }
       })
     })
-    const result = await confirmProgression('5', '42', 6, '5')
+    const fingerprint = await freshFingerprint(6)
+    const result = await confirmProgression('5', '42', 6, fingerprint)
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('multiclass-not-supported')
@@ -294,7 +500,8 @@ describe('confirmProgression -- commits exactly one write', () => {
   })
 
   it('rejects an invalid target level before any write', async () => {
-    const result = await confirmProgression('5', '42', 99, '1')
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 99, fingerprint)
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('invalid-target-level')
@@ -310,11 +517,41 @@ describe('confirmProgression -- commits exactly one write', () => {
   })
 })
 
+describe('confirmProgression -- exactly one write when no real progression choice is crossed', () => {
+  // Fighter has no `RulesFacet.progression` at all (only Wizard does, this
+  // phase's own one authored case) -- Phase 1A's own "exactly one write"
+  // behavior is unchanged for every OTHER character/class.
+  it('a Fighter 1 -> 5 confirms with only the progression write, never touching rules_choices', async () => {
+    const fighterRef = { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        class: { status: 'resolved', entry: baseEntry({ title: 'Fighter', slug: 'fighter-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb') ?? undefined }) },
+        progression: { classes: [{ classRef: fighterRef, level: 1 }] }
+      })
+    })
+
+    const planResult = await planProgression('5', '42', 5)
+    expect(planResult.ok).toBe(true)
+    if (!planResult.ok) return
+    expect(planResult.plan.valid).toBe(true)
+
+    const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint)
+    expect(confirmResult.ok).toBe(true)
+    if (!confirmResult.ok) return
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5 }] })
+    expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
+    expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('security/authority -- no client-trusted fact', () => {
-  it('confirmProgression takes no field for scaled/derived numbers -- only targetLevel and fingerprint', async () => {
+  it('confirmProgression re-derives everything -- a valid fresh fingerprint plus a real answer succeeds', async () => {
     // Structural proof: the function signature itself has no slot for a
-    // client-provided proficiency bonus, HP, or spell-slot count.
-    const result = await confirmProgression('5', '42', 5, '1')
+    // client-provided proficiency bonus, HP, or spell-slot count -- only
+    // targetLevel/fingerprint/answers, all independently re-validated.
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
     expect(result.ok).toBe(true)
   })
 
@@ -323,6 +560,16 @@ describe('security/authority -- no client-trusted fact', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('stale-plan')
+  })
+
+  it('an answer for a choice this plan does not actually declare is silently ignored, never persisted', async () => {
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      'class:progression:2:choice:not-a-real-choice': ['some-garbage-id']
+    })
+    expect(result.ok).toBe(true)
+    expect(saveCharacterRulesChoicesMock).toHaveBeenCalledWith('42', { selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
   })
 })
 
@@ -339,8 +586,9 @@ describe('no class-name special cases', () => {
 
     const planResult = await planProgression('5', '42', 5)
     expect(planResult.ok).toBe(true)
+    if (!planResult.ok) return
 
-    const confirmResult = await confirmProgression('5', '42', 5, '1')
+    const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint)
     expect(confirmResult.ok).toBe(true)
     if (!confirmResult.ok) return
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5 }] })

@@ -1005,6 +1005,19 @@ export type ProgressionRow = {
   at: RuleValue
   grants?: DefinitionId[]
   sets?: Record<DefinitionId, RuleValue>
+  // Character Progression Phase 1B -- a row may ALSO require a person to
+  // answer a question once its own `at` threshold is reached, using the
+  // identical shape RulesFacetChoice (app/lib/content-rules/types.ts)
+  // already declares for a creation-time choice: `choiceSet` names a
+  // ChoiceSet the package declares, `from` narrows its options to the ones
+  // THIS row offers, `count` is how many picks are required. Restated here
+  // rather than imported -- `rules/` never imports `content-rules/`
+  // (§8.3: "content depends on rules; rules never depend on content"), the
+  // same boundary `ProgressionRow.sets` already mirrors `RulesFacetGrant`
+  // across for the identical reason. A row with no `choices` requires
+  // nothing beyond its own `grants`/`sets`, exactly as before this field
+  // existed.
+  choices?: { choiceSet: DefinitionId; count: number; from?: DefinitionId[] }[]
 }
 
 export type ProgressionDefinition = DefinitionCategorization & {

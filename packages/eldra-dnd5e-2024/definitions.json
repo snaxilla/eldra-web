@@ -588,6 +588,20 @@
     ]
   },
   {
+    "id": "value:skill.arcana.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Arcana Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:int"
+    ]
+  },
+  {
     "id": "value:skill.athletics.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -626,6 +640,20 @@
     "label": "History Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.history.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "History Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:int"
     ]
   },
@@ -672,6 +700,20 @@
     ]
   },
   {
+    "id": "value:skill.investigation.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Investigation Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:int"
+    ]
+  },
+  {
     "id": "value:skill.medicine.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -686,6 +728,20 @@
     ]
   },
   {
+    "id": "value:skill.medicine.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Medicine Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:wis"
+    ]
+  },
+  {
     "id": "value:skill.nature.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -696,6 +752,20 @@
     "label": "Nature Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.nature.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Nature Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:int"
     ]
   },
@@ -752,6 +822,20 @@
     "label": "Religion Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:int"
+    ]
+  },
+  {
+    "id": "value:skill.religion.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Religion Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:int"
     ]
   },
@@ -842,7 +926,7 @@
       "ability:int"
     ],
     "formula": {
-      "text": "@value:ability.int.mod + if(@value:skill.arcana.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.int.mod + if(@value:skill.arcana.expertise, @value:proficiency_bonus * 2, if(@value:skill.arcana.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -890,7 +974,7 @@
       "ability:int"
     ],
     "formula": {
-      "text": "@value:ability.int.mod + if(@value:skill.history.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.int.mod + if(@value:skill.history.expertise, @value:proficiency_bonus * 2, if(@value:skill.history.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -938,7 +1022,7 @@
       "ability:int"
     ],
     "formula": {
-      "text": "@value:ability.int.mod + if(@value:skill.investigation.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.int.mod + if(@value:skill.investigation.expertise, @value:proficiency_bonus * 2, if(@value:skill.investigation.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -954,7 +1038,7 @@
       "ability:wis"
     ],
     "formula": {
-      "text": "@value:ability.wis.mod + if(@value:skill.medicine.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.wis.mod + if(@value:skill.medicine.expertise, @value:proficiency_bonus * 2, if(@value:skill.medicine.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -970,7 +1054,7 @@
       "ability:int"
     ],
     "formula": {
-      "text": "@value:ability.int.mod + if(@value:skill.nature.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.int.mod + if(@value:skill.nature.expertise, @value:proficiency_bonus * 2, if(@value:skill.nature.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1034,7 +1118,7 @@
       "ability:int"
     ],
     "formula": {
-      "text": "@value:ability.int.mod + if(@value:skill.religion.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.int.mod + if(@value:skill.religion.expertise, @value:proficiency_bonus * 2, if(@value:skill.religion.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1257,6 +1341,45 @@
     },
     "distinct": true,
     "writesTo": "value:skill.{selected}.proficient"
+  },
+  {
+    "id": "choice:skill.expertise",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Skill Expertise",
+    "prompt": "Choose a skill to gain Expertise in.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "writesTo": "value:skill.{selected}.expertise"
+  },
+  {
+    "id": "progression:class.skill-expertise",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Skill Expertise Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "choices": [
+          {
+            "choiceSet": "choice:skill.expertise",
+            "count": 1,
+            "from": [
+              "value:skill.arcana.expertise",
+              "value:skill.history.expertise",
+              "value:skill.investigation.expertise",
+              "value:skill.medicine.expertise",
+              "value:skill.nature.expertise",
+              "value:skill.religion.expertise"
+            ]
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "collection:equipment",

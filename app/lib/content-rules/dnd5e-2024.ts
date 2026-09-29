@@ -439,7 +439,25 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.religion.proficient'
           ]
         }
-      ]
+      ],
+      // Character Progression Phase 1B -- the Wizard's own real 2024 XPHB
+      // Level 2 "Scholar" feature (verified directly against
+      // /opt/eldra/datasets/5etools-src/data/class/class-wizard.json's own
+      // `classFeature` entries, source XPHB): "Choose one of [Arcana,
+      // History, Investigation, Medicine, Nature, or Religion] in which you
+      // have proficiency. You have Expertise in the chosen skill." A real,
+      // structurally-authored progression fact -- not fabricated, not
+      // present merely because 2024 D&D normally has one -- see
+      // packages/eldra-dnd5e-2024/definitions.json's own
+      // `progression:class.skill-expertise` for the level-2 row this points at and
+      // this package's own new `value:skill.*.expertise`/
+      // `choice:skill.expertise` Definitions for what answering it means.
+      // Every OTHER real Wizard 1-5 progression fact (Level 3 subclass,
+      // Level 4 Ability Score Improvement/feat) was investigated and found
+      // structurally unrepresentable with the current catalogue/grant
+      // model -- see this phase's own report for the full corpus evidence
+      // and the exact authoring blockers.
+      progression: 'progression:class.skill-expertise'
     }
   },
 

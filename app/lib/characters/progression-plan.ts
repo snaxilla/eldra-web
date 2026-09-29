@@ -35,17 +35,31 @@
 // of entered levels (current+1 .. target), never a single collapsed diff.
 //
 // ---------------------------------------------------------------------------
-// WHY `requiredChoices` IS (HONESTLY) ALWAYS EMPTY TODAY
+// WHY `requiredChoices` WAS (HONESTLY) ALWAYS EMPTY IN PHASE 1A, AND ISN'T
+// ANYMORE
 // ---------------------------------------------------------------------------
-// See server/utils/character-progression-plan.ts's own header for the full
-// corpus evidence: the active Rules Package declares no level-gated choice
-// of any kind (no subclass-choice point, no ASI, no feat, no spell-learn
-// trigger) -- `RulesFacetChoice` (the ONLY choice mechanism that exists
-// today) has no level/trigger field at all and is creation-time-only. This
-// type is shaped to CARRY a real choice the moment content declares one
-// (mirroring `SpellChoice`, app/lib/spell-mechanics/types.ts's own generic
-// "package declares id/label/options" shape exactly), not because one
-// exists now.
+// Phase 1A's own audit found the active Rules Package declared no
+// level-gated choice of any kind -- `RulesFacetChoice` (the only choice
+// mechanism that existed then) had no level/trigger field at all and was
+// creation-time-only. Character Progression Phase 1B completes the
+// designed-but-dormant `RulesFacet.progression`/`kind:'progression'` seam
+// (rules-package-architecture.md §7.5) into a real consumer
+// (server/utils/character-actor-bridge.ts), and extends `ProgressionRow`
+// (app/lib/rules/types.ts) with its own `choices` -- so a Progression row
+// CAN now require an answer once its own level threshold is reached. This
+// type was always shaped to CARRY a real choice the moment content declared
+// one (mirroring `SpellChoice`, app/lib/spell-mechanics/types.ts's own
+// generic "package declares id/label/options" shape exactly); `selected`/
+// `answered` are the only fields this phase adds, for the CHOICE ANSWERS
+// DURING PREVIEW flow (character-progression-plan.ts's own header) --
+// `id`/`label`/`options`/`count` are unchanged since Phase 1A.
+//
+// `requiredChoices` still reads EMPTY for the overwhelming majority of
+// content (species/background facets that declare no `progression` at all,
+// and every OTHER class besides the one real authored case -- see
+// app/lib/content-rules/dnd5e-2024.ts's own header for exactly which real
+// Wizard fact this phase authored and why every other Wizard/Fighter 1-5
+// choice remains a documented content-authoring gap, not a bug).
 
 export type ProgressionChoiceOption = {
   id: string
@@ -55,10 +69,30 @@ export type ProgressionChoiceOption = {
 export type ProgressionChoice = {
   // A stable id for WHICH mechanic this choice resolves -- never a class
   // name, never spell-specific, mirroring SpellChoice's own identical rule.
+  // Character Progression Phase 1B: this is exactly
+  // `progressionChoiceKey(slot, row.at, choiceSetId)`
+  // (app/lib/characters/rules-choices.ts) -- the SAME identity the choice
+  // answer is (or will be) persisted under, so a client never has to
+  // reconstruct or guess the key it submits back at Confirm.
   id: string
   label: string
   options: ProgressionChoiceOption[]
   count: number
+  // Character Progression Phase 1B -- this choice's own CURRENT selection,
+  // whether persisted (a level already confirmed in the past) or merely
+  // TENTATIVE (a preview-time answer this specific plan request supplied,
+  // never persisted until Confirm -- see character-progression-plan.ts's
+  // own CHOICE ANSWERS DURING PREVIEW header). `[]` when nothing has been
+  // picked yet -- never omitted, the same "always-present, sometimes-empty"
+  // rule `requiredChoices` itself already follows on `ProgressionLevelStep`.
+  selected: string[]
+  // Character Progression Phase 1B -- `true` only when `selected` VALIDLY
+  // answers this choice (right count, every id a real offered option) --
+  // the identical rule server/utils/character-actor-bridge.ts's own
+  // `validateChoiceSelection` already enforces for every other choice in
+  // this codebase, never re-derived a second way here. A choice with one of
+  // two required picks made is still `false`.
+  answered: boolean
 }
 
 // One Value/Table's before/after at one level step -- computed as a DIFF

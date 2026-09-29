@@ -403,6 +403,17 @@ function clearProgressionPlan() {
   progression.clearPlan()
 }
 
+// Character Progression Phase 1B -- relays CharacterProgressionPanel.vue's
+// own generic `answer` event straight to useCharacterProgression.ts's own
+// `setAnswer`, which records the tentative selection and re-previews
+// automatically. This page still calculates nothing about WHICH choice or
+// WHAT it means -- see this file's own confirmProgressionLevelUp comment
+// immediately above for the identical "server decides, this page relays"
+// rule.
+function answerProgressionChoice({ choiceId, selected }: { choiceId: string; selected: string[] }) {
+  progression.setAnswer(choiceId, selected)
+}
+
 // ---------------------------------------------------------------------------
 // Roll System Phase 2 -- ability/save/skill click-to-roll. `useWorldRolls`
 // is the ONLY roll composable this page calls; it sends a source, never a
@@ -1244,6 +1255,7 @@ function openSkillContext(skill: CharacterSkillRow) {
                   @preview="requestProgressionPreview"
                   @confirm="confirmProgressionLevelUp"
                   @clear-plan="clearProgressionPlan"
+                  @answer="answerProgressionChoice"
                 />
               </div>
             </CharacterSheetSection>

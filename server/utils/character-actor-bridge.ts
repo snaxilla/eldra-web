@@ -138,13 +138,75 @@ import {
   resolveChoiceTarget,
   selectionsFor,
   toResolvableChoice,
+  toResolvableProgressionChoice,
   validateChoiceSelection,
   type ResolvableChoice,
   type StoredRulesChoices
 } from '../../app/lib/characters/rules-choices'
 import { ABILITY_KEYS } from '../../app/lib/characters/ability-scores'
 import { totalCharacterLevel } from '../../app/lib/characters/progression'
-import type { ActorState, CollectionInstanceItem, RuleValue, SourceInstance } from '../../app/lib/rules/types'
+import type {
+  ActorState,
+  CollectionInstanceItem,
+  ProgressionDefinition,
+  RuleValue,
+  SourceInstance
+} from '../../app/lib/rules/types'
+
+// ---------------------------------------------------------------------------
+// PROGRESSION: THE DORMANT `kind:'progression'` SEAM, NOW CONSUMED --
+// Character Progression Phase 1B
+// ---------------------------------------------------------------------------
+// `RulesFacet.progression` names a `ProgressionDefinition` the active
+// package declares (rules-package-architecture.md §7.5) -- Character
+// Progression Phase 1A's own audit found the shape fully designed (`keyedBy`
+// + `rows[].{at,grants,sets}`) but completely unconsumed: zero real
+// instances shipped, and `evaluate()`/the dependency graph both treat
+// `kind:'progression'` as an intentional no-op (Step 2's own scope). This
+// module is that missing consumer, for exactly the same reason it already
+// is the one consumer of `facet.choices`/`facet.grants`/`facet.sources`:
+// a Progression's rows describe what a SPECIFIC character level unlocks,
+// and this bridge is the one place "this character's own current level" and
+// "this package's own declared facts" already meet.
+//
+// ONLY EVER EVALUATED WHEN `keyedBy` MATCHES THE BRIDGE'S OWN KNOWN LEVEL
+// FACT. This bridge runs BEFORE evaluation (§11.2) -- it has no general
+// "resolve any Definition's current value" capability, only the specific
+// stored/input facts it already translates (ability scores, health, and,
+// since Phase 1A, level via `input.levelDefinitionId`/`levelOverride`). A
+// Progression whose `keyedBy` names anything else is therefore honestly
+// out of this bridge's reach and is left un-evaluated (its `grants`/`sets`/
+// `choices` never apply) rather than guessed at -- every real Progression
+// this package declares today (and every one 5e's own rules describe:
+// nothing in D&D gates content on anything but character/class level) is
+// keyed by the level Definition, so this is not a practical limitation
+// today, only an honestly-scoped one.
+//
+// CUMULATIVE, NOT "ONLY AT THE ENTERED LEVEL": a row whose `at` is at or
+// below the character's CURRENT level stays active (`rowAt <= currentLevel`)
+// -- the same "once unlocked, stays unlocked" semantics `facet.grants`/
+// `facet.sources` already have unconditionally. A level-2 Wizard's row-2
+// facts remain active at level 5; nothing here models a fact "expiring."
+// Which row was reached MOST RECENTLY (relevant only for a Level Manager
+// walking one level at a time) is entirely
+// server/utils/character-progression-plan.ts's own job -- this function
+// answers "what applies right now," never "what changed this step."
+//
+// `row.grants` (a `DefinitionId[]`) becomes SourceInstances, exactly
+// mirroring `facet.sources` immediately above and matching this seam's own
+// designed intent verbatim (types.ts's own ProgressionRow header: "changes
+// an actor's active set of Sources through the dynamic Source overlay").
+// `row.sets` (a `Record<DefinitionId, RuleValue>`) becomes direct `values`
+// writes, mirroring `facet.grants`'s own `set`/`to` shape exactly -- the
+// two are deliberately parallel, restated at two different layers (see
+// `ProgressionRow.choices`'s own header, types.ts, for why `rules/` never
+// imports `content-rules/`). `row.choices` joins the EXACT SAME
+// `declaredChoices`/`pendingChoices`/`answeredChoices` pipeline
+// `facet.choices` already populates below, keyed by
+// `progressionChoiceKey(slot, row.at, choiceSetId)` rather than
+// `choiceKey(slot, choiceSetId)` -- see that function's own header
+// (rules-choices.ts) for why the two can never collide even when they
+// happen to name the same ChoiceSet.
 
 // The three catalogue-backed slots, in the order their grants are applied.
 // Later wins on conflict. The order is Species -> Class -> Background
@@ -228,6 +290,15 @@ export type ActorBridgeInput = {
   // per-level automatic-consequence preview) -- omitted (the default,
   // ordinary read path) uses this character's own actually-stored level.
   levelOverride?: number
+  // Character Progression Phase 1B -- resolves a Progression id
+  // (`RulesFacet.progression`) to its declared `{keyedBy, rows}`, mirroring
+  // `lookupChoiceSet` exactly (optional, registry-backed, supplied by
+  // character-derived.ts from the active package). Without it, no facet's
+  // `progression` is ever consumed -- the same "absent means no-op, never a
+  // hard failure" contract `lookupChoiceSet` already has, since a package
+  // that declares no real Progression instance (every package before this
+  // phase) must keep behaving exactly as it always did.
+  lookupProgression?: (id: string) => Pick<ProgressionDefinition, 'keyedBy' | 'rows'> | null | undefined
 }
 
 function facetFor(slot: CharacterAssemblySlot): RulesFacet | null {
@@ -349,7 +420,46 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     values['value:death_saves.failures'] = blueprint.health.deathSaves.failures
   }
 
-  // --- Facet grants, sources, and choices --------------------------------
+  // Shared by both the creation-time loop (`facet.choices`) and the
+  // Progression loop (`row.choices`) below -- one place that resolves a
+  // declared choice against a stored answer and applies what a valid answer
+  // MEANS, so the two can never independently drift on how an answer is
+  // validated or written. `resolvable` already carries the correct KEY for
+  // whichever caller built it (`toResolvableChoice` vs.
+  // `toResolvableProgressionChoice`) -- this helper never constructs one
+  // itself.
+  function applyChoice(resolvable: ResolvableChoice, choiceLike: RulesFacetChoice, slotKey: ActorBridgeSlotKey) {
+    const key = resolvable.key
+    declaredChoices.push(resolvable)
+
+    const validation = validateChoiceSelection(resolvable, selectionsFor(input.rulesChoices, key))
+
+    if (!validation.ok) {
+      pendingChoices.push({ ...choiceLike, slot: slotKey, key })
+      return
+    }
+
+    // The answer itself -- the player's decision, recorded verbatim.
+    answeredChoices[key] = [...validation.selected]
+
+    // ...and what the ChoiceSet says that answer MEANS. Still not a
+    // computed value: this sets the same boolean a facet grant sets, and
+    // every number derived from it is the evaluator's work.
+    const writesTo = input.lookupChoiceSet?.(resolvable.choiceSetId)?.writesTo
+
+    for (const selected of validation.selected) {
+      const target = writesTo ? resolveChoiceTarget(writesTo, selected) : selected
+
+      if (input.knownDefinition && !input.knownDefinition(target)) {
+        unresolvedGrants.push(target)
+        continue
+      }
+
+      values[target] = true
+    }
+  }
+
+  // --- Facet grants, sources, choices, and Progression --------------------
   for (const slotKey of SLOT_ORDER) {
     const facet = facetFor(blueprint[slotKey])
     if (!facet) continue
@@ -381,34 +491,53 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
       // Shared with the Builder so both ask the identical question -- see
       // toResolvableChoice. A facet with no `from` offers nothing, which
       // validates as answerable only at count 0: correct, not a special case.
-      const resolvable = toResolvableChoice(slotKey, choice)
-      const key = resolvable.key
-      declaredChoices.push(resolvable)
+      applyChoice(toResolvableChoice(slotKey, choice), choice, slotKey)
+    }
 
-      const validation = validateChoiceSelection(resolvable, selectionsFor(input.rulesChoices, key))
+    // Character Progression Phase 1B -- see this file's own PROGRESSION
+    // header above for the full reasoning (keyedBy scoping, cumulative
+    // activation, grants-as-Sources). Only ever runs when this facet names
+    // one AND a lookup was supplied AND this bridge knows how to resolve
+    // `keyedBy`'s current value at all -- every condition already false for
+    // every package/facet that predates this phase, so this is a pure
+    // addition with no behavior change for them.
+    const progressionId = facet.progression
+    const progressionDef = progressionId ? input.lookupProgression?.(progressionId) : null
 
-      if (!validation.ok) {
-        pendingChoices.push({ ...choice, slot: slotKey, key })
-        continue
-      }
+    if (progressionDef && input.levelDefinitionId && progressionDef.keyedBy === input.levelDefinitionId) {
+      const currentLevel = input.levelOverride ?? totalCharacterLevel(blueprint.progression)
 
-      // The answer itself -- the player's decision, recorded verbatim.
-      answeredChoices[key] = [...validation.selected]
+      for (const row of progressionDef.rows) {
+        const rowAt = typeof row.at === 'number' ? row.at : Number(row.at)
+        // A row whose own `at` cannot be read as a number can never be
+        // reached by a numeric character level -- skipped rather than
+        // guessed at, the same "absence of a safe reading is not a reason
+        // to fabricate one" rule this bridge already applies elsewhere.
+        if (!Number.isFinite(rowAt) || rowAt > currentLevel) continue
 
-      // ...and what the ChoiceSet says that answer MEANS. Still not a
-      // computed value: this sets the same boolean a facet grant sets, and
-      // every number derived from it is the evaluator's work.
-      const writesTo = input.lookupChoiceSet?.(choice.choiceSet)?.writesTo
-
-      for (const selected of validation.selected) {
-        const target = writesTo ? resolveChoiceTarget(writesTo, selected) : selected
-
-        if (input.knownDefinition && !input.knownDefinition(target)) {
-          unresolvedGrants.push(target)
-          continue
+        for (const [definitionId, value] of Object.entries(row.sets ?? {})) {
+          if (input.knownDefinition && !input.knownDefinition(definitionId)) {
+            unresolvedGrants.push(definitionId)
+            continue
+          }
+          values[definitionId] = value
         }
 
-        values[target] = true
+        for (const grantId of row.grants ?? []) {
+          if (input.knownDefinition && !input.knownDefinition(grantId)) {
+            unresolvedGrants.push(grantId)
+            continue
+          }
+          sources.push({
+            instanceId: `${slotKey}:progression:${rowAt}:${grantId}`,
+            sourceRef: grantId,
+            origin: { kind: 'declared' }
+          })
+        }
+
+        for (const choice of row.choices ?? []) {
+          applyChoice(toResolvableProgressionChoice(slotKey, rowAt, choice), choice, slotKey)
+        }
       }
     }
   }

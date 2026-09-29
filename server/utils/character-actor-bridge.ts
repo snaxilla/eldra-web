@@ -504,6 +504,26 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     const progressionId = facet.progression
     const progressionDef = progressionId ? input.lookupProgression?.(progressionId) : null
 
+    // §8.2 rule 1, restated for `facet.progression` the same way it already
+    // applies to `facet.grants`/`facet.sources`/`facet.choices` above -- an
+    // unresolved reference is surfaced, never a silent no-op. ONLY when the
+    // caller actually asked for verification (`lookupProgression` supplied,
+    // mirroring `knownDefinition`'s own opt-in contract -- choices.put.ts's
+    // own call site never supplies it, and must stay exactly as silent as
+    // it always was). This is the diagnostic that was MISSING for the real
+    // production defect a fresh Wizard's Level 2 Scholar/Expertise choice
+    // hit: the active World's published Rules Package predated this
+    // package's own `progression:class.skill-expertise` Definition, so
+    // `progressionDef` was `null` here with nothing reporting it -- the
+    // whole Progression silently behaved as if the facet had never named
+    // one at all. Reported here now so a stale/unpublished package
+    // reference is visible in `unresolvedGrants` (the Character Sheet's own
+    // existing "something this package doesn't declare" surface) instead of
+    // looking identical to "this class has no Progression."
+    if (progressionId && input.lookupProgression && !progressionDef) {
+      unresolvedGrants.push(progressionId)
+    }
+
     if (progressionDef && input.levelDefinitionId && progressionDef.keyedBy === input.levelDefinitionId) {
       const currentLevel = input.levelOverride ?? totalCharacterLevel(blueprint.progression)
 

@@ -157,6 +157,74 @@ describe('validateChoiceSelection', () => {
   it('treats a zero-count choice as answered by an empty list', () => {
     expect(validateChoiceSelection(choice({ count: 0, options: [] }), []).ok).toBe(true)
   })
+
+  // D&D 2024 Character Rules Phase 2A.1 -- `distinct: false`, the opt-out
+  // this phase added for `choice:feat.asi-ability-increase` (the Ability
+  // Score Improvement feat's own real "+2 to one ability OR +1 to two
+  // distinct abilities" shape, expressed generically as "pick 2, the same
+  // option may repeat"). Every test above this point exercises the
+  // DEFAULT (`distinct` omitted, i.e. `true`) and is unchanged -- this
+  // block proves the opt-out is exactly that: an opt-out, never a
+  // global relaxation, and still fully closed against anything beyond
+  // "the same offered option, the exact required count of times."
+  describe('distinct: false (the ASI ability-increase shape)', () => {
+    const ABILITIES = [
+      'source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con',
+      'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha'
+    ]
+
+    function asiChoice(overrides: Partial<ResolvableChoice> = {}): ResolvableChoice {
+      return choice({ count: 2, options: ABILITIES, distinct: false, ...overrides })
+    }
+
+    it('accepts the SAME option selected twice -- the +2-to-one-ability branch', () => {
+      const result = validateChoiceSelection(asiChoice(), [ABILITIES[0], ABILITIES[0]])
+      expect(result).toEqual({ ok: true, selected: [ABILITIES[0], ABILITIES[0]] })
+    })
+
+    it('accepts two DIFFERENT options -- the +1/+1-to-two-abilities branch', () => {
+      const result = validateChoiceSelection(asiChoice(), [ABILITIES[0], ABILITIES[1]])
+      expect(result).toEqual({ ok: true, selected: [ABILITIES[0], ABILITIES[1]] })
+    })
+
+    // The invariant this phase's own approval explicitly asked to be
+    // proven server-side, independent of Modifier stacking: there is no
+    // THIRD, illegal shape `distinct: false` could admit. Every one of
+    // these crafted requests is rejected by the SAME structural checks
+    // (count, offered-options membership) that already governed every
+    // `distinct: true` choice -- `distinct` only ever relaxes the
+    // WITHIN-SELECTION uniqueness check, nothing else.
+    it('still rejects too FEW selections (one pick where two are required) -- same ability twice is not a legal shorthand for "pick it once"', () => {
+      const result = validateChoiceSelection(asiChoice(), [ABILITIES[0]])
+      expect(result.ok).toBe(false)
+      expect((result as any).reason).toMatch(/exactly 2/)
+    })
+
+    it('still rejects too MANY selections (three picks, e.g. the same ability three times)', () => {
+      const result = validateChoiceSelection(asiChoice(), [ABILITIES[0], ABILITIES[0], ABILITIES[0]])
+      expect(result.ok).toBe(false)
+      expect((result as any).reason).toMatch(/exactly 2/)
+    })
+
+    it('still rejects an option that was never offered, even paired with a legal one', () => {
+      const result = validateChoiceSelection(asiChoice(), [ABILITIES[0], 'source:asi.increase.nonexistent'])
+      expect(result.ok).toBe(false)
+      expect((result as any).reason).toMatch(/not one of the offered options/)
+    })
+
+    it('still rejects non-string members and non-list input, identically to the distinct case', () => {
+      expect(validateChoiceSelection(asiChoice(), 'str').ok).toBe(false)
+      expect(validateChoiceSelection(asiChoice(), null).ok).toBe(false)
+      expect(validateChoiceSelection(asiChoice(), [ABILITIES[0], 42]).ok).toBe(false)
+    })
+
+    it('a sibling choice with `distinct` omitted (every other choice in the package) still rejects a duplicate, proving the opt-out is per-choice, not global', () => {
+      const ordinaryChoice = choice({ count: 2, options: ABILITIES }) // distinct omitted -> true
+      const result = validateChoiceSelection(ordinaryChoice, [ABILITIES[0], ABILITIES[0]])
+      expect(result.ok).toBe(false)
+      expect((result as any).reason).toMatch(/more than once/)
+    })
+  })
 })
 
 describe('isChoiceAnswered', () => {

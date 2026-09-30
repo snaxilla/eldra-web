@@ -275,9 +275,25 @@ describe('REGRESSION -- fresh Wizard 1->5 plan against the STALE published packa
 
     const level2 = result.plan.steps.find((step) => step.level === 2)!
     expect(level2.requiredChoices).toEqual([])
-    expect(result.plan.unresolvedChoiceIds).toEqual([])
-    // This is the exact bug: Confirm Level Up would be enabled.
-    expect(result.plan.valid).toBe(true)
+    // D&D 2024 Character Rules Phase 2A.1 -- this file's own STALE_DEFINITIONS
+    // fixture strips only the ORIGINAL Phase 1B skill-expertise ids
+    // (PHASE_1B_ADDED_IDS, above); every Phase 2A.1 definition (`progression:
+    // class.asi-wizard`, `choice:feat.selection`, ...) is NOT a "Phase 1B
+    // added id" and therefore remains present and fully functional in this
+    // "stale" fixture. A 1->5 Wizard walk now legitimately crosses the real
+    // Level 4 Feat Selection choice, unrelated to the Scholar/stale-package
+    // regression this test targets -- so `unresolvedChoiceIds`/`plan.valid`
+    // now correctly reflect THAT new, real, unanswered choice. The
+    // regression this test actually proves is narrower and still intact:
+    // Level 2 itself declares no required choice and no unresolved grant
+    // (asserted immediately below, and in the sibling `it` blocks in this
+    // describe for the unresolvedGrants/integrity-hash angles) -- Level 2's
+    // OWN behavior is what the real browser defect was about, and it is
+    // unchanged.
+    expect(result.plan.unresolvedChoiceIds).toEqual([
+      'class:progression:4:choice:feat.selection'
+    ])
+    expect(result.plan.valid).toBe(false)
   })
 
   // Proves this phase's OWN diagnostic fix (server/utils/character-actor-bridge.ts's

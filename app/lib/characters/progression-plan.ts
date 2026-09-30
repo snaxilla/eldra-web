@@ -111,6 +111,18 @@ export type ProgressionChoice = {
   label: string
   options: ProgressionChoiceOption[]
   count: number
+  // D&D 2024 Character Rules Phase 2A.1 -- the ChoiceSet id this choice
+  // answers (e.g. `choice:feat.selection`, `choice:feat.asi-ability-
+  // increase`). Restated from `ResolvableChoice.choiceSetId`
+  // (app/lib/characters/rules-choices.ts) rather than re-derived from `id`
+  // (the key's own suffix IS the choiceSetId, but parsing it back out would
+  // duplicate `progressionChoiceKey`'s own format knowledge in a second
+  // place). Needed by server/utils/character-progression-plan.ts's own
+  // Confirm-time validation to recognize the feat-selector choice and to
+  // look up an 'activate-source' choice's own declared `resultCap` via the
+  // active package's registry, without this type itself needing to know
+  // what either of those mean.
+  choiceSetId: string
   // Character Progression Phase 1C -- the CLOSED, narrow answer-kind
   // discriminant this task's own CHOICE MODEL EXTENSION approved: 'content'
   // when this choice's options are Content Catalogue entries (their `id`
@@ -137,6 +149,17 @@ export type ProgressionChoice = {
   // this codebase, never re-derived a second way here. A choice with one of
   // two required picks made is still `false`.
   answered: boolean
+  // D&D 2024 Character Rules Phase 2A.1 UX Correction -- mirrors the
+  // ChoiceSet's own `distinct` flag (app/lib/rules/types.ts) through to the
+  // client. `undefined`/`true` (every choice authored before this phase)
+  // means the existing checkbox-list rendering (an option may be selected
+  // at most once) stays correct unchanged; `false` is what tells
+  // CharacterProgressionPanel.vue's generic renderer a choice's own
+  // `selected` answer may legally contain the SAME option more than once,
+  // and to render one control per required slot instead of a checkbox
+  // list -- see app/components/characters/characterProgressionChoicePresentation.ts's
+  // own header for the full reasoning.
+  distinct?: boolean
 }
 
 // One Value/Table's before/after at one level step -- computed as a DIFF

@@ -82,12 +82,40 @@ export type StoredClassLevel = {
   subclassRef?: ClassRef | null
 }
 
+// D&D 2024 Character Rules Phase 2A.1 -- the smallest generic, durable
+// record of "this character has this feat," deliberately NOT scoped to "the
+// feat chosen at Level 4" (this phase's own explicit instruction). A flat,
+// top-level list rather than nested under a class entry, because a feat can
+// come from a Background's Origin slot (not class-scoped at all), a class's
+// ASI progression, or a future Epic Boon/Fighting Style grant -- the same
+// `ClassRef` shape every other catalogue reference in this file already
+// uses, restated here rather than cross-imported (this family's own
+// established convention).
+//
+// `choiceKey` is the progression-choice key that granted this feat (e.g.
+// `class:progression:4:choice:feat.selection`) -- carried so a later
+// confirm can recognize "this exact acquisition was already recorded" (idempotent
+// retry) and so a repeatable feat (Ability Score Improvement) can be
+// acquired again at a LATER choiceKey (a different level) without colliding
+// with an earlier acquisition of the identical featRef. Two entries may
+// legally share a `featRef` (a repeatable feat taken twice); no two may
+// share a `choiceKey` (one acquisition per progression choice).
+export type StoredAcquiredFeat = {
+  featRef: ClassRef
+  choiceKey: string
+}
+
 export type StoredCharacterProgression = {
   classes: StoredClassLevel[]
+  // Always present (never omitted), the same "always-present, sometimes-
+  // empty" rule this file's sibling arrays already follow. `[]` for every
+  // character created before this phase -- a legal, common state, not a
+  // migration target.
+  feats: StoredAcquiredFeat[]
 }
 
 export function emptyCharacterProgression(): StoredCharacterProgression {
-  return { classes: [] }
+  return { classes: [], feats: [] }
 }
 
 // A valid class level is 1-20, matching `value:level`'s own declared
@@ -137,7 +165,24 @@ export function normalizeStoredProgression(value: unknown): StoredCharacterProgr
     classes.push({ classRef, level: Number(record.level), subclassRef: readClassRef(record.subclassRef) })
   }
 
-  return { classes }
+  // D&D 2024 Character Rules Phase 2A.1 -- re-validated on read, same
+  // posture as `classes` immediately above. A malformed ENTRY is dropped
+  // rather than failing the whole record; `input.feats` absent (every
+  // record predating this phase) normalizes to `[]`, never `null`.
+  const feats: StoredAcquiredFeat[] = []
+  if (Array.isArray(input.feats)) {
+    for (const raw of input.feats) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+      const record = raw as Record<string, unknown>
+      const featRef = readClassRef(record.featRef)
+      if (!featRef) continue
+      const choiceKey = trimmed(record.choiceKey)
+      if (!choiceKey) continue
+      feats.push({ featRef, choiceKey })
+    }
+  }
+
+  return { classes, feats }
 }
 
 // Sum across every class entry -- see this file's own header on why this,

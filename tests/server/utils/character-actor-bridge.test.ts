@@ -679,31 +679,66 @@ describe('invalid selections are rejected', () => {
 })
 
 describe('the authored corpus and the package agree about ChoiceSets', () => {
-  it('every offered option matches the ChoiceSet\'s own writesTo pattern', () => {
+  it('every offered option matches its OWN ChoiceSet\'s own writesTo pattern', () => {
     // The mechanism rests on this agreement: the package declares WHERE an
     // answer is written ("value:skill.{selected}.proficient") and the content
     // declares WHICH options are offered. If a facet ever offered an id that
     // did not fit that shape, resolveChoiceTarget would substitute rather
     // than pass through and silently target a Definition nobody declared.
+    //
+    // D&D 2024 Character Rules Phase 2A.1 -- generalized from "grab the
+    // first ChoiceSet in the package and check every offered option
+    // everywhere against IT" (correct only while `choice:skill.proficiency`
+    // was the package's only ChoiceSet) to "group offered options by which
+    // ChoiceSet their own facet declares, and check each group against ITS
+    // OWN writesTo" -- the package now legitimately declares four
+    // ChoiceSets with three distinct patterns (`choice:skill.proficiency`/
+    // `choice:skill.expertise` both write `value:skill.{selected}.*`;
+    // `choice:feat.asi-ability-increase`/`choice:feat.ability-choice-1`
+    // both write `source:asi.increase.{selected}`; `choice:class.subclass`/
+    // `choice:feat.selection` are content-shaped and declare no `writesTo`
+    // at all, per app/lib/rules/types.ts's own doc comment on why -- and
+    // therefore have no pattern for this test to check).
     const { definitions } = loadRulesPackage()
-    const choiceSet = definitions.find((definition) => definition.kind === 'choiceSet')
-    expect(choiceSet).toBeDefined()
+    const choiceSetsById = new Map<string, { writesTo?: string }>()
+    for (const definition of definitions) {
+      if (definition.kind === 'choiceSet') choiceSetsById.set(definition.id, definition as { writesTo?: string })
+    }
+    expect(choiceSetsById.size).toBeGreaterThan(0)
 
-    const [prefix, suffix] = (choiceSet as any).writesTo.split('{selected}')
-    const offered = new Set<string>()
+    const offeredByChoiceSet = new Map<string, Set<string>>()
 
     for (const byType of Object.values(DND5E_2024_RULES_FACETS)) {
       for (const facet of Object.values(byType)) {
         for (const choice of facet.choices ?? []) {
-          for (const option of choice.from ?? []) offered.add(option)
+          const set = offeredByChoiceSet.get(choice.choiceSet) ?? new Set<string>()
+          for (const option of choice.from ?? []) set.add(option)
+          offeredByChoiceSet.set(choice.choiceSet, set)
         }
       }
     }
 
-    expect(offered.size).toBeGreaterThan(0)
-    for (const option of offered) {
-      expect(option.startsWith(prefix) && option.endsWith(suffix)).toBe(true)
+    let totalOffered = 0
+    for (const [choiceSetId, offered] of offeredByChoiceSet) {
+      const choiceSet = choiceSetsById.get(choiceSetId)
+      expect(choiceSet, `facet references undeclared ChoiceSet '${choiceSetId}'`).toBeDefined()
+      // A content-shaped ChoiceSet (subclass/feat selection) declares no
+      // writesTo -- its facets offer NO Definition-id options at all (the
+      // bridge never reaches this path for them, see character-actor-bridge.ts's
+      // own PROGRESSION header), so there is nothing to check here.
+      if (!choiceSet!.writesTo) continue
+
+      const [prefix, suffix] = choiceSet!.writesTo.split('{selected}')
+      for (const option of offered) {
+        totalOffered++
+        expect(
+          option.startsWith(prefix) && option.endsWith(suffix),
+          `'${option}' does not match ChoiceSet '${choiceSetId}'s own writesTo pattern '${choiceSet!.writesTo}'`
+        ).toBe(true)
+      }
     }
+
+    expect(totalOffered).toBeGreaterThan(0)
   })
 
   it('every offered option is a Definition the Rules Package actually declares', () => {
@@ -1589,5 +1624,167 @@ describe('Character Progression Phase 1C -- the subclass slot', () => {
     const bp = blueprint({ class: slot('class', 'wizard-xphb'), subclass: subclassSlot })
     const { bridged } = derive(bp)
     expect(bridged.actorState.values['value:hit_points.hit_die_size']).toBe(12)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules Phase 2A.1 -- Feat Selection / ASI, end to end
+// ---------------------------------------------------------------------------
+// Mirrors `deriveWithProgression` above exactly, plus a real EvaluationSession
+// so these tests can read the RESULTING derived ability score, not just the
+// raw Source list -- proving the increment primitive (two stacked +1 Sources)
+// all the way through the Modifier pipeline, never merely that a Source was
+// pushed.
+function deriveFeat(bp: CharacterAssemblyBlueprint) {
+  const { manifest, definitions } = loadRulesPackage()
+  const registry = RulesRegistry.create(manifest, definitions)
+  if (!registry.ok) throw new Error('registry failed')
+  const graph = DependencyGraph.build(registry.registry)
+  if (!graph.ok) throw new Error('graph failed')
+
+  const bridged = buildActorState({
+    blueprint: bp,
+    packageId: manifest.packageId,
+    packageVersion: manifest.version,
+    stateSchemaVersion: manifest.stateSchemaVersion,
+    knownDefinition: (id) => registry.registry.has(id),
+    rulesChoices: bp.rulesChoices,
+    lookupChoiceSet: (id) => {
+      const definition = registry.registry.getById(id)
+      return definition && definition.kind === 'choiceSet' ? definition : null
+    },
+    lookupProgression: (id) => {
+      const definition = registry.registry.getById(id)
+      return definition && definition.kind === 'progression' ? definition : null
+    },
+    isContentChoiceSet: (id) => {
+      const definition = registry.registry.getById(id)
+      return Boolean(definition && definition.kind === 'choiceSet' && definition.from.kind === 'fromContentCatalogue')
+    },
+    levelDefinitionId: registry.registry.getBySemanticRole('level')?.id,
+    levelOverride: 4
+  })
+
+  const session = new EvaluationSession(registry.registry, graph.graph, bridged.actorState, {})
+  return { bridged, value: (id: string): RuleValue => evaluate(id, session) }
+}
+
+// One acquired feat slot, shaped exactly like character-assembly.ts's own
+// `CharacterAssemblyFeatSlot` -- `slot()` (above) already builds the
+// identical `{status, entry}` shape for species/class/background; this adds
+// the `choiceKey` every feat slot additionally carries.
+function featSlot(featEntitySlug: string, choiceKey: string) {
+  return { ...slot('feat', featEntitySlug), choiceKey }
+}
+
+const ASI_CHOICE_KEY = progressionChoiceKey('class', 4, 'choice:feat.selection')
+const NESTED_ASI_CHOICE_KEY = `feat:${ASI_CHOICE_KEY}:choice:feat.asi-ability-increase`
+
+describe('D&D 2024 Character Rules Phase 2A.1 -- Ability Score Improvement, end to end', () => {
+  it('two stacked picks of the SAME ability compose to +2 through the real Modifier pipeline', () => {
+    const bp = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      feats: [featSlot('ability-score-improvement-xphb', ASI_CHOICE_KEY)],
+      rulesChoices: {
+        selections: {
+          [NESTED_ASI_CHOICE_KEY]: ['source:asi.increase.str', 'source:asi.increase.str']
+        }
+      }
+    })
+    const { bridged, value } = deriveFeat(bp)
+    expect(bridged.actorState.sources.filter((s) => s.sourceRef === 'source:asi.increase.str')).toHaveLength(2)
+    // Base 15 (blueprint's own str score) + 2 = 17.
+    expect(value('value:ability.str')).toBe(17)
+  })
+
+  it('two picks of DIFFERENT abilities each apply +1, independently', () => {
+    const bp = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      feats: [featSlot('ability-score-improvement-xphb', ASI_CHOICE_KEY)],
+      rulesChoices: {
+        selections: {
+          [NESTED_ASI_CHOICE_KEY]: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      }
+    })
+    const { value } = deriveFeat(bp)
+    expect(value('value:ability.str')).toBe(16) // 15 + 1
+    expect(value('value:ability.dex')).toBe(15) // 14 + 1
+  })
+
+  it('the SAME option selected twice is rejected when the choice is distinct (every OTHER ChoiceSet in this package)', () => {
+    // `choice:skill.proficiency` is distinct (the pre-existing default) --
+    // proves `distinct: false` is a real opt-in, not the new global
+    // behavior, by showing the OLD unconditional-uniqueness rule still
+    // holds for every choice that does not explicitly relax it.
+    const bp = blueprint({
+      class: slot('class', 'fighter-xphb'),
+      rulesChoices: {
+        selections: {
+          [choiceKey('class', 'choice:skill.proficiency')]: [
+            'value:skill.athletics.proficient', 'value:skill.athletics.proficient'
+          ]
+        }
+      }
+    })
+    const { bridged } = derive(bp)
+    expect(bridged.pendingChoices.some((c) => c.key === choiceKey('class', 'choice:skill.proficiency'))).toBe(true)
+  })
+
+  it('a feat with no ability-increase facet (unauthored) is structurally inert but never crashes', () => {
+    // Every General feat this phase authors grants SOMETHING (see
+    // dnd5e-2024.ts's own FEAT AUDIT header) -- this proves the bridge's
+    // own general contract for a feat slot with NO facet at all (a feat
+    // this package never authored a RulesFacet for), mirroring how an
+    // unfaceted species/item already behaves.
+    const bp = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      feats: [{ status: 'resolved' as const, entry: { packageId: 'x', packageVersion: '1', systemKey: 'dnd5e', title: 'Unauthored Feat', slug: 'unauthored-feat', externalId: 'x', provider: '5etools-json' }, choiceKey: ASI_CHOICE_KEY }]
+    })
+    expect(() => deriveFeat(bp)).not.toThrow()
+  })
+})
+
+describe('D&D 2024 Character Rules Phase 2A.1 -- real per-class ASI cadence, package-declared', () => {
+  // Real corpus levels (this phase's own audit, class-*.json `classFeatures`)
+  // -- verified here against the ACTUAL published Progression rows, never
+  // a hand-typed assumption.
+  const CADENCES: Record<string, number[]> = {
+    'progression:class.asi-standard': [4, 8, 12, 16],
+    'progression:class.asi-extended': [4, 6, 8, 12, 14, 16],
+    'progression:class.asi-frequent': [4, 8, 10, 12, 16]
+  }
+
+  it('Fighter references the EXTENDED cadence (4/6/8/12/14/16) -- not the naive 4/8/12/16', () => {
+    const facet = findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb')
+    expect(facet?.progression).toContain('progression:class.asi-extended')
+  })
+
+  it('Rogue references the FREQUENT cadence (4/8/10/12/16) -- not the naive 4/8/12/16', () => {
+    const facet = findRulesFacet('dnd5e.2024', 'class', 'rogue-xphb')
+    expect(facet?.progression).toContain('progression:class.asi-frequent')
+  })
+
+  it('every one of the 12 real classes references exactly one of the three real cadences, and each cadence\'s rows match the real levels', () => {
+    const { definitions } = loadRulesPackage()
+    const progressionsById = new Map(
+      definitions.filter((d) => d.kind === 'progression').map((d) => [d.id, d as ProgressionDefinition])
+    )
+
+    for (const [classSlug, classFacet] of Object.entries(DND5E_2024_RULES_FACETS.class ?? {})) {
+      const asiId = (classFacet.progression ?? []).find((id) => id.startsWith('progression:class.asi-'))
+      expect(asiId, `${classSlug} declares no ASI progression`).toBeDefined()
+      expect(Object.keys(CADENCES), `${classSlug} references unknown cadence '${asiId}'`).toContain(asiId)
+
+      const def = progressionsById.get(asiId!)
+      expect(def, `'${asiId}' is not a real Definition in the package`).toBeDefined()
+      expect(def!.rows.map((r) => r.at)).toEqual(CADENCES[asiId!])
+    }
+  })
+
+  it('Level 19 is never part of an ASI cadence -- Epic Boon is a separate, unauthored concept this phase deliberately excludes', () => {
+    for (const levels of Object.values(CADENCES)) {
+      expect(levels).not.toContain(19)
+    }
   })
 })

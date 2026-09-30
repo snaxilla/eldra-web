@@ -83,17 +83,26 @@ export function progressionChoiceKey(slot: string, at: unknown, choiceSetId: Def
 // server/utils/character-actor-bridge.ts's own Progression-consuming loop;
 // no Builder counterpart exists yet (progression choices are answered
 // post-creation, through the Level Manager, never at character creation).
+// `distinct` (D&D 2024 Character Rules Phase 2A.1) -- optional, mirrors the
+// ChoiceSet's own `distinct` flag (app/lib/rules/types.ts). Omitted by every
+// caller that has no registry access (the Builder, create-v2.post.ts),
+// which is exactly correct: `validateChoiceSelection` below treats an
+// undefined `distinct` as `true`, byte-identical to this field's entire
+// pre-Phase-2A.1 behavior. Only server/utils/character-actor-bridge.ts,
+// which DOES have `lookupChoiceSet` access, ever passes a real value.
 export function toResolvableProgressionChoice(
   slot: string,
   at: unknown,
-  choice: { choiceSet: DefinitionId; count: number; from?: readonly DefinitionId[] }
+  choice: { choiceSet: DefinitionId; count: number; from?: readonly DefinitionId[] },
+  distinct?: boolean
 ): ResolvableChoice {
   return {
     key: progressionChoiceKey(slot, at, choice.choiceSet),
     slot,
     choiceSetId: choice.choiceSet,
     count: choice.count,
-    options: [...(choice.from ?? [])]
+    options: [...(choice.from ?? [])],
+    distinct
   }
 }
 
@@ -110,6 +119,14 @@ export type ResolvableChoice = {
   // own README).
   count: number
   options: DefinitionId[]
+  // D&D 2024 Character Rules Phase 2A.1 -- mirrors the ChoiceSet's own
+  // `distinct` flag. `undefined`/`true` means the pre-existing behavior
+  // (every selection must be unique); `false` is new, and means the SAME
+  // option may be selected more than once, up to `count` times total --
+  // needed for `choice:feat.asi-ability-increase` (two stacked "str"
+  // picks correctly express "+2 to Strength" via two independently-
+  // activated +1 Sources; see app/lib/rules/types.ts's own `effect` header).
+  distinct?: boolean
 }
 
 // The ONE definition of how a facet's declared choice becomes an answerable
@@ -123,16 +140,20 @@ export type ResolvableChoice = {
 // package declares `count: 0` precisely because "how many to pick, and which
 // are offered, come from the Content Pack entry that references it" (the
 // package's own README).
+// `distinct` -- see `toResolvableProgressionChoice`'s own doc comment
+// immediately above for why this is optional and what an absent value means.
 export function toResolvableChoice(
   slot: string,
-  choice: { choiceSet: DefinitionId; count: number; from?: readonly DefinitionId[] }
+  choice: { choiceSet: DefinitionId; count: number; from?: readonly DefinitionId[] },
+  distinct?: boolean
 ): ResolvableChoice {
   return {
     key: choiceKey(slot, choice.choiceSet),
     slot,
     choiceSetId: choice.choiceSet,
     count: choice.count,
-    options: [...(choice.from ?? [])]
+    options: [...(choice.from ?? [])],
+    distinct
   }
 }
 
@@ -178,11 +199,16 @@ export function validateChoiceSelection(
       return { ok: false, reason: 'Every selection must be a Definition id.' }
     }
 
-    // Distinct is enforced unconditionally rather than gated on the
-    // ChoiceSet's `distinct` flag: picking the same option twice would make
-    // `count` mean two different things (options chosen vs picks made), and
-    // no authored ChoiceSet sets `distinct: false`. Revisit if one ever does.
-    if (selected.includes(item)) {
+    // D&D 2024 Character Rules Phase 2A.1 -- this is the "revisit if one
+    // ever does" this comment used to end on: `choice:feat.asi-ability-
+    // increase` is the first authored ChoiceSet with `distinct: false`
+    // (the Ability Score Improvement feat's own real "+2 to one ability OR
+    // +1 to two distinct abilities" shape, expressed as "pick 2, same
+    // option allowed twice"). `choice.distinct === false` is the only way
+    // to opt out -- `undefined` (every choice authored before this phase)
+    // still enforces uniqueness, byte-identical to the old unconditional
+    // check.
+    if (choice.distinct !== false && selected.includes(item)) {
       return { ok: false, reason: `"${item}" was selected more than once.` }
     }
 

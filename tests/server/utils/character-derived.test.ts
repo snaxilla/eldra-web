@@ -18,9 +18,18 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { assembleCharacterMock, getWorldRuntimeMock } = vi.hoisted(() => ({
+const { assembleCharacterMock, getWorldRuntimeMock, getWorldContentCatalogueMock } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
-  getWorldRuntimeMock: vi.fn()
+  getWorldRuntimeMock: vi.fn(),
+  // D&D 2024 Character Rules Phase 2A.1 -- Fighter (this file's own default
+  // blueprint class) now declares a real `progression:class.asi-extended`,
+  // so any evaluation at level 4+ reaches the content-choice resolution
+  // branch (`bridged.contentChoices.length`), which calls
+  // `getWorldContentCatalogue`. Mocked here to an empty-but-valid catalogue
+  // -- this file tests Collection metadata, not Feat Selection content,
+  // which tests/server/utils/character-progression-plan.test.ts already
+  // covers.
+  getWorldContentCatalogueMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', async () => {
@@ -32,6 +41,10 @@ vi.mock('../../../server/utils/character-assembly', async () => {
 
 vi.mock('../../../server/utils/world-runtime-service', () => ({
   getWorldRuntime: getWorldRuntimeMock
+}))
+
+vi.mock('../../../server/utils/world-content-catalogue', () => ({
+  getWorldContentCatalogue: getWorldContentCatalogueMock
 }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
@@ -110,6 +123,7 @@ function blueprint(overrides: Partial<CharacterAssemblyBlueprint> = {}): Charact
 beforeEach(() => {
   assembleCharacterMock.mockReset()
   getWorldRuntimeMock.mockReset()
+  getWorldContentCatalogueMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -119,6 +133,10 @@ beforeEach(() => {
     integrityHash: 'sha256-test',
     settings: {},
     rollTypeOverrides: {}
+  })
+  getWorldContentCatalogueMock.mockResolvedValue({
+    worldId: '5', packs: [], species: [], classes: [], backgrounds: [],
+    feats: [], items: [], spells: [], monsters: [], subclasses: []
   })
 })
 
@@ -448,7 +466,10 @@ describe('getDerivedCharacterAtLevel -- simulates a level without persisting any
     // Character Progression Phase 1C -- assembleCharacter's third
     // argument (tentativeSubclassRef) is always passed explicitly now
     // (`undefined` here, since this call supplies none), not omitted.
-    expect(assembleCharacterMock).toHaveBeenCalledWith('5', '42', undefined)
+    // D&D 2024 Character Rules Phase 2A.1 -- a fourth argument
+    // (tentativeFeatAcquisitions) is now always passed too, for the
+    // identical reason.
+    expect(assembleCharacterMock).toHaveBeenCalledWith('5', '42', undefined, undefined)
   })
 
   it('propagates the same character-not-found/rules-unconfigured results getDerivedCharacter itself would', async () => {

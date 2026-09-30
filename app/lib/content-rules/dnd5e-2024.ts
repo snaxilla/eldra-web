@@ -168,7 +168,18 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.survival.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- real XPHB ASI levels for
+      // this class (class-barbarian.json's own `classFeatures` "Ability
+      // Score Improvement" references, verified this phase) match the
+      // STANDARD 4/8/12/16 cadence ten of the twelve classes share --
+      // `progression:class.asi-standard`'s own rows
+      // (packages/eldra-dnd5e-2024/definitions.json) are named by CADENCE,
+      // never by class (the Rules Package names no class, per this package's
+      // own purity rule, tests/rules/dnd5e-2024-package.test.ts). Fighter
+      // and Rogue reference their own distinct cadence ids instead (`-
+      // extended`, `-frequent`) -- see those two classes' own facets.
+      progression: ['progression:class.asi-standard']
     },
     'bard-xphb': {
       grants: [
@@ -203,7 +214,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.survival.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'cleric-xphb': {
       grants: [
@@ -225,7 +239,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.religion.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'druid-xphb': {
       grants: [
@@ -250,7 +267,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.survival.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'fighter-xphb': {
       grants: [
@@ -274,7 +294,13 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.survival.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- Fighter is a real, verified
+      // structural OUTLIER: six ASI/feat opportunities (4/6/8/12/14/16, an
+      // extra one at 6 and 14), not the 4/8/12/16 most classes share
+      // (class-fighter.json's own `classFeatures` references, verified this
+      // phase) -- authored here exactly as measured, never assumed.
+      progression: ['progression:class.asi-extended']
     },
     'monk-xphb': {
       grants: [
@@ -295,7 +321,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.stealth.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'paladin-xphb': {
       grants: [
@@ -318,7 +347,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.religion.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'ranger-xphb': {
       grants: [
@@ -343,7 +375,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.survival.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'rogue-xphb': {
       grants: [
@@ -368,7 +403,13 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.stealth.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- Rogue is a real, verified
+      // structural OUTLIER: five ASI/feat opportunities (4/8/10/12/16, an
+      // extra one at 10), not the 4/8/12/16 most classes share
+      // (class-rogue.json's own `classFeatures` references, verified this
+      // phase) -- authored here exactly as measured, never assumed.
+      progression: ['progression:class.asi-frequent']
     },
     'sorcerer-xphb': {
       grants: [
@@ -391,7 +432,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.religion.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'warlock-xphb': {
       grants: [
@@ -415,7 +459,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.religion.proficient'
           ]
         }
-      ]
+      ],
+      // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
+      // note above.
+      progression: ['progression:class.asi-standard']
     },
     'wizard-xphb': {
       grants: [
@@ -465,10 +512,421 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // 2024 XPHB Wizard subclass-selection level (class-wizard.json's own
       // `classFeature` entries), not invented.
       //
-      // Level 4 Ability Score Improvement/feat remains investigated and
-      // found structurally unrepresentable with the current grant model --
-      // see this phase's own report for the exact authoring blocker.
-      progression: ['progression:class.skill-expertise', 'progression:class.subclass-selection']
+      // D&D 2024 Character Rules Phase 2A.1 -- the Level 4 Ability Score
+      // Improvement/feat gap immediately above is now closed: the relative-
+      // increase blocker (`RulesFacetGrant`'s own "no increase, only set")
+      // is resolved by reusing the EXISTING Source + `phase: 'add'`
+      // Modifier machinery (never a new grant operation -- see
+      // app/lib/rules/types.ts's own `effect` header), and Feat Selection
+      // reuses the identical `fromContentCatalogue` precedent Subclass
+      // Selection (immediately above) already proved. `progression:class.
+      // asi-wizard` is a THIRD, independent Progression this facet opts
+      // into -- real XPHB Wizard ASI levels (4/8/12/16, class-wizard.json's
+      // own `classFeatures`), a separate Definition from every other
+      // class's own ASI progression for the exact reason Fighter/Rogue's
+      // own outlier cadences require it (see those two classes' own facets).
+      progression: [
+        'progression:class.skill-expertise',
+        'progression:class.subclass-selection',
+        'progression:class.asi-standard'
+      ]
+    }
+  },
+
+  // ---------------------------------------------------------------------
+  // FEATS -- D&D 2024 Character Rules Phase 2A.1
+  // ---------------------------------------------------------------------
+  // All 43 native-XPHB General feats (`category: 'G'`, `source === 'XPHB'`
+  // in the real feats.json corpus) -- every one of them, not a sample, per
+  // this phase's own PRODUCT ACCEPTANCE ("the legal set includes Ability
+  // Score Improvement plus other legal General feats for which the
+  // character qualifies"). Origin/Fighting Style/Epic Boon feats are
+  // DELIBERATELY NOT authored here -- see this phase's own DEFERRED
+  // section of its report; `choice:feat.selection`'s own
+  // `fromContentCatalogue` selector only offers `featMechanics.category
+  // === 'general'` entries (server/utils/character-derived.ts), so an
+  // unauthored Origin/Fighting Style/Epic Boon feat simply presents in the
+  // Catalogue without being selectable through THIS progression -- exactly
+  // the "content with none presents but does not mechanise" rule (§8.2
+  // rule 4) this file already applies to unfaceted species/items.
+  //
+  // WHAT EVERY ONE OF THESE FACETS DOES, AND DOES NOT, DO. This phase's
+  // own HARD STOP -- FEAT EFFECT COMPLETENESS instruction required
+  // determining what selecting a feat can honestly do TODAY before
+  // authoring a single facet: verified directly against the real corpus
+  // (feats.json, all 43 General entries) that EVERY ONE grants exactly one
+  // ability-increase shape (fixed +1, choose-one +1, or -- Ability Score
+  // Improvement alone -- the +2-one/+1-two-distinct shape) ALONGSIDE its
+  // own unique thematic mechanic (Crossbow Expert's ignore-loading text,
+  // Great Weapon Master's bonus-action attack, Shield Master's shove
+  // reaction, ...). The ability increase is the ONE effect Eldra's engine
+  // can structurally apply today (via `source:asi.increase.*`, the Source +
+  // `phase: 'add'` Modifier this phase's own increment-primitive design
+  // reuses -- see app/lib/rules/types.ts's own `effect` header). Every
+  // OTHER per-feat mechanic is NOT modeled here -- no Action, no combat
+  // rule, no passive grant beyond the ability bump. Selecting any of these
+  // 43 feats is therefore honest and complete for: identity (ContentRef),
+  // persistence (survives reload), the ability-score consequence, and Sheet
+  // display -- and structurally inert for the feat's own named combat/
+  // utility text, which remains prose the player reads and adjudicates,
+  // exactly the same "feat selection/persistence is structurally supported;
+  // feat EFFECT beyond the ability increase is not" boundary this phase's
+  // own report states explicitly, never silently claimed complete.
+  //
+  // RESILIENT'S OWN KNOWN SIMPLIFICATION: the real feat text restricts its
+  // ability choice to "an ability in which you lack saving throw
+  // proficiency." That per-character dynamic filter is NOT applied here --
+  // `resilient-xphb`'s own `from` offers all six abilities unconditionally,
+  // the same static list every other `choice:feat.ability-choice-1` feat
+  // uses. A deliberate, reported simplification (dynamic filtering by
+  // CURRENT proficiency state is not a trivial addition to the existing
+  // choice-option machinery), not a silently dropped requirement.
+  //
+  // Every `from`/`sources` entry below names a REAL, registered
+  // `source:asi.increase.<ability>` Definition (definitions.json) -- never
+  // a bare ability token -- matching §8.2 rule 1 exactly as every other
+  // facet in this corpus already does (verified directly by this
+  // codebase's own `every offered option is a Definition the Rules Package
+  // actually declares` test). `choice:feat.asi-ability-increase`'s/
+  // `choice:feat.ability-choice-1`'s own `writesTo: 'source:asi.increase.
+  // {selected}'` template therefore degenerates to a pass-through for this
+  // corpus (`resolveChoiceTarget`'s own "already resolved" branch,
+  // app/lib/characters/rules-choices.ts) -- the identical relationship
+  // `choice:skill.proficiency`'s own `writesTo` already has with THIS
+  // corpus's fully-qualified `value:skill.*.proficient` options.
+  feat: {
+    'ability-score-improvement-xphb': { // Ability Score Improvement
+      choices: [
+        {
+          choiceSet: 'choice:feat.asi-ability-increase',
+          count: 2,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'actor-xphb': { // Actor
+      sources: ['source:asi.increase.cha']
+    },
+    'athlete-xphb': { // Athlete
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'charger-xphb': { // Charger
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'chef-xphb': { // Chef
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.con', 'source:asi.increase.wis']
+        }
+      ]
+    },
+    'crossbow-expert-xphb': { // Crossbow Expert
+      sources: ['source:asi.increase.dex']
+    },
+    'crusher-xphb': { // Crusher
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.con']
+        }
+      ]
+    },
+    'defensive-duelist-xphb': { // Defensive Duelist
+      sources: ['source:asi.increase.dex']
+    },
+    'dual-wielder-xphb': { // Dual Wielder
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'durable-xphb': { // Durable
+      sources: ['source:asi.increase.con']
+    },
+    'elemental-adept-xphb': { // Elemental Adept
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'fey-touched-xphb': { // Fey-Touched
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'grappler-xphb': { // Grappler
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'great-weapon-master-xphb': { // Great Weapon Master
+      sources: ['source:asi.increase.str']
+    },
+    'heavily-armored-xphb': { // Heavily Armored
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.con', 'source:asi.increase.str']
+        }
+      ]
+    },
+    'heavy-armor-master-xphb': { // Heavy Armor Master
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.con', 'source:asi.increase.str']
+        }
+      ]
+    },
+    'inspiring-leader-xphb': { // Inspiring Leader
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'keen-mind-xphb': { // Keen Mind
+      sources: ['source:asi.increase.int']
+    },
+    'lightly-armored-xphb': { // Lightly Armored
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'mage-slayer-xphb': { // Mage Slayer
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'martial-weapon-training-xphb': { // Martial Weapon Training
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'medium-armor-master-xphb': { // Medium Armor Master
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'moderately-armored-xphb': { // Moderately Armored
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'mounted-combatant-xphb': { // Mounted Combatant
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.wis']
+        }
+      ]
+    },
+    'observant-xphb': { // Observant
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis']
+        }
+      ]
+    },
+    'piercer-xphb': { // Piercer
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'poisoner-xphb': { // Poisoner
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.dex', 'source:asi.increase.int']
+        }
+      ]
+    },
+    'polearm-master-xphb': { // Polearm Master
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.dex', 'source:asi.increase.str']
+        }
+      ]
+    },
+    'resilient-xphb': { // Resilient
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'ritual-caster-xphb': { // Ritual Caster
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'sentinel-xphb': { // Sentinel
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'shadow-touched-xphb': { // Shadow-Touched
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'sharpshooter-xphb': { // Sharpshooter
+      sources: ['source:asi.increase.dex']
+    },
+    'shield-master-xphb': { // Shield Master
+      sources: ['source:asi.increase.str']
+    },
+    'skill-expert-xphb': { // Skill Expert
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'skulker-xphb': { // Skulker
+      sources: ['source:asi.increase.dex']
+    },
+    'slasher-xphb': { // Slasher
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'speedy-xphb': { // Speedy
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.dex', 'source:asi.increase.con']
+        }
+      ]
+    },
+    'spell-sniper-xphb': { // Spell Sniper
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'telekinetic-xphb': { // Telekinetic
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'telepathic-xphb': { // Telepathic
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'war-caster-xphb': { // War Caster
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'weapon-master-xphb': { // Weapon Master
+      choices: [
+        {
+          choiceSet: 'choice:feat.ability-choice-1',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
     }
   },
 

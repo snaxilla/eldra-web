@@ -226,7 +226,17 @@ import type {
 // legal, inert state this loop already handles uniformly for every slot.
 const SLOT_ORDER = ['species', 'class', 'subclass', 'background'] as const
 
-export type ActorBridgeSlotKey = (typeof SLOT_ORDER)[number]
+// D&D 2024 Character Rules Phase 2A.1 -- widened from the closed
+// `(typeof SLOT_ORDER)[number]` union to plain `string`. A feat acquisition
+// is consumed through this EXACT same per-slot machinery (see
+// `consumeFacet`/the new feat loop below) but there are as many feat
+// "slots" as a character has acquired feats, each identified by its own
+// `feat:${choiceKey}` -- a closed four-member union cannot name an
+// unbounded set. Nothing downstream exhaustively switches over this type
+// (confirmed by tracing every consumer: character-derived.ts treats
+// `choice.slot`/`stub.slot` as an opaque label, never a discriminant), so
+// this widening changes no behavior for the four original slots.
+export type ActorBridgeSlotKey = string
 
 // A choice a facet declared and nobody has answered. Surfaced so a future
 // Builder step (or a diagnostic UI) can see what is outstanding, without
@@ -310,7 +320,23 @@ export type ActorBridgeInput = {
   // treats an absent `writesTo` correctly (falls back to "the option is its
   // own target"), so widening this signature to match is a pure type
   // correction, not a behavior change.
-  lookupChoiceSet?: (id: string) => { writesTo?: string } | null | undefined
+  //
+  // D&D 2024 Character Rules Phase 2A.1 -- `effect`/`resultCap`/`distinct`
+  // added, mirroring the three new ChoiceSetDefinition fields exactly
+  // (app/lib/rules/types.ts). `effect`/`distinct` are read by `applyChoice`
+  // below; `resultCap` is NOT read by this module at all (this bridge
+  // performs no evaluation and has no derived-value access to check a cap
+  // against) -- it is carried on the lookup purely so a caller with
+  // registry access (character-derived.ts) could thread it to a validator
+  // that does; relayed here only for type completeness, matching how
+  // `lookupProgression`'s own return type already carries fields this
+  // module reads selectively, not exhaustively.
+  lookupChoiceSet?: (id: string) => {
+    writesTo?: string
+    effect?: 'set-value' | 'activate-source'
+    resultCap?: number
+    distinct?: boolean
+  } | null | undefined
   // Character Progression Phase 1A -- the active package's own Definition
   // id for "the level concept," resolved via `registry.getBySemanticRole('level')`
   // by character-derived.ts (never hardcoded here, matching this module's
@@ -492,11 +518,42 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     // The answer itself -- the player's decision, recorded verbatim.
     answeredChoices[key] = [...validation.selected]
 
-    // ...and what the ChoiceSet says that answer MEANS. Still not a
-    // computed value: this sets the same boolean a facet grant sets, and
-    // every number derived from it is the evaluator's work.
-    const writesTo = input.lookupChoiceSet?.(resolvable.choiceSetId)?.writesTo
+    // ...and what the ChoiceSet says that answer MEANS.
+    const choiceSetInfo = input.lookupChoiceSet?.(resolvable.choiceSetId)
+    const writesTo = choiceSetInfo?.writesTo
 
+    // D&D 2024 Character Rules Phase 2A.1 -- `effect: 'activate-source'`
+    // (app/lib/rules/types.ts's own header has the full reasoning). Indexed
+    // rather than deduped: `distinct: false` (validated above by
+    // `validateChoiceSelection`) permits the SAME selected option to appear
+    // more than once in `validation.selected` -- e.g. `['str','str']` for
+    // "+2 Strength" -- and each occurrence must become its OWN
+    // SourceInstance so the Modifier pipeline's `stack` policy sums them
+    // (two independently-activated +1 Sources = +2), never collapse to one.
+    if (choiceSetInfo?.effect === 'activate-source') {
+      validation.selected.forEach((selected, index) => {
+        const target = writesTo ? resolveChoiceTarget(writesTo, selected) : selected
+
+        if (input.knownDefinition && !input.knownDefinition(target)) {
+          unresolvedGrants.push(target)
+          return
+        }
+
+        sources.push({
+          // Deterministic, matching every other SourceInstance id this
+          // bridge builds: the same answer must produce the same ids on
+          // every read. `index` (not `selected`) disambiguates two
+          // activations of the identical target.
+          instanceId: `${slotKey}:${key}:${index}`,
+          sourceRef: target,
+          origin: { kind: 'declared' }
+        })
+      })
+      return
+    }
+
+    // The default, pre-Phase-2A.1 behavior -- sets the same boolean a facet
+    // grant sets, unchanged for every choice authored before this phase.
     for (const selected of validation.selected) {
       const target = writesTo ? resolveChoiceTarget(writesTo, selected) : selected
 
@@ -510,9 +567,13 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
   }
 
   // --- Facet grants, sources, choices, and Progression --------------------
-  for (const slotKey of SLOT_ORDER) {
-    const facet = facetFor(blueprint[slotKey])
-    if (!facet) continue
+  // D&D 2024 Character Rules Phase 2A.1 -- factored into `consumeFacet` so
+  // the identical grants/sources/choices/progression consumption applies
+  // uniformly to the four fixed SLOT_ORDER slots AND to an unbounded list
+  // of acquired feats (see the feat loop immediately below this one) -- one
+  // consumption rule, two callers, never a second copy that could drift.
+  function consumeFacet(slotKey: string, facet: RulesFacet | null) {
+    if (!facet) return
 
     for (const grant of facet.grants ?? []) {
       if (input.knownDefinition && !input.knownDefinition(grant.set)) {
@@ -541,7 +602,12 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
       // Shared with the Builder so both ask the identical question -- see
       // toResolvableChoice. A facet with no `from` offers nothing, which
       // validates as answerable only at count 0: correct, not a special case.
-      applyChoice(toResolvableChoice(slotKey, choice), choice, slotKey)
+      // D&D 2024 Character Rules Phase 2A.1 -- `distinct` threaded through
+      // from the ChoiceSet's own declaration (the Builder, which has no
+      // registry access, never passes one -- see toResolvableChoice's own
+      // doc comment for why that is correct).
+      const distinct = input.lookupChoiceSet?.(choice.choiceSet)?.distinct
+      applyChoice(toResolvableChoice(slotKey, choice, distinct), choice, slotKey)
     }
 
     // Character Progression Phase 1B -- see this file's own PROGRESSION
@@ -651,10 +717,33 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
             continue
           }
 
-          applyChoice(toResolvableProgressionChoice(slotKey, rowAt, choice), choice, slotKey)
+          // D&D 2024 Character Rules Phase 2A.1 -- `distinct` threaded
+          // through, identical reasoning to the creation-time loop above.
+          const distinct = input.lookupChoiceSet?.(choice.choiceSet)?.distinct
+          applyChoice(toResolvableProgressionChoice(slotKey, rowAt, choice, distinct), choice, slotKey)
         }
       }
     }
+  }
+
+  for (const slotKey of SLOT_ORDER) {
+    consumeFacet(slotKey, facetFor(blueprint[slotKey]))
+  }
+
+  // D&D 2024 Character Rules Phase 2A.1 -- every acquired feat's own facet
+  // reaches this bridge through the EXACT same `consumeFacet` path as a
+  // named slot, just looped over `blueprint.feats` instead of SLOT_ORDER.
+  // This is what makes the Ability Score Improvement feat's own NESTED
+  // ability-distribution choice (its facet's own `choices` field) surface
+  // automatically the moment the feat is acquired -- no special-cased
+  // "second choice" mechanism exists anywhere in this bridge; it is the
+  // SAME declaredChoices/pendingChoices pipeline every other facet choice
+  // already goes through. `slotKey` is `feat:${choiceKey}`, unique PER
+  // ACQUISITION rather than per feat identity -- the same repeatable feat
+  // taken twice produces two distinct slot keys, so their own
+  // SourceInstance/choice-answer ids never collide.
+  for (const featSlot of blueprint.feats ?? []) {
+    consumeFacet(`feat:${featSlot.choiceKey}`, facetFor(featSlot))
   }
 
   const actorState: ActorState = {

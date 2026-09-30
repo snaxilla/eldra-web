@@ -1867,39 +1867,296 @@
       "match": "exact"
     },
     "columns": [
-      { "key": "slot_1", "valueType": "number" },
-      { "key": "slot_2", "valueType": "number" },
-      { "key": "slot_3", "valueType": "number" },
-      { "key": "slot_4", "valueType": "number" },
-      { "key": "slot_5", "valueType": "number" },
-      { "key": "slot_6", "valueType": "number" },
-      { "key": "slot_7", "valueType": "number" },
-      { "key": "slot_8", "valueType": "number" },
-      { "key": "slot_9", "valueType": "number" }
+      {
+        "key": "slot_1",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_2",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_3",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_4",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_5",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_6",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_7",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_8",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_9",
+        "valueType": "number"
+      }
     ],
     "rows": [
-      { "key": 1, "slot_1": 2, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 2, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 3, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 4, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 5, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 6, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 7, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 8, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 2, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 9, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 1, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 10, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 11, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 12, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 0, "slot_8": 0, "slot_9": 0 },
-      { "key": 13, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 0, "slot_9": 0 },
-      { "key": 14, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 0, "slot_9": 0 },
-      { "key": 15, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 0 },
-      { "key": 16, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 0 },
-      { "key": 17, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 1 },
-      { "key": 18, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 3, "slot_6": 1, "slot_7": 1, "slot_8": 1, "slot_9": 1 },
-      { "key": 19, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 3, "slot_6": 2, "slot_7": 1, "slot_8": 1, "slot_9": 1 },
-      { "key": 20, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 3, "slot_6": 2, "slot_7": 2, "slot_8": 1, "slot_9": 1 }
+      {
+        "key": 1,
+        "slot_1": 2,
+        "slot_2": 0,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 2,
+        "slot_1": 3,
+        "slot_2": 0,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 3,
+        "slot_1": 4,
+        "slot_2": 2,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 4,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 5,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 2,
+        "slot_4": 0,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 6,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 0,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 7,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 1,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 8,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 2,
+        "slot_5": 0,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 9,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 1,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 10,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 0,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 11,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 1,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 12,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 1,
+        "slot_7": 0,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 13,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 1,
+        "slot_7": 1,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 14,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 1,
+        "slot_7": 1,
+        "slot_8": 0,
+        "slot_9": 0
+      },
+      {
+        "key": 15,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 1,
+        "slot_7": 1,
+        "slot_8": 1,
+        "slot_9": 0
+      },
+      {
+        "key": 16,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 1,
+        "slot_7": 1,
+        "slot_8": 1,
+        "slot_9": 0
+      },
+      {
+        "key": 17,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2,
+        "slot_6": 1,
+        "slot_7": 1,
+        "slot_8": 1,
+        "slot_9": 1
+      },
+      {
+        "key": 18,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 3,
+        "slot_6": 1,
+        "slot_7": 1,
+        "slot_8": 1,
+        "slot_9": 1
+      },
+      {
+        "key": 19,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 3,
+        "slot_6": 2,
+        "slot_7": 1,
+        "slot_8": 1,
+        "slot_9": 1
+      },
+      {
+        "key": 20,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 3,
+        "slot_6": 2,
+        "slot_7": 2,
+        "slot_8": 1,
+        "slot_9": 1
+      }
     ],
-    "default": { "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0, "slot_6": 0, "slot_7": 0, "slot_8": 0, "slot_9": 0 }
+    "default": {
+      "slot_1": 0,
+      "slot_2": 0,
+      "slot_3": 0,
+      "slot_4": 0,
+      "slot_5": 0,
+      "slot_6": 0,
+      "slot_7": 0,
+      "slot_8": 0,
+      "slot_9": 0
+    }
   },
   {
     "id": "table:spellcasting.slots_half",
@@ -1911,35 +2168,196 @@
       "match": "exact"
     },
     "columns": [
-      { "key": "slot_1", "valueType": "number" },
-      { "key": "slot_2", "valueType": "number" },
-      { "key": "slot_3", "valueType": "number" },
-      { "key": "slot_4", "valueType": "number" },
-      { "key": "slot_5", "valueType": "number" }
+      {
+        "key": "slot_1",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_2",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_3",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_4",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_5",
+        "valueType": "number"
+      }
     ],
     "rows": [
-      { "key": 1, "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 2, "slot_1": 2, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 3, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 4, "slot_1": 3, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 5, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 6, "slot_1": 4, "slot_2": 2, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 7, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 8, "slot_1": 4, "slot_2": 3, "slot_3": 0, "slot_4": 0, "slot_5": 0 },
-      { "key": 9, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0, "slot_5": 0 },
-      { "key": 10, "slot_1": 4, "slot_2": 3, "slot_3": 2, "slot_4": 0, "slot_5": 0 },
-      { "key": 11, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0, "slot_5": 0 },
-      { "key": 12, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 0, "slot_5": 0 },
-      { "key": 13, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1, "slot_5": 0 },
-      { "key": 14, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 1, "slot_5": 0 },
-      { "key": 15, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 2, "slot_5": 0 },
-      { "key": 16, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 2, "slot_5": 0 },
-      { "key": 17, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 1 },
-      { "key": 18, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 1 },
-      { "key": 19, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2 },
-      { "key": 20, "slot_1": 4, "slot_2": 3, "slot_3": 3, "slot_4": 3, "slot_5": 2 }
+      {
+        "key": 1,
+        "slot_1": 0,
+        "slot_2": 0,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 2,
+        "slot_1": 2,
+        "slot_2": 0,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 3,
+        "slot_1": 3,
+        "slot_2": 0,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 4,
+        "slot_1": 3,
+        "slot_2": 0,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 5,
+        "slot_1": 4,
+        "slot_2": 2,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 6,
+        "slot_1": 4,
+        "slot_2": 2,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 7,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 8,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 0,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 9,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 2,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 10,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 2,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 11,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 12,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 0,
+        "slot_5": 0
+      },
+      {
+        "key": 13,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 1,
+        "slot_5": 0
+      },
+      {
+        "key": 14,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 1,
+        "slot_5": 0
+      },
+      {
+        "key": 15,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 2,
+        "slot_5": 0
+      },
+      {
+        "key": 16,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 2,
+        "slot_5": 0
+      },
+      {
+        "key": 17,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 1
+      },
+      {
+        "key": 18,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 1
+      },
+      {
+        "key": 19,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2
+      },
+      {
+        "key": 20,
+        "slot_1": 4,
+        "slot_2": 3,
+        "slot_3": 3,
+        "slot_4": 3,
+        "slot_5": 2
+      }
     ],
-    "default": { "slot_1": 0, "slot_2": 0, "slot_3": 0, "slot_4": 0, "slot_5": 0 }
+    "default": {
+      "slot_1": 0,
+      "slot_2": 0,
+      "slot_3": 0,
+      "slot_4": 0,
+      "slot_5": 0
+    }
   },
   {
     "id": "table:conditions.catalog",
@@ -1951,26 +2369,76 @@
       "match": "exact"
     },
     "columns": [
-      { "key": "label", "valueType": "text" }
+      {
+        "key": "label",
+        "valueType": "text"
+      }
     ],
     "rows": [
-      { "key": "blinded", "label": "Blinded" },
-      { "key": "charmed", "label": "Charmed" },
-      { "key": "deafened", "label": "Deafened" },
-      { "key": "exhaustion", "label": "Exhaustion" },
-      { "key": "frightened", "label": "Frightened" },
-      { "key": "grappled", "label": "Grappled" },
-      { "key": "incapacitated", "label": "Incapacitated" },
-      { "key": "invisible", "label": "Invisible" },
-      { "key": "paralyzed", "label": "Paralyzed" },
-      { "key": "petrified", "label": "Petrified" },
-      { "key": "poisoned", "label": "Poisoned" },
-      { "key": "prone", "label": "Prone" },
-      { "key": "restrained", "label": "Restrained" },
-      { "key": "stunned", "label": "Stunned" },
-      { "key": "unconscious", "label": "Unconscious" }
+      {
+        "key": "blinded",
+        "label": "Blinded"
+      },
+      {
+        "key": "charmed",
+        "label": "Charmed"
+      },
+      {
+        "key": "deafened",
+        "label": "Deafened"
+      },
+      {
+        "key": "exhaustion",
+        "label": "Exhaustion"
+      },
+      {
+        "key": "frightened",
+        "label": "Frightened"
+      },
+      {
+        "key": "grappled",
+        "label": "Grappled"
+      },
+      {
+        "key": "incapacitated",
+        "label": "Incapacitated"
+      },
+      {
+        "key": "invisible",
+        "label": "Invisible"
+      },
+      {
+        "key": "paralyzed",
+        "label": "Paralyzed"
+      },
+      {
+        "key": "petrified",
+        "label": "Petrified"
+      },
+      {
+        "key": "poisoned",
+        "label": "Poisoned"
+      },
+      {
+        "key": "prone",
+        "label": "Prone"
+      },
+      {
+        "key": "restrained",
+        "label": "Restrained"
+      },
+      {
+        "key": "stunned",
+        "label": "Stunned"
+      },
+      {
+        "key": "unconscious",
+        "label": "Unconscious"
+      }
     ],
-    "default": { "label": "" }
+    "default": {
+      "label": ""
+    }
   },
   {
     "id": "value:combat.melee_attack_bonus",
@@ -2014,31 +2482,403 @@
       "match": "exact"
     },
     "columns": [
-      { "key": "slots", "valueType": "number" },
-      { "key": "slot_level", "valueType": "number" }
+      {
+        "key": "slots",
+        "valueType": "number"
+      },
+      {
+        "key": "slot_level",
+        "valueType": "number"
+      }
     ],
     "rows": [
-      { "key": 1, "slots": 1, "slot_level": 1 },
-      { "key": 2, "slots": 2, "slot_level": 1 },
-      { "key": 3, "slots": 2, "slot_level": 2 },
-      { "key": 4, "slots": 2, "slot_level": 2 },
-      { "key": 5, "slots": 2, "slot_level": 3 },
-      { "key": 6, "slots": 2, "slot_level": 3 },
-      { "key": 7, "slots": 2, "slot_level": 4 },
-      { "key": 8, "slots": 2, "slot_level": 4 },
-      { "key": 9, "slots": 2, "slot_level": 5 },
-      { "key": 10, "slots": 2, "slot_level": 5 },
-      { "key": 11, "slots": 3, "slot_level": 5 },
-      { "key": 12, "slots": 3, "slot_level": 5 },
-      { "key": 13, "slots": 3, "slot_level": 5 },
-      { "key": 14, "slots": 3, "slot_level": 5 },
-      { "key": 15, "slots": 3, "slot_level": 5 },
-      { "key": 16, "slots": 3, "slot_level": 5 },
-      { "key": 17, "slots": 4, "slot_level": 5 },
-      { "key": 18, "slots": 4, "slot_level": 5 },
-      { "key": 19, "slots": 4, "slot_level": 5 },
-      { "key": 20, "slots": 4, "slot_level": 5 }
+      {
+        "key": 1,
+        "slots": 1,
+        "slot_level": 1
+      },
+      {
+        "key": 2,
+        "slots": 2,
+        "slot_level": 1
+      },
+      {
+        "key": 3,
+        "slots": 2,
+        "slot_level": 2
+      },
+      {
+        "key": 4,
+        "slots": 2,
+        "slot_level": 2
+      },
+      {
+        "key": 5,
+        "slots": 2,
+        "slot_level": 3
+      },
+      {
+        "key": 6,
+        "slots": 2,
+        "slot_level": 3
+      },
+      {
+        "key": 7,
+        "slots": 2,
+        "slot_level": 4
+      },
+      {
+        "key": 8,
+        "slots": 2,
+        "slot_level": 4
+      },
+      {
+        "key": 9,
+        "slots": 2,
+        "slot_level": 5
+      },
+      {
+        "key": 10,
+        "slots": 2,
+        "slot_level": 5
+      },
+      {
+        "key": 11,
+        "slots": 3,
+        "slot_level": 5
+      },
+      {
+        "key": 12,
+        "slots": 3,
+        "slot_level": 5
+      },
+      {
+        "key": 13,
+        "slots": 3,
+        "slot_level": 5
+      },
+      {
+        "key": 14,
+        "slots": 3,
+        "slot_level": 5
+      },
+      {
+        "key": 15,
+        "slots": 3,
+        "slot_level": 5
+      },
+      {
+        "key": 16,
+        "slots": 3,
+        "slot_level": 5
+      },
+      {
+        "key": 17,
+        "slots": 4,
+        "slot_level": 5
+      },
+      {
+        "key": 18,
+        "slots": 4,
+        "slot_level": 5
+      },
+      {
+        "key": 19,
+        "slots": 4,
+        "slot_level": 5
+      },
+      {
+        "key": 20,
+        "slots": 4,
+        "slot_level": 5
+      }
     ],
-    "default": { "slots": 0, "slot_level": 0 }
+    "default": {
+      "slots": 0,
+      "slot_level": 0
+    }
+  },
+  {
+    "id": "source:asi.increase.str",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Ability Increase (Strength)",
+    "modifiers": [
+      {
+        "target": "value:ability.str",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:asi.increase.dex",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Ability Increase (Dexterity)",
+    "modifiers": [
+      {
+        "target": "value:ability.dex",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:asi.increase.con",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Ability Increase (Constitution)",
+    "modifiers": [
+      {
+        "target": "value:ability.con",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:asi.increase.int",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Ability Increase (Intelligence)",
+    "modifiers": [
+      {
+        "target": "value:ability.int",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:asi.increase.wis",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Ability Increase (Wisdom)",
+    "modifiers": [
+      {
+        "target": "value:ability.wis",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:asi.increase.cha",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Ability Increase (Charisma)",
+    "modifiers": [
+      {
+        "target": "value:ability.cha",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "choice:feat.asi-ability-increase",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Ability Score Increase",
+    "prompt": "Increase one ability score by 2, or two different ability scores by 1 each.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": false,
+    "effect": "activate-source",
+    "writesTo": "source:asi.increase.{selected}",
+    "resultCap": 20
+  },
+  {
+    "id": "choice:feat.ability-choice-1",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Feat Ability Increase",
+    "prompt": "Increase one of the listed ability scores by 1.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "effect": "activate-source",
+    "writesTo": "source:asi.increase.{selected}",
+    "resultCap": 20
+  },
+  {
+    "id": "choice:feat.selection",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Feat",
+    "prompt": "Choose a feat.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "feats"
+    },
+    "distinct": true
+  },
+  {
+    "id": "progression:class.asi-standard",
+    "kind": "progression",
+    "category": "progression",
+    "label": "ASI Progression (Standard)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 4,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 8,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 12,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 16,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.asi-extended",
+    "kind": "progression",
+    "category": "progression",
+    "label": "ASI Progression (Extended)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 4,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 6,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 8,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 12,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 14,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 16,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.asi-frequent",
+    "kind": "progression",
+    "category": "progression",
+    "label": "ASI Progression (Frequent)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 4,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 8,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 10,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 12,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "at": 16,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      }
+    ]
   }
 ]

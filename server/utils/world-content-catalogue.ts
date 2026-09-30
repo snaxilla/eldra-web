@@ -82,6 +82,7 @@
 import { resolveContentPresentation, type PresentationEntry, type PresentationKind } from '../../app/lib/content-presentation'
 import { resolveContentActions, type ContentAction, type ContentSourceCategory } from '../../app/lib/content-actions'
 import { resolveSpellMechanics, type CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
+import { resolveFeatMechanics, type CanonicalFeatMechanics } from '../../app/lib/feat-mechanics'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
 
@@ -143,6 +144,17 @@ export type ContentCatalogueEntry = {
   // me subclasses whose parent is this selected class" as a structural
   // filter.
   parentClassSlug?: string
+  // D&D 2024 Character Rules Phase 2A.1. Present only for `feats` entries --
+  // computed at READ TIME from `data` (never published/stored), mirroring
+  // `spellMechanics`'s own posture exactly (see app/lib/feat-mechanics's own
+  // header for why this needed no Content Source/provider change: the real
+  // category/prerequisite/repeatable/ability fields were already present in
+  // every feat entry's `data`, verified directly against the published
+  // `eldra.solaris.xphb` content pack this phase). `null` means the category
+  // IS feat-mechanics-eligible but this entry's `data` could not be resolved
+  // (an unreadable payload, or a system with no feat-mechanics resolver) --
+  // absent entirely means this entry is not a feat at all.
+  featMechanics?: CanonicalFeatMechanics | null
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -299,6 +311,18 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
   const parentClassSlug = (entry as any).parentClassSlug
   if (typeof parentClassSlug === 'string' && parentClassSlug) {
     base.parentClassSlug = parentClassSlug
+  }
+
+  // D&D 2024 Character Rules Phase 2A.1 -- feats only, mirroring
+  // `spellMechanics` immediately above exactly: `data` read only here, a
+  // throwing resolver degrades this ONE entry to `featMechanics: null`
+  // rather than breaking the catalogue.
+  if (category === 'feats') {
+    try {
+      base.featMechanics = resolveFeatMechanics(entry.systemKey, entry.data)
+    } catch {
+      base.featMechanics = null
+    }
   }
 
   return base

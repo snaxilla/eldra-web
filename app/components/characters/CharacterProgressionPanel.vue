@@ -25,6 +25,13 @@
 // useCharacterProgression composable this panel calls, behind a different
 // gate.
 
+import {
+  applySlotChange,
+  draftFromAnswer,
+  draftToAnswer,
+  isNonDistinctMultiSelect
+} from './characterProgressionChoicePresentation'
+
 export type ProgressionAutomaticConsequenceRow = {
   id: string
   label?: string
@@ -52,6 +59,11 @@ export type ProgressionChoiceRow = {
   // specific component" requirement) -- carried through only so this row
   // type stays an honest mirror of the real one.
   kind: 'definition' | 'content'
+  // D&D 2024 Character Rules Phase 2A.1 UX Correction -- mirrors
+  // `ProgressionChoice.distinct` (app/lib/characters/progression-plan.ts).
+  // See `isNonDistinctMultiSelect`'s own header
+  // (characterProgressionChoicePresentation.ts) for what this changes.
+  distinct?: boolean
 }
 
 export type ProgressionLevelStepRow = {
@@ -141,6 +153,14 @@ function requestConfirm() {
 // needing more exotic input than "pick N from a list" is not something the
 // current package/content model produces at all (see this phase's own
 // audit), so nothing here anticipates one.
+//
+// D&D 2024 Character Rules Phase 2A.1 UX Correction -- this is now a
+// THREE-shape rule, not two: `count === 1` stays radio; `count > 1` splits
+// further on `distinct` (`isNonDistinctMultiSelect`, imported above) into
+// the existing checkbox list (distinct omitted/true -- unchanged) or the
+// new one-control-per-slot rendering (`distinct: false`) -- see
+// characterProgressionChoicePresentation.ts's own header for why a
+// checkbox list cannot represent the latter at all.
 function isSingleSelect(choice: ProgressionChoiceRow): boolean {
   return choice.count === 1
 }
@@ -155,6 +175,46 @@ function toggleMulti(choice: ProgressionChoiceRow, optionId: string) {
     ? choice.selected.filter((id) => id !== optionId)
     : [...choice.selected, optionId]
   emit('answer', { choiceId: choice.id, selected: next })
+}
+
+// D&D 2024 Character Rules Phase 2A.1 UX Correction -- the non-distinct
+// counterpart of `toggleMulti` immediately above, for a choice whose
+// `distinct: false` legally permits the SAME option to occupy more than
+// one of its `count` required slots (e.g. Ability Score Improvement's own
+// real "+2 to one ability" shape: the identical option in both slots).
+//
+// LOCAL DRAFT STATE, keyed by choice id -- see characterProgressionChoicePresentation.ts's
+// own "WHY A DRAFT ARRAY" header for why this cannot be re-derived from
+// `choice.selected` on every render (filling a LATER slot before an
+// EARLIER one would otherwise silently relocate the user's own pick to
+// the wrong slot). Seeded once per choice id, from whatever answer already
+// exists (a fresh preview's `[]`, or an already-answered choice being
+// revisited); mutated locally thereafter, exactly like this Sheet's own
+// `healthDraft`/`noteDraft` pattern (useCharacterSheet.ts).
+const slotDrafts = reactive<Record<string, string[]>>({})
+
+// A brand-new plan (a different fingerprint -- a fresh preview, a
+// just-confirmed transition, or Cancel) must never see a STALE draft left
+// over from a previous plan that happened to reuse the same choice id
+// (the same level/ChoiceSet combination, previewed again later).
+watch(
+  () => props.plan?.fingerprint,
+  () => {
+    for (const key of Object.keys(slotDrafts)) delete slotDrafts[key]
+  }
+)
+
+function draftFor(choice: ProgressionChoiceRow): string[] {
+  if (!slotDrafts[choice.id]) {
+    slotDrafts[choice.id] = draftFromAnswer(choice.selected, choice.count)
+  }
+  return slotDrafts[choice.id]!
+}
+
+function setSlot(choice: ProgressionChoiceRow, slotIndex: number, value: string) {
+  const next = applySlotChange(draftFor(choice), slotIndex, value)
+  slotDrafts[choice.id] = next
+  emit('answer', { choiceId: choice.id, selected: draftToAnswer(next) })
 }
 
 function formatValue(value: unknown): string {
@@ -296,7 +356,56 @@ function formatValue(value: unknown): string {
                 <span v-if="choice.answered">✓</span>
               </p>
 
-              <div class="mt-1.5 grid gap-1">
+              <!-- D&D 2024 Character Rules Phase 2A.1 UX Correction -- a
+                   THIRD rendering mode, between the single-select radio
+                   group and the (distinct) checkbox list: one <select>
+                   per required slot, for a `distinct: false` choice that
+                   needs more than one pick. See characterProgressionChoicePresentation.ts's
+                   own header for why a checkbox list cannot represent this
+                   shape at all (the same option legally occupying more
+                   than one slot). Generic labels ("Selection N") --
+                   nothing here names a feat, an ability, or a class; the
+                   generic choice model this panel already reads carries no
+                   richer semantic label to use instead. -->
+              <div
+                v-if="isNonDistinctMultiSelect(choice)"
+                class="mt-1.5 grid gap-1.5"
+              >
+                <label
+                  v-for="(slotValue, slotIndex) in draftFor(choice)"
+                  :key="slotIndex"
+                  class="block"
+                >
+                  <span class="mb-1 block text-[0.65rem] uppercase tracking-[0.18em] text-[#9f9278]">
+                    Selection {{ slotIndex + 1 }}
+                  </span>
+                  <select
+                    :value="slotValue"
+                    class="eldra-input min-h-9 w-full rounded-none px-2 py-1.5 text-xs text-white"
+                    @change="setSlot(choice, slotIndex, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option
+                      value=""
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      Select…
+                    </option>
+                    <option
+                      v-for="option in choice.options"
+                      :key="option.id"
+                      :value="option.id"
+                      class="bg-[#090909] text-[#f5e7bd]"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <div
+                v-else
+                class="mt-1.5 grid gap-1"
+              >
                 <label
                   v-for="option in choice.options"
                   :key="option.id"

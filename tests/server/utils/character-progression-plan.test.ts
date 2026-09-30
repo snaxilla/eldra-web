@@ -106,10 +106,78 @@ const SCHOLAR_ARCANA_OPTION = 'value:skill.arcana.expertise'
 const SUBCLASS_CHOICE_KEY = progressionChoiceKey('class', 3, 'choice:class.subclass')
 const SUBCLASS_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' })
 
+// D&D 2024 Character Rules Phase 2A.1 -- the real, package-declared
+// identity of the new Level 4 Feat Selection choice both Wizard AND Fighter
+// now legitimately cross on a 1->5 walk (`progressionChoiceKey` does not
+// encode which class/Progression Definition produced a row, only the
+// slot/level/ChoiceSet -- the same property SUBCLASS_CHOICE_KEY already
+// has, and harmless here since no character in this file has more than one
+// class). `FEAT_OPTION` names "Actor" specifically because it is a FIXED
+// ability-increase feat (`sources: ['source:asi.increase.cha']` in the real
+// facet corpus) -- it introduces no NESTED ability-distribution choice,
+// keeping these pre-existing tests (which predate Feat Selection and are
+// not themselves testing it) focused on the mechanism they already cover.
+const FEAT_CHOICE_KEY = progressionChoiceKey('class', 4, 'choice:feat.selection')
+const FEAT_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'actor-xphb' })
+// D&D 2024 Character Rules Phase 2A.1 -- the real, package-declared
+// Ability Score Improvement feat itself, for the tests below that exercise
+// its own nested ability-distribution choice/cap/repeatability behavior
+// specifically (Actor, above, deliberately has none of those).
+const ASI_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' })
+const ASI_ABILITY_CHOICE_KEY = `feat:${FEAT_CHOICE_KEY}:choice:feat.asi-ability-increase`
+// A General feat with a real, checkable prerequisite this character does
+// NOT meet by default (DragoWizard's own str is 10, below 13) -- proves
+// Confirm-time prerequisite rejection without relying on the unauthored
+// armor-proficiency case (§ this phase's own known, honest simplification).
+const LOCKED_FEAT_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'great-weapon-master-xphb' })
+
 function catalogueWithSubclass() {
   return {
     worldId: 'w1', packs: [], species: [], classes: [], backgrounds: [],
-    feats: [], items: [], spells: [], monsters: [],
+    feats: [
+      {
+        packageId: 'eldra.content.xphb',
+        packageVersion: '1.0.0',
+        systemKey: 'dnd5e',
+        title: 'Actor',
+        slug: 'actor-xphb',
+        externalId: 'Actor__XPHB',
+        provider: '5etools-json',
+        featMechanics: { category: 'general', repeatable: false, prerequisiteGroups: [] }
+      },
+      {
+        packageId: 'eldra.content.xphb',
+        packageVersion: '1.0.0',
+        systemKey: 'dnd5e',
+        title: 'Ability Score Improvement',
+        slug: 'ability-score-improvement-xphb',
+        externalId: 'Ability Score Improvement__XPHB',
+        provider: '5etools-json',
+        featMechanics: { category: 'general', repeatable: true, prerequisiteGroups: [] },
+        // The real authored facet -- without this, the bridge's own feat
+        // consumption loop (character-actor-bridge.ts's `consumeFacet`)
+        // has nothing to apply, and the nested ability-distribution choice
+        // would never be declared at all (facetFor returns null for an
+        // entry with no rulesFacet, exactly as an unfaceted item already
+        // does).
+        rulesFacet: findRulesFacet('dnd5e.2024', 'feat', 'ability-score-improvement-xphb') ?? undefined
+      },
+      {
+        packageId: 'eldra.content.xphb',
+        packageVersion: '1.0.0',
+        systemKey: 'dnd5e',
+        title: 'Great Weapon Master',
+        slug: 'great-weapon-master-xphb',
+        externalId: 'Great Weapon Master__XPHB',
+        provider: '5etools-json',
+        featMechanics: {
+          category: 'general',
+          repeatable: false,
+          prerequisiteGroups: [[{ kind: 'ability', ability: 'str', minimum: 13 }]]
+        }
+      }
+    ],
+    items: [], spells: [], monsters: [],
     subclasses: [
       {
         packageId: 'eldra.content.xphb',
@@ -262,13 +330,13 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
     }
   })
 
-  // Character Progression Phase 1B/1C: Level 2 surfaces the real
+  // Character Progression Phase 1B/1C/2A.1: Level 2 surfaces the real
   // Scholar/skill Expertise choice; Level 3 (Phase 1C) surfaces the real
-  // Subclass choice -- see app/lib/content-rules/dnd5e-2024.ts's own header
-  // for the corpus evidence for both. Levels 4/5 remain honestly empty (ASI
-  // remains a documented content-authoring gap, per this phase's own
-  // explicit DO NOT TOUCH).
-  it('surfaces exactly the real Scholar/Expertise choice at level 2 and the real Subclass choice at level 3, and nothing at levels 4/5', async () => {
+  // Subclass choice; Level 4 (Phase 2A.1) surfaces the real Feat Selection
+  // choice -- see app/lib/content-rules/dnd5e-2024.ts's own header for the
+  // corpus evidence for all three. Level 5 remains honestly empty (Wizard's
+  // next ASI threshold is Level 8).
+  it('surfaces exactly the real Scholar/Expertise choice at level 2, the real Subclass choice at level 3, and the real Feat Selection choice at level 4, nothing at level 5', async () => {
     const result = await planProgression('5', '42', 5)
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -281,6 +349,12 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
       selected: [],
       answered: false,
       kind: 'definition',
+      choiceSetId: 'choice:skill.expertise',
+      // D&D 2024 Character Rules Phase 2A.1 UX Correction -- real,
+      // package-declared `distinct: true` (definitions.json), now relayed
+      // to the client so CharacterProgressionPanel.vue's generic renderer
+      // can tell this apart from a `distinct: false` choice.
+      distinct: true,
       options: expect.arrayContaining([
         { id: SCHOLAR_ARCANA_OPTION, label: expect.any(String) }
       ])
@@ -295,41 +369,61 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
       selected: [],
       answered: false,
       kind: 'content',
+      choiceSetId: 'choice:class.subclass',
       options: [{ id: SUBCLASS_OPTION, label: 'School of Evocation' }]
     }])
 
-    for (const level of [4, 5]) {
-      const step = result.plan.steps.find((s) => s.level === level)!
-      expect(step.requiredChoices).toEqual([])
-    }
+    const level4 = result.plan.steps.find((step) => step.level === 4)!
+    expect(level4.requiredChoices).toEqual([{
+      id: FEAT_CHOICE_KEY,
+      label: expect.any(String),
+      count: 1,
+      selected: [],
+      answered: false,
+      kind: 'content',
+      choiceSetId: 'choice:feat.selection',
+      // This file's own catalogue fixture (catalogueWithSubclass) declares
+      // three General feats -- Actor, Ability Score Improvement, and Great
+      // Weapon Master -- all three legal options for this ordinary ASI-tier
+      // choice.
+      options: expect.arrayContaining([
+        { id: FEAT_OPTION, label: 'Actor' },
+        { id: ASI_OPTION, label: 'Ability Score Improvement' },
+        { id: LOCKED_FEAT_OPTION, label: 'Great Weapon Master' }
+      ])
+    }])
 
-    expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY, SUBCLASS_CHOICE_KEY])
+    const level5 = result.plan.steps.find((s) => s.level === 5)!
+    expect(level5.requiredChoices).toEqual([])
+
+    expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY, SUBCLASS_CHOICE_KEY, FEAT_CHOICE_KEY])
     expect(result.plan.valid).toBe(false)
   })
 
-  // TESTING -- PROGRESSION #15/#16/#17: answering only one of the two
-  // required choices must leave the plan invalid; only answering BOTH
+  // TESTING -- PROGRESSION #15/#16/#17: answering only some of the three
+  // required choices must leave the plan invalid; only answering ALL THREE
   // resolves it.
-  it('answering Expertise alone leaves the plan invalid -- Subclass is still unresolved', async () => {
+  it('answering Expertise alone leaves the plan invalid -- Subclass and Feat Selection are still unresolved', async () => {
     const result = await planProgression('5', '42', 5, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.plan.unresolvedChoiceIds).toEqual([SUBCLASS_CHOICE_KEY])
+    expect(result.plan.unresolvedChoiceIds).toEqual([SUBCLASS_CHOICE_KEY, FEAT_CHOICE_KEY])
     expect(result.plan.valid).toBe(false)
   })
 
-  it('answering Subclass alone leaves the plan invalid -- Expertise is still unresolved', async () => {
+  it('answering Subclass alone leaves the plan invalid -- Expertise and Feat Selection are still unresolved', async () => {
     const result = await planProgression('5', '42', 5, { [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION] })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY])
+    expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY, FEAT_CHOICE_KEY])
     expect(result.plan.valid).toBe(false)
   })
 
-  it('a tentative answer to BOTH choices resolves them and makes the plan valid, without persisting anything', async () => {
+  it('a tentative answer to ALL THREE choices resolves them and makes the plan valid, without persisting anything', async () => {
     const result = await planProgression('5', '42', 5, {
       [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
-      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [FEAT_OPTION]
     })
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -342,6 +436,10 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
     expect(level3.requiredChoices).toEqual([expect.objectContaining({
       id: SUBCLASS_CHOICE_KEY, selected: [SUBCLASS_OPTION], answered: true
     })])
+    const level4 = result.plan.steps.find((step) => step.level === 4)!
+    expect(level4.requiredChoices).toEqual([expect.objectContaining({
+      id: FEAT_CHOICE_KEY, selected: [FEAT_OPTION], answered: true
+    })])
     expect(result.plan.unresolvedChoiceIds).toEqual([])
     expect(result.plan.valid).toBe(true)
 
@@ -353,7 +451,8 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
   it('an invalid tentative answer (illegal option) leaves the choice unresolved rather than silently accepted', async () => {
     const result = await planProgression('5', '42', 5, {
       [SCHOLAR_CHOICE_KEY]: ['value:skill.athletics.expertise'],
-      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [FEAT_OPTION]
     })
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -458,18 +557,22 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
 
     const result = await confirmProgression('5', '42', 5, fingerprint, {
       [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
-      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [FEAT_OPTION]
     })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.currentLevel).toBe(5)
 
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
-      classes: [{ classRef: CLASS_REF, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' } }]
+      classes: [{ classRef: CLASS_REF, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' } }],
+      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
     })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
     // Only the Definition-kind answer reaches rules_choices -- see
-    // SUBCLASS AUTHORITY.
+    // SUBCLASS AUTHORITY. The feat pick is ALSO content-kind (like
+    // subclass), so it never reaches rules_choices either -- Actor's own
+    // real facet grants a fixed Source, no nested Definition-kind choice.
     expect(saveCharacterRulesChoicesMock).toHaveBeenCalledWith('42', { selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
     expect(saveCharacterRulesChoicesMock).toHaveBeenCalledTimes(1)
     expect(callOrder).toEqual(['choices', 'progression'])
@@ -487,7 +590,8 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
 
     const result = await confirmProgression('5', '42', 5, fingerprint, {
       [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
-      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [FEAT_OPTION]
     })
     expect(result.ok).toBe(true)
 
@@ -531,7 +635,11 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
   // the level write reproduces the identical target level.
   it('retrying an identical confirm reproduces the exact same writes, never a duplicate or an incremented level', async () => {
     const fingerprint = await freshFingerprint()
-    const answers = { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION], [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION] }
+    const answers = {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [FEAT_OPTION]
+    }
     const first = await confirmProgression('5', '42', 5, fingerprint, answers)
     expect(first.ok).toBe(true)
 
@@ -654,9 +762,13 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
 })
 
 describe('confirmProgression -- exactly one write when no real progression choice is crossed', () => {
-  // Fighter has no `RulesFacet.progression` at all (only Wizard does, this
-  // phase's own one authored case) -- Phase 1A's own "exactly one write"
-  // behavior is unchanged for every OTHER character/class.
+  // D&D 2024 Character Rules Phase 2A.1 -- Fighter now DOES declare a real
+  // `RulesFacet.progression` (`progression:class.asi-fighter`, real XPHB
+  // ASI levels 4/6/8/12/14/16), crossed by this same 1->5 walk at level 4.
+  // The FEAT pick is still content-kind, so it still never reaches
+  // rules_choices (Actor's own facet grants a fixed Source, no nested
+  // Definition-kind choice) -- "exactly one write" remains true, just no
+  // longer because Fighter has NO progression at all.
   it('a Fighter 1 -> 5 confirms with only the progression write, never touching rules_choices', async () => {
     const fighterRef = { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }
     assembleCharacterMock.mockResolvedValue({
@@ -667,15 +779,19 @@ describe('confirmProgression -- exactly one write when no real progression choic
       })
     })
 
-    const planResult = await planProgression('5', '42', 5)
+    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION] }
+    const planResult = await planProgression('5', '42', 5, answers)
     expect(planResult.ok).toBe(true)
     if (!planResult.ok) return
     expect(planResult.plan.valid).toBe(true)
 
-    const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint)
+    const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint, answers)
     expect(confirmResult.ok).toBe(true)
     if (!confirmResult.ok) return
-    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5, subclassRef: null }] })
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
+      classes: [{ classRef: fighterRef, level: 5, subclassRef: null }],
+      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+    })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
     expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
   })
@@ -689,7 +805,8 @@ describe('security/authority -- no client-trusted fact', () => {
     const fingerprint = await freshFingerprint()
     const result = await confirmProgression('5', '42', 5, fingerprint, {
       [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
-      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [FEAT_OPTION]
     })
     expect(result.ok).toBe(true)
   })
@@ -706,6 +823,7 @@ describe('security/authority -- no client-trusted fact', () => {
     const result = await confirmProgression('5', '42', 5, fingerprint, {
       [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
       [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [FEAT_OPTION],
       'class:progression:2:choice:not-a-real-choice': ['some-garbage-id']
     })
     expect(result.ok).toBe(true)
@@ -724,13 +842,170 @@ describe('no class-name special cases', () => {
       })
     })
 
-    const planResult = await planProgression('5', '42', 5)
+    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION] }
+    const planResult = await planProgression('5', '42', 5, answers)
     expect(planResult.ok).toBe(true)
     if (!planResult.ok) return
 
-    const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint)
+    const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint, answers)
     expect(confirmResult.ok).toBe(true)
     if (!confirmResult.ok) return
-    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5, subclassRef: null }] })
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
+      classes: [{ classRef: fighterRef, level: 5, subclassRef: null }],
+      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules Phase 2A.1 -- Confirm-time feat authority
+// ---------------------------------------------------------------------------
+// Every case here proves server authority, not client trust: the SAME
+// three checks (catalogue re-resolution, repeatability, prerequisite, cap)
+// that a well-behaved client's own picker would already filter, re-run
+// independently against a request that skips straight past that filtering.
+
+// D&D 2024 Character Rules Phase 2A.1 -- `assembleCharacterMock` is a
+// STATIC mock everywhere else in this file (`.mockResolvedValue`, ignoring
+// its own arguments) because every OTHER tentative mechanism this file
+// exercises (subclass selection) is resolved directly from `tentativeAnswers`
+// by character-derived.ts's own content-choice loop, with no dependency on
+// `assembleCharacter` actually USING its `tentativeSubclassRef`/
+// `tentativeFeatAcquisitions` parameters. A feat's own NESTED choice
+// (Ability Score Improvement's ability-distribution question) is different:
+// it is declared only once the feat's own facet reaches the bridge via
+// `blueprint.feats`, which requires `assembleCharacter` to actually
+// incorporate `tentativeFeatAcquisitions` into the blueprint it returns --
+// exactly what the REAL `assembleCharacter` does (character-assembly.ts)
+// and what this mock must now also do, for these specific tests only.
+function mockAssembleCharacterWithDynamicFeats(overrides: Record<string, unknown> = {}) {
+  assembleCharacterMock.mockImplementation(async (
+    _worldId: unknown,
+    _characterId: unknown,
+    _tentativeSubclassRef: unknown,
+    tentativeFeatAcquisitions?: readonly { choiceKey: string; ref: { packageId: string; slug: string } }[]
+  ) => ({
+    available: true,
+    blueprint: wizardBlueprint({
+      feats: (tentativeFeatAcquisitions ?? []).map(({ choiceKey, ref }) => ({
+        status: 'resolved' as const,
+        entry: {
+          packageId: ref.packageId, packageVersion: '1.0.0', systemKey: 'dnd5e',
+          title: ref.slug, slug: ref.slug, externalId: ref.slug, provider: '5etools-json',
+          rulesFacet: findRulesFacet('dnd5e.2024', 'feat', ref.slug) ?? undefined
+        },
+        choiceKey
+      })),
+      ...overrides
+    })
+  }))
+}
+
+describe('confirmProgression -- feat authority (repeatability, prerequisite, cap)', () => {
+  it('rejects a non-repeatable feat already owned from an earlier confirm', async () => {
+    // DragoWizard already has Actor (a non-repeatable feat) from a PRIOR,
+    // already-confirmed transition -- `base.feats` in confirmProgression's
+    // own terms.
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        progression: {
+          classes: [{ classRef: CLASS_REF, level: 4 }],
+          feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+        }
+      })
+    })
+    // A SECOND, later ASI-tier confirm tries to take Actor again.
+    const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+    const fingerprint = await freshFingerprint(8)
+    const result = await confirmProgression('5', '42', 8, fingerprint, { [secondFeatKey]: [FEAT_OPTION] })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts the SAME repeatable feat (Ability Score Improvement) taken a second time', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        progression: {
+          classes: [{ classRef: CLASS_REF, level: 4 }],
+          feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+        }
+      })
+    })
+    const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+    const secondNestedKey = `feat:${secondFeatKey}:choice:feat.asi-ability-increase`
+    const fingerprint = await freshFingerprint(8)
+    const result = await confirmProgression('5', '42', 8, fingerprint, {
+      [secondFeatKey]: [ASI_OPTION],
+      [secondNestedKey]: ['source:asi.increase.con', 'source:asi.increase.con']
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.progression.feats).toEqual([
+      { featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: FEAT_CHOICE_KEY },
+      { featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: secondFeatKey }
+    ])
+  })
+
+  it('rejects a feat whose real prerequisite this character does not meet', async () => {
+    // DragoWizard's own str is 10 (wizardBlueprint's default) -- Great
+    // Weapon Master requires str >= 13.
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [LOCKED_FEAT_OPTION]
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects an ASI distribution that would push an ability above the legal cap of 20', async () => {
+    // A character already at 20 Strength (the maximum this feat may ever
+    // reach) attempting +2 more.
+    mockAssembleCharacterWithDynamicFeats({
+      abilityScores: { method: 'standard-array', scores: { str: 20, dex: 10, con: 12, int: 16, wis: 10, cha: 10 } }
+    })
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [ASI_OPTION],
+      [ASI_ABILITY_CHOICE_KEY]: ['source:asi.increase.str', 'source:asi.increase.str']
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts a legal ASI distribution that stays at or below the cap, and persists the resulting feat', async () => {
+    mockAssembleCharacterWithDynamicFeats()
+    const fingerprint = await freshFingerprint()
+    const result = await confirmProgression('5', '42', 5, fingerprint, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
+      [FEAT_CHOICE_KEY]: [ASI_OPTION],
+      [ASI_ABILITY_CHOICE_KEY]: ['source:asi.increase.int', 'source:asi.increase.wis']
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.progression.feats).toEqual([
+      { featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: FEAT_CHOICE_KEY }
+    ])
+    // The nested ability-distribution answer IS a Definition-kind answer
+    // (an 'activate-source' choice, not content-kind) -- it DOES reach
+    // rules_choices, alongside Scholar.
+    expect(saveCharacterRulesChoicesMock).toHaveBeenCalledWith('42', {
+      selections: {
+        [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+        [ASI_ABILITY_CHOICE_KEY]: ['source:asi.increase.int', 'source:asi.increase.wis']
+      }
+    })
   })
 })

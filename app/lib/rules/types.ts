@@ -1099,6 +1099,41 @@ export type ChoiceSetDefinition = DefinitionCategorization & {
   // would name. Every existing `from.kind` (explicit/definitionsInCategory/
   // fromContentFacet) still requires `writesTo`, unchanged.
   writesTo?: string
+  // D&D 2024 Character Rules Phase 2A.1 -- how a validly-answered selection
+  // is APPLIED, once `writesTo` (if any) has resolved each selected option
+  // to a target DefinitionId. Optional, defaulting to `'set-value'`, which
+  // is byte-identical to every choice authored before this phase (the
+  // bridge's only consequence was ever `values[target] = true`).
+  //
+  // 'activate-source' exists for exactly the gap RulesFacet's own header
+  // names ("There is no 'increase by' grant, only `set`... reached through
+  // the Modifier pipeline, through Sources, not a second additive mechanism
+  // smuggled into content"): each resolved target is treated as a
+  // SourceDefinition id and instantiated as its own SourceInstance, the
+  // SAME mechanism `source:equipment.armor` already proves in production.
+  // Deliberately NOT a value-mutation mode (no "increment this stored
+  // number" primitive was added) -- a relative increase is expressed
+  // entirely through the EXISTING Source + `phase: 'add'` Modifier
+  // machinery, reused, never extended. See app/lib/content-rules/dnd5e-2024.ts's
+  // own ASI header for the full reasoning and the "two stacked +1 Sources
+  // compose to +2" design this mode was built to support.
+  effect?: 'set-value' | 'activate-source'
+  // D&D 2024 Character Rules Phase 2A.1 -- ONLY meaningful when
+  // `effect === 'activate-source'`. A generic, package-declared ceiling:
+  // the resulting EVALUATED value of each target this choice's answer
+  // resolves to must not exceed this number once the answer is applied.
+  // Deliberately a plain cap on the RESULT, not a per-selection amount
+  // limit or an ability-specific concept -- `choice:feat.asi-ability-
+  // increase`'s own `resultCap: 20` is real 2024 RAW (ability scores raised
+  // by this feat cap at 20, distinct from the engine's own absolute
+  // `constraints.max: 30` on the Value itself, which other sources -- e.g.
+  // a future magic item -- may still legitimately exceed). Enforced by
+  // server/utils/character-progression-plan.ts's own confirm-time
+  // validation (re-evaluates the character with the answer applied and
+  // checks each resolved target), never by a silent clamp -- 2024 RAW does
+  // not truncate an illegal ASI distribution, it makes the selection
+  // illegal, so this is a rejection rule, not a clamp.
+  resultCap?: number
 }
 
 // The Definition kinds this commit can represent -- the five primitives

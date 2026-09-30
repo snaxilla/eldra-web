@@ -232,8 +232,28 @@ export type CharacterAssemblyBlueprint = {
   // against nothing, so there is no catalogue join for it to go through.
   // `{}` (no key present) means every slot of every level is available.
   expendedSlots: Record<string, number>
+  // D&D 2024 Character Rules Phase 2A.1 -- every feat this character has
+  // acquired, resolved against the World's CURRENT feat catalogue, mirroring
+  // `subclass`'s own "re-verify on every read, never trust the snapshot"
+  // posture (design decision 2) one category over. Built from this
+  // character's PERSISTED `progression.feats` PLUS any TENTATIVE
+  // acquisitions a Progression Plan preview supplies (never both confirmed
+  // AND tentative for the same `choiceKey` -- see `assembleCharacter`'s own
+  // `tentativeFeatAcquisitions` doc comment). `[]` for every character
+  // before this phase, the same "carrying nothing is legal" reading
+  // `inventory`/`spells` already establish, never `null`.
+  feats: CharacterAssemblyFeatSlot[]
   packs: WorldContentPackResolution[]
 }
+
+// D&D 2024 Character Rules Phase 2A.1 -- one acquired feat, joined to the
+// catalogue. `choiceKey` (the progression-choice key that granted it, see
+// app/lib/characters/progression.ts's own `StoredAcquiredFeat`) travels
+// alongside the resolution slot because the bridge needs a stable, unique
+// per-acquisition identity to build SourceInstance ids from -- two
+// acquisitions of the SAME repeatable feat (Ability Score Improvement taken
+// twice) resolve to the same catalogue entry but must never collide.
+export type CharacterAssemblyFeatSlot = CharacterAssemblySlot & { choiceKey: string }
 
 export type CharacterAssemblyResult =
   | { available: true; blueprint: CharacterAssemblyBlueprint }
@@ -356,6 +376,25 @@ function resolveSpells(
   })
 }
 
+// D&D 2024 Character Rules Phase 2A.1 -- the feat counterpart of
+// resolveInventory/resolveSpells above: joins acquired-feat references to
+// the catalogue's `feats` category, reusing resolveSlot's exact resolution
+// rule (match on (packageId, slug), a broken/absent pack reports why). The
+// caller supplies the COMBINED list (persisted + tentative) already merged
+// -- this function performs no merging of its own, matching the "translate,
+// never decide" posture every sibling resolver in this module already
+// keeps.
+function resolveFeats(
+  acquired: readonly { featRef: { packageId: string; slug: string }; choiceKey: string }[],
+  feats: readonly ContentCatalogueEntry[],
+  packs: readonly WorldContentPackResolution[]
+): CharacterAssemblyFeatSlot[] {
+  return acquired.map(({ featRef, choiceKey }) => ({
+    ...resolveSlot(featRef, feats, packs, 'Feat'),
+    choiceKey
+  }))
+}
+
 // The canonical entry point for this module. Composes one entity read, one
 // block_instances read, and getWorldContentCatalogue -- no other I/O.
 export async function assembleCharacter(
@@ -373,7 +412,22 @@ export async function assembleCharacter(
   // today, reserved so a caller could preview level 1-2 with a not-yet-made
   // choice honestly absent). This NEVER mutates the persisted blueprint --
   // it only changes what THIS ONE call resolves `subclass` to.
-  tentativeSubclassRef?: { packageId: string; slug: string } | null
+  tentativeSubclassRef?: { packageId: string; slug: string } | null,
+  // D&D 2024 Character Rules Phase 2A.1 -- the feat counterpart of
+  // `tentativeSubclassRef`, generalized from "one slot" to "a list" because
+  // a single preview can cross several ASI-tier levels at once (Fighter:
+  // up to six). `undefined` (every caller before this phase) resolves
+  // `feats` from `progression.feats` alone, unchanged. Each entry's
+  // `choiceKey` MUST be one this character's real content actually declares
+  // at Confirm time -- this module does not validate that (it is "PURE ON
+  // PURPOSE" by the same discipline character-actor-bridge.ts's own header
+  // states); server/utils/character-progression-plan.ts owns that check.
+  // A tentative entry never overrides a PERSISTED one sharing the same
+  // `choiceKey` in practice (a confirmed acquisition is never re-submitted
+  // as tentative for a level already behind the character), but if it ever
+  // did, the tentative one wins -- the same "preview reflects what you are
+  // ABOUT to do" precedent `tentativeSubclassRef` already sets.
+  tentativeFeatAcquisitions?: readonly { choiceKey: string; ref: { packageId: string; slug: string } }[]
 ): Promise<CharacterAssemblyResult> {
   // A non-existent entity id is reported by Directus as a 403 (its item-
   // level permission check runs before existence is known), not a 200 with
@@ -472,8 +526,8 @@ export async function assembleCharacter(
   // correct, unforced result.
   const progression = storedProgression ?? (
     classPackageId && classSlug
-      ? { classes: [{ classRef: { packageId: classPackageId, slug: classSlug }, level: 1 }] }
-      : { classes: [] }
+      ? { classes: [{ classRef: { packageId: classPackageId, slug: classSlug }, level: 1 }], feats: [] }
+      : { classes: [], feats: [] }
   )
 
   // Character Progression Phase 1C -- see the blueprint's own `subclass`
@@ -483,6 +537,20 @@ export async function assembleCharacter(
   const subclassRef = tentativeSubclassRef !== undefined
     ? tentativeSubclassRef
     : (progression.classes[0]?.subclassRef ?? null)
+
+  // D&D 2024 Character Rules Phase 2A.1 -- CONFIRMED acquisitions first,
+  // then tentative ones keyed on top (a `Map` keyed by `choiceKey` is the
+  // simplest correct way to let a tentative entry win a same-key collision
+  // -- see `tentativeFeatAcquisitions`'s own doc comment for why that is
+  // expected to be rare-to-never in practice, not a case this needs to
+  // optimize for).
+  const acquiredFeatsByKey = new Map<string, { featRef: { packageId: string; slug: string }; choiceKey: string }>()
+  for (const acquired of progression.feats) {
+    acquiredFeatsByKey.set(acquired.choiceKey, { featRef: acquired.featRef, choiceKey: acquired.choiceKey })
+  }
+  for (const tentative of tentativeFeatAcquisitions ?? []) {
+    acquiredFeatsByKey.set(tentative.choiceKey, { featRef: tentative.ref, choiceKey: tentative.choiceKey })
+  }
 
   const blueprint: CharacterAssemblyBlueprint = {
     worldId: String(worldId),
@@ -503,6 +571,7 @@ export async function assembleCharacter(
     spells: resolveSpells(spellcasting?.spells ?? [], catalogue.spells, catalogue.packs),
     expendedSlots: spellcasting?.expendedSlots ?? {},
     progression,
+    feats: resolveFeats([...acquiredFeatsByKey.values()], catalogue.feats, catalogue.packs),
     packs: catalogue.packs
   }
 

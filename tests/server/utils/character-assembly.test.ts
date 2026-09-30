@@ -140,7 +140,8 @@ describe('assembleCharacter', () => {
       if (!result.available) return
 
       expect(result.blueprint.progression).toEqual({
-        classes: [{ classRef: { packageId: catalogue.classes[0].packageId, slug: catalogue.classes[0].slug }, level: 1 }]
+        classes: [{ classRef: { packageId: catalogue.classes[0].packageId, slug: catalogue.classes[0].slug }, level: 1 }],
+        feats: []
       })
     })
 
@@ -162,7 +163,8 @@ describe('assembleCharacter', () => {
       // Character Progression Phase 1C -- normalizeStoredProgression always
       // fills in `subclassRef` (null here, since none was stored).
       expect(result.blueprint.progression).toEqual({
-        classes: [{ ...stored.classes[0], subclassRef: null }]
+        classes: [{ ...stored.classes[0], subclassRef: null }],
+        feats: []
       })
     })
 
@@ -180,7 +182,8 @@ describe('assembleCharacter', () => {
 
       expect(result.blueprint.class.status).toBe('missing')
       expect(result.blueprint.progression).toEqual({
-        classes: [{ classRef: { packageId: 'eldra.content.gone', slug: 'ghost-class' }, level: 1 }]
+        classes: [{ classRef: { packageId: 'eldra.content.gone', slug: 'ghost-class' }, level: 1 }],
+        feats: []
       })
     })
 
@@ -196,7 +199,7 @@ describe('assembleCharacter', () => {
       expect(result.available).toBe(true)
       if (!result.available) return
 
-      expect(result.blueprint.progression).toEqual({ classes: [] })
+      expect(result.blueprint.progression).toEqual({ classes: [], feats: [] })
     })
   })
 

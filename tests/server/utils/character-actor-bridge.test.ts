@@ -147,7 +147,11 @@ describe('the hand-authored XPHB Rules Facets', () => {
           for (const option of choice.from ?? []) ids.push(option)
         }
         for (const source of facet.sources ?? []) ids.push(source)
-        if (facet.progression) ids.push(facet.progression)
+        // Character Progression Phase 1C -- facet.progression is now an
+        // array (a class may opt into more than one ProgressionDefinition);
+        // pushed element-by-element, not as a single (accidentally
+        // stringified) array value.
+        for (const progressionId of facet.progression ?? []) ids.push(progressionId)
       }
     }
 
@@ -1301,6 +1305,18 @@ function deriveWithProgression(
     return definition && definition.kind === 'progression' ? definition : null
   }
 
+  // Character Progression Phase 1C -- mirrors character-derived.ts's own
+  // `isContentChoiceSet` wiring exactly, so this shared helper reflects the
+  // real production bridge call rather than an incomplete one. Without
+  // this, the real Wizard facet's new `progression:class.subclass-selection`
+  // reference (added this phase) would have its Level-3 content choice
+  // silently mis-treated as an unanswerable Definition choice by every
+  // existing test calling this helper at levelOverride >= 3.
+  const isContentChoiceSet = (id: string) => {
+    const definition = registry.registry.getById(id)
+    return Boolean(definition && definition.kind === 'choiceSet' && definition.from.kind === 'fromContentCatalogue')
+  }
+
   const bridged = buildActorState({
     blueprint: bp,
     packageId: manifest.packageId,
@@ -1313,6 +1329,7 @@ function deriveWithProgression(
       return definition && definition.kind === 'choiceSet' ? definition : null
     },
     lookupProgression,
+    isContentChoiceSet,
     levelDefinitionId: registry.registry.getBySemanticRole('level')?.id,
     levelOverride
   })
@@ -1512,5 +1529,65 @@ describe('Character Progression Phase 1B -- generic Progression mechanism, synth
     // also wrote into.
     expect(bridged.actorState.values['value:skill.arcana.expertise']).toBe(true)
     expect(bridged.actorState.values['value:skill.history.expertise']).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Character Progression Phase 1C -- the SUBCLASS SLOT. Proves a resolved
+// subclass's RulesFacet contributes through the exact same generic
+// slot-consumption loop species/class/background already use -- never a
+// manual "apply subclass grants" special case anywhere. No real subclass
+// RulesFacet is authored yet (this phase's own scope: structural
+// correctness, not subclass mechanics), so a synthetic facet proves the
+// MECHANISM, the same "prove the mechanism against synthetic data" pattern
+// this file's own Progression tests already established for Phase 1B.
+// ---------------------------------------------------------------------------
+
+describe('Character Progression Phase 1C -- the subclass slot', () => {
+  it("27/29. a resolved subclass's RulesFacet grants contribute to the ActorState, and no RulesFacet is snapshotted anywhere on the character", () => {
+    const subclassSlot: CharacterAssemblySlot = {
+      status: 'resolved',
+      entry: {
+        packageId: 'eldra.content.xphb',
+        packageVersion: '1.0.0',
+        systemKey: 'dnd5e',
+        title: 'School of Evocation',
+        slug: 'school-of-evocation-phb',
+        externalId: 'School of Evocation__PHB',
+        provider: '5etools-json',
+        // Synthetic -- proves the mechanism, not a real authored fact (no
+        // real subclass facet exists yet in app/lib/content-rules).
+        rulesFacet: { grants: [{ set: 'value:hit_points.hit_die_size', to: 8 }] }
+      }
+    }
+
+    const bp = blueprint({ class: slot('class', 'wizard-xphb'), subclass: subclassSlot })
+    const { bridged } = derive(bp)
+
+    // The subclass's own grant reached ActorState.values through the
+    // IDENTICAL generic loop species/class/background already use -- no
+    // special "if subclass" branch exists in character-actor-bridge.ts.
+    expect(bridged.actorState.values['value:hit_points.hit_die_size']).toBe(8)
+  })
+
+  it('an unresolved (missing/absent) subclass contributes nothing -- legal, inert, never a crash', () => {
+    const bp = blueprint({ class: slot('class', 'wizard-xphb') }) // no `subclass` override -- defaults via CharacterAssemblyBlueprint's own optionality in this test helper
+    expect(() => derive(bp)).not.toThrow()
+  })
+
+  it('the subclass slot is consumed AFTER class, so a subclass grant wins on conflict -- matches SLOT_ORDER\'s own documented rule', () => {
+    const subclassSlot: CharacterAssemblySlot = {
+      status: 'resolved',
+      entry: {
+        packageId: 'eldra.content.xphb', packageVersion: '1.0.0', systemKey: 'dnd5e',
+        title: 'Synthetic Subclass', slug: 'synthetic-subclass', externalId: 'synthetic-subclass', provider: '5etools-json',
+        rulesFacet: { grants: [{ set: 'value:hit_points.hit_die_size', to: 12 }] }
+      }
+    }
+    // Wizard's own real facet already grants hit_die_size: 6 -- the
+    // subclass's own (synthetic) grant must win, proving slot order.
+    const bp = blueprint({ class: slot('class', 'wizard-xphb'), subclass: subclassSlot })
+    const { bridged } = derive(bp)
+    expect(bridged.actorState.values['value:hit_points.hit_die_size']).toBe(12)
   })
 })

@@ -41,7 +41,7 @@ import type { ContentPublicationCandidate } from './content-pack-publishing'
 import type { EldraImportPreviewEntity, EldraImportPreviewResult } from '../../app/lib/importers/types'
 
 export function toContentPublicationCandidate(entity: EldraImportPreviewEntity): ContentPublicationCandidate {
-  return {
+  const candidate: ContentPublicationCandidate = {
     systemKey: entity.systemKey,
     entityType: entity.entityType,
     title: entity.title,
@@ -52,6 +52,16 @@ export function toContentPublicationCandidate(entity: EldraImportPreviewEntity):
     sourcePage: entity.sourcePage,
     data: entity.raw
   }
+
+  // Character Progression Phase 1C -- relayed only when the importer set
+  // it (currently only app/lib/importers/5etools-subclasses.ts), mirroring
+  // `rulesFacet`'s own "assigned only when present" convention elsewhere in
+  // this same publication pipeline.
+  if (entity.parentClassSlug) {
+    candidate.parentClassSlug = entity.parentClassSlug
+  }
+
+  return candidate
 }
 
 export function toContentPublicationCandidates(result: EldraImportPreviewResult): ContentPublicationCandidate[] {

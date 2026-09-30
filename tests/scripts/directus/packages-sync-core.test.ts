@@ -207,18 +207,26 @@ describe('classifyContentState', () => {
 // ---------------------------------------------------------------------------
 
 describe('findDanglingRulesFacetReferences', () => {
-  it('27. a facet referencing an existing Rules Definition passes (no dangling references reported)', () => {
+  // Character Progression Phase 1C -- `facet.progression` is a real array
+  // in the current codebase (app/lib/content-rules/types.ts), not a single
+  // string. These fixtures use the array shape deliberately: an earlier
+  // version of this test used a bare string, which is exactly why it
+  // failed to catch a real regression (facet.progression pushed whole into
+  // a `definitionIds.has(id)` check, always false for an array) found
+  // during this phase's own production verification. Kept as an explicit
+  // regression guard, not merely updated silently.
+  it('27. a facet referencing existing Rules Definitions passes (no dangling references reported)', () => {
     const catalogueEntries = [
-      { entityType: 'class', slug: 'wizard-xphb', rulesFacet: { progression: 'progression:class.skill-expertise', grants: [{ set: 'value:hit_die', to: 6 }] } }
+      { entityType: 'class', slug: 'wizard-xphb', rulesFacet: { progression: ['progression:class.skill-expertise', 'progression:class.subclass-selection'], grants: [{ set: 'value:hit_die', to: 6 }] } }
     ]
-    const definitionIds = new Set(['progression:class.skill-expertise', 'value:hit_die'])
+    const definitionIds = new Set(['progression:class.skill-expertise', 'progression:class.subclass-selection', 'value:hit_die'])
 
     expect(findDanglingRulesFacetReferences(catalogueEntries, definitionIds)).toEqual([])
   })
 
   it('28. a facet referencing a missing progression Definition fails -- the exact Phase 1B regression shape', () => {
     const catalogueEntries = [
-      { entityType: 'class', slug: 'wizard-xphb', rulesFacet: { progression: 'progression:class.skill-expertise' } }
+      { entityType: 'class', slug: 'wizard-xphb', rulesFacet: { progression: ['progression:class.skill-expertise'] } }
     ]
     const definitionIds = new Set(['value:hit_die']) // progression Definition NOT present
 
@@ -230,6 +238,21 @@ describe('findDanglingRulesFacetReferences', () => {
       field: 'progression',
       referencedId: 'progression:class.skill-expertise'
     })
+  })
+
+  it('an array with one resolvable and one dangling progression id reports only the dangling one -- proves element-by-element checking, not whole-array', () => {
+    const catalogueEntries = [
+      { entityType: 'class', slug: 'wizard-xphb', rulesFacet: { progression: ['progression:class.skill-expertise', 'progression:class.subclass-selection'] } }
+    ]
+    const definitionIds = new Set(['progression:class.skill-expertise']) // only one of the two present
+
+    const dangling = findDanglingRulesFacetReferences(catalogueEntries, definitionIds)
+    expect(dangling).toEqual([{
+      entityType: 'class',
+      slug: 'wizard-xphb',
+      field: 'progression',
+      referencedId: 'progression:class.subclass-selection'
+    }])
   })
 
   it('detects dangling grants, choices, and sources -- not just progression', () => {

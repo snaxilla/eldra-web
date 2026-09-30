@@ -138,7 +138,10 @@ describe('xphbProvider', () => {
     expect(xphbProvider.gameSystemKey).toBe('dnd5e')
     expect(xphbProvider.collectionKey).toBe('xphb')
     expect(xphbProvider.adapterId).toBe('5etools-json')
-    expect(xphbProvider.categories.map((c) => c.key)).toEqual(['species', 'classes', 'backgrounds', 'feats', 'items', 'spells'])
+    // Character Progression Phase 1C -- 'subclasses' added as a seventh
+    // category (xphb.ts's own header explains why it is not folded into
+    // the shared DATASETS constant every other provider maps over).
+    expect(xphbProvider.categories.map((c) => c.key)).toEqual(['species', 'classes', 'backgrounds', 'feats', 'items', 'spells', 'subclasses'])
   })
 
   it('selects the XPHB entry from a file it SHARES with PHB -- entry-level membership, never a file filter', async () => {

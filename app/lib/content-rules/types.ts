@@ -90,8 +90,20 @@ export type RulesFacetCollectionFields = {
 export type RulesFacet = {
   grants?: RulesFacetGrant[]
   choices?: RulesFacetChoice[]
-  // Names a Progression the Rules Package declares (§7.5).
-  progression?: DefinitionId
+  // Names every Progression the Rules Package declares that this content
+  // participates in (§7.5). Character Progression Phase 1C -- widened from
+  // a single DefinitionId to an array: a class facet may need BOTH its own
+  // class-specific Progression (e.g. Wizard's `progression:class.skill-
+  // expertise`) AND a generic, shared one every class can independently opt
+  // into (`progression:class.subclass-selection`) -- two genuinely separate
+  // ProgressionDefinitions, not two rows of the same one, since bundling
+  // them into a single Definition would force every class wanting subclass
+  // selection to also inherit Wizard's Expertise mechanic. This is a
+  // type-only change: RulesFacet is hand-authored source code
+  // (app/lib/content-rules/dnd5e-2024.ts), never persisted to Directus, so
+  // there is no stored data to migrate -- every existing single-id usage
+  // becomes a one-element array at the one call site that declares it.
+  progression?: DefinitionId[]
   // Names Sources the Rules Package declares. These become SourceInstances
   // in the ActorState the bridge produces, which the engine's existing
   // dynamic Source overlay (§16.8) then picks up unchanged.

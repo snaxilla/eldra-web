@@ -30,6 +30,7 @@ import { basename, join } from 'node:path'
 
 import { preview5eToolsBackgrounds } from '../../../../app/lib/importers/5etools-backgrounds'
 import { preview5eToolsClasses } from '../../../../app/lib/importers/5etools-classes'
+import { preview5eToolsSubclasses } from '../../../../app/lib/importers/5etools-subclasses'
 import { preview5eToolsFeats } from '../../../../app/lib/importers/5etools-feats'
 import { preview5eToolsItems } from '../../../../app/lib/importers/5etools-items'
 import { preview5eToolsSpecies } from '../../../../app/lib/importers/5etools-species'
@@ -55,7 +56,15 @@ export const DATA_ROOT = '/opt/eldra/datasets/5etools-src/data'
 // silently wrong: `getPreviewFn` and `loadDatasetEntries` both throw for
 // 'monsters' (see each). Monsters flow through loadMonsterDatasetEntries +
 // content-pack-monsters-adapter.ts instead.
-export type DatasetKey = 'species' | 'classes' | 'backgrounds' | 'feats' | 'items' | 'spells' | 'monsters'
+// Character Progression Phase 1C -- 'subclasses' added. Deliberately NOT
+// folded into 'classes': subclass rows live in the SAME class-*.json files
+// (a `subclass` array alongside `class`) but have a different membership
+// rule (see `isSubclassFromClassSource` below) and a different importer
+// output shape (`parentClassSlug`), so they need their own DatasetKey the
+// same way 'monsters' already needed its own despite also living under a
+// shared directory -- not a new file-location concept, only a new
+// extraction concept.
+export type DatasetKey = 'species' | 'classes' | 'backgrounds' | 'feats' | 'items' | 'spells' | 'monsters' | 'subclasses'
 
 // Display order matches preview/srd-5-1.get.ts's and
 // publish/srd-5-1-curated.post.ts's own shared order (Species, Classes,
@@ -71,6 +80,7 @@ export const DATASETS: readonly DatasetKey[] = ['species', 'classes', 'backgroun
 export const CATEGORY_LABELS: Record<DatasetKey, string> = {
   species: 'Species',
   classes: 'Classes',
+  subclasses: 'Subclasses',
   backgrounds: 'Backgrounds',
   feats: 'Feats',
   items: 'Items',
@@ -82,6 +92,7 @@ export function getPreviewFn(dataset: DatasetKey): (payload: any) => EldraImport
   switch (dataset) {
     case 'species': return preview5eToolsSpecies
     case 'classes': return preview5eToolsClasses
+    case 'subclasses': return preview5eToolsSubclasses
     case 'backgrounds': return preview5eToolsBackgrounds
     case 'feats': return preview5eToolsFeats
     case 'items': return preview5eToolsItems
@@ -101,6 +112,7 @@ export function getCollectionKeys(dataset: DatasetKey): string[] {
   switch (dataset) {
     case 'species': return ['race', 'species']
     case 'classes': return ['class']
+    case 'subclasses': return ['subclass']
     case 'backgrounds': return ['background']
     case 'feats': return ['feat']
     case 'items': return ['item', 'baseitem', 'magicvariant']
@@ -151,6 +163,7 @@ export function fileLooksRelevant(dataset: DatasetKey, filePath: string): boolea
     case 'spells':
       return normalized.includes('/spells/') && name.endsWith('.json')
     case 'classes':
+    case 'subclasses':
       return normalized.includes('/class/') && name.endsWith('.json')
     case 'items':
       return (name.startsWith('items') || normalized.includes('/items/') || name.includes('item')) && name.endsWith('.json')
@@ -232,6 +245,23 @@ export function isSrd51Entry(entry: any): boolean {
 // not a book, and cannot select a collection on its own.
 export function isEntryFromSource(sourceCode: string): (entry: any) => boolean {
   return (entry: any) => Boolean(entry && typeof entry === 'object' && entry.source === sourceCode)
+}
+
+// Character Progression Phase 1C -- the subclass-specific counterpart of
+// `isEntryFromSource`, NOT a reuse of it. Verified against the real
+// dataset: a subclass row's own `source` field is the SUBCLASS's original
+// book (e.g. `School of Evocation` carries `source: 'PHB'`, `War Magic`
+// carries `source: 'XGE'`) -- it is NEVER 'XPHB', even for a subclass fully
+// compatible with the 2024 Wizard. `classSource` is the field that marks
+// "this row is the variant compatible with THIS edition of the parent
+// class" (every subclass appears twice: once with `classSource: 'PHB'`,
+// once with `classSource: 'XPHB'`). Reusing `isEntryFromSource('XPHB')`
+// here would therefore match ZERO subclasses -- the exact bug this
+// predicate exists to avoid. Generic across any class (Wizard, Fighter,
+// Cleric, ...): it reads only `classSource`, never a class or subclass
+// name.
+export function isSubclassFromClassSource(classSourceCode: string): (entry: any) => boolean {
+  return (entry: any) => Boolean(entry && typeof entry === 'object' && entry.classSource === classSourceCode)
 }
 
 // Generic membership-filtered entry loader -- the primitive Step 2's

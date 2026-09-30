@@ -452,12 +452,23 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // `progression:class.skill-expertise` for the level-2 row this points at and
       // this package's own new `value:skill.*.expertise`/
       // `choice:skill.expertise` Definitions for what answering it means.
-      // Every OTHER real Wizard 1-5 progression fact (Level 3 subclass,
-      // Level 4 Ability Score Improvement/feat) was investigated and found
-      // structurally unrepresentable with the current catalogue/grant
-      // model -- see this phase's own report for the full corpus evidence
-      // and the exact authoring blockers.
-      progression: 'progression:class.skill-expertise'
+      //
+      // Character Progression Phase 1C -- `progression:class.subclass-selection`
+      // added as a SECOND, independent Progression this facet opts into
+      // (RulesFacet.progression is an array precisely so a class can
+      // reference more than one Progression without either bundling
+      // unrelated mechanics into one Definition or forcing every class to
+      // share Wizard's own Expertise progression). It is the SAME generic,
+      // class-agnostic Definition any class's facet could reference
+      // (packages/eldra-dnd5e-2024/definitions.json declares no class name
+      // in it) -- its Level-3 threshold is the real, structurally-verified
+      // 2024 XPHB Wizard subclass-selection level (class-wizard.json's own
+      // `classFeature` entries), not invented.
+      //
+      // Level 4 Ability Score Improvement/feat remains investigated and
+      // found structurally unrepresentable with the current grant model --
+      // see this phase's own report for the exact authoring blocker.
+      progression: ['progression:class.skill-expertise', 'progression:class.subclass-selection']
     }
   },
 

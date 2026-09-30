@@ -56,6 +56,8 @@ import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-
 import { buildActorState, type PendingChoice } from './character-actor-bridge'
 import type { ResolvableChoice } from '../../app/lib/characters/rules-choices'
 import { getWorldRuntime } from './world-runtime-service'
+import { getWorldContentCatalogue } from './world-content-catalogue'
+import { serializeContentRef } from '../../app/lib/characters/progression-plan'
 
 // Mirrors evaluator.ts's and modifier-pipeline.ts's own `isRulesError`
 // exactly. Duplicated rather than imported for the reason those two already
@@ -133,6 +135,12 @@ export type PresentableChoice = ResolvableChoice & {
   selected: string[]
   options: string[]
   optionLabels: Record<string, string>
+  // Character Progression Phase 1C -- 'content' when `options`/`selected`
+  // are serializeContentRef-encoded Content Catalogue references (e.g.
+  // subclass selection) rather than plain Definition ids. Defaults to
+  // 'definition' for every choice built from `bridged.declaredChoices`
+  // (unchanged behavior for every choice that predates this phase).
+  kind: 'definition' | 'content'
 }
 
 export type DerivedCharacter = {
@@ -216,22 +224,31 @@ export async function getDerivedCharacter(
 // stay applied while a LATER step is evaluated (this function is called
 // once per level in that walk, always with the SAME full tentative-answer
 // set, not just the one belonging to the step currently being built).
+// Character Progression Phase 1C -- `tentativeSubclassRef` (optional,
+// mirrors `tentativeAnswers` exactly): a NOT-YET-CONFIRMED subclass
+// selection to assemble the character AS IF it were already chosen, so a
+// LATER level's automatic consequences/choices can honestly reflect it
+// during preview (see character-assembly.ts's own `assembleCharacter`
+// `tentativeSubclassRef` doc comment -- this is threaded straight through,
+// unchanged, never mutating anything persisted).
 export async function getDerivedCharacterAtLevel(
   worldId: string | number,
   characterId: string | number,
   levelOverride: number,
-  tentativeAnswers?: Record<string, string[]>
+  tentativeAnswers?: Record<string, string[]>,
+  tentativeSubclassRef?: { packageId: string; slug: string } | null
 ): Promise<DerivedCharacterResult> {
-  return getDerivedCharacterInternal(worldId, characterId, levelOverride, tentativeAnswers)
+  return getDerivedCharacterInternal(worldId, characterId, levelOverride, tentativeAnswers, tentativeSubclassRef)
 }
 
 async function getDerivedCharacterInternal(
   worldId: string | number,
   characterId: string | number,
   levelOverride: number | undefined,
-  tentativeAnswers?: Record<string, string[]>
+  tentativeAnswers?: Record<string, string[]>,
+  tentativeSubclassRef?: { packageId: string; slug: string } | null
 ): Promise<DerivedCharacterResult> {
-  const assembly = await assembleCharacter(worldId, characterId)
+  const assembly = await assembleCharacter(worldId, characterId, tentativeSubclassRef)
   if (!assembly.available) {
     return assembly
   }
@@ -273,6 +290,14 @@ async function getDerivedCharacterInternal(
     return definition && definition.kind === 'progression' ? definition : null
   }
 
+  // Character Progression Phase 1C -- tells the bridge which ChoiceSet ids
+  // are Content-Catalogue-sourced, resolved against the SAME active-package
+  // registry as every other lookup here.
+  const isContentChoiceSet = (id: string) => {
+    const definition = registry.getById(id)
+    return Boolean(definition && definition.kind === 'choiceSet' && definition.from.kind === 'fromContentCatalogue')
+  }
+
   // Character Progression Phase 1B -- tentative answers are laid ON TOP OF
   // this character's own real persisted `rulesChoices`, never replacing
   // them (a spread of the real `selections` map, then overwritten only by
@@ -296,6 +321,7 @@ async function getDerivedCharacterInternal(
     rulesChoices: rulesChoicesForEvaluation,
     lookupChoiceSet: choiceSetFor,
     lookupProgression: progressionFor,
+    isContentChoiceSet,
     // Character Progression Phase 1A -- resolved via the active package's
     // OWN semantic-role binding (manifest.json's `semanticRoles.level`),
     // never hardcoded to `'value:level'` here: a future non-level-based
@@ -326,9 +352,62 @@ async function getDerivedCharacterInternal(
       label: choiceSet?.label,
       answered: Array.isArray(selected),
       selected: Array.isArray(selected) ? (selected as string[]) : [],
-      optionLabels
+      optionLabels,
+      kind: 'definition' as const
     }
   })
+
+  // Character Progression Phase 1C -- resolves each content-choice STUB the
+  // bridge collected (it has no catalogue access) into a real, presentable
+  // choice. Legal options: every `catalogue.subclasses` entry whose
+  // `parentClassSlug` matches THIS character's own resolved class slug --
+  // never every subclass in the catalogue, and never filtered by display
+  // name (PARENT-CLASS FILTERING requirement). Current answer: this
+  // character's own resolved `subclass` slot (persisted, or the tentative
+  // override threaded through assembly) if resolved; otherwise a tentative
+  // answer supplied for this exact key, if any; otherwise unanswered.
+  if (bridged.contentChoices.length) {
+    const catalogue = await getWorldContentCatalogue(worldId)
+    const parentClassSlug = assembly.blueprint.class.status === 'resolved' ? assembly.blueprint.class.entry.slug : null
+
+    const currentSubclassRef = assembly.blueprint.subclass?.status === 'resolved'
+      ? { packageId: assembly.blueprint.subclass.entry.packageId, slug: assembly.blueprint.subclass.entry.slug }
+      : null
+
+    for (const stub of bridged.contentChoices) {
+      const choiceSet = choiceSetFor(stub.choiceSetId)
+      const category = choiceSet && choiceSet.from.kind === 'fromContentCatalogue' ? choiceSet.from.category : null
+
+      const legalOptions = category === 'subclasses' && parentClassSlug
+        ? catalogue.subclasses.filter((entry) => entry.parentClassSlug === parentClassSlug)
+        : []
+
+      const options = legalOptions.map((entry) => serializeContentRef({ packageId: entry.packageId, slug: entry.slug }))
+      const optionLabels: Record<string, string> = {}
+      for (const entry of legalOptions) {
+        optionLabels[serializeContentRef({ packageId: entry.packageId, slug: entry.slug })] = entry.title
+      }
+
+      const tentative = tentativeAnswers?.[stub.key]
+      const selected = currentSubclassRef
+        ? [serializeContentRef(currentSubclassRef)]
+        : (Array.isArray(tentative) ? tentative : [])
+
+      choices.push({
+        key: stub.key,
+        slot: stub.slot,
+        choiceSetId: stub.choiceSetId,
+        count: stub.count,
+        prompt: choiceSet?.prompt ?? 'Choose your options.',
+        label: choiceSet?.label,
+        answered: selected.length === stub.count && selected.every((id) => options.includes(id)),
+        selected,
+        options,
+        optionLabels,
+        kind: 'content' as const
+      })
+    }
+  }
 
   // ONE session for the whole projection, so the evaluator's own memo cache
   // does its job: `value:proficiency_bonus` is read by all six saves and all

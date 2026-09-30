@@ -156,6 +156,21 @@ export type CharacterAssemblyBlueprint = {
   characterSummary: string | null
   species: CharacterAssemblySlot
   class: CharacterAssemblySlot
+  // Character Progression Phase 1C -- resolved from
+  // `progression.classes[0]?.subclassRef` against the World's CURRENT
+  // Content Catalogue, the identical "re-verify on every read, never trust
+  // the snapshot" posture every other catalogue slot already takes (design
+  // decision 2). `[0]` is a deliberate, documented single-class
+  // simplification: multiclassing is still deferred, so every character
+  // has exactly one class entry today, and `subclassRef` is already scoped
+  // PER class entry (not character-global) specifically so a future
+  // multiclass phase only has to loop here, never redesign the field.
+  // `status: 'missing'` (via resolveSlot's own "No Subclass was recorded"
+  // reason) is the correct, legal state for every character before this
+  // phase, and for any Wizard 1/2 character who has not yet reached the
+  // Level 3 subclass choice -- absence here is exactly as legal as an
+  // unrecorded background.
+  subclass: CharacterAssemblySlot
   background: CharacterAssemblySlot
   // Character Progression Phase 1A -- which class levels this character has
   // (see app/lib/characters/progression.ts's own header for why this is an
@@ -345,7 +360,20 @@ function resolveSpells(
 // block_instances read, and getWorldContentCatalogue -- no other I/O.
 export async function assembleCharacter(
   worldId: string | number,
-  characterId: string | number
+  characterId: string | number,
+  // Character Progression Phase 1C -- HYPOTHETICAL ASSEMBLY. `undefined`
+  // (every caller before this phase, and every ordinary read) uses this
+  // character's own PERSISTED `progression.classes[0]?.subclassRef`,
+  // unchanged. Supplied only by server/utils/character-progression-plan.ts's
+  // own Level 4/5 preview evaluation, to simulate "what would the character
+  // look like if this TENTATIVE subclass, not yet confirmed, were selected"
+  // -- so a later step's automatic consequences/choices can honestly
+  // reflect a subclass the player is only PREVIEWING. `null` explicitly
+  // means "no subclass, even if one happens to be persisted" (not used
+  // today, reserved so a caller could preview level 1-2 with a not-yet-made
+  // choice honestly absent). This NEVER mutates the persisted blueprint --
+  // it only changes what THIS ONE call resolves `subclass` to.
+  tentativeSubclassRef?: { packageId: string; slug: string } | null
 ): Promise<CharacterAssemblyResult> {
   // A non-existent entity id is reported by Directus as a 403 (its item-
   // level permission check runs before existence is known), not a 200 with
@@ -448,6 +476,14 @@ export async function assembleCharacter(
       : { classes: [] }
   )
 
+  // Character Progression Phase 1C -- see the blueprint's own `subclass`
+  // field doc comment for the `[0]` single-class simplification.
+  // `tentativeSubclassRef` (when explicitly supplied, including `null`)
+  // overrides the persisted `subclassRef` for THIS resolution only.
+  const subclassRef = tentativeSubclassRef !== undefined
+    ? tentativeSubclassRef
+    : (progression.classes[0]?.subclassRef ?? null)
+
   const blueprint: CharacterAssemblyBlueprint = {
     worldId: String(worldId),
     characterId: String(characterId),
@@ -457,6 +493,7 @@ export async function assembleCharacter(
     characterSummary: entity.summary != null ? String(entity.summary) : null,
     species: resolveSlot(extractRef(selection.species), catalogue.species, catalogue.packs, 'Species'),
     class: resolveSlot(classRef, catalogue.classes, catalogue.packs, 'Class'),
+    subclass: resolveSlot(subclassRef, catalogue.subclasses, catalogue.packs, 'Subclass'),
     background: resolveSlot(extractRef(selection.background), catalogue.backgrounds, catalogue.packs, 'Background'),
     abilityScores,
     rulesChoices,

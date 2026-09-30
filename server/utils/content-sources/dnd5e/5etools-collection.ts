@@ -85,7 +85,12 @@ export type FiveEToolsCollectionInput = {
 // `rulesFacet: undefined` -- so a collection that declares no vocabulary,
 // or a category the corpus does not cover, publishes byte-identical
 // candidates to before Step 4.
-function attachRulesFacets(
+// Character Progression Phase 1C -- exported so a category using the
+// `loadCandidates` escape hatch (this file's own header) can still attach
+// Rules Facets after building its own candidates, instead of losing facet
+// attachment entirely by bypassing the default pipeline. See
+// subclasses.ts's own use of this.
+export function attachRulesFacets(
   candidates: SourceCategoryLoadResult['candidates'],
   vocabulary: string | undefined
 ): SourceCategoryLoadResult['candidates'] {

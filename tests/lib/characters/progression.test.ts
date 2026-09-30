@@ -46,7 +46,10 @@ describe('normalizeStoredProgression', () => {
 
   it('reads back a well-formed record unchanged', () => {
     const stored: StoredCharacterProgression = { classes: [{ classRef: REF, level: 5 }] }
-    expect(normalizeStoredProgression(stored)).toEqual(stored)
+    // Character Progression Phase 1C -- normalizeStoredProgression always
+    // fills in `subclassRef` (null when the stored record has none), so
+    // the "unchanged" shape now includes it explicitly.
+    expect(normalizeStoredProgression(stored)).toEqual({ classes: [{ classRef: REF, level: 5, subclassRef: null }] })
   })
 
   it('drops one malformed entry without failing the whole record', () => {
@@ -77,7 +80,12 @@ describe('normalizeStoredProgression', () => {
         { classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 2 }
       ]
     }
-    expect(normalizeStoredProgression(stored)).toEqual(stored)
+    expect(normalizeStoredProgression(stored)).toEqual({
+      classes: [
+        { classRef: REF, level: 3, subclassRef: null },
+        { classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 2, subclassRef: null }
+      ]
+    })
   })
 })
 

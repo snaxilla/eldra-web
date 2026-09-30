@@ -116,6 +116,15 @@ export type ContentPublicationCandidate = {
   // Published WITH the pack and therefore covered by its integrity hash,
   // because a character is built against a specific facet version (§8.5).
   rulesFacet?: RulesFacet
+  // Character Progression Phase 1C. Present only for `entityType:
+  // 'subclass'` candidates -- the parent class's own catalogue slug,
+  // normalized structurally at import time
+  // (app/lib/importers/5etools-subclasses.ts) from the raw 5etools
+  // `className`+`classSource` fields, using the identical slug formula the
+  // class importer itself already uses. Opaque to this module (never read,
+  // only carried through to publication) -- the same posture `rulesFacet`
+  // already has here.
+  parentClassSlug?: string
 }
 
 // ---------------------------------------------------------------------------

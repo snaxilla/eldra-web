@@ -445,7 +445,10 @@ describe('getDerivedCharacterAtLevel -- simulates a level without persisting any
     assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprint() })
 
     await getDerivedCharacterAtLevel('5', '42', 11)
-    expect(assembleCharacterMock).toHaveBeenCalledWith('5', '42')
+    // Character Progression Phase 1C -- assembleCharacter's third
+    // argument (tentativeSubclassRef) is always passed explicitly now
+    // (`undefined` here, since this call supplies none), not omitted.
+    expect(assembleCharacterMock).toHaveBeenCalledWith('5', '42', undefined)
   })
 
   it('propagates the same character-not-found/rules-unconfigured results getDerivedCharacter itself would', async () => {

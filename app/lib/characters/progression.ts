@@ -64,6 +64,22 @@ export type ClassRef = {
 export type StoredClassLevel = {
   classRef: ClassRef
   level: number
+  // Character Progression Phase 1C -- the SOLE authoritative record of this
+  // class entry's selected subclass, scoped PER class entry (never
+  // character-global) specifically so a future multiclass character can
+  // hold `Wizard 5 { subclassRef: evoker }` and `Fighter 3 { subclassRef:
+  // champion }` simultaneously without a redesign. Reuses the identical
+  // `ClassRef` shape every other catalogue reference in this file already
+  // uses -- a subclass is, structurally, exactly the same kind of fact a
+  // class or background reference already is.
+  //
+  // This is the ONLY durable store for a confirmed subclass selection --
+  // `rules_choices` never independently records one (see
+  // server/utils/character-progression-plan.ts's own SUBCLASS AUTHORITY
+  // header for why: a Content reference is not a Definition answer, and
+  // this field already exists as its correct home). There is therefore
+  // nothing for a second persisted copy to drift from.
+  subclassRef?: ClassRef | null
 }
 
 export type StoredCharacterProgression = {
@@ -115,7 +131,10 @@ export function normalizeStoredProgression(value: unknown): StoredCharacterProgr
     const classRef = readClassRef(record.classRef)
     if (!classRef) continue
     if (!isValidClassLevel(record.level)) continue
-    classes.push({ classRef, level: Number(record.level) })
+    // `readClassRef` returns `null` for anything malformed or absent -- a
+    // stored `subclassRef` is therefore always re-validated the same way
+    // every other stored reference in this file already is, never trusted.
+    classes.push({ classRef, level: Number(record.level), subclassRef: readClassRef(record.subclassRef) })
   }
 
   return { classes }

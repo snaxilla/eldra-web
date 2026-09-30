@@ -26,6 +26,9 @@
 
 import { create5eToolsCollectionProvider } from './5etools-collection'
 import { CATEGORY_LABELS, DATASETS, isEntryFromSource } from './5etools-dataset'
+import { loadSubclassCandidatesFor } from './subclasses'
+
+const VOCABULARY = 'dnd5e.2024'
 
 export const xphbProvider = create5eToolsCollectionProvider({
   collectionKey: 'xphb',
@@ -34,7 +37,17 @@ export const xphbProvider = create5eToolsCollectionProvider({
   // only -- collection whose content carries hand-authored Rules Facets, so
   // it is the only provider that names a vocabulary. Adding one to another
   // collection is this one line plus a corpus in app/lib/content-rules.
-  vocabulary: 'dnd5e.2024',
+  vocabulary: VOCABULARY,
   membership: isEntryFromSource('XPHB'),
-  categories: DATASETS.map((key) => ({ key, label: CATEGORY_LABELS[key], datasetKey: key }))
+  categories: [
+    ...DATASETS.map((key) => ({ key, label: CATEGORY_LABELS[key], datasetKey: key })),
+    // Character Progression Phase 1C -- 'subclasses' is a seventh category,
+    // added here rather than to the shared `DATASETS` constant so SRD 5.1
+    // and XDMG do not silently gain a subclasses category too (neither has
+    // been audited for subclass source-shape compatibility, and this task's
+    // vertical slice is XPHB only). Uses `loadCandidates` because subclasses
+    // need a different membership predicate than every other category in
+    // this same collection -- see subclasses.ts's own header.
+    { key: 'subclasses', label: CATEGORY_LABELS.subclasses, loadCandidates: loadSubclassCandidatesFor('XPHB', VOCABULARY) }
+  ]
 })

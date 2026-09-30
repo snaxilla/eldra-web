@@ -45,6 +45,13 @@ export type ProgressionChoiceRow = {
   // `ProgressionChoice` exactly.
   selected: string[]
   answered: boolean
+  // Character Progression Phase 1C -- mirrors `ProgressionChoice.kind`.
+  // Not branched on by this panel's own rendering (options/selected/
+  // answered already render identically regardless of kind, per this
+  // phase's own "reuse the generic choice surface, no Wizard/subclass-
+  // specific component" requirement) -- carried through only so this row
+  // type stays an honest mirror of the real one.
+  kind: 'definition' | 'content'
 }
 
 export type ProgressionLevelStepRow = {

@@ -205,12 +205,16 @@ import {
   type StoredCharacterProgression
 } from '../../app/lib/characters/progression'
 import type {
+  ContentRef,
   ProgressionAutomaticConsequence,
   ProgressionChoice,
   ProgressionLevelStep,
   ProgressionPlan
 } from '../../app/lib/characters/progression-plan'
+import { parseContentRef } from '../../app/lib/characters/progression-plan'
 import { assembleCharacter } from './character-assembly'
+import { getWorldContentCatalogue } from './world-content-catalogue'
+import { listContentPackBindingsForWorld } from './world-content-packs'
 import { getDerivedCharacterAtLevel, type DerivedCharacter, type DerivedValue } from './character-derived'
 import { saveCharacterProgression } from './character-progression'
 import { getWorldRuntime } from './world-runtime-service'
@@ -292,13 +296,37 @@ export async function resolveCurrentProgression(
 // no package is configured/loaded (the failure is already reported earlier
 // in both callers before this is ever reached for a real evaluation, so
 // this is a defensive fallback, not a real path).
-function fingerprintFor(currentLevel: number, packageIntegrityHash: string): string {
-  return `${currentLevel}|${packageIntegrityHash}`
+// Character Progression Phase 1C -- `contentBindingFingerprint` joins
+// `packageIntegrityHash` in the plan fingerprint: since a required choice's
+// legal options can now come from a Content Pack (subclass selection), a
+// World's bound Content Pack changing between Preview and Confirm (e.g. a
+// GM refreshes/rebinds XPHB, changing which subclasses are legal or their
+// facets) is exactly as stale-making as the Rules Package changing -- the
+// same reasoning `packageIntegrityHash` already documents, one layer over.
+function fingerprintFor(currentLevel: number, packageIntegrityHash: string, contentBindingFingerprint: string): string {
+  return `${currentLevel}|${packageIntegrityHash}|${contentBindingFingerprint}`
 }
 
 async function resolvePackageIntegrityHash(worldId: string | number): Promise<string> {
   const runtime = await getWorldRuntime(worldId)
   return runtime.configured && runtime.ok ? runtime.integrityHash : ''
+}
+
+// The SMALLEST authoritative Content staleness signal -- every one of this
+// World's bound Content Pack (packageId, version, integrity) triples,
+// joined deterministically. Reuses the World's own already-verified
+// binding integrity (world_content_pack_bindings, set at bind/refresh
+// time) rather than hashing the catalogue itself, per this task's own
+// "do not hash the entire catalogue if binding integrity already
+// guarantees the content artifact" instruction. Sorted by packageId so the
+// SAME set of bindings always produces the SAME fingerprint regardless of
+// Directus row order.
+async function resolveContentBindingFingerprint(worldId: string | number): Promise<string> {
+  const bindings = await listContentPackBindingsForWorld(worldId)
+  return bindings
+    .map((binding) => `${binding.packageId}@${binding.packageVersion}#${binding.packageIntegrity ?? ''}`)
+    .sort()
+    .join(',')
 }
 
 // ---------------------------------------------------------------------------
@@ -366,11 +394,35 @@ function diffRequiredChoices(previous: DerivedCharacter, next: DerivedCharacter)
       })),
       count: choice.count,
       selected: choice.selected,
-      answered: choice.answered
+      answered: choice.answered,
+      // Character Progression Phase 1C -- read straight off the derived
+      // choice's own `kind` (character-derived.ts), never re-derived here.
+      kind: choice.kind
     }))
     // Deterministic order, mirroring `diffLevels`'s own sort -- the same
     // package/answers always produce the same choice ordering.
     .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+// Character Progression Phase 1C -- TENTATIVE SUBCLASS. Extracts a
+// tentative subclass ContentRef from `tentativeAnswers` WITHOUT needing to
+// already know which key names the subclass choice (a genuine
+// chicken-and-egg problem: the key is only discoverable by evaluating the
+// character, which is what this value feeds into). Pragmatic, honestly
+// scoped heuristic for this phase's one real content choice: any
+// single-element answer that successfully decodes as a ContentRef
+// (`parseContentRef`) is treated as a candidate tentative subclass --
+// Definition ids never contain `::`, so this cannot collide with a real
+// Definition-choice answer. If more than one Content-choice TYPE existed
+// simultaneously, this would need to disambiguate by choice key instead;
+// documented here as the honest limit of this approach, not hidden.
+function extractTentativeSubclassRef(tentativeAnswers: Record<string, string[]>): ContentRef | null {
+  for (const selected of Object.values(tentativeAnswers)) {
+    if (selected.length !== 1) continue
+    const ref = parseContentRef(selected[0]!)
+    if (ref) return ref
+  }
+  return null
 }
 
 async function buildLevelStep(
@@ -380,9 +432,10 @@ async function buildLevelStep(
   level: number,
   tentativeAnswers: Record<string, string[]>
 ): Promise<{ ok: true; step: ProgressionLevelStep } | ProgressionFailure> {
+  const tentativeSubclassRef = extractTentativeSubclassRef(tentativeAnswers)
   const [previousResult, currentResult] = await Promise.all([
-    getDerivedCharacterAtLevel(worldId, characterId, previousLevel, tentativeAnswers),
-    getDerivedCharacterAtLevel(worldId, characterId, level, tentativeAnswers)
+    getDerivedCharacterAtLevel(worldId, characterId, previousLevel, tentativeAnswers, tentativeSubclassRef),
+    getDerivedCharacterAtLevel(worldId, characterId, level, tentativeAnswers, tentativeSubclassRef)
   ])
 
   if (!previousResult.available || !currentResult.available) {
@@ -465,7 +518,10 @@ export async function planProgression(
   // it was applied before every `getDerivedCharacterAtLevel` call above.
   const unresolvedChoiceIds = steps.flatMap((step) => step.requiredChoices.filter((choice) => !choice.answered).map((choice) => choice.id))
 
-  const packageIntegrityHash = await resolvePackageIntegrityHash(worldId)
+  const [packageIntegrityHash, contentBindingFingerprint] = await Promise.all([
+    resolvePackageIntegrityHash(worldId),
+    resolveContentBindingFingerprint(worldId)
+  ])
 
   return {
     ok: true,
@@ -475,7 +531,7 @@ export async function planProgression(
       steps,
       unresolvedChoiceIds,
       valid: unresolvedChoiceIds.length === 0,
-      fingerprint: fingerprintFor(currentLevel, packageIntegrityHash)
+      fingerprint: fingerprintFor(currentLevel, packageIntegrityHash, contentBindingFingerprint)
     }
   }
 }
@@ -507,14 +563,18 @@ export async function confirmProgression(
   if (!current.ok) return current
 
   const { progression, currentLevel } = current.state
-  const packageIntegrityHash = await resolvePackageIntegrityHash(worldId)
+  const [packageIntegrityHash, contentBindingFingerprint] = await Promise.all([
+    resolvePackageIntegrityHash(worldId),
+    resolveContentBindingFingerprint(worldId)
+  ])
 
   // Stale-plan protection: the plan's own fingerprint must still match this
-  // character's ACTUAL current level AND the ACTIVE package's own current
-  // integrity hash, both re-read just now, not whatever the client
-  // remembered from when it was first previewed (see this file's own
+  // character's ACTUAL current level, the ACTIVE Rules Package's current
+  // integrity hash, AND this World's current Content Pack binding
+  // fingerprint (Phase 1C) -- all three re-read just now, not whatever the
+  // client remembered from when it was first previewed (see this file's own
   // PACKAGE VERSIONING consideration).
-  if (fingerprint !== fingerprintFor(currentLevel, packageIntegrityHash)) {
+  if (fingerprint !== fingerprintFor(currentLevel, packageIntegrityHash, contentBindingFingerprint)) {
     return {
       ok: false,
       reason: 'stale-plan',
@@ -565,19 +625,66 @@ export async function confirmProgression(
     }
   }
 
-  // Character Progression Phase 1B -- CHOICE PERSISTENCE, FIRST (see this
-  // file's own header for the full ordering rationale). Every VALIDLY
-  // ANSWERED required choice across the whole plan, keyed by its own
-  // stable `progressionChoiceKey` -- never the raw, untrusted `answers`
-  // object the caller submitted (a key naming a choice this plan does not
-  // actually require, or one that remains unanswered/invalid, is silently
-  // excluded, never written). `{}` when the transition crosses no real
-  // choice (still the common case) -- skipped entirely, preserving Phase
-  // 1A's own exact "one write" behavior for that case.
+  // Character Progression Phase 1B/1C -- CHOICE PERSISTENCE, FIRST (see
+  // this file's own header for the full ordering rationale, re-evaluated
+  // for Phase 1C below). Every VALIDLY ANSWERED required choice across the
+  // whole plan, keyed by its own stable `progressionChoiceKey` -- never the
+  // raw, untrusted `answers` object the caller submitted (a key naming a
+  // choice this plan does not actually require, or one that remains
+  // unanswered/invalid, is silently excluded, never written).
+  //
+  // SUBCLASS AUTHORITY (Phase 1C): a 'content'-kind answer (today: only
+  // subclass selection) is NEVER written into `rules_choices` -- a Content
+  // reference is not a Definition answer, and `rules_choices`' own
+  // persisted shape stays `Record<string, DefinitionId[]>`, byte-identical
+  // to every character before this phase (no migration, per this task's own
+  // PERSISTED CHOICE MIGRATION requirement). Its sole durable authority is
+  // `progression.classes[].subclassRef`, written below alongside the level
+  // in the SAME progression write -- there is exactly one persisted
+  // location for a confirmed subclass, so nothing can ever diverge from it.
   const resolvedAnswers: Record<string, string[]> = {}
+  let resolvedSubclassRef: ContentRef | null = null
+
   for (const step of planResult.plan.steps) {
     for (const choice of step.requiredChoices) {
-      if (choice.answered) resolvedAnswers[choice.id] = choice.selected
+      if (!choice.answered) continue
+      if (choice.kind === 'content') {
+        // count === 1 for every content choice this phase authors
+        // (`choice:class.subclass`'s own progression-row `count: 1`) --
+        // `selected[0]` is therefore always the whole answer. A future
+        // multi-select content choice would need this generalized; not
+        // needed by the real authored corpus today.
+        const ref = choice.selected[0] ? parseContentRef(choice.selected[0]) : null
+        if (ref) resolvedSubclassRef = ref
+        continue
+      }
+      resolvedAnswers[choice.id] = choice.selected
+    }
+  }
+
+  // INVALID / STALE OPTIONS -- re-resolve the submitted subclass ContentRef
+  // against the CURRENT Content Catalogue at Confirm time, never trusting
+  // the client's plan-time resolution (a Content Pack refresh could have
+  // happened between Preview and Confirm even though the plan's own
+  // fingerprint check above already guards the common case of a BOUND
+  // version changing; this is the deeper, "is this exact reference still
+  // legal" check). Missing, wrong-parent, or malformed all reject the same
+  // way -- never a silent substitution.
+  if (resolvedSubclassRef) {
+    const catalogue = await getWorldContentCatalogue(worldId)
+    const parentClassSlug = base.classes[0]!.classRef.slug
+    const entry = catalogue.subclasses.find(
+      (candidate) => candidate.packageId === resolvedSubclassRef!.packageId && candidate.slug === resolvedSubclassRef!.slug
+    )
+
+    if (!entry || entry.parentClassSlug !== parentClassSlug) {
+      return {
+        ok: false,
+        reason: 'unresolved-choices',
+        message: entry
+          ? `The submitted subclass does not belong to this character's class`
+          : `The submitted subclass no longer exists in this World's current Content Catalogue`
+      }
     }
   }
 
@@ -591,7 +698,15 @@ export async function confirmProgression(
 
   const onlyClassEntry = base.classes[0]!
   const nextProgression: StoredCharacterProgression = {
-    classes: [{ classRef: onlyClassEntry.classRef, level: targetLevel }]
+    classes: [{
+      classRef: onlyClassEntry.classRef,
+      level: targetLevel,
+      // A newly-confirmed subclass overrides; otherwise the class entry's
+      // own already-persisted subclassRef survives this write unchanged
+      // (this transition crossed no subclass-choice level, or one was
+      // already confirmed on a prior transition).
+      subclassRef: resolvedSubclassRef ?? onlyClassEntry.subclassRef ?? null
+    }]
   }
 
   const saved = await saveCharacterProgression(characterId, nextProgression)

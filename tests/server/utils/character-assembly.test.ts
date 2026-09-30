@@ -47,6 +47,12 @@ function fullCatalogue(overrides: Partial<{ species: any[]; classes: any[]; back
     feats: [],
     items: [],
     spells: [],
+    monsters: [],
+    // Character Progression Phase 1C -- present so a test that DOES resolve
+    // a non-null subclassRef against this fixture (resolveSlot's early
+    // "missing" return only short-circuits for a null/empty ref) never hits
+    // `catalogue.subclasses.find` on `undefined`.
+    subclasses: [],
     ...overrides
   }
 }
@@ -153,7 +159,11 @@ describe('assembleCharacter', () => {
       expect(result.available).toBe(true)
       if (!result.available) return
 
-      expect(result.blueprint.progression).toEqual(stored)
+      // Character Progression Phase 1C -- normalizeStoredProgression always
+      // fills in `subclassRef` (null here, since none was stored).
+      expect(result.blueprint.progression).toEqual({
+        classes: [{ ...stored.classes[0], subclassRef: null }]
+      })
     })
 
     it('still synthesizes from the recorded classRef even when that class no longer resolves against the current catalogue -- the raw choice is a real fact independent of catalogue drift', async () => {

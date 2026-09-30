@@ -66,6 +66,39 @@ export type ProgressionChoiceOption = {
   label: string
 }
 
+// Character Progression Phase 1C -- the stable Content Catalogue reference
+// shape a subclass (or any future Content-sourced choice) is identified by.
+// Deliberately the SAME `{packageId, slug}` shape every other catalogue
+// reference in this codebase already uses (character-assembly.ts's own
+// StoredChoiceRef, app/lib/characters/progression.ts's own ClassRef) --
+// restated here rather than cross-imported, matching this family's own
+// established "restate the tiny ref shape" convention.
+export type ContentRef = {
+  packageId: string
+  slug: string
+}
+
+// Encodes a ContentRef into the SAME `string[]` wire shape every Definition
+// choice answer already uses (`answers: Record<string, string[]>` on both
+// /progression/plan and /progression/confirm) -- chosen specifically so
+// NEITHER route's request/response shape needs to change for Content
+// choices to flow through the identical existing protocol. `::` is not a
+// legal character in either a packageId (reverse-DNS-style,
+// content-pack-publishing.ts's own PACKAGE_ID_PATTERN) or a slug
+// (lowercase/digits/hyphens, 5etools-classes.ts's own slugify), so this
+// encoding is unambiguous and losslessly reversible.
+export function serializeContentRef(ref: ContentRef): string {
+  return `${ref.packageId}::${ref.slug}`
+}
+
+export function parseContentRef(value: string): ContentRef | null {
+  const parts = value.split('::')
+  if (parts.length !== 2) return null
+  const [packageId, slug] = parts
+  if (!packageId || !slug) return null
+  return { packageId, slug }
+}
+
 export type ProgressionChoice = {
   // A stable id for WHICH mechanic this choice resolves -- never a class
   // name, never spell-specific, mirroring SpellChoice's own identical rule.
@@ -78,6 +111,17 @@ export type ProgressionChoice = {
   label: string
   options: ProgressionChoiceOption[]
   count: number
+  // Character Progression Phase 1C -- the CLOSED, narrow answer-kind
+  // discriminant this task's own CHOICE MODEL EXTENSION approved: 'content'
+  // when this choice's options are Content Catalogue entries (their `id`
+  // is a serializeContentRef-encoded string, resolved against
+  // WorldGameplayCatalogue, e.g. subclass selection); 'definition'
+  // (default reading when omitted, for every choice that predates this
+  // phase) when `id` is a plain Definition id, unchanged. This tells a
+  // consumer HOW to interpret `options`/`selected` without it needing to
+  // parse the identifiers itself -- never a generic/unknown value system,
+  // exactly the narrow union the approval specified.
+  kind: 'definition' | 'content'
   // Character Progression Phase 1B -- this choice's own CURRENT selection,
   // whether persisted (a level already confirmed in the past) or merely
   // TENTATIVE (a preview-time answer this specific plan request supplied,

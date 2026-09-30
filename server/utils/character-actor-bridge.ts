@@ -208,15 +208,23 @@ import type {
 // (rules-choices.ts) for why the two can never collide even when they
 // happen to name the same ChoiceSet.
 
-// The three catalogue-backed slots, in the order their grants are applied.
-// Later wins on conflict. The order is Species -> Class -> Background
+// The catalogue-backed slots, in the order their grants are applied. Later
+// wins on conflict. The order is Species -> Class -> Subclass -> Background
 // because it runs least-specific to most-specific, and because it matches
 // the order the Builder asks for them -- a player who set something in a
 // later step should not have it silently overridden by an earlier one.
 // Nothing in the current corpus actually collides; the order is declared so
 // that the first collision has a defined answer rather than an accidental
 // one.
-const SLOT_ORDER = ['species', 'class', 'background'] as const
+//
+// Character Progression Phase 1C -- `subclass` added right after `class`
+// (its parent): a selected subclass's RulesFacet reaches this bridge
+// through this exact same slot-consumption loop, not a special case. It is
+// resolved via `progression.classes[].subclassRef` (server/utils/
+// character-assembly.ts's own new `subclass` blueprint field) -- `missing`
+// (never resolved) for every character before this phase, which is a
+// legal, inert state this loop already handles uniformly for every slot.
+const SLOT_ORDER = ['species', 'class', 'subclass', 'background'] as const
 
 export type ActorBridgeSlotKey = (typeof SLOT_ORDER)[number]
 
@@ -237,6 +245,20 @@ export type PendingChoice = RulesFacetChoice & {
   key: string
 }
 
+// Character Progression Phase 1C -- the minimal stub a content-shaped
+// progression-row choice contributes. Deliberately NOT a full
+// ResolvableChoice: this bridge has no Content Catalogue access (it is
+// "PURE ON PURPOSE"), so it cannot know the real legal options, only THAT a
+// content choice was declared, by whom, and how many picks it requires.
+// character-derived.ts (which already has catalogue access via
+// assembleCharacter) resolves this stub into a real, presentable choice.
+export type PendingContentChoiceStub = {
+  key: string
+  slot: ActorBridgeSlotKey
+  choiceSetId: string
+  count: number
+}
+
 export type ActorBridgeResult = {
   actorState: ActorState
   // EVERY choice the current facets declare, answered or not, in slot order
@@ -247,6 +269,14 @@ export type ActorBridgeResult = {
   // Every choice declared by a facet and not yet validly answered (see the
   // header). A subset of `declaredChoices`.
   pendingChoices: PendingChoice[]
+  // Character Progression Phase 1C -- every content-shaped progression-row
+  // choice declared by an active row, regardless of answered state (unlike
+  // `pendingChoices`, this bridge cannot determine "answered" for a content
+  // choice at all, since that requires catalogue + `progression.classes[].
+  // subclassRef` resolution it has no access to -- character-derived.ts
+  // owns that). Empty for every character/package that predates this
+  // phase.
+  contentChoices: PendingContentChoiceStub[]
   // Facet-granted Definition IDs that the ACTIVE Rules Package does not
   // declare. §8.2 rule 1: an unresolved reference is surfaced, never a
   // silent no-op. Populated only when the caller supplies `knownDefinition`.
@@ -274,7 +304,13 @@ export type ActorBridgeInput = {
   // its own target -- which is what the authored corpus produces anyway,
   // since a facet's `from` is typed `DefinitionId[]` (see
   // resolveChoiceTarget).
-  lookupChoiceSet?: (id: string) => { writesTo: string } | null | undefined
+  // Character Progression Phase 1C -- `writesTo` itself is now optional on
+  // the real ChoiceSetDefinition (a Content-kind ChoiceSet has none, per
+  // app/lib/rules/types.ts's own doc comment). `applyChoice` already
+  // treats an absent `writesTo` correctly (falls back to "the option is its
+  // own target"), so widening this signature to match is a pure type
+  // correction, not a behavior change.
+  lookupChoiceSet?: (id: string) => { writesTo?: string } | null | undefined
   // Character Progression Phase 1A -- the active package's own Definition
   // id for "the level concept," resolved via `registry.getBySemanticRole('level')`
   // by character-derived.ts (never hardcoded here, matching this module's
@@ -299,10 +335,23 @@ export type ActorBridgeInput = {
   // that declares no real Progression instance (every package before this
   // phase) must keep behaving exactly as it always did.
   lookupProgression?: (id: string) => Pick<ProgressionDefinition, 'keyedBy' | 'rows'> | null | undefined
+  // Character Progression Phase 1C -- tells this bridge which ChoiceSet ids
+  // are Content-Catalogue-sourced (e.g. subclass selection), so their
+  // progression-row entries are skipped in the Definition-choice loop
+  // instead of being treated as an unanswerable Definition choice with zero
+  // options. Optional, registry-backed, supplied by character-derived.ts
+  // (checks `definition.kind === 'choiceSet' && definition.from.kind ===
+  // 'fromContentCatalogue'`) -- unset (every caller predating this phase)
+  // skips nothing, byte-identical old behavior.
+  isContentChoiceSet?: (choiceSetId: string) => boolean
 }
 
-function facetFor(slot: CharacterAssemblySlot): RulesFacet | null {
-  return slot.status === 'resolved' ? slot.entry.rulesFacet ?? null : null
+// Character Progression Phase 1C -- `slot` accepts `undefined` defensively:
+// a blueprint built by a test fixture (or any future caller) that predates
+// the `subclass` field simply has no key for it, and an absent slot is
+// exactly as legal/inert as an explicitly `missing` one -- never a crash.
+function facetFor(slot: CharacterAssemblySlot | undefined): RulesFacet | null {
+  return slot?.status === 'resolved' ? slot.entry.rulesFacet ?? null : null
 }
 
 // The one place ability scores become Definition IDs. `value:ability.<key>`
@@ -375,6 +424,7 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
   const declaredChoices: ResolvableChoice[] = []
   const pendingChoices: PendingChoice[] = []
   const unresolvedGrants: string[] = []
+  const contentChoices: PendingContentChoiceStub[] = []
   const answeredChoices: Record<string, RuleValue> = {}
 
   // --- Ability scores: the player's own data, copied verbatim ------------
@@ -501,30 +551,42 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     // `keyedBy`'s current value at all -- every condition already false for
     // every package/facet that predates this phase, so this is a pure
     // addition with no behavior change for them.
-    const progressionId = facet.progression
-    const progressionDef = progressionId ? input.lookupProgression?.(progressionId) : null
+    //
+    // Character Progression Phase 1C -- `facet.progression` widened to an
+    // array (app/lib/content-rules/types.ts's own doc comment explains why:
+    // a class may independently opt into more than one ProgressionDefinition,
+    // e.g. Wizard's own Expertise progression AND the generic, shared
+    // subclass-selection progression every class can reference). Looped
+    // rather than singular; every existing single-id package/facet becomes
+    // a one-element array with byte-identical behavior.
+    for (const progressionId of facet.progression ?? []) {
+      const progressionDef = input.lookupProgression?.(progressionId)
 
-    // §8.2 rule 1, restated for `facet.progression` the same way it already
-    // applies to `facet.grants`/`facet.sources`/`facet.choices` above -- an
-    // unresolved reference is surfaced, never a silent no-op. ONLY when the
-    // caller actually asked for verification (`lookupProgression` supplied,
-    // mirroring `knownDefinition`'s own opt-in contract -- choices.put.ts's
-    // own call site never supplies it, and must stay exactly as silent as
-    // it always was). This is the diagnostic that was MISSING for the real
-    // production defect a fresh Wizard's Level 2 Scholar/Expertise choice
-    // hit: the active World's published Rules Package predated this
-    // package's own `progression:class.skill-expertise` Definition, so
-    // `progressionDef` was `null` here with nothing reporting it -- the
-    // whole Progression silently behaved as if the facet had never named
-    // one at all. Reported here now so a stale/unpublished package
-    // reference is visible in `unresolvedGrants` (the Character Sheet's own
-    // existing "something this package doesn't declare" surface) instead of
-    // looking identical to "this class has no Progression."
-    if (progressionId && input.lookupProgression && !progressionDef) {
-      unresolvedGrants.push(progressionId)
-    }
+      // §8.2 rule 1, restated for `facet.progression` the same way it already
+      // applies to `facet.grants`/`facet.sources`/`facet.choices` above -- an
+      // unresolved reference is surfaced, never a silent no-op. ONLY when the
+      // caller actually asked for verification (`lookupProgression` supplied,
+      // mirroring `knownDefinition`'s own opt-in contract -- choices.put.ts's
+      // own call site never supplies it, and must stay exactly as silent as
+      // it always was). This is the diagnostic that was MISSING for the real
+      // production defect a fresh Wizard's Level 2 Scholar/Expertise choice
+      // hit: the active World's published Rules Package predated this
+      // package's own `progression:class.skill-expertise` Definition, so
+      // `progressionDef` was `null` here with nothing reporting it -- the
+      // whole Progression silently behaved as if the facet had never named
+      // one at all. Reported here now so a stale/unpublished package
+      // reference is visible in `unresolvedGrants` (the Character Sheet's own
+      // existing "something this package doesn't declare" surface) instead of
+      // looking identical to "this class has no Progression."
+      if (input.lookupProgression && !progressionDef) {
+        unresolvedGrants.push(progressionId)
+        continue
+      }
 
-    if (progressionDef && input.levelDefinitionId && progressionDef.keyedBy === input.levelDefinitionId) {
+      if (!progressionDef || !input.levelDefinitionId || progressionDef.keyedBy !== input.levelDefinitionId) {
+        continue
+      }
+
       const currentLevel = input.levelOverride ?? totalCharacterLevel(blueprint.progression)
 
       for (const row of progressionDef.rows) {
@@ -556,6 +618,39 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
         }
 
         for (const choice of row.choices ?? []) {
+          // Character Progression Phase 1C -- a row's choice may now be
+          // Content-Catalogue-sourced (e.g. subclass selection) rather than
+          // Definition-sourced. `applyChoice` (below) is a pure Definition
+          // writer -- it has no `writesTo` to resolve and no Content
+          // Catalogue access to find legal options against (this bridge is
+          // "PURE ON PURPOSE": no I/O, no catalogue). A content-shaped
+          // choice is therefore entirely SKIPPED here, never added to
+          // `declaredChoices`/`pendingChoices`/`answeredChoices` -- its
+          // presentation and resolution belong entirely to
+          // server/utils/character-progression-plan.ts, which already has
+          // World Content Catalogue access and already builds
+          // `ProgressionChoice[]` by walking these same rows. This bridge's
+          // job for a content choice is limited to what happens AFTER it is
+          // answered: once `progression.classes[].subclassRef` resolves to
+          // a real catalogue entry, that entry's OWN RulesFacet reaches this
+          // bridge through the normal subclass slot (see SLOT_ORDER below),
+          // not through this choice-application loop at all.
+          // `input.isContentChoiceSet` (optional, mirrors every other opt-in
+          // lookup here) tells this bridge which choiceSetIds are
+          // content-shaped, so it can skip them without needing to know
+          // what "subclass" means -- an unset lookup (every caller that
+          // predates this phase) skips nothing, byte-identical old behavior.
+          if (input.isContentChoiceSet?.(choice.choiceSet)) {
+            const resolvable = toResolvableProgressionChoice(slotKey, rowAt, choice)
+            contentChoices.push({
+              key: resolvable.key,
+              slot: slotKey,
+              choiceSetId: choice.choiceSet,
+              count: choice.count
+            })
+            continue
+          }
+
           applyChoice(toResolvableProgressionChoice(slotKey, rowAt, choice), choice, slotKey)
         }
       }
@@ -575,5 +670,5 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     sources
   }
 
-  return { actorState, declaredChoices, pendingChoices, unresolvedGrants }
+  return { actorState, declaredChoices, pendingChoices, unresolvedGrants, contentChoices }
 }

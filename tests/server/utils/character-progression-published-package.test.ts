@@ -109,7 +109,17 @@ const PHASE_1B_ADDED_IDS = new Set([
   'value:skill.nature.expertise',
   'value:skill.religion.expertise',
   'choice:skill.expertise',
-  'progression:class.skill-expertise'
+  'progression:class.skill-expertise',
+  // Character Progression Phase 1C -- also excluded here, unchanged
+  // variable name notwithstanding: the STALE fixture below represents the
+  // real 0.9.0 published row, which genuinely predates these too. Without
+  // this, the STALE scenario would incorrectly ALSO surface the new
+  // Level-3 subclass choice (present in the real, current package this
+  // list is filtered FROM), diluting this describe block's own narrow,
+  // original purpose -- proving the Level-2 Scholar/Expertise regression
+  // in isolation.
+  'choice:class.subclass',
+  'progression:class.subclass-selection'
 ])
 
 // Phase 1B did not only ADD Definitions -- it also EXTENDED six existing
@@ -212,6 +222,16 @@ function wizardBlueprint(overrides: Record<string, unknown> = {}) {
 // like a real `rules_packages` collection with two published rows would.
 function mockDirectusRulesPackages(rows: ReturnType<typeof directusRow>[]) {
   directusServiceRequestMock.mockImplementation(async (path: string, options: any) => {
+    // Character Progression Phase 1C -- character-derived.ts now calls
+    // getWorldContentCatalogue whenever the bridge declares a content
+    // choice (the real Wizard facet's new Level-3 subclass row, reached by
+    // every 1->5 plan this file builds). This test file's own World has no
+    // bound Content Pack, so an empty binding list is the correct, honest
+    // answer -- these tests exercise ONLY Rules Package staleness, never
+    // subclass content, and an empty catalogue keeps that scope intact.
+    if (path.includes('/items/world_content_pack_bindings')) {
+      return { data: [] }
+    }
     if (!path.includes('/items/rules_packages')) throw new Error(`Unexpected Directus path in this test: ${path}`)
     const wantedId = options?.query?.filter?._and?.[0]?.package_id?._eq
     const wantedVersion = options?.query?.filter?._and?.[1]?.version?._eq
@@ -288,8 +308,17 @@ describe('FIX PROOF -- the identical plan against the PUBLISHED-AND-ACTIVATED cu
     mockDirectusRulesPackages([directusRow(REAL_MANIFEST, REAL_DEFINITIONS)])
   })
 
+  // Character Progression Phase 1C -- targetLevel 2, not 5: the real
+  // package now ALSO declares a Level 3 subclass choice (this phase's own
+  // addition), which is out of scope for this describe block's own narrow
+  // purpose (proving the Level 2 Scholar/Expertise regression fix in
+  // isolation, unchanged). Capping the plan at level 2 keeps it from ever
+  // reaching level 3, so this test's assertions stay exactly what they
+  // were about. The Level 3 choice itself is covered by
+  // tests/server/utils/character-actor-bridge.test.ts's own subclass tests
+  // and this file's own dedicated Phase 1C describe block, below.
   it('produces the real Scholar/Expertise choice at Level 2 and plan.valid: false until answered', async () => {
-    const result = await planProgression('5', '42', 5)
+    const result = await planProgression('5', '42', 2)
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
@@ -304,7 +333,7 @@ describe('FIX PROOF -- the identical plan against the PUBLISHED-AND-ACTIVATED cu
 
   it('resolves and validates once a legal tentative answer is supplied', async () => {
     const key = progressionChoiceKey('class', 2, 'choice:skill.expertise')
-    const result = await planProgression('5', '42', 5, { [key]: ['value:skill.arcana.expertise'] })
+    const result = await planProgression('5', '42', 2, { [key]: ['value:skill.arcana.expertise'] })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.plan.unresolvedChoiceIds).toEqual([])

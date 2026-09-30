@@ -1050,10 +1050,25 @@ export type ProgressionDefinition = DefinitionCategorization & {
 // yet: Rules Facets are not designed until rules-package-architecture.md
 // §8 is implemented (Step 3+), so anything more here would be inventing a
 // shape ahead of the concept it describes.
+// Character Progression Phase 1C -- `fromContentCatalogue` is the fourth,
+// closed selector kind: "the options come from the World's Content
+// Catalogue, not from this Rules Package's own Definitions." `category`
+// names a Content Catalogue category (e.g. 'subclasses') generically -- it
+// is a Rules Package DECLARATION that a choice of this shape exists, never
+// a query. The engine itself never resolves this selector (ChoiceSet stays
+// "the one form that is never evaluated" -- see this section's own header);
+// resolving `category` into real options against a live catalogue is
+// application-layer work (server/utils/character-progression-plan.ts),
+// exactly mirroring how `fromContentFacet` was already declared here before
+// Rules Facets existed to resolve it. This preserves the one-way
+// dependency the architecture requires: Content may reference Rules
+// (RulesFacet.progression names a Definition), but the Rules Engine never
+// queries Content.
 export type ChoiceSetSelector =
   | { kind: 'explicit'; ids: DefinitionId[] }
   | { kind: 'definitionsInCategory'; category: RuleCategory }
   | { kind: 'fromContentFacet' }
+  | { kind: 'fromContentCatalogue'; category: string }
 
 export type ChoiceSetDefinition = DefinitionCategorization & {
   id: DefinitionId
@@ -1075,7 +1090,15 @@ export type ChoiceSetDefinition = DefinitionCategorization & {
   // existing Definition to look up" (dependency-graph.ts, reference-
   // validation.ts) is tempted to try. Resolving the template against a
   // choice is evaluation work, out of scope here.
-  writesTo: string
+  //
+  // Character Progression Phase 1C -- OPTIONAL as of `from.kind ===
+  // 'fromContentCatalogue'`: a Content choice (e.g. selecting a subclass)
+  // does not set any Definition value at all -- the selected CONTENT's own
+  // RulesFacet contributes independently once resolved, through the normal
+  // facet-application path, not through a Definition write this ChoiceSet
+  // would name. Every existing `from.kind` (explicit/definitionsInCategory/
+  // fromContentFacet) still requires `writesTo`, unchanged.
+  writesTo?: string
 }
 
 // The Definition kinds this commit can represent -- the five primitives

@@ -19,6 +19,11 @@ export type EldraImportPreviewEntity = {
   sourcePage?: string
   blocks: EldraImportPreviewBlock[]
   raw: Record<string, any>
+  // Character Progression Phase 1C. Present only when `entityType ===
+  // 'subclass'` (app/lib/importers/5etools-subclasses.ts) -- the parent
+  // class's own catalogue slug, derived structurally at import time.
+  // Optional and additive: every other importer simply never sets it.
+  parentClassSlug?: string
 }
 
 export type EldraImportPreviewResult = {

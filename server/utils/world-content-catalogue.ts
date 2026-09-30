@@ -133,6 +133,16 @@ export type ContentCatalogueEntry = {
   // this entry is not even a spell. Mirrors `presentation`'s own
   // `null`-vs-absent distinction exactly.
   spellMechanics?: CanonicalSpellMechanics | null
+  // Character Progression Phase 1C. Present only for `subclasses` entries
+  // -- the parent class's own catalogue `slug` (e.g. `wizard-xphb`),
+  // normalized structurally from the raw 5etools `className`+`classSource`
+  // fields at import time (app/lib/importers/5etools-subclasses.ts), using
+  // the IDENTICAL slug formula the class importer itself already uses for
+  // that exact class -- never inferred from this subclass's own name,
+  // filename, or prose. This is what lets progression evaluation ask "give
+  // me subclasses whose parent is this selected class" as a structural
+  // filter.
+  parentClassSlug?: string
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -147,6 +157,11 @@ export type FeatCatalogueEntry = ContentCatalogueEntry
 export type ItemCatalogueEntry = ContentCatalogueEntry
 export type SpellCatalogueEntry = ContentCatalogueEntry
 export type MonsterCatalogueEntry = ContentCatalogueEntry
+// Character Progression Phase 1C. A subclass is structurally an ordinary
+// catalogue entry -- same envelope, same optional `rulesFacet` -- plus one
+// additive field (`parentClassSlug`, below) no other category needs. Not a
+// distinct type shape, exactly like every other alias in this block.
+export type SubclassCatalogueEntry = ContentCatalogueEntry
 
 export type WorldGameplayCatalogue = {
   worldId: string
@@ -158,12 +173,18 @@ export type WorldGameplayCatalogue = {
   items: ItemCatalogueEntry[]
   spells: SpellCatalogueEntry[]
   monsters: MonsterCatalogueEntry[]
+  // Character Progression Phase 1C. Additive eighth category, the same
+  // shape of extension 'monsters' already was -- see design decision 2's
+  // own "closed, not speculative" posture, which this stays consistent
+  // with by being one more named collection, not a generic open registry.
+  subclasses: SubclassCatalogueEntry[]
 }
 
 // The exact, closed entityType -> catalogue-collection mapping -- see
 // design decision 2. Keyed by the literal strings app/lib/importers'
 // preview5eTools* functions already write (verified directly against each:
-// 'species', 'class', 'background', 'feat', 'item', 'spell', 'enemy').
+// 'species', 'class', 'background', 'feat', 'item', 'spell', 'enemy',
+// and -- Character Progression Phase 1C -- 'subclass').
 type CatalogueCategory = keyof Omit<WorldGameplayCatalogue, 'worldId' | 'packs'>
 
 const ENTITY_TYPE_TO_CATEGORY: Record<string, CatalogueCategory> = {
@@ -173,7 +194,8 @@ const ENTITY_TYPE_TO_CATEGORY: Record<string, CatalogueCategory> = {
   feat: 'feats',
   item: 'items',
   spell: 'spells',
-  enemy: 'monsters'
+  enemy: 'monsters',
+  subclass: 'subclasses'
 }
 
 // Which catalogue categories resolve a presentation model, and as which
@@ -269,6 +291,16 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
     }
   }
 
+  // Character Progression Phase 1C -- relayed, not computed, exactly like
+  // `rulesFacet` above: the parent-class slug is normalized once, at
+  // publish time, by the subclass importer (app/lib/importers/
+  // 5etools-subclasses.ts), never re-derived here. Assigned only when
+  // present so a non-subclass entry's key set is unaffected.
+  const parentClassSlug = (entry as any).parentClassSlug
+  if (typeof parentClassSlug === 'string' && parentClassSlug) {
+    base.parentClassSlug = parentClassSlug
+  }
+
   return base
 }
 
@@ -290,7 +322,8 @@ export async function getWorldContentCatalogue(worldId: string | number): Promis
     feats: [],
     items: [],
     spells: [],
-    monsters: []
+    monsters: [],
+    subclasses: []
   }
 
   for (const entry of resolved.entries) {

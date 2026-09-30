@@ -1382,6 +1382,37 @@
     ]
   },
   {
+    "id": "choice:class.subclass",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Subclass",
+    "prompt": "Choose your subclass.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "subclasses"
+    },
+    "distinct": true
+  },
+  {
+    "id": "progression:class.subclass-selection",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Subclass Selection Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 3,
+        "choices": [
+          {
+            "choiceSet": "choice:class.subclass",
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "collection:equipment",
     "kind": "collection",
     "category": "equipment",

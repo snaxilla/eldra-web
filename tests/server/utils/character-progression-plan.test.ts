@@ -28,13 +28,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock,
-  loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock
+  loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock,
+  listContentPackBindingsForWorldMock, getWorldContentCatalogueMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
   saveCharacterProgressionMock: vi.fn(),
   loadCharacterRulesChoicesMock: vi.fn(),
-  saveCharacterRulesChoicesMock: vi.fn()
+  saveCharacterRulesChoicesMock: vi.fn(),
+  // Character Progression Phase 1C -- new dependencies this module gained
+  // for Content Pack staleness fingerprinting (listContentPackBindingsForWorld)
+  // and confirm-time subclass re-resolution (getWorldContentCatalogue).
+  // Defaulted below (beforeEach) to "no bindings, empty catalogue" -- the
+  // correct, inert state for every test in this file that predates Phase
+  // 1C and never selects a subclass.
+  listContentPackBindingsForWorldMock: vi.fn(),
+  getWorldContentCatalogueMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -54,6 +63,14 @@ vi.mock('../../../server/utils/character-rules-choices', () => ({
   saveCharacterRulesChoices: saveCharacterRulesChoicesMock
 }))
 
+vi.mock('../../../server/utils/world-content-packs', () => ({
+  listContentPackBindingsForWorld: listContentPackBindingsForWorldMock
+}))
+
+vi.mock('../../../server/utils/world-content-catalogue', () => ({
+  getWorldContentCatalogue: getWorldContentCatalogueMock
+}))
+
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../app/lib/rules/types'
@@ -64,6 +81,7 @@ import {
   resolveCurrentProgression
 } from '../../../server/utils/character-progression-plan'
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
+import { serializeContentRef } from '../../../app/lib/characters/progression-plan'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 const CLASS_REF = { packageId: 'eldra.content.xphb', slug: 'wizard-xphb' }
@@ -75,6 +93,37 @@ const CLASS_REF = { packageId: 'eldra.content.xphb', slug: 'wizard-xphb' }
 // on either side fails this file loudly instead of silently drifting.
 const SCHOLAR_CHOICE_KEY = progressionChoiceKey('class', 2, 'choice:skill.expertise')
 const SCHOLAR_ARCANA_OPTION = 'value:skill.arcana.expertise'
+
+// Character Progression Phase 1C -- the real, package-declared identity of
+// the new Level 3 Subclass choice, computed via the real functions rather
+// than hand-typed. `SUBCLASS_OPTION` is a stable, made-up-but-consistent
+// ContentRef this file's own `catalogueWithSubclass` fixture (below)
+// resolves as the one legal Wizard subclass option in every test's default
+// World -- these tests exercise the generic progression machinery, not any
+// real published subclass corpus (that is covered by
+// tests/server/utils/character-actor-bridge.test.ts and the corpus/content
+// tests instead).
+const SUBCLASS_CHOICE_KEY = progressionChoiceKey('class', 3, 'choice:class.subclass')
+const SUBCLASS_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' })
+
+function catalogueWithSubclass() {
+  return {
+    worldId: 'w1', packs: [], species: [], classes: [], backgrounds: [],
+    feats: [], items: [], spells: [], monsters: [],
+    subclasses: [
+      {
+        packageId: 'eldra.content.xphb',
+        packageVersion: '1.0.0',
+        systemKey: 'dnd5e',
+        title: 'School of Evocation',
+        slug: 'school-of-evocation-phb',
+        externalId: 'School of Evocation__PHB',
+        provider: '5etools-json',
+        parentClassSlug: CLASS_REF.slug
+      }
+    ]
+  }
+}
 
 function hydrate(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(hydrate)
@@ -140,6 +189,8 @@ beforeEach(() => {
   saveCharacterProgressionMock.mockReset()
   loadCharacterRulesChoicesMock.mockReset()
   saveCharacterRulesChoicesMock.mockReset()
+  listContentPackBindingsForWorldMock.mockReset()
+  getWorldContentCatalogueMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -152,6 +203,19 @@ beforeEach(() => {
   // `wizardBlueprint`'s own `rulesChoices: null` above.
   loadCharacterRulesChoicesMock.mockResolvedValue(null)
   saveCharacterRulesChoicesMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
+  // Character Progression Phase 1C -- no Content Pack bindings, empty
+  // catalogue, by default: every test in this file that predates Phase 1C
+  // (and every one that does not specifically exercise subclass selection)
+  // needs the Content axis to be a stable, empty no-op.
+  listContentPackBindingsForWorldMock.mockResolvedValue([])
+  // Character Progression Phase 1C -- a legal Wizard subclass option by
+  // default (`catalogueWithSubclass`, below CLASS_REF's own declaration):
+  // DragoWizard's real 1->5 walk crosses the real Level 3 subclass choice
+  // now that the real package declares it, so most tests in this file need
+  // a legal option available even when they are not specifically testing
+  // subclass selection -- individual tests override with a bare empty
+  // catalogue where that absence is the point being tested.
+  getWorldContentCatalogueMock.mockResolvedValue(catalogueWithSubclass())
 })
 
 describe('resolveCurrentProgression', () => {
@@ -198,13 +262,13 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
     }
   })
 
-  // Character Progression Phase 1B upgrade: Level 2 now surfaces exactly
-  // ONE real required choice (Scholar/skill Expertise) -- see
-  // app/lib/content-rules/dnd5e-2024.ts's own header for the corpus
-  // evidence. Levels 3/4/5 remain honestly empty (no other real Wizard 1-5
-  // fact is structurally authored this phase -- subclass/ASI remain
-  // documented content-authoring gaps).
-  it('surfaces exactly the real Scholar/Expertise choice at level 2, and nothing at levels 3/4/5', async () => {
+  // Character Progression Phase 1B/1C: Level 2 surfaces the real
+  // Scholar/skill Expertise choice; Level 3 (Phase 1C) surfaces the real
+  // Subclass choice -- see app/lib/content-rules/dnd5e-2024.ts's own header
+  // for the corpus evidence for both. Levels 4/5 remain honestly empty (ASI
+  // remains a documented content-authoring gap, per this phase's own
+  // explicit DO NOT TOUCH).
+  it('surfaces exactly the real Scholar/Expertise choice at level 2 and the real Subclass choice at level 3, and nothing at levels 4/5', async () => {
     const result = await planProgression('5', '42', 5)
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -216,29 +280,67 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
       count: 1,
       selected: [],
       answered: false,
+      kind: 'definition',
       options: expect.arrayContaining([
         { id: SCHOLAR_ARCANA_OPTION, label: expect.any(String) }
       ])
     }])
     expect(level2.requiredChoices[0]!.options).toHaveLength(6)
 
-    for (const level of [3, 4, 5]) {
+    const level3 = result.plan.steps.find((step) => step.level === 3)!
+    expect(level3.requiredChoices).toEqual([{
+      id: SUBCLASS_CHOICE_KEY,
+      label: expect.any(String),
+      count: 1,
+      selected: [],
+      answered: false,
+      kind: 'content',
+      options: [{ id: SUBCLASS_OPTION, label: 'School of Evocation' }]
+    }])
+
+    for (const level of [4, 5]) {
       const step = result.plan.steps.find((s) => s.level === level)!
       expect(step.requiredChoices).toEqual([])
     }
 
+    expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY, SUBCLASS_CHOICE_KEY])
+    expect(result.plan.valid).toBe(false)
+  })
+
+  // TESTING -- PROGRESSION #15/#16/#17: answering only one of the two
+  // required choices must leave the plan invalid; only answering BOTH
+  // resolves it.
+  it('answering Expertise alone leaves the plan invalid -- Subclass is still unresolved', async () => {
+    const result = await planProgression('5', '42', 5, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.unresolvedChoiceIds).toEqual([SUBCLASS_CHOICE_KEY])
+    expect(result.plan.valid).toBe(false)
+  })
+
+  it('answering Subclass alone leaves the plan invalid -- Expertise is still unresolved', async () => {
+    const result = await planProgression('5', '42', 5, { [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
     expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY])
     expect(result.plan.valid).toBe(false)
   })
 
-  it('a tentative answer to the Scholar choice resolves it and makes the plan valid, without persisting anything', async () => {
-    const result = await planProgression('5', '42', 5, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+  it('a tentative answer to BOTH choices resolves them and makes the plan valid, without persisting anything', async () => {
+    const result = await planProgression('5', '42', 5, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+    })
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
     const level2 = result.plan.steps.find((step) => step.level === 2)!
     expect(level2.requiredChoices).toEqual([expect.objectContaining({
       id: SCHOLAR_CHOICE_KEY, selected: [SCHOLAR_ARCANA_OPTION], answered: true
+    })])
+    const level3 = result.plan.steps.find((step) => step.level === 3)!
+    expect(level3.requiredChoices).toEqual([expect.objectContaining({
+      id: SUBCLASS_CHOICE_KEY, selected: [SUBCLASS_OPTION], answered: true
     })])
     expect(result.plan.unresolvedChoiceIds).toEqual([])
     expect(result.plan.valid).toBe(true)
@@ -249,11 +351,26 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
   })
 
   it('an invalid tentative answer (illegal option) leaves the choice unresolved rather than silently accepted', async () => {
-    const result = await planProgression('5', '42', 5, { [SCHOLAR_CHOICE_KEY]: ['value:skill.athletics.expertise'] })
+    const result = await planProgression('5', '42', 5, {
+      [SCHOLAR_CHOICE_KEY]: ['value:skill.athletics.expertise'],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+    })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.plan.unresolvedChoiceIds).toEqual([SCHOLAR_CHOICE_KEY])
     expect(result.plan.valid).toBe(false)
+  })
+
+  // TESTING -- PROGRESSION #18/#19: a subclass ContentRef that does not
+  // exist, or belongs to a different class, is never silently accepted as
+  // an answer.
+  it('an unknown ContentRef leaves the Subclass choice unresolved', async () => {
+    const result = await planProgression('5', '42', 5, {
+      [SUBCLASS_CHOICE_KEY]: [serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'no-such-subclass' })]
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.plan.unresolvedChoiceIds).toContain(SUBCLASS_CHOICE_KEY)
   })
 
   it('base mechanics are unaffected by planning -- the character\'s own stored level is never mutated by a preview', async () => {
@@ -339,13 +456,20 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
       return stored
     })
 
-    const result = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    const result = await confirmProgression('5', '42', 5, fingerprint, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+    })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.currentLevel).toBe(5)
 
-    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: CLASS_REF, level: 5 }] })
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
+      classes: [{ classRef: CLASS_REF, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' } }]
+    })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
+    // Only the Definition-kind answer reaches rules_choices -- see
+    // SUBCLASS AUTHORITY.
     expect(saveCharacterRulesChoicesMock).toHaveBeenCalledWith('42', { selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
     expect(saveCharacterRulesChoicesMock).toHaveBeenCalledTimes(1)
     expect(callOrder).toEqual(['choices', 'progression'])
@@ -361,15 +485,25 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
     })
     const fingerprint = await freshFingerprint()
 
-    const result = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    const result = await confirmProgression('5', '42', 5, fingerprint, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+    })
     expect(result.ok).toBe(true)
 
+    // Only the Definition-kind answer (Expertise) ever reaches rules_choices
+    // -- the Content-kind answer (subclass) is NEVER written there (see
+    // SUBCLASS AUTHORITY: its sole durable home is
+    // progression.classes[].subclassRef, asserted separately below).
     expect(saveCharacterRulesChoicesMock).toHaveBeenCalledWith('42', {
       selections: {
         'class:choice:skill.proficiency': ['value:skill.history.proficient', 'value:skill.medicine.proficient'],
         [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION]
       }
     })
+    if (result.ok) {
+      expect(result.progression.classes[0]?.subclassRef).toEqual({ packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' })
+    }
   })
 
   it('rejects with unresolved-choices, and writes nothing, when the required Scholar choice is not answered', async () => {
@@ -397,7 +531,8 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
   // the level write reproduces the identical target level.
   it('retrying an identical confirm reproduces the exact same writes, never a duplicate or an incremented level', async () => {
     const fingerprint = await freshFingerprint()
-    const first = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    const answers = { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION], [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION] }
+    const first = await confirmProgression('5', '42', 5, fingerprint, answers)
     expect(first.ok).toBe(true)
 
     // The retry re-reads current state fresh, including the choice this
@@ -406,10 +541,11 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
     // would on a genuine retry.
     loadCharacterRulesChoicesMock.mockResolvedValue({ selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
 
-    const second = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    const second = await confirmProgression('5', '42', 5, fingerprint, answers)
     expect(second.ok).toBe(true)
     if (!second.ok) return
     expect(second.currentLevel).toBe(5)
+    expect(second.progression.classes[0]?.subclassRef).toEqual({ packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' })
     expect(saveCharacterRulesChoicesMock).toHaveBeenLastCalledWith('42', { selections: { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] } })
   })
 
@@ -539,7 +675,7 @@ describe('confirmProgression -- exactly one write when no real progression choic
     const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint)
     expect(confirmResult.ok).toBe(true)
     if (!confirmResult.ok) return
-    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5 }] })
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5, subclassRef: null }] })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
     expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
   })
@@ -551,7 +687,10 @@ describe('security/authority -- no client-trusted fact', () => {
     // client-provided proficiency bonus, HP, or spell-slot count -- only
     // targetLevel/fingerprint/answers, all independently re-validated.
     const fingerprint = await freshFingerprint()
-    const result = await confirmProgression('5', '42', 5, fingerprint, { [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION] })
+    const result = await confirmProgression('5', '42', 5, fingerprint, {
+      [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION]
+    })
     expect(result.ok).toBe(true)
   })
 
@@ -566,6 +705,7 @@ describe('security/authority -- no client-trusted fact', () => {
     const fingerprint = await freshFingerprint()
     const result = await confirmProgression('5', '42', 5, fingerprint, {
       [SCHOLAR_CHOICE_KEY]: [SCHOLAR_ARCANA_OPTION],
+      [SUBCLASS_CHOICE_KEY]: [SUBCLASS_OPTION],
       'class:progression:2:choice:not-a-real-choice': ['some-garbage-id']
     })
     expect(result.ok).toBe(true)
@@ -591,6 +731,6 @@ describe('no class-name special cases', () => {
     const confirmResult = await confirmProgression('5', '42', 5, planResult.plan.fingerprint)
     expect(confirmResult.ok).toBe(true)
     if (!confirmResult.ok) return
-    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5 }] })
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', { classes: [{ classRef: fighterRef, level: 5, subclassRef: null }] })
   })
 })

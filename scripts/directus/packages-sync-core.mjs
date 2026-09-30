@@ -248,7 +248,18 @@ export function findDanglingRulesFacetReferences(catalogueEntries, definitionIds
     const facet = entry.rulesFacet
     if (!facet) continue
 
-    if (facet.progression) check(entry, 'progression', facet.progression)
+    // Character Progression Phase 1C -- `facet.progression` is an array
+    // (a content entry may opt into more than one ProgressionDefinition;
+    // app/lib/content-rules/types.ts's own doc comment explains why),
+    // checked element-by-element. A real regression, caught and fixed
+    // during this phase's own production verification: the original
+    // one-line `check(entry, 'progression', facet.progression)` passed the
+    // WHOLE ARRAY as a single `id` to `definitionIds.has(id)`, which can
+    // never match a Set of strings -- producing a false-positive dangling
+    // reference for every facet naming a real, resolvable Progression.
+    for (const progressionId of facet.progression ?? []) {
+      check(entry, 'progression', progressionId)
+    }
 
     for (const grant of facet.grants ?? []) {
       check(entry, 'grants[].set', grant.set)

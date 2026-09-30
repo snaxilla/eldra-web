@@ -376,9 +376,43 @@ async function runPreflight({ modules, worldId, rulesClassification, contentResu
 // Apply -- dependency-ordered execution + post-apply verification
 // ---------------------------------------------------------------------------
 
-async function executeApply({ modules, world, rulesClassification, contentResults, plan }) {
+// Package Sync Hotfix 1 -- AUTHORITATIVE REFRESH RESULT PROPAGATION.
+//
+// Real production incident: a combined REFRESH_CONTENT -> BIND_CONTENT run
+// bound Solaris to `eldra.solaris.xphb@1.0.1` instead of the artifact this
+// SAME run had just created (`1.0.5`). Root cause: BIND_CONTENT read its
+// target version from `content.classification.version` -- the PRE-MUTATION
+// classification computed before REFRESH_CONTENT ran. For a
+// REFRESH_REQUIRED classification (packages-sync-core.mjs's
+// `classifyContentState`), that shape has no `version` field at all (only
+// `staleVersion`, the OLD version) -- so `undefined` was passed all the way
+// down to `bindContentPackToWorld`, which (see that function's own new
+// fail-closed guard) used to silently degrade into an unconstrained
+// Directus lookup that returned an arbitrary historical row.
+//
+// FIX: an `executionContext` tracks the REAL artifact identity each
+// artifact-creating operation actually produced THIS RUN
+// (`publishedRules`/`refreshedContent`, keyed the same way the conceptual
+// direction described) -- never inferred from `staleVersion`, a guessed
+// patch increment, or array ordering. A later dependent action (BIND_CONTENT
+// after REFRESH_CONTENT, ACTIVATE_RULES after PUBLISH_RULES) prefers its
+// own run's authoritative result over the plan's own (pre-mutation)
+// `action`/`classification` fields, which remain the correct source ONLY
+// for the pure BIND_REQUIRED/ACTIVATION_REQUIRED paths (no artifact was
+// created this run, and those classification shapes DO carry a real,
+// already-published `.version` -- see classifyRulesState's/
+// classifyContentState's own branches). This is deliberately the smallest
+// version of the "completed results" model -- two small lookups, not a
+// redesign of the executor.
+export async function executeApply({ modules, world, rulesClassification, contentResults, plan }) {
   const completed = []
   const worldId = world.id
+
+  // sourceKey -> { packageId, version, integrityHash } for a Content Pack
+  // this run itself refreshed. Rules has at most one artifact per run (this
+  // tool authors exactly one Rules Package), so a single object suffices.
+  const refreshedContent = new Map()
+  const publishedRules = { packageId: null, version: null, integrityHash: null }
 
   try {
     for (const action of plan) {
@@ -388,8 +422,13 @@ async function executeApply({ modules, world, rulesClassification, contentResult
         // The canonical publisher itself -- scripts/directus/publish-rules-package.mjs's
         // own publishRulesPackage, unmodified. Satisfies WORKFLOWS #3's
         // "using the existing canonical publisher" literally.
-        await publishRulesPackage({ packageDir, dx, deps })
-        completed.push(action)
+        const { row } = await publishRulesPackage({ packageDir, dx, deps })
+        // Authoritative: the row the publisher itself just built and wrote,
+        // never re-derived from `action`.
+        publishedRules.packageId = row.package_id
+        publishedRules.version = row.version
+        publishedRules.integrityHash = row.integrity_hash
+        completed.push({ ...action, version: row.version })
       } else if (action.kind === 'REFRESH_CONTENT') {
         const content = contentResults.find((c) => c.sourceKey === action.sourceKey)
         const outcome = await modules.contentSourceRefresh.refreshContentSource({
@@ -398,15 +437,41 @@ async function executeApply({ modules, world, rulesClassification, contentResult
           packageId: action.packageId
         })
         if (!outcome.refreshed) throw new Error(`REFRESH_CONTENT failed for ${action.sourceKey}: ${outcome.stage}`)
+        // Authoritative: refreshContentSource's own real published result,
+        // never re-derived from the pre-mutation classification.
+        refreshedContent.set(action.sourceKey, {
+          packageId: outcome.packageId,
+          version: outcome.version,
+          integrityHash: outcome.integrityHash
+        })
         completed.push({ ...action, version: outcome.version })
       } else if (action.kind === 'ACTIVATE_RULES') {
-        const result = await modules.worldRulesActivation.activateWorldRulesPackage(worldId, action.packageId, action.version)
+        // Prefer THIS run's own just-published artifact; fall back to the
+        // plan's own action fields only for the pure ACTIVATION_REQUIRED
+        // path (no publish happened this run, and that classification
+        // shape already carries a real, already-published `.version`).
+        const packageId = publishedRules.packageId ?? action.packageId
+        const version = publishedRules.version ?? action.version
+        if (!packageId || !version) {
+          throw new Error(`ACTIVATE_RULES: could not resolve an authoritative artifact identity (packageId=${packageId}, version=${version})`)
+        }
+        const result = await modules.worldRulesActivation.activateWorldRulesPackage(worldId, packageId, version)
         if (!result.activated) throw new Error(`ACTIVATE_RULES failed: ${result.failure.stage}`)
-        completed.push(action)
+        completed.push({ ...action, version })
       } else if (action.kind === 'BIND_CONTENT') {
+        const refreshed = refreshedContent.get(action.sourceKey)
         const content = contentResults.find((c) => c.sourceKey === action.sourceKey)
-        const version = content.classification.version
-        const result = await modules.worldContentPackBinding.bindContentPackToWorld(worldId, action.packageId, version)
+        // AUTHORITATIVE: prefer this run's own just-refreshed artifact;
+        // fall back to the plan's own classification ONLY for the pure
+        // BIND_REQUIRED path -- see this function's own header. This is
+        // the exact fix for the production incident: `content.classification.version`
+        // is never read alone anymore.
+        const packageId = refreshed?.packageId ?? action.packageId
+        const version = refreshed?.version ?? content.classification.version
+        if (!packageId || !version) {
+          throw new Error(`BIND_CONTENT: could not resolve an authoritative artifact identity for ${action.sourceKey} (packageId=${packageId}, version=${version})`)
+        }
+        const result = await modules.worldContentPackBinding.bindContentPackToWorld(worldId, packageId, version)
         if (!result.bound) throw new Error(`BIND_CONTENT failed for ${action.sourceKey}: ${result.failure.stage}`)
         completed.push({ ...action, version })
       }

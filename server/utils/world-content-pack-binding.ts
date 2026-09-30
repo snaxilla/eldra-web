@@ -50,11 +50,31 @@ export type ContentPackBindResult =
 // binding to a different version of the same package. Rejects (writes
 // nothing) if the pack is missing, draft, or integrity-mismatched -- see
 // design decision 1.
+//
+// Package Sync Hotfix 1 -- FAIL CLOSED, DEFENSE IN DEPTH. A real production
+// incident: a caller (scripts/directus/packages-sync.mjs's own executeApply,
+// since fixed at its own root cause) passed `version: undefined` here. This
+// function's TypeScript signature already declares `version: string`, but
+// that is a compile-time contract only -- a plain-JS caller reaching this
+// function through server/utils/*.ts's own runtime (as every scripts/
+// directus/*.mjs tool does, jiti-loaded, no type enforcement) can still
+// violate it. Unlike the DISCRIMINATED failures below (a legitimate,
+// expected domain state -- "this pack doesn't exist yet"), an empty/absent
+// packageId or version is a CALLER CONTRACT VIOLATION, not a domain
+// question this function's own `ContentPackBindResult` union is shaped to
+// answer -- so it throws, loudly, before ANY Directus call, rather than
+// silently letting `loadPublishedContentPack` receive it.
 export async function bindContentPackToWorld(
   worldId: string | number,
   packageId: string,
   version: string
 ): Promise<ContentPackBindResult> {
+  if (!packageId || !version) {
+    throw new Error(
+      `bindContentPackToWorld: packageId and version are both required and must be non-empty (received packageId=${JSON.stringify(packageId)}, version=${JSON.stringify(version)})`
+    )
+  }
+
   const packResult = await loadPublishedContentPack(packageId, version)
 
   if (!packResult.ok) {

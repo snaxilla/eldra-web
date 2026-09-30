@@ -350,6 +350,45 @@ describe('loadPublishedContentPack -- not found', () => {
   })
 })
 
+// Package Sync Hotfix 1 -- AUDIT THE DOWNSTREAM LOOKUP. Real production
+// incident: an `undefined` version reached this function's own Directus
+// query, whose `filter: { version: { _eq: undefined } }` clause serializes
+// (via JSON.stringify, which drops `undefined` object properties) to an
+// EMPTY operator object -- which Directus reads as "no constraint," turning
+// an intended exact-version lookup into an unconstrained one that returned
+// an arbitrary historical row. This guard makes that structurally
+// impossible: proven here by asserting `directusServiceRequestMock` is
+// NEVER called for an empty/absent packageId or version -- the request is
+// never even constructed, let alone sent with a half-empty filter.
+describe('loadPublishedContentPack -- fails closed on an invalid version/packageId, before any Directus call', () => {
+  it('reports "not-found" for an undefined version without ever calling Directus', async () => {
+    const result = await loadPublishedContentPack('eldra.test.content', undefined as unknown as string)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('not-found')
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('reports "not-found" for an empty-string version without ever calling Directus', async () => {
+    const result = await loadPublishedContentPack('eldra.test.content', '')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('not-found')
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+
+  it('reports "not-found" for an empty-string packageId without ever calling Directus', async () => {
+    const result = await loadPublishedContentPack('', '1.0.0')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.stage).toBe('not-found')
+    expect(directusServiceRequestMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('loadPublishedContentPack -- unpublished pack rejection', () => {
   it('fails with stage "not-published" for a draft row', async () => {
     const row = buildRow({ rowOverrides: { status: 'draft' } })

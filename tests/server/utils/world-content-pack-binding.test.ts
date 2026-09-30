@@ -120,6 +120,40 @@ describe('bindContentPackToWorld -- bind a published pack', () => {
   })
 })
 
+// Package Sync Hotfix 1 -- LOWER-BOUNDARY TEST. Real production incident:
+// a caller passed `version: undefined`, which reached this far and
+// ultimately caused an unconstrained Directus lookup. This must fail
+// BEFORE any Directus call -- proven here by asserting `loadPublishedContentPackMock`
+// (the first thing this function would otherwise call) is never invoked.
+describe('bindContentPackToWorld -- fails closed on an invalid version/packageId, before any Directus call', () => {
+  it('throws for an undefined version, never calls loadPublishedContentPack or saveContentPackBinding', async () => {
+    createFakeBindingStore()
+
+    await expect(bindContentPackToWorld(1, 'eldra.srd-5.1', undefined as unknown as string)).rejects.toThrow()
+
+    expect(loadPublishedContentPackMock).not.toHaveBeenCalled()
+    expect(saveContentPackBindingMock).not.toHaveBeenCalled()
+  })
+
+  it('throws for an empty-string version, never calls loadPublishedContentPack or saveContentPackBinding', async () => {
+    createFakeBindingStore()
+
+    await expect(bindContentPackToWorld(1, 'eldra.srd-5.1', '')).rejects.toThrow()
+
+    expect(loadPublishedContentPackMock).not.toHaveBeenCalled()
+    expect(saveContentPackBindingMock).not.toHaveBeenCalled()
+  })
+
+  it('throws for an empty-string packageId, never calls loadPublishedContentPack or saveContentPackBinding', async () => {
+    createFakeBindingStore()
+
+    await expect(bindContentPackToWorld(1, '', '1.0.0')).rejects.toThrow()
+
+    expect(loadPublishedContentPackMock).not.toHaveBeenCalled()
+    expect(saveContentPackBindingMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('bindContentPackToWorld -- rejections write nothing', () => {
   it('rejects a missing pack', async () => {
     const store = createFakeBindingStore()

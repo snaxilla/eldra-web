@@ -402,10 +402,28 @@ export async function loadContentPackManifest(
 // loader safe to treat as "this pack's content may be trusted" -- mirrors
 // loadPublishedPackage (rules-packages.ts) exactly, minus the engine-
 // compatibility stage (see design decision 3).
+//
+// Package Sync Hotfix 1 -- AUDIT THE DOWNSTREAM LOOKUP finding. A real
+// production incident traced the exact mechanism: a caller passed
+// `version: undefined`. `directusServiceRequest`'s query serialization
+// drops an `undefined` value from the JSON it builds (`JSON.stringify({_eq:
+// undefined})` -> `{}`), so the filter clause silently became `{"version":
+// {}}` -- an EMPTY operator object Directus reads as "no constraint on this
+// field" -- turning an intended exact-version lookup into an unconstrained
+// one that returned an arbitrary historical row instead of failing. The
+// guard below makes that degradation structurally impossible: an
+// empty/absent `packageId` or `version` is treated exactly like "not
+// found" (this function's own existing, already-handled failure shape) and
+// returns BEFORE any Directus request is ever constructed -- never a
+// request with a half-empty filter.
 export async function loadPublishedContentPack(
   packageId: string,
   version: string
 ): Promise<ContentPackLoadResult> {
+  if (!packageId || !version) {
+    return { ok: false, stage: 'not-found', packageId: packageId ?? '', version: version ?? '' }
+  }
+
   const res: any = await directusServiceRequest(`/items/${COLLECTION}`, {
     method: 'GET',
     query: {

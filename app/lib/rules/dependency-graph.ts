@@ -518,8 +518,25 @@ export function collectExpressions(definition: Definition): Expression[] {
   switch (definition.kind) {
     case 'value':
       return definition.formula ? [definition.formula] : []
-    case 'resource':
-      return isExpression(definition.max) ? [definition.max] : []
+    case 'resource': {
+      // D&D 2024 Character Rules Phase 2A.2 -- `recovery[].amount` and
+      // `presentation.dieSize` are the two new Expression-valued fields
+      // this phase added to ResourceDefinition; both are walked here for
+      // the identical reason `max` already was (so a `recovery` amount or
+      // a `dieSize` that references `@value:ability.cha.mod` or a Table
+      // lookup produces real dependency edges and participates in cycle
+      // detection, exactly as every other Expression in this file does).
+      const expressions: Expression[] = []
+      if (isExpression(definition.max)) expressions.push(definition.max)
+      for (const rule of definition.recovery ?? []) {
+        if (isExpression(rule.amount)) expressions.push(rule.amount)
+        if (rule.condition) expressions.push(rule.condition)
+      }
+      if (definition.presentation?.dieSize !== undefined && isExpression(definition.presentation.dieSize)) {
+        expressions.push(definition.presentation.dieSize)
+      }
+      return expressions
+    }
     case 'collection':
       return []
     // Step 2: symmetrical with collectStructuralEdges above. ChoiceSet's

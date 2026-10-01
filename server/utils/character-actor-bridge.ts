@@ -148,6 +148,7 @@ import { totalCharacterLevel } from '../../app/lib/characters/progression'
 import type {
   ActorState,
   CollectionInstanceItem,
+  DefinitionId,
   ProgressionDefinition,
   RuleValue,
   SourceInstance
@@ -291,6 +292,21 @@ export type ActorBridgeResult = {
   // declare. §8.2 rule 1: an unresolved reference is surfaced, never a
   // silent no-op. Populated only when the caller supplies `knownDefinition`.
   unresolvedGrants: string[]
+  // D&D 2024 Character Rules Phase 2A.2 -- every Resource Definition id
+  // this character currently has ACCESS TO, collected from `facet.resources`
+  // (every SLOT_ORDER slot plus every acquired feat, via `consumeFacet`
+  // exactly like `facet.sources` already is) and from `row.resources` on
+  // every active Progression row (`rowAt <= currentLevel`, exactly like
+  // `row.grants` already is). This is RESOURCE AVAILABILITY, not Resource
+  // EVALUATION -- the bridge is "PURE ON PURPOSE" (this file's own header)
+  // and performs no `evaluate()` call of any kind; a caller with registry
+  // access (character-derived.ts) resolves each id into its real maximum/
+  // recovery/presentation. De-duplicated (a `Set` internally) and in
+  // first-encountered order -- the same two Sources being granted twice by
+  // two different facets would be a harmless, order-stable duplicate here,
+  // mirroring how a duplicate `facet.sources` entry already behaves
+  // (two identical SourceInstances, not an error).
+  acquiredResourceIds: DefinitionId[]
 }
 
 export type ActorBridgeInput = {
@@ -452,6 +468,11 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
   const unresolvedGrants: string[] = []
   const contentChoices: PendingContentChoiceStub[] = []
   const answeredChoices: Record<string, RuleValue> = {}
+  // D&D 2024 Character Rules Phase 2A.2 -- see ActorBridgeResult's own
+  // `acquiredResourceIds` doc comment. A `Set` so the SAME resource id
+  // declared by two different facets/rows (unusual, but not forbidden)
+  // still produces one entry, not a duplicate.
+  const acquiredResourceIds = new Set<DefinitionId>()
 
   // --- Ability scores: the player's own data, copied verbatim ------------
   // Absent scores are left absent rather than defaulted to 10 here. The
@@ -598,6 +619,20 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
       })
     }
 
+    // D&D 2024 Character Rules Phase 2A.2 -- always-on resource access
+    // (Rage, Bardic Inspiration, Sorcery Points, Lay on Hands, ...),
+    // consumed through the SAME `consumeFacet` path as `facet.sources`
+    // immediately above, so every SLOT_ORDER slot AND every acquired feat
+    // grants resource access identically (no special-casing which kind of
+    // facet names a resource).
+    for (const resourceId of facet.resources ?? []) {
+      if (input.knownDefinition && !input.knownDefinition(resourceId)) {
+        unresolvedGrants.push(resourceId)
+        continue
+      }
+      acquiredResourceIds.add(resourceId)
+    }
+
     for (const choice of facet.choices ?? []) {
       // Shared with the Builder so both ask the identical question -- see
       // toResolvableChoice. A facet with no `from` offers nothing, which
@@ -683,6 +718,23 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
           })
         }
 
+        // D&D 2024 Character Rules Phase 2A.2 -- LEVEL-GATED resource
+        // access (Monk's Focus Points at level 2, Fighter's Action Surge
+        // at level 2, Battle Master's Superiority Dice at subclass level
+        // 3, ...), mirroring `row.grants` immediately above exactly: only
+        // rows at or below the character's CURRENT level are active (the
+        // same `rowAt <= currentLevel` gate this whole loop already
+        // enforces), and a row's resource ids are reported unresolved
+        // under the identical `knownDefinition` check every other
+        // row-level reference already uses.
+        for (const resourceId of row.resources ?? []) {
+          if (input.knownDefinition && !input.knownDefinition(resourceId)) {
+            unresolvedGrants.push(resourceId)
+            continue
+          }
+          acquiredResourceIds.add(resourceId)
+        }
+
         for (const choice of row.choices ?? []) {
           // Character Progression Phase 1C -- a row's choice may now be
           // Content-Catalogue-sourced (e.g. subclass selection) rather than
@@ -759,5 +811,12 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     sources
   }
 
-  return { actorState, declaredChoices, pendingChoices, unresolvedGrants, contentChoices }
+  return {
+    actorState,
+    declaredChoices,
+    pendingChoices,
+    unresolvedGrants,
+    contentChoices,
+    acquiredResourceIds: [...acquiredResourceIds]
+  }
 }

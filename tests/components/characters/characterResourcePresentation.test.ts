@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  genericResourcesToCharacterResources,
   isResourceUnitAvailable,
   resourceUnitAriaLabel,
   spellSlotsToCharacterResources,
@@ -156,5 +157,78 @@ describe('CharacterResourceGroup contract -- proven capable of non-spell, multi-
     // different code path (the adapter) than the other two (hand-built
     // fixtures) -- a renderer loops over `groups` uniformly either way.
     expect(groups.every((group) => Array.isArray(group.pools))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules Phase 2A.2 -- genericResourcesToCharacterResources
+// and LARGE NUMERIC POOLS ('points' style).
+// ---------------------------------------------------------------------------
+
+describe('genericResourcesToCharacterResources', () => {
+  it('a plain pool resource (style: pool, or absent) produces an adjustable pool with no dieFaces/style override', () => {
+    const groups = genericResourcesToCharacterResources([
+      { id: 'resource:rage', label: 'Rage', max: 3, expended: 1, presentation: { style: 'pool' } }
+    ])
+    expect(groups).toEqual([
+      {
+        id: 'resource:rage',
+        label: 'Rage',
+        pools: [{ id: 'resource:rage', max: 3, expended: 1, adjustable: true, style: 'pool' }]
+      }
+    ])
+  })
+
+  it('a dice-valued resource carries dieFaces through untouched', () => {
+    const groups = genericResourcesToCharacterResources([
+      { id: 'resource:bardic_inspiration', label: 'Bardic Inspiration', max: 3, expended: 0, presentation: { style: 'dice', dieFaces: 8 } }
+    ])
+    expect(groups[0]!.pools[0]).toMatchObject({ style: 'dice', dieFaces: 8 })
+  })
+
+  // LARGE NUMERIC POOL ACCEPTANCE -- a level-20 Paladin's Lay on Hands
+  // (`5 × level` = 100). The adapter must select the 'points' style from
+  // the Resource's OWN package-authored `presentation.style` -- never by
+  // inspecting `max` and guessing a threshold (this phase's own explicit
+  // "prefer package-authored presentation over UI guessing" instruction).
+  it('a large numeric pool (Lay on Hands, max 100 at level 20) selects the points style from package metadata, never from inspecting max', () => {
+    const groups = genericResourcesToCharacterResources([
+      { id: 'resource:lay_on_hands', label: 'Lay on Hands', max: 100, expended: 17, presentation: { style: 'points' } }
+    ])
+    expect(groups).toEqual([
+      {
+        id: 'resource:lay_on_hands',
+        label: 'Lay on Hands',
+        pools: [{ id: 'resource:lay_on_hands', max: 100, expended: 17, adjustable: true, style: 'points' }]
+      }
+    ])
+  })
+
+  it('a small pool with max 100 but style "pool" (hypothetically) is NOT reclassified to points -- the adapter never overrides package intent', () => {
+    const groups = genericResourcesToCharacterResources([
+      { id: 'resource:hypothetical', label: 'Hypothetical', max: 100, expended: 0, presentation: { style: 'pool' } }
+    ])
+    expect(groups[0]!.pools[0]!.style).toBe('pool')
+  })
+})
+
+describe('CharacterResourceOrbs.vue template contract -- no one-control-per-point explosion', () => {
+  // This repo's Vitest setup has no DOM/render harness (every component
+  // test in this family proves the DATA CONTRACT a template branches on,
+  // never the rendered DOM -- see this file's own header). The orb
+  // template's `v-for="position in pool.max"` only executes on the
+  // `v-else` (non-'points') branch; proving the adapter never assigns
+  // `style: 'points'` a `max` the orb branch would ever see is the
+  // testable half of "100 points does not produce 100 orb controls" --
+  // the other half (the template's own `v-if="pool.style === 'points'"`
+  // branch, which skips the orb `v-for` entirely) is a direct, visible
+  // read of CharacterResourceOrbs.vue's own template, not independently
+  // re-verifiable without a render harness.
+  it('a points-style pool\'s own style field is never "pool" or "dice", so the orb v-for branch is structurally unreachable for it', () => {
+    const groups = genericResourcesToCharacterResources([
+      { id: 'resource:lay_on_hands', label: 'Lay on Hands', max: 100, expended: 0, presentation: { style: 'points' } }
+    ])
+    expect(groups[0]!.pools[0]!.style).not.toBe('pool')
+    expect(groups[0]!.pools[0]!.style).not.toBe('dice')
   })
 })

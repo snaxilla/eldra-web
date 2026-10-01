@@ -75,6 +75,7 @@ import { CHARACTER_NOTES_BLOCK_KEY } from './character-notes'
 import { CHARACTER_HEALTH_BLOCK_KEY } from './character-health'
 import { CHARACTER_SPELLCASTING_BLOCK_KEY } from './character-spellcasting'
 import { CHARACTER_PROGRESSION_BLOCK_KEY } from './character-progression'
+import { CHARACTER_RESOURCES_BLOCK_KEY } from './character-resources'
 import {
   normalizeStoredCharacterHealth,
   type StoredCharacterHealth
@@ -98,6 +99,7 @@ import {
 import { normalizeStoredRulesChoices, type StoredRulesChoices } from '../../app/lib/characters/rules-choices'
 import { normalizeStoredAbilityScores, type StoredAbilityScores } from '../../app/lib/characters/ability-scores'
 import { normalizeStoredProgression, type StoredCharacterProgression } from '../../app/lib/characters/progression'
+import { normalizeStoredResources, type StoredCharacterResources } from '../../app/lib/characters/resources'
 import type { WorldContentPackResolution } from './world-content-runtime'
 
 const CATALOGUE_SELECTION_BLOCK_KEY = 'catalogue_selection'
@@ -243,6 +245,16 @@ export type CharacterAssemblyBlueprint = {
   // before this phase, the same "carrying nothing is legal" reading
   // `inventory`/`spells` already establish, never `null`.
   feats: CharacterAssemblyFeatSlot[]
+  // D&D 2024 Character Rules Phase 2A.2 -- the player's own persisted
+  // RESOURCE EXPENDITURE (how many of each acquired Resource are currently
+  // spent), relayed verbatim -- mirroring `rulesChoices`'s own "structural
+  // read here, registry-aware resolution downstream" split. `null` when
+  // nothing was ever recorded, true of every character before this phase.
+  // WHICH resources this character has actually ACQUIRED (and therefore
+  // which of these keys are even meaningful) is never decided here -- that
+  // is character-actor-bridge.ts's `acquiredResourceIds`, built from this
+  // same blueprint's own facets/progression one layer later.
+  resources: StoredCharacterResources | null
   packs: WorldContentPackResolution[]
 }
 
@@ -450,7 +462,7 @@ export async function assembleCharacter(
     return { available: false, reason: 'character-not-found' }
   }
 
-  // All seven blocks in ONE query rather than seven round trips -- they
+  // All eight blocks in ONE query rather than eight round trips -- they
   // differ only by block_key, and `_in` costs nothing over `_eq`. `block_key` is added to
   // `fields` because the rows now have to be told apart.
   const blockRes: any = await directusServiceRequest('/items/block_instances', {
@@ -469,13 +481,14 @@ export async function assembleCharacter(
                 CHARACTER_NOTES_BLOCK_KEY,
                 CHARACTER_HEALTH_BLOCK_KEY,
                 CHARACTER_SPELLCASTING_BLOCK_KEY,
-                CHARACTER_PROGRESSION_BLOCK_KEY
+                CHARACTER_PROGRESSION_BLOCK_KEY,
+                CHARACTER_RESOURCES_BLOCK_KEY
               ]
             }
           }
         ]
       },
-      limit: 8,
+      limit: 9,
       fields: 'block_key,data'
     }
   })
@@ -497,6 +510,7 @@ export async function assembleCharacter(
   const health = normalizeStoredCharacterHealth(findBlock(CHARACTER_HEALTH_BLOCK_KEY)?.data ?? null)
   const spellcasting = normalizeStoredSpellcasting(findBlock(CHARACTER_SPELLCASTING_BLOCK_KEY)?.data ?? null)
   const storedProgression = normalizeStoredProgression(findBlock(CHARACTER_PROGRESSION_BLOCK_KEY)?.data ?? null)
+  const resources = normalizeStoredResources(findBlock(CHARACTER_RESOURCES_BLOCK_KEY)?.data ?? null)
 
   if (!selection) {
     return {
@@ -572,6 +586,7 @@ export async function assembleCharacter(
     expendedSlots: spellcasting?.expendedSlots ?? {},
     progression,
     feats: resolveFeats([...acquiredFeatsByKey.values()], catalogue.feats, catalogue.packs),
+    resources,
     packs: catalogue.packs
   }
 

@@ -41,10 +41,13 @@
 // are skipped rather than evaluated-and-discarded, so an error in this
 // projection always means something genuinely went wrong.
 
-import { evaluate } from '../../app/lib/rules/evaluator'
+import { evaluate, evaluateStandaloneExpression } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
 import type {
   CollectionSlotDefinition,
+  DefinitionId,
+  Expression,
+  ResourceRecoveryTrigger,
   RuleCategory,
   RulesError,
   RuleValue,
@@ -55,6 +58,7 @@ import type {
 import { assembleCharacter, type CharacterAssemblyBlueprint } from './character-assembly'
 import { buildActorState, type PendingChoice } from './character-actor-bridge'
 import type { ResolvableChoice } from '../../app/lib/characters/rules-choices'
+import { clampExpendedToMaximum } from '../../app/lib/characters/resources'
 import { getWorldRuntime } from './world-runtime-service'
 import { getWorldContentCatalogue } from './world-content-catalogue'
 import { serializeContentRef } from '../../app/lib/characters/progression-plan'
@@ -65,6 +69,15 @@ import { serializeContentRef } from '../../app/lib/characters/progression-plan'
 // structural check local to each module rather than exporting a shared one.
 // Adding an export to the engine to save six lines here would be an engine
 // change this step has no mandate for.
+// D&D 2024 Character Rules Phase 2A.2 -- mirrors evaluator.ts's/dependency-
+// graph.ts's/roll-engine.ts's own identical local `isExpression`, for the
+// identical reason those three each keep their own copy rather than a
+// shared export (see this file's own `isRulesError` comment immediately
+// below, which already establishes this precedent for this file).
+function isExpression(value: unknown): value is Expression {
+  return typeof value === 'object' && value !== null && 'text' in value && 'ast' in value
+}
+
 function isRulesError(value: unknown): value is RulesError {
   return (
     typeof value === 'object' &&
@@ -143,6 +156,39 @@ export type PresentableChoice = ResolvableChoice & {
   kind: 'definition' | 'content'
 }
 
+// D&D 2024 Character Rules Phase 2A.2 -- one resolved Resource, generically
+// shaped for the Sheet exactly the way DerivedValue already is: a numeric
+// id-addressed fact with a label, computed fresh on every read, never
+// persisted itself (see app/lib/characters/resources.ts's own header for why
+// only EXPENDITURE is stored and `max` is always re-derived). `recovery`/
+// `presentation` are relayed straight off the Resource Definition's own
+// declaration (already evaluated where either carries an Expression) so a
+// renderer and the Rest System both read package-authored facts, never
+// something this projection invents.
+export type DerivedResourceRecoveryRule = {
+  trigger: ResourceRecoveryTrigger
+  amount: 'full' | number
+}
+
+export type DerivedResourcePresentation = {
+  style: 'pool' | 'dice' | 'points'
+  dieFaces?: number
+}
+
+export type DerivedResource = {
+  id: DefinitionId
+  label?: string
+  category?: RuleCategory
+  max: number
+  // Already clamped to `max` (see clampExpendedToMaximum's own doc comment
+  // -- LEVEL SCALING / MAX-CHANGE SAFETY) -- never read raw off the
+  // persisted record without this normalization.
+  expended: number
+  remaining: number
+  recovery: DerivedResourceRecoveryRule[]
+  presentation: DerivedResourcePresentation
+}
+
 export type DerivedCharacter = {
   worldId: string
   characterId: string
@@ -172,6 +218,15 @@ export type DerivedCharacter = {
   pendingChoices: PendingChoice[]
   // Facet-granted ids the active package does not declare (§8.2 rule 1).
   unresolvedGrants: string[]
+  // D&D 2024 Character Rules Phase 2A.2 -- every Resource this character
+  // has ACQUIRED (bridged.acquiredResourceIds), resolved to its current
+  // max/expended/remaining/recovery/presentation. Only resources the
+  // character's own facets/progression actually grant appear here -- never
+  // every resource the active package happens to declare (RESOURCE
+  // ACQUISITION requirement). A resource id that no longer resolves to a
+  // real `kind: 'resource'` Definition (package repin/removal) is silently
+  // omitted, never a crash -- UNRESOLVED RESOURCE IDS requirement.
+  resources: DerivedResource[]
 }
 
 export type DerivedCharacterResult =
@@ -490,6 +545,78 @@ async function getDerivedCharacterInternal(
     world: worldConfig.snapshot
   })
 
+  // D&D 2024 Character Rules Phase 2A.2 -- resolves every resource this
+  // character has acquired (bridged.acquiredResourceIds) into a
+  // DerivedResource, using the SAME session/registry every other
+  // evaluation in this projection already shares (so a resource's `max`
+  // that references e.g. `@value:ability.cha.mod` reads the same cached
+  // value every byCategory row evaluating that ability already computed).
+  // Coerces a RuleValue (a literal `max`/`amount`/`dieSize`, or whatever an
+  // Expression evaluated to) down to a finite number -- a RulesError or any
+  // non-numeric result reads as 0, the same "visible degradation, never a
+  // crash" posture this whole projection already takes for an ordinary
+  // DerivedValue (see this file's own `isRulesError` branch above), applied
+  // one layer lower since a Resource's `max` is never surfaced as its own
+  // byCategory row for a consumer to see an `error` field on directly.
+  const numeric = (value: RuleValue): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+
+  const persistedExpended = assembly.blueprint.resources?.expended ?? {}
+
+  const resources: DerivedResource[] = []
+  for (const resourceId of bridged.acquiredResourceIds) {
+    const definition = registry.getById(resourceId)
+    // UNRESOLVED RESOURCE IDS -- a package repin/removal can leave an
+    // acquired-resource id, or a persisted expenditure key, pointing at
+    // nothing (or at a Definition that is no longer `kind: 'resource'').
+    // Silently omitted, never thrown -- the same posture every other
+    // reference-resolution boundary in this file already takes.
+    if (!definition || definition.kind !== 'resource') continue
+
+    const max = numeric(evaluate(resourceId, session))
+
+    // D&D 2024 Character Rules Phase 2A.2 (Ranger/Bard follow-up) -- a rule
+    // whose own `condition` evaluates falsy is DROPPED here, never carried
+    // through as an inactive entry -- so character-recovery.ts's own
+    // generic trigger filter (`resource.recovery.filter(rule => rule.
+    // trigger === trigger)`) never needs to know conditions exist at all.
+    // This is the one place a level-gated recovery upgrade (Bardic
+    // Inspiration's own Font of Inspiration, see ResourceRecoveryRule's own
+    // doc comment) is resolved -- a plain boolean coercion of whatever
+    // `evaluate()`/the Expression returned, matching every other
+    // condition check this codebase already does at a Modifier (see
+    // modifier-pipeline.ts's own identical `condition` handling, one layer
+    // over).
+    const recovery: DerivedResourceRecoveryRule[] = (definition.recovery ?? [])
+      .filter((rule) => !rule.condition || evaluateStandaloneExpression(rule.condition, session, resourceId) === true)
+      .map((rule) => ({
+        trigger: rule.trigger,
+        amount: rule.amount === 'full'
+          ? 'full'
+          : numeric(isExpression(rule.amount) ? evaluateStandaloneExpression(rule.amount, session, resourceId) : rule.amount)
+      }))
+
+    const dieSize = definition.presentation?.dieSize
+    const presentation: DerivedResourcePresentation = {
+      style: definition.presentation?.style ?? 'pool',
+      ...(dieSize !== undefined
+        ? { dieFaces: numeric(isExpression(dieSize) ? evaluateStandaloneExpression(dieSize, session, resourceId) : dieSize) }
+        : {})
+    }
+
+    const expended = clampExpendedToMaximum(persistedExpended[resourceId] ?? 0, max)
+
+    resources.push({
+      id: resourceId,
+      label: definition.label,
+      category: definition.category,
+      max,
+      expended,
+      remaining: max - expended,
+      recovery,
+      presentation
+    })
+  }
+
   const byCategory: Partial<Record<RuleCategory, DerivedValue[]>> = {}
   const collections: DerivedCollection[] = []
   const tables: DerivedTable[] = []
@@ -560,7 +687,8 @@ async function getDerivedCharacterInternal(
       tables,
       choices,
       pendingChoices: bridged.pendingChoices,
-      unresolvedGrants: bridged.unresolvedGrants
+      unresolvedGrants: bridged.unresolvedGrants,
+      resources
     }
   }
 }

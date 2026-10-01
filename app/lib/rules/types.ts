@@ -696,12 +696,117 @@ export type ValueDefinition = DefinitionCategorization & {
 // architecture's own worked proof-package examples author it directly with
 // its own `id`/`kind`, and this commit's contract must be able to represent
 // those examples faithfully.
+//
+// D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES.
+// `max` was already a working "derived maximum" primitive (evaluator.ts's
+// `case 'resource'` evaluates it exactly like a Value's `formula`) -- the
+// §12.5 "expands into two Values... a resourceOf back-link" sugar was never
+// actually implemented anywhere (confirmed by a repo-wide grep before this
+// phase), so `kind:'resource'` behaved as nothing more than a labeled
+// maximum. `recovery`/`presentation` below are the two small, ADDITIVE
+// fields this phase found the real corpus actually needs, discovered from a
+// resource-corpus audit against the real 5etools XPHB dataset across all 12
+// classes (see this phase's own PR/report for the full evidence) rather than
+// invented: every real finite-pool class resource (Rage, Second Wind,
+// Channel Divinity, Bardic Inspiration, Sorcery Points, Superiority Dice,
+// ...) needs exactly these two facts and nothing more. This phase
+// deliberately did NOT add a new Definition kind -- `ResourceDefinition`
+// already existed and already evaluated `max` correctly; extending it is
+// the smallest change that fits the real corpus (hard-stop audit gate).
+//
+// `current`/`expended` are deliberately NOT modeled here: a Resource
+// Definition is authored content describing the SHAPE of a pool (how big,
+// how it recovers), never a specific character's STATE (how much of it is
+// spent) -- the same "Definitions declare, ActorState stores" split every
+// other kind in this file already draws (`ValueDefinition.default` vs.
+// `ActorState.values`). Persisted expenditure lives in the
+// `block_instances` `resources` block (server/utils/character-resources.ts),
+// mirroring the spell-slot precedent's own "persist expenditure, derive
+// maximum" shape -- deliberately chosen over "persist current/max" so a
+// package change to a resource's maximum (a level-up, a repin) takes effect
+// on the next read without rewriting any character's stored state.
 export type ResourceDefinition = DefinitionCategorization & {
   id: DefinitionId
   kind: 'resource'
   label?: string
   visibility?: Visibility
   max: Expression | RuleValue
+  // D&D 2024 Character Rules Phase 2A.2 -- when and how much this resource
+  // recovers. An ARRAY, not a single `{trigger, amount}` pair, because the
+  // real corpus's single most common shape (Rage, Second Wind, Channel
+  // Divinity, Wild Shape) recovers a DIFFERENT amount per trigger -- "regain
+  // ONE expended use on a Short Rest, ALL expended uses on a Long Rest" --
+  // which a single trigger/amount pair cannot express without a second,
+  // parallel field. Absent/empty means no automatic recovery at all (a
+  // resource that only ever changes through manual expend/restore, or a
+  // future non-rest trigger this phase explicitly defers rather than
+  // fakes as a rest -- see this phase's own NON-REST RECOVERY findings).
+  // Multiple entries for the SAME trigger are not meaningful and should not
+  // be authored; nothing here enforces that (authoring-time discipline, not
+  // a type-level constraint, matching this file's existing posture toward
+  // every other "should not conflict" authoring rule).
+  recovery?: ResourceRecoveryRule[]
+  // D&D 2024 Character Rules Phase 2A.2 -- a small, closed presentation
+  // hint, PACKAGE-AUTHORED (never inferred by a UI from the resource's
+  // label/id). `'pool'` (the default when absent) is ordinary countable
+  // charges (Rage uses, Channel Divinity uses) -- CharacterResourceOrbs.vue
+  // already renders this shape unchanged. `'dice'` additionally carries a
+  // die face count (Bardic Inspiration's d6->d12 scaling, a Battle Master's
+  // Superiority Die) for a renderer to show alongside the pool, still never
+  // altering how many orbs render (that is still `max`/`expended`, exactly
+  // as for `'pool'`) -- die size is a LABEL fact, not a second counter.
+  presentation?: ResourcePresentation
+}
+
+// D&D 2024 Character Rules Phase 2A.2. `trigger` is the fixed, small,
+// rest-system vocabulary this phase's own corpus audit found necessary and
+// sufficient for every resource that honestly fits the generic primitive
+// (see ResourceDefinition.recovery's own comment on why non-rest recovery
+// is explicitly deferred, not modeled here). `amount: 'full'` resets
+// expenditure to zero; a numeric/Expression amount REDUCES expenditure by
+// that many units (floored at zero), never below -- the asymmetric shape
+// "Short Rest regains 1, Long Rest regains all" needs both forms in the
+// same vocabulary, which is exactly why `amount` is not simply boolean.
+export type ResourceRecoveryTrigger = 'short-rest' | 'long-rest'
+
+export type ResourceRecoveryRule = {
+  trigger: ResourceRecoveryTrigger
+  amount: 'full' | Expression | RuleValue
+  // D&D 2024 Character Rules Phase 2A.2 (Ranger/Bard follow-up) -- whether
+  // THIS rule is active for a given character, re-evaluated on every read
+  // exactly like `ModifierSpec.condition` already is one layer over in the
+  // Modifier Pipeline (§16.4) -- the identical "absent means unconditional"
+  // default, the identical boolean-Expression shape, reused rather than a
+  // new concept invented. Exists for a real corpus case: Bardic
+  // Inspiration recovers on Long Rest only below level 5, and on EITHER a
+  // Short or Long Rest at level 5+ ("Font of Inspiration") -- expressed as
+  // TWO recovery entries for the SAME trigger-set shape, the Long Rest one
+  // unconditional and the Short Rest one gated by `@value:level>=5`, never
+  // as Bard-specific branching anywhere in character-recovery.ts (which
+  // only ever reads the ALREADY-filtered `DerivedResource.recovery` array
+  // -- see character-derived.ts's own resolution of this field).
+  condition?: Expression
+}
+
+// D&D 2024 Character Rules Phase 2A.2. `dieSize` is only meaningful when
+// `style === 'dice'`; left optional even then rather than required, since a
+// package that declares `style: 'dice'` with a malformed/absent `dieSize`
+// should degrade to "no die badge shown," never a validation hard-stop over
+// a purely cosmetic field.
+//
+// `'points'` (large-pool follow-up) -- a THIRD, package-authored style for a
+// numeric pool too large to render as one-control-per-unit (Lay on Hands:
+// `5 × level`, up to 100 at level 20). Deliberately a PACKAGE DECLARATION,
+// never a UI-side "max > threshold -> switch styles" guess (this phase's
+// own explicit "prefer package-authored presentation over UI guessing"
+// instruction) -- the UI never inspects a Resource's own `max` to decide
+// how to render it, only this field. No new sub-fields: a 'points' pool
+// still reads `max`/`expended`/`remaining` exactly like 'pool'/'dice' do;
+// only the RENDERER differs (a compact number + amount control instead of
+// one orb per unit), chosen once, by the package, per Resource.
+export type ResourcePresentation = {
+  style: 'pool' | 'dice' | 'points'
+  dieSize?: Expression | RuleValue
 }
 
 export type CollectionFieldDefinition = {
@@ -1018,6 +1123,18 @@ export type ProgressionRow = {
   // nothing beyond its own `grants`/`sets`, exactly as before this field
   // existed.
   choices?: { choiceSet: DefinitionId; count: number; from?: DefinitionId[] }[]
+  // D&D 2024 Character Rules Phase 2A.2 -- the Resource counterpart of
+  // `grants` immediately above, for a resource ACQUIRED at a specific level
+  // rather than from level 1 (Monk's Focus Points at level 2, Fighter's
+  // Action Surge at level 2, a subclass's own resource acquired at its
+  // first subclass-feature level, ...). A resource present from level 1
+  // (Rage, Second Wind, Bardic Inspiration, Lay on Hands, Arcane Recovery,
+  // Sorcery Points, Pact Magic) is declared on the owning facet's own
+  // `RulesFacet.resources` instead (app/lib/content-rules/types.ts) -- this
+  // field exists specifically for the level-gated case, mirroring exactly
+  // how `grants` already splits "always-on Source" (`facet.sources`) from
+  // "Source granted at this row" (`row.grants`).
+  resources?: DefinitionId[]
 }
 
 export type ProgressionDefinition = DefinitionCategorization & {

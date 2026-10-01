@@ -99,7 +99,8 @@
 import { assembleCharacter } from './character-assembly'
 import { loadCharacterHealth, saveCharacterHealth } from './character-health'
 import { loadCharacterSpellcasting, saveCharacterSpellcasting } from './character-spellcasting'
-import { getDerivedCharacter } from './character-derived'
+import { loadCharacterResources, saveCharacterResources } from './character-resources'
+import { getDerivedCharacter, type DerivedResource } from './character-derived'
 import { createHitDieRollEvent } from './roll-events'
 import {
   applyDamage,
@@ -115,6 +116,10 @@ import {
   emptyCharacterSpellcasting,
   resetAllSlots
 } from '../../app/lib/characters/spellcasting'
+import {
+  applyResourceRecovery,
+  emptyCharacterResources
+} from '../../app/lib/characters/resources'
 
 export type RecoveryAction =
   | { type: 'damage'; amount: number }
@@ -179,6 +184,7 @@ async function loadRecoveryNumbers(
       hitDieSize: number
       conModifier: number
       isPactCaster: boolean
+      resources: DerivedResource[]
     }
   | RecoveryFailure
 > {
@@ -218,7 +224,21 @@ async function loadRecoveryNumbers(
   // does not need for Health.
   const isPactCaster = findBoolean(result.derived, PACT_CASTER_ID)
 
-  return { ok: true, maxHp, hitDiceMax, averageRoll, longRestRecovery, hitDieSize, conModifier, isPactCaster }
+  return {
+    ok: true,
+    maxHp,
+    hitDiceMax,
+    averageRoll,
+    longRestRecovery,
+    hitDieSize,
+    conModifier,
+    isPactCaster,
+    // D&D 2024 Character Rules Phase 2A.2 -- carried through from the SAME
+    // getDerivedCharacter call every other Recovery number already comes
+    // from, so Short/Long Rest's generic resource recovery (below) needs no
+    // second Rules Engine read.
+    resources: result.derived.resources
+  }
 }
 
 // The canonical entry point. Loads current health (defaulting to "nothing
@@ -264,6 +284,16 @@ export async function applyRecoveryAction(
   // see this file's header. Every other action leaves spellcasting state
   // completely untouched: no read, no write.
   let resetSpellSlots = false
+  // D&D 2024 Character Rules Phase 2A.2 -- REST INTEGRATION. Set only for
+  // 'short-rest'/'long-rest'; every other action leaves the generic
+  // resources block completely untouched (no read, no write), mirroring
+  // `resetSpellSlots` exactly. Which RESOURCES actually recover for this
+  // trigger is decided generically below (`applyResourceRecovery`, reading
+  // each acquired Resource Definition's OWN `recovery` declaration) -- this
+  // file names no resource id and no class, only which of the two REST
+  // TRIGGERS just happened.
+  let resourceRecoveryTrigger: 'short-rest' | 'long-rest' | null = null
+  let recoveryNumbers: Awaited<ReturnType<typeof loadRecoveryNumbers>> | null = null
 
   switch (action.type) {
     case 'damage':
@@ -328,6 +358,8 @@ export async function applyRecoveryAction(
       if (!numbers.ok) return numbers
       next = { ...current }
       resetSpellSlots = numbers.isPactCaster
+      resourceRecoveryTrigger = 'short-rest'
+      recoveryNumbers = numbers
       break
     }
 
@@ -336,6 +368,8 @@ export async function applyRecoveryAction(
       if (!numbers.ok) return numbers
       next = takeLongRest(current, numbers.maxHp, numbers.longRestRecovery)
       resetSpellSlots = true
+      resourceRecoveryTrigger = 'long-rest'
+      recoveryNumbers = numbers
       break
     }
 
@@ -348,6 +382,29 @@ export async function applyRecoveryAction(
   if (resetSpellSlots) {
     const currentSpellcasting = (await loadCharacterSpellcasting(characterId)) ?? emptyCharacterSpellcasting()
     await saveCharacterSpellcasting(characterId, { ...currentSpellcasting, expendedSlots: resetAllSlots() })
+  }
+
+  // D&D 2024 Character Rules Phase 2A.2 -- GENERIC RESOURCE RECOVERY. Runs
+  // for every resource this character has ACQUIRED (recoveryNumbers.resources,
+  // already scoped to acquisition by character-derived.ts), filtered to
+  // only the ones that declare a recovery rule for THIS trigger -- a
+  // resource with no matching rule (e.g. a Long-Rest-only resource during a
+  // Short Rest) is left untouched by construction, never specially
+  // detected. Zero resource-id or class-name branching: this block reads
+  // only `resourceRecoveryTrigger` (which REST ACTION just happened) and
+  // each resource's own package-authored `recovery` declaration.
+  if (resourceRecoveryTrigger && recoveryNumbers?.ok) {
+    const recoveries = recoveryNumbers.resources
+      .flatMap((resource) => resource.recovery
+        .filter((rule) => rule.trigger === resourceRecoveryTrigger)
+        .map((rule) => ({ resourceId: resource.id, amount: rule.amount })))
+
+    if (recoveries.length) {
+      const currentResources = (await loadCharacterResources(characterId)) ?? emptyCharacterResources()
+      await saveCharacterResources(characterId, {
+        expended: applyResourceRecovery(currentResources.expended, recoveries)
+      })
+    }
   }
 
   const saved = await saveCharacterHealth(characterId, next)

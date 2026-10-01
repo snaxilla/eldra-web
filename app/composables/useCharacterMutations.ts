@@ -451,6 +451,65 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
   })
 
   // -------------------------------------------------------------------
+  // Resources -- D&D 2024 Character Rules Phase 2A.2, GENERIC CHARACTER
+  // RESOURCES. Unlike every domain above, this one has NO client-side
+  // optimistic mutation and no local draft ref to roll back -- `max`/
+  // `expended` are entirely server-derived (server/utils/character-
+  // derived.ts), so this composable cannot safely compute a "next" value
+  // itself (see server/api/.../resources.put.ts's own header on why this
+  // route is not a full-replace PUT the way Spellcasting's is). Instead:
+  // call the authoritative route, then `sheet.refreshDerived()` so
+  // `sheet.characterResources` reflects whatever the server actually
+  // persisted -- the same "server decides, sheet reflects" discipline
+  // every other authoritative (non-draft) mutation in this codebase
+  // already follows (e.g. Confirm Progression's own post-confirm
+  // `sheet.refresh()`).
+  // -------------------------------------------------------------------
+
+  const resourcesSaving = ref(false)
+  const resourcesError = ref('')
+
+  // `amount` -- D&D 2024 Character Rules Phase 2A.2 (large-pool follow-up).
+  // 1 for an ordinary orb click, user-entered for a `'points'`-style large
+  // pool (CharacterResourceOrbs.vue). Relayed verbatim to the authoritative
+  // route; this composable never clamps or validates it itself -- the
+  // server independently bounds it against the real max/zero regardless
+  // of what is sent.
+  async function adjustResource(resourceId: string, action: 'expend' | 'restore', amount = 1) {
+    if (resourcesSaving.value) return
+    resourcesSaving.value = true
+    resourcesError.value = ''
+
+    try {
+      await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/resources`, {
+        method: 'PUT',
+        body: { resourceId, action, amount }
+      })
+      await sheet.refreshDerived()
+    } catch (saveError: any) {
+      resourcesError.value =
+        saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to update resource'
+    } finally {
+      resourcesSaving.value = false
+    }
+  }
+
+  function expendResourceUnit({ resourceId, amount }: { resourceId: string; amount: number }) {
+    adjustResource(resourceId, 'expend', amount)
+  }
+
+  function restoreResourceUnit({ resourceId, amount }: { resourceId: string; amount: number }) {
+    adjustResource(resourceId, 'restore', amount)
+  }
+
+  const resources = reactive({
+    saving: resourcesSaving,
+    error: resourcesError,
+    expend: expendResourceUnit,
+    restore: restoreResourceUnit
+  })
+
+  // -------------------------------------------------------------------
   // Conditions -- Join/Leave Encounter, Apply/Remove/Tick Condition. See
   // this file's header for why all five share one domain.
   // -------------------------------------------------------------------
@@ -526,6 +585,7 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
     combat,
     inventory,
     spellcasting,
+    resources,
     conditions
   }
 }

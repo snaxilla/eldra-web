@@ -2880,5 +2880,380 @@
         ]
       }
     ]
+  },
+  {
+    "id": "resource:rage",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Rage",
+    "max": {
+      "text": "if(@value:level>=17,6,if(@value:level>=12,5,if(@value:level>=6,4,if(@value:level>=3,3,2))))"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": 1
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:second_wind",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Second Wind",
+    "max": {
+      "text": "if(@value:level>=10,4,if(@value:level>=4,3,2))"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": 1
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:action_surge",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Action Surge",
+    "max": {
+      "text": "if(@value:level>=17,2,1)"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": "full"
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:indomitable",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Indomitable",
+    "max": {
+      "text": "if(@value:level>=17,3,if(@value:level>=13,2,1))"
+    },
+    "recovery": [
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:channel_divinity.standard",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Channel Divinity",
+    "max": {
+      "text": "if(@value:level>=18,4,if(@value:level>=6,3,2))"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": 1
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:channel_divinity.extended",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Channel Divinity",
+    "max": {
+      "text": "if(@value:level>=11,3,2)"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": 1
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:lay_on_hands",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Lay on Hands",
+    "max": {
+      "text": "5 * @value:level"
+    },
+    "recovery": [
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ],
+    "presentation": {
+      "style": "points"
+    }
+  },
+  {
+    "id": "resource:wild_shape",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Wild Shape",
+    "max": {
+      "text": "if(@value:level>=17,4,if(@value:level>=6,3,2))"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": 1
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:bardic_inspiration",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Bardic Inspiration",
+    "max": {
+      "text": "if(@value:ability.cha.mod>=1,@value:ability.cha.mod,1)"
+    },
+    "recovery": [
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      },
+      {
+        "trigger": "short-rest",
+        "amount": "full",
+        "condition": {
+          "text": "@value:level>=5"
+        }
+      }
+    ],
+    "presentation": {
+      "style": "dice",
+      "dieSize": {
+        "text": "if(@value:level>=15,12,if(@value:level>=10,10,if(@value:level>=5,8,6)))"
+      }
+    }
+  },
+  {
+    "id": "resource:sorcery_points",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Sorcery Points",
+    "max": {
+      "text": "@value:level"
+    },
+    "recovery": [
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:focus_points",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Focus Points",
+    "max": {
+      "text": "@value:level"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": "full"
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:superiority_dice",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Superiority Dice",
+    "max": {
+      "text": "if(@value:level>=15,6,if(@value:level>=7,5,4))"
+    },
+    "recovery": [
+      {
+        "trigger": "short-rest",
+        "amount": "full"
+      },
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ],
+    "presentation": {
+      "style": "dice",
+      "dieSize": {
+        "text": "if(@value:level>=18,12,if(@value:level>=10,10,8))"
+      }
+    }
+  },
+  {
+    "id": "progression:class.resources-action-surge-indomitable",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Action Surge / Indomitable Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "resources": [
+          "resource:action_surge"
+        ]
+      },
+      {
+        "at": 9,
+        "resources": [
+          "resource:indomitable"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.resources-channel-divinity-standard",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Channel Divinity Progression (Standard)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "resources": [
+          "resource:channel_divinity.standard"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.resources-channel-divinity-extended",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Channel Divinity Progression (Extended)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 3,
+        "resources": [
+          "resource:channel_divinity.extended"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.resources-wild-shape",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Wild Shape Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "resources": [
+          "resource:wild_shape"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.resources-sorcery-points",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Sorcery Points Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "resources": [
+          "resource:sorcery_points"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.resources-focus-points",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Focus Points Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "resources": [
+          "resource:focus_points"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "resource:favored_enemy",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Favored Enemy",
+    "max": {
+      "text": "if(@value:level>=17,6,if(@value:level>=13,5,if(@value:level>=9,4,if(@value:level>=5,3,2))))"
+    },
+    "recovery": [
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "resource:tireless",
+    "kind": "resource",
+    "category": "combat",
+    "label": "Tireless",
+    "max": {
+      "text": "if(@value:ability.wis.mod>=1,@value:ability.wis.mod,1)"
+    },
+    "recovery": [
+      {
+        "trigger": "long-rest",
+        "amount": "full"
+      }
+    ]
+  },
+  {
+    "id": "progression:class.resources-tireless",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Tireless Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 10,
+        "resources": [
+          "resource:tireless"
+        ]
+      }
+    ]
   }
 ]

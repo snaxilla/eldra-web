@@ -50,7 +50,28 @@
 // names, or how many pools a group may have -- it loops over whatever
 // `groups`/`pools` it is handed. `characterResourcePresentation.ts`'s own
 // adapter is the only place spell slots are even mentioned.
+//
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules Phase 2A.2 -- LARGE NUMERIC POOLS ('points' style)
+// ---------------------------------------------------------------------------
+// One-orb-per-unit does not scale to a pool whose real maximum can reach
+// 100 (Lay on Hands, `5 × level` at level 20) -- rendering 100 `<button>`
+// elements is not acceptable (this phase's own explicit acceptance
+// requirement). `pool.style === 'points'` (relayed verbatim from the
+// Resource Definition's own package-authored `presentation.style` --
+// characterResourcePresentation.ts's adapter, never inferred here from
+// `pool.max`) renders a COMPACT control instead: a `remaining / max`
+// readout plus a small amount input and Spend/Restore buttons. Still the
+// exact same `groups`/`pools` contract and the exact same "this component
+// owns no mutation" rule -- a click still only ever emits `expend`/
+// `restore`, now carrying an `amount` (defaulting to 1 for an ordinary orb
+// click, user-entered for a points control) for the caller's own
+// authoritative write to apply. The server remains the sole authority on
+// whether that amount is actually affordable (`expendResource`/
+// `restoreResource`, app/lib/characters/resources.ts, already clamp against
+// the real max/zero regardless of what this component sends).
 
+import { ref } from 'vue'
 import {
   isResourceUnitAvailable,
   resourceUnitAriaLabel,
@@ -66,8 +87,8 @@ withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  expend: [{ groupId: string; poolId: string }]
-  restore: [{ groupId: string; poolId: string }]
+  expend: [{ groupId: string; poolId: string; amount: number }]
+  restore: [{ groupId: string; poolId: string; amount: number }]
 }>()
 
 function orbAvailable(pool: CharacterResourcePool, position: number): boolean {
@@ -80,12 +101,39 @@ function orbAriaLabel(group: CharacterResourceGroup, pool: CharacterResourcePool
 
 function onOrbClick(group: CharacterResourceGroup, pool: CharacterResourcePool, position: number) {
   if (!pool.adjustable) return
-  const payload = { groupId: group.id, poolId: pool.id }
+  const payload = { groupId: group.id, poolId: pool.id, amount: 1 }
   if (orbAvailable(pool, position)) {
     emit('expend', payload)
   } else {
     emit('restore', payload)
   }
+}
+
+// One draft amount per points-style pool, keyed by pool id -- a plain
+// object (not a single shared ref) so multiple large pools on the same
+// Sheet never share one draft. Purely a client-side INPUT DRAFT, exactly
+// like CharacterCommandResources.vue's own `amountDraft` for Damage/Heal;
+// never trusted as authority, never itself the thing that changes
+// `expended`.
+const amountDrafts = ref<Record<string, string>>({})
+
+function amountDraftFor(pool: CharacterResourcePool): string {
+  return amountDrafts.value[pool.id] ?? '1'
+}
+
+function parsedAmount(pool: CharacterResourcePool): number {
+  const parsed = Math.trunc(Number(amountDraftFor(pool)))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+}
+
+function onPointsExpend(group: CharacterResourceGroup, pool: CharacterResourcePool) {
+  if (!pool.adjustable) return
+  emit('expend', { groupId: group.id, poolId: pool.id, amount: parsedAmount(pool) })
+}
+
+function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourcePool) {
+  if (!pool.adjustable) return
+  emit('restore', { groupId: group.id, poolId: pool.id, amount: parsedAmount(pool) })
 }
 </script>
 
@@ -115,7 +163,62 @@ function onOrbClick(group: CharacterResourceGroup, pool: CharacterResourcePool, 
             {{ pool.label }}
           </span>
 
-          <div class="flex flex-wrap gap-1">
+          <!-- D&D 2024 Character Rules Phase 2A.2 -- DISPLAY VARIANTS. The
+               die-face badge is shown ONLY when the caller's own
+               `pool.dieFaces` is present, which is itself only ever set
+               from a package-declared `presentation.style === 'dice'`
+               Resource Definition (characterResourcePresentation.ts's own
+               genericResourcesToCharacterResources adapter) -- never
+               inferred here from `pool.label`/`group.label` text. -->
+          <span
+            v-if="pool.dieFaces"
+            class="shrink-0 rounded-none border border-[rgba(201,164,90,0.4)] px-1 text-[0.6rem] font-semibold tabular-nums text-[#c9a45a]"
+          >
+            d{{ pool.dieFaces }}
+          </span>
+
+          <!-- D&D 2024 Character Rules Phase 2A.2 -- large numeric pools.
+               `pool.style === 'points'` is the ONLY branch; everything
+               above (label, die badge) is shared with orbs unchanged. -->
+          <div
+            v-if="pool.style === 'points'"
+            class="flex flex-wrap items-center gap-1.5"
+          >
+            <span class="text-sm tabular-nums text-[#d8ceb8]">
+              {{ pool.max - pool.expended }} / {{ pool.max }}
+            </span>
+            <input
+              v-model="amountDrafts[pool.id]"
+              type="number"
+              min="1"
+              inputmode="numeric"
+              :aria-label="`${group.label} ${pool.label ?? ''} amount`"
+              class="eldra-input h-8 w-14 rounded-none px-1.5 text-center text-xs font-semibold tabular-nums text-white"
+              :disabled="saving || !pool.adjustable"
+              :placeholder="amountDraftFor(pool)"
+            >
+            <button
+              type="button"
+              class="eldra-button h-8 rounded-none px-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="saving || !pool.adjustable || pool.max - pool.expended <= 0"
+              @click="onPointsExpend(group, pool)"
+            >
+              Spend
+            </button>
+            <button
+              type="button"
+              class="h-8 rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] px-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="saving || !pool.adjustable || pool.expended <= 0"
+              @click="onPointsRestore(group, pool)"
+            >
+              Restore
+            </button>
+          </div>
+
+          <div
+            v-else
+            class="flex flex-wrap gap-1"
+          >
             <button
               v-for="position in pool.max"
               :key="position"

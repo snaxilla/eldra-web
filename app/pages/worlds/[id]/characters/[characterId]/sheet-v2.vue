@@ -656,6 +656,7 @@ const {
   spellItems,
   spellOptions,
   slotLevels,
+  characterResources,
   actions: characterActions,
   actionsPending,
   actionsUnavailableMessage,
@@ -1070,6 +1071,8 @@ function openSkillContext(skill: CharacterSkillRow) {
             :spell-save-dc="spellcastingSaveDc"
             :spell-attack-bonus="spellcastingAttackBonus"
             :slot-levels="slotLevels"
+            :resources="characterResources"
+            :resources-saving="mutations.resources.saving"
             :conditions="conditions.mine"
             :in-encounter="encounter.isInSelected"
             :is-my-turn="isMyTurn"
@@ -1084,6 +1087,8 @@ function openSkillContext(skill: CharacterSkillRow) {
             @recovery="mutations.recovery.apply"
             @expend-slot="mutations.spellcasting.expendSlot"
             @restore-slot="mutations.spellcasting.restoreSlot"
+            @expend-resource="mutations.resources.expend"
+            @restore-resource="mutations.resources.restore"
             @update-portrait="mutations.portrait.update"
             @clear-portrait="mutations.portrait.clear"
           />

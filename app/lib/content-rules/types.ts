@@ -112,6 +112,22 @@ export type RulesFacet = {
   // principle become items of more than one Collection at once, though
   // nothing authored today needs more than one entry.
   collectionFields?: RulesFacetCollectionFields[]
+  // D&D 2024 Character Rules Phase 2A.2 -- names Resource Definitions
+  // (`kind: 'resource'`, app/lib/rules/types.ts) this content makes
+  // available FROM THE MOMENT THIS FACET APPLIES (level 1 for a base
+  // class -- Rage, Second Wind, Bardic Inspiration, Lay on Hands, Sorcery
+  // Points, Arcane Recovery's own spell-slot interaction aside). Mirrors
+  // `sources` exactly in shape and in consumption (`character-actor-
+  // bridge.ts`'s `consumeFacet`), but a Resource is never auto-activated
+  // into `ActorState.sources` the way a Source is -- it is tracked
+  // separately (`acquiredResourceIds`), because a Resource's own
+  // expenditure is player-decided persisted state (`resources` block), not
+  // a Modifier-pipeline input. A resource acquired at a LATER level (Monk's
+  // Focus Points at level 2, Fighter's Action Surge at level 2) is declared
+  // on `ProgressionRow.resources` instead (app/lib/rules/types.ts), never
+  // here -- the same "always-on facet field vs. level-gated row field"
+  // split `sources`/`grants` already draw against `row.grants`.
+  resources?: DefinitionId[]
 }
 
 // The hand-authored facet corpus for one Rules Vocabulary, keyed first by

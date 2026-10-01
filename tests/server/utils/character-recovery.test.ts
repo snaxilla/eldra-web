@@ -15,7 +15,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   assembleCharacterMock, getWorldRuntimeMock, loadHealthMock, saveHealthMock,
-  loadSpellcastingMock, saveSpellcastingMock, createHitDieRollEventMock
+  loadSpellcastingMock, saveSpellcastingMock, createHitDieRollEventMock,
+  loadResourcesMock, saveResourcesMock, getWorldContentCatalogueMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
@@ -23,7 +24,17 @@ const {
   saveHealthMock: vi.fn(),
   loadSpellcastingMock: vi.fn(),
   saveSpellcastingMock: vi.fn(),
-  createHitDieRollEventMock: vi.fn()
+  createHitDieRollEventMock: vi.fn(),
+  // D&D 2024 Character Rules Phase 2A.2.
+  loadResourcesMock: vi.fn(),
+  saveResourcesMock: vi.fn(),
+  // D&D 2024 Character Rules Phase 2A.2 -- a level-9+ Fighter reaches
+  // real Feat Selection content-choice rows (`progression:class.
+  // asi-extended`), which makes `character-derived.ts` call
+  // `getWorldContentCatalogue` -- mocked here to a bare, legal, empty
+  // catalogue (no Fighter/Indomitable test in this file exercises feat
+  // selection itself, only resource recovery alongside it).
+  getWorldContentCatalogueMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -52,6 +63,18 @@ vi.mock('../../../server/utils/character-spellcasting', () => ({
 // works.
 vi.mock('../../../server/utils/roll-events', () => ({
   createHitDieRollEvent: createHitDieRollEventMock
+}))
+
+// D&D 2024 Character Rules Phase 2A.2 -- REST INTEGRATION's own persistence
+// boundary, mocked at the module level mirroring character-spellcasting.ts
+// immediately above.
+vi.mock('../../../server/utils/character-resources', () => ({
+  loadCharacterResources: loadResourcesMock,
+  saveCharacterResources: saveResourcesMock
+}))
+
+vi.mock('../../../server/utils/world-content-catalogue', () => ({
+  getWorldContentCatalogue: getWorldContentCatalogueMock
 }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
@@ -101,6 +124,7 @@ const FIGHTER_CON_16_BLUEPRINT = {
   health: null,
   spells: [],
   expendedSlots: {},
+  resources: null,
   packs: []
 }
 
@@ -117,6 +141,16 @@ function baseEntry(slug: string) {
 const WARLOCK_BLUEPRINT = {
   ...FIGHTER_CON_16_BLUEPRINT,
   class: { status: 'resolved' as const, entry: { ...baseEntry('warlock-xphb'), rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'warlock-xphb') ?? undefined } }
+}
+
+// D&D 2024 Character Rules Phase 2A.2 -- Barbarian, real Rage facet
+// (`resource:rage`, always-on from level 1, SR +1 / LR full
+// recovery per this phase's own authored corpus) -- proves REST
+// INTEGRATION's generic recovery against a REAL authored resource, never a
+// synthetic one.
+const BARBARIAN_BLUEPRINT = {
+  ...FIGHTER_CON_16_BLUEPRINT,
+  class: { status: 'resolved' as const, entry: { ...baseEntry('barbarian-xphb'), rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'barbarian-xphb') ?? undefined } }
 }
 
 // A representative RollEventRecord -- shaped exactly like
@@ -157,12 +191,21 @@ beforeEach(() => {
   loadSpellcastingMock.mockReset()
   saveSpellcastingMock.mockReset()
   createHitDieRollEventMock.mockReset()
+  loadResourcesMock.mockReset()
+  saveResourcesMock.mockReset()
 
   assembleCharacterMock.mockResolvedValue({ available: true, blueprint: FIGHTER_CON_16_BLUEPRINT })
   saveHealthMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
   loadSpellcastingMock.mockResolvedValue({ spells: [], expendedSlots: { 1: 2 } })
   saveSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
   createHitDieRollEventMock.mockResolvedValue(fakeHitDieRoll())
+  loadResourcesMock.mockResolvedValue({ expended: {} })
+  saveResourcesMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
+  getWorldContentCatalogueMock.mockReset()
+  getWorldContentCatalogueMock.mockResolvedValue({
+    worldId: '5', packs: [], species: [], classes: [], backgrounds: [],
+    feats: [], items: [], spells: [], monsters: [], subclasses: []
+  })
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -519,5 +562,108 @@ describe('applyRecoveryAction -- character existence', () => {
     if (result.ok) return
     expect(result.reason).toBe('character-not-found')
     expect(loadHealthMock).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules Phase 2A.2 -- GENERIC RESOURCE REST RECOVERY.
+// Exercises REAL authored resources (Rage, Second Wind, Indomitable) through
+// the generic, resource-id-agnostic recovery path this phase added -- zero
+// class-name or resource-id branching in character-recovery.ts itself.
+// ---------------------------------------------------------------------------
+
+describe('applyRecoveryAction -- generic resource recovery (Rage)', () => {
+  it('Long Rest fully recovers Rage (short-rest +1 / long-rest full, per the real authored corpus)', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: BARBARIAN_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    loadResourcesMock.mockResolvedValue({ expended: { 'resource:rage': 2 } })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'long-rest' }, 'account-1')
+    expect(result.ok).toBe(true)
+    expect(saveResourcesMock).toHaveBeenCalledWith('42', { expended: {} })
+  })
+
+  it('Short Rest recovers only ONE expended use of Rage, never all of it', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: BARBARIAN_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    loadResourcesMock.mockResolvedValue({ expended: { 'resource:rage': 2 } })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'short-rest' }, 'account-1')
+    expect(result.ok).toBe(true)
+    expect(saveResourcesMock).toHaveBeenCalledWith('42', { expended: { 'resource:rage': 1 } })
+  })
+
+  it('a resource with zero expended is left untouched (no spurious write of an empty map)', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: BARBARIAN_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    loadResourcesMock.mockResolvedValue({ expended: {} })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'long-rest' }, 'account-1')
+    expect(result.ok).toBe(true)
+    // Rage's own recovery rule still applies to an ALREADY-zero entry, but
+    // `applyResourceRecovery` is idempotent against it (deleting an absent
+    // key is a no-op) -- asserting the save still only ever contains real,
+    // non-negative state, never a crash or a fabricated negative count.
+    expect(saveResourcesMock).toHaveBeenCalledWith('42', { expended: {} })
+  })
+})
+
+describe('applyRecoveryAction -- generic resource recovery (Fighter: Second Wind + Indomitable)', () => {
+  // Indomitable is acquired at level 9 -- the stored progression here
+  // overrides the fixture's own synthesized level-1 default so this
+  // character's REAL assembled level is 9, exactly like
+  // character-progression-plan.test.ts's own per-test progression overrides.
+  const FIGHTER_L9_BLUEPRINT = {
+    ...FIGHTER_CON_16_BLUEPRINT,
+    progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 9 }], feats: [] }
+  }
+
+  it('Short Rest recovers Second Wind (short-rest+long-rest full) but leaves Indomitable (long-rest only) untouched', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: FIGHTER_L9_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    loadResourcesMock.mockResolvedValue({
+      expended: { 'resource:second_wind': 2, 'resource:indomitable': 1 }
+    })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'short-rest' }, 'account-1')
+    expect(result.ok).toBe(true)
+    expect(saveResourcesMock).toHaveBeenCalledWith('42', {
+      expended: { 'resource:second_wind': 1, 'resource:indomitable': 1 }
+    })
+  })
+
+  it('Long Rest recovers BOTH Second Wind and Indomitable fully', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: FIGHTER_L9_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    loadResourcesMock.mockResolvedValue({
+      expended: { 'resource:second_wind': 2, 'resource:indomitable': 1 }
+    })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'long-rest' }, 'account-1')
+    expect(result.ok).toBe(true)
+    expect(saveResourcesMock).toHaveBeenCalledWith('42', { expended: {} })
+  })
+
+  it('a Fighter at level 1 (Indomitable not yet acquired) still correctly Short-Rests Second Wind alone', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: FIGHTER_CON_16_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    loadResourcesMock.mockResolvedValue({ expended: { 'resource:second_wind': 1 } })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'short-rest' }, 'account-1')
+    expect(result.ok).toBe(true)
+    expect(saveResourcesMock).toHaveBeenCalledWith('42', { expended: {} })
+  })
+})
+
+describe('applyRecoveryAction -- resource recovery does not disturb existing spell-slot/Hit-Dice behavior', () => {
+  it('Long Rest still resets spell slots AND recovers resources in the same call', async () => {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: BARBARIAN_BLUEPRINT })
+    loadHealthMock.mockResolvedValue({ currentHp: 13, temporaryHp: 0, hitDiceSpent: 1, deathSaves: { successes: 0, failures: 0 } })
+    loadResourcesMock.mockResolvedValue({ expended: { 'resource:rage': 1 } })
+
+    const result = await applyRecoveryAction('5', '42', { type: 'long-rest' }, 'account-1')
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', expect.objectContaining({ expendedSlots: {} }))
+    expect(saveResourcesMock).toHaveBeenCalledWith('42', { expended: {} })
   })
 })

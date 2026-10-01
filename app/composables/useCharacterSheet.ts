@@ -304,6 +304,14 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   const spellcastingAttackBonus = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.attack_bonus'))
   const characterLevel = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'progression', 'value:level') ?? 1)
 
+  // D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES.
+  // `derived.value?.resources` is already fully Rules-Engine-derived and
+  // already scoped to ACQUIRED resources only (server/utils/character-
+  // derived.ts) -- this is a plain passthrough, the identical "no local
+  // computation, just expose what assembly/derived already resolved"
+  // shape `slotLevels` below takes, one field over.
+  const characterResources = computed(() => derived.value?.resources ?? [])
+
   // -------------------------------------------------------------------
   // Inventory / Notes / Health / Spellcasting -- local working copies,
   // seeded from Assembly. Held separately so a save that fails leaves the
@@ -501,6 +509,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     spellOptions,
     spellcastingExpendedSlots,
     slotLevels,
+    characterResources,
     actions,
     actionsPending,
     actionsUnavailableMessage,

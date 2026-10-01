@@ -58,6 +58,21 @@ export type DerivedTable = {
   rows: Array<Record<string, unknown>>
 }
 
+// D&D 2024 Character Rules Phase 2A.2 -- mirrors server/utils/character-
+// derived.ts's own `DerivedResource`, for the identical app/server
+// boundary reason every other type in this file is restated rather than
+// imported.
+export type DerivedResourceView = {
+  id: string
+  label?: string
+  category?: RuleCategory
+  max: number
+  expended: number
+  remaining: number
+  recovery: Array<{ trigger: 'short-rest' | 'long-rest'; amount: 'full' | number }>
+  presentation: { style: 'pool' | 'dice' | 'points'; dieFaces?: number }
+}
+
 export type DerivedCharacterView = {
   packageId: string
   packageVersion: string
@@ -65,6 +80,7 @@ export type DerivedCharacterView = {
   collections: DerivedCollection[]
   tables: DerivedTable[]
   pendingChoices: Array<{ slot: string; count: number }>
+  resources: DerivedResourceView[]
 }
 
 export type DerivedCharacterResponse =

@@ -1567,6 +1567,79 @@ describe('Character Progression Phase 1B -- generic Progression mechanism, synth
   })
 })
 
+describe('D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES, the bridge-level mechanism (synthetic content)', () => {
+  // The real authored corpus's own resources (Rage, Bardic Inspiration,
+  // Superiority Dice, ...) are proven end-to-end against the real package
+  // in tests/server/utils/character-resources-vertical-slices.test.ts; this
+  // describe block proves the GENERIC bridge mechanism itself (facet.
+  // resources always-on, row.resources level-gated, unresolved reporting,
+  // de-duplication) against synthetic content, mirroring this file's own
+  // Progression tests immediately above.
+
+  // A synthetic rulesFacet, nested correctly under `entry.rulesFacet` --
+  // `facetFor` (character-actor-bridge.ts) reads `slot.entry.rulesFacet`,
+  // never the entry's own top-level fields.
+  function slotWithFacet(entityType: string, slug: string, facet: { resources?: string[] }): CharacterAssemblySlot {
+    const base = slot(entityType, slug)
+    if (base.status !== 'resolved') throw new Error('expected a resolved slot')
+    return { status: 'resolved', entry: { ...base.entry, rulesFacet: { ...base.entry.rulesFacet, ...facet } } }
+  }
+
+  it('facet.resources is always-on from level 1, consumed through the SAME consumeFacet path as facet.sources', () => {
+    const wizardBp = blueprint({
+      class: slotWithFacet('class', 'wizard-xphb', { resources: ['resource:rage'] })
+    })
+    const { bridged } = deriveWithProgression(wizardBp, 1)
+    expect(bridged.acquiredResourceIds).toContain('resource:rage')
+  })
+
+  it('row.resources is LEVEL-GATED, mirroring row.grants exactly -- absent before, present at and after `at`', () => {
+    const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+    const synthetic = {
+      keyedBy: 'value:level',
+      rows: [{ at: 3, resources: ['resource:rage'] }]
+    }
+
+    const below = deriveWithProgression(wizardBp, 2, { 'progression:class.skill-expertise': synthetic })
+    expect(below.bridged.acquiredResourceIds).not.toContain('resource:rage')
+
+    const at = deriveWithProgression(wizardBp, 3, { 'progression:class.skill-expertise': synthetic })
+    expect(at.bridged.acquiredResourceIds).toContain('resource:rage')
+
+    const above = deriveWithProgression(wizardBp, 5, { 'progression:class.skill-expertise': synthetic })
+    expect(above.bridged.acquiredResourceIds).toContain('resource:rage')
+  })
+
+  it('an unresolved resource id (facet OR row) is reported in unresolvedGrants when knownDefinition is supplied, never silently granted', () => {
+    const wizardBp = blueprint({
+      class: slotWithFacet('class', 'wizard-xphb', { resources: ['resource:does-not-exist'] })
+    })
+    const { bridged } = deriveWithProgression(wizardBp, 1)
+    expect(bridged.unresolvedGrants).toContain('resource:does-not-exist')
+    expect(bridged.acquiredResourceIds).not.toContain('resource:does-not-exist')
+  })
+
+  it('the SAME resource id declared twice (e.g. by two facets) de-duplicates to one entry', () => {
+    const wizardBp = blueprint({
+      species: slotWithFacet('species', 'human-xphb', { resources: ['resource:rage'] }),
+      class: slotWithFacet('class', 'wizard-xphb', { resources: ['resource:rage'] })
+    })
+    const { bridged } = deriveWithProgression(wizardBp, 1)
+    expect(bridged.acquiredResourceIds.filter((id) => id === 'resource:rage')).toHaveLength(1)
+  })
+
+  it('an acquired feat\'s own facet.resources is consumed through the feat loop, exactly like a SLOT_ORDER facet', () => {
+    const featSlot = slotWithFacet('feat', 'ability-score-improvement-xphb', { resources: ['resource:rage'] })
+    if (featSlot.status !== 'resolved') throw new Error('expected a resolved feat slot')
+    const wizardBp = blueprint({
+      class: slot('class', 'wizard-xphb'),
+      feats: [{ status: 'resolved', choiceKey: 'class:progression:4:choice:feat.selection', entry: featSlot.entry }]
+    })
+    const { bridged } = deriveWithProgression(wizardBp, 4)
+    expect(bridged.acquiredResourceIds).toContain('resource:rage')
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Character Progression Phase 1C -- the SUBCLASS SLOT. Proves a resolved
 // subclass's RulesFacet contributes through the exact same generic

@@ -111,6 +111,11 @@ const props = withDefaults(defineProps<{
   spellSaveDc: number | null
   spellAttackBonus: number | null
   slotLevels?: readonly { level: number; max: number; expended: number }[]
+  // D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES.
+  // Relayed straight through to CharacterCommandResources.vue, exactly like
+  // `slotLevels` above -- this component makes no decisions about either.
+  resources?: readonly import('./characterResourcePresentation').DerivedResourceForPresentation[]
+  resourcesSaving?: boolean
   conditions: EncounterConditionView[]
   inEncounter: boolean
   isMyTurn: boolean
@@ -130,6 +135,8 @@ const props = withDefaults(defineProps<{
   speed: null,
   proficiencyBonus: null,
   slotLevels: () => [],
+  resources: () => [],
+  resourcesSaving: false,
   recoverySaving: false,
   recoveryError: '',
   spellSaving: false
@@ -140,6 +147,8 @@ const emit = defineEmits<{
   recovery: [{ type: RecoveryActionType; amount?: number }]
   'expend-slot': [number]
   'restore-slot': [number]
+  'expend-resource': [{ resourceId: string; amount: number }]
+  'restore-resource': [{ resourceId: string; amount: number }]
   'update-portrait': [File]
   'clear-portrait': []
 }>()
@@ -446,9 +455,13 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
             :recovery-error="recoveryError"
             :slot-levels="slotLevels"
             :spell-saving="spellSaving"
+            :resources="resources"
+            :resources-saving="resourcesSaving"
             @recovery="emit('recovery', $event)"
             @expend-slot="emit('expend-slot', $event)"
             @restore-slot="emit('restore-slot', $event)"
+            @expend-resource="emit('expend-resource', $event)"
+            @restore-resource="emit('restore-resource', $event)"
           />
         </div>
       </div>

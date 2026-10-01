@@ -155,6 +155,16 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:save.con.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 12 }
       ],
+      // D&D 2024 Character Rules Phase 2A.2 -- Rage (XPHB `classFeatures`
+      // level 1, real class-barbarian.json `classTableGroups` "Rages"
+      // column: 2/2/3/3/3/4/4/4/4/4/4/5/5/5/5/5/6/6/6/6 for levels 1-20,
+      // authored verbatim as `resource:rage`'s own nested `if`
+      // max expression). Always-on from level 1, like every other
+      // base-class `grants`/`choices` entry here -- unlike Action Surge/
+      // Channel Divinity/Wild Shape/Focus Points/Sorcery Points (acquired
+      // LATER, authored via `progression[].resources` on the owning
+      // class facet instead), Rage needs no row gate.
+      resources: ['resource:rage'],
       choices: [
         {
           choiceSet: 'choice:skill.proficiency',
@@ -189,6 +199,22 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:spellcasting.ability.cha', to: true },
         { set: 'value:spellcasting.caster_type.full', to: true }
       ],
+      // D&D 2024 Character Rules Phase 2A.2 -- Bardic Inspiration (XPHB
+      // `classFeatures` level 1). Max is `max(1, Charisma modifier)` -- a
+      // DERIVED-ABILITY max, not a level table, the real structural reason
+      // this resource was chosen as a vertical slice (see
+      // `resource:bardic_inspiration`'s own definitions.json comment).
+      // Die size (1d6 -> 1d8 @ L5 -> 1d10 @ L10 -> 1d12 @ L15) is carried
+      // on the Resource's own `presentation.dieSize`, package-authored, not
+      // inferred by the UI. DEFERRED, HONESTLY: Level 5's "Font of
+      // Inspiration" feature additionally lets a Short Rest recover it (on
+      // top of Long Rest) and lets a spell slot be spent to recover one use
+      // -- both are real level-5-conditional recovery refinements this
+      // Resource Definition does not yet model (recovery is a fixed,
+      // non-level-conditional array today); this is an intentionally
+      // incomplete but HONEST partial implementation (Long Rest recovery is
+      // correct for every level), not a silent gap.
+      resources: ['resource:bardic_inspiration'],
       choices: [
         {
           choiceSet: 'choice:skill.proficiency',
@@ -241,8 +267,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
-      // note above.
-      progression: ['progression:class.asi-standard']
+      // note above. D&D 2024 Character Rules Phase 2A.2 -- Channel Divinity
+      // (XPHB `classFeatures` level 2, real class-cleric.json
+      // `classTableGroups` "Channel Divinity" column) is LEVEL-GATED, so it
+      // is authored via a dedicated `progression:class.resources-channel-divinity-standard`
+      // row rather than `facet.resources` -- see
+      // `resource:channel_divinity.standard`'s own definitions.json comment
+      // for its max expression.
+      progression: ['progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard']
     },
     'druid-xphb': {
       grants: [
@@ -269,8 +301,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
-      // note above.
-      progression: ['progression:class.asi-standard']
+      // note above. D&D 2024 Character Rules Phase 2A.2 -- Wild Shape (XPHB
+      // `classFeatures` level 2, level-gated, same reasoning as Cleric's
+      // Channel Divinity immediately above).
+      progression: ['progression:class.asi-standard', 'progression:class.resources-wild-shape']
     },
     'fighter-xphb': {
       grants: [
@@ -278,6 +312,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:save.con.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 10 }
       ],
+      // D&D 2024 Character Rules Phase 2A.2 -- Second Wind (XPHB
+      // `classFeatures` level 1, real class-fighter.json
+      // `classTableGroups` "Second Wind" column) is always-on from level
+      // 1. Action Surge (level 2) and Indomitable (level 9) are LEVEL-GATED
+      // and authored via `progression:class.resources-action-surge-indomitable` instead
+      // (below) -- see this file's own Rage comment above for why the
+      // always-on/level-gated split is drawn this way throughout this
+      // phase's authoring pass.
+      resources: ['resource:second_wind'],
       choices: [
         {
           choiceSet: 'choice:skill.proficiency',
@@ -300,7 +343,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // extra one at 6 and 14), not the 4/8/12/16 most classes share
       // (class-fighter.json's own `classFeatures` references, verified this
       // phase) -- authored here exactly as measured, never assumed.
-      progression: ['progression:class.asi-extended']
+      progression: ['progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable']
     },
     'monk-xphb': {
       grants: [
@@ -323,8 +366,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
-      // note above.
-      progression: ['progression:class.asi-standard']
+      // note above. D&D 2024 Character Rules Phase 2A.2 -- Focus Points
+      // (XPHB `classFeatures` level 2, level-gated; real class-monk.json
+      // `classTableGroups` "Focus Points" column is exactly the character's
+      // own level for L2+, authored as a direct reference to the Level
+      // Value itself per `resource:focus_points`'s own
+      // definitions.json comment -- "prefer references to existing
+      // derived Values" applied literally).
+      progression: ['progression:class.asi-standard', 'progression:class.resources-focus-points']
     },
     'paladin-xphb': {
       grants: [
@@ -334,6 +383,19 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:spellcasting.ability.cha', to: true },
         { set: 'value:spellcasting.caster_type.half', to: true }
       ],
+      // D&D 2024 Character Rules Phase 2A.2 -- Lay on Hands (XPHB
+      // `classFeatures` level 1), always-on. Max is `5 * level` -- a plain
+      // derived-Value formula, not a table (see `resource:lay_on_hands`'s
+      // own definitions.json comment). NOTE, honestly
+      // reported: real expenditure is a VARIABLE amount per use (spend 1 to
+      // N of the pool's remaining points to heal that many Hit Points, or a
+      // fixed 5 to cure Poisoned) -- this phase's generic orb UI only
+      // expends/restores ONE unit per click, so at high level (up to 100
+      // points at L20) this resource is structurally correct but presents
+      // awkwardly as 100 individual orbs. Reported as a UI limitation, not
+      // silently hidden -- a future "spend N" input is the right fix,
+      // out of this phase's scope.
+      resources: ['resource:lay_on_hands'],
       choices: [
         {
           choiceSet: 'choice:skill.proficiency',
@@ -349,8 +411,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
-      // note above.
-      progression: ['progression:class.asi-standard']
+      // note above. D&D 2024 Character Rules Phase 2A.2 -- Paladin's own
+      // Channel Divinity is acquired at level 3 (NOT level 2, unlike
+      // Cleric's -- real class-paladin.json `classTableGroups` "Channel
+      // Divinity" column; its own, separately-authored Resource/Progression
+      // pair, never shared with Cleric's, since the two tables' thresholds
+      // genuinely differ -- see `resource:channel_divinity.extended`'s own
+      // comment).
+      progression: ['progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended']
     },
     'ranger-xphb': {
       grants: [
@@ -360,6 +428,16 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:spellcasting.ability.wis', to: true },
         { set: 'value:spellcasting.caster_type.half', to: true }
       ],
+      // D&D 2024 Character Rules Phase 2A.2 (Ranger completeness follow-up)
+      // -- Favored Enemy (XPHB `classFeatures` level 1, real
+      // class-ranger.json `classTableGroups` "Favored Enemy" column),
+      // always-on from level 1 like Rage/Second Wind/Bardic Inspiration/Lay
+      // on Hands. Tireless (level 10, ability-derived max, Long-Rest-only)
+      // is level-gated via `progression:class.resources-tireless` instead
+      // -- added below alongside the ASI progression, mirroring every
+      // other level-gated resource's own always-on/gated split this phase
+      // already established.
+      resources: ['resource:favored_enemy'],
       choices: [
         {
           choiceSet: 'choice:skill.proficiency',
@@ -378,7 +456,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
-      progression: ['progression:class.asi-standard']
+      progression: ['progression:class.asi-standard', 'progression:class.resources-tireless']
     },
     'rogue-xphb': {
       grants: [
@@ -434,8 +512,18 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
-      // note above.
-      progression: ['progression:class.asi-standard']
+      // note above. D&D 2024 Character Rules Phase 2A.2 -- Sorcery Points
+      // (XPHB `classFeatures` level 2, level-gated; real class-sorcerer.json
+      // `classTableGroups` "Sorcery Points" column is exactly the
+      // character's own level for L2+, authored as a direct reference to
+      // the Level Value itself -- see `resource:sorcery_points`'s
+      // own comment). DEFERRED,
+      // HONESTLY: "Sorcerous Restoration" (level 5, a Short Rest partially
+      // recovers Sorcery Points, capped at half level) is a RECOVERY
+      // FEATURE that modifies another resource rather than owning its own
+      // pool (this phase's own category E) -- not modeled; Long Rest's
+      // full recovery is correct at every level regardless.
+      progression: ['progression:class.asi-standard', 'progression:class.resources-sorcery-points']
     },
     'warlock-xphb': {
       grants: [
@@ -530,6 +618,74 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         'progression:class.subclass-selection',
         'progression:class.asi-standard'
       ]
+    }
+  },
+
+  // ---------------------------------------------------------------------
+  // SUBCLASSES -- D&D 2024 Character Rules Phase 2A.2, SUBCLASS RESOURCE
+  // PROOF
+  // ---------------------------------------------------------------------
+  // The FIRST subclass-entityType facet this corpus has ever authored --
+  // every other subclass of the real 48 (§5 of the completeness audit)
+  // remains genuinely unauthored, exactly as that audit found. This ONE
+  // entry exists specifically to prove "resource acquisition is not
+  // class-slot-specific" (this phase's own explicit SUBCLASS RESOURCE
+  // PROOF requirement): Battle Master's Superiority Dice is a clean,
+  // real, finite-pool resource (XPHB class-fighter.json's own
+  // `subclassFeature` "Combat Superiority" -- "You have four Superiority
+  // Dice, which are d8s... you regain all expended Superiority Dice when
+  // you finish a Short Rest or Long Rest... five dice total at level 7,
+  // six total at level 15"; die size becomes d10 at level 10, d12 at
+  // level 18 via the same subclass's own later features), authored on
+  // `facet.resources` exactly like a base class's always-on resource
+  // (Rage, Second Wind) -- no NEW mechanism, because a resolved subclass
+  // reaches `character-actor-bridge.ts` through the ordinary SLOT_ORDER
+  // 'subclass' slot, which already consumes `facet.resources` identically
+  // to every other slot.
+  //
+  // SLUG, HONESTLY FLAGGED: `battle-master-xphb` follows this corpus's own
+  // `<title-kebab-case>-xphb` convention (human-xphb, wizard-xphb, ...)
+  // but, because NO subclass has ever been imported into a real Content
+  // Pack (the import pipeline that would assign this entry's actual slug
+  // has never run for any of the 48), this is an ASSUMED, not a
+  // production-verified, slug -- mirrors the exact same honest caveat
+  // tests/server/utils/character-progression-plan.test.ts's own
+  // `SUBCLASS_OPTION` fixture already carries for `school-of-evocation-phb`
+  // ("these tests exercise the generic progression machinery, not any
+  // real published subclass corpus"). Making this live on Solaris's bound
+  // Content Pack requires that Pack to be rebuilt/republished against this
+  // corpus -- a separate, out-of-this-phase content-pack operation, not a
+  // Rules Package change.
+  // D&D 2024 Character Rules Phase 2A.2 (SUBCLASS AUDIT follow-up) --
+  // `battle-master-xphb` is the ONLY subclass facet authored this phase.
+  // War Priest (Cleric, War Domain), Warding Flare (Cleric, Light Domain),
+  // and Dark One's Own Luck (Warlock, Fiend Patron) were identified as
+  // real, structurally clean finite-pool resources (all three
+  // corpus-verified, all three the same `max(1, ability modifier)` shape
+  // Bardic Inspiration/Tireless already prove) but DELIBERATELY NOT wired
+  // here -- a real correctness gap, caught before authoring: a subclass
+  // facet is consumed unconditionally the moment `progression.classes[].
+  // subclassRef` resolves (character-actor-bridge.ts's ordinary SLOT_ORDER
+  // 'subclass' slot), with no subclass-INTERNAL level gate -- there is no
+  // mechanism analogous to `ProgressionRow.resources` (class-scoped, keyed
+  // by `value:level`) for "this subclass facet's OWN feature arrives at
+  // ITS level N, independent of when the subclass itself was selected."
+  // Battle Master happens to have no gap (Fighter selects its subclass AND
+  // Combat Superiority both land at level 3), which is why it was safe to
+  // author -- but Cleric/Warlock select their subclass at level 1 while
+  // War Priest/Warding Flare are real level-3 features and Dark One's Own
+  // Luck is a real level-6 feature; wiring any of the three today would
+  // grant access 2-5 levels early, a CORRECTNESS REGRESSION, not merely an
+  // incomplete one. The three Resource Definitions themselves are left
+  // unauthored in definitions.json for the identical reason -- an
+  // unreferenced Definition serves no purpose and risks being mistaken for
+  // "done." Missing primitive, precisely named: a subclass-scoped,
+  // feature-level-keyed resource-acquisition row (the subclass-facet
+  // counterpart of `ProgressionRow.resources`) -- deferred, not solved, by
+  // this phase.
+  subclass: {
+    'battle-master-xphb': {
+      resources: ['resource:superiority_dice']
     }
   },
 

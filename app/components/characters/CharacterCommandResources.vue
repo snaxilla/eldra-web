@@ -70,7 +70,11 @@
 // granting contract beforehand.
 
 import type { StoredCharacterHealth } from '~/lib/characters/health'
-import { spellSlotsToCharacterResources } from './characterResourcePresentation'
+import {
+  genericResourcesToCharacterResources,
+  spellSlotsToCharacterResources,
+  type DerivedResourceForPresentation
+} from './characterResourcePresentation'
 import CharacterResourceOrbs from './CharacterResourceOrbs.vue'
 
 export type RecoveryActionType =
@@ -86,11 +90,19 @@ const props = withDefaults(defineProps<{
   recoveryError?: string
   slotLevels?: readonly { level: number; max: number; expended: number }[]
   spellSaving?: boolean
+  // D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES.
+  // Already Rules-Engine-derived and already scoped to ACQUIRED resources
+  // only (server/utils/character-derived.ts) -- this component performs no
+  // filtering, resolution, or class-name branching of its own.
+  resources?: readonly DerivedResourceForPresentation[]
+  resourcesSaving?: boolean
 }>(), {
   recoverySaving: false,
   recoveryError: '',
   slotLevels: () => [],
-  spellSaving: false
+  spellSaving: false,
+  resources: () => [],
+  resourcesSaving: false
 })
 
 // Caster Pass 0.1: Death Saves moved out of this component entirely -- see
@@ -103,6 +115,12 @@ const emit = defineEmits<{
   recovery: [{ type: RecoveryActionType; amount?: number }]
   'expend-slot': [number]
   'restore-slot': [number]
+  // D&D 2024 Character Rules Phase 2A.2. `amount` -- 1 for an ordinary orb
+  // click, user-entered for a `'points'`-style large pool (CharacterResourceOrbs.vue's
+  // own header has the full reasoning); never trusted as authority by the
+  // server, which independently clamps against the real max/zero.
+  'expend-resource': [{ resourceId: string; amount: number }]
+  'restore-resource': [{ resourceId: string; amount: number }]
 }>()
 
 // --- Damage / Heal / Temp HP: one shared Amount field, three actions -------
@@ -179,14 +197,35 @@ const hitDiceLabel = computed(() => {
 // needs to parse `poolId` back into the level number the adapter derived
 // it from. A second real resource group would need this switch extended
 // by its own group id -- not before one exists.
-const resourceGroups = computed(() => spellSlotsToCharacterResources(props.slotLevels))
+// D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES groups
+// are simply CONCATENATED after Spell Slots' own group(s), never merged by
+// name/label -- each resource is already its own group
+// (genericResourcesToCharacterResources), so there is no collision to
+// resolve. `saving` below is deliberately `spellSaving || resourcesSaving`:
+// CharacterResourceOrbs.vue disables EVERY orb while ANY one save is in
+// flight, matching the existing "optimistic, one domain mutation in flight
+// disables its own control" posture every sibling control on this card
+// already has, rather than inventing per-group saving state this component
+// has no use for yet.
+const resourceGroups = computed(() => [
+  ...spellSlotsToCharacterResources(props.slotLevels),
+  ...genericResourcesToCharacterResources(props.resources)
+])
 
-function handleResourceExpend({ groupId, poolId }: { groupId: string; poolId: string }) {
+// A click's `poolId` is the slot LEVEL NUMBER for the one 'spell-slots'
+// group (unchanged), or the Resource DefinitionId itself for every other
+// (generic) group -- `groupId === poolId` for every resource this adapter
+// produces (one resource, one group, one pool, all sharing the same id),
+// so routing needs no lookup table, only this one `=== 'spell-slots'`
+// branch -- never a resource name/class check.
+function handleResourceExpend({ groupId, poolId, amount }: { groupId: string; poolId: string; amount: number }) {
   if (groupId === 'spell-slots') emit('expend-slot', Number(poolId))
+  else emit('expend-resource', { resourceId: poolId, amount })
 }
 
-function handleResourceRestore({ groupId, poolId }: { groupId: string; poolId: string }) {
+function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; poolId: string; amount: number }) {
   if (groupId === 'spell-slots') emit('restore-slot', Number(poolId))
+  else emit('restore-resource', { resourceId: poolId, amount })
 }
 </script>
 
@@ -378,7 +417,7 @@ function handleResourceRestore({ groupId, poolId }: { groupId: string; poolId: s
       >
         <CharacterResourceOrbs
           :groups="resourceGroups"
-          :saving="spellSaving"
+          :saving="spellSaving || resourcesSaving"
           @expend="handleResourceExpend"
           @restore="handleResourceRestore"
         />

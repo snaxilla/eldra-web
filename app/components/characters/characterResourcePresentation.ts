@@ -66,6 +66,27 @@ export type CharacterResourcePool = {
   // resource might be read-only from this surface (e.g. a resource only a
   // future Cast action can spend, never a manual click).
   adjustable: boolean
+  // D&D 2024 Character Rules Phase 2A.2 -- DISPLAY VARIANTS. Present only
+  // for a package-declared `presentation.style === 'dice'` resource
+  // (Bardic Inspiration's d6->d12 scaling, a Battle Master's Superiority
+  // Die) and ALWAYS package-derived (server/utils/character-derived.ts's
+  // own `DerivedResource.presentation`) -- this module and
+  // CharacterResourceOrbs.vue never infer a die size from a resource's
+  // name/label. Absent (the default, every pool this file produced before
+  // this phase) means an ordinary charge pool with no die badge.
+  dieFaces?: number
+  // D&D 2024 Character Rules Phase 2A.2 (large-pool follow-up) --
+  // PACKAGE-authored presentation style, relayed verbatim from the
+  // Resource Definition's own `presentation.style`
+  // (server/utils/character-derived.ts). `'pool'` (absent/default) renders
+  // as today's orbs; `'points'` renders as a compact number + amount
+  // control instead (CharacterResourceOrbs.vue's own header has the full
+  // reasoning) -- chosen for Lay on Hands (`5 × level`, up to 100 at level
+  // 20) specifically BECAUSE one-orb-per-unit does not scale, never
+  // because this module inspects `max` and guesses. `'dice'` is carried
+  // through unchanged (still orbs, `dieFaces` is the only visual
+  // difference) -- only `'points'` changes the control shape.
+  style?: 'pool' | 'dice' | 'points'
 }
 
 // One labeled group of pools -- "Spell Slots" (one pool per spell level
@@ -131,6 +152,51 @@ export function resourceUnitAriaLabel(
   const poolLabel = pool.label ? `${pool.label} ` : ''
   const state = isResourceUnitAvailable(pool, position) ? 'available' : 'expended'
   return `${groupLabel} ${poolLabel}unit ${position} of ${pool.max}: ${state}`
+}
+
+// ---------------------------------------------------------------------------
+// The GENERIC adapter -- D&D 2024 Character Rules Phase 2A.2.
+// ---------------------------------------------------------------------------
+// Reshapes server/utils/character-derived.ts's own `DerivedResource[]`
+// (already Rules-Engine-derived: max/expended/remaining/recovery/
+// presentation, scoped to only the resources this character has actually
+// ACQUIRED) into the SAME generic shape `spellSlotsToCharacterResources`
+// above already produces -- CharacterResourceOrbs.vue renders both
+// identically, with zero knowledge of "Rage" or "Bardic Inspiration." Each
+// resource becomes its OWN one-pool group (unlike spell slots, which share
+// one group across many pools) because every real resource this phase's
+// corpus audit found is a single undifferentiated pool -- a future resource
+// with genuinely multiple pools would need its own adapter decision, not a
+// guess baked in here ahead of evidence (the same discipline this file's
+// own header already states for why persistence was not generalized
+// speculatively).
+export type DerivedResourceForPresentation = {
+  id: string
+  label?: string
+  max: number
+  expended: number
+  presentation: { style: 'pool' | 'dice' | 'points'; dieFaces?: number }
+}
+
+export function genericResourcesToCharacterResources(
+  resources: readonly DerivedResourceForPresentation[]
+): CharacterResourceGroup[] {
+  return resources.map((resource) => ({
+    id: resource.id,
+    label: resource.label ?? resource.id,
+    pools: [
+      {
+        id: resource.id,
+        max: resource.max,
+        expended: resource.expended,
+        adjustable: true,
+        style: resource.presentation.style,
+        ...(resource.presentation.style === 'dice' && resource.presentation.dieFaces
+          ? { dieFaces: resource.presentation.dieFaces }
+          : {})
+      }
+    ]
+  }))
 }
 
 export function spellSlotsToCharacterResources(

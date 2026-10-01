@@ -94,9 +94,12 @@ corrected Inventory Architecture picture.
 **Subclasses are structurally sound but feature-incomplete as content.** The subclass
 *selection* primitive (Level 3 choice, `fromContentCatalogue`, verified end-to-end against
 Solaris) is real, tested, and correctly scoped to exactly the 48 native-XPHB subclasses (see
-§5). What is **not yet authored** is each subclass's own level-by-level feature content
-(Level 3/6/10/14 subclass features) — only the selection slot itself and the base class
-progression are wired today.
+§5) — **this is now true for all 12 classes, not just Wizard**: a real browser defect (Bob, a
+Level-1 Barbarian, no Subclass choice at Level 3) exposed that this section's own prior claim had
+only ever been verified for Wizard; corrected and fixed 2026-10-01, see §5's own correction note
+and the new Progression Coverage Ledger. What is **still not yet authored** is each subclass's
+own level-by-level feature content (Level 3/6/10/14 subclass features) — only the selection slot
+itself and the base class progression are wired today.
 
 **ASI/Feats, Resources, Actions, and Equipment are the four systems furthest from complete.**
 Creation, base class progression scaffolding, and Spellcasting-the-choice-and-slot-count-layer
@@ -308,31 +311,80 @@ generic Feat Selection `choiceSet` pattern exists.
 
 ## 5. Subclass Audit (48 native-XPHB subclasses, 4 per class)
 
-Re-confirms, does not re-derive, the Phase 1C/Recovery-established fact: `subclass.source ===
-'XPHB'` (distinct from `classSource`, which only means "compatible with this class edition")
-yields exactly 4 subclasses × 12 classes = 48, and this is the correct, empirically-verified
-membership criterion — already the convention in use for Content Pack authoring
-(`eldra.solaris.xphb@1.0.6`, 771 entries including these 48).
+**CORRECTION (ALL-CLASS PROGRESSION CONTRACT AUDIT, 2026-10-01):** this section's own prior
+"Classification: A. COMPLETE for subclass selection (all 48, all 12 classes)" was **wrong, and
+overstated from genuinely Wizard-only evidence.** The Tonso Fun Jr. smoke test cited below tested
+exactly one class (Wizard) — the one class `progression:class.subclass-selection` had ever been
+wired into. The other 11 classes' facets never referenced that Progression at all, so a real
+Barbarian's Level 1→3 Level Manager preview showed pure automatic numeric progression with **no**
+Subclass choice, despite this section's own claim. Caught by real browser acceptance (Bob, a
+Level-1 Barbarian), not by this audit. This section now separates four previously-conflated
+claims, per the audit's own standing caveat about not treating "subclass selection" as one
+monolithic status:
 
-**What is verified working**: the selection slot itself. Real production smoke test (prior
-phase, re-confirmed as still current this session): Tonso Fun Jr. (entity 1649, Solaris)
-reaches Level 3 with a "Subclass" choice presenting exactly the 4 real Wizard subclasses
-(Abjurer/Diviner/Evoker/Illusionist) as `ContentRef` options.
+1. **Subclass catalogue identity** — `subclass.source === 'XPHB'` (distinct from `classSource`,
+   which only means "compatible with this class edition") yields exactly 4 subclasses × 12
+   classes = 48. Re-confirmed, not re-derived, this pass: a direct read-only query against
+   Solaris's actually-bound Content Pack (`eldra.solaris.xphb@1.0.8`) found all 48 present with
+   correct `parentClassSlug` values. **A. COMPLETE** — this was never the actual gap.
+2. **Subclass selection engine** — the `choiceSet`/`fromContentCatalogue`/parent-class-filtering
+   machinery (`character-derived.ts`'s `parentClassSlug` resolution, `character-progression-
+   plan.ts`'s `confirmProgression` wrong-class rejection). **A. COMPLETE** — proven generic and
+   class-agnostic by this pass's own 74-test `character-progression-all-class-subclass.test.ts`
+   (every one of the 12 real classes' own real ProgressionPlan, 4 real options each, wrong-class
+   rejection for each), not merely asserted.
+3. **All-class subclass PACKAGE AUTHORING** — whether each of the 12 classes' own `RulesFacet`
+   actually *references* `progression:class.subclass-selection` at all. **This was the real
+   gap**, now fixed: all 12 class facets in `app/lib/content-rules/dnd5e-2024.ts` reference it
+   (previously only `wizard-xphb`'s did). Verified against the real corpus that all 12 classes
+   genuinely select their subclass at Level 3 (a real 2024 PHB standardization — 2014 D&D varied
+   this per class) before concluding one shared Progression (not a per-class cadence variant,
+   unlike ASI/Feat, §4) was the correct fix — package/content authoring only, zero application
+   branching on class name. **A. COMPLETE**, Tonso's own smoke test re-confirmed still passing,
+   Wizard unaffected by the fix.
+4. **Subclass-internal feature progression** (a subclass's own LATER feature, e.g. a Level 6/10
+   feature, as opposed to the subclass-selection feature itself at Level 3) — **still the
+   unresolved gap this section's own prior text correctly flagged**, now given a stable,
+   CI-tracked identity rather than prose: see the **Progression Coverage Ledger** below. Blocked
+   on the same missing primitive the Subclass Resource Audit (§7) already named
+   (`subclass-internal-feature-level-gating` — no mechanism for a subclass facet's own feature to
+   activate at a level later than the subclass's own selection level). **D. ENGINE PRIMITIVE
+   MISSING**, not implemented this pass (out of this task's own explicit scope — subclass
+   *selection* was the authorized fix, not subclass-internal feature runtime).
 
-**What is not yet authored** (not independently re-verified per-subclass this pass, given 48 ×
-~4 feature levels = ~190 individual feature rows is beyond this audit's effort budget; flagged
-as a Package Authoring Backlog item, §17, and a Tooling Backlog candidate, §19, rather than
-silently assumed complete): each subclass's own level-gated feature rows (typically Level 3, 6,
-10, 14 for most 2024 subclasses, though this pattern was not exhaustively re-confirmed for all
-48 this pass). The class-level base progression (§3) is separately tracked from subclass-level
-content — a subclass choice resolving correctly is not the same claim as "that subclass's
-Level 6 feature is implemented," and this audit does not have real per-subclass-per-level
-evidence to make the latter claim for any of the 48.
+**Real production smoke test** (prior phase, re-confirmed still current this session, now
+genuinely representative rather than the sole evidence for a global claim): Tonso Fun Jr. (entity
+1649, Solaris) reaches Level 3 with a "Subclass" choice presenting exactly the 4 real Wizard
+subclasses (Abjurer/Diviner/Evoker/Illusionist) as `ContentRef` options.
 
-**Classification: A. COMPLETE** for subclass *selection* (all 48, all 12 classes);
-**C. CONTENT MISSING, unverified per-subclass this pass** for subclass *feature* content beyond
-selection — treat as not-yet-audited rather than either complete or incomplete until a dedicated
-per-subclass pass (ideally tool-assisted, §19) is run.
+**What is still not yet authored** (unchanged by this pass — subclass *selection* was the fix,
+subclass *feature content* was never in this task's scope): each subclass's own level-gated
+feature rows (typically Level 3, 6, 10, 14 for most 2024 subclasses). The class-level base
+progression (§3) is separately tracked from subclass-level content — a subclass choice resolving
+correctly is not the same claim as "that subclass's Level 6 feature is implemented."
+
+### Progression Coverage Ledger (new this pass)
+
+The Bob/Barbarian defect was a symptom of a broader process gap: nothing previously caught "a
+real corpus choice nobody wired into any class facet" except manual browsing. A machine-readable,
+CI-enforced ledger now exists for this:
+[`app/lib/content-rules/dnd5e-2024-progression-coverage.ts`](../../../app/lib/content-rules/dnd5e-2024-progression-coverage.ts)
+classifies every choice-bearing feature discovered across all 12 classes' real XPHB corpus
+(subclass selection, ASI/Feat, Epic Boon, Fighting Style, Weapon Mastery, Expertise, Metamagic,
+Eldritch Invocations, Mystic Arcanum, spell acquisition/preparation per casting class, 7 genuine
+subclass-internal selectable features, 2 Level-1 Background creation gaps, and 2 text-signal
+false positives given their own honest classification rather than silently dropped) into exactly
+one of `IMPLEMENTED` / `ENGINE_BLOCKED` / `CONTENT_BLOCKED` / `MILESTONE_DEFERRED` /
+`SOURCE_BLOCKED`. Enforced by
+[`tests/rules/dnd5e-2024-progression-coverage.test.ts`](../../../tests/rules/dnd5e-2024-progression-coverage.test.ts),
+which independently re-derives the candidate feature set from the real corpus
+(`/opt/eldra/datasets/5etools-src/data/class/class-*.json`) using a documented detection
+heuristic (known-name set + `optionalfeatures`-tag/strong-choice-phrasing text signal) and fails
+if the corpus and ledger ever disagree in either direction — including a dedicated fixture
+proving a ledger missing a real discovered feature fails the check, so this is a real gate and
+not merely "the ledger file parses." The ledger's own header documents its detection heuristic's
+honest limitations (text-signal false positives are possible and are individually classified,
+never silently dropped).
 
 ---
 
@@ -719,7 +771,8 @@ candidate, §19, not hand-authored here).
 | ASI/Feat | All 12 | 4/8/12/16 | Ability Score Improvement (as feat choice) | XPHB `classFeatures` + XPHB `feats.json` "Ability Score Improvement" | Choice + relative grant | D. ENGINE PRIMITIVE MISSING | `choiceSet` (via `fromContentCatalogue`) | Increment-capable `RulesFacetGrant` | Yes — chosen feat + resulting ability totals | Feat picker (can likely reuse Subclass picker pattern) | Increment-grant primitive | Wave 1 |
 | ASI/Feat | All 12 | 19 | Epic Boon (as feat choice) | XPHB `classFeatures` + `feats.json` `EB` category | Choice | D. ENGINE PRIMITIVE MISSING (shares dependency w/ above) | `choiceSet` | Same as above (12 EB feats vary in effect shape) | Yes | Same picker, gated to EB pool | Increment-grant primitive | Wave 1 (content), after Wave 1 (engine) |
 | ASI/Feat | All (Fighter/Paladin/Ranger) | 1 (Fighter/Ranger)/2 (Paladin) | Fighting Style | `feats.json` `FS`/`FS:P`/`FS:R` | Pure choice, no increment | C. CONTENT MISSING | `choiceSet` (`fromContentCatalogue`) | None — ready today | Yes — chosen style | Picker | None | Wave 0 (content-only) |
-| Subclass | All 12 (48 total) | 3 (typical) | Subclass selection | XPHB `subclass[]`, `source==='XPHB'` | Choice | A. COMPLETE | `fromContentCatalogue` `choiceSet` | — | Yes — verified (`subclassRef`) | Verified (Tonso Fun Jr. smoke test) | — | Done |
+| Subclass | All 12 (48 total) | 3 (real, all 12, verified) | Subclass selection | XPHB `subclass[]`, `source==='XPHB'` | Choice | A. COMPLETE (corrected 2026-10-01 — was Wizard-only until the ALL-CLASS PROGRESSION CONTRACT AUDIT; see §5) | `fromContentCatalogue` `choiceSet` | — | Yes — verified (`subclassRef`) | Verified all 12 classes (74-test `character-progression-all-class-subclass.test.ts`) + Tonso Fun Jr. (Wizard) smoke test | — | Done |
+| Subclass-internal | All 7 discovered (Lore/Battle Master/Archfey/Fiend/Diviner/Evoker/Illusionist) | varies (3/6/10/14) | Subclass's own later selectable feature | XPHB `class-*.json` `subclassFeature[]` (native-source-filtered) | Choice | D. ENGINE PRIMITIVE MISSING | — | `subclass-internal-feature-level-gating` | Depends on feature | Depends on feature | Blocks on same primitive as War Priest/Warding Flare/Dark One's Own Luck (§7) | Not scheduled (tracked in Progression Coverage Ledger) |
 | Subclass | All 48 | 3/6/10/14 (typical) | Subclass feature content | XPHB `class-*.json` `subclass[].subclassFeatures` | Progression rows | C. CONTENT MISSING, unaudited per-subclass | `progression` | — (primitive exists) | Depends on feature | Depends on feature | None known | Wave 2 (authoring) |
 | Resource | Barbarian | 1+ | Rage uses | XPHB `classFeatures`/`classTableGroups` | Pool: current/max, spend, recover-on-rest | **A. COMPLETE** (Phase 2A.2) | `resource:rage` (kind:'resource') | — | Yes — `resources` block, confirmed | `CharacterResourceOrbs.vue` (generic) | — | Done |
 | Resource | Fighter | 1/2/9 | Second Wind / Action Surge / Indomitable | XPHB `classFeatures`/`classTableGroups` | Pool (×3, level-gated acquisition) | **A. COMPLETE** (Phase 2A.2) | `resource:second_wind`/`action_surge`/`indomitable` | — | Yes | Generic | — | Done |

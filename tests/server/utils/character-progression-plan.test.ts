@@ -106,6 +106,15 @@ const SCHOLAR_ARCANA_OPTION = 'value:skill.arcana.expertise'
 const SUBCLASS_CHOICE_KEY = progressionChoiceKey('class', 3, 'choice:class.subclass')
 const SUBCLASS_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' })
 
+// ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- `progressionChoiceKey`
+// depends only on slot/level/choiceSetId, never on which class, so Fighter's
+// own subclass choice (now that `progression:class.subclass-selection` is
+// referenced by every class's facet, not only Wizard's) is answered under
+// this EXACT SAME key -- `battle-master-xphb` is the real, production-
+// verified XPHB slug (confirmed this phase directly against Solaris's own
+// bound Content Pack), reused here rather than invented.
+const FIGHTER_SUBCLASS_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'battle-master-xphb' })
+
 // D&D 2024 Character Rules Phase 2A.1 -- the real, package-declared
 // identity of the new Level 4 Feat Selection choice both Wizard AND Fighter
 // now legitimately cross on a 1->5 walk (`progressionChoiceKey` does not
@@ -188,6 +197,22 @@ function catalogueWithSubclass() {
         externalId: 'School of Evocation__PHB',
         provider: '5etools-json',
         parentClassSlug: CLASS_REF.slug
+      },
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- a second,
+      // Fighter-parented option, needed now that `progression:class.
+      // subclass-selection` is referenced by every class's facet (see
+      // FIGHTER_SUBCLASS_OPTION's own comment above) -- this file's
+      // existing Fighter-blueprint tests cross the real Level-3 subclass
+      // row in their own 1->5 walk and must be able to answer it.
+      {
+        packageId: 'eldra.content.xphb',
+        packageVersion: '1.0.0',
+        systemKey: 'dnd5e',
+        title: 'Battle Master',
+        slug: 'battle-master-xphb',
+        externalId: 'Battle Master__XPHB',
+        provider: '5etools-json',
+        parentClassSlug: 'fighter-xphb'
       }
     ]
   }
@@ -779,7 +804,15 @@ describe('confirmProgression -- exactly one write when no real progression choic
       })
     })
 
-    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION] }
+    // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- a Fighter 1->5
+    // walk now ALSO crosses the real Level-3 subclass row (every class's
+    // facet references `progression:class.subclass-selection` as of this
+    // fix, not only Wizard's) -- answered here the same way Wizard's own
+    // subclass choice already is everywhere else in this file. A content-
+    // kind answer is still never persisted to rules_choices (it resolves
+    // to `progression.classes[].subclassRef` instead), so "exactly one
+    // write" remains true.
+    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION], [SUBCLASS_CHOICE_KEY]: [FIGHTER_SUBCLASS_OPTION] }
     const planResult = await planProgression('5', '42', 5, answers)
     expect(planResult.ok).toBe(true)
     if (!planResult.ok) return
@@ -789,7 +822,7 @@ describe('confirmProgression -- exactly one write when no real progression choic
     expect(confirmResult.ok).toBe(true)
     if (!confirmResult.ok) return
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
-      classes: [{ classRef: fighterRef, level: 5, subclassRef: null }],
+      classes: [{ classRef: fighterRef, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'battle-master-xphb' } }],
       feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
     })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
@@ -842,7 +875,9 @@ describe('no class-name special cases', () => {
       })
     })
 
-    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION] }
+    // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see the
+    // identical note on the sibling test immediately above.
+    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION], [SUBCLASS_CHOICE_KEY]: [FIGHTER_SUBCLASS_OPTION] }
     const planResult = await planProgression('5', '42', 5, answers)
     expect(planResult.ok).toBe(true)
     if (!planResult.ok) return
@@ -851,7 +886,7 @@ describe('no class-name special cases', () => {
     expect(confirmResult.ok).toBe(true)
     if (!confirmResult.ok) return
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
-      classes: [{ classRef: fighterRef, level: 5, subclassRef: null }],
+      classes: [{ classRef: fighterRef, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'battle-master-xphb' } }],
       feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
     })
   })

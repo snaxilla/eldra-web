@@ -189,7 +189,26 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // own purity rule, tests/rules/dnd5e-2024-package.test.ts). Fighter
       // and Rogue reference their own distinct cadence ids instead (`-
       // extended`, `-frequent`) -- see those two classes' own facets.
-      progression: ['progression:class.asi-standard']
+      //
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- real browser
+      // acceptance (Bob, a Level-1 Barbarian, Level Manager preview to
+      // Level 3) exposed that `progression:class.subclass-selection`
+      // (hardcoded `at: 3`, packages/eldra-dnd5e-2024/definitions.json)
+      // was referenced by exactly ONE class facet in this entire
+      // corpus -- Wizard's, below -- meaning Character Progression Phase
+      // 1C was effectively authored only for Wizard, never generalized to
+      // the other 11. Re-audited against the real corpus
+      // (class-<name>.json's own "<Class> Subclass" `classFeature`,
+      // `source: 'XPHB'`, every one of the 12 classes): ALL 12 select
+      // their subclass at Level 3 -- a genuine 2024 PHB standardization
+      // (2014 D&D varied this per class) -- so the EXISTING, already-
+      // correct `at: 3` Progression needed no new cadence variant, only
+      // to be referenced by the other 11 facets, exactly mirroring how
+      // Wizard's own facet already does. Verified, not assumed: every one
+      // of the 48 native-XPHB subclasses (4 per class) is already present
+      // in Solaris's bound Content Pack with the correct `parentClassSlug`
+      // -- this was a Rules-authoring gap, never a Content gap.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard']
     },
     'bard-xphb': {
       grants: [
@@ -243,7 +262,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
-      progression: ['progression:class.asi-standard']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard']
     },
     'cleric-xphb': {
       grants: [
@@ -274,7 +294,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // row rather than `facet.resources` -- see
       // `resource:channel_divinity.standard`'s own definitions.json comment
       // for its max expression.
-      progression: ['progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard']
     },
     'druid-xphb': {
       grants: [
@@ -304,7 +325,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // note above. D&D 2024 Character Rules Phase 2A.2 -- Wild Shape (XPHB
       // `classFeatures` level 2, level-gated, same reasoning as Cleric's
       // Channel Divinity immediately above).
-      progression: ['progression:class.asi-standard', 'progression:class.resources-wild-shape']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-wild-shape']
     },
     'fighter-xphb': {
       grants: [
@@ -343,7 +365,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // extra one at 6 and 14), not the 4/8/12/16 most classes share
       // (class-fighter.json's own `classFeatures` references, verified this
       // phase) -- authored here exactly as measured, never assumed.
-      progression: ['progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable']
     },
     'monk-xphb': {
       grants: [
@@ -373,7 +396,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // Value itself per `resource:focus_points`'s own
       // definitions.json comment -- "prefer references to existing
       // derived Values" applied literally).
-      progression: ['progression:class.asi-standard', 'progression:class.resources-focus-points']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-focus-points']
     },
     'paladin-xphb': {
       grants: [
@@ -418,7 +442,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // pair, never shared with Cleric's, since the two tables' thresholds
       // genuinely differ -- see `resource:channel_divinity.extended`'s own
       // comment).
-      progression: ['progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended']
     },
     'ranger-xphb': {
       grants: [
@@ -456,7 +481,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
-      progression: ['progression:class.asi-standard', 'progression:class.resources-tireless']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless']
     },
     'rogue-xphb': {
       grants: [
@@ -487,7 +513,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // extra one at 10), not the 4/8/12/16 most classes share
       // (class-rogue.json's own `classFeatures` references, verified this
       // phase) -- authored here exactly as measured, never assumed.
-      progression: ['progression:class.asi-frequent']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent']
     },
     'sorcerer-xphb': {
       grants: [
@@ -523,7 +550,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // FEATURE that modifies another resource rather than owning its own
       // pool (this phase's own category E) -- not modeled; Long Rest's
       // full recovery is correct at every level regardless.
-      progression: ['progression:class.asi-standard', 'progression:class.resources-sorcery-points']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points']
     },
     'warlock-xphb': {
       grants: [
@@ -550,7 +578,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
-      progression: ['progression:class.asi-standard']
+      // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard']
     },
     'wizard-xphb': {
       grants: [

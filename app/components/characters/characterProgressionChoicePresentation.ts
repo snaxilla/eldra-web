@@ -119,3 +119,59 @@ export function applySlotChange(draft: readonly string[], slotIndex: number, val
 export function draftToAnswer(draft: readonly string[]): string[] {
   return draft.filter((slot) => slot !== '')
 }
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules Phase 2A.1 UX Correction (round 2) --
+// RECONCILIATION across a plan replacement.
+// ---------------------------------------------------------------------------
+// VERIFIED, NOT ASSUMED: `character-derived.ts` only ever echoes a choice's
+// `selected` back as non-empty when the stored/tentative answer FULLY and
+// VALIDLY answers it (`validateChoiceSelection`'s own count check -- a
+// Definition-kind choice's answer only reaches `ActorState.choices` at all
+// when `validation.ok` is true). A still-incomplete answer -- `['int']`
+// against a `count: 2` choice -- is therefore echoed back as `selected: []`
+// by every rebuilt plan, NOT as `['int']`. Re-seeding a slot draft from
+// `choice.selected` on every incoming plan (rather than only once, the
+// first time a choice id is seen) would therefore erase an in-progress,
+// still-incomplete selection the instant the NEXT unrelated choice
+// triggers a re-preview -- the real browser defect this reconciliation
+// closes, independent of (and in addition to) not blanking the plan
+// itself during that re-preview.
+export type PresentableProgressionChoiceForReconciliation = {
+  id: string
+  count: number
+  distinct?: boolean
+  selected: readonly string[]
+}
+
+// One generic rule, applied per choice id, never per feat/ability/class:
+//   - a choice still present in the new plan, with an EXISTING local draft
+//     -> the draft survives UNCHANGED (it is UX state the user is mid-way
+//        through; only the user's own edits or an authoritative COMPLETE
+//        answer may change it -- see `draftFromAnswer`'s own "echoed only
+//        when complete" note above for why the complete case is already
+//        handled: a complete answer seeds correctly the FIRST time a
+//        choice id is seen, and never needs re-seeding after that since
+//        the draft itself already reflects it).
+//   - a choice newly present, with NO existing draft -> seeded from
+//     whatever the new plan echoes (`draftFromAnswer`), exactly as before.
+//   - a choice NO LONGER present in the new plan -> its draft is dropped
+//     entirely (never left as orphaned state that could leak into a
+//     different, later choice that happened to reuse the same id).
+// Only `isNonDistinctMultiSelect` choices are tracked at all -- radio and
+// checkbox choices remain fully props-driven (no draft) exactly as before.
+export function reconcileSlotDrafts(
+  existingDrafts: Readonly<Record<string, readonly string[]>>,
+  currentChoices: readonly PresentableProgressionChoiceForReconciliation[]
+): Record<string, string[]> {
+  const next: Record<string, string[]> = {}
+
+  for (const choice of currentChoices) {
+    if (!isNonDistinctMultiSelect(choice)) continue
+
+    const existing = existingDrafts[choice.id]
+    next[choice.id] = existing ? [...existing] : draftFromAnswer(choice.selected, choice.count)
+  }
+
+  return next
+}

@@ -37,6 +37,15 @@
 import type { Ref } from 'vue'
 import type { ProgressionPlan } from '~/lib/characters/progression-plan'
 import type { StoredCharacterProgression } from '~/lib/characters/progression'
+import {
+  applyPreviewFailure,
+  applyPreviewSuccess,
+  beginPreviewRequest,
+  canConfirm,
+  invalidatePendingPreview,
+  isStaleRequest,
+  type PreviewRequestState
+} from './characterProgressionRequestLifecycle'
 
 type ConfirmProgressionResponse = { ok: true; progression: StoredCharacterProgression; currentLevel: number }
 
@@ -84,14 +93,30 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
   // ANSWERS DURING PREVIEW header.
   const answers = ref<Record<string, string[]>>({})
 
-  // Clears any previously-previewed plan -- a stale plan object sitting in
-  // memory while the admin picks a NEW target level would be confusing to
-  // render and is never valid to confirm against a level they didn't just
-  // preview.
+  // D&D 2024 Character Rules Phase 2A.1 UX Correction -- every DECISION
+  // about the preview-request lifecycle (whether to clear an existing
+  // plan, whether a response is still the latest one, whether Confirm is
+  // available) lives in the pure, directly-unit-tested
+  // characterProgressionRequestLifecycle.ts, not here -- this composable
+  // only holds the reactive refs and applies that module's own return
+  // values to them. See that file's own header for the real browser
+  // defect this replaces: `previewPlan` used to unconditionally null
+  // `plan.value` before every request, including the automatic re-preview
+  // `setAnswer` issues after EVERY answered choice, which made the entire
+  // rendered plan disappear for the duration of every re-preview and, as a
+  // direct side effect, wiped CharacterProgressionPanel.vue's own
+  // non-distinct slot drafts too (see that component's own reconciliation
+  // header for the second half of that chain).
+  function requestState(): PreviewRequestState<ProgressionPlan> {
+    return { plan: plan.value, planPending: planPending.value, latestRequestId: requestLifecycleId }
+  }
+
+  let requestLifecycleId = 0
+
   async function previewPlan(targetLevel: number): Promise<void> {
-    if (planPending.value) return
-    plan.value = null
-    planPending.value = true
+    const { nextState, requestId } = beginPreviewRequest(requestState())
+    requestLifecycleId = nextState.latestRequestId
+    planPending.value = nextState.planPending
     planError.value = ''
     confirmError.value = ''
 
@@ -100,11 +125,22 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
         `/api/worlds/${resolvedWorldId()}/characters/${resolvedCharacterId()}/progression/plan`,
         { method: 'POST', body: { targetLevel, answers: answers.value } }
       )
-      plan.value = response.plan
+      const applied = applyPreviewSuccess(requestState(), requestId, response.plan)
+      plan.value = applied.plan
+      planPending.value = applied.planPending
     } catch (caught) {
-      planError.value = extractErrorMessage(caught)
-    } finally {
-      planPending.value = false
+      // Keep the LAST VALID plan visible on a failed re-preview -- the
+      // user should still see what they were editing when the request
+      // failed, with the error surfaced alongside it, never a blanked
+      // panel. `applyPreviewFailure` leaves `plan` untouched; only
+      // `planPending` (and, here, the error message) may change, and only
+      // if this is still the latest request.
+      const stale = isStaleRequest(requestState(), requestId)
+      const applied = applyPreviewFailure(requestState(), requestId)
+      planPending.value = applied.planPending
+      if (!stale) {
+        planError.value = extractErrorMessage(caught)
+      }
     }
   }
 
@@ -124,9 +160,23 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
   // that transition's final selections -- never a caller-supplied level, so
   // a stray click can never confirm something other than what was just
   // previewed.
+  // D&D 2024 Character Rules Phase 2A.1 UX Correction -- gated through the
+  // SAME `canConfirm` predicate CharacterProgressionPanel.vue's own Confirm
+  // button now also evaluates: a plan must exist, be valid, and no request
+  // (a preview OR a confirm already in flight) may currently be pending.
+  // This is the authoritative copy, not merely a UI nicety -- a stray or
+  // programmatic call must be refused exactly as a disabled button already
+  // prevents a real click.
   async function confirm(): Promise<boolean> {
-    if (confirming.value || !plan.value) return false
-    const { targetLevel, fingerprint } = plan.value
+    if (!canConfirm(plan.value, confirming.value, planPending.value)) return false
+    const { targetLevel, fingerprint } = plan.value!
+
+    // Invalidate any preview request still in flight -- a confirm is about
+    // to replace `plan`/`answers` wholesale, and a stale preview response
+    // arriving afterward must never resurrect the plan this confirm just
+    // cleared (see `previewPlan`'s own stale-request guard, which this
+    // relies on).
+    requestLifecycleId = invalidatePendingPreview(requestState()).latestRequestId
 
     confirming.value = true
     confirmError.value = ''
@@ -154,6 +204,10 @@ export function useCharacterProgression(worldId: Ref<string> | string, character
   }
 
   function clearPlan(): void {
+    // Same reasoning as `confirm()` above -- a stale preview response
+    // arriving after Cancel must never repopulate the plan this just
+    // cleared.
+    requestLifecycleId = invalidatePendingPreview(requestState()).latestRequestId
     plan.value = null
     planError.value = ''
     answers.value = {}

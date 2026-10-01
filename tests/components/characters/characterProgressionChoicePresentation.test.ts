@@ -14,7 +14,9 @@ import {
   applySlotChange,
   draftFromAnswer,
   draftToAnswer,
-  isNonDistinctMultiSelect
+  isNonDistinctMultiSelect,
+  reconcileSlotDrafts,
+  type PresentableProgressionChoiceForReconciliation
 } from '../../../app/components/characters/characterProgressionChoicePresentation'
 
 describe('isNonDistinctMultiSelect', () => {
@@ -147,5 +149,119 @@ describe('applySlotChange + draftToAnswer -- the full slot-edit round trip', () 
     const draft = draftFromAnswer(['int', 'wis'], 2)
     expect(applySlotChange(draft, 5, 'cha')).toEqual(['int', 'wis'])
     expect(applySlotChange(draft, -1, 'cha')).toEqual(['int', 'wis'])
+  })
+})
+
+// D&D 2024 Character Rules Phase 2A.1 UX Correction (round 2) --
+// RECONCILIATION, the fix for the real browser defect: a still-incomplete
+// slot draft was being wiped on every re-preview because the server only
+// ever echoes a COMPLETE answer back (verified directly against
+// character-derived.ts's own `validateChoiceSelection`-gated echo -- see
+// reconcileSlotDrafts's own header). These tests prove the generic
+// "preserve an existing draft; seed a new one; drop a removed one" rule
+// that replaces re-seeding from `choice.selected` on every plan.
+describe('reconcileSlotDrafts', () => {
+  function choice(overrides: Partial<PresentableProgressionChoiceForReconciliation> = {}): PresentableProgressionChoiceForReconciliation {
+    return { id: 'class:progression:4:choice:feat.asi-ability-increase', count: 2, distinct: false, selected: [], ...overrides }
+  }
+
+  // TESTING -- SLOT DRAFT RECONCILIATION #6: initial non-distinct choice
+  // creates a blank slot draft.
+  it('a choice with no existing draft and no server answer seeds blank slots', () => {
+    const result = reconcileSlotDrafts({}, [choice()])
+    expect(result).toEqual({ [choice().id]: ['', ''] })
+  })
+
+  // TESTING -- SLOT DRAFT RECONCILIATION #7/#8: a partial local draft
+  // survives an equivalent-plan replacement UNCHANGED, in BOTH slot
+  // positions -- the server's own `selected: []` echo (an incomplete
+  // answer is never echoed, see this describe's own header) must never
+  // overwrite it.
+  it('partial [INT, blank] survives reconciliation even though the server echoes selected: []', () => {
+    const id = choice().id
+    const existing = { [id]: ['int', ''] }
+    const result = reconcileSlotDrafts(existing, [choice({ selected: [] })])
+    expect(result).toEqual({ [id]: ['int', ''] })
+  })
+
+  it('partial [blank, INT] survives reconciliation WITHOUT moving INT to slot 1', () => {
+    const id = choice().id
+    const existing = { [id]: ['', 'int'] }
+    const result = reconcileSlotDrafts(existing, [choice({ selected: [] })])
+    expect(result).toEqual({ [id]: ['', 'int'] })
+  })
+
+  // TESTING -- SLOT DRAFT RECONCILIATION #9/#10: a complete draft survives
+  // plan replacement too (not just partial ones).
+  it('complete [INT, INT] survives reconciliation', () => {
+    const id = choice().id
+    const existing = { [id]: ['int', 'int'] }
+    // A complete answer IS echoed by the server, per the module's own
+    // header -- reconciliation preserves the EXISTING draft regardless,
+    // never re-deriving it from the echo on every pass.
+    const result = reconcileSlotDrafts(existing, [choice({ selected: ['int', 'int'] })])
+    expect(result).toEqual({ [id]: ['int', 'int'] })
+  })
+
+  it('complete [INT, WIS] survives reconciliation', () => {
+    const id = choice().id
+    const existing = { [id]: ['int', 'wis'] }
+    const result = reconcileSlotDrafts(existing, [choice({ selected: ['int', 'wis'] })])
+    expect(result).toEqual({ [id]: ['int', 'wis'] })
+  })
+
+  // TESTING -- SLOT DRAFT RECONCILIATION #11: a choice no longer present
+  // in the new plan has its draft discarded entirely (also covers #14's
+  // "unrelated plan/target reset" -- a different target level's plan
+  // simply omits the old choice ids, and they are dropped the same way).
+  it('a draft for a choice absent from the new plan is dropped', () => {
+    const existing = { 'some-other-choice-id': ['int', 'wis'] }
+    const result = reconcileSlotDrafts(existing, [choice({ id: 'a-different-choice-id' })])
+    expect(result).toEqual({ 'a-different-choice-id': ['', ''] })
+    expect(result['some-other-choice-id']).toBeUndefined()
+  })
+
+  // TESTING -- SLOT DRAFT RECONCILIATION #12: a newly-appearing choice
+  // (e.g. the nested ability-distribution choice that only exists once a
+  // repeatable feat is selected) is seeded correctly the first time it is
+  // seen, alongside an already-tracked, unrelated choice.
+  it('a newly-appearing choice is seeded correctly while an existing draft is preserved', () => {
+    const existingId = 'class:progression:4:choice:feat.asi-ability-increase'
+    const newId = 'class:progression:8:choice:feat.asi-ability-increase'
+    const existing = { [existingId]: ['int', 'wis'] }
+
+    const result = reconcileSlotDrafts(existing, [
+      choice({ id: existingId, selected: ['int', 'wis'] }),
+      choice({ id: newId, selected: [] })
+    ])
+
+    expect(result).toEqual({
+      [existingId]: ['int', 'wis'],
+      [newId]: ['', '']
+    })
+  })
+
+  // TESTING -- SLOT DRAFT RECONCILIATION #13: a server-provided COMPLETE
+  // answer can seed a fresh draft (no existing local draft yet) -- e.g.
+  // revisiting an already-confirmed level's own choice.
+  it('seeds a fresh draft from a server-provided complete answer when no local draft exists yet', () => {
+    const result = reconcileSlotDrafts({}, [choice({ selected: ['int', 'int'] })])
+    expect(result).toEqual({ [choice().id]: ['int', 'int'] })
+  })
+
+  // Distinct (checkbox) and single-select (radio) choices are never
+  // tracked as slot drafts at all -- `isNonDistinctMultiSelect` gates
+  // entry into the result entirely, so this reconciliation rule cannot
+  // regress Expertise/Subclass/Feat Selection (#15/#16/#17), which remain
+  // fully props-driven exactly as before.
+  it('ignores count: 1 and distinct (checkbox) choices entirely -- no draft tracked for either', () => {
+    const result = reconcileSlotDrafts(
+      { 'stale-leftover': ['int', 'wis'] },
+      [
+        choice({ id: 'single-select', count: 1, distinct: undefined, selected: ['opt-a'] }),
+        choice({ id: 'distinct-checkbox', count: 2, distinct: true, selected: ['opt-a'] })
+      ]
+    )
+    expect(result).toEqual({})
   })
 })

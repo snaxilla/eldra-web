@@ -27,9 +27,9 @@
 
 import {
   applySlotChange,
-  draftFromAnswer,
   draftToAnswer,
-  isNonDistinctMultiSelect
+  isNonDistinctMultiSelect,
+  reconcileSlotDrafts
 } from './characterProgressionChoicePresentation'
 
 export type ProgressionAutomaticConsequenceRow = {
@@ -140,7 +140,11 @@ function requestPreview() {
 }
 
 function requestConfirm() {
-  if (props.confirming || !props.plan?.valid) return
+  // D&D 2024 Character Rules Phase 2A.1 UX Correction -- `planPending`
+  // added, mirroring the button's own `:disabled` and
+  // useCharacterProgression.ts's own `confirm()` guard: Confirm must stay
+  // unavailable while a newer preview is still being built.
+  if (props.confirming || props.planPending || !props.plan?.valid) return
   emit('confirm')
 }
 
@@ -187,28 +191,62 @@ function toggleMulti(choice: ProgressionChoiceRow, optionId: string) {
 // own "WHY A DRAFT ARRAY" header for why this cannot be re-derived from
 // `choice.selected` on every render (filling a LATER slot before an
 // EARLIER one would otherwise silently relocate the user's own pick to
-// the wrong slot). Seeded once per choice id, from whatever answer already
-// exists (a fresh preview's `[]`, or an already-answered choice being
-// revisited); mutated locally thereafter, exactly like this Sheet's own
-// `healthDraft`/`noteDraft` pattern (useCharacterSheet.ts).
+// the wrong slot), and its own RECONCILIATION header for why a PARTIAL
+// draft specifically must survive a plan replacement (the server only
+// ever echoes a choice's answer once it is COMPLETE -- an in-progress
+// selection is never echoed back, so re-seeding from `choice.selected` on
+// every incoming plan would erase it the instant any OTHER choice
+// triggers a re-preview). Mutated locally by the user's own edits,
+// exactly like this Sheet's own `healthDraft`/`noteDraft` pattern
+// (useCharacterSheet.ts).
 const slotDrafts = reactive<Record<string, string[]>>({})
 
-// A brand-new plan (a different fingerprint -- a fresh preview, a
-// just-confirmed transition, or Cancel) must never see a STALE draft left
-// over from a previous plan that happened to reuse the same choice id
-// (the same level/ChoiceSet combination, previewed again later).
+// D&D 2024 Character Rules Phase 2A.1 UX Correction (round 2) -- replaces
+// the previous fingerprint-keyed "wipe everything" watcher, which this
+// panel's own real browser defect traced back to: `useCharacterProgression.ts`'s
+// `previewPlan` used to null `plan.value` before every re-preview, which
+// transiently set `props.plan` (and therefore `props.plan?.fingerprint`)
+// to `undefined` and back on EVERY answered choice -- firing this exact
+// watcher on every single re-preview and wiping an in-progress ASI
+// selection the instant it ran. That root cause is fixed at its own source
+// (`previewPlan` no longer nulls an existing plan); THIS watcher is
+// additionally rebuilt to the generic reconciliation rule
+// `reconcileSlotDrafts` describes, rather than continuing to rely on
+// "the fingerprint merely happens not to change between re-previews" as
+// its only protection -- a correct but ACCIDENTAL property of today's
+// fingerprint formula (level/package/content identity only, never
+// `targetLevel`/answers), not a guarantee this panel should depend on.
+//
+// `newPlan === null` is the one real, DELIBERATE reset signal left once
+// `previewPlan` no longer transiently nulls the plan -- it now only
+// happens via Cancel (`clearPlan`) or a successful Confirm, both of which
+// legitimately end this editing session and should drop every draft.
 watch(
-  () => props.plan?.fingerprint,
-  () => {
-    for (const key of Object.keys(slotDrafts)) delete slotDrafts[key]
-  }
+  () => props.plan,
+  (newPlan) => {
+    if (!newPlan) {
+      for (const key of Object.keys(slotDrafts)) delete slotDrafts[key]
+      return
+    }
+
+    const currentChoices = newPlan.steps.flatMap((step) => step.requiredChoices)
+    const reconciled = reconcileSlotDrafts(slotDrafts, currentChoices)
+
+    for (const key of Object.keys(slotDrafts)) {
+      if (!(key in reconciled)) delete slotDrafts[key]
+    }
+    Object.assign(slotDrafts, reconciled)
+  },
+  { immediate: true, deep: false }
 )
 
+// A plain, defensive read -- by the time this template renders, the
+// `watch` above (immediate, and re-run on every plan replacement) has
+// already reconciled `slotDrafts` for every current choice, so this
+// should always find an entry. The blank fallback exists only so a
+// genuinely unexpected gap renders empty slots rather than throwing.
 function draftFor(choice: ProgressionChoiceRow): string[] {
-  if (!slotDrafts[choice.id]) {
-    slotDrafts[choice.id] = draftFromAnswer(choice.selected, choice.count)
-  }
-  return slotDrafts[choice.id]!
+  return slotDrafts[choice.id] ?? Array(choice.count).fill('')
 }
 
 function setSlot(choice: ProgressionChoiceRow, slotIndex: number, value: string) {
@@ -302,8 +340,20 @@ function formatValue(value: unknown): string {
         v-if="plan"
         class="eldra-well grid gap-3 rounded-none p-3"
       >
-        <p class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">
-          Plan: Level {{ plan.currentLevel }} → Level {{ plan.targetLevel }}
+        <p class="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-[#9f9278]">
+          <span>Plan: Level {{ plan.currentLevel }} → Level {{ plan.targetLevel }}</span>
+          <!-- D&D 2024 Character Rules Phase 2A.1 UX Correction -- the plan
+               itself stays rendered during a re-preview (see `previewPlan`'s
+               own header, useCharacterProgression.ts, for the real defect
+               this replaces); this is the "optionally show Recalculating…"
+               busy indicator the correction's own EXPECTED BEHAVIOR names,
+               never a reason to hide the plan it describes. -->
+          <span
+            v-if="planPending"
+            class="text-[#e0a94a]"
+          >
+            Recalculating…
+          </span>
         </p>
 
         <div
@@ -442,7 +492,7 @@ function formatValue(value: unknown): string {
           <button
             type="button"
             class="eldra-button min-h-11 rounded-none px-4 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="!plan.valid || confirming"
+            :disabled="!plan.valid || confirming || planPending"
             @click="requestConfirm"
           >
             {{ confirming ? 'Confirming…' : 'Confirm Level Up' }}

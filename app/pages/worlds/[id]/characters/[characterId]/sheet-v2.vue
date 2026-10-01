@@ -634,6 +634,8 @@ const {
   identity,
   derived,
   derivedPending,
+  derivedInitialLoading,
+  derivedRefreshError,
   derivedUnavailable,
   derivedRegions,
   maxHp,
@@ -720,6 +722,9 @@ const vitalsSaving = computed(() =>
   || mutations.combat.resolving
   || mutations.inventory.saving
   || mutations.spellcasting.saving
+  // D&D 2024 Character Rules Phase 2A.2 -- Generic Character Resources'
+  // own saving flag, folded in alongside every other mutation domain's.
+  || mutations.resources.saving
   || encounter.pending
   || notesSaving.value
 )
@@ -729,8 +734,16 @@ const vitalsError = computed(() =>
   || mutations.combat.error
   || mutations.inventory.error
   || mutations.spellcasting.error
+  || mutations.resources.error
   || encounter.error
   || notesError.value
+  // REAL BROWSER DEFECT HOTFIX (D&D 2024 Character Rules Phase 2A.2) -- a
+  // failed derived-character REFRESH (as opposed to the true initial-load
+  // failure, which `derivedUnavailable` already surfaces on its own) no
+  // longer blanks Abilities/Saves; it surfaces here instead, alongside
+  // whatever stale-but-valid derived character stays rendered. See
+  // useCharacterSheet.ts's own `derivedRefreshError`.
+  || derivedRefreshError.value
 )
 
 // ---------------------------------------------------------------------------
@@ -1098,13 +1111,24 @@ function openSkillContext(skill: CharacterSkillRow) {
              never. Desktop only -- the same content is rendered again
              inside the Character tab below `xl` (see that copy, and
              CharacterReferencePanels.vue's header, for why duplicating
-             THESE panels specifically is safe). -->
+             THESE panels specifically is safe).
+
+             REAL BROWSER DEFECT HOTFIX (D&D 2024 Character Rules Phase
+             2A.2) -- `:pending` is `derivedInitialLoading`, NOT the raw
+             `derivedPending`: the latter flips true on EVERY derived
+             refresh (every Resource-orb click, Confirm Progression, ...),
+             which used to blank Abilities/Saves behind the "Evaluating
+             this character..." placeholder even though a perfectly valid
+             derived character was already rendered. `derivedInitialLoading`
+             is true only before the FIRST successful load -- see
+             useCharacterSheet.ts's own `derivedRefresh` header for the
+             full lifecycle fix. -->
         <template #left>
           <CharacterReferencePanels
             :ability-entries="abilityEntries"
             :save-entries="saveEntries"
             :reference-regions="referenceRegions"
-            :pending="derivedPending"
+            :pending="derivedInitialLoading"
             :unavailable-message="derived ? '' : derivedUnavailable"
             :rolling="rollPending"
             @roll-ability="rollAbility"
@@ -1213,7 +1237,7 @@ function openSkillContext(skill: CharacterSkillRow) {
               :ability-entries="abilityEntries"
               :save-entries="saveEntries"
               :reference-regions="referenceRegions"
-              :pending="derivedPending"
+              :pending="derivedInitialLoading"
               :unavailable-message="derived ? '' : derivedUnavailable"
               :rolling="rollPending"
               @roll-ability="rollAbility"
@@ -1250,7 +1274,7 @@ function openSkillContext(skill: CharacterSkillRow) {
               <div class="mt-3">
                 <CharacterProgressionPanel
                   :current-level="characterLevel"
-                  :pending="derivedPending"
+                  :pending="derivedInitialLoading"
                   :error-message="derived ? '' : derivedUnavailable"
                   :plan="progression.plan.value"
                   :plan-pending="progression.planPending.value"

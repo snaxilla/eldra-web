@@ -24,8 +24,16 @@ import {
   DERIVED_SHEET_REGIONS,
   findDerivedBoolean,
   findDerivedNumber,
-  type DerivedCharacterResponse
+  type DerivedCharacterResponse,
+  type DerivedCharacterView
 } from '~/components/characters/characterDerivedValues'
+import {
+  applyDerivedRefreshFailure,
+  applyDerivedRefreshSuccess,
+  derivedRefreshBannerError,
+  initialDerivedRefreshState,
+  isDerivedInitialLoading
+} from './characterDerivedRefreshLifecycle'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { StoredAbilityScores } from '~/lib/characters/ability-scores'
 import type { PresentationEntry } from '~/lib/content-presentation'
@@ -195,7 +203,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
 
   const [
     { data: assembly, pending, error, refresh: refreshAssembly },
-    { data: derivedResponse, pending: derivedPending, refresh: refreshDerived },
+    { data: derivedResponse, pending: derivedPending, error: derivedError, refresh: refreshDerived },
     { data: actionsResponse, pending: actionsPending, refresh: refreshActions }
   ] = await Promise.all([assemblyTask, derivedTask, actionsTask])
 
@@ -253,18 +261,73 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
 
   // -------------------------------------------------------------------
   // Derived values -- fetched, never computed. See this file's header.
+  //
+  // REAL BROWSER DEFECT HOTFIX (D&D 2024 Character Rules Phase 2A.2) --
+  // `derived` used to read directly off Nuxt's own raw `derivedResponse`,
+  // which Nuxt resets to `undefined` on a genuine fetch error (confirmed
+  // by direct read of node_modules/nuxt/dist/app/composables/asyncData.js,
+  // not assumed) and which the server legitimately reports `available:
+  // false` for on its own. Either case, on ANY refresh (not just the
+  // first load -- e.g. every Resource-orb click, which calls
+  // `sheet.refreshDerived()`), made `derived` go null for an instant,
+  // which cascaded into every region that reads it (Abilities, Skills'
+  // category rows, Health, Spellcasting summaries, ...) rendering as if
+  // nothing had ever loaded. `derivedRefresh` (characterDerivedRefreshLifecycle.ts)
+  // tracks the last-known-GOOD derived character SEPARATELY, replaced only
+  // by a new success, never cleared by a pending refresh or a failure --
+  // see that module's own header for the full reasoning, mirroring
+  // characterProgressionRequestLifecycle.ts's own accepted fix one layer
+  // over.
   // -------------------------------------------------------------------
 
-  const derived = computed(() => (derivedResponse.value?.available ? derivedResponse.value.derived : null))
+  // `immediate: true` -- this watcher is also what resolves the TRUE
+  // initial-load outcome (success or failure), since `derivedResponse`/
+  // `derivedError` are already settled by the time this composable runs
+  // (awaited via `Promise.all` above) and a non-immediate `watch` would
+  // never fire for a value that never subsequently changes. Seeding
+  // `derivedRefresh` with a bare `null`/no-error state and letting this
+  // one callback handle BOTH the initial resolution and every later
+  // refresh is simpler than computing the initial message twice.
+  const derivedRefresh = ref(initialDerivedRefreshState<DerivedCharacterView>(null))
 
-  // Why derived values are unavailable, when they are. "No rules activated"
-  // and "the activated rules are broken" are different problems with
-  // different fixes, so they are never collapsed into one message.
-  const derivedUnavailable = computed(() => {
-    const response = derivedResponse.value
-    if (!response || response.available) return ''
-    return response.message || 'Derived values are unavailable for this character.'
-  })
+  watch([derivedResponse, derivedError], ([response, fetchError]) => {
+    if (response?.available) {
+      derivedRefresh.value = applyDerivedRefreshSuccess(derivedRefresh.value, response.derived)
+      return
+    }
+    const message = fetchError
+      ? ((fetchError as any)?.statusCode === 404
+          ? 'This character could not be found in this World.'
+          : 'Could not re-evaluate this character. Showing the last known state.')
+      : (response?.message || 'Derived values are unavailable for this character.')
+    derivedRefresh.value = applyDerivedRefreshFailure(derivedRefresh.value, message)
+  }, { immediate: true })
+
+  const derived = computed(() => derivedRefresh.value.current)
+
+  // INITIAL LOAD vs. REFRESH -- true ONLY before any successful load has
+  // ever completed; false during an ordinary refresh of an
+  // already-rendered character, regardless of Nuxt's own raw `pending`
+  // flag (which flips true on every refresh indiscriminately). This is
+  // what every hard "show a loading placeholder instead of content" gate
+  // below now uses INSTEAD of the raw `derivedPending` -- see
+  // characterDerivedRefreshLifecycle.ts's own doc comment on
+  // `isDerivedInitialLoading`.
+  const derivedInitialLoading = computed(() => isDerivedInitialLoading(derivedRefresh.value, derivedPending.value))
+
+  // The error worth showing as a VISIBLE banner alongside STILL-RENDERED
+  // stale data (folded into `vitalsSaving`/`vitalsError`-style indicators
+  // by the page) -- empty whenever there is nothing stale to protect
+  // (the true initial-load failure, which `derivedUnavailable` below
+  // already handles on its own).
+  const derivedRefreshError = computed(() => derivedRefreshBannerError(derivedRefresh.value))
+
+  // Why derived values are unavailable, when they are -- the TRUE
+  // "nothing has ever loaded" case only (`derived.value === null`).
+  // "No rules activated" and "the activated rules are broken" are
+  // different problems with different fixes, so they are never collapsed
+  // into one message.
+  const derivedUnavailable = computed(() => (derived.value === null ? derivedRefresh.value.error : ''))
 
   // Which regions to render is a category-level decision, declared once in
   // characterDerivedValues.ts -- see the header for why category rather
@@ -478,6 +541,8 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     identity,
     derived,
     derivedPending,
+    derivedInitialLoading,
+    derivedRefreshError,
     derivedUnavailable,
     derivedRegions,
     // Exposed on its own (Character Sheet Header Cleanup 2.1), alongside

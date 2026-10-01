@@ -242,6 +242,26 @@ export function validateChoiceSelection(
 // given answer still fits its question is decided later, against the facets
 // that are current at read time -- because a GM repinning a Content Pack can
 // invalidate a stored answer without anything having edited it.
+//
+// D&D 2024 Character Rules Phase 2A.1 CONFIRM/PERSISTENCE DEFECT FIX --
+// duplicates are preserved, never collapsed, here. This function used to
+// silently drop a repeated id (`['a','a','b'] -> ['a','b']`), which was safe
+// only back when EVERY ChoiceSet implicitly required distinct selections.
+// `distinct: false` (Ability Score Improvement's own real "+2 to one ability"
+// shape, expressed as the same option selected twice -- see
+// `ResolvableChoice.distinct`'s own doc comment) makes a legitimate answer
+// REQUIRE a duplicate to survive this read: this function has no registry
+// access and cannot know which ChoiceSet a given key even belongs to, let
+// alone whether it is `distinct: false`, so it can never safely decide "this
+// duplicate is illegal" on its own -- only `validateChoiceSelection` below
+// can, once it has the real `ResolvableChoice.distinct` flag from the
+// registry. Deduplicating here unconditionally silently truncated a valid
+// two-item ASI answer to one item on every read, which then failed
+// `validateChoiceSelection`'s own `selected.length !== choice.count` check
+// and made a correctly-persisted, correctly-confirmed Ability Score
+// Improvement read back as an unanswered choice -- zero of its two
+// `source:asi.increase.<ability>` Sources ever activated, even though both
+// were genuinely confirmed and persisted.
 export function normalizeStoredRulesChoices(value: unknown): StoredRulesChoices | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
 
@@ -258,7 +278,7 @@ export function normalizeStoredRulesChoices(value: unknown): StoredRulesChoices 
     const ids: DefinitionId[] = []
     for (const item of raw) {
       if (typeof item !== 'string' || !item) return null
-      if (!ids.includes(item)) ids.push(item)
+      ids.push(item)
     }
 
     selections[key] = ids

@@ -271,9 +271,19 @@ describe('normalizeStoredRulesChoices', () => {
     expect(normalizeStoredRulesChoices({ selections: { k: 'a' } })).toBeNull()
   })
 
-  it('drops a duplicate rather than failing the whole record', () => {
+  // D&D 2024 Character Rules Phase 2A.1 CONFIRM/PERSISTENCE DEFECT FIX --
+  // this used to assert the OPPOSITE (deduplicating a repeat down to one
+  // item), which was the real production defect: this function has no
+  // registry access and cannot tell a `distinct: false` ChoiceSet's
+  // legitimately-repeated answer (Ability Score Improvement's own
+  // `['source:asi.increase.int','source:asi.increase.int']`, meaning "+2
+  // Intelligence") from an illegal duplicate for an ordinary `distinct`
+  // ChoiceSet -- only `validateChoiceSelection` can, once it has the real
+  // `distinct` flag from the registry. See that function's own duplicate
+  // checks below for where uniqueness is actually enforced now.
+  it('preserves a duplicate rather than silently collapsing it -- distinct:false ChoiceSets need it intact', () => {
     expect(normalizeStoredRulesChoices({ selections: { k: ['a', 'a', 'b'] } }))
-      .toEqual({ selections: { k: ['a', 'b'] } })
+      .toEqual({ selections: { k: ['a', 'a', 'b'] } })
   })
 
   it('validates STRUCTURE only -- fit against a question is decided later', () => {

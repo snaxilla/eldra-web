@@ -1334,3 +1334,97 @@ nested choices, ordering, validity, Level 20 derivation composing correctly) —
 for the first time, executably, for all 12 real classes at once. Every remaining gap above is a
 CONTENT or NEW-PRIMITIVE gap the engine is structurally ready to receive, or a UX-surface gap
 independent of correctness.
+
+## 24. Choice Eligibility & Systematic Content Coverage (Phase 2B, 2026-10-02)
+
+**Part A — generic Choice Eligibility.** Closes the real, previously-confirmed cross-facet
+duplicate-proficiency bug (§2, §13, §18): a Background's direct `grants` now makes the identical
+option ineligible in a different slot's/row's own separate `choices` entry, and a dynamic
+prerequisite ("must already be proficient") is now expressible without a special-cased validator.
+
+Traced first (mandatory before implementing): option resolution has ActorState access only
+inside `character-actor-bridge.ts` (`buildActorState`) — never in the pure `rules-choices.ts`
+helpers (`toResolvableChoice`/`validateChoiceSelection`, which the Builder also calls with no
+registry at all) and never in `validateChoiceSelection` itself, which only re-validates an answer
+against an already-filtered options list. Server validation already re-resolves legality at
+Confirm/save time by construction, since the ineligible option is removed from `options` before
+`validateChoiceSelection` ever runs — a crafted request naming it fails the EXISTING "not one of
+the offered options" check, no new authority mechanism needed. Creation (`create-v2.post.ts`) and
+progression (the bridge) do **not** share one authority path — `create-v2.post.ts` has no Rules
+Registry access by design (catalogue-only), so it needed its own, narrower application of the
+same principle (see below) rather than reusing the bridge wholesale.
+
+**Model, the smallest extension justified by the real corpus** (never one global "already-owned
+is illegal" rule — Feat Selection's own real repeatability, resolved entirely in
+`character-derived.ts`'s `ownedFeatRefs`, is untouched and proves a blanket rule would have been
+wrong):
+- `ChoiceSetDefinition.excludeIfAlreadyActive?: boolean` (`app/lib/rules/types.ts`) — set on
+  `choice:skill.proficiency` and `choice:skill.expertise` only. An option already active is
+  dropped from that ChoiceSet's own offered list, wherever it is asked.
+- `RulesFacetChoice.requiresActive?: (DefinitionId | null)[]` (`app/lib/content-rules/types.ts`,
+  mirrored on `ProgressionRow.choices[]`, `app/lib/rules/types.ts`) — parallel to `from`; names,
+  per option, a DIFFERENT value that must already be active (Expertise's real prerequisite: the
+  matching `.proficient` Value). Applied via the new pure `filterEligibleOptions`
+  (`app/lib/characters/rules-choices.ts`), called from both real option-construction sites in the
+  bridge (creation `facet.choices`, progression `row.choices`) before `toResolvableChoice`/
+  `toResolvableProgressionChoice` build `options` — so the filtered list is simultaneously what
+  the client is offered AND what the server validates against.
+- `character-actor-bridge.ts` gained a small pre-pass seeding every slot's/feat's own direct
+  `grants` into `values` BEFORE any choice is resolved, regardless of SLOT_ORDER position — the
+  exact mechanism the real cross-facet bug needed (Background is LAST in SLOT_ORDER; without this,
+  an EARLIER-evaluated Class choice could never see a LATER Background's own direct grant).
+  Deliberately `grants` only, never `sources`, to avoid double-pushing a SourceInstance the
+  unchanged main loop would push again.
+- `create-v2.post.ts` has no registry access, so it applies a narrower, explicitly-scoped
+  equivalent: collect every one of the three slots' own direct `grants` up front, then exclude any
+  OTHER slot's choice option that exactly matches one. Correct for today's real corpus (the only
+  creation-time `fromContentFacet` choice is Skill Proficiency); documented as narrower than the
+  bridge's own generality, not silently assumed equivalent.
+- Choice order is deterministic by construction, never incidental iteration order: SLOT_ORDER
+  (species → class → subclass → background) for creation choices, then each Progression's own
+  `rows` in the order the Definition declares them, with a GRANTS-only pre-pass running before any
+  of it — reported honestly rather than left implicit.
+
+**Real regression proven** (`tests/server/api/worlds/[id]/characters/create-v2.post.test.ts`, new
+describe block, real Sage + Wizard content, never synthetic-only): Arcana (Sage's own real direct
+grant) is absent from Wizard's own skill-proficiency choice's legal options; a crafted request
+naming it is rejected (400) even when paired with an otherwise-legal second pick; a fully legal
+alternate succeeds and persists; Background's own grants need no answer at all.
+
+**Real regression found and fixed in Wizard's own existing Scholar row** (`wizard-xphb:scholar`,
+already `A. COMPLETE`/`IMPLEMENTED` before this phase): the real XPHB prerequisite ("a skill in
+which you have proficiency") was never enforced — any of the 6 skills was offered unconditionally,
+proficient or not. Fixed via `requiresActive`, the same generic mechanism, never a special-cased
+Scholar/Expertise validator.
+
+**Part B — CONTENT_BLOCKED ledger pass.** Every entry enumerated directly from the ledger
+(`app/lib/content-rules/dnd5e-2024-progression-coverage.ts`), never from the summary list, per
+this phase's own instruction. Outcomes:
+
+| Feature | Prior status | New status | Why |
+|---|---|---|---|
+| Base-class Expertise (Bard L2+L9, Ranger L9, Rogue L6) | CONTENT_BLOCKED | **IMPLEMENTED** | Real XPHB rule is genuinely unrestricted ("two of your skill proficiencies of your choice") — authored using this phase's own new `requiresActive` eligibility, three new Progression Definitions, zero class-name branching |
+| Rogue's own Level-1 half of Expertise | (new entry) | CONTENT_BLOCKED | Genuine creation-time grant, owned by a future Creation/Builder phase — never merged into the Level-6 row as if one combined grant |
+| Fighting Style (Fighter L1, Paladin/Ranger L2) | CONTENT_BLOCKED | **ENGINE_BLOCKED** | Real XPHB structure is a FEAT category ('FS') — the real option resolver (`character-derived.ts`) is hardcoded to `category === 'general'` only; no authoring alone can close this |
+| Epic Boon (all 12, L19) | CONTENT_BLOCKED | **ENGINE_BLOCKED** | Same root blocker as Fighting Style (`category: 'epic-boon'`) — corrected, not merely re-labeled |
+| Origin Feat | ENGINE_BLOCKED (stale reason) | ENGINE_BLOCKED (corrected reason) | Prior reason ("no Feat category exists at all") is stale — `choice:feat.selection` is real and proven; the real blocker is the identical feat-category-filter gap (`category: 'O'`), plus a separate Builder-surface gap |
+| Weapon Mastery (5 classes, L1) | CONTENT_BLOCKED | **ENGINE_BLOCKED** | Real XPHB rule lets the player CHANGE one mastered weapon on every Long Rest — no primitive exists for a Content-Catalogue-backed choice that can be legally re-answered after its first answer |
+| Mystic Arcanum / Spellcasting (all casting classes) | CONTENT_BLOCKED | **ENGINE_BLOCKED** | "No class-spell-list filtering exists" names a missing capability, not unauthored content — explicitly owned by the future Spell Acquisition phase |
+
+New shared blocker constant `FEAT_CATEGORY_FILTER_BLOCKER` names the Fighting Style/Epic
+Boon/Origin Feat primitive precisely: the real Feat Selection option resolver is hardcoded to only
+ever offer `featMechanics.category === 'general'`, with no declarative way for a different
+ChoiceSet to request a different real category. **No** `"time-boxed out"`/`"ready but not
+authored"` rows remain for any entry this pass touched — every one now carries an exact status and
+an exact, named reason.
+
+**Level 1→20 acceptance extended, not merely re-asserted.** The existing all-class suite
+(`tests/server/utils/character-progression-level-1-to-20.test.ts`) is data-driven from the ledger
+itself, so newly-`IMPLEMENTED` base-class Expertise is automatically exercised by the same
+IMPLEMENTED CONTRACT/PLAN VALIDITY tests, with real `ProgressionPlan` behavior asserted (correct
+level, correct kind, legal options narrowed to real proficiencies, tentative answers, Confirm
+succeeding through Level 20) — not merely "the Definition exists."
+
+**Regression preserved**: all 12 subclass choices, ASI/General Feat (incl. nested ASI, still
+collision-free), Generic Resources and resource-interaction performance, Tonso, Bob's subclass
+progression, spell slots/Cast/Rest — all unchanged, all still green (3550/3550).

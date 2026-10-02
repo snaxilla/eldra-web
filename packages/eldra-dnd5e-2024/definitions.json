@@ -560,6 +560,20 @@
     ]
   },
   {
+    "id": "value:skill.acrobatics.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Acrobatics Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:dex"
+    ]
+  },
+  {
     "id": "value:skill.animal_handling.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -570,6 +584,20 @@
     "label": "Animal Handling Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:wis"
+    ]
+  },
+  {
+    "id": "value:skill.animal_handling.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Animal Handling Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:wis"
     ]
   },
@@ -616,6 +644,20 @@
     ]
   },
   {
+    "id": "value:skill.athletics.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Athletics Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:str"
+    ]
+  },
+  {
     "id": "value:skill.deception.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -626,6 +668,20 @@
     "label": "Deception Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:skill.deception.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Deception Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:cha"
     ]
   },
@@ -672,6 +728,20 @@
     ]
   },
   {
+    "id": "value:skill.insight.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Insight Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:wis"
+    ]
+  },
+  {
     "id": "value:skill.intimidation.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -682,6 +752,20 @@
     "label": "Intimidation Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:skill.intimidation.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Intimidation Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:cha"
     ]
   },
@@ -784,6 +868,20 @@
     ]
   },
   {
+    "id": "value:skill.perception.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Perception Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:wis"
+    ]
+  },
+  {
     "id": "value:skill.performance.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -798,6 +896,20 @@
     ]
   },
   {
+    "id": "value:skill.performance.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Performance Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:cha"
+    ]
+  },
+  {
     "id": "value:skill.persuasion.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -808,6 +920,20 @@
     "label": "Persuasion Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:cha"
+    ]
+  },
+  {
+    "id": "value:skill.persuasion.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Persuasion Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:cha"
     ]
   },
@@ -854,6 +980,20 @@
     ]
   },
   {
+    "id": "value:skill.sleight_of_hand.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Sleight Of Hand Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:dex"
+    ]
+  },
+  {
     "id": "value:skill.stealth.proficient",
     "kind": "value",
     "category": "core.skills",
@@ -864,6 +1004,20 @@
     "label": "Stealth Proficiency",
     "tags": [
       "skill-proficiency",
+      "ability:dex"
+    ]
+  },
+  {
+    "id": "value:skill.stealth.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Stealth Expertise",
+    "tags": [
+      "skill-expertise",
       "ability:dex"
     ]
   },
@@ -882,6 +1036,20 @@
     ]
   },
   {
+    "id": "value:skill.survival.expertise",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Survival Expertise",
+    "tags": [
+      "skill-expertise",
+      "ability:wis"
+    ]
+  },
+  {
     "id": "value:skill.acrobatics.bonus",
     "kind": "value",
     "category": "core.skills",
@@ -894,7 +1062,7 @@
       "ability:dex"
     ],
     "formula": {
-      "text": "@value:ability.dex.mod + if(@value:skill.acrobatics.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.dex.mod + if(@value:skill.acrobatics.expertise, @value:proficiency_bonus * 2, if(@value:skill.acrobatics.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -910,7 +1078,7 @@
       "ability:wis"
     ],
     "formula": {
-      "text": "@value:ability.wis.mod + if(@value:skill.animal_handling.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.wis.mod + if(@value:skill.animal_handling.expertise, @value:proficiency_bonus * 2, if(@value:skill.animal_handling.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -942,7 +1110,7 @@
       "ability:str"
     ],
     "formula": {
-      "text": "@value:ability.str.mod + if(@value:skill.athletics.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.str.mod + if(@value:skill.athletics.expertise, @value:proficiency_bonus * 2, if(@value:skill.athletics.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -958,7 +1126,7 @@
       "ability:cha"
     ],
     "formula": {
-      "text": "@value:ability.cha.mod + if(@value:skill.deception.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.cha.mod + if(@value:skill.deception.expertise, @value:proficiency_bonus * 2, if(@value:skill.deception.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -990,7 +1158,7 @@
       "ability:wis"
     ],
     "formula": {
-      "text": "@value:ability.wis.mod + if(@value:skill.insight.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.wis.mod + if(@value:skill.insight.expertise, @value:proficiency_bonus * 2, if(@value:skill.insight.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1006,7 +1174,7 @@
       "ability:cha"
     ],
     "formula": {
-      "text": "@value:ability.cha.mod + if(@value:skill.intimidation.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.cha.mod + if(@value:skill.intimidation.expertise, @value:proficiency_bonus * 2, if(@value:skill.intimidation.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1070,7 +1238,7 @@
       "ability:wis"
     ],
     "formula": {
-      "text": "@value:ability.wis.mod + if(@value:skill.perception.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.wis.mod + if(@value:skill.perception.expertise, @value:proficiency_bonus * 2, if(@value:skill.perception.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1086,7 +1254,7 @@
       "ability:cha"
     ],
     "formula": {
-      "text": "@value:ability.cha.mod + if(@value:skill.performance.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.cha.mod + if(@value:skill.performance.expertise, @value:proficiency_bonus * 2, if(@value:skill.performance.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1102,7 +1270,7 @@
       "ability:cha"
     ],
     "formula": {
-      "text": "@value:ability.cha.mod + if(@value:skill.persuasion.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.cha.mod + if(@value:skill.persuasion.expertise, @value:proficiency_bonus * 2, if(@value:skill.persuasion.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1134,7 +1302,7 @@
       "ability:dex"
     ],
     "formula": {
-      "text": "@value:ability.dex.mod + if(@value:skill.sleight_of_hand.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.dex.mod + if(@value:skill.sleight_of_hand.expertise, @value:proficiency_bonus * 2, if(@value:skill.sleight_of_hand.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1150,7 +1318,7 @@
       "ability:dex"
     ],
     "formula": {
-      "text": "@value:ability.dex.mod + if(@value:skill.stealth.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.dex.mod + if(@value:skill.stealth.expertise, @value:proficiency_bonus * 2, if(@value:skill.stealth.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1166,7 +1334,7 @@
       "ability:wis"
     ],
     "formula": {
-      "text": "@value:ability.wis.mod + if(@value:skill.survival.proficient, @value:proficiency_bonus, 0)"
+      "text": "@value:ability.wis.mod + if(@value:skill.survival.expertise, @value:proficiency_bonus * 2, if(@value:skill.survival.proficient, @value:proficiency_bonus, 0))"
     }
   },
   {
@@ -1340,6 +1508,7 @@
       "kind": "fromContentFacet"
     },
     "distinct": true,
+    "excludeIfAlreadyActive": true,
     "writesTo": "value:skill.{selected}.proficient"
   },
   {
@@ -1353,6 +1522,7 @@
       "kind": "fromContentFacet"
     },
     "distinct": true,
+    "excludeIfAlreadyActive": true,
     "writesTo": "value:skill.{selected}.expertise"
   },
   {
@@ -1375,6 +1545,237 @@
               "value:skill.medicine.expertise",
               "value:skill.nature.expertise",
               "value:skill.religion.expertise"
+            ],
+            "requiresActive": [
+              "value:skill.arcana.proficient",
+              "value:skill.history.proficient",
+              "value:skill.investigation.proficient",
+              "value:skill.medicine.proficient",
+              "value:skill.nature.proficient",
+              "value:skill.religion.proficient"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.skill-expertise-choose-two-at-9",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Skill Expertise (Lvl 9)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 9,
+        "choices": [
+          {
+            "choiceSet": "choice:skill.expertise",
+            "count": 2,
+            "from": [
+              "value:skill.acrobatics.expertise",
+              "value:skill.animal_handling.expertise",
+              "value:skill.arcana.expertise",
+              "value:skill.athletics.expertise",
+              "value:skill.deception.expertise",
+              "value:skill.history.expertise",
+              "value:skill.insight.expertise",
+              "value:skill.intimidation.expertise",
+              "value:skill.investigation.expertise",
+              "value:skill.medicine.expertise",
+              "value:skill.nature.expertise",
+              "value:skill.perception.expertise",
+              "value:skill.performance.expertise",
+              "value:skill.persuasion.expertise",
+              "value:skill.religion.expertise",
+              "value:skill.sleight_of_hand.expertise",
+              "value:skill.stealth.expertise",
+              "value:skill.survival.expertise"
+            ],
+            "requiresActive": [
+              "value:skill.acrobatics.proficient",
+              "value:skill.animal_handling.proficient",
+              "value:skill.arcana.proficient",
+              "value:skill.athletics.proficient",
+              "value:skill.deception.proficient",
+              "value:skill.history.proficient",
+              "value:skill.insight.proficient",
+              "value:skill.intimidation.proficient",
+              "value:skill.investigation.proficient",
+              "value:skill.medicine.proficient",
+              "value:skill.nature.proficient",
+              "value:skill.perception.proficient",
+              "value:skill.performance.proficient",
+              "value:skill.persuasion.proficient",
+              "value:skill.religion.proficient",
+              "value:skill.sleight_of_hand.proficient",
+              "value:skill.stealth.proficient",
+              "value:skill.survival.proficient"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.skill-expertise-choose-two-at-2-and-9",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Skill Expertise (Lvl 2/9)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "choices": [
+          {
+            "choiceSet": "choice:skill.expertise",
+            "count": 2,
+            "from": [
+              "value:skill.acrobatics.expertise",
+              "value:skill.animal_handling.expertise",
+              "value:skill.arcana.expertise",
+              "value:skill.athletics.expertise",
+              "value:skill.deception.expertise",
+              "value:skill.history.expertise",
+              "value:skill.insight.expertise",
+              "value:skill.intimidation.expertise",
+              "value:skill.investigation.expertise",
+              "value:skill.medicine.expertise",
+              "value:skill.nature.expertise",
+              "value:skill.perception.expertise",
+              "value:skill.performance.expertise",
+              "value:skill.persuasion.expertise",
+              "value:skill.religion.expertise",
+              "value:skill.sleight_of_hand.expertise",
+              "value:skill.stealth.expertise",
+              "value:skill.survival.expertise"
+            ],
+            "requiresActive": [
+              "value:skill.acrobatics.proficient",
+              "value:skill.animal_handling.proficient",
+              "value:skill.arcana.proficient",
+              "value:skill.athletics.proficient",
+              "value:skill.deception.proficient",
+              "value:skill.history.proficient",
+              "value:skill.insight.proficient",
+              "value:skill.intimidation.proficient",
+              "value:skill.investigation.proficient",
+              "value:skill.medicine.proficient",
+              "value:skill.nature.proficient",
+              "value:skill.perception.proficient",
+              "value:skill.performance.proficient",
+              "value:skill.persuasion.proficient",
+              "value:skill.religion.proficient",
+              "value:skill.sleight_of_hand.proficient",
+              "value:skill.stealth.proficient",
+              "value:skill.survival.proficient"
+            ]
+          }
+        ]
+      },
+      {
+        "at": 9,
+        "choices": [
+          {
+            "choiceSet": "choice:skill.expertise",
+            "count": 2,
+            "from": [
+              "value:skill.acrobatics.expertise",
+              "value:skill.animal_handling.expertise",
+              "value:skill.arcana.expertise",
+              "value:skill.athletics.expertise",
+              "value:skill.deception.expertise",
+              "value:skill.history.expertise",
+              "value:skill.insight.expertise",
+              "value:skill.intimidation.expertise",
+              "value:skill.investigation.expertise",
+              "value:skill.medicine.expertise",
+              "value:skill.nature.expertise",
+              "value:skill.perception.expertise",
+              "value:skill.performance.expertise",
+              "value:skill.persuasion.expertise",
+              "value:skill.religion.expertise",
+              "value:skill.sleight_of_hand.expertise",
+              "value:skill.stealth.expertise",
+              "value:skill.survival.expertise"
+            ],
+            "requiresActive": [
+              "value:skill.acrobatics.proficient",
+              "value:skill.animal_handling.proficient",
+              "value:skill.arcana.proficient",
+              "value:skill.athletics.proficient",
+              "value:skill.deception.proficient",
+              "value:skill.history.proficient",
+              "value:skill.insight.proficient",
+              "value:skill.intimidation.proficient",
+              "value:skill.investigation.proficient",
+              "value:skill.medicine.proficient",
+              "value:skill.nature.proficient",
+              "value:skill.perception.proficient",
+              "value:skill.performance.proficient",
+              "value:skill.persuasion.proficient",
+              "value:skill.religion.proficient",
+              "value:skill.sleight_of_hand.proficient",
+              "value:skill.stealth.proficient",
+              "value:skill.survival.proficient"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.skill-expertise-choose-two-at-6",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Skill Expertise (Lvl 6)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 6,
+        "choices": [
+          {
+            "choiceSet": "choice:skill.expertise",
+            "count": 2,
+            "from": [
+              "value:skill.acrobatics.expertise",
+              "value:skill.animal_handling.expertise",
+              "value:skill.arcana.expertise",
+              "value:skill.athletics.expertise",
+              "value:skill.deception.expertise",
+              "value:skill.history.expertise",
+              "value:skill.insight.expertise",
+              "value:skill.intimidation.expertise",
+              "value:skill.investigation.expertise",
+              "value:skill.medicine.expertise",
+              "value:skill.nature.expertise",
+              "value:skill.perception.expertise",
+              "value:skill.performance.expertise",
+              "value:skill.persuasion.expertise",
+              "value:skill.religion.expertise",
+              "value:skill.sleight_of_hand.expertise",
+              "value:skill.stealth.expertise",
+              "value:skill.survival.expertise"
+            ],
+            "requiresActive": [
+              "value:skill.acrobatics.proficient",
+              "value:skill.animal_handling.proficient",
+              "value:skill.arcana.proficient",
+              "value:skill.athletics.proficient",
+              "value:skill.deception.proficient",
+              "value:skill.history.proficient",
+              "value:skill.insight.proficient",
+              "value:skill.intimidation.proficient",
+              "value:skill.investigation.proficient",
+              "value:skill.medicine.proficient",
+              "value:skill.nature.proficient",
+              "value:skill.perception.proficient",
+              "value:skill.performance.proficient",
+              "value:skill.persuasion.proficient",
+              "value:skill.religion.proficient",
+              "value:skill.sleight_of_hand.proficient",
+              "value:skill.stealth.proficient",
+              "value:skill.survival.proficient"
             ]
           }
         ]

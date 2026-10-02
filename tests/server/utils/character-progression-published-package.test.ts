@@ -312,6 +312,22 @@ describe('REGRESSION -- fresh Wizard 1->5 plan against the STALE published packa
 
 describe('FIX PROOF -- the identical plan against the PUBLISHED-AND-ACTIVATED current package', () => {
   beforeEach(() => {
+    // CHOICE ELIGIBILITY PHASE 2B -- the real XPHB Scholar rule ("choose a
+    // skill in which you have PROFICIENCY") is now enforced
+    // (`requiresActive`, packages/eldra-dnd5e-2024/definitions.json); this
+    // fixture's own base `rulesChoices: null` has no proficiency at all,
+    // which would correctly leave Scholar's options empty (0 of 6, not 6)
+    // -- overridden here so this describe block's own real subject
+    // (the Level 2 Scholar/Expertise choice APPEARING at all) is
+    // unaffected by the separate, newly-enforced prerequisite. Arcana
+    // specifically, matching the tentative answer the second test below
+    // already supplies.
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        rulesChoices: { selections: { 'class:choice:skill.proficiency': ['value:skill.arcana.proficient', 'value:skill.history.proficient'] } }
+      })
+    })
     loadWorldRulesConfigMock.mockResolvedValue({
       worldId: '5',
       activePackageId: REAL_MANIFEST.packageId,
@@ -342,7 +358,16 @@ describe('FIX PROOF -- the identical plan against the PUBLISHED-AND-ACTIVATED cu
     const level2 = result.plan.steps.find((step) => step.level === 2)!
     expect(level2.requiredChoices).toHaveLength(1)
     expect(level2.requiredChoices[0]?.id).toBe(key)
-    expect(level2.requiredChoices[0]?.options).toHaveLength(6)
+    // CHOICE ELIGIBILITY PHASE 2B -- 2, not 6: Scholar's real XPHB rule
+    // ("a skill in which you have proficiency") now correctly narrows the
+    // 6-skill list down to only the ones THIS character (proficient in
+    // Arcana + History only, a real, legal Wizard pick) actually
+    // qualifies for -- `requiresActive`, the real prerequisite this
+    // section exists to prove was previously missing entirely.
+    expect(level2.requiredChoices[0]?.options).toHaveLength(2)
+    expect(level2.requiredChoices[0]?.options.map((option) => option.id)).toEqual(
+      expect.arrayContaining(['value:skill.arcana.expertise', 'value:skill.history.expertise'])
+    )
     expect(result.plan.unresolvedChoiceIds).toEqual([key])
     expect(result.plan.valid).toBe(false)
   })

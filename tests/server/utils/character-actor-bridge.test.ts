@@ -1374,19 +1374,34 @@ function deriveWithProgression(
 
 describe('Character Progression Phase 1B -- real Wizard Scholar/Expertise choice, end to end', () => {
   const wizardBp = blueprint({ class: slot('class', 'wizard-xphb') })
+  // CHOICE ELIGIBILITY PHASE 2B -- a Wizard proficient in Arcana (the real
+  // XPHB Scholar prerequisite -- "a skill in which you have proficiency",
+  // `requiresActive`, packages/eldra-dnd5e-2024/definitions.json), used by
+  // every test below that needs Scholar to offer at least one real,
+  // legally-selectable option.
+  const wizardBpProficientArcana = blueprint({
+    class: slot('class', 'wizard-xphb'),
+    rulesChoices: { selections: { [choiceKey('class', 'choice:skill.proficiency')]: ['value:skill.arcana.proficient', 'value:skill.history.proficient'] } }
+  })
 
   it('a level-1 Wizard has no Scholar choice declared at all -- the row has not been reached', () => {
     const { bridged } = deriveWithProgression(wizardBp, 1)
     expect(bridged.declaredChoices.some((c) => c.key.includes('progression'))).toBe(false)
   })
 
-  it('a level-2 Wizard declares the real Scholar choice, unanswered by default', () => {
-    const { bridged } = deriveWithProgression(wizardBp, 2)
+  it('a level-2 Wizard declares the real Scholar choice, unanswered by default, narrowed to only the skills this character is proficient in', () => {
+    const { bridged } = deriveWithProgression(wizardBpProficientArcana, 2)
     const key = progressionChoiceKey('class', 2, 'choice:skill.expertise')
     const declared = bridged.declaredChoices.find((c) => c.key === key)
     expect(declared).toBeDefined()
     expect(declared?.count).toBe(1)
-    expect(declared?.options).toHaveLength(6)
+    // CHOICE ELIGIBILITY PHASE 2B -- 3 (Arcana + History from this
+    // fixture's own class choice, PLUS Religion from its Background,
+    // `blueprint()`'s own default 'acolyte-xphb'), not the full 6 --
+    // Scholar's real prerequisite now correctly narrows the option list
+    // to every skill this character is ACTUALLY proficient in, from
+    // either source.
+    expect(declared?.options).toHaveLength(3)
     expect(declared?.options).toContain('value:skill.arcana.expertise')
     expect(bridged.pendingChoices.some((c) => c.key === key)).toBe(true)
   })
@@ -1401,7 +1416,12 @@ describe('Character Progression Phase 1B -- real Wizard Scholar/Expertise choice
     const key = progressionChoiceKey('class', 2, 'choice:skill.expertise')
     const withAnswer = blueprint({
       class: slot('class', 'wizard-xphb'),
-      rulesChoices: { selections: { [key]: ['value:skill.arcana.expertise'] } }
+      rulesChoices: {
+        selections: {
+          [choiceKey('class', 'choice:skill.proficiency')]: ['value:skill.arcana.proficient', 'value:skill.history.proficient'],
+          [key]: ['value:skill.arcana.expertise']
+        }
+      }
     })
     const { bridged } = deriveWithProgression(withAnswer, 2)
 
@@ -1436,16 +1456,23 @@ describe('Character Progression Phase 1B -- real Wizard Scholar/Expertise choice
       rulesChoices: {
         selections: {
           [creationKey]: ['value:skill.history.proficient', 'value:skill.medicine.proficient'],
-          [progressionKey]: ['value:skill.arcana.expertise']
+          // CHOICE ELIGIBILITY PHASE 2B -- History, not Arcana: Scholar's
+          // real prerequisite now requires proficiency in whichever skill
+          // is chosen, and this fixture's own creation answer (immediately
+          // above) only grants History + Medicine -- History is the real,
+          // legal choice for THIS character, proving the two answers
+          // genuinely compose rather than merely coexisting as two
+          // unrelated, never-cross-checked facts.
+          [progressionKey]: ['value:skill.history.expertise']
         }
       }
     })
     const { bridged } = deriveWithProgression(bp, 2)
 
     expect(bridged.actorState.choices[creationKey]).toEqual(['value:skill.history.proficient', 'value:skill.medicine.proficient'])
-    expect(bridged.actorState.choices[progressionKey]).toEqual(['value:skill.arcana.expertise'])
+    expect(bridged.actorState.choices[progressionKey]).toEqual(['value:skill.history.expertise'])
     expect(bridged.actorState.values['value:skill.history.proficient']).toBe(true)
-    expect(bridged.actorState.values['value:skill.arcana.expertise']).toBe(true)
+    expect(bridged.actorState.values['value:skill.history.expertise']).toBe(true)
   })
 })
 

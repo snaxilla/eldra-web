@@ -1122,7 +1122,11 @@ export type ProgressionRow = {
   // across for the identical reason. A row with no `choices` requires
   // nothing beyond its own `grants`/`sets`, exactly as before this field
   // existed.
-  choices?: { choiceSet: DefinitionId; count: number; from?: DefinitionId[] }[]
+  // CHOICE ELIGIBILITY PHASE 2B -- `requiresActive` mirrors
+  // `RulesFacetChoice.requiresActive` (app/lib/content-rules/types.ts),
+  // restated here for the identical §8.3 boundary reason every other
+  // field on this inline shape already is.
+  choices?: { choiceSet: DefinitionId; count: number; from?: DefinitionId[]; requiresActive?: (DefinitionId | null)[] }[]
   // D&D 2024 Character Rules Phase 2A.2 -- the Resource counterpart of
   // `grants` immediately above, for a resource ACQUIRED at a specific level
   // rather than from level 1 (Monk's Focus Points at level 2, Fighter's
@@ -1201,6 +1205,21 @@ export type ChoiceSetDefinition = DefinitionCategorization & {
   count: Expression | RuleValue
   from: ChoiceSetSelector
   distinct?: boolean
+  // CHOICE ELIGIBILITY PHASE 2B -- when `true`, an option whose own
+  // Value/Source is ALREADY active in the current ActorState is excluded
+  // from this ChoiceSet's offered options wherever it is asked (creation
+  // or progression) -- the real XPHB rule for Skill Proficiency/Expertise
+  // ("you cannot become proficient in something you already are"):
+  // picking an already-true option would be a silently wasted selection,
+  // never a legal repeat. Omitted/`undefined` (every ChoiceSet declared
+  // before this phase, and `choice:feat.asi-ability-increase`/`choice:
+  // feat.ability-choice-1` deliberately still, since RAW explicitly
+  // allows the SAME ability in both ASI slots) means no change: an
+  // already-active option stays offered, byte-identical old behavior.
+  // Read only by character-actor-bridge.ts's own ELIGIBILITY filter, never
+  // by `validateChoiceSelection` directly (which has no ActorState to
+  // check against) -- see that bridge's own header for why.
+  excludeIfAlreadyActive?: boolean
   // A DefinitionId TEMPLATE ("value:skill.{selected}.proficient"), not
   // itself a resolvable DefinitionId -- deliberately typed `string`, not
   // `DefinitionId`, so nothing that treats a `DefinitionId` as "a real,

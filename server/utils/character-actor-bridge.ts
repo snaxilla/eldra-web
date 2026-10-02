@@ -135,6 +135,7 @@ import type { AssembledInventoryItem, CharacterAssemblyBlueprint, CharacterAssem
 // through.
 import type { RulesFacet, RulesFacetChoice, RulesFacetLiteral } from '../../app/lib/content-rules'
 import {
+  filterEligibleOptions,
   resolveChoiceTarget,
   selectionsFor,
   toResolvableChoice,
@@ -352,6 +353,11 @@ export type ActorBridgeInput = {
     effect?: 'set-value' | 'activate-source'
     resultCap?: number
     distinct?: boolean
+    // CHOICE ELIGIBILITY PHASE 2B -- mirrors `ChoiceSetDefinition.
+    // excludeIfAlreadyActive` (app/lib/rules/types.ts), relayed through
+    // for the same "type completeness, read selectively" reason every
+    // other field on this inline shape already is.
+    excludeIfAlreadyActive?: boolean
   } | null | undefined
   // Character Progression Phase 1A -- the active package's own Definition
   // id for "the level concept," resolved via `registry.getBySemanticRole('level')`
@@ -587,6 +593,15 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     }
   }
 
+  // CHOICE ELIGIBILITY PHASE 2B -- `values[id] === true` is already the
+  // exact reading `applyChoice`'s own default (non-`activate-source`)
+  // branch writes a chosen boolean fact as (`values[target] = true`,
+  // above), and the exact reading a direct `grants` entry writes too
+  // (`consumeFacet`'s own grants loop, and this file's own pre-pass
+  // immediately below) -- so "is this Value currently active" is always
+  // this one check, never a second notion of "active."
+  const isActive = (id: DefinitionId): boolean => values[id] === true
+
   // --- Facet grants, sources, choices, and Progression --------------------
   // D&D 2024 Character Rules Phase 2A.1 -- factored into `consumeFacet` so
   // the identical grants/sources/choices/progression consumption applies
@@ -641,8 +656,21 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
       // from the ChoiceSet's own declaration (the Builder, which has no
       // registry access, never passes one -- see toResolvableChoice's own
       // doc comment for why that is correct).
-      const distinct = input.lookupChoiceSet?.(choice.choiceSet)?.distinct
-      applyChoice(toResolvableChoice(slotKey, choice, distinct), choice, slotKey)
+      const choiceSetInfo = input.lookupChoiceSet?.(choice.choiceSet)
+      const distinct = choiceSetInfo?.distinct
+      // CHOICE ELIGIBILITY PHASE 2B -- filtered BEFORE `toResolvableChoice`
+      // builds `options`, so the ineligible option never reaches the
+      // client's own offered list OR `validateChoiceSelection`'s own
+      // "is this one of the offered options" check -- a crafted request
+      // naming it is rejected by that EXISTING check, no new server-
+      // authority mechanism needed. Only ever narrows `from`; every choice
+      // whose ChoiceSet/facet declares neither new field keeps its exact
+      // original option list (`filterEligibleOptions` is then a no-op
+      // identity filter).
+      const eligibleFrom = filterEligibleOptions(
+        choice.from ?? [], choice.requiresActive, choiceSetInfo?.excludeIfAlreadyActive, isActive
+      )
+      applyChoice(toResolvableChoice(slotKey, { ...choice, from: eligibleFrom }, distinct), choice, slotKey)
     }
 
     // Character Progression Phase 1B -- see this file's own PROGRESSION
@@ -771,10 +799,48 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
 
           // D&D 2024 Character Rules Phase 2A.1 -- `distinct` threaded
           // through, identical reasoning to the creation-time loop above.
-          const distinct = input.lookupChoiceSet?.(choice.choiceSet)?.distinct
-          applyChoice(toResolvableProgressionChoice(slotKey, rowAt, choice, distinct), choice, slotKey)
+          // CHOICE ELIGIBILITY PHASE 2B -- identical filtering, identical
+          // reasoning, as the creation-time loop above.
+          const progressionChoiceSetInfo = input.lookupChoiceSet?.(choice.choiceSet)
+          const distinct = progressionChoiceSetInfo?.distinct
+          const eligibleFrom = filterEligibleOptions(
+            choice.from ?? [], choice.requiresActive, progressionChoiceSetInfo?.excludeIfAlreadyActive, isActive
+          )
+          applyChoice(toResolvableProgressionChoice(slotKey, rowAt, { ...choice, from: eligibleFrom }, distinct), choice, slotKey)
         }
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // CHOICE ELIGIBILITY PHASE 2B -- pre-pass. Seeds `values` with EVERY
+  // slot's and feat's own direct, unconditional `grants` before any
+  // choice is resolved, regardless of SLOT_ORDER position -- the real
+  // cross-facet bug this closes (Background grants Medicine directly;
+  // Class's own Skill Proficiency CHOICE, resolved EARLIER in SLOT_ORDER
+  // below, must still be able to see it as already active). Deliberately
+  // `grants` only, never `sources` or `choices`: a grant is an idempotent
+  // `set` (re-applying the identical one again in the unchanged main loop
+  // below changes nothing about the final ActorState -- this pre-pass
+  // only makes it visible EARLIER), while `sources` pushed here would be
+  // pushed AGAIN by the main loop's own unchanged `consumeFacet`,
+  // producing a duplicate SourceInstance with the same id -- exactly the
+  // kind of silent double-count this phase must not introduce. Skill
+  // Proficiency/Expertise's own CHOICE-granted values (as opposed to
+  // direct `grants`) write `values[target] = true` directly (this file's
+  // own `applyChoice`, the non-`activate-source` branch) -- already
+  // visible to any LATER-in-SLOT_ORDER choice without needing this
+  // pre-pass at all, since the main loop processes slots in order.
+  for (const slotKey of SLOT_ORDER) {
+    for (const grant of facetFor(blueprint[slotKey])?.grants ?? []) {
+      if (input.knownDefinition && !input.knownDefinition(grant.set)) continue
+      values[grant.set] = grant.to
+    }
+  }
+  for (const featSlot of blueprint.feats ?? []) {
+    for (const grant of facetFor(featSlot)?.grants ?? []) {
+      if (input.knownDefinition && !input.knownDefinition(grant.set)) continue
+      values[grant.set] = grant.to
     }
   }
 

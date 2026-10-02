@@ -70,6 +70,7 @@ import { getDerivedCharacter } from '../../../../utils/character-derived'
 import { saveCharacterHealth } from '../../../../utils/character-health'
 import {
   emptyStoredRulesChoices,
+  filterEligibleOptions,
   toResolvableChoice,
   validateChoiceSelection
 } from '../../../../../app/lib/characters/rules-choices'
@@ -194,6 +195,30 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // CHOICE ELIGIBILITY PHASE 2B -- the real reported creation-time bug:
+  // Background grants a Skill Proficiency directly (`rulesFacet.grants`),
+  // and the Class's own separate skill-proficiency CHOICE still offered
+  // the identical skill, letting a player "pick" something they already
+  // had for free -- a silently wasted selection the server accepted
+  // without complaint. This route has no Rules Registry/ActorState at
+  // all (by design -- see this file's own header, "nothing should read
+  // World entities," catalogue-only), so it cannot reuse character-
+  // actor-bridge.ts's own `excludeIfAlreadyActive`/`requiresActive`
+  // machinery wholesale. The narrower, honest equivalent for THIS route:
+  // at creation, nothing has been granted by anything OTHER than these
+  // three slots' own DIRECT `grants` (no progression, no prior confirmed
+  // choice exists yet for a character that does not exist yet) -- so
+  // collecting every slot's own direct grants up front, then excluding
+  // any OTHER slot's choice option that exactly matches one, closes the
+  // real bug without needing registry access.
+  const directlyGrantedValues = new Set<string>()
+  for (const entry of [species, characterClass, background]) {
+    for (const grant of entry.rulesFacet?.grants ?? []) {
+      if (grant.to === true) directlyGrantedValues.add(grant.set)
+    }
+  }
+  const isAlreadyGranted = (id: string) => directlyGrantedValues.has(id)
+
   // ChoiceSet answers, validated against the facets of the three entries
   // JUST resolved from the catalogue -- never against the request. A client
   // may send any ids at all; only an answer that validly answers a question
@@ -203,10 +228,17 @@ export default defineEventHandler(async (event) => {
   // choices still outstanding, and the standalone proficiencies page exists
   // precisely so they can be answered later. Absent means outstanding, which
   // is a legal state the Sheet already reports.
+  function eligibleChoicesFor(slot: 'species' | 'class' | 'background', entry: ContentCatalogueEntry) {
+    return (entry.rulesFacet?.choices ?? []).map((choice) => toResolvableChoice(slot, {
+      ...choice,
+      from: filterEligibleOptions(choice.from ?? [], undefined, true, isAlreadyGranted)
+    }))
+  }
+
   const declaredChoices = [
-    ...(species.rulesFacet?.choices ?? []).map((choice) => toResolvableChoice('species', choice)),
-    ...(characterClass.rulesFacet?.choices ?? []).map((choice) => toResolvableChoice('class', choice)),
-    ...(background.rulesFacet?.choices ?? []).map((choice) => toResolvableChoice('background', choice))
+    ...eligibleChoicesFor('species', species),
+    ...eligibleChoicesFor('class', characterClass),
+    ...eligibleChoicesFor('background', background)
   ]
 
   const rulesChoices = emptyStoredRulesChoices()

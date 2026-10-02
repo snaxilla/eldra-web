@@ -264,7 +264,20 @@ function wizardBlueprint(overrides: Record<string, unknown> = {}) {
     },
     background: { status: 'resolved', entry: baseEntry({ title: 'Sage', slug: 'sage-xphb' }) },
     abilityScores: { method: 'standard-array', scores: { str: 10, dex: 10, con: 12, int: 16, wis: 10, cha: 10 } },
-    rulesChoices: null,
+    // CHOICE ELIGIBILITY PHASE 2B -- the real XPHB Scholar rule ("choose a
+    // skill in which you have proficiency") is now enforced
+    // (`requiresActive`, packages/eldra-dnd5e-2024/definitions.json).
+    // DragoWizard's own established identity throughout this file already
+    // answers Scholar with Arcana (`SCHOLAR_ARCANA_OPTION`) -- this
+    // fixture needs to actually BE proficient in Arcana for that to
+    // remain a legal pick, which the previous bare `null` default never
+    // supplied (correctly unnoticed until this phase, since nothing
+    // enforced the prerequisite before now).
+    // Wizard's own real skill-proficiency choice requires exactly 2 picks
+    // (`count: 2`) -- both supplied here (Arcana + History) so the
+    // selection actually VALIDATES (a 1-of-2 answer never resolves, so
+    // `value:skill.arcana.proficient` would never be set at all).
+    rulesChoices: { selections: { 'class:choice:skill.proficiency': ['value:skill.arcana.proficient', 'value:skill.history.proficient'] } },
     inventory: [],
     notes: null,
     health: null,
@@ -384,7 +397,12 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
         { id: SCHOLAR_ARCANA_OPTION, label: expect.any(String) }
       ])
     }])
-    expect(level2.requiredChoices[0]!.options).toHaveLength(6)
+    // CHOICE ELIGIBILITY PHASE 2B -- 2, not 6: DragoWizard is proficient in
+    // only Arcana + History (this fixture's own `rulesChoices`), and
+    // Scholar's real XPHB rule ("a skill in which you have proficiency")
+    // now correctly narrows its 6-skill list down to the ones this
+    // character actually qualifies for.
+    expect(level2.requiredChoices[0]!.options).toHaveLength(2)
 
     const level3 = result.plan.steps.find((step) => step.level === 3)!
     expect(level3.requiredChoices).toEqual([{

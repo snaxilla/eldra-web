@@ -48,6 +48,7 @@ vi.mock('../../../../../../server/utils/character-health', () => ({
 
 import handler from '../../../../../../server/api/worlds/[id]/characters/create-v2.post'
 import type { Principal } from '../../../../../../server/utils/authorization'
+import { findRulesFacet } from '../../../../../../app/lib/content-rules'
 
 function catalogueEntry(overrides: Partial<{ packageId: string; packageVersion: string; slug: string; title: string }> = {}) {
   return {
@@ -454,6 +455,98 @@ describe('POST /api/worlds/:id/characters/create-v2 -- initial health', () => {
     saveCharacterHealthMock.mockRejectedValue(new Error('directus write failed'))
 
     await expect(handler(fakeEvent('5', playerPrincipal(), bodyWith()))).rejects.toThrow('directus write failed')
+    expect(createEntityRecordMock).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CHOICE ELIGIBILITY PHASE 2B -- KNOWN CREATION ACCEPTANCE. The real,
+// previously-reported defect: a Background grants a Skill Proficiency
+// directly, and the Class's own separate skill-proficiency CHOICE still
+// offered the identical skill, letting a request "pick" it again for a
+// completely wasted selection -- the server accepted it without complaint.
+// Real native-XPHB content, never a synthetic-only case: Sage (grants
+// Arcana + History directly) and Wizard (own skill-proficiency choice,
+// count 2, whose real option list includes Arcana/History among others).
+// ---------------------------------------------------------------------------
+
+describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the Class\'s own separate skill choice', () => {
+  function sageEntry() {
+    return catalogueEntry({
+      title: 'Sage', slug: 'sage-xphb',
+      rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'sage-xphb') ?? undefined
+    } as any)
+  }
+
+  function wizardEntry() {
+    return catalogueEntry({
+      title: 'Wizard', slug: 'wizard-xphb',
+      rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb') ?? undefined
+    } as any)
+  }
+
+  function wizardCatalogue() {
+    return fullCatalogue({
+      species: [catalogueEntry({ title: 'Human', slug: 'human-xphb' })],
+      classes: [wizardEntry()],
+      backgrounds: [sageEntry()]
+    })
+  }
+
+  const CLASS_SKILL_KEY = 'class:choice:skill.proficiency'
+
+  it('the real Class skill-proficiency choice no longer offers Arcana as a legal option once Sage already grants it directly', async () => {
+    getWorldContentCatalogueMock.mockResolvedValue(wizardCatalogue())
+
+    // A crafted request naming Arcana (already granted by Sage) alongside
+    // one genuinely legal pick (History, NOT one of Sage's own grants) --
+    // proving SERVER AUTHORITY rejects the ineligible option even though
+    // the OTHER half of the same selection is legal.
+    const result = handler(fakeEvent('5', playerPrincipal(), {
+      title: 'Aria',
+      species: selectionOf(catalogueEntry({ title: 'Human', slug: 'human-xphb' })),
+      class: selectionOf(wizardEntry()),
+      background: selectionOf(sageEntry()),
+      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.arcana.proficient', 'value:skill.insight.proficient'] } }
+    }))
+
+    await expect(result).rejects.toMatchObject({ statusCode: 400 })
+    expect(createEntityRecordMock).not.toHaveBeenCalled()
+  })
+
+  it('a legal alternate (two skills Sage does NOT already grant) is accepted and persisted', async () => {
+    getWorldContentCatalogueMock.mockResolvedValue(wizardCatalogue())
+    createEntityRecordMock.mockResolvedValue({ id: '501' })
+
+    const result = await handler(fakeEvent('5', playerPrincipal(), {
+      title: 'Aria',
+      species: selectionOf(catalogueEntry({ title: 'Human', slug: 'human-xphb' })),
+      class: selectionOf(wizardEntry()),
+      background: selectionOf(sageEntry()),
+      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.investigation.proficient'] } }
+    }))
+
+    expect(result.rulesChoices.selections[CLASS_SKILL_KEY]).toEqual(['value:skill.insight.proficient', 'value:skill.investigation.proficient'])
+    expect(createEntityRecordMock).toHaveBeenCalled()
+  })
+
+  it('Sage\'s own direct grants never themselves need answering -- only the Class\'s own separate CHOICE is affected', async () => {
+    getWorldContentCatalogueMock.mockResolvedValue(wizardCatalogue())
+    createEntityRecordMock.mockResolvedValue({ id: '502' })
+
+    // No choices submitted at all -- Background's own grants are never a
+    // ChoiceSet in the first place (RulesFacetGrant, not RulesFacetChoice),
+    // so there is nothing to answer or reject for them; the request
+    // succeeds with the Class's own choice simply left outstanding (a
+    // legal state this route already supports, per its own header).
+    const result = await handler(fakeEvent('5', playerPrincipal(), {
+      title: 'Aria',
+      species: selectionOf(catalogueEntry({ title: 'Human', slug: 'human-xphb' })),
+      class: selectionOf(wizardEntry()),
+      background: selectionOf(sageEntry())
+    }))
+
+    expect(result.rulesChoices.selections).toEqual({})
     expect(createEntityRecordMock).toHaveBeenCalled()
   })
 })

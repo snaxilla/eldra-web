@@ -263,7 +263,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard']
+      // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- real XPHB Bard
+      // Expertise (class-bard.json's own `classFeature` "Expertise", source
+      // XPHB): "two of your skill proficiencies of your choice" at Level 2,
+      // "two MORE... of your choice" at Level 9 -- genuinely unrestricted to
+      // any named subset (unlike Wizard's own Scholar), so `choice:skill.
+      // expertise`'s real option list here is every one of the 18 real
+      // skills, dynamically narrowed to only the ones THIS character is
+      // actually proficient in by this phase's own new `requiresActive`
+      // eligibility field -- no Bard-specific skill list authored, no
+      // special-cased Expertise validator.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.skill-expertise-choose-two-at-2-and-9']
     },
     'cleric-xphb': {
       grants: [
@@ -482,7 +492,13 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless']
+      // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- real XPHB Ranger
+      // Expertise (class-ranger.json's own `classFeature` "Expertise",
+      // source XPHB): "Choose two of your skill proficiencies with which
+      // you lack Expertise" at Level 9 only -- see bard-xphb's own note
+      // immediately above for why no Ranger-specific skill list is
+      // authored here either.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9']
     },
     'rogue-xphb': {
       grants: [
@@ -514,7 +530,18 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // (class-rogue.json's own `classFeatures` references, verified this
       // phase) -- authored here exactly as measured, never assumed.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent']
+      // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- real XPHB Rogue
+      // Expertise (class-rogue.json's own `classFeature` "Expertise",
+      // source XPHB) is genuinely TWO separate grants: Level 1 ("two of
+      // your skill proficiencies of your choice" -- a CREATION-time
+      // choice, out of this Level-Up progression's own scope, same bucket
+      // as Origin Feat/Fighting-Style-at-creation, see the Progression
+      // Coverage Ledger) and Level 6 ("two MORE... of your choice" --
+      // post-creation, authored here). Only the real Level-6 grant is
+      // wired into Level-Up progression; the Level-1 half remains a
+      // documented Builder/creation gap, never silently merged into this
+      // one Progression as if it were a single Level-6 grant of four.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent', 'progression:class.skill-expertise-choose-two-at-6']
     },
     'sorcerer-xphb': {
       grants: [

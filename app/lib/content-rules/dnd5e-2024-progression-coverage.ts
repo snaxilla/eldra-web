@@ -128,6 +128,22 @@ const SUBCLASS_INTERNAL_GATING_BLOCKER =
 const ACCUMULATING_OPTIONAL_FEATURE_BLOCKER =
   'accumulating-optional-feature-selection: no ChoiceSet shape exists for "learn N options total from a catalogue category, scaling by level, kept permanently" (Metamagic/Eldritch Invocations\' real shape) -- distinct from both ordinary Feat Selection (one pick per row) and fixed-count Expertise.'
 
+// CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- discovered while
+// tracing the real option-resolution code this phase's own eligibility
+// work required reading closely: `character-derived.ts`'s own feat-
+// options resolver (`category === 'feats'` branch) is HARDCODED to
+// `entry.featMechanics?.category !== 'general'` -- EXCLUDED, with no way
+// for a different ChoiceSet to ask for a DIFFERENT real feat category
+// (Fighting Style's own 'FS', Epic Boon's own 'epic-boon'). Fixing this
+// is a small, well-scoped engine change (make the wanted category a
+// declarative property the ChoiceSet/row carries, read generically,
+// instead of the one hardcoded literal) -- but it is a real primitive
+// gap, not merely unauthored content, so content authoring for EITHER
+// feature would silently produce zero legal options today even with a
+// perfectly-authored catalogue entry.
+const FEAT_CATEGORY_FILTER_BLOCKER =
+  'feat-category-filter: the real Feat Selection option resolver (character-derived.ts) is hardcoded to only ever offer `featMechanics.category === \'general\'` -- no declarative way exists for a different ChoiceSet to request a different real category (Fighting Style\'s own \'FS\', Epic Boon\'s own \'epic-boon\').'
+
 export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // -------------------------------------------------------------------
   // SUBCLASS SELECTION -- the defect this audit exists to close. All 12,
@@ -184,8 +200,14 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // EPIC BOON -- real Level 19, all 12 classes. Deliberately NOT counted
   // as ordinary ASI (this task's own explicit instruction) -- the real
   // corpus's own `feats.json` EB category (12 feats) is a DIFFERENT
-  // legal option set than General (43), and no ChoiceSet row offers it
-  // yet.
+  // legal option set than General (43).
+  //
+  // RECLASSIFIED THIS PHASE: previously CONTENT_BLOCKED -- corrected to
+  // ENGINE_BLOCKED, same primitive gap Fighting Style's own entries
+  // above independently surfaced (FEAT_CATEGORY_FILTER_BLOCKER): even a
+  // perfectly-authored Epic-Boon-scoped ProgressionRow would resolve to
+  // zero legal options today, since the real resolver only ever offers
+  // `category: 'general'`.
   // -------------------------------------------------------------------
   ...([
     'barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb',
@@ -197,18 +219,44 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Epic Boon',
     levels: [19],
     surface: 'level-up',
-    status: 'CONTENT_BLOCKED',
-    blockerReason: 'The Feat Selection ChoiceSet/engine mechanism already exists (same as ordinary ASI) -- no ProgressionRow references an Epic-Boon-scoped Feat Selection at level 19 yet, and no `featMechanics.category === \'epic-boon\'\' filter exists for the catalogue resolver to use even once one does.'
+    status: 'ENGINE_BLOCKED',
+    blockerReason: FEAT_CATEGORY_FILTER_BLOCKER
   })),
 
   // -------------------------------------------------------------------
-  // FIGHTING STYLE -- real creation-time (Level 1 or 2) feature,
-  // Fighter/Paladin/Ranger. Engine-ready (a pure choiceSet, no increment
-  // dependency, per the original completeness audit's own §4 finding);
-  // not yet authored as content.
-  // -------------------------------------------------------------------
+  // FIGHTING STYLE -- CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B
+  // re-audit. Real XPHB structure (class-fighter/paladin/ranger.json's
+  // own "Fighting Style" classFeature, source XPHB): "gain a {@filter
+  // Fighting Style feat|feats|category=FS} of your choice" -- Fighting
+  // Style is a real FEAT CATEGORY ('FS'), using the exact SAME
+  // `choice:feat.selection`-shaped mechanism Feat Selection/Epic Boon
+  // already do, filtered to `category: 'FS'` instead of `'general'`.
+  //
+  // Real per-class level differs genuinely (never a shared cadence):
+  // Fighter gains it at Level 1 (a CREATION-time grant, out of Level-Up
+  // progression's own scope entirely); Paladin/Ranger gain it at Level 2
+  // (a real Level-Up progression choice).
+  //
+  // RECLASSIFIED THIS PHASE: previously CONTENT_BLOCKED ("zero engine
+  // work needed, just author it") -- WRONG, found by tracing the real
+  // option-resolution code this phase's own Choice Eligibility work
+  // required reading closely (server/utils/character-derived.ts's own
+  // `category === 'feats'` branch): the legal-options filter is
+  // HARDCODED to `entry.featMechanics?.category !== 'general'` --
+  // EXCLUDED, with no way for a DIFFERENT ChoiceSet (a hypothetical
+  // `choice:feat.fighting-style-selection`) to ask for category 'FS'
+  // instead. This is the SAME missing primitive Epic Boon's own entry
+  // below independently needs -- see FEAT_CATEGORY_FILTER_BLOCKER.
+  {
+    id: 'fighter-xphb:fighting-style',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: FEAT_CATEGORY_FILTER_BLOCKER
+  },
   ...([
-    ['fighter-xphb', [1]],
     ['paladin-xphb', [2]],
     ['ranger-xphb', [2]]
   ] as const).map(([classSlug, levels]): ProgressionCoverageEntry => ({
@@ -216,15 +264,30 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     classSlug,
     featureName: 'Fighting Style',
     levels: [...levels],
-    surface: 'creation',
-    status: 'CONTENT_BLOCKED',
-    blockerReason: 'No `choiceSet` entry for Fighting Style exists in the Rules Package/facet corpus yet; the generic Proficiencies step would render it automatically the moment one is authored (confirmed, original completeness audit §2/§18) -- zero engine or Builder work needed.'
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: FEAT_CATEGORY_FILTER_BLOCKER
   })),
 
   // -------------------------------------------------------------------
-  // WEAPON MASTERY -- real Level-1 (creation-time) feature for 5 martial
-  // classes. 2024-new mechanic (weapon "mastery properties"); no facet
-  // shape authored.
+  // WEAPON MASTERY -- CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B
+  // re-audit. Real XPHB structure (class-fighter.json's own "Weapon
+  // Mastery" classFeature, source XPHB): a character selects 3 (or more,
+  // scaling by level for some classes) weapon TYPES to apply mastery
+  // properties to, chosen from the Items catalogue (not a Feat, not a
+  // Value/Source boolean) -- AND, critically, "whenever you finish a
+  // Long Rest, you can practice weapon drills and CHANGE one of those
+  // weapon choices." Confirmed still genuinely blocked, but the EXACT
+  // reason is sharper than the prior pass's own note: this is not merely
+  // "no facet shape decided yet" -- the real feature needs a MUTABLE,
+  // RE-ANSWERABLE choice (re-selectable on every Long Rest), a shape
+  // nothing in this engine has today. Every existing choice (Subclass,
+  // ASI, Expertise, Skill Proficiency) is answered ONCE and persists
+  // forever; Resources have expend/restore but no analogous "my
+  // selection set itself can change" primitive exists for a Content-
+  // Catalogue-backed choice. Equipment-adjacent (needs Items catalogue
+  // access, like the Equipment primitive gap) AND needs this new
+  // mutable-choice primitive -- genuinely two gaps, not one.
   // -------------------------------------------------------------------
   ...([
     'barbarian-xphb', 'fighter-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb'
@@ -234,8 +297,8 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Weapon Mastery',
     levels: [1],
     surface: 'creation',
-    status: 'CONTENT_BLOCKED',
-    blockerReason: 'No Weapon Mastery choiceSet/Definition exists -- this package has no concept of a weapon\'s "mastery property" at all (equipment facets only carry armor/category/slot fields today). Needs a facet-shape decision before authoring, closer in kind to the Equipment primitive gap (#4) than to a simple ChoiceSet.'
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'mutable-reanswerable-choice: Weapon Mastery\'s real XPHB rule lets the player CHANGE one mastered weapon choice on every Long Rest -- no primitive exists for a Content-Catalogue-backed choice that can be legally re-answered after its first answer (every existing choice is answer-once-forever). Also needs Items-catalogue-backed option resolution (kin to the Equipment primitive gap, §11/§14 #4), a second, independent blocker.'
   })),
 
   // -------------------------------------------------------------------
@@ -255,28 +318,64 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     levels: [2],
     surface: 'level-up',
     status: 'IMPLEMENTED',
-    implementationRef: 'progression:class.skill-expertise'
+    implementationRef: 'progression:class.skill-expertise',
+    notes: 'CHOICE ELIGIBILITY PHASE 2B regression found and fixed: the real XPHB prerequisite ("a skill in which you have proficiency") was NOT enforced -- the ChoiceSet offered all 6 skills unconditionally, regardless of whether the character was actually proficient in any of them. Fixed via this phase\'s own new `requiresActive` field on the Progression row (packages/eldra-dnd5e-2024/definitions.json), never a special-cased Expertise validator.'
   },
 
   // -------------------------------------------------------------------
-  // EXPERTISE (base-class) -- Bard/Ranger/Rogue's own real Expertise
-  // rows. Engine mechanism (`choice:skill.expertise`) already proven by
-  // Wizard's own Scholar entry immediately above; these three classes'
-  // own rows are simply unauthored.
-  // -------------------------------------------------------------------
+  // EXPERTISE (base-class) -- CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE
+  // 2B. Audited against the real XPHB text (class-bard.json/class-
+  // ranger.json/class-rogue.json's own "Expertise" classFeature, source
+  // XPHB) and authored this phase: unlike Wizard's own Scholar (a
+  // restricted 6-skill list, no real dynamic prerequisite previously
+  // enforced), Bard/Ranger/Rogue's real rule is "two of your skill
+  // proficiencies OF YOUR CHOICE" -- genuinely unrestricted to any named
+  // subset, so authoring it HONESTLY required this phase's own new
+  // generic Choice Eligibility mechanism (`requiresActive`) to express
+  // "any skill, but only one you already have" -- never a class-specific
+  // skill list, never a special-cased Expertise validator. Real per-class
+  // shape (never shared with Wizard's own Scholar Progression, whose
+  // level/count/skill-list genuinely differ):
+  //   Bard: two rows (L2 count 2, L9 "two MORE" count 2) --
+  //     `progression:class.skill-expertise-choose-two-at-2-and-9`.
+  //   Ranger: one row (L9 count 2) --
+  //     `progression:class.skill-expertise-choose-two-at-9`.
+  //   Rogue: real XPHB grants this TWICE -- L1 (count 2, a CREATION-time
+  //     grant, out of Level-Up progression's own scope entirely -- see
+  //     the separate rogue-xphb:expertise-creation entry below) and L6
+  //     ("two MORE", count 2, authored here as `progression:class.
+  //     skill-expertise-choose-two-at-6`).
   ...([
-    ['bard-xphb', [2, 9]],
-    ['ranger-xphb', [9]],
-    ['rogue-xphb', [1, 6]]
-  ] as const).map(([classSlug, levels]): ProgressionCoverageEntry => ({
+    ['bard-xphb', [2, 9], 'progression:class.skill-expertise-choose-two-at-2-and-9'],
+    ['ranger-xphb', [9], 'progression:class.skill-expertise-choose-two-at-9'],
+    ['rogue-xphb', [6], 'progression:class.skill-expertise-choose-two-at-6']
+  ] as const).map(([classSlug, levels, ref]): ProgressionCoverageEntry => ({
     id: `${classSlug}:expertise`,
     classSlug,
     featureName: 'Expertise',
     levels: [...levels],
     surface: 'level-up',
-    status: 'CONTENT_BLOCKED',
-    blockerReason: 'The `choice:skill.expertise`/`progression:class.skill-expertise` mechanism already works (Wizard\'s own real Scholar row, wizard-xphb:scholar above) -- this class simply has no ProgressionRow referencing it at its own real level(s) yet.'
+    status: 'IMPLEMENTED',
+    implementationRef: ref
   })),
+
+  // Rogue's OWN Level-1 half of the identical real "Expertise" feature --
+  // a genuine creation-time grant (count 2, same unrestricted skill
+  // shape), never wired into Level-Up progression (Level 1 has no
+  // "previous level" to diff against, and the create-v2 Builder has no
+  // generic skill-expertise picker surface at all today, for any class).
+  // Tracked with its own stable identity so it is never silently merged
+  // into the L6 "two more" row above as if it were one combined grant of
+  // four.
+  {
+    id: 'rogue-xphb:expertise-creation',
+    classSlug: 'rogue-xphb',
+    featureName: 'Expertise',
+    levels: [1],
+    surface: 'creation',
+    status: 'CONTENT_BLOCKED',
+    blockerReason: 'The engine mechanism (`choice:skill.expertise` + this phase\'s own Choice Eligibility) already supports this shape -- the real gap is surface-only: this would need authoring as a creation-time `facet.choices` entry (never a Progression row, since Level 1 has no prior level to diff against) AND the create-v2 Builder has no rendering surface for ANY class-specific skill-expertise picker today. Owned by a future Creation/Builder phase, not this one.'
+  },
 
   // -------------------------------------------------------------------
   // METAMAGIC (Sorcerer) / ELDRITCH INVOCATIONS (Warlock) -- real
@@ -318,8 +417,15 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Mystic Arcanum',
     levels: [11, 13, 15, 17],
     surface: 'level-up',
-    status: 'CONTENT_BLOCKED',
-    blockerReason: 'Spell-selection choice; no class-spell-list filtering or known/prepared count enforcement exists anywhere in the engine yet (original completeness audit §6) -- the same gap every other casting class\'s own spell acquisition has.'
+    // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- RECLASSIFIED
+    // ENGINE_BLOCKED (was CONTENT_BLOCKED): "no class-spell-list
+    // filtering/known-prepared enforcement exists" names a missing
+    // CAPABILITY, not merely unauthored content -- no authoring effort
+    // alone can close this. Explicitly owned by the future Spell
+    // Acquisition phase named in this task's own scope boundary, not
+    // this one.
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'class-spell-list-filtering: no class-spell-list filtering or known/prepared count enforcement exists anywhere in the engine yet (original completeness audit §6) -- the same gap every other casting class\'s own spell acquisition has. Owned by the future Spell Acquisition phase.'
   },
 
   // -------------------------------------------------------------------
@@ -339,8 +445,12 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Spellcasting',
     levels: [1],
     surface: 'creation',
-    status: 'CONTENT_BLOCKED',
-    blockerReason: 'Confirmed absent, not merely unverified (original completeness audit §6): no class-spell-list filtering exists on the add-spell path (any spell in the bound catalogue can be added to any character), and no known/prepared maximum is enforced. Slot COUNT itself is unaffected -- that is derived output, already A. COMPLETE, and is not a player decision.'
+    // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- RECLASSIFIED
+    // ENGINE_BLOCKED (was CONTENT_BLOCKED), same reasoning as Mystic
+    // Arcanum immediately above: a missing CAPABILITY, not unauthored
+    // content. Owned by the future Spell Acquisition phase.
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'class-spell-list-filtering: confirmed absent, not merely unverified (original completeness audit §6): no class-spell-list filtering exists on the add-spell path (any spell in the bound catalogue can be added to any character), and no known/prepared maximum is enforced. Slot COUNT itself is unaffected -- that is derived output, already A. COMPLETE, and is not a player decision. Owned by the future Spell Acquisition phase.'
   })),
 
   // -------------------------------------------------------------------
@@ -412,7 +522,18 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     levels: [1],
     surface: 'creation',
     status: 'ENGINE_BLOCKED',
-    blockerReason: 'The Core Character Rules package has no Feat Definition category at all yet (content-rules/dnd5e-2024.ts\'s own header, original completeness audit §2/§14 #3) -- a more foundational gap than a missing ChoiceSet, since Origin Feats need a Feat vocabulary to exist before a selection mechanism can reference it.'
+    // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- CORRECTED: the
+    // prior reason ("no Feat Definition category at all") is now stale --
+    // `choice:feat.selection` (General) is real, proven, and tested (the
+    // ALL-CLASS PROGRESSION CONTRACT AUDIT's own ASI work). The real
+    // blocker is the SAME one Fighting Style/Epic Boon independently
+    // surfaced this phase: real XPHB Origin feats carry their own feat
+    // category (`feats.json`'s own `category: 'O'`), and the option
+    // resolver cannot ask for anything but 'general'. ALSO a genuine
+    // creation-surface gap (no Builder step exists for this at all) --
+    // two independent blockers, named honestly rather than collapsed into
+    // one.
+    blockerReason: `${FEAT_CATEGORY_FILTER_BLOCKER} ALSO creation-surface-missing: the create-v2 Builder has no step for an Origin Feat pick at all today, independent of the engine gap above.`
   },
   {
     id: 'background:starting-equipment',

@@ -59,6 +59,18 @@ export type RulesFacetChoice = {
   choiceSet: DefinitionId
   count: number
   from?: DefinitionId[]
+  // CHOICE ELIGIBILITY PHASE 2B -- parallel to `from` (same index = same
+  // option): names, for `from[i]`, the Value that must ALREADY be active
+  // for that option to be offered at all (a real prerequisite, e.g.
+  // Expertise's own XPHB rule "choose a skill in which you have
+  // proficiency" -- `from[i]` is `value:skill.X.expertise`,
+  // `requiresActive[i]` is `value:skill.X.proficient`). Omitted entirely
+  // (every choice authored before this phase) means no option has a
+  // prerequisite, byte-identical old behavior. Package-declared, never a
+  // special-cased validator for one named mechanic -- see
+  // character-actor-bridge.ts's own ELIGIBILITY header for how this is
+  // read.
+  requiresActive?: (DefinitionId | null)[]
 }
 
 // "This content, when it becomes a Collection item, sets these itemSchema

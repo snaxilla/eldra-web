@@ -493,7 +493,14 @@ describe('getDerivedCharacterAtLevel -- tentative answers (Progression Plan prev
   }
 
   it('a tentative answer resolves the real Scholar choice for this evaluation only, never persisted anywhere', async () => {
-    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
+    // CHOICE ELIGIBILITY PHASE 2B -- Scholar's real prerequisite
+    // (`requiresActive`, packages/eldra-dnd5e-2024/definitions.json)
+    // requires Arcana proficiency for Arcana Expertise to be a legal
+    // option at all.
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({ rulesChoices: { selections: { 'class:choice:skill.proficiency': ['value:skill.arcana.proficient', 'value:skill.history.proficient'] } } })
+    })
 
     const key = 'class:progression:2:choice:skill.expertise'
     const result = await getDerivedCharacterAtLevel('5', '42', 2, { [key]: ['value:skill.arcana.expertise'] })

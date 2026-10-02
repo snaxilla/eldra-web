@@ -106,6 +106,47 @@ export function toResolvableProgressionChoice(
   }
 }
 
+// ---------------------------------------------------------------------------
+// CHOICE ELIGIBILITY PHASE 2B -- the generic filter.
+// ---------------------------------------------------------------------------
+// Pure, ActorState-shaped-but-not-ActorState-typed (a plain Record is all
+// this needs, so this module keeps zero dependency on app/lib/rules' own
+// ActorState type) -- called by character-actor-bridge.ts, the one place
+// that both HAS the current values-so-far AND is about to build a
+// ResolvableChoice's own `options`. Never called by the Builder (no
+// ActorState exists yet for a character that isn't created) or by
+// `validateChoiceSelection` (which validates an ANSWER against an already-
+// filtered `options` list, never recomputes eligibility itself) -- exactly
+// the "where does option resolution have access to ActorState" boundary
+// this phase's own trace identified: only here.
+//
+// Two independent exclusion rules, matching the two real XPHB shapes this
+// phase's own corpus audit found (never one blanket "already owned is
+// illegal" rule -- that would wrongly exclude a repeatable feat pick,
+// which this filter is never even consulted for, since Feat Selection is
+// `fromContentCatalogue`, resolved entirely in character-derived.ts's own
+// `ownedFeatRefs`, not through this path):
+//   1. `excludeIfAlreadyActive` (the ChoiceSet's own flag) -- drop an
+//      option whose OWN id already reads true/active (Skill Proficiency:
+//      already proficient; Skill Expertise: already has Expertise).
+//   2. `requiresActive[i]` (the facet's own per-option declaration) --
+//      drop `from[i]` unless the NAMED prerequisite value already reads
+//      true (Skill Expertise's real XPHB rule: "a skill in which you have
+//      proficiency").
+export function filterEligibleOptions(
+  from: readonly DefinitionId[],
+  requiresActive: readonly (DefinitionId | null)[] | undefined,
+  excludeIfAlreadyActive: boolean | undefined,
+  isActive: (id: DefinitionId) => boolean
+): DefinitionId[] {
+  return from.filter((option, index) => {
+    if (excludeIfAlreadyActive && isActive(option)) return false
+    const prerequisite = requiresActive?.[index]
+    if (prerequisite && !isActive(prerequisite)) return false
+    return true
+  })
+}
+
 // A question ready to be asked: what the facet declared, plus the identity
 // the answer will be stored under. Built by the caller that knows both the
 // slot and the facet; this module never reads a facet itself.

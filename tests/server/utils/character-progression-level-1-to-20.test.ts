@@ -182,6 +182,32 @@ function catalogueForClass(classSlug: string) {
   }
 }
 
+// CHOICE ELIGIBILITY PHASE 2B -- a real, legal skill-proficiency answer
+// for `classSlug`, derived GENERICALLY from that class's own real facet
+// (never hand-picked per class): the first N options of its own real
+// `choice:skill.proficiency` entry, where N is that entry's own `count`.
+// Needed because Expertise's real prerequisite (`requiresActive`) now
+// requires ACTUAL proficiency -- without this, Scholar/base-class
+// Expertise would correctly have zero legal options for a character with
+// none at all.
+// CHOICE ELIGIBILITY PHASE 2B -- `choice:skill.proficiency` now declares
+// `excludeIfAlreadyActive: true` (definitions.json), so a skill this
+// fixture's own Background (Sage) already grants directly (Arcana,
+// History) is correctly ABSENT from the class choice's own eligible
+// options -- picking the naive first N of the RAW, unfiltered list could
+// name one of those two, producing an answer the real eligibility filter
+// then rejects. Filtered out here so this helper always returns a
+// genuinely legal answer, exactly mirroring what the real engine would
+// still offer.
+const SAGE_BACKGROUND_GRANTS = ['value:skill.arcana.proficient', 'value:skill.history.proficient']
+
+function realSkillProficiencyAnswer(classSlug: string): string[] {
+  const facet = findRulesFacet('dnd5e.2024', 'class', classSlug)
+  const proficiencyChoice = facet?.choices?.find((c) => c.choiceSet === 'choice:skill.proficiency')
+  const eligible = (proficiencyChoice?.from ?? []).filter((id) => !SAGE_BACKGROUND_GRANTS.includes(id))
+  return eligible.slice(0, proficiencyChoice?.count ?? 0)
+}
+
 // `tentativeFeatAcquisitions` -- the REAL `assembleCharacter`
 // (server/utils/character-assembly.ts) merges this exact argument into
 // the returned blueprint's own TOP-LEVEL `feats` field (`resolveFeats`,
@@ -204,9 +230,16 @@ function blueprintForClass(
       status: 'resolved' as const,
       entry: baseEntry({ title: classSlug, slug: classSlug, rulesFacet: findRulesFacet('dnd5e.2024', 'class', classSlug) ?? undefined })
     },
-    background: { status: 'resolved' as const, entry: baseEntry({ title: 'Sage', slug: 'sage-xphb' }) },
+    // `rulesFacet` wired here (previously missing -- Sage's own real
+    // Arcana + History grants never actually applied without it, found
+    // while debugging the base-class Expertise pool below).
+    background: { status: 'resolved' as const, entry: baseEntry({ title: 'Sage', slug: 'sage-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'sage-xphb') ?? undefined }) },
     abilityScores: { method: 'standard-array' as const, scores: { str: 12, dex: 12, con: 14, int: 12, wis: 12, cha: 12 } },
-    rulesChoices: null,
+    rulesChoices: {
+      selections: {
+        'class:choice:skill.proficiency': realSkillProficiencyAnswer(classSlug)
+      }
+    },
     inventory: [],
     notes: null,
     health: null,
@@ -280,7 +313,7 @@ function useClass(classSlug: string) {
 // from the real package + the real ledger, never asserted from memory.
 // ---------------------------------------------------------------------------
 
-type ExpectedChoice = { level: number, choiceSetId: string, count: number }
+type ExpectedChoice = { level: number, choiceSetId: string, count: number, from: string[] }
 
 function expectedImplementedChoices(classSlug: string, definitions: Definition[]): ExpectedChoice[] {
   const facet = findRulesFacet('dnd5e.2024', 'class', classSlug)
@@ -298,7 +331,7 @@ function expectedImplementedChoices(classSlug: string, definitions: Definition[]
     if (!implementedRefs.has(definition.id)) continue
     for (const row of definition.rows ?? []) {
       for (const choice of row.choices ?? []) {
-        expected.push({ level: row.at as number, choiceSetId: choice.choiceSet, count: choice.count })
+        expected.push({ level: row.at as number, choiceSetId: choice.choiceSet, count: choice.count, from: choice.from ?? [] })
       }
     }
   }
@@ -327,9 +360,26 @@ function blockedLedgerEntries(classSlug: string) {
 // per this task's own "do not fake answers for unsupported mechanics."
 // ---------------------------------------------------------------------------
 
-function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string): Record<string, string[]> {
+function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, classSlug: string): Record<string, string[]> {
   const answers: Record<string, string[]> = {}
-  for (const { level, choiceSetId } of expected) {
+  // CHOICE ELIGIBILITY PHASE 2B -- Expertise's own real prerequisite
+  // (`requiresActive`) means a legal answer must name a skill THIS
+  // character is actually proficient in. The pool: the class's own real
+  // proficiency picks (`realSkillProficiencyAnswer`) PLUS Sage's own real
+  // direct grants (Arcana + History, app/lib/content-rules/dnd5e-2024.ts
+  // -- this fixture's own Background, unconditionally active via this
+  // bridge's own cross-facet pre-pass) -- a real Bard/Rogue needs BOTH
+  // sources: its own 3-4 class skills are not enough to fill two DISJOINT
+  // "two more, excluding any already-Expertise'd skill" picks (L2 AND L9)
+  // on their own. `excludeIfAlreadyActive` means each row consumes a
+  // FRESH, not-yet-used subset -- tracked here by simply shifting through
+  // the pool in level order (`expected` is already level-ascending).
+  const skillPool = [...new Set([
+    ...realSkillProficiencyAnswer(classSlug).map((id) => id.replace('.proficient', '.expertise')),
+    'value:skill.arcana.expertise', 'value:skill.history.expertise'
+  ])]
+  const usedSkills = new Set<string>()
+  for (const { level, choiceSetId, count, from } of expected) {
     const key = progressionChoiceKey('class', level, choiceSetId)
     if (choiceSetId === 'choice:class.subclass') {
       answers[key] = [serializeContentRef({ packageId: FEAT_PACKAGE_ID, slug: subclassSlug })]
@@ -349,7 +399,19 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string): Reco
         ? ['source:asi.increase.str', 'source:asi.increase.dex']
         : ['source:asi.increase.con', 'source:asi.increase.int']
     } else if (choiceSetId === 'choice:skill.expertise') {
-      answers[key] = ['value:skill.arcana.expertise']
+      // `count` legal, already-proficient, NOT-YET-USED skills, filtered
+      // to THIS row's own real legal `from` list (Wizard's Scholar
+      // restricts to 6 named skills; the base-class rows authored this
+      // phase do not restrict at all) -- 1 for Wizard's own Scholar row,
+      // 2 for every base-class Expertise row this phase authors (Bard/
+      // Ranger/Rogue). Drawn from the shared pool minus whatever an
+      // EARLIER row (lower level, same class) already consumed, so a
+      // class with more than one Expertise row (Bard: L2 + L9) gets two
+      // disjoint picks, never the same skill twice.
+      const legalForThisRow = skillPool.filter((id) => from.includes(id) && !usedSkills.has(id))
+      const picked = legalForThisRow.slice(0, count)
+      answers[key] = picked
+      for (const id of picked) usedSkills.add(id)
     }
     // Anything else: left unanswered on purpose -- see this function's
     // own header.
@@ -459,7 +521,7 @@ describe.each(ALL_12_CLASS_SLUGS)('LEVEL 1 -> 20 ACCEPTANCE -- %s', (classSlug) 
   })
 
   it('PLAN VALIDITY -- answering every real IMPLEMENTED choice resolves the plan to valid, and Confirm succeeds through Level 20', async () => {
-    const answers = legalAnswersFor(expected, subclassSlug)
+    const answers = legalAnswersFor(expected, subclassSlug, classSlug)
     const result = await planProgression(WORLD_ID, CHARACTER_ID, 20, answers)
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -621,7 +683,7 @@ describe('LEVEL 20 DERIVATION -- representative scaling composes correctly throu
     useClass('barbarian-xphb')
     const definitions = loadRealDefinitions()
     const expected = expectedImplementedChoices('barbarian-xphb', definitions)
-    const answers = legalAnswersFor(expected, REAL_SUBCLASSES_BY_CLASS['barbarian-xphb']![0]!)
+    const answers = legalAnswersFor(expected, REAL_SUBCLASSES_BY_CLASS['barbarian-xphb']![0]!, 'barbarian-xphb')
 
     const atLevel20 = await getDerivedCharacterAtLevel(
       WORLD_ID, CHARACTER_ID, 20, answers,

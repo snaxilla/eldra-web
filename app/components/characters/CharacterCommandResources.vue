@@ -95,14 +95,23 @@ const props = withDefaults(defineProps<{
   // only (server/utils/character-derived.ts) -- this component performs no
   // filtering, resolution, or class-name branching of its own.
   resources?: readonly DerivedResourceForPresentation[]
-  resourcesSaving?: boolean
+  // RESOURCE INTERACTION PERFORMANCE -- replaces the previous
+  // `resourcesSaving: boolean` (a single flag that disabled EVERY
+  // resource pool the moment ANY one was saving). This is now the set of
+  // resource ids CURRENTLY pending their own mutation
+  // (useCharacterMutations.ts's `resources.pendingIds`), forwarded to
+  // CharacterResourceOrbs.vue's own `pendingPoolIds` so only the pool
+  // actually in flight disables -- "the user should be able to interact
+  // with unrelated resources without waiting for another resource's
+  // save."
+  resourcesPendingIds?: ReadonlySet<string>
 }>(), {
   recoverySaving: false,
   recoveryError: '',
   slotLevels: () => [],
   spellSaving: false,
   resources: () => [],
-  resourcesSaving: false
+  resourcesPendingIds: () => new Set()
 })
 
 // Caster Pass 0.1: Death Saves moved out of this component entirely -- see
@@ -201,12 +210,15 @@ const hitDiceLabel = computed(() => {
 // are simply CONCATENATED after Spell Slots' own group(s), never merged by
 // name/label -- each resource is already its own group
 // (genericResourcesToCharacterResources), so there is no collision to
-// resolve. `saving` below is deliberately `spellSaving || resourcesSaving`:
-// CharacterResourceOrbs.vue disables EVERY orb while ANY one save is in
-// flight, matching the existing "optimistic, one domain mutation in flight
-// disables its own control" posture every sibling control on this card
-// already has, rather than inventing per-group saving state this component
-// has no use for yet.
+// resolve.
+//
+// RESOURCE INTERACTION PERFORMANCE -- `saving` passed to
+// CharacterResourceOrbs.vue below is now `spellSaving` ALONE (Spell Slots'
+// own global gate, unchanged by this phase -- spell slot performance is
+// reported separately, per this task's own explicit scope boundary).
+// Generic Resource pools are no longer globally disabled by ANY other
+// resource's own save; `pending-pool-ids="resourcesPendingIds"` disables
+// only the ONE pool whose own mutation is actually in flight.
 const resourceGroups = computed(() => [
   ...spellSlotsToCharacterResources(props.slotLevels),
   ...genericResourcesToCharacterResources(props.resources)
@@ -417,7 +429,8 @@ function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; p
       >
         <CharacterResourceOrbs
           :groups="resourceGroups"
-          :saving="spellSaving || resourcesSaving"
+          :saving="spellSaving"
+          :pending-pool-ids="resourcesPendingIds"
           @expend="handleResourceExpend"
           @restore="handleResourceRestore"
         />

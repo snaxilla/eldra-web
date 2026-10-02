@@ -79,12 +79,29 @@ import {
   type CharacterResourcePool
 } from './characterResourcePresentation'
 
-withDefaults(defineProps<{
+// RESOURCE INTERACTION PERFORMANCE -- `saving` alone used to disable EVERY
+// pool in `groups` the moment ANY one domain's mutation was in flight (see
+// CharacterCommandResources.vue's own prior `spellSaving || resourcesSaving`
+// merge, now removed). `pendingPoolIds` adds PER-POOL granularity: a pool
+// whose own `id` is in this set is disabled regardless of `saving`, but a
+// pool whose id is NOT in it stays interactive even while a DIFFERENT pool
+// is mid-save -- "the user should be able to interact with unrelated
+// resources without waiting for another resource's save." `saving` itself
+// is kept (not removed) for a caller that still wants a true global gate
+// (Spell Slots' own `spellSaving`, unchanged by this phase) -- the two are
+// independent, ORed per pool.
+const props = withDefaults(defineProps<{
   groups: readonly CharacterResourceGroup[]
   saving?: boolean
+  pendingPoolIds?: ReadonlySet<string>
 }>(), {
-  saving: false
+  saving: false,
+  pendingPoolIds: () => new Set()
 })
+
+function poolDisabled(pool: CharacterResourcePool): boolean {
+  return props.saving || props.pendingPoolIds.has(pool.id) || !pool.adjustable
+}
 
 const emit = defineEmits<{
   expend: [{ groupId: string; poolId: string; amount: number }]
@@ -100,7 +117,7 @@ function orbAriaLabel(group: CharacterResourceGroup, pool: CharacterResourcePool
 }
 
 function onOrbClick(group: CharacterResourceGroup, pool: CharacterResourcePool, position: number) {
-  if (!pool.adjustable) return
+  if (poolDisabled(pool)) return
   const payload = { groupId: group.id, poolId: pool.id, amount: 1 }
   if (orbAvailable(pool, position)) {
     emit('expend', payload)
@@ -127,12 +144,12 @@ function parsedAmount(pool: CharacterResourcePool): number {
 }
 
 function onPointsExpend(group: CharacterResourceGroup, pool: CharacterResourcePool) {
-  if (!pool.adjustable) return
+  if (poolDisabled(pool)) return
   emit('expend', { groupId: group.id, poolId: pool.id, amount: parsedAmount(pool) })
 }
 
 function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourcePool) {
-  if (!pool.adjustable) return
+  if (poolDisabled(pool)) return
   emit('restore', { groupId: group.id, poolId: pool.id, amount: parsedAmount(pool) })
 }
 </script>
@@ -194,13 +211,13 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
               inputmode="numeric"
               :aria-label="`${group.label} ${pool.label ?? ''} amount`"
               class="eldra-input h-8 w-14 rounded-none px-1.5 text-center text-xs font-semibold tabular-nums text-white"
-              :disabled="saving || !pool.adjustable"
+              :disabled="poolDisabled(pool)"
               :placeholder="amountDraftFor(pool)"
             >
             <button
               type="button"
               class="eldra-button h-8 rounded-none px-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="saving || !pool.adjustable || pool.max - pool.expended <= 0"
+              :disabled="poolDisabled(pool) || pool.max - pool.expended <= 0"
               @click="onPointsExpend(group, pool)"
             >
               Spend
@@ -208,7 +225,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
             <button
               type="button"
               class="h-8 rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] px-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="saving || !pool.adjustable || pool.expended <= 0"
+              :disabled="poolDisabled(pool) || pool.expended <= 0"
               @click="onPointsRestore(group, pool)"
             >
               Restore
@@ -227,7 +244,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
               :class="orbAvailable(pool, position)
                 ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.55)] shadow-[0_0_6px_rgba(201,164,90,0.35)]'
                 : 'border-[rgba(201,164,90,0.24)] bg-transparent opacity-50'"
-              :disabled="saving || !pool.adjustable"
+              :disabled="poolDisabled(pool)"
               :aria-label="orbAriaLabel(group, pool, position)"
               :aria-pressed="orbAvailable(pool, position)"
               @click="onOrbClick(group, pool, position)"

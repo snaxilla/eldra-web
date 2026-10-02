@@ -64,6 +64,7 @@ import {
   type SpellFlag,
   type StoredSpellEntry
 } from '~/lib/characters/spellcasting'
+import { computeOptimisticExpended, createResourceWriteQueue } from './characterResourceInteraction'
 import type { StoredCharacterHealth } from '~/lib/characters/health'
 import type { CharacterSheet, EncounterView } from './useCharacterSheet'
 
@@ -119,10 +120,29 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
   // server-persisted number was always correct; only the SHEET's displayed
   // "available / max" line never moved. Refreshing `derived` (not the
   // heavier combined `refresh`, which would also needlessly re-fetch
-  // `assembly`/`actions`) after exactly the two action types that can
-  // change `hitDiceSpent` closes that gap with no change to what gets
-  // persisted or how any other action behaves.
-  const HIT_DICE_AFFECTING_ACTIONS = new Set(['spend-hit-die', 'long-rest'])
+  // `assembly`/`actions`) after exactly the action types that can change
+  // a value this composable reads off `derived` (not off `healthDraft`)
+  // closes that gap with no change to what gets persisted or how any
+  // other action behaves.
+  //
+  // RESOURCE INTERACTION PERFORMANCE -- THE SAME GAP, FOUND AGAIN FOR
+  // GENERIC RESOURCES (real browser evidence: "Short Rest / manual Rage
+  // refill behavior feels all over the place"). Traced, not guessed:
+  // `character-recovery.ts` already applies each acquired resource's own
+  // `recovery` rule for BOTH 'short-rest' and 'long-rest' triggers (Rage's
+  // real XPHB rule -- Short Rest regains one use, Long Rest regains all --
+  // is applied correctly server-side either way). But 'short-rest' was
+  // missing from this set, so after a Short Rest the server had already
+  // correctly restored Rage, while the Sheet's own `characterResources`
+  // (also read off `derived`, exactly like `hitDiceAvailable`) kept
+  // showing the PRE-rest expended count until something unrelated
+  // happened to refresh `derived` -- not a race, not timing-dependent,
+  // simply a derived value this set never named. Renamed from
+  // `HIT_DICE_AFFECTING_ACTIONS` since it is no longer Hit-Dice-specific;
+  // membership is still exactly "which Recovery actions change a value
+  // this composable reads from `derived` rather than from `healthDraft`,"
+  // the same test the set always encoded.
+  const DERIVED_AFFECTING_RECOVERY_ACTIONS = new Set(['spend-hit-die', 'short-rest', 'long-rest'])
 
   async function applyRecovery(action: { type: string; amount?: number }) {
     if (recoverySaving.value) return
@@ -136,7 +156,7 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
         { method: 'POST', body: action }
       )
       sheet.healthDraft.value = result.health
-      if (HIT_DICE_AFFECTING_ACTIONS.has(action.type)) {
+      if (DERIVED_AFFECTING_RECOVERY_ACTIONS.has(action.type)) {
         await sheet.refreshDerived()
       }
     } catch (recoveryErr: any) {
@@ -452,46 +472,104 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
 
   // -------------------------------------------------------------------
   // Resources -- D&D 2024 Character Rules Phase 2A.2, GENERIC CHARACTER
-  // RESOURCES. Unlike every domain above, this one has NO client-side
-  // optimistic mutation and no local draft ref to roll back -- `max`/
-  // `expended` are entirely server-derived (server/utils/character-
-  // derived.ts), so this composable cannot safely compute a "next" value
-  // itself (see server/api/.../resources.put.ts's own header on why this
-  // route is not a full-replace PUT the way Spellcasting's is). Instead:
-  // call the authoritative route, then `sheet.refreshDerived()` so
-  // `sheet.characterResources` reflects whatever the server actually
-  // persisted -- the same "server decides, sheet reflects" discipline
-  // every other authoritative (non-draft) mutation in this codebase
-  // already follows (e.g. Confirm Progression's own post-confirm
-  // `sheet.refresh()`).
+  // RESOURCES.
+  //
+  // RESOURCE INTERACTION PERFORMANCE (real browser defect: clicking a
+  // Rage/Bardic Inspiration/etc. orb visibly waited on TWO sequential
+  // round trips -- the authoritative PUT, THEN a full `sheet.
+  // refreshDerived()` -- before the orb changed at all; `refreshDerived()`
+  // re-runs the ENTIRE Rules Engine evaluation, not just this one
+  // resource). Traced this phase, not assumed:
+  //   1. The PUT's own response (server/api/.../resources.put.ts) already
+  //      returns the fully authoritative `{id, max, expended, remaining}`
+  //      for the ONE resource that changed -- sufficient to update the
+  //      pool with no second request at all.
+  //   2. No Definition anywhere in the Rules Package formula corpus reads
+  //      `resource.*` state (confirmed by grep against
+  //      packages/eldra-dnd5e-2024/definitions.json) -- expending/
+  //      restoring a resource provably changes NO other derived value,
+  //      so gating the UI on a full derived refresh was never necessary
+  //      for this mutation.
+  // `sheet.refreshDerived()` is therefore no longer called here at all.
+  // Should a FUTURE resource-linked effect ever need one (this phase's own
+  // explicit caveat: do not assume resource spend can NEVER affect derived
+  // state), that stays a deliberate, separate choice for whichever new
+  // mutation introduces it -- not a default this generic path reinstates.
+  //
+  // OPTIMISTIC OVERLAY, smallest generic version: `sheet.setResourceOverride`/
+  // `clearResourceOverride` (useCharacterSheet.ts) hold authoritative-base +
+  // overlay; this domain's only job is WHEN to call them --
+  // synchronously on click (optimistic), from the PUT response (authoritative
+  // reconciliation), or on failure (rollback) -- reusing the EXACT pure
+  // `expendResource`/`restoreResource` clamp functions
+  // (app/lib/characters/resources.ts) the server itself uses, never a
+  // second reimplementation of their bounds logic, and never recomputing a
+  // maximum (always read from `sheet.characterResources`' own current
+  // entry, itself Rules-Engine-derived).
+  //
+  // RAPID INTERACTION / ORDERING SAFETY: `resourceQueues` serializes the
+  // NETWORK call per resourceId (the server's own route is a
+  // read-modify-write against one persisted record -- two concurrent
+  // writes for the SAME resource could otherwise race and lose an update);
+  // DIFFERENT resources' queues are fully independent, so spending Rage
+  // never waits on Bardic Inspiration's own save. Because at most one
+  // network call per resourceId is ever in flight, no response for a given
+  // resource can ever arrive out of the order its own request was sent --
+  // "stale response" protection falls out of the queue's own structure,
+  // not timestamp comparison (see the regression tests this phase adds).
   // -------------------------------------------------------------------
 
-  const resourcesSaving = ref(false)
+  const resourcesPendingIds = ref<Set<string>>(new Set())
+  const resourcesSaving = computed(() => resourcesPendingIds.value.size > 0)
   const resourcesError = ref('')
+  // The pure, directly-unit-tested queue (characterResourceInteraction.ts)
+  // -- this domain's only job is calling `enqueue`/`isPending` at the
+  // right moments and reflecting `isPending` into reactive state for the
+  // UI (`resourcesPendingIds`).
+  const resourceWriteQueue = createResourceWriteQueue()
+
+  function markResourcePending(resourceId: string, pending: boolean) {
+    const next = new Set(resourcesPendingIds.value)
+    if (pending) next.add(resourceId)
+    else next.delete(resourceId)
+    resourcesPendingIds.value = next
+  }
 
   // `amount` -- D&D 2024 Character Rules Phase 2A.2 (large-pool follow-up).
   // 1 for an ordinary orb click, user-entered for a `'points'`-style large
   // pool (CharacterResourceOrbs.vue). Relayed verbatim to the authoritative
-  // route; this composable never clamps or validates it itself -- the
+  // route; this function never clamps or validates it as AUTHORITY -- the
   // server independently bounds it against the real max/zero regardless
   // of what is sent.
-  async function adjustResource(resourceId: string, action: 'expend' | 'restore', amount = 1) {
-    if (resourcesSaving.value) return
-    resourcesSaving.value = true
-    resourcesError.value = ''
-
+  async function performResourceWrite(resourceId: string, action: 'expend' | 'restore', amount: number) {
     try {
-      await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/resources`, {
-        method: 'PUT',
-        body: { resourceId, action, amount }
-      })
-      await sheet.refreshDerived()
+      const result = await $fetch<{ success: true, resource: { id: string, max: number, expended: number, remaining: number } }>(
+        `/api/worlds/${worldId.value}/characters/${characterId.value}/resources`,
+        { method: 'PUT', body: { resourceId, action, amount } }
+      )
+      sheet.setResourceOverride(resourceId, result.resource.expended)
+      resourcesError.value = ''
     } catch (saveError: any) {
+      sheet.clearResourceOverride(resourceId)
       resourcesError.value =
         saveError?.data?.statusMessage || saveError?.statusMessage || 'Failed to update resource'
-    } finally {
-      resourcesSaving.value = false
     }
+  }
+
+  function adjustResource(resourceId: string, action: 'expend' | 'restore', amount = 1) {
+    const current = sheet.characterResources.value.find((candidate) => candidate.id === resourceId)
+    if (!current) return
+
+    // Immediate optimistic overlay -- synchronous, before any network
+    // call starts. Computed off whatever is CURRENTLY displayed (already
+    // including any still-pending optimistic guess from an earlier rapid
+    // click on this same resource), so a burst of clicks accumulates
+    // correctly without waiting for a round trip between them.
+    sheet.setResourceOverride(resourceId, computeOptimisticExpended(current, action, amount))
+
+    markResourcePending(resourceId, true)
+    resourceWriteQueue.enqueue(resourceId, () => performResourceWrite(resourceId, action, amount))
+      .finally(() => markResourcePending(resourceId, resourceWriteQueue.isPending(resourceId)))
   }
 
   function expendResourceUnit({ resourceId, amount }: { resourceId: string; amount: number }) {
@@ -504,6 +582,7 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
 
   const resources = reactive({
     saving: resourcesSaving,
+    pendingIds: resourcesPendingIds,
     error: resourcesError,
     expend: expendResourceUnit,
     restore: restoreResourceUnit

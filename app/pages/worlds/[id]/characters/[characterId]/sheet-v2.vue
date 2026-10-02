@@ -1085,7 +1085,7 @@ function openSkillContext(skill: CharacterSkillRow) {
             :spell-attack-bonus="spellcastingAttackBonus"
             :slot-levels="slotLevels"
             :resources="characterResources"
-            :resources-saving="mutations.resources.saving"
+            :resources-pending-ids="mutations.resources.pendingIds"
             :conditions="conditions.mine"
             :in-encounter="encounter.isInSelected"
             :is-my-turn="isMyTurn"

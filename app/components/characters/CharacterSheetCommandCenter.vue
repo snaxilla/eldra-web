@@ -114,8 +114,14 @@ const props = withDefaults(defineProps<{
   // D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES.
   // Relayed straight through to CharacterCommandResources.vue, exactly like
   // `slotLevels` above -- this component makes no decisions about either.
+  //
+  // RESOURCE INTERACTION PERFORMANCE -- `resourcesSaving: boolean` (one
+  // flag for every resource) replaced by the same `resourcesPendingIds`
+  // set CharacterCommandResources.vue's own header now documents, relayed
+  // through unchanged for the identical "makes no decisions about it"
+  // reason.
   resources?: readonly import('./characterResourcePresentation').DerivedResourceForPresentation[]
-  resourcesSaving?: boolean
+  resourcesPendingIds?: ReadonlySet<string>
   conditions: EncounterConditionView[]
   inEncounter: boolean
   isMyTurn: boolean
@@ -136,7 +142,7 @@ const props = withDefaults(defineProps<{
   proficiencyBonus: null,
   slotLevels: () => [],
   resources: () => [],
-  resourcesSaving: false,
+  resourcesPendingIds: () => new Set(),
   recoverySaving: false,
   recoveryError: '',
   spellSaving: false
@@ -456,7 +462,7 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
             :slot-levels="slotLevels"
             :spell-saving="spellSaving"
             :resources="resources"
-            :resources-saving="resourcesSaving"
+            :resources-pending-ids="resourcesPendingIds"
             @recovery="emit('recovery', $event)"
             @expend-slot="emit('expend-slot', $event)"
             @restore-slot="emit('restore-slot', $event)"

@@ -21,6 +21,12 @@
 
 import type { Ref } from 'vue'
 import {
+  applyResourceOverride,
+  clearResourceOverride as clearResourceOverride_,
+  mergeResourceOverrides,
+  type ResourceOverrides
+} from './characterResourceInteraction'
+import {
   DERIVED_SHEET_REGIONS,
   findDerivedBoolean,
   findDerivedNumber,
@@ -370,10 +376,42 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   // D&D 2024 Character Rules Phase 2A.2 -- GENERIC CHARACTER RESOURCES.
   // `derived.value?.resources` is already fully Rules-Engine-derived and
   // already scoped to ACQUIRED resources only (server/utils/character-
-  // derived.ts) -- this is a plain passthrough, the identical "no local
-  // computation, just expose what assembly/derived already resolved"
-  // shape `slotLevels` below takes, one field over.
-  const characterResources = computed(() => derived.value?.resources ?? [])
+  // derived.ts).
+  //
+  // RESOURCE INTERACTION PERFORMANCE (real browser defect: a resource-orb
+  // click visibly waited on a full `refreshDerived()` round trip before
+  // the orb changed at all). `resourceExpendedOverrides` is the smallest
+  // generic optimistic layer this needs -- see
+  // characterResourceInteraction.ts's own header for the full reasoning
+  // (why overrides cannot reuse `expendResource`/`restoreResource`'s own
+  // delete-at-zero storage convention, why only `expended`/`remaining`
+  // are ever overridden and never `max`). This composable owns only the
+  // Vue-reactive STATE; the merge itself is the pure, directly-unit-tested
+  // `mergeResourceOverrides`.
+  const resourceExpendedOverrides = ref<ResourceOverrides>({})
+
+  function setResourceOverride(resourceId: string, expended: number) {
+    resourceExpendedOverrides.value = applyResourceOverride(resourceExpendedOverrides.value, resourceId, expended)
+  }
+
+  function clearResourceOverride(resourceId: string) {
+    resourceExpendedOverrides.value = clearResourceOverride_(resourceExpendedOverrides.value, resourceId)
+  }
+
+  // A fresh, successful `derived` snapshot is always the newest truth --
+  // any override still pending against it is either already reflected (the
+  // common case: the write that set it has already landed server-side) or
+  // genuinely stale (e.g. superseded by a Rest's own generic-resource
+  // recovery). Either way, dropping overrides here is always safe: a
+  // resource mutation still actually in flight simply re-sets its own
+  // override, with the real post-write number, the moment its response
+  // arrives -- self-healing, never a lost update, because this never
+  // touches the PERSISTED record, only this display-only overlay.
+  watch(derived, () => {
+    resourceExpendedOverrides.value = {}
+  })
+
+  const characterResources = computed(() => mergeResourceOverrides(derived.value?.resources ?? [], resourceExpendedOverrides.value))
 
   // -------------------------------------------------------------------
   // Inventory / Notes / Health / Spellcasting -- local working copies,
@@ -575,6 +613,8 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     spellcastingExpendedSlots,
     slotLevels,
     characterResources,
+    setResourceOverride,
+    clearResourceOverride,
     actions,
     actionsPending,
     actionsUnavailableMessage,

@@ -1043,11 +1043,20 @@ definition):
 3. [ ] Starting equipment/resources/spells for a fresh Level-1 character match the real XPHB
    `startingEquipment`/`startingProficiencies`/spell-list data for that class, verifiable by
    diffing the character's state against the corpus.
-4. [ ] A character of each class can be advanced, one level at a time, from 1 to 20 with no
-   manually-patched Directus fields.
-5. [ ] Every mandatory progression choice (subclass, ASI/feat at the real per-class levels from
+4. [x] A character of each class can be advanced, one level at a time, from 1 to 20 with no
+   manually-patched Directus fields — **DONE for every currently-`IMPLEMENTED` choice, all 12
+   classes (§23, 2026-10-02)**: `planProgression`/`confirmProgression` genuinely complete a real
+   Level 1→20 round trip for all 12 classes with zero manual Directus edits, proven executably.
+   This does NOT mean a resulting Level-20 character is RAW-complete (Weapon Mastery, Fighting
+   Style, Metamagic, Eldritch Invocations, Epic Boon, spell acquisition, and subclass-internal
+   features are simply absent from the plan today, per §23's own Milestone Gap List) — only that
+   the progression ENGINE itself does not block or corrupt the walk.
+5. [x] Every mandatory progression choice (subclass, ASI/feat at the real per-class levels from
    §3, spell selection where applicable) is presented and resolvable in the UI at the correct
-   level.
+   level — **DONE for Subclass + ASI/General Feat (incl. its nested ability-distribution choice)
+   for all 12 classes, and Scholar/Expertise for Wizard specifically (§23, 2026-10-02)**. Spell
+   selection remains the one named exception: still `CONTENT_BLOCKED` for all 8 casting classes
+   (§6, §23) — not yet presentable or resolvable anywhere.
 6. [ ] Every automatic consequence that is structurally representable today (HP increases,
    proficiency bonus increases, spell slot table changes) applies without manual intervention.
 7. [ ] The character sheet (V2) is usable for an ordinary session: HP/AC/saves/skills visible
@@ -1145,3 +1154,183 @@ shape, which is a content/facet-shape decision, not the "extend V1 vs. build V2-
 architectural fork the original audit posed (that fork is resolved: V2 already has its own
 native inventory system, so any equipment-grant work builds on it, not on a still-open design
 choice).
+
+## 23. Level 1→20 Acceptance (2026-10-02)
+
+Answers one question executably, not by manual browser checklist: for each of the 12 real
+native-XPHB classes, if a real Level-1 character previews progression all the way to Level 20,
+which choices SHOULD Eldra surface, which DOES it actually surface, and do those two ever
+disagree. New suite:
+[`tests/server/utils/character-progression-level-1-to-20.test.ts`](../../../tests/server/utils/character-progression-level-1-to-20.test.ts)
+(84 tests) — real on-disk Rules Package, real `RulesFacet` corpus via `findRulesFacet`, real
+`planProgression`/`confirmProgression`, cross-referenced against the checked-in
+[Progression Coverage Ledger](../../../app/lib/content-rules/dnd5e-2024-progression-coverage.ts).
+One data-driven test body for all 12 classes — no twelve-synthetic-Wizard-copies pattern.
+
+**Headline result: no regression found.** Every ledger entry classified `IMPLEMENTED` for every
+one of the 12 classes is actually present in the real Level 1→20 plan, at the correct level,
+with the correct `kind`/`count`, non-empty legal options — asserted, not assumed. No
+`IMPLEMENTED`-but-absent case exists today.
+
+### What SHOULD appear vs. what DOES appear, per class
+
+| Class | Implemented choices expected | Implemented choices present | Known blocked choices (ledger, exact) | Unexpected missing | Level 1→20 automated status |
+|---|---|---|---|---|---|
+| Barbarian | 2 (Subclass, ASI×4) | 2/2 | 2: Epic Boon, Weapon Mastery | None | PASS |
+| Bard | 2 (Subclass, ASI×4) | 2/2 | 4: Epic Boon, Expertise, Spellcasting, Magical Discoveries (College of Lore, subclass-internal) | None | PASS |
+| Cleric | 2 (Subclass, ASI×4) | 2/2 | 2: Epic Boon, Spellcasting | None | PASS |
+| Druid | 2 (Subclass, ASI×4) | 2/2 | 2: Epic Boon, Spellcasting | None | PASS |
+| Fighter | 2 (Subclass, ASI×6) | 2/2 | 4: Epic Boon, Fighting Style, Weapon Mastery, Combat Superiority (Battle Master, subclass-internal) | None | PASS |
+| Monk | 2 (Subclass, ASI×4) | 2/2 | 2: Epic Boon, Heightened Focus (text-signal false positive, MILESTONE_DEFERRED) | None | PASS |
+| Paladin | 2 (Subclass, ASI×4) | 2/2 | 4: Epic Boon, Fighting Style, Weapon Mastery, Spellcasting | None | PASS |
+| Ranger | 2 (Subclass, ASI×4) | 2/2 | 5: Epic Boon, Fighting Style, Weapon Mastery, Expertise, Spellcasting | None | PASS |
+| Rogue | 2 (Subclass, ASI×5) | 2/2 | 3: Epic Boon, Weapon Mastery, Expertise | None | PASS |
+| Sorcerer | 2 (Subclass, ASI×4) | 2/2 | 4: Epic Boon, Metamagic, Spellcasting, Sorcery Incarnate (text-signal false positive, MILESTONE_DEFERRED) | None | PASS |
+| Warlock | 2 (Subclass, ASI×4) | 2/2 | 6: Epic Boon, Eldritch Invocations, Mystic Arcanum, Spellcasting, Steps of the Fey (Archfey, subclass-internal), Fiendish Resilience (Fiend, subclass-internal) | None | PASS |
+| Wizard | 3 (Subclass, ASI×4, Scholar/Expertise) | 3/3 | 5: Epic Boon, Spellcasting, The Third Eye (Diviner, subclass-internal), Sculpt Spells (Evoker, subclass-internal), Illusory Reality (Illusionist, subclass-internal) | None | PASS |
+
+Exact counts per class are read live from the ledger by the test file itself
+(`DND5E_2024_PROGRESSION_COVERAGE`), never hand-copied here — this table is a snapshot of that
+same data for a human reader, not a second source of truth.
+
+### Bob — the one authorized manual browser test
+
+Derived from the real plan, not memory. A Level-1 Barbarian previewing Level 1→20 in the Level
+Manager **should see**, in order:
+
+1. **Level 3** — "Requires: Subclass (choose 1)" — exactly 4 options: Path of the Berserker,
+   Path of the Wild Heart, Path of the World Tree, Path of the Zealot.
+2. **Level 4** — "Requires: Feat (choose 1)" — the General feat catalogue (including Ability
+   Score Improvement, whose own selection reveals a second, nested "choose 2 abilities to
+   increase by 1" control).
+3. **Level 8** — the same Feat choice again (Ability Score Improvement remains legally
+   selectable — it is explicitly repeatable).
+4. **Level 12** — the same Feat choice again.
+5. **Level 16** — the same Feat choice again.
+
+Every other level (1–2, 5–7, 9–11, 13–15, 17–20) shows only automatic numeric consequences (HP,
+proficiency bonus, Rage uses, etc.), no required choice.
+
+**Known missing/blocked, not a defect** — these will NOT appear anywhere in this preview today,
+by design, pending future authoring work: Weapon Mastery (should be a Level-1 creation-time
+choice — Builder gap, not a Level-Up gap), Epic Boon (Level 19 — classified `CONTENT_BLOCKED`),
+any subclass-internal feature beyond the Level-3 selection itself (Barbarian's own real
+subclasses have none of the 7 currently-discovered subclass-internal choices, so this is
+expected-empty for Barbarian specifically, not merely unverified).
+
+### Level 20 derivation (representative, not exhaustive)
+
+Verified via real multi-level hypothetical evaluation, composing correctly through Level 20:
+Barbarian's Rage pool scales 2 (L1) → 6 (L20); proficiency bonus 2 → 6; HP increases
+monotonically. Fighter's Action Surge/Indomitable are acquired at exactly L2/L9, not before.
+Monk's Focus Points and Sorcerer's Sorcery Points are acquired at L2 and scale with level.
+Paladin's Lay on Hands scales 5 (L1) → 100 (L20), matching the real `5 × level` rule. Ranger's
+Tireless is acquired at exactly L10, not before. An ASI picked at an earlier level genuinely
+moves a later derived ability score (Barbarian: base STR/DEX 12 → 14 after 2 of 4 real ASI
+thresholds applied +1 STR/+1 DEX each) — dependent evaluation composes correctly, not merely
+per-level in isolation.
+
+### Feat mechanics (prerequisite filtering / repeatability)
+
+Verified against the real validation machinery using two clearly-labeled synthetic probe feats
+(the main 1→20 path never depends on either): an unmet ability prerequisite is rejected at
+Confirm; a non-repeatable feat already owned is excluded from a LATER choice's own legal options
+(caught even before Confirm, at the options-resolution stage) — stricter and earlier than this
+audit originally assumed, confirmed by reading the real result rather than guessing; the same
+repeatable feat (Ability Score Improvement) can legally be selected at two different ASI
+thresholds.
+
+### Subclass-internal progression
+
+For the first real subclass option selected in each of the 12 class tests, every ledger entry
+identifying a subclass-internal choice-bearing feature for that exact subclass is confirmed
+classified `ENGINE_BLOCKED` with a stated blocker (`subclass-internal-feature-level-gating`) —
+never silently surfaced as a working choice, never silently dropped from the ledger either.
+
+### Plan validity — Outcome A, confirmed for all 12 classes
+
+Per this audit's own PLAN VALIDITY question: once every currently `IMPLEMENTED` required choice
+is answered, the plan reaches **Outcome A (`valid: true`)** for all 12 classes — every blocked
+mechanic is simply absent from the declared requirements today, never present-but-unresolved.
+`confirmProgression` then succeeds through Level 20 for all 12 classes: the selected subclass
+persists in the returned progression record, and every repeated Ability Score Improvement
+acquisition remains owned (one `feats[]` entry per real ASI threshold).
+
+### UX stress audit
+
+Inspected [`CharacterProgressionPanel.vue`](../../../app/components/characters/CharacterProgressionPanel.vue)
+(the real Level Manager plan renderer — explicitly documented in its own header as a "Game Admin
+Level Manager surface," gated behind the same `canEditCharacter` hint every other admin-only
+Sheet control uses, not a player-facing surface) against the shape a real Level 1→20 plan
+actually produces:
+
+- **Level sections**: 19 (`steps` for levels 2–20) render unconditionally via a single `v-for`
+  — no pagination, no virtualization, no lazy mount. Cheap today: 14 of 19 sections render only
+  a one-line "No automatic changes at this level" placeholder for every class.
+- **Choice groups**: 2–3 per class today (Subclass once, Feat Selection repeated 4–6 times,
+  Wizard's Scholar once) — small now, but each `choice:feat.selection` group's own OPTION list is
+  the real General-feat catalogue (dozens of entries), rendered as a full radio/checkbox list
+  with no search/filter/collapse.
+- **Auto-re-preview behavior**: confirmed correct, not a redraw risk — the plan stays rendered
+  during a re-preview with a "Recalculating…" label alongside it (a Phase 2A.1 UX-correction fix
+  for a real prior defect), never blanked and rebuilt from scratch.
+- **Does the UI become impractically long today?** No — current real choice volume (2–3 groups,
+  19 mostly-empty level sections) renders as a short, scrollable admin page. **Will it, as
+  blocked mechanics are implemented?** Likely yes — Fighting Style, Weapon Mastery, Metamagic,
+  Eldritch Invocations, spell acquisition, and Epic Boon would each add their own choice group at
+  their own level(s), and a full 1→20 preview would eventually show a long vertical list mixing
+  many different mechanics across many levels at once.
+- **Recommendation**: this is exactly right for an *admin/debugging* tool and should not be
+  redesigned for that purpose. A future **player-facing Level-Up Wizard should level ONE level at
+  a time** (one screen, one level's own choices, confirm, repeat) rather than exposing a giant
+  1→20 administrative plan — this audit's own real plan-size trajectory is evidence FOR that
+  design, not merely a guess. No visual redesign performed this pass, per this task's own scope
+  boundary.
+
+### Milestone gap list — Create Level 1 → Play → Level 20 entirely in app
+
+Grouped by dependency, not by class. Each item's current status is cited against the section of
+this audit that already established it; nothing here is asserted without an existing citation.
+
+1. **Creation/Builder** (blocks the "Create Level 1" half specifically — §2, §11, §14 #3/#4):
+   Origin Feat selection, Fighting Style/Weapon Mastery selection where acquired at character
+   creation, starting spell/cantrip selection, starting equipment/gold. None of these block a
+   Level 1→20 *progression* preview (they are Level-1-only, already-passed-by-the-time-Level-Up-
+   starts choices) — they block only the "created entirely in-app" half of the milestone.
+2. **Class Progression — Content Authoring** (this audit's own primary subject, §23 above):
+   Weapon Mastery (5 classes), Fighting Style (3 classes), base-class Expertise (Bard/Ranger/
+   Rogue — the SAME already-proven mechanism Wizard's Scholar uses, simply unauthored for these
+   three), Epic Boon (all 12, Level 19) — all `CONTENT_BLOCKED`, meaning the engine/UI already
+   supports the shape and only package authoring remains.
+3. **Class Progression — Engine Primitives** (§14, §23 above): Metamagic (Sorcerer) and Eldritch
+   Invocations (Warlock) need a new "accumulating known-options from a catalogue category,
+   learned permanently, with a level-scaling count" ChoiceSet shape — distinct from both ordinary
+   Feat Selection and fixed-count Expertise, neither engine-ready nor content-ready today.
+4. **Subclass Progression** (§5, §7, §23 above): subclass *selection* is complete for all 12
+   classes (this audit's own headline fix). Subclass *feature content* beyond the Level-3
+   selection itself (the ~190 individual feature rows across 48 subclasses, §5) remains
+   unauthored; the 7 currently-discovered subclass-internal CHOICE-bearing features additionally
+   need a new `subclass-internal-feature-level-gating` primitive before any of them could be
+   authored at all (the same primitive already blocking War Priest/Warding Flare/Dark One's Own
+   Luck, §7).
+5. **Spell Acquisition** (§6, §23 above): no class-spell-list filtering and no known/prepared
+   count enforcement exists anywhere in the engine — confirmed absent, not merely unverified.
+   Blocks Mystic Arcanum (Warlock) and ordinary spell/cantrip acquisition for all 8 casting
+   classes equally.
+6. **Equipment** (§11, §14 #4, §22's own standing recommendation): starting equipment/gold has no
+   facet shape decision on record; explicitly out of scope for this audit and for the task that
+   requested it.
+7. **Feature Runtime** (§7, §23 above): even once subclass-internal features are authored, no
+   generic mechanism exists today for a subclass's own LATER feature (resources, actions,
+   effects) to activate — this is downstream of #4 above, not independent of it.
+8. **Level-Up Player UX** (§23's own UX STRESS AUDIT above): the current Level Manager is
+   correctly an admin tool, not a reusable player surface; a dedicated, one-level-at-a-time
+   Player Level-Up Wizard is unbuilt, reusing the same `useCharacterProgression`/`planProgression`/
+   `confirmProgression` contract this audit just proved correct through Level 20 for every
+   currently-implemented choice.
+
+**What is NOT a gap**: the progression ENGINE itself (plan/confirm, dependent evaluation,
+nested choices, ordering, validity, Level 20 derivation composing correctly) — proven this pass,
+for the first time, executably, for all 12 real classes at once. Every remaining gap above is a
+CONTENT or NEW-PRIMITIVE gap the engine is structurally ready to receive, or a UX-surface gap
+independent of correctness.

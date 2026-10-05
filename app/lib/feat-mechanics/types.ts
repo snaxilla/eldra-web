@@ -30,6 +30,16 @@
 // needs to.
 export type FeatCategory = 'general' | 'origin' | 'fighting-style' | 'epic-boon'
 
+// The SOURCE variant -- the raw 5etools `category` key a feat was published
+// under. Preserved alongside the semantic category, never collapsed into it:
+// `FS`, `FS:P`, and `FS:R` are all `fighting-style`, but a Fighter may take
+// only `FS` (its class text filters `category=FS`), while a Paladin/Ranger
+// may also take their own `FS:P`/`FS:R` (Blessed/Druidic Warrior). Collapsing
+// them would make a plain `fighting-style` filter offer Blessed Warrior to a
+// Fighter. Fighting Style acquisition itself is NOT implemented by this type
+// -- this only keeps the identity a later filter needs.
+export type FeatVariant = 'G' | 'O' | 'FS' | 'FS:P' | 'FS:R' | 'EB'
+
 // The ONE structurally-supported feat effect this phase implements -- see
 // dnd5e-2024.ts's own FEAT AUDIT header for why every OTHER General feat
 // mechanic (Crossbow Expert's loading-property text, Great Weapon Master's
@@ -76,9 +86,20 @@ export type FeatPrerequisite =
 // Crusher, Durable, Fey-Touched, ...).
 export type CanonicalFeatMechanics = {
   category: FeatCategory
+  variant: FeatVariant
   repeatable: boolean
   prerequisiteGroups: readonly (readonly FeatPrerequisite[])[]
+  // Prerequisite keys the engine has NO primitive for (real corpus: `feature`
+  // and `otherSummary` on the Fighting Style family). Kept, never dropped: a
+  // feat with ANY unsupported prerequisite is not legally selectable, so a
+  // missing primitive can never make a feat accidentally legal by vanishing
+  // during normalization. Empty for every feat whose prerequisites are fully
+  // representable.
+  unsupportedPrerequisites: readonly string[]
   abilityIncrease?: FeatAbilityIncrease
+  // The corpus `max` on an ability increase (Epic Boon: 30). Absent means the
+  // feat uses the ordinary ability-increase cap its ChoiceSet declares.
+  abilityCap?: number
 }
 
 export type FeatMechanicsResolver = (data: unknown) => CanonicalFeatMechanics | null

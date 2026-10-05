@@ -152,7 +152,7 @@ function catalogueWithSubclass() {
         slug: 'actor-xphb',
         externalId: 'Actor__XPHB',
         provider: '5etools-json',
-        featMechanics: { category: 'general', repeatable: false, prerequisiteGroups: [] }
+        featMechanics: { category: 'general', variant: 'G', unsupportedPrerequisites: [], repeatable: false, prerequisiteGroups: [] }
       },
       {
         packageId: 'eldra.content.xphb',
@@ -162,7 +162,7 @@ function catalogueWithSubclass() {
         slug: 'ability-score-improvement-xphb',
         externalId: 'Ability Score Improvement__XPHB',
         provider: '5etools-json',
-        featMechanics: { category: 'general', repeatable: true, prerequisiteGroups: [] },
+        featMechanics: { category: 'general', variant: 'G', unsupportedPrerequisites: [], repeatable: true, prerequisiteGroups: [] },
         // The real authored facet -- without this, the bridge's own feat
         // consumption loop (character-actor-bridge.ts's `consumeFacet`)
         // has nothing to apply, and the nested ability-distribution choice
@@ -181,6 +181,8 @@ function catalogueWithSubclass() {
         provider: '5etools-json',
         featMechanics: {
           category: 'general',
+          variant: 'G',
+          unsupportedPrerequisites: [],
           repeatable: false,
           prerequisiteGroups: [[{ kind: 'ability', ability: 'str', minimum: 13 }]]
         }
@@ -426,15 +428,17 @@ describe('planProgression -- DragoWizard 1 -> 5 (the required acceptance target)
       kind: 'content',
       choiceSetId: 'choice:feat.selection',
       // This file's own catalogue fixture (catalogueWithSubclass) declares
-      // three General feats -- Actor, Ability Score Improvement, and Great
-      // Weapon Master -- all three legal options for this ordinary ASI-tier
-      // choice.
+      // three General feats. PHASE 2C.1: the option list is now the SHARED
+      // legality (featOptionVerdict), so Great Weapon Master -- whose real
+      // prerequisite is Strength 13, and this character's Strength is 10 --
+      // is refused at preview rather than offered and then rejected at Confirm.
+      // Actor and Ability Score Improvement have no unmet prerequisite.
       options: expect.arrayContaining([
         { id: FEAT_OPTION, label: 'Actor' },
-        { id: ASI_OPTION, label: 'Ability Score Improvement' },
-        { id: LOCKED_FEAT_OPTION, label: 'Great Weapon Master' }
+        { id: ASI_OPTION, label: 'Ability Score Improvement' }
       ])
     }])
+    expect(level4.requiredChoices[0]!.options.map((o) => o.id)).not.toContain(LOCKED_FEAT_OPTION)
 
     const level5 = result.plan.steps.find((s) => s.level === 5)!
     expect(level5.requiredChoices).toEqual([])

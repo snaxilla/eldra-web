@@ -122,7 +122,7 @@ function catalogue() {
       baseEntry({
         title: 'Ability Score Improvement',
         slug: ASI_FEAT_REF.slug,
-        featMechanics: { category: 'general', repeatable: true, prerequisiteGroups: [] },
+        featMechanics: { category: 'general', variant: 'G', unsupportedPrerequisites: [], repeatable: true, prerequisiteGroups: [] },
         rulesFacet: findRulesFacet('dnd5e.2024', 'feat', ASI_FEAT_REF.slug) ?? undefined
       })
     ],

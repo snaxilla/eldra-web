@@ -10,8 +10,16 @@ export type {
   FeatAbilityIncrease,
   FeatCategory,
   FeatMechanicsResolver,
-  FeatPrerequisite
+  FeatPrerequisite,
+  FeatVariant
 } from './types'
+
+export {
+  featFilterVerdict,
+  featOptionVerdict,
+  type FeatOptionVerdict,
+  type FeatUnavailableReason
+} from './eligibility'
 
 const RESOLVERS: Record<string, FeatMechanicsResolver> = {
   dnd5e: resolveDnd5eFeatMechanics

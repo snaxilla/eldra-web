@@ -128,21 +128,17 @@ const SUBCLASS_INTERNAL_GATING_BLOCKER =
 const ACCUMULATING_OPTIONAL_FEATURE_BLOCKER =
   'accumulating-optional-feature-selection: no ChoiceSet shape exists for "learn N options total from a catalogue category, scaling by level, kept permanently" (Metamagic/Eldritch Invocations\' real shape) -- distinct from both ordinary Feat Selection (one pick per row) and fixed-count Expertise.'
 
-// CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- discovered while
-// tracing the real option-resolution code this phase's own eligibility
-// work required reading closely: `character-derived.ts`'s own feat-
-// options resolver (`category === 'feats'` branch) is HARDCODED to
-// `entry.featMechanics?.category !== 'general'` -- EXCLUDED, with no way
-// for a different ChoiceSet to ask for a DIFFERENT real feat category
-// (Fighting Style's own 'FS', Epic Boon's own 'epic-boon'). Fixing this
-// is a small, well-scoped engine change (make the wanted category a
-// declarative property the ChoiceSet/row carries, read generically,
-// instead of the one hardcoded literal) -- but it is a real primitive
-// gap, not merely unauthored content, so content authoring for EITHER
-// feature would silently produce zero legal options today even with a
-// perfectly-authored catalogue entry.
-const FEAT_CATEGORY_FILTER_BLOCKER =
-  'feat-category-filter: the real Feat Selection option resolver (character-derived.ts) is hardcoded to only ever offer `featMechanics.category === \'general\'` -- no declarative way exists for a different ChoiceSet to request a different real category (Fighting Style\'s own \'FS\', Epic Boon\'s own \'epic-boon\').'
+// PHASE 2C.1 -- the generic, package-owned feat category filter now exists
+// (`choice:feat.epic-boon` filters to category `epic-boon`; `choice:feat.
+// selection` filters to `general`), and the feat resolver preserves the raw
+// source variant (FS / FS:P / FS:R). The earlier single blocker ("the option
+// resolver is hardcoded to General") is therefore FALSE and is retired. The
+// remaining blockers are named per row below, each for its real cause.
+const EPIC_BOON_EFFECT_BLOCKER =
+  'epic-boon-effects: acquisition and the ability increase (choose one ability, +1, cap 30) are implemented; the Boons\' OTHER text is not structurally applied. Energy Resistance (damage-type resistance), Speed, and Truesight need vocabulary the Rules Package does not declare (no resistance/speed/senses Definitions). Boon of Skill needs proficiency plus expertise nested choices, and expertise over a grant made by the same feat needs a `requiresActive` primitive that does not exist yet. The rest are prose-only effects, the same posture every General feat already has.'
+
+const FIGHTING_STYLE_FEAT_BLOCKER =
+  'fighting-style-acquisition (Phase 2C.2): the generic category + variant filter can express the choice, but the feat prerequisite `feature: ["Fighting Style"]` is an unsupported primitive and fails closed (no Fighting Style is legal until its semantics are implemented). Blessed/Druidic Warrior also grant nested cantrip choices that are not authored.'
 
 export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // -------------------------------------------------------------------
@@ -197,17 +193,13 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   })),
 
   // -------------------------------------------------------------------
-  // EPIC BOON -- real Level 19, all 12 classes. Deliberately NOT counted
-  // as ordinary ASI (this task's own explicit instruction) -- the real
-  // corpus's own `feats.json` EB category (12 feats) is a DIFFERENT
-  // legal option set than General (43).
-  //
-  // RECLASSIFIED THIS PHASE: previously CONTENT_BLOCKED -- corrected to
-  // ENGINE_BLOCKED, same primitive gap Fighting Style's own entries
-  // above independently surfaced (FEAT_CATEGORY_FILTER_BLOCKER): even a
-  // perfectly-authored Epic-Boon-scoped ProgressionRow would resolve to
-  // zero legal options today, since the real resolver only ever offers
-  // `category: 'general'`.
+  // EPIC BOON -- real Level 19, all 12 classes. PHASE 2C.1. Split into two
+  // honest rows per class, never one broad green row:
+  //   - ACQUISITION (IMPLEMENTED): one shared Level-19 progression
+  //     (`progression:class.epic-boon`), the package-filtered `epic-boon`
+  //     category, the ability increase (cap 30), canonical persistence.
+  //   - EFFECTS (ENGINE_BLOCKED): the Boons' own runtime text, which the
+  //     engine does not structurally apply (see EPIC_BOON_EFFECT_BLOCKER).
   // -------------------------------------------------------------------
   ...([
     'barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb',
@@ -219,8 +211,22 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Epic Boon',
     levels: [19],
     surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.epic-boon',
+    notes: 'Acquisition and the ability component. One Epic Boon is chosen at Level 19 (category epic-boon, package-filtered) and persisted through progression.feats[]; its nested ability increase (choose one, +1, cap 30) is enforced at Confirm. The ability component is proven by the persisted-read regression "EPIC BOON -- persist -> fresh reload -> derive" in tests/server/utils/character-progression-level-1-to-20.test.ts: Confirm -> persisted feat -> persisted nested answer -> fresh normalized read -> fresh getDerivedCharacterAtLevel -> ability +1 (base unchanged, cap 30 honored). Runtime effects are NOT covered by this row; see epic-boon-effects.'
+  })),
+  ...([
+    'barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb',
+    'monk-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb', 'sorcerer-xphb',
+    'warlock-xphb', 'wizard-xphb'
+  ] as const).map((classSlug): ProgressionCoverageEntry => ({
+    id: `${classSlug}:epic-boon-effects`,
+    classSlug,
+    featureName: 'Epic Boon',
+    levels: [19],
+    surface: 'level-up',
     status: 'ENGINE_BLOCKED',
-    blockerReason: FEAT_CATEGORY_FILTER_BLOCKER
+    blockerReason: EPIC_BOON_EFFECT_BLOCKER
   })),
 
   // -------------------------------------------------------------------
@@ -246,7 +252,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // EXCLUDED, with no way for a DIFFERENT ChoiceSet (a hypothetical
   // `choice:feat.fighting-style-selection`) to ask for category 'FS'
   // instead. This is the SAME missing primitive Epic Boon's own entry
-  // below independently needs -- see FEAT_CATEGORY_FILTER_BLOCKER.
+  // below independently needed. RETIRED in Phase 2C.1 -- see FIGHTING_STYLE_FEAT_BLOCKER for the real current blocker.
   {
     id: 'fighter-xphb:fighting-style',
     classSlug: 'fighter-xphb',
@@ -254,7 +260,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     levels: [1],
     surface: 'creation',
     status: 'ENGINE_BLOCKED',
-    blockerReason: FEAT_CATEGORY_FILTER_BLOCKER
+    blockerReason: `${FIGHTING_STYLE_FEAT_BLOCKER} Level-1 creation surface: create-v2 has no content-choice presentation or persistence for it.`
   },
   ...([
     ['paladin-xphb', [2]],
@@ -266,7 +272,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     levels: [...levels],
     surface: 'level-up',
     status: 'ENGINE_BLOCKED',
-    blockerReason: FEAT_CATEGORY_FILTER_BLOCKER
+    blockerReason: FIGHTING_STYLE_FEAT_BLOCKER
   })),
 
   // -------------------------------------------------------------------
@@ -533,7 +539,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     // creation-surface gap (no Builder step exists for this at all) --
     // two independent blockers, named honestly rather than collapsed into
     // one.
-    blockerReason: `${FEAT_CATEGORY_FILTER_BLOCKER} ALSO creation-surface-missing: the create-v2 Builder has no step for an Origin Feat pick at all today, independent of the engine gap above.`
+    blockerReason: 'origin-feat (Phase 2C.2+): every XPHB Background grants ONE FIXED Origin Feat (no choice). Persisting that grant into progression.feats[] at creation is not implemented (approved in principle, a separate slice); create-v2 writes no progression today. The Origin category filter itself is available.'
   },
   {
     id: 'background:starting-equipment',

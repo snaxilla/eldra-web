@@ -62,6 +62,7 @@ import { clampExpendedToMaximum } from '../../app/lib/characters/resources'
 import { getWorldRuntime } from './world-runtime-service'
 import { getWorldContentCatalogue } from './world-content-catalogue'
 import { serializeContentRef } from '../../app/lib/characters/progression-plan'
+import { featFilterVerdict } from '../../app/lib/feat-mechanics'
 
 // Mirrors evaluator.ts's and modifier-pipeline.ts's own `isRulesError`
 // exactly. Duplicated rather than imported for the reason those two already
@@ -431,21 +432,15 @@ async function getDerivedCharacterInternal(
   // override threaded through assembly) if resolved; otherwise a tentative
   // answer supplied for this exact key, if any; otherwise unanswered.
   //
-  // D&D 2024 Character Rules Phase 2A.1 -- generalized to a SECOND
-  // catalogue category, 'feats' (the ordinary ASI-tier Feat Selection
-  // choice), alongside 'subclasses'. Legal options: every `catalogue.feats`
-  // entry whose `featMechanics.category === 'general'` -- General is the
-  // ONLY category this phase's own progression rows reference (Origin/
-  // Fighting Style/Epic Boon feats use different ChoiceSets, not authored
-  // this phase, see dnd5e-2024.ts's own FEAT AUDIT header) -- MINUS any
-  // General feat this character already owns from a DIFFERENT acquisition
-  // (a different `choiceKey`) whose `featMechanics.repeatable` is not
-  // `true` (REPEATABILITY requirement: "the option resolver should exclude
-  // already-owned non-repeatable feats"). Current answer: this exact
-  // stub's own `choiceKey` resolved against `assembly.blueprint.feats` if
-  // present there (persisted, or a tentative acquisition threaded through
-  // assembly for THIS key specifically); otherwise a tentative answer
-  // supplied for this exact key, if any; otherwise unanswered.
+  // D&D 2024 Character Rules Phase 2A.1 -- generalized to a SECOND catalogue
+  // category, 'feats'. Phase 2C.1: the legal set is now the ChoiceSet's own
+  // package-owned filter (category + variant), applied by
+  // featFilterVerdict -- never a hardcoded category here. Already-owned and
+  // prerequisite legality are applied by the progression plan, the single
+  // authority preview and Confirm share (see character-progression-plan.ts).
+  // Current answer: this exact stub's own `choiceKey` resolved against
+  // `assembly.blueprint.feats`, else a tentative answer for this key, else
+  // unanswered.
   if (bridged.contentChoices.length) {
     const catalogue = await getWorldContentCatalogue(worldId)
     const parentClassSlug = assembly.blueprint.class.status === 'resolved' ? assembly.blueprint.class.entry.slug : null
@@ -453,33 +448,6 @@ async function getDerivedCharacterInternal(
     const currentSubclassRef = assembly.blueprint.subclass?.status === 'resolved'
       ? { packageId: assembly.blueprint.subclass.entry.packageId, slug: assembly.blueprint.subclass.entry.slug }
       : null
-
-    // Every OTHER acquired feat (any choiceKey but the one being resolved),
-    // resolved, General-category, non-repeatable -- the exact set a legal
-    // option list must exclude. Computed once per call, not per stub: the
-    // set of owned feats does not depend on which stub is currently being
-    // resolved, only which choiceKey is excluded from counting as "owned
-    // elsewhere" (a stub must never exclude its own current answer from its
-    // own option list, or a tentatively-answered choice would read as
-    // `answered: false`).
-    // A plain loop, not filter().map(): TypeScript does not narrow a union
-    // array element's type across a separate `.map()` call from a boolean-
-    // returning `.filter()` predicate, only within a single control-flow
-    // block -- the `continue` form below lets `slot.status === 'resolved'`
-    // correctly narrow `slot` to its `entry`-bearing variant before it is
-    // read.
-    const ownedFeatRefs = (excludeChoiceKey: string) => {
-      const owned: { packageId: string; slug: string; repeatable: boolean }[] = []
-      for (const slot of assembly.blueprint.feats ?? []) {
-        if (slot.choiceKey === excludeChoiceKey || slot.status !== 'resolved') continue
-        owned.push({
-          packageId: slot.entry.packageId,
-          slug: slot.entry.slug,
-          repeatable: slot.entry.featMechanics?.repeatable === true
-        })
-      }
-      return owned
-    }
 
     for (const stub of bridged.contentChoices) {
       const choiceSet = choiceSetFor(stub.choiceSetId)
@@ -490,15 +458,13 @@ async function getDerivedCharacterInternal(
       if (category === 'subclasses' && parentClassSlug) {
         legalOptions = catalogue.subclasses.filter((entry) => entry.parentClassSlug === parentClassSlug)
       } else if (category === 'feats') {
-        const owned = ownedFeatRefs(stub.key)
-        legalOptions = catalogue.feats.filter((entry) => {
-          if (entry.featMechanics?.category !== 'general') return false
-          const ownedElsewhere = owned.find((ref) => ref.packageId === entry.packageId && ref.slug === entry.slug)
-          // Not owned by any OTHER acquisition -- always legal. Owned
-          // elsewhere -- legal again only if repeatable (Ability Score
-          // Improvement's own real `repeatable: true`).
-          return !ownedElsewhere || ownedElsewhere.repeatable
-        })
+        // The package-owned filter (category, variant) is the only thing this
+        // builder applies. Already-owned and prerequisite legality are
+        // character-state facts the progression plan evaluates -- the single
+        // preview/Confirm authority (app/lib/feat-mechanics/eligibility.ts).
+        // A choice with no filter offers nothing (fail closed).
+        const filter = choiceSet && choiceSet.from.kind === 'fromContentCatalogue' ? choiceSet.from.filter : undefined
+        legalOptions = catalogue.feats.filter((entry) => featFilterVerdict(entry.featMechanics, filter).eligible)
       }
 
       const options = legalOptions.map((entry) => serializeContentRef({ packageId: entry.packageId, slug: entry.slug }))

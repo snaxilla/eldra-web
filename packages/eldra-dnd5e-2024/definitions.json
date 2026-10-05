@@ -3116,9 +3116,43 @@
     "count": 0,
     "from": {
       "kind": "fromContentCatalogue",
-      "category": "feats"
+      "category": "feats",
+      "filter": {
+        "category": "general"
+      }
     },
     "distinct": true
+  },
+  {
+    "id": "choice:feat.epic-boon",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Epic Boon",
+    "prompt": "Choose an Epic Boon.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "feats",
+      "filter": {
+        "category": "epic-boon"
+      }
+    },
+    "distinct": true
+  },
+  {
+    "id": "choice:feat.epic-boon-ability",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Epic Boon Ability Increase",
+    "prompt": "Increase one of the listed ability scores by 1, to a maximum of 30.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "effect": "activate-source",
+    "writesTo": "source:asi.increase.{selected}",
+    "resultCap": 30
   },
   {
     "id": "progression:class.asi-standard",
@@ -3222,6 +3256,24 @@
         "choices": [
           {
             "choiceSet": "choice:feat.selection",
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.epic-boon",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Epic Boon Progression",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 19,
+        "choices": [
+          {
+            "choiceSet": "choice:feat.epic-boon",
             "count": 1
           }
         ]

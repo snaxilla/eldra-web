@@ -212,7 +212,7 @@ import type {
   ProgressionLevelStep,
   ProgressionPlan
 } from '../../app/lib/characters/progression-plan'
-import { parseContentRef } from '../../app/lib/characters/progression-plan'
+import { parseContentRef, serializeContentRef } from '../../app/lib/characters/progression-plan'
 import { assembleCharacter } from './character-assembly'
 import { getWorldContentCatalogue } from './world-content-catalogue'
 import { listContentPackBindingsForWorld } from './world-content-packs'
@@ -224,18 +224,93 @@ import {
   saveCharacterRulesChoices
 } from './character-rules-choices'
 import { emptyStoredRulesChoices, resolveChoiceTarget } from '../../app/lib/characters/rules-choices'
-import type { FeatPrerequisite } from '../../app/lib/feat-mechanics'
+import { featFilterVerdict, featOptionVerdict, type FeatPrerequisite, type FeatUnavailableReason } from '../../app/lib/feat-mechanics'
+import type { ContentCatalogueFilter } from '../../app/lib/rules/types'
 
-// D&D 2024 Character Rules Phase 2A.1 -- the one package Definition id this
-// file needs to name directly, for the same reason `character-recovery.ts`
-// already names `MAX_HP_ID`/`PACT_CASTER_ID`: this app-layer orchestrator
-// needs to tell "which content-kind choice is the feat selector" apart from
-// "which is the subclass selector" when a confirm crosses BOTH kinds in one
-// call, and the only honest way to do that (without this module gaining
-// catalogue/registry-category awareness it does not otherwise need) is to
-// recognize the package's own well-known ChoiceSet id. See this file's own
-// FEAT SELECTION header below for the full reasoning.
-const FEAT_SELECTION_CHOICE_SET_ID = 'choice:feat.selection'
+// Phase 2C.1 -- how a content-backed progression answer is ROUTED. The
+// ChoiceSet's own typed selector declares what it asks for (`from.category`:
+// 'feats' or 'subclasses') and any package-owned filter. Routing reads THAT,
+// never the choice set's id: a second feat choice set lands in
+// progression.feats[] with no new branch here, and an unknown category fails
+// closed rather than being written as a subclass.
+type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter }
+type ContentChoiceLookup = (choiceSetId: string) => ContentChoiceSelector | null
+
+async function loadContentChoiceLookup(worldId: string | number): Promise<ContentChoiceLookup> {
+  const runtime = await getWorldRuntime(worldId)
+  if (!(runtime.configured && runtime.ok)) return () => null
+  return (id) => {
+    const definition = runtime.runtime.registry.getById(id)
+    if (!definition || definition.kind !== 'choiceSet' || definition.from.kind !== 'fromContentCatalogue') return null
+    return { category: definition.from.category, filter: definition.from.filter }
+  }
+}
+
+// Progression answer keys are `${slot}:progression:${at}:${choiceSetId}` (see
+// progressionChoiceKey), so the choice set id begins at its `choice:` segment.
+function choiceSetIdOfKey(key: string): string | null {
+  const index = key.indexOf(':choice:')
+  return index < 0 ? null : key.slice(index + 1)
+}
+
+function contentSelectorOfKey(key: string, lookup: ContentChoiceLookup): ContentChoiceSelector | null {
+  const id = choiceSetIdOfKey(key)
+  return id ? lookup(id) : null
+}
+
+// Why a feat option was refused, keyed by the choice then the option. Built by
+// the SAME preview pass that decides what is offered, so Confirm can explain a
+// submitted illegal answer with the reason the predicate actually produced.
+type FeatRejection = { title: string; reason: FeatUnavailableReason }
+type FeatRejections = Record<string, Record<string, FeatRejection>>
+
+// The ONE place that turns a feat rejection reason into player-facing text.
+function featRejectionMessage(title: string, reason: FeatUnavailableReason): string {
+  switch (reason) {
+    case 'already-owned':
+      return `'${title}' is not repeatable and this character already has it`
+    case 'prerequisite-unmet':
+      return `This character does not meet '${title}' prerequisite`
+    case 'prerequisite-unsupported':
+      return `'${title}' has a prerequisite this engine cannot evaluate, so it cannot be selected`
+    default:
+      return `'${title}' is not a legal option for this choice`
+  }
+}
+
+// The first submitted feat answer that the plan refused, explained by the
+// shared predicate. Covers both refusals the preview recorded (already owned,
+// prerequisite, unsupported) and crafted answers the choice never offered
+// (wrong category or variant -- checked directly, without re-deriving state).
+// Returns null when no feat answer is at fault, so the generic unresolved path
+// still applies to everything else.
+async function findRefusedFeatAnswer(
+  worldId: string | number,
+  plan: ProgressionPlan,
+  rejections: FeatRejections,
+  answers: Record<string, string[]>
+): Promise<string | null> {
+  const lookup = await loadContentChoiceLookup(worldId)
+  const catalogue = await getWorldContentCatalogue(worldId)
+  for (const step of plan.steps) {
+    for (const choice of step.requiredChoices) {
+      if (choice.kind !== 'content') continue
+      const selector = lookup(choice.choiceSetId)
+      if (selector?.category !== 'feats') continue
+      for (const submitted of answers[choice.id] ?? []) {
+        const recorded = rejections[choice.id]?.[submitted]
+        if (recorded) return featRejectionMessage(recorded.title, recorded.reason)
+
+        const ref = parseContentRef(submitted)
+        const entry = ref ? catalogue.feats.find((candidate) => candidate.packageId === ref.packageId && candidate.slug === ref.slug) : undefined
+        if (!entry || choice.options.some((option) => option.id === submitted)) continue
+        const verdict = featFilterVerdict(entry.featMechanics, selector.filter)
+        if (!verdict.eligible) return featRejectionMessage(entry.title, verdict.reason)
+      }
+    }
+  }
+  return null
+}
 
 export type ProgressionFailureReason =
   | 'character-not-found'
@@ -449,47 +524,31 @@ function diffRequiredChoices(previous: DerivedCharacter, next: DerivedCharacter)
 // Definition-choice answer. If more than one Content-choice TYPE existed
 // simultaneously, this would need to disambiguate by choice key instead;
 // documented here as the honest limit of this approach, not hidden.
-// D&D 2024 Character Rules Phase 2A.1 -- keys ending in the feat selector's
-// own id are now excluded here (see `extractTentativeFeatAcquisitions`
-// immediately below for why they need their own, key-preserving
-// extraction): the ORIGINAL heuristic ("any single-element answer that
-// decodes as ContentRef") would otherwise treat a tentative FEAT pick as a
-// tentative SUBCLASS ref, the exact ambiguity this file's own top-of-file
-// comment on `FEAT_SELECTION_CHOICE_SET_ID` flags. Every other behavior is
-// unchanged.
-function extractTentativeSubclassRef(tentativeAnswers: Record<string, string[]>): ContentRef | null {
+// Tentative answers, routed by each answer's OWN selector. The first
+// single-ContentRef subclasses answer is the subclass; every feat answer is
+// kept, keyed by its own choiceKey (one preview can cross several feat levels).
+// Definition answers (no content selector) and unknown categories are ignored
+// here -- they are never applied as a feat or a subclass.
+type TentativeFeatAcquisition = { choiceKey: string; choiceSetId: string; ref: ContentRef }
+
+function extractTentativeContentAnswers(
+  tentativeAnswers: Record<string, string[]>,
+  lookup: ContentChoiceLookup
+): { subclassRef: ContentRef | null; feats: TentativeFeatAcquisition[] } {
+  let subclassRef: ContentRef | null = null
+  const feats: TentativeFeatAcquisition[] = []
   for (const [key, selected] of Object.entries(tentativeAnswers)) {
-    if (key.endsWith(`:${FEAT_SELECTION_CHOICE_SET_ID}`)) continue
-    if (selected.length !== 1) continue
+    const selector = contentSelectorOfKey(key, lookup)
+    if (!selector || selected.length !== 1) continue
     const ref = parseContentRef(selected[0]!)
-    if (ref) return ref
+    if (!ref) continue
+    if (selector.category === 'feats') {
+      feats.push({ choiceKey: key, choiceSetId: choiceSetIdOfKey(key)!, ref })
+    } else if (selector.category === 'subclasses' && !subclassRef) {
+      subclassRef = ref
+    }
   }
-  return null
-}
-
-// D&D 2024 Character Rules Phase 2A.1 -- the feat counterpart of
-// `extractTentativeSubclassRef` immediately above, generalized from "the
-// first candidate wins" (correct for subclass, since a character has
-// exactly one) to "every candidate, keyed by its own choiceKey" (required
-// for feats, since a single Level 1-16 Fighter preview can cross six
-// ASI-tier levels at once -- see this file's own MULTIPLE ASI LEVELS
-// header). Unlike subclass, a feat tentative answer IS identified by key
-// (it must end in the feat selector's own ChoiceSet id), never by shape
-// alone -- shape alone cannot distinguish "a tentative feat pick" from "a
-// tentative subclass pick" once both exist simultaneously.
-function extractTentativeFeatAcquisitions(
-  tentativeAnswers: Record<string, string[]>
-): { choiceKey: string; ref: ContentRef }[] {
-  const acquisitions: { choiceKey: string; ref: ContentRef }[] = []
-
-  for (const [key, selected] of Object.entries(tentativeAnswers)) {
-    if (!key.endsWith(`:${FEAT_SELECTION_CHOICE_SET_ID}`)) continue
-    if (selected.length !== 1) continue
-    const ref = parseContentRef(selected[0]!)
-    if (ref) acquisitions.push({ choiceKey: key, ref })
-  }
-
-  return acquisitions
+  return { subclassRef, feats }
 }
 
 // ---------------------------------------------------------------------------
@@ -590,14 +649,25 @@ function isPrerequisiteSatisfied(
   )
 }
 
+// What a step needs beyond the derived state: how to route each content
+// answer, and the character's CONFIRMED state (feats and subclass) so option
+// legality counts what is already owned.
+type PlanContext = {
+  lookup: ContentChoiceLookup
+  persistedFeats: readonly StoredAcquiredFeat[]
+  persistedSubclassRef: ContentRef | null
+}
+
 async function buildLevelStep(
   worldId: string | number,
   characterId: string | number,
   previousLevel: number,
   level: number,
-  tentativeAnswers: Record<string, string[]>
-): Promise<{ ok: true; step: ProgressionLevelStep } | ProgressionFailure> {
-  const tentativeSubclassRef = extractTentativeSubclassRef(tentativeAnswers)
+  tentativeAnswers: Record<string, string[]>,
+  ctx: PlanContext
+): Promise<{ ok: true; step: ProgressionLevelStep; rejections: FeatRejections } | ProgressionFailure> {
+  const tentative = extractTentativeContentAnswers(tentativeAnswers, ctx.lookup)
+  const tentativeSubclassRef = tentative.subclassRef
   // D&D 2024 Character Rules Phase 2A.1 -- the SAME "apply the full
   // tentative set to every step" rule `tentativeSubclassRef` already
   // follows (see this file's own DEPENDENT CHOICES header), generalized to
@@ -618,7 +688,7 @@ async function buildLevelStep(
   // encodes (`parseProgressionChoiceLevel`) restores the same "gated by
   // level, cumulative once reached" semantics every other level-gated fact
   // in this system already has.
-  const tentativeFeatAcquisitions = extractTentativeFeatAcquisitions(tentativeAnswers)
+  const tentativeFeatAcquisitions = tentative.feats.map((feat) => ({ choiceKey: feat.choiceKey, ref: feat.ref }))
   const acquisitionsAtOrBefore = (maxLevel: number) => tentativeFeatAcquisitions.filter((acquisition) => {
     const acquiredAt = parseProgressionChoiceLevel(acquisition.choiceKey)
     return acquiredAt === null || acquiredAt <= maxLevel
@@ -647,19 +717,125 @@ async function buildLevelStep(
     return { ok: false, reason: 'rules-unavailable', message: 'Could not derive this level for preview' }
   }
 
+  // Empty for the overwhelming majority of levels/characters (species/
+  // background facets with no `progression`, every class besides the one real
+  // authored case) -- see this file's own header on exactly which real fact
+  // populates this and why every other real Wizard/Fighter 1-5 choice remains
+  // a documented content gap, not a bug.
+  const legal = await legalizeFeatChoices(
+    worldId, characterId, level, diffRequiredChoices(previousResult.derived, currentResult.derived),
+    ctx, tentativeAnswers, tentativeSubclassRef, tentative.feats
+  )
+  if (!legal.ok) return legal
+
   return {
     ok: true,
     step: {
       level,
       automaticConsequences: diffLevels(previousResult.derived, currentResult.derived),
-      // Empty for the overwhelming majority of levels/characters (species/
-      // background facets with no `progression`, every class besides the
-      // one real authored case) -- see this file's own header on exactly
-      // which real fact populates this and why every other real Wizard/
-      // Fighter 1-5 choice remains a documented content gap, not a bug.
-      requiredChoices: diffRequiredChoices(previousResult.derived, currentResult.derived)
-    }
+      requiredChoices: legal.choices
+    },
+    rejections: legal.rejections
   }
+}
+
+// THE preview-side legality pass for content choices. Each option is kept only
+// if featOptionVerdict accepts it against THIS character's state BEFORE the
+// acquisition at this level: not already owned anywhere in the plan,
+// prerequisites met on derived state (the same basis Confirm uses), and no
+// unsupported prerequisite. Derived state is computed once per feat choice,
+// not once per option. Confirm applies the identical predicate, so preview and
+// Confirm cannot disagree. A content choice whose selector is unknown offers
+// nothing (fail closed); subclass options pass through unchanged.
+async function legalizeFeatChoices(
+  worldId: string | number,
+  characterId: string | number,
+  level: number,
+  choices: ProgressionChoice[],
+  ctx: PlanContext,
+  tentativeAnswers: Record<string, string[]>,
+  tentativeSubclassRef: ContentRef | null,
+  tentativeFeats: readonly TentativeFeatAcquisition[]
+): Promise<{ ok: true; choices: ProgressionChoice[]; rejections: FeatRejections } | ProgressionFailure> {
+  if (!choices.some((choice) => choice.kind === 'content')) return { ok: true, choices, rejections: {} }
+  const rejections: FeatRejections = {}
+
+  const catalogue = await getWorldContentCatalogue(worldId)
+  const runtime = await getWorldRuntime(worldId)
+  const registryHas = runtime.configured && runtime.ok
+    ? (id: string) => runtime.runtime.registry.has(id)
+    : () => false
+  const entriesByKey = new Map(catalogue.feats.map((entry) => [
+    serializeContentRef({ packageId: entry.packageId, slug: entry.slug }),
+    entry
+  ]))
+  const known = [
+    ...ctx.persistedFeats.map((feat) => ({ choiceKey: feat.choiceKey, ref: feat.featRef })),
+    ...tentativeFeats.map((feat) => ({ choiceKey: feat.choiceKey, ref: feat.ref }))
+  ]
+
+  const out: ProgressionChoice[] = []
+  for (const choice of choices) {
+    if (choice.kind !== 'content') {
+      out.push(choice)
+      continue
+    }
+
+    const selector = ctx.lookup(choice.choiceSetId)
+    if (selector?.category === 'subclasses') {
+      out.push(choice)
+      continue
+    }
+    if (selector?.category !== 'feats') {
+      out.push({ ...choice, options: [], answered: false })
+      continue
+    }
+
+    const priorAcquisitions = known.filter((other) => {
+      if (other.choiceKey === choice.id) return false
+      const otherLevel = parseProgressionChoiceLevel(other.choiceKey)
+      return otherLevel === null || otherLevel < level
+    })
+    const priorDerived = await getDerivedCharacterAtLevel(
+      worldId, characterId, level, tentativeAnswers, tentativeSubclassRef ?? ctx.persistedSubclassRef, priorAcquisitions
+    )
+    if (!priorDerived.available) {
+      return {
+        ok: false,
+        reason: priorDerived.reason === 'character-not-found' ? 'character-not-found' : 'rules-unavailable',
+        message: priorDerived.reason === 'character-not-found' ? 'Character not found in this world' : priorDerived.message
+      }
+    }
+
+    const legalIds = new Set<string>()
+    for (const option of choice.options) {
+      const entry = entriesByKey.get(option.id)
+      if (!entry) continue
+      const verdict = featOptionVerdict({
+        mechanics: entry.featMechanics,
+        filter: selector.filter,
+        ownedElsewhere: known.some((other) =>
+          other.choiceKey !== choice.id && other.ref.packageId === entry.packageId && other.ref.slug === entry.slug
+        ),
+        prerequisitesMet: () => isPrerequisiteSatisfied(
+          entry.featMechanics?.prerequisiteGroups ?? [], priorDerived.derived, level, registryHas
+        )
+      })
+      if (verdict.eligible) {
+        legalIds.add(option.id)
+      } else {
+        rejections[choice.id] = { ...rejections[choice.id], [option.id]: { title: entry.title, reason: verdict.reason } }
+      }
+    }
+
+    out.push({
+      ...choice,
+      options: choice.options.filter((option) => legalIds.has(option.id)),
+      answered: choice.selected.length === choice.count && choice.selected.every((id) => legalIds.has(id))
+    })
+  }
+
+  return { ok: true, choices: out, rejections }
 }
 
 // ---------------------------------------------------------------------------
@@ -675,7 +851,7 @@ export async function planProgression(
   characterId: string | number,
   targetLevel: number,
   tentativeAnswers: Record<string, string[]> = {}
-): Promise<{ ok: true; plan: ProgressionPlan } | ProgressionFailure> {
+): Promise<{ ok: true; plan: ProgressionPlan; featRejections: FeatRejections } | ProgressionFailure> {
   if (!isValidClassLevel(targetLevel)) {
     return { ok: false, reason: 'invalid-target-level', message: 'targetLevel must be an integer from 1 to 20' }
   }
@@ -693,11 +869,19 @@ export async function planProgression(
     }
   }
 
+  const ctx: PlanContext = {
+    lookup: await loadContentChoiceLookup(worldId),
+    persistedFeats: current.state.progression.feats ?? [],
+    persistedSubclassRef: current.state.progression.classes[0]?.subclassRef ?? null
+  }
+
   const steps: ProgressionLevelStep[] = []
+  const featRejections: FeatRejections = {}
   for (let level = currentLevel + 1; level <= targetLevel; level++) {
-    const stepResult = await buildLevelStep(worldId, characterId, level - 1, level, tentativeAnswers)
+    const stepResult = await buildLevelStep(worldId, characterId, level - 1, level, tentativeAnswers, ctx)
     if (!stepResult.ok) return stepResult
     steps.push(stepResult.step)
+    Object.assign(featRejections, stepResult.rejections)
   }
 
   // A choice counts as unresolved only while it is not VALIDLY answered --
@@ -722,7 +906,8 @@ export async function planProgression(
       unresolvedChoiceIds,
       valid: unresolvedChoiceIds.length === 0,
       fingerprint: fingerprintFor(currentLevel, packageIntegrityHash, contentBindingFingerprint)
-    }
+    },
+    featRejections
   }
 }
 
@@ -787,6 +972,12 @@ export async function confirmProgression(
   const planResult = await planProgression(worldId, characterId, targetLevel, answers)
   if (!planResult.ok) return planResult
   if (!planResult.plan.valid) {
+    // A submitted feat the plan refused is named with the reason the shared
+    // predicate produced -- never a generic "unresolved" for a real illegal pick.
+    const illegalFeat = await findRefusedFeatAnswer(worldId, planResult.plan, planResult.featRejections, answers)
+    if (illegalFeat) {
+      return { ok: false, reason: 'illegal-feat-selection', message: illegalFeat }
+    }
     return {
       ok: false,
       reason: 'unresolved-choices',
@@ -837,7 +1028,7 @@ export async function confirmProgression(
   // D&D 2024 Character Rules Phase 2A.1 -- the feat counterpart of
   // `resolvedSubclassRef`, generalized to a list for the same MULTIPLE ASI
   // LEVELS reason `tentativeFeatAcquisitions` already is in `buildLevelStep`.
-  const resolvedFeatAcquisitions: { choiceKey: string; ref: ContentRef }[] = []
+  const resolvedFeatAcquisitions: { choiceKey: string; choiceSetId: string; ref: ContentRef }[] = []
   // D&D 2024 Character Rules Phase 2A.1 -- every DEFINITION-kind answer
   // alongside its own choiceSetId, kept separately from `resolvedAnswers`
   // (which only needs the flat key->selections shape for persistence) so
@@ -845,6 +1036,7 @@ export async function confirmProgression(
   // declaration without re-parsing it out of the key string.
   const resolvedDefinitionChoices: { key: string; choiceSetId: string; selected: string[] }[] = []
 
+  const lookupContent = await loadContentChoiceLookup(worldId)
   for (const step of planResult.plan.steps) {
     for (const choice of step.requiredChoices) {
       if (!choice.answered) continue
@@ -858,13 +1050,20 @@ export async function confirmProgression(
         const ref = choice.selected[0] ? parseContentRef(choice.selected[0]) : null
         if (!ref) continue
         // D&D 2024 Character Rules Phase 2A.1 -- routed by the SAME
-        // well-known-id recognition `extractTentativeFeatAcquisitions`
+        // selector-based routing in `extractTentativeContentAnswers`
         // already uses, for the identical reason (shape alone cannot tell
         // a feat pick from a subclass pick once both exist).
-        if (choice.choiceSetId === FEAT_SELECTION_CHOICE_SET_ID) {
-          resolvedFeatAcquisitions.push({ choiceKey: choice.id, ref })
-        } else {
+        const selector = lookupContent(choice.choiceSetId)
+        if (selector?.category === 'feats') {
+          resolvedFeatAcquisitions.push({ choiceKey: choice.id, choiceSetId: choice.choiceSetId, ref })
+        } else if (selector?.category === 'subclasses') {
           resolvedSubclassRef = ref
+        } else {
+          return {
+            ok: false,
+            reason: 'unresolved-choices',
+            message: `'${choice.id}' answers a content category this Rules Package does not route`
+          }
         }
         continue
       }
@@ -905,7 +1104,8 @@ export async function confirmProgression(
   // Four independent, server-authoritative checks per resolved feat answer,
   // none of which trust the client's plan-time resolution any more than the
   // subclass check above does: (1) the submitted ContentRef still resolves
-  // to a REAL, General-category feat in the CURRENT catalogue; (2)
+  // to a REAL feat in the CURRENT catalogue that the choice's own package
+  // filter accepts (Phase 2C.1: category + variant, not a hardcoded category); (2)
   // repeatability -- a non-repeatable feat cannot be acquired twice, whether
   // the conflict is against an already-confirmed feat or another feat
   // resolved in this SAME confirm call; (3) the feat's own real prerequisite
@@ -966,29 +1166,19 @@ export async function confirmProgression(
         (candidate) => candidate.packageId === acquisition.ref.packageId && candidate.slug === acquisition.ref.slug
       )
 
-      if (!catalogueEntry || catalogueEntry.featMechanics?.category !== 'general') {
+      if (!catalogueEntry) {
         return {
           ok: false,
           reason: 'illegal-feat-selection',
-          message: catalogueEntry
-            ? `'${acquisition.ref.slug}' is not a General feat and cannot be selected through ordinary ASI progression`
-            : `'${acquisition.ref.slug}' no longer exists in this World's current Content Catalogue`
+          message: `'${acquisition.ref.slug}' no longer exists in this World's current Content Catalogue`
         }
       }
 
-      const repeatable = catalogueEntry.featMechanics?.repeatable === true
-      const conflictingOwner = allAcquisitions.find(
+      const ownedElsewhere = allAcquisitions.some(
         (other) => other.choiceKey !== acquisition.choiceKey
           && other.ref.packageId === acquisition.ref.packageId
           && other.ref.slug === acquisition.ref.slug
       )
-      if (conflictingOwner && !repeatable) {
-        return {
-          ok: false,
-          reason: 'illegal-feat-selection',
-          message: `'${catalogueEntry.title}' is not repeatable and this character already has it`
-        }
-      }
 
       // Prerequisite -- checked against this character's derived state
       // using every acquisition STRICTLY BEFORE this one (by the real level
@@ -1009,12 +1199,17 @@ export async function confirmProgression(
         return { ok: false, reason: 'rules-unavailable', message: priorDerived.reason === 'character-not-found' ? 'Character not found in this world' : priorDerived.message }
       }
 
-      if (!isPrerequisiteSatisfied(catalogueEntry.featMechanics?.prerequisiteGroups ?? [], priorDerived.derived, thisLevel ?? targetLevel, registryHas)) {
-        return {
-          ok: false,
-          reason: 'illegal-feat-selection',
-          message: `This character does not meet '${catalogueEntry.title}''s prerequisite`
-        }
+      const filter = lookupContent(acquisition.choiceSetId)?.filter
+      const verdict = featOptionVerdict({
+        mechanics: catalogueEntry.featMechanics,
+        filter,
+        ownedElsewhere,
+        prerequisitesMet: () => isPrerequisiteSatisfied(
+          catalogueEntry.featMechanics?.prerequisiteGroups ?? [], priorDerived.derived, thisLevel ?? targetLevel, registryHas
+        )
+      })
+      if (!verdict.eligible) {
+        return { ok: false, reason: 'illegal-feat-selection', message: featRejectionMessage(catalogueEntry.title, verdict.reason) }
       }
 
       // RESULT CAP -- only relevant for the nested ability-distribution
@@ -1022,10 +1217,13 @@ export async function confirmProgression(
       // Ability Score Improvement). Looked up by choiceSetId, never by feat
       // name -- see app/lib/rules/types.ts's own `resultCap` header.
       const nestedAnswers = resolvedDefinitionChoices.filter((entry) => entry.key.startsWith(`feat:${acquisition.choiceKey}:`))
+      const featCap = catalogueEntry.featMechanics?.abilityCap
 
       for (const nested of nestedAnswers) {
         const choiceSet = lookupChoiceSet(nested.choiceSetId)
-        if (!choiceSet || choiceSet.effect !== 'activate-source' || typeof choiceSet.resultCap !== 'number') continue
+        if (!choiceSet || choiceSet.effect !== 'activate-source') continue
+        const cap = featCap ?? choiceSet.resultCap
+        if (typeof cap !== 'number') continue
 
         // "Before" snapshot: the full confirmed context (subclass + every
         // resolved feat acquisition, including this one) WITH this exact
@@ -1057,11 +1255,11 @@ export async function confirmProgression(
 
         for (const [valueTarget, addCount] of additions) {
           const before = findNumberIn(beforeDerived.derived, valueTarget) ?? 0
-          if (before + addCount > choiceSet.resultCap) {
+          if (before + addCount > cap) {
             return {
               ok: false,
               reason: 'illegal-feat-selection',
-              message: `This selection would raise '${valueTarget}' to ${before + addCount}, above the legal maximum of ${choiceSet.resultCap}`
+              message: `This selection would raise '${valueTarget}' to ${before + addCount}, above the legal maximum of ${cap}`
             }
           }
         }

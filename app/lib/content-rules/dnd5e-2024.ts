@@ -208,7 +208,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // of the 48 native-XPHB subclasses (4 per class) is already present
       // in Solaris's bound Content Pack with the correct `parentClassSlug`
       // -- this was a Rules-authoring gap, never a Content gap.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon']
     },
     'bard-xphb': {
       grants: [
@@ -273,7 +273,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // actually proficient in by this phase's own new `requiresActive`
       // eligibility field -- no Bard-specific skill list authored, no
       // special-cased Expertise validator.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.skill-expertise-choose-two-at-2-and-9']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.skill-expertise-choose-two-at-2-and-9', 'progression:class.epic-boon']
     },
     'cleric-xphb': {
       grants: [
@@ -305,7 +305,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // `resource:channel_divinity.standard`'s own definitions.json comment
       // for its max expression.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard', 'progression:class.epic-boon']
     },
     'druid-xphb': {
       grants: [
@@ -336,7 +336,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // `classFeatures` level 2, level-gated, same reasoning as Cleric's
       // Channel Divinity immediately above).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-wild-shape']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-wild-shape', 'progression:class.epic-boon']
     },
     'fighter-xphb': {
       grants: [
@@ -376,7 +376,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // (class-fighter.json's own `classFeatures` references, verified this
       // phase) -- authored here exactly as measured, never assumed.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable', 'progression:class.epic-boon']
     },
     'monk-xphb': {
       grants: [
@@ -407,7 +407,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // definitions.json comment -- "prefer references to existing
       // derived Values" applied literally).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-focus-points']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-focus-points', 'progression:class.epic-boon']
     },
     'paladin-xphb': {
       grants: [
@@ -453,7 +453,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // genuinely differ -- see `resource:channel_divinity.extended`'s own
       // comment).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended', 'progression:class.epic-boon']
     },
     'ranger-xphb': {
       grants: [
@@ -498,7 +498,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // you lack Expertise" at Level 9 only -- see bard-xphb's own note
       // immediately above for why no Ranger-specific skill list is
       // authored here either.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon']
     },
     'rogue-xphb': {
       grants: [
@@ -541,7 +541,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // wired into Level-Up progression; the Level-1 half remains a
       // documented Builder/creation gap, never silently merged into this
       // one Progression as if it were a single Level-6 grant of four.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent', 'progression:class.skill-expertise-choose-two-at-6']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent', 'progression:class.skill-expertise-choose-two-at-6', 'progression:class.epic-boon']
     },
     'sorcerer-xphb': {
       grants: [
@@ -578,7 +578,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // pool (this phase's own category E) -- not modeled; Long Rest's
       // full recovery is correct at every level regardless.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points', 'progression:class.epic-boon']
     },
     'warlock-xphb': {
       grants: [
@@ -606,7 +606,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon']
     },
     'wizard-xphb': {
       grants: [
@@ -672,7 +672,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: [
         'progression:class.skill-expertise',
         'progression:class.subclass-selection',
-        'progression:class.asi-standard'
+        'progression:class.asi-standard',
+        'progression:class.epic-boon'
       ]
     }
   },
@@ -807,6 +808,123 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
   // `choice:skill.proficiency`'s own `writesTo` already has with THIS
   // corpus's fully-qualified `value:skill.*.proficient` options.
   feat: {
+    // EPIC BOONS -- D&D 2024 Character Rules Phase 2C.1. All 12 native-XPHB
+    // Epic Boons (`category: 'EB'`). Each authors ONLY its ability increase:
+    // choose one listed ability, +1, cap 30 (`choice:feat.epic-boon-ability`'s
+    // own resultCap). Their other text is NOT authored and NOT structurally
+    // applied: Energy Resistance (damage-type resistance), Speed, and Truesight
+    // need vocabulary the package does not declare, and Skill's proficiency +
+    // expertise nested choices need a `requiresActive` over a same-feat grant
+    // (a new primitive). Acquisition is complete; those effects are reported as
+    // separate ENGINE_BLOCKED rows in the coverage ledger, never folded in here.
+    'boon-of-combat-prowess-xphb': { // Boon of Combat Prowess
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-dimensional-travel-xphb': { // Boon of Dimensional Travel
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-energy-resistance-xphb': { // Boon of Energy Resistance
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-fate-xphb': { // Boon of Fate
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-fortitude-xphb': { // Boon of Fortitude
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-irresistible-offense-xphb': { // Boon of Irresistible Offense
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex']
+        }
+      ]
+    },
+    'boon-of-recovery-xphb': { // Boon of Recovery
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-skill-xphb': { // Boon of Skill
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-speed-xphb': { // Boon of Speed
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-spell-recall-xphb': { // Boon of Spell Recall
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-the-night-spirit-xphb': { // Boon of the Night Spirit
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
+    'boon-of-truesight-xphb': { // Boon of Truesight
+      choices: [
+        {
+          choiceSet: 'choice:feat.epic-boon-ability',
+          count: 1,
+          from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ]
+    },
     'ability-score-improvement-xphb': { // Ability Score Improvement
       choices: [
         {

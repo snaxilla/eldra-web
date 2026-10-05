@@ -1,0 +1,1554 @@
+{
+  "_provenance": "Reduced from 5etools-src data/feats.json, source === XPHB (77 entries). Only the fields the feat mechanics resolver reads are kept (name, source, category, prerequisite, ability, repeatable). Regenerate from the dataset rather than hand-editing.",
+  "feats": [
+    {
+      "name": "Ability Score Improvement",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "amount": 2
+          },
+          "hidden": true
+        },
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "count": 2
+          },
+          "hidden": true
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "name": "Actor",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "cha": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "cha": 1
+        }
+      ]
+    },
+    {
+      "name": "Alert",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Archery",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Athlete",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "str": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Blessed Warrior",
+      "source": "XPHB",
+      "category": "FS:P",
+      "prerequisite": [
+        {
+          "otherSummary": {
+            "entry": "When Gaining the Level 2 Paladin \"Fighting Style\" Feature",
+            "entrySummary": "Special"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Blind Fighting",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Boon of Combat Prowess",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Dimensional Travel",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Energy Resistance",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Fate",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Fortitude",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Irresistible Offense",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Recovery",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Skill",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Speed",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Spell Recall",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19,
+          "spellcasting2020": true
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of the Night Spirit",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Boon of Truesight",
+      "source": "XPHB",
+      "category": "EB",
+      "prerequisite": [
+        {
+          "level": 19
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          },
+          "max": 30
+        }
+      ]
+    },
+    {
+      "name": "Charger",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "str": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chef",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "con",
+              "wis"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Crafter",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Crossbow Expert",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "dex": 1
+        }
+      ]
+    },
+    {
+      "name": "Crusher",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "con"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Defense",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Defensive Duelist",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "dex": 1
+        }
+      ]
+    },
+    {
+      "name": "Druidic Warrior",
+      "source": "XPHB",
+      "category": "FS:R",
+      "prerequisite": [
+        {
+          "otherSummary": {
+            "entry": "When Gaining the Level 2 Ranger \"Fighting Style\" Feature",
+            "entrySummary": "Special"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dual Wielder",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "str": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dueling",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Durable",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "con": 1
+        }
+      ]
+    },
+    {
+      "name": "Elemental Adept",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "spellcasting2020": true
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ],
+      "repeatable": true
+    },
+    {
+      "name": "Fey-Touched",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grappler",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "str": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Great Weapon Fighting",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Great Weapon Master",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "str": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "str": 1
+        }
+      ]
+    },
+    {
+      "name": "Healer",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Heavily Armored",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "proficiency": [
+            {
+              "armor": "medium"
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "con",
+              "str"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Heavy Armor Master",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "proficiency": [
+            {
+              "armor": "heavy"
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "con",
+              "str"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inspiring Leader",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "wis": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "cha": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Interception",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Keen Mind",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "int": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "int": 1
+        }
+      ]
+    },
+    {
+      "name": "Lightly Armored",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Lucky",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Mage Slayer",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Magic Initiate",
+      "source": "XPHB",
+      "category": "O",
+      "repeatable": true
+    },
+    {
+      "name": "Martial Weapon Training",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Medium Armor Master",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "proficiency": [
+            {
+              "armor": "medium"
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Moderately Armored",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "proficiency": [
+            {
+              "armor": "light"
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mounted Combatant",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "wis"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Musician",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Observant",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "int": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "wis": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Piercer",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Poisoner",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "dex",
+              "int"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Polearm Master",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "str": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "dex",
+              "str"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Protection",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Resilient",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ],
+            "amount": 1,
+            "entry": "Choose one ability in which you lack saving throw proficiency. Increase the chosen ability score by 1, to a maximum of 20."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ritual Caster",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "int": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "wis": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "cha": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Savage Attacker",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Sentinel",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "str": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shadow-Touched",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sharpshooter",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "dex": 1
+        }
+      ]
+    },
+    {
+      "name": "Shield Master",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "proficiency": [
+            {
+              "armor": "shield"
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "str": 1
+        }
+      ]
+    },
+    {
+      "name": "Skill Expert",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex",
+              "con",
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Skilled",
+      "source": "XPHB",
+      "category": "O",
+      "repeatable": true
+    },
+    {
+      "name": "Skulker",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "dex": 1
+        }
+      ]
+    },
+    {
+      "name": "Slasher",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Speedy",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "ability": [
+            {
+              "dex": 13
+            }
+          ]
+        },
+        {
+          "level": 4,
+          "ability": [
+            {
+              "con": 13
+            }
+          ]
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "dex",
+              "con"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Spell Sniper",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "spellcasting2020": true
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tavern Brawler",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Telekinetic",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Telepathic",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Thrown Weapon Fighting",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tough",
+      "source": "XPHB",
+      "category": "O"
+    },
+    {
+      "name": "Two-Weapon Fighting",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Unarmed Fighting",
+      "source": "XPHB",
+      "category": "FS",
+      "prerequisite": [
+        {
+          "feature": [
+            "Fighting Style"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "War Caster",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4,
+          "spellcasting2020": true
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "int",
+              "wis",
+              "cha"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Weapon Master",
+      "source": "XPHB",
+      "category": "G",
+      "prerequisite": [
+        {
+          "level": 4
+        }
+      ],
+      "ability": [
+        {
+          "choose": {
+            "from": [
+              "str",
+              "dex"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

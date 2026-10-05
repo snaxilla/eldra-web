@@ -1185,11 +1185,21 @@ export type ProgressionDefinition = DefinitionCategorization & {
 // dependency the architecture requires: Content may reference Rules
 // (RulesFacet.progression names a Definition), but the Rules Engine never
 // queries Content.
+// Package-owned restriction on a `fromContentCatalogue` choice. `category` and
+// `variants` are STRINGS here on purpose: the Rules Engine does not know what a
+// Content category or feat variant means. The owning catalogue resolver
+// interprets them against its own closed vocabulary and fails closed on any
+// value it does not recognize (an unknown category matches nothing).
+export type ContentCatalogueFilter = {
+  category: string
+  variants?: readonly string[]
+}
+
 export type ChoiceSetSelector =
   | { kind: 'explicit'; ids: DefinitionId[] }
   | { kind: 'definitionsInCategory'; category: RuleCategory }
   | { kind: 'fromContentFacet' }
-  | { kind: 'fromContentCatalogue'; category: string }
+  | { kind: 'fromContentCatalogue'; category: string; filter?: ContentCatalogueFilter }
 
 export type ChoiceSetDefinition = DefinitionCategorization & {
   id: DefinitionId

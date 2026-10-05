@@ -65,6 +65,10 @@ import {
 import { getDerivedCharacterAtLevel, type DerivedCharacter } from '../../../server/utils/character-derived'
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 import { parseContentRef, serializeContentRef } from '../../../app/lib/characters/progression-plan'
+import { normalizeStoredProgression } from '../../../app/lib/characters/progression'
+import { normalizeStoredRulesChoices } from '../../../app/lib/characters/rules-choices'
+import { resolveDnd5eFeatMechanics } from '../../../app/lib/feat-mechanics/dnd5e'
+import xphbFeats from '../../lib/feat-mechanics/fixtures/xphb-feats.json'
 import { DND5E_2024_PROGRESSION_COVERAGE } from '../../../app/lib/content-rules/dnd5e-2024-progression-coverage'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
@@ -148,7 +152,7 @@ const FEAT_CATALOGUE_ENTRIES = [
   baseEntry({
     title: 'Ability Score Improvement',
     slug: 'ability-score-improvement-xphb',
-    featMechanics: { category: 'general', repeatable: true, prerequisiteGroups: [] }
+    featMechanics: { category: 'general', variant: 'G', unsupportedPrerequisites: [], repeatable: true, prerequisiteGroups: [] }
   }),
   // SYNTHETIC PROBES, clearly labeled -- not real named 5e feats, used
   // ONLY to exercise prerequisite-filtering/repeatability behavior the
@@ -159,16 +163,32 @@ const FEAT_CATALOGUE_ENTRIES = [
     title: 'Synthetic Probe: Strength Prerequisite',
     slug: 'synthetic-str-prereq-probe',
     featMechanics: {
-      category: 'general', repeatable: false,
+      category: 'general', variant: 'G', unsupportedPrerequisites: [], repeatable: false,
       prerequisiteGroups: [[{ kind: 'ability', ability: 'str', minimum: 15 }]]
     }
   }),
   baseEntry({
     title: 'Synthetic Probe: Non-Repeatable',
     slug: 'synthetic-non-repeatable-probe',
-    featMechanics: { category: 'general', repeatable: false, prerequisiteGroups: [] }
+    featMechanics: { category: 'general', variant: 'G', unsupportedPrerequisites: [], repeatable: false, prerequisiteGroups: [] }
   })
 ]
+
+// PHASE 2C.1 -- the 12 real native-XPHB Epic Boons, built from the real corpus
+// records (tests/lib/feat-mechanics/fixtures/xphb-feats.json) through the real
+// resolver -- never hand-written mechanics. Identical in the catalogue and in
+// the blueprint, exactly as FEAT_CATALOGUE_ENTRIES above.
+const EPIC_BOON_REF = { packageId: FEAT_PACKAGE_ID, slug: 'boon-of-fortitude-xphb' }
+const EPIC_BOON_CATALOGUE = xphbFeats.feats
+  .filter((raw) => raw.category === 'EB')
+  .map((raw) => baseEntry({
+    title: raw.name,
+    slug: `${raw.name.toLowerCase().replace(/ /g, '-')}-xphb`,
+    featMechanics: resolveDnd5eFeatMechanics(raw)!
+  }))
+FEAT_CATALOGUE_ENTRIES.push(...EPIC_BOON_CATALOGUE)
+const EPIC_BOON_SLUGS = new Set(EPIC_BOON_CATALOGUE.map((entry) => entry.slug))
+const CASTER_CLASS_SLUGS = new Set(['bard-xphb', 'cleric-xphb', 'druid-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'warlock-xphb', 'wizard-xphb'])
 
 function catalogueForClass(classSlug: string) {
   const subclasses = (REAL_SUBCLASSES_BY_CLASS[classSlug] ?? []).map((slug) =>
@@ -398,6 +418,10 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
       answers[nestedKey] = level % 8 < 4
         ? ['source:asi.increase.str', 'source:asi.increase.dex']
         : ['source:asi.increase.con', 'source:asi.increase.int']
+    } else if (choiceSetId === 'choice:feat.epic-boon') {
+      // Boon of Fortitude: one ability from six, the real corpus shape.
+      answers[key] = [serializeContentRef(EPIC_BOON_REF)]
+      answers[`feat:${key}:choice:feat.epic-boon-ability`] = ['source:asi.increase.con']
     } else if (choiceSetId === 'choice:skill.expertise') {
       // `count` legal, already-proficient, NOT-YET-USED skills, filtered
       // to THIS row's own real legal `from` list (Wizard's Scholar
@@ -506,18 +530,32 @@ describe.each(ALL_12_CLASS_SLUGS)('LEVEL 1 -> 20 ACCEPTANCE -- %s', (classSlug) 
     }
   })
 
-  it('EPIC BOON -- Level 19 declares no ordinary ASI/General-Feat requirement (the real corpus\'s own Epic Boon feature is a classified gap, not silently handled as plain ASI)', async () => {
+  it('EPIC BOON -- Level 19 surfaces ONE Epic Boon choice, category-pure: every option is a real XPHB Epic Boon, never General/Origin/Fighting Style', async () => {
     const result = await planProgression(WORLD_ID, CHARACTER_ID, 20)
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    const level19 = result.plan.steps.find((s) => s.level === 19)
-    expect(level19).toBeDefined()
-    const featChoiceAt19 = level19!.requiredChoices.find((c) => c.choiceSetId === 'choice:feat.selection')
-    expect(featChoiceAt19, 'Level 19 must not declare an ordinary Feat Selection -- Epic Boon is a distinct, currently-unimplemented mechanic').toBeUndefined()
+    const level19 = result.plan.steps.find((s) => s.level === 19)!
+    expect(level19.requiredChoices.some((c) => c.choiceSetId === 'choice:feat.selection')).toBe(false)
 
-    const epicBoonEntry = DND5E_2024_PROGRESSION_COVERAGE.find((e) => e.classSlug === classSlug && e.featureName === 'Epic Boon')
-    expect(epicBoonEntry, 'Epic Boon must be explicitly classified in the ledger for this class').toBeDefined()
-    expect(epicBoonEntry!.status).not.toBe('IMPLEMENTED')
+    const boon = level19.requiredChoices.find((c) => c.choiceSetId === 'choice:feat.epic-boon')
+    expect(boon, 'Level 19 must declare the Epic Boon choice').toBeDefined()
+    expect(boon!.kind).toBe('content')
+    expect(boon!.count).toBe(1)
+    expect(boon!.options.length).toBeGreaterThan(0)
+    for (const option of boon!.options) {
+      expect(EPIC_BOON_SLUGS.has(parseContentRef(option.id)!.slug), `${option.id} is not a real Epic Boon`).toBe(true)
+    }
+
+    // Spell Recall's own real prerequisite (spellcasting) decides its legality
+    // per class -- never a category bypass, never a hardcoded class list in
+    // the option builder. Exactly the casters may see it.
+    const offersSpellRecall = boon!.options.some((o) => parseContentRef(o.id)!.slug === 'boon-of-spell-recall-xphb')
+    expect(offersSpellRecall).toBe(CASTER_CLASS_SLUGS.has(classSlug))
+
+    const epicBoonEntry = DND5E_2024_PROGRESSION_COVERAGE.find((e) => e.classSlug === classSlug && e.id === `${classSlug}:epic-boon`)
+    expect(epicBoonEntry!.status).toBe('IMPLEMENTED')
+    const effectsEntry = DND5E_2024_PROGRESSION_COVERAGE.find((e) => e.classSlug === classSlug && e.id === `${classSlug}:epic-boon-effects`)
+    expect(effectsEntry!.status).toBe('ENGINE_BLOCKED')
   })
 
   it('PLAN VALIDITY -- answering every real IMPLEMENTED choice resolves the plan to valid, and Confirm succeeds through Level 20', async () => {
@@ -551,9 +589,21 @@ describe.each(ALL_12_CLASS_SLUGS)('LEVEL 1 -> 20 ACCEPTANCE -- %s', (classSlug) 
     // feats remain owned): one `feats[]` entry per real ASI threshold this
     // class has.
     const asiThresholds = expected.filter((e) => e.choiceSetId === 'choice:feat.selection').length
-    expect(confirmResult.progression.feats ?? []).toHaveLength(asiThresholds)
-    for (const feat of confirmResult.progression.feats ?? []) {
+    const epicBoonAt19 = expected.filter((e) => e.choiceSetId === 'choice:feat.epic-boon').length
+    const feats = confirmResult.progression.feats ?? []
+    expect(feats).toHaveLength(asiThresholds + epicBoonAt19)
+    const asiFeats = feats.filter((feat) => feat.choiceKey.endsWith(':choice:feat.selection'))
+    expect(asiFeats).toHaveLength(asiThresholds)
+    for (const feat of asiFeats) {
       expect(feat.featRef).toEqual(ASI_FEAT_REF)
+    }
+    // PHASE 2C.1 -- the Epic Boon persists through the SAME canonical
+    // progression.feats[] list, under its own real Level-19 choice key.
+    if (epicBoonAt19) {
+      expect(feats).toContainEqual({
+        featRef: EPIC_BOON_REF,
+        choiceKey: progressionChoiceKey('class', 19, 'choice:feat.epic-boon')
+      })
     }
   })
 
@@ -753,15 +803,10 @@ describe('FEAT MECHANICS -- prerequisite filtering and repeatability (synthetic 
     expect(planResult.ok).toBe(true)
     if (!planResult.ok) return
 
-    // Caught even earlier than Confirm's own ownership check: the real
-    // option-resolution logic (character-derived.ts's own `ownedFeatRefs`)
-    // already excludes a non-repeatable feat already owned elsewhere from
-    // the LEGAL OPTIONS of a later feat-selection choice, so the Level 6
-    // choice reads `answered: false` (the submitted answer is no longer
-    // among its own options) and the plan itself is invalid -- Confirm
-    // never even reaches its own `illegal-feat-selection` check for this
-    // case. A stricter, earlier rejection than this test originally
-    // assumed, verified by reading the real result rather than guessing.
+    // The shared predicate (featOptionVerdict) refuses the already-owned
+    // feat at PREVIEW, so the Level 6 choice reads `answered: false` and the
+    // plan is invalid. Confirm then names the refusal with its real reason
+    // (already owned) rather than reporting a generic unresolved choice.
     const level6 = planResult.plan.steps.find((s) => s.level === 6)!
     const secondChoice = level6.requiredChoices.find((c) => c.id === secondKey)!
     expect(secondChoice.answered).toBe(false)
@@ -771,7 +816,8 @@ describe('FEAT MECHANICS -- prerequisite filtering and repeatability (synthetic 
     const confirmResult = await confirmProgression(WORLD_ID, CHARACTER_ID, 6, planResult.plan.fingerprint, answers)
     expect(confirmResult.ok).toBe(false)
     if (confirmResult.ok) return
-    expect(confirmResult.reason).toBe('unresolved-choices')
+    expect(confirmResult.reason).toBe('illegal-feat-selection')
+    expect(confirmResult.message).toContain('not repeatable and this character already has it')
   })
 
   it('the SAME repeatable feat (Ability Score Improvement) CAN be legally selected at two different ASI thresholds', async () => {
@@ -805,7 +851,7 @@ describe('FEAT MECHANICS -- prerequisite filtering and repeatability (synthetic 
 describe('BOB ACCEPTANCE -- Barbarian, Level 1 -> 20, the exact browser-visible sequence', () => {
   beforeEach(() => useClass('barbarian-xphb'))
 
-  it('produces the real SHOULD-APPEAR sequence: Subclass at L3, Ability Score Improvement at L4/8/12/16, nothing else', async () => {
+  it('produces the real SHOULD-APPEAR sequence: Subclass at L3, Ability Score Improvement at L4/8/12/16, Epic Boon at L19, nothing else', async () => {
     const result = await planProgression(WORLD_ID, CHARACTER_ID, 20)
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -819,7 +865,8 @@ describe('BOB ACCEPTANCE -- Barbarian, Level 1 -> 20, the exact browser-visible 
       { level: 4, choiceSetIds: ['choice:feat.selection'] },
       { level: 8, choiceSetIds: ['choice:feat.selection'] },
       { level: 12, choiceSetIds: ['choice:feat.selection'] },
-      { level: 16, choiceSetIds: ['choice:feat.selection'] }
+      { level: 16, choiceSetIds: ['choice:feat.selection'] },
+      { level: 19, choiceSetIds: ['choice:feat.epic-boon'] }
     ])
   })
 
@@ -831,5 +878,282 @@ describe('BOB ACCEPTANCE -- Barbarian, Level 1 -> 20, the exact browser-visible 
     for (const entry of blocked) {
       expect(entry.blockerReason, `${entry.featureName} must have a stated blocker reason`).toBeTruthy()
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PHASE 2C.1 -- EPIC BOON AUTHORITY AT CONFIRM. Each case runs the real
+// planProgression/confirmProgression pipeline through Level 19, so the
+// category filter, the shared legality predicate, the nested ability choice,
+// and the resultCap are all exercised exactly as the browser would reach them.
+// ---------------------------------------------------------------------------
+
+// Replaces only the ability scores on the otherwise-real blueprint. Used to put
+// a character exactly at the cap so an Epic Boon's +1 must be refused.
+function withAbilityScores(scores: Record<string, number>) {
+  const base = assembleCharacterMock.getMockImplementation()!
+  assembleCharacterMock.mockImplementation(async (...args: unknown[]) => {
+    const result = await (base as (...a: unknown[]) => Promise<any>)(...args)
+    if (!result.available) return result
+    return {
+      ...result,
+      blueprint: {
+        ...result.blueprint,
+        abilityScores: {
+          ...result.blueprint.abilityScores,
+          scores: { ...result.blueprint.abilityScores.scores, ...scores }
+        }
+      }
+    }
+  })
+}
+
+// Every required answer up to and including Level 19, EXCEPT the Epic Boon
+// itself, which each case supplies explicitly.
+function answersThrough19Without(classSlug: string, epicBoonKey: string, expected: ExpectedChoice[]) {
+  const answers = legalAnswersFor(expected.filter((e) => e.level <= 19), REAL_SUBCLASSES_BY_CLASS[classSlug]![0]!, classSlug)
+  delete answers[epicBoonKey]
+  delete answers[`feat:${epicBoonKey}:choice:feat.epic-boon-ability`]
+  return answers
+}
+
+const BOON_KEY = progressionChoiceKey('class', 19, 'choice:feat.epic-boon')
+const ABILITY_KEY = `feat:${BOON_KEY}:choice:feat.epic-boon-ability`
+const boonRef = (slug: string) => ({ packageId: FEAT_PACKAGE_ID, slug })
+
+describe('EPIC BOON -- crafted, nested, and capped answers at Confirm (Barbarian)', () => {
+  const classSlug = 'barbarian-xphb'
+  const expected = expectedImplementedChoices(classSlug, loadRealDefinitions())
+  beforeEach(() => useClass(classSlug))
+
+  it('a crafted GENERAL feat as the Epic Boon answer is rejected at Confirm, naming the category mismatch', async () => {
+    const answers = { ...answersThrough19Without(classSlug, BOON_KEY, expected), [BOON_KEY]: [serializeContentRef(ASI_FEAT_REF)] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 19, answers)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.plan.valid).toBe(false)
+
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 19, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(result.message).toContain('is not a legal option for this choice')
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+  })
+
+  it('Spell Recall is refused for a non-caster: crafted as the answer, rejected for its real spellcasting prerequisite', async () => {
+    const answers = { ...answersThrough19Without(classSlug, BOON_KEY, expected), [BOON_KEY]: [serializeContentRef(boonRef('boon-of-spell-recall-xphb'))] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 19, answers)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 19, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(result.message).toContain('does not meet')
+  })
+
+  it('a legal Boon of Fortitude with its nested ability (con) confirms, persists through progression.feats[], and reload-style re-plan keeps it owned', async () => {
+    const answers = {
+      ...answersThrough19Without(classSlug, BOON_KEY, expected),
+      [BOON_KEY]: [serializeContentRef(boonRef('boon-of-fortitude-xphb'))],
+      [ABILITY_KEY]: ['source:asi.increase.con']
+    }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 19, answers)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    expect(plan.plan.valid).toBe(true)
+
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 19, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(true)
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith(CHARACTER_ID, expect.objectContaining({
+      feats: expect.arrayContaining([{ featRef: boonRef('boon-of-fortitude-xphb'), choiceKey: BOON_KEY }])
+    }))
+  })
+
+  it('Boon of Irresistible Offense restricts its ability to str/dex: a con answer is not an offered option and does not confirm', async () => {
+    const answers = {
+      ...answersThrough19Without(classSlug, BOON_KEY, expected),
+      [BOON_KEY]: [serializeContentRef(boonRef('boon-of-irresistible-offense-xphb'))],
+      [ABILITY_KEY]: ['source:asi.increase.con']
+    }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 19, answers)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+    const nested = plan.plan.steps.find((s) => s.level === 19)!.requiredChoices.find((c) => c.id === ABILITY_KEY)!
+    expect(nested.options.map((o) => o.id).sort()).toEqual(['source:asi.increase.dex', 'source:asi.increase.str'])
+    expect(plan.plan.valid).toBe(false)
+  })
+
+  it('the Epic Boon cap (30, parsed from the corpus) is enforced at Confirm: a character already at 30 cannot be raised', async () => {
+    withAbilityScores({ str: 30 })
+    // Route every ASI-tier distribution to CON/INT so ONLY the Epic Boon's own
+    // increase can reach the cap -- the default STR/DEX distribution would
+    // otherwise (correctly) trip the ASI cap of 20 first and mask this check.
+    const answers: Record<string, string[]> = {
+      ...answersThrough19Without(classSlug, BOON_KEY, expected),
+      [BOON_KEY]: [serializeContentRef(boonRef('boon-of-fortitude-xphb'))],
+      [ABILITY_KEY]: ['source:asi.increase.str']
+    }
+    for (const key of Object.keys(answers)) {
+      if (key.startsWith('feat:') && key.endsWith(':choice:feat.asi-ability-increase')) {
+        answers[key] = ['source:asi.increase.con', 'source:asi.increase.int']
+      }
+    }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 19, answers)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 19, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(result.message).toBe("This selection would raise 'value:ability.str' to 31, above the legal maximum of 30")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PHASE 2C.1 CLOSURE -- PERSIST -> RELOAD -> DERIVE. Not the tentative Preview
+// state: a STORE stands in for Directus. Confirm's saves are JSON round-tripped
+// (so only what a real store would keep survives), every read is normalized by
+// the REAL normalizers, and the assembler builds the blueprint from the store
+// ALONE on a fresh read (no tentative arguments). A fresh derived read is
+// therefore exactly what a player's next page load sees.
+// ---------------------------------------------------------------------------
+function findValue(derived: DerivedCharacter, id: string): number | null {
+  for (const entries of Object.values(derived.byCategory)) {
+    const entry = entries?.find((candidate) => candidate.id === id)
+    if (entry) return typeof entry.value === 'number' ? entry.value : null
+  }
+  return null
+}
+
+describe('EPIC BOON -- persist -> fresh reload -> derive (store-backed, real normalizers)', () => {
+  const classSlug = 'barbarian-xphb'
+  const expected = expectedImplementedChoices(classSlug, loadRealDefinitions())
+  // Wisdom is the Boon's ability in every case below. The legal ASI-tier
+  // distributions only ever touch STR/DEX and CON/INT, so Wisdom's derived value
+  // is exactly the base plus whatever the Epic Boon itself contributes.
+  let store: { progression: unknown; rules: unknown }
+  let baseWis: number
+
+  beforeEach(() => {
+    useClass(classSlug)
+    store = { progression: null, rules: null }
+    baseWis = 12
+    saveCharacterProgressionMock.mockImplementation(async (_id: unknown, progression: unknown) => {
+      store.progression = JSON.parse(JSON.stringify(progression))
+    })
+    saveCharacterRulesChoicesMock.mockImplementation(async (_id: unknown, choices: unknown) => {
+      store.rules = JSON.parse(JSON.stringify(choices))
+    })
+    loadCharacterRulesChoicesMock.mockImplementation(async () => normalizeStoredRulesChoices(store.rules))
+    assembleCharacterMock.mockImplementation(async (_w: unknown, _c: unknown, _sub: unknown, tentativeFeats?: readonly { choiceKey: string, ref: { packageId: string, slug: string } }[]) => {
+      // Real merge semantics: persisted acquisitions, a tentative one winning
+      // on the same choiceKey. A fresh read passes no tentative list at all.
+      const persisted = normalizeStoredProgression(store.progression)
+      const acquisitions = new Map<string, { choiceKey: string, ref: { packageId: string, slug: string } }>()
+      for (const feat of persisted?.feats ?? []) acquisitions.set(feat.choiceKey, { choiceKey: feat.choiceKey, ref: feat.featRef })
+      for (const feat of tentativeFeats ?? []) acquisitions.set(feat.choiceKey, feat)
+
+      const base = blueprintForClass(classSlug, [...acquisitions.values()])
+      const stored = normalizeStoredRulesChoices(store.rules)
+      return {
+        available: true,
+        blueprint: {
+          ...base,
+          abilityScores: { ...base.abilityScores, scores: { ...base.abilityScores.scores, wis: baseWis } },
+          progression: persisted ?? base.progression,
+          rulesChoices: { selections: { ...base.rulesChoices.selections, ...(stored?.selections ?? {}) } }
+        }
+      }
+    })
+  })
+
+  // The base ability block is the persisted scores; a Boon must add to it, never
+  // rewrite it. Reads the derived value with NO acquisition at all.
+  async function freshWisdom(level: number): Promise<number | null> {
+    const fresh = await getDerivedCharacterAtLevel(WORLD_ID, CHARACTER_ID, level)
+    expect(fresh.available).toBe(true)
+    if (!fresh.available) return null
+    return findValue(fresh.derived, 'value:ability.wis')
+  }
+
+  async function confirmBoon(boonSlug: string, abilitySource: string) {
+    const answers = {
+      ...answersThrough19Without(classSlug, BOON_KEY, expected),
+      [BOON_KEY]: [serializeContentRef(boonRef(boonSlug))],
+      [ABILITY_KEY]: [abilitySource]
+    }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 19, answers)
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) throw new Error('plan failed')
+    return { answers, result: await confirmProgression(WORLD_ID, CHARACTER_ID, 19, plan.plan.fingerprint, answers) }
+  }
+
+  it('control: before any Boon, a fresh read derives the persisted base Wisdom (12)', async () => {
+    expect(await freshWisdom(19)).toBe(12)
+    expect(store.progression).toBeNull()
+  })
+
+  it('persisted feat record and nested answer survive a fresh read, and the Boon derives its +1 on Wisdom', async () => {
+    const { result } = await confirmBoon('boon-of-fortitude-xphb', 'source:asi.increase.wis')
+    expect(result.ok).toBe(true)
+
+    // 1. Persisted through progression.feats[] (the canonical ownership list).
+    expect(store.progression).toMatchObject({
+      feats: expect.arrayContaining([{ featRef: boonRef('boon-of-fortitude-xphb'), choiceKey: BOON_KEY }])
+    })
+    // 2. The nested answer persisted through rules_choices.
+    expect((store.rules as { selections: Record<string, string[]> }).selections[ABILITY_KEY])
+      .toEqual(['source:asi.increase.wis'])
+
+    // 3. A FRESH read (no tentative state at all): the Boon resolves again...
+    const fresh = await getDerivedCharacterAtLevel(WORLD_ID, CHARACTER_ID, 19)
+    expect(fresh.available).toBe(true)
+    if (!fresh.available) return
+    const boonChoice = fresh.derived.choices.find((c) => c.key === BOON_KEY)
+    expect(boonChoice?.selected).toEqual([serializeContentRef(boonRef('boon-of-fortitude-xphb'))])
+    expect(boonChoice?.answered).toBe(true)
+    // 4. ...and its nested ability choice resolves again, from the persisted answer.
+    const nested = fresh.derived.choices.find((c) => c.key === ABILITY_KEY)
+    expect(nested?.selected).toEqual(['source:asi.increase.wis'])
+    expect(nested?.answered).toBe(true)
+
+    // 5. Derived ability = base + 1. The base is unchanged (still 12 in the store's
+    //    persisted scores), and the increase came from the Boon's own facet.
+    expect(await freshWisdom(19)).toBe(13)
+    expect(baseWis).toBe(12)
+  })
+
+  it('cap authority on a fresh read: a legal increase that lands exactly on 30 derives 30, never clamped', async () => {
+    baseWis = 29
+    const { result } = await confirmBoon('boon-of-fortitude-xphb', 'source:asi.increase.wis')
+    expect(result.ok).toBe(true)
+    expect(await freshWisdom(19)).toBe(30)
+  })
+
+  it('cap authority on a fresh read: a character already at 30 is refused at Confirm and nothing persists', async () => {
+    baseWis = 30
+    const { result } = await confirmBoon('boon-of-fortitude-xphb', 'source:asi.increase.wis')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(store.progression).toBeNull()
+    expect(await freshWisdom(19)).toBe(30)
+  })
+
+  it('choice identity: the Level-19 acquisition key and the nested key are stable across confirm and reload', async () => {
+    expect(BOON_KEY).toBe('class:progression:19:choice:feat.epic-boon')
+    expect(ABILITY_KEY).toBe(`feat:${BOON_KEY}:choice:feat.epic-boon-ability`)
+    await confirmBoon('boon-of-fortitude-xphb', 'source:asi.increase.wis')
+
+    // The key written at Confirm is the key a fresh read finds, byte for byte.
+    const persistedKeys = (store.progression as { feats: { choiceKey: string }[] }).feats.map((f) => f.choiceKey)
+    expect(persistedKeys).toContain(BOON_KEY)
+    const fresh = await getDerivedCharacterAtLevel(WORLD_ID, CHARACTER_ID, 19)
+    if (!fresh.available) throw new Error('fresh read unavailable')
+    expect(fresh.derived.choices.map((c) => c.key)).toEqual(expect.arrayContaining([BOON_KEY, ABILITY_KEY]))
   })
 })

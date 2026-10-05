@@ -15,7 +15,8 @@ import type {
   CanonicalFeatMechanics,
   FeatAbilityIncrease,
   FeatCategory,
-  FeatPrerequisite
+  FeatPrerequisite,
+  FeatVariant
 } from './types'
 
 const CATEGORY_MAP: Record<string, FeatCategory> = {
@@ -32,18 +33,47 @@ function resolveCategory(raw: unknown): FeatCategory | null {
   return CATEGORY_MAP[raw] ?? null
 }
 
-function resolvePrerequisiteGroups(raw: unknown): FeatPrerequisite[][] {
-  if (!Array.isArray(raw)) return []
+// The raw key IS the variant identity (see types.ts's FeatVariant header).
+// Only the six keys the corpus contains are accepted; anything else resolves
+// the whole feat to null, the same fail-closed posture as an unknown category.
+function resolveVariant(raw: unknown): FeatVariant | null {
+  if (raw === 'G' || raw === 'O' || raw === 'FS' || raw === 'FS:P' || raw === 'FS:R' || raw === 'EB') return raw
+  return null
+}
 
-  const groups: FeatPrerequisite[][] = []
+// Prerequisite keys this engine can evaluate. Anything else on a group is
+// reported as unsupported rather than dropped (see CanonicalFeatMechanics).
+const SUPPORTED_PREREQUISITE_KEYS = new Set(['level', 'ability', 'proficiency', 'spellcasting2020'])
+
+type ResolvedPrerequisites = {
+  groups: FeatPrerequisite[][]
+  unsupported: string[]
+}
+
+function resolvePrerequisiteGroups(raw: unknown): ResolvedPrerequisites {
+  const result: ResolvedPrerequisites = { groups: [], unsupported: [] }
+  if (!Array.isArray(raw)) return result
+
+  const reportUnsupported = (key: string) => {
+    if (!result.unsupported.includes(key)) result.unsupported.push(key)
+  }
 
   for (const group of raw) {
     if (!group || typeof group !== 'object') continue
     const record = group as Record<string, unknown>
     const requirements: FeatPrerequisite[] = []
 
+    // Fail closed on any key this resolver has no primitive for. A key that
+    // is recognized but malformed is also unsupported, never silently
+    // ignored -- ignoring it would read as "no prerequisite".
+    for (const key of Object.keys(record)) {
+      if (!SUPPORTED_PREREQUISITE_KEYS.has(key)) reportUnsupported(key)
+    }
+
     if (typeof record.level === 'number') {
       requirements.push({ kind: 'level', level: record.level })
+    } else if (record.level !== undefined) {
+      reportUnsupported('level')
     }
 
     // Real shape: `ability: [{ <abilityKey>: <minimum> }]` -- a
@@ -52,13 +82,15 @@ function resolvePrerequisiteGroups(raw: unknown): FeatPrerequisite[][] {
     // shape when an ability minimum applies at all; never modeled as
     // anything richer than that, matching "do not invent shapes absent from
     // the corpus").
-    if (Array.isArray(record.ability) && record.ability.length) {
-      const abilityEntry = record.ability[0]
-      if (abilityEntry && typeof abilityEntry === 'object') {
-        const [abilityKey, minimum] = Object.entries(abilityEntry as Record<string, unknown>)[0] ?? []
-        if (typeof abilityKey === 'string' && typeof minimum === 'number') {
-          requirements.push({ kind: 'ability', ability: abilityKey, minimum })
-        }
+    if (record.ability !== undefined) {
+      const abilityEntry = Array.isArray(record.ability) ? record.ability[0] : undefined
+      const pair = abilityEntry && typeof abilityEntry === 'object'
+        ? Object.entries(abilityEntry as Record<string, unknown>)[0]
+        : undefined
+      if (pair && typeof pair[0] === 'string' && typeof pair[1] === 'number') {
+        requirements.push({ kind: 'ability', ability: pair[0], minimum: pair[1] })
+      } else {
+        reportUnsupported('ability')
       }
     }
 
@@ -66,24 +98,30 @@ function resolvePrerequisiteGroups(raw: unknown): FeatPrerequisite[][] {
     // (Heavily Armored/Heavy Armor Master/Moderately Armored/Medium Armor
     // Master) or `[{ armor: 'shield' }]` (Shield Master) -- the only
     // `proficiency` shape the real corpus contains.
-    if (Array.isArray(record.proficiency) && record.proficiency.length) {
-      const profEntry = record.proficiency[0]
+    if (record.proficiency !== undefined) {
+      const profEntry = Array.isArray(record.proficiency) ? record.proficiency[0] : undefined
       const tier = profEntry && typeof profEntry === 'object'
         ? (profEntry as Record<string, unknown>).armor
         : undefined
       if (tier === 'light' || tier === 'medium' || tier === 'heavy' || tier === 'shield') {
         requirements.push({ kind: 'armor-proficiency', tier })
+      } else {
+        reportUnsupported('proficiency')
       }
     }
 
     if (record.spellcasting2020 === true) {
       requirements.push({ kind: 'spellcasting' })
+    } else if (record.spellcasting2020 !== undefined) {
+      reportUnsupported('spellcasting2020')
     }
 
-    if (requirements.length) groups.push(requirements)
+    // An OR-group that carries no requirement at all is still reported
+    // above when it had unknown keys; a genuinely empty group is skipped.
+    if (requirements.length) result.groups.push(requirements)
   }
 
-  return groups
+  return result
 }
 
 // The real `ability` field's three shapes -- see types.ts's own
@@ -115,7 +153,11 @@ function resolveAbilityIncrease(raw: unknown): FeatAbilityIncrease | undefined {
   const entry = raw[0] as Record<string, unknown>
 
   // Fixed: `[{ <abilityKey>: 1 }]` -- e.g. Crossbow Expert's `[{dex: 1}]`.
-  const fixedEntries = Object.entries(entry).filter(([key]) => key !== 'choose' && key !== 'hidden')
+  // `max` is the ability CAP that rides alongside a `choose` (Epic Boon:
+  // `[{ choose: {...}, max: 30 }]`), never an ability key -- reading it as one
+  // produced `fixed: 'max'`, the defect this branch used to have. Only a
+  // numeric value under a real ability key can be a fixed increase.
+  const fixedEntries = Object.entries(entry).filter(([key]) => key !== 'choose' && key !== 'hidden' && key !== 'max')
   if (fixedEntries.length === 1) {
     const [abilityKey, amount] = fixedEntries[0]!
     if (typeof amount === 'number' && amount > 0) {
@@ -133,17 +175,32 @@ function resolveAbilityIncrease(raw: unknown): FeatAbilityIncrease | undefined {
   return undefined
 }
 
+// The corpus cap on an ability increase (`max` on the first `ability` entry).
+// Absent for every General and Origin feat; 30 for every Epic Boon.
+function resolveAbilityCap(raw: unknown): number | undefined {
+  if (!Array.isArray(raw) || !raw.length) return undefined
+  const entry = raw[0] as Record<string, unknown> | undefined
+  return entry && typeof entry.max === 'number' ? entry.max : undefined
+}
+
 export function resolveDnd5eFeatMechanics(data: unknown): CanonicalFeatMechanics | null {
   if (!data || typeof data !== 'object') return null
   const record = data as Record<string, unknown>
 
   const category = resolveCategory(record.category)
-  if (!category) return null
+  const variant = resolveVariant(record.category)
+  if (!category || !variant) return null
+
+  const prerequisites = resolvePrerequisiteGroups(record.prerequisite)
+  const abilityCap = resolveAbilityCap(record.ability)
 
   return {
     category,
+    variant,
     repeatable: record.repeatable === true,
-    prerequisiteGroups: resolvePrerequisiteGroups(record.prerequisite),
-    abilityIncrease: resolveAbilityIncrease(record.ability)
+    prerequisiteGroups: prerequisites.groups,
+    unsupportedPrerequisites: prerequisites.unsupported,
+    abilityIncrease: resolveAbilityIncrease(record.ability),
+    ...(abilityCap !== undefined ? { abilityCap } : {})
   }
 }

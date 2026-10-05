@@ -59,9 +59,13 @@ import {
   type AbilityScores
 } from '~/lib/characters/ability-scores'
 import {
+  resolveCreationChoices,
+  type CreationChoicePresentation,
+  type CreationSlotInput
+} from '~/lib/characters/creation-choice-eligibility'
+import {
   emptyStoredRulesChoices,
   selectionsFor,
-  toResolvableChoice,
   validateChoiceSelection,
   type ResolvableChoice,
   type StoredRulesChoices
@@ -266,19 +270,27 @@ export function hasAmbiguousTitles(options: readonly BuilderCatalogueEntry[]): b
 // the Class and this list changes with it, which is what makes "changing the
 // Class changes the available choices" true by construction rather than by
 // an invalidation step someone has to remember to run.
+// Every creation choice the three selected slots declare, judged by the SAME
+// shared rule the save route applies (app/lib/characters/
+// creation-choice-eligibility.ts). The draft is passed whole so direct grants
+// from ALL three slots are visible to every choice -- never only the slot
+// that happens to render first.
+export function creationChoicePresentation(draft: CharacterBuilderDraft): CreationChoicePresentation[] {
+  const slots: CreationSlotInput[] = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
+  return resolveCreationChoices(slots, draft.choices.selections)
+}
+
+// The question as the rest of the Builder reads it: options are only the
+// ELIGIBLE ones, and the selection is the effective one. Callers that need to
+// SHOW unavailable options read creationChoicePresentation instead.
 export function declaredChoices(draft: CharacterBuilderDraft): ResolvableChoice[] {
-  const out: ResolvableChoice[] = []
-
-  for (const key of CHOICE_KEYS) {
-    const facet = draft[key]?.rulesFacet
-    if (!facet?.choices) continue
-
-    for (const choice of facet.choices) {
-      out.push(toResolvableChoice(key, choice))
-    }
-  }
-
-  return out
+  return creationChoicePresentation(draft).map((presentation) => ({
+    key: presentation.key,
+    slot: presentation.slot,
+    choiceSetId: presentation.choiceSetId,
+    count: presentation.count,
+    options: presentation.offered.filter((option) => option.eligible).map((option) => option.value)
+  }))
 }
 
 export function choiceSelections(draft: CharacterBuilderDraft, key: string): string[] {
@@ -316,28 +328,34 @@ export function setChoiceSelections(
 // consider itself full and DISABLE every option the new Class actually
 // offers -- a player unable to choose anything, with no visible reason.
 export function pruneChoices(draft: CharacterBuilderDraft): void {
-  const live = new Map(declaredChoices(draft).map((choice) => [choice.key, choice]))
+  const presentations = creationChoicePresentation(draft)
+  const live = new Set(presentations.map((presentation) => presentation.key))
 
   for (const key of Object.keys(draft.choices.selections)) {
-    const choice = live.get(key)
+    if (!live.has(key)) delete draft.choices.selections[key]
+  }
 
-    if (!choice) {
-      delete draft.choices.selections[key]
-      continue
-    }
-
-    draft.choices.selections[key] = (draft.choices.selections[key] ?? [])
-      .filter((option) => choice.options.includes(option))
+  // Writes back the EFFECTIVE selection -- a stale answer that the current
+  // grants or sibling answers have made illegal is removed from the draft
+  // itself, not merely hidden, so it can never be submitted. Only a CHANGED
+  // answer is written: this runs on mount and on every slot change, and a
+  // clean draft must not be rewritten with an equal-but-fresh array each time.
+  for (const presentation of presentations) {
+    const current = draft.choices.selections[presentation.key] ?? []
+    if (sameSelection(current, presentation.selected)) continue
+    draft.choices.selections[presentation.key] = [...presentation.selected]
   }
 }
 
-// True when every declared question is validly answered. Vacuously true when
-// nothing declares a choice -- a World whose content carries no facets has
-// no proficiency step to complete, and must not be blocked by one.
+function sameSelection(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+// True when every declared question is validly answered by ELIGIBLE answers.
+// Vacuously true when nothing declares a choice -- a World whose content
+// carries no facets has no proficiency step to complete.
 export function isProficiencyStepComplete(draft: CharacterBuilderDraft): boolean {
-  return declaredChoices(draft).every(
-    (choice) => validateChoiceSelection(choice, choiceSelections(draft, choice.key)).ok
-  )
+  return creationChoicePresentation(draft).every((presentation) => presentation.answered)
 }
 
 export function isChoiceComplete(draft: CharacterBuilderDraft, key: BuilderChoiceKey): boolean {
@@ -374,11 +392,15 @@ export function missingRequirements(draft: CharacterBuilderDraft): string[] {
   for (const key of CHOICE_KEYS) {
     if (!isChoiceComplete(draft, key)) missing.push(`Choose a ${STEP_LABELS[key]}.`)
   }
-  for (const choice of declaredChoices(draft)) {
-    const validation = validateChoiceSelection(choice, choiceSelections(draft, choice.key))
-    if (!validation.ok) {
-      missing.push(`${STEP_LABELS[choice.slot as BuilderChoiceKey] ?? choice.slot}: ${validation.reason}`)
-    }
+  for (const presentation of creationChoicePresentation(draft)) {
+    if (presentation.answered) continue
+    const eligible = presentation.offered.filter((option) => option.eligible).map((option) => option.value)
+    const validation = validateChoiceSelection(
+      { key: presentation.key, slot: presentation.slot, choiceSetId: presentation.choiceSetId, count: presentation.count, options: eligible, distinct: true },
+      presentation.selected
+    )
+    const reason = validation.ok ? 'Choose your options.' : validation.reason
+    missing.push(`${STEP_LABELS[presentation.slot as BuilderChoiceKey] ?? presentation.slot}: ${reason}`)
   }
   if (!isAbilityStepComplete(draft)) missing.push('Finish assigning ability scores.')
   return missing

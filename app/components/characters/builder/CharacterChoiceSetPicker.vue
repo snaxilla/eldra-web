@@ -39,10 +39,20 @@
 // you use it.
 
 import type { ResolvableChoice } from '~/lib/characters/rules-choices'
+import {
+  nextSelectionAfterToggle,
+  type OfferedOption
+} from '~/lib/characters/creation-choice-eligibility'
 
+// `offered` -- when given, every option the content offers, each annotated
+// eligible/unavailable with a reason. An unavailable option stays visible,
+// disabled, and explained, never silently removed. `choice.options` alone
+// (the proficiencies page, for an existing character) is treated as all
+// eligible, which is what the bridge already filtered it to.
 const props = defineProps<{
   choice: ResolvableChoice
   selected: readonly string[]
+  offered?: readonly OfferedOption[]
   prompt?: string
   optionLabels?: Record<string, string>
   // What this question belongs to ("Class", "Species") -- rendered so a
@@ -52,18 +62,32 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:selected': [string[]] }>()
 
+const displayed = computed<readonly OfferedOption[]>(() =>
+  props.offered ?? props.choice.options.map((value) => ({ value, eligible: true }))
+)
+
 const remaining = computed(() => props.choice.count - props.selected.length)
-const atLimit = computed(() => remaining.value <= 0)
 const complete = computed(() => props.selected.length === props.choice.count)
 
 function isSelected(option: string): boolean {
   return props.selected.includes(option)
 }
 
-// Disabled only when the limit is reached AND this option is not already
-// one of the picks -- see the header.
+function optionFor(option: string): OfferedOption | undefined {
+  return displayed.value.find((candidate) => candidate.value === option)
+}
+
+// Disabled when unavailable (already acquired), or when the limit is reached
+// and this option is not already one of the picks -- see the header.
 function isDisabled(option: string): boolean {
-  return atLimit.value && !isSelected(option)
+  const offered = optionFor(option)
+  if (offered && !offered.eligible) return true
+  return remaining.value <= 0 && !isSelected(option)
+}
+
+function reasonFor(option: string): string | undefined {
+  const offered = optionFor(option)
+  return offered && !offered.eligible ? offered.reason : undefined
 }
 
 function labelFor(option: string): string {
@@ -73,14 +97,11 @@ function labelFor(option: string): string {
 }
 
 function toggle(option: string) {
-  if (isSelected(option)) {
-    emit('update:selected', props.selected.filter((item) => item !== option))
-    return
-  }
-
-  if (atLimit.value) return
-
-  emit('update:selected', [...props.selected, option])
+  emit('update:selected', nextSelectionAfterToggle({
+    selected: props.selected,
+    count: props.choice.count,
+    offered: displayed.value
+  }, option))
 }
 </script>
 
@@ -116,7 +137,7 @@ function toggle(option: string) {
     </div>
 
     <p
-      v-if="!choice.options.length"
+      v-if="!displayed.length"
       class="mt-3 text-xs text-[#9f9278]"
     >
       This choice offers no options, so there is nothing to pick.
@@ -127,14 +148,14 @@ function toggle(option: string) {
       class="mt-3 grid gap-2 sm:grid-cols-2"
     >
       <label
-        v-for="option in choice.options"
-        :key="option"
+        v-for="offered in displayed"
+        :key="offered.value"
         class="flex min-h-14 cursor-pointer items-center gap-3 rounded-none border px-3 py-2 transition-colors"
         :class="[
-          isSelected(option)
+          isSelected(offered.value)
             ? 'border-[rgba(201,164,90,0.65)] bg-[rgba(201,164,90,0.12)]'
             : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.55)]',
-          isDisabled(option)
+          isDisabled(offered.value)
             ? 'cursor-not-allowed opacity-45'
             : 'hover:border-[rgba(201,164,90,0.45)]'
         ]"
@@ -142,12 +163,16 @@ function toggle(option: string) {
         <input
           type="checkbox"
           class="size-5 shrink-0 accent-[#c9a45a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(201,164,90,0.65)]"
-          :checked="isSelected(option)"
-          :disabled="isDisabled(option)"
-          @change="toggle(option)"
+          :checked="isSelected(offered.value)"
+          :disabled="isDisabled(offered.value)"
+          @change="toggle(offered.value)"
         >
         <span class="min-w-0 text-sm text-[#e8dcc0]">
-          {{ labelFor(option) }}
+          {{ labelFor(offered.value) }}
+          <span
+            v-if="reasonFor(offered.value)"
+            class="block text-xs text-[#9f9278]"
+          >{{ reasonFor(offered.value) }}</span>
         </span>
       </label>
     </div>

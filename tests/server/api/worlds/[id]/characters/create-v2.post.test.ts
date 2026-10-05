@@ -485,9 +485,16 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
     } as any)
   }
 
+  // Gnome, the species the real browser acceptance used. The corpus carries
+  // no Gnome facet (species corpus is Human and Elf only), so it contributes
+  // no grants and no choices -- the real collision is purely Wizard x Sage.
+  function gnomeEntry() {
+    return catalogueEntry({ title: 'Gnome', slug: 'gnome-xphb' })
+  }
+
   function wizardCatalogue() {
     return fullCatalogue({
-      species: [catalogueEntry({ title: 'Human', slug: 'human-xphb' })],
+      species: [gnomeEntry()],
       classes: [wizardEntry()],
       backgrounds: [sageEntry()]
     })
@@ -504,7 +511,7 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
     // the OTHER half of the same selection is legal.
     const result = handler(fakeEvent('5', playerPrincipal(), {
       title: 'Aria',
-      species: selectionOf(catalogueEntry({ title: 'Human', slug: 'human-xphb' })),
+      species: selectionOf(gnomeEntry()),
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry()),
       choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.arcana.proficient', 'value:skill.insight.proficient'] } }
@@ -514,13 +521,44 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
     expect(createEntityRecordMock).not.toHaveBeenCalled()
   })
 
+  it('the real browser combination (Gnome + Wizard + Sage) also rejects a crafted History -- Sage grants both Arcana and History', async () => {
+    getWorldContentCatalogueMock.mockResolvedValue(wizardCatalogue())
+
+    const result = handler(fakeEvent('5', playerPrincipal(), {
+      title: 'Aria',
+      species: selectionOf(gnomeEntry()),
+      class: selectionOf(wizardEntry()),
+      background: selectionOf(sageEntry()),
+      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.history.proficient', 'value:skill.insight.proficient'] } }
+    }))
+
+    await expect(result).rejects.toMatchObject({ statusCode: 400 })
+    expect(createEntityRecordMock).not.toHaveBeenCalled()
+  })
+
+  it('the real browser combination accepts two legal, unowned Wizard skills', async () => {
+    getWorldContentCatalogueMock.mockResolvedValue(wizardCatalogue())
+    createEntityRecordMock.mockResolvedValue({ id: '503' })
+
+    const result = await handler(fakeEvent('5', playerPrincipal(), {
+      title: 'Aria',
+      species: selectionOf(gnomeEntry()),
+      class: selectionOf(wizardEntry()),
+      background: selectionOf(sageEntry()),
+      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.nature.proficient'] } }
+    }))
+
+    expect(result.rulesChoices.selections[CLASS_SKILL_KEY]).toEqual(['value:skill.insight.proficient', 'value:skill.nature.proficient'])
+    expect(createEntityRecordMock).toHaveBeenCalled()
+  })
+
   it('a legal alternate (two skills Sage does NOT already grant) is accepted and persisted', async () => {
     getWorldContentCatalogueMock.mockResolvedValue(wizardCatalogue())
     createEntityRecordMock.mockResolvedValue({ id: '501' })
 
     const result = await handler(fakeEvent('5', playerPrincipal(), {
       title: 'Aria',
-      species: selectionOf(catalogueEntry({ title: 'Human', slug: 'human-xphb' })),
+      species: selectionOf(gnomeEntry()),
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry()),
       choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.investigation.proficient'] } }
@@ -541,7 +579,7 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
     // legal state this route already supports, per its own header).
     const result = await handler(fakeEvent('5', playerPrincipal(), {
       title: 'Aria',
-      species: selectionOf(catalogueEntry({ title: 'Human', slug: 'human-xphb' })),
+      species: selectionOf(gnomeEntry()),
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry())
     }))

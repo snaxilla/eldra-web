@@ -109,7 +109,7 @@ import {
   STEP_KEYS,
   STEP_LABELS,
   activeAssignment,
-  choiceSelections,
+  creationChoicePresentation,
   declaredChoices,
   draftAbilityScores,
   emptyDraft,
@@ -247,12 +247,24 @@ const optionLabels = computed(() => choiceOptions.value?.optionLabels ?? {})
 
 const proficiencyChoices = computed(() => declaredChoices(draft))
 
+// The same shared eligibility the save route applies, keyed for the picker:
+// every offered option annotated, and the EFFECTIVE selection (never a stale
+// illegal answer). Recomputes whenever Species/Class/Background or any
+// proficiency answer changes -- no reload, no separate fetch.
+const presentationByKey = computed(() => new Map(
+  creationChoicePresentation(draft).map((presentation) => [presentation.key, presentation])
+))
+
 function promptFor(choiceSetId: string): string {
   return choiceOptions.value?.choiceSets?.[choiceSetId]?.prompt || 'Choose your options.'
 }
 
 function selectionsFor(key: string): string[] {
-  return choiceSelections(draft, key)
+  return presentationByKey.value.get(key)?.selected ?? []
+}
+
+function offeredFor(key: string) {
+  return presentationByKey.value.get(key)?.offered
 }
 
 function chooseSelections(key: string, selected: string[]) {
@@ -262,10 +274,13 @@ function chooseSelections(key: string, selected: string[]) {
 // Changing Species/Class/Background changes which questions are asked, so
 // answers to questions that are no longer asked are dropped immediately --
 // see pruneChoices. Watching the three refs rather than pruning inside
-// chooseOption keeps this true no matter how a selection changes.
+// chooseOption keeps this true no matter how a selection changes. Immediate, so
+// a draft that already holds an illegal answer is sanitised at presentation
+// time too, not only after the next slot change.
 watch(
   () => CHOICE_KEYS.map((key) => optionKey(draft[key])).join('|'),
-  () => pruneChoices(draft)
+  () => pruneChoices(draft),
+  { immediate: true }
 )
 
 const steps = computed(() =>
@@ -484,6 +499,7 @@ async function createCharacter() {
                 :key="choice.key"
                 :choice="choice"
                 :selected="selectionsFor(choice.key)"
+                :offered="offeredFor(choice.key)"
                 :prompt="promptFor(choice.choiceSetId)"
                 :option-labels="optionLabels"
                 :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
@@ -711,6 +727,7 @@ async function createCharacter() {
                 :key="choice.key"
                 :choice="choice"
                 :selected="selectionsFor(choice.key)"
+                :offered="offeredFor(choice.key)"
                 :prompt="promptFor(choice.choiceSetId)"
                 :option-labels="optionLabels"
                 :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"

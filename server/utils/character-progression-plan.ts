@@ -814,6 +814,8 @@ async function legalizeFeatChoices(
       const verdict = featOptionVerdict({
         mechanics: entry.featMechanics,
         filter: selector.filter,
+        mappings: entry.rulesFacet?.featureRequirements ?? [],
+        featureActive: (id) => findBooleanIn(priorDerived.derived, id),
         ownedElsewhere: known.some((other) =>
           other.choiceKey !== choice.id && other.ref.packageId === entry.packageId && other.ref.slug === entry.slug
         ),
@@ -1203,6 +1205,8 @@ export async function confirmProgression(
       const verdict = featOptionVerdict({
         mechanics: catalogueEntry.featMechanics,
         filter,
+        mappings: catalogueEntry.rulesFacet?.featureRequirements ?? [],
+        featureActive: (id) => findBooleanIn(priorDerived.derived, id),
         ownedElsewhere,
         prerequisitesMet: () => isPrerequisiteSatisfied(
           catalogueEntry.featMechanics?.prerequisiteGroups ?? [], priorDerived.derived, thisLevel ?? targetLevel, registryHas

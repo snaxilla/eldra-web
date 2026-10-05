@@ -84,6 +84,13 @@ export type FeatPrerequisite =
 // the real corpus shows this for every Origin feat (never authored here,
 // this phase only resolves General) and a handful of General feats (Chef,
 // Crusher, Durable, Fey-Touched, ...).
+// One prerequisite key the engine has no primitive for, with the RAW values it
+// named (`feature: ["Fighting Style"]` -> values ["Fighting Style"]). Values are
+// kept verbatim so a package mapping can cover an exact raw name; nothing is
+// slugged or inferred from the string. A prose-only key (`otherSummary`) has no
+// values and can never be covered.
+export type UnsupportedPrerequisite = { key: string; values: readonly string[] }
+
 export type CanonicalFeatMechanics = {
   category: FeatCategory
   variant: FeatVariant
@@ -95,7 +102,7 @@ export type CanonicalFeatMechanics = {
   // missing primitive can never make a feat accidentally legal by vanishing
   // during normalization. Empty for every feat whose prerequisites are fully
   // representable.
-  unsupportedPrerequisites: readonly string[]
+  unsupportedPrerequisites: readonly UnsupportedPrerequisite[]
   abilityIncrease?: FeatAbilityIncrease
   // The corpus `max` on an ability increase (Epic Boon: 30). Absent means the
   // feat uses the ordinary ability-increase cap its ChoiceSet declares.

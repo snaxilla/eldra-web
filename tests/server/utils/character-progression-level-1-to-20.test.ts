@@ -66,6 +66,7 @@ import { getDerivedCharacterAtLevel, type DerivedCharacter } from '../../../serv
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 import { parseContentRef, serializeContentRef } from '../../../app/lib/characters/progression-plan'
 import { normalizeStoredProgression } from '../../../app/lib/characters/progression'
+import { featOptionVerdict } from '../../../app/lib/feat-mechanics/eligibility'
 import { normalizeStoredRulesChoices } from '../../../app/lib/characters/rules-choices'
 import { resolveDnd5eFeatMechanics } from '../../../app/lib/feat-mechanics/dnd5e'
 import xphbFeats from '../../lib/feat-mechanics/fixtures/xphb-feats.json'
@@ -188,6 +189,23 @@ const EPIC_BOON_CATALOGUE = xphbFeats.feats
   }))
 FEAT_CATALOGUE_ENTRIES.push(...EPIC_BOON_CATALOGUE)
 const EPIC_BOON_SLUGS = new Set(EPIC_BOON_CATALOGUE.map((entry) => entry.slug))
+
+// PHASE 2C.2A -- the ten ordinary Fighting Style feats (raw category FS). Their
+// mechanics come from the real resolver; their rulesFacet is the real SOURCE
+// facet, which carries the explicit feature-requirement mapping.
+const FIGHTING_STYLE_CATALOGUE = xphbFeats.feats
+  .filter((raw) => raw.category === 'FS')
+  .map((raw) => {
+    const slug = `${raw.name.toLowerCase().replace(/ /g, '-')}-xphb`
+    return baseEntry({
+      title: raw.name,
+      slug,
+      featMechanics: resolveDnd5eFeatMechanics(raw)!,
+      rulesFacet: findRulesFacet('dnd5e.2024', 'feat', slug) ?? undefined
+    })
+  })
+FEAT_CATALOGUE_ENTRIES.push(...FIGHTING_STYLE_CATALOGUE)
+const FS_ARCHERY_REF = { packageId: FEAT_PACKAGE_ID, slug: 'archery-xphb' }
 const CASTER_CLASS_SLUGS = new Set(['bard-xphb', 'cleric-xphb', 'druid-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'warlock-xphb', 'wizard-xphb'])
 
 function catalogueForClass(classSlug: string) {
@@ -273,6 +291,7 @@ function blueprintForClass(
       // resolves a blueprint feat slot's `entry` from the catalogue, never
       // from a bare re-built object (see this function's own header).
       const catalogueEntry = FEAT_CATALOGUE_ENTRIES.find((candidate) => candidate.slug === ref.slug)
+        ?? ALL_XPHB_FEAT_ENTRIES.find((candidate) => candidate.slug === ref.slug)
       return {
         status: 'resolved' as const,
         entry: { ...catalogueEntry, rulesFacet: findRulesFacet('dnd5e.2024', 'feat', ref.slug) ?? undefined },
@@ -418,6 +437,9 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
       answers[nestedKey] = level % 8 < 4
         ? ['source:asi.increase.str', 'source:asi.increase.dex']
         : ['source:asi.increase.con', 'source:asi.increase.int']
+    } else if (choiceSetId.startsWith('choice:feat.fighting-style.')) {
+      // Archery: an ordinary Fighting Style feat, legal for either Level-2 declaration.
+      answers[key] = [serializeContentRef(FS_ARCHERY_REF)]
     } else if (choiceSetId === 'choice:feat.epic-boon') {
       // Boon of Fortitude: one ability from six, the real corpus shape.
       answers[key] = [serializeContentRef(EPIC_BOON_REF)]
@@ -590,8 +612,15 @@ describe.each(ALL_12_CLASS_SLUGS)('LEVEL 1 -> 20 ACCEPTANCE -- %s', (classSlug) 
     // class has.
     const asiThresholds = expected.filter((e) => e.choiceSetId === 'choice:feat.selection').length
     const epicBoonAt19 = expected.filter((e) => e.choiceSetId === 'choice:feat.epic-boon').length
+    // PHASE 2C.2A -- the Paladin/Ranger Level-2 Fighting Style is a feat
+    // acquisition too, persisted through the same progression.feats[].
+    const fightingStyleAt2 = expected.filter((e) => e.choiceSetId.startsWith('choice:feat.fighting-style.')).length
     const feats = confirmResult.progression.feats ?? []
-    expect(feats).toHaveLength(asiThresholds + epicBoonAt19)
+    expect(feats).toHaveLength(asiThresholds + epicBoonAt19 + fightingStyleAt2)
+    if (fightingStyleAt2) {
+      const styleKey = progressionChoiceKey('class', 2, expected.find((e) => e.choiceSetId.startsWith('choice:feat.fighting-style.'))!.choiceSetId)
+      expect(feats).toContainEqual({ featRef: FS_ARCHERY_REF, choiceKey: styleKey })
+    }
     const asiFeats = feats.filter((feat) => feat.choiceKey.endsWith(':choice:feat.selection'))
     expect(asiFeats).toHaveLength(asiThresholds)
     for (const feat of asiFeats) {
@@ -1029,6 +1058,16 @@ function findValue(derived: DerivedCharacter, id: string): number | null {
   return null
 }
 
+// Boolean Values (feature possession, proficiency). Returns null only when the
+// Value is absent from the derived output entirely.
+function findFlag(derived: DerivedCharacter, id: string): boolean | null {
+  for (const entries of Object.values(derived.byCategory)) {
+    const entry = entries?.find((candidate) => candidate.id === id)
+    if (entry) return entry.value === true
+  }
+  return null
+}
+
 describe('EPIC BOON -- persist -> fresh reload -> derive (store-backed, real normalizers)', () => {
   const classSlug = 'barbarian-xphb'
   const expected = expectedImplementedChoices(classSlug, loadRealDefinitions())
@@ -1156,4 +1195,193 @@ describe('EPIC BOON -- persist -> fresh reload -> derive (store-backed, real nor
     if (!fresh.available) throw new Error('fresh read unavailable')
     expect(fresh.derived.choices.map((c) => c.key)).toEqual(expect.arrayContaining([BOON_KEY, ABILITY_KEY]))
   })
+})
+
+// ---------------------------------------------------------------------------
+// PHASE 2C.2A -- PALADIN AND RANGER LEVEL-2 FIGHTING STYLE. The catalogue here is
+// the WHOLE native-XPHB feat corpus (all 77 entries, real mechanics, real source
+// facets), so the absence assertions prove the category/variant/unsupported
+// authority refuses real feats -- not merely that they were never loaded.
+// ---------------------------------------------------------------------------
+function raw(name: string) {
+  const found = xphbFeats.feats.find((f) => f.name === name)
+  if (!found) throw new Error(`no corpus feat ${name}`)
+  return found
+}
+
+const ALL_XPHB_FEAT_ENTRIES = xphbFeats.feats.map((raw) => {
+  const slug = `${raw.name.toLowerCase().replace(/ /g, '-')}-xphb`
+  return baseEntry({
+    title: raw.name,
+    slug,
+    featMechanics: resolveDnd5eFeatMechanics(raw)!,
+    rulesFacet: findRulesFacet('dnd5e.2024', 'feat', slug) ?? undefined
+  })
+})
+const CORPUS_FS_SLUGS = xphbFeats.feats
+  .filter((raw) => raw.category === 'FS')
+  .map((raw) => `${raw.name.toLowerCase().replace(/ /g, '-')}-xphb`)
+  .sort()
+const RAW_CATEGORY_BY_SLUG = new Map(xphbFeats.feats.map((raw) => [`${raw.name.toLowerCase().replace(/ /g, '-')}-xphb`, raw.category]))
+const BLESSED_REF = { packageId: FEAT_PACKAGE_ID, slug: 'blessed-warrior-xphb' }
+const DRUIDIC_REF = { packageId: FEAT_PACKAGE_ID, slug: 'druidic-warrior-xphb' }
+
+const STYLE_CASES = [
+  { classSlug: 'paladin-xphb', choiceSetId: 'choice:feat.fighting-style.fs-and-fs-p', own: BLESSED_REF, foreign: DRUIDIC_REF, ownLabel: 'Blessed Warrior', foreignLabel: 'Druidic Warrior' },
+  { classSlug: 'ranger-xphb', choiceSetId: 'choice:feat.fighting-style.fs-and-fs-r', own: DRUIDIC_REF, foreign: BLESSED_REF, ownLabel: 'Druidic Warrior', foreignLabel: 'Blessed Warrior' }
+] as const
+
+describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug Level 1 -> 2 (whole real feat corpus)', (style) => {
+  const styleKey = progressionChoiceKey('class', 2, style.choiceSetId)
+  const archery = { packageId: FEAT_PACKAGE_ID, slug: 'archery-xphb' }
+  beforeEach(() => {
+    useClass(style.classSlug)
+    getWorldContentCatalogueMock.mockResolvedValue({ ...catalogueForClass(style.classSlug), feats: ALL_XPHB_FEAT_ENTRIES })
+  })
+
+  it('the Level-2 plan declares exactly one Fighting Style choice, and its legal options are exactly the ten ordinary FS feats', async () => {
+    const result = await planProgression(WORLD_ID, CHARACTER_ID, 2)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const choice = result.plan.steps.find((s) => s.level === 2)!.requiredChoices.find((c) => c.id === styleKey)
+    expect(choice, 'Level 2 must surface the Fighting Style choice').toBeDefined()
+    expect(choice!.count).toBe(1)
+    const legalSlugs = choice!.options.map((o) => parseContentRef(o.id)!.slug).sort()
+    expect(legalSlugs).toEqual(CORPUS_FS_SLUGS)
+    expect(legalSlugs).toHaveLength(10)
+  })
+
+  it('no option is a General, Origin, Epic Boon, Blessed, or Druidic feat -- every legal option is corpus category FS', async () => {
+    const result = await planProgression(WORLD_ID, CHARACTER_ID, 2)
+    if (!result.ok) throw new Error('plan failed')
+    const choice = result.plan.steps.find((s) => s.level === 2)!.requiredChoices.find((c) => c.id === styleKey)!
+    for (const option of choice.options) {
+      expect(RAW_CATEGORY_BY_SLUG.get(parseContentRef(option.id)!.slug), option.id).toBe('FS')
+    }
+    const offered = choice.options.map((o) => o.id)
+    expect(offered).not.toContain(serializeContentRef(style.own))
+    expect(offered).not.toContain(serializeContentRef(style.foreign))
+    expect(offered).not.toContain(serializeContentRef(boonRef('boon-of-fortitude-xphb')))
+    expect(offered).not.toContain(serializeContentRef(ASI_FEAT_REF))
+  })
+
+  it('the feature Value is inactive at Level 1, active at Level 2, and remains active at Level 3 -- without any feat querying it', async () => {
+    const l1 = await getDerivedCharacterAtLevel(WORLD_ID, CHARACTER_ID, 1)
+    const l2 = await getDerivedCharacterAtLevel(WORLD_ID, CHARACTER_ID, 2)
+    const l3 = await getDerivedCharacterAtLevel(WORLD_ID, CHARACTER_ID, 3)
+    if (!l1.available || !l2.available || !l3.available) throw new Error('derive failed')
+    expect(findFlag(l1.derived, 'value:feature.fighting-style')).toBe(false)
+    expect(findFlag(l2.derived, 'value:feature.fighting-style')).toBe(true)
+    expect(findFlag(l3.derived, 'value:feature.fighting-style')).toBe(true)
+  })
+
+  it('a crafted wrong-variant special is refused at Confirm: the class\'s own special is not a legal option for this choice', async () => {
+    const answers = { [styleKey]: [serializeContentRef(style.foreign)] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
+    if (!plan.ok) throw new Error('plan failed')
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 2, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(result.message).toContain('is not a legal option for this choice')
+    expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+  })
+
+  it('the class\'s own special variant (Blessed/Druidic) is allowed by the variant filter but refused: its prerequisite is unsupported', async () => {
+    const answers = { [styleKey]: [serializeContentRef(style.own)] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
+    if (!plan.ok) throw new Error('plan failed')
+    expect(plan.plan.valid).toBe(false)
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 2, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(result.message).toContain('cannot evaluate')
+  })
+
+  it.each([
+    ['General (Ability Score Improvement)', ASI_FEAT_REF],
+    ['Origin (Alert)', { packageId: FEAT_PACKAGE_ID, slug: 'alert-xphb' }],
+    ['Epic Boon', boonRef('boon-of-fortitude-xphb')]
+  ])('a crafted %s feat is refused at Confirm', async (_label, ref) => {
+    const answers = { [styleKey]: [serializeContentRef(ref)] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
+    if (!plan.ok) throw new Error('plan failed')
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 2, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('illegal-feat-selection')
+    expect(result.message).toContain('is not a legal option for this choice')
+  })
+
+  it('a legal ordinary style confirms, persists through progression.feats[] under a stable key, and the feature Value is in the persisted-read path', async () => {
+    const answers = { [styleKey]: [serializeContentRef(archery)] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
+    if (!plan.ok) throw new Error('plan failed')
+    expect(plan.plan.valid).toBe(true)
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 2, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.progression.feats).toContainEqual({ featRef: archery, choiceKey: styleKey })
+    expect(saveCharacterProgressionMock).toHaveBeenCalledWith(CHARACTER_ID, expect.objectContaining({
+      feats: [{ featRef: archery, choiceKey: styleKey }]
+    }))
+  })
+})
+
+// PERSIST -> FRESH READ -> DERIVE for the style (store-backed, real normalizers,
+// no tentative state on the read) -- the same contract the Epic Boon round trip
+// proves, applied to Paladin and Ranger.
+describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug persist -> fresh reload (store-backed)', (style) => {
+  const styleKey = progressionChoiceKey('class', 2, style.choiceSetId)
+  const archery = { packageId: FEAT_PACKAGE_ID, slug: 'archery-xphb' }
+  let store: { progression: unknown }
+  beforeEach(() => {
+    useClass(style.classSlug)
+    getWorldContentCatalogueMock.mockResolvedValue({ ...catalogueForClass(style.classSlug), feats: ALL_XPHB_FEAT_ENTRIES })
+    store = { progression: null }
+    saveCharacterProgressionMock.mockImplementation(async (_id: unknown, progression: unknown) => {
+      store.progression = JSON.parse(JSON.stringify(progression))
+    })
+    assembleCharacterMock.mockImplementation(async (_w: unknown, _c: unknown, _sub: unknown, tentativeFeats?: readonly { choiceKey: string, ref: { packageId: string, slug: string } }[]) => {
+      const persisted = normalizeStoredProgression(store.progression)
+      const acquisitions = new Map<string, { choiceKey: string, ref: { packageId: string, slug: string } }>()
+      for (const feat of persisted?.feats ?? []) acquisitions.set(feat.choiceKey, { choiceKey: feat.choiceKey, ref: feat.featRef })
+      for (const feat of tentativeFeats ?? []) acquisitions.set(feat.choiceKey, feat)
+      const base = blueprintForClass(style.classSlug, [...acquisitions.values()])
+      return { available: true, blueprint: { ...base, progression: persisted ?? base.progression } }
+    })
+  })
+
+  it('Confirm -> JSON persistence -> normalizeStoredProgression -> fresh derive (no tentative state): the style is still owned and its choice resolves', async () => {
+    const answers = { [styleKey]: [serializeContentRef(archery)] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
+    if (!plan.ok) throw new Error('plan failed')
+    const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 2, plan.plan.fingerprint, answers)
+    expect(result.ok).toBe(true)
+
+    expect(store.progression).toMatchObject({ feats: [{ featRef: archery, choiceKey: styleKey }] })
+
+    const fresh = await getDerivedCharacterAtLevel(WORLD_ID, CHARACTER_ID, 2)
+    if (!fresh.available) throw new Error('fresh read unavailable')
+    const choice = fresh.derived.choices.find((c) => c.key === styleKey)
+    expect(choice?.selected).toEqual([serializeContentRef(archery)])
+    expect(choice?.answered).toBe(true)
+    expect(findFlag(fresh.derived, 'value:feature.fighting-style')).toBe(true)
+  })
+
+  it('a second Fighting Style acquisition may not repeat the owned style, but another ordinary style is still legal (ownership is per feat)', async () => {
+    const answers = { [styleKey]: [serializeContentRef(archery)] }
+    const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
+    if (!plan.ok) throw new Error('plan failed')
+    await confirmProgression(WORLD_ID, CHARACTER_ID, 2, plan.plan.fingerprint, answers)
+    // The predicate is the one authority a later acquisition context would call.
+    const ownedElsewhere = true
+    const coverage = [{ feature: 'Fighting Style', requires: 'value:feature.fighting-style' }]
+    expect(featOptionVerdict({ mechanics: resolveDnd5eFeatMechanics(raw('Archery')), filter: { category: 'fighting-style', variants: ['FS'] }, mappings: coverage, featureActive: () => true, ownedElsewhere, prerequisitesMet: () => true }))
+      .toEqual({ eligible: false, reason: 'already-owned' })
+    expect(featOptionVerdict({ mechanics: resolveDnd5eFeatMechanics(raw('Defense')), filter: { category: 'fighting-style', variants: ['FS'] }, ownedElsewhere: false, prerequisitesMet: () => true, featureActive: () => true, mappings: coverage }))
+      .toEqual({ eligible: true })
+  })
+
 })

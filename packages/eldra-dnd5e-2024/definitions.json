@@ -1498,6 +1498,19 @@
     }
   },
   {
+    "id": "value:feature.fighting-style",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Fighting Style",
+    "tags": [
+      "feature"
+    ]
+  },
+  {
     "id": "choice:skill.proficiency",
     "kind": "choiceSet",
     "category": "character.creation",
@@ -3155,6 +3168,46 @@
     "resultCap": 30
   },
   {
+    "id": "choice:feat.fighting-style.fs-and-fs-p",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Fighting Style",
+    "prompt": "Choose a Fighting Style feat.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "feats",
+      "filter": {
+        "category": "fighting-style",
+        "variants": [
+          "FS",
+          "FS:P"
+        ]
+      }
+    },
+    "distinct": true
+  },
+  {
+    "id": "choice:feat.fighting-style.fs-and-fs-r",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Fighting Style",
+    "prompt": "Choose a Fighting Style feat.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "feats",
+      "filter": {
+        "category": "fighting-style",
+        "variants": [
+          "FS",
+          "FS:R"
+        ]
+      }
+    },
+    "distinct": true
+  },
+  {
     "id": "progression:class.asi-standard",
     "kind": "progression",
     "category": "progression",
@@ -3274,6 +3327,48 @@
         "choices": [
           {
             "choiceSet": "choice:feat.epic-boon",
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.fighting-style-fs-and-fs-p",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Fighting Style Progression (FS and FS:P)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "sets": {
+          "value:feature.fighting-style": true
+        },
+        "choices": [
+          {
+            "choiceSet": "choice:feat.fighting-style.fs-and-fs-p",
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.fighting-style-fs-and-fs-r",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Fighting Style Progression (FS and FS:R)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "sets": {
+          "value:feature.fighting-style": true
+        },
+        "choices": [
+          {
+            "choiceSet": "choice:feat.fighting-style.fs-and-fs-r",
             "count": 1
           }
         ]

@@ -11,12 +11,15 @@ export type {
   FeatCategory,
   FeatMechanicsResolver,
   FeatPrerequisite,
-  FeatVariant
+  FeatVariant,
+  UnsupportedPrerequisite
 } from './types'
 
 export {
+  coverUnsupportedPrerequisites,
   featFilterVerdict,
   featOptionVerdict,
+  type FeatureRequirementMapping,
   type FeatOptionVerdict,
   type FeatUnavailableReason
 } from './eligibility'

@@ -140,6 +140,19 @@ export type RulesFacet = {
   // here -- the same "always-on facet field vs. level-gated row field"
   // split `sources`/`grants` already draw against `row.grants`.
   resources?: DefinitionId[]
+  // PHASE 2C.2A -- explicit package authority for a raw feat prerequisite the
+  // engine cannot read by itself. `feature` names a RAW prerequisite value
+  // verbatim (5etools' own `feature: ["Fighting Style"]`), and `requires` is the
+  // feature Value that proves it (`value:feature.fighting-style`). Nothing is
+  // slugged or matched by display name: a raw name with no mapping stays
+  // unsupported and fails closed. Lives on the FEAT facet, because the
+  // prerequisite is a property of the feat.
+  featureRequirements?: RulesFacetFeatureRequirement[]
+}
+
+export type RulesFacetFeatureRequirement = {
+  feature: string
+  requires: DefinitionId
 }
 
 // The hand-authored facet corpus for one Rules Vocabulary, keyed first by

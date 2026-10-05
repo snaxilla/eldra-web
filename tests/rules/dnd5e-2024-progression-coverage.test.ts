@@ -64,6 +64,11 @@ function extractText(node: unknown): string {
 }
 
 const OPTIONAL_FEATURE_TAG = /\|optionalfeatures\|/
+// PHASE 2C.2A -- a choice that draws from a feat category filter, e.g. Champion's
+// "gain another {@filter Fighting Style feat|feats|category=FS} of your choice".
+// Added so the coverage scan can see filter-driven feat choices at all. Reviewed
+// against the full native-XPHB corpus (see the discovery census test below).
+const FEAT_CATEGORY_FILTER_TAG = /\{@filter [^}]*\|feats\|category=/
 const STRONG_CHOICE_PHRASING = /you (can )?choose (one|two|three|a|an)\b|choose one of the following|choose (a|one) maneuver|learn \w+ (cantrip|spell)s? of your choice/i
 
 // KNOWN-NAME set: real corpus feature names with a stable, well-understood
@@ -102,7 +107,7 @@ function discoverClassLevelFeatures(): DiscoveredFeature[] {
         continue
       }
       const text = extractText(feature.entries)
-      if (OPTIONAL_FEATURE_TAG.test(text) || STRONG_CHOICE_PHRASING.test(text)) {
+      if (OPTIONAL_FEATURE_TAG.test(text) || STRONG_CHOICE_PHRASING.test(text) || FEAT_CATEGORY_FILTER_TAG.test(JSON.stringify(feature.entries))) {
         found.push({ classSlug, featureName: feature.name, level: feature.level, signal: 'text' })
       }
     }
@@ -132,7 +137,7 @@ function discoverSubclassInternalFeatures(): DiscoveredSubclassFeature[] {
       const text = extractText(feature.entries)
       const looksLikeSubclassTitleFeature = feature.level === 3 && !OPTIONAL_FEATURE_TAG.test(text) && !STRONG_CHOICE_PHRASING.test(text)
       if (looksLikeSubclassTitleFeature) continue
-      if (OPTIONAL_FEATURE_TAG.test(text) || STRONG_CHOICE_PHRASING.test(text)) {
+      if (OPTIONAL_FEATURE_TAG.test(text) || STRONG_CHOICE_PHRASING.test(text) || FEAT_CATEGORY_FILTER_TAG.test(JSON.stringify(feature.entries))) {
         found.push({
           classSlug: classSlugOf(feature.className),
           subclassShortName: feature.subclassShortName,
@@ -208,6 +213,12 @@ describe('PROGRESSION COVERAGE LEDGER -- cross-checked against the real corpus',
     for (const entry of DND5E_2024_PROGRESSION_COVERAGE) {
       const key = `${entry.classSlug}::${entry.featureName}`
       if (outOfScanScope.has(key)) continue
+      // Feat-level Fighting Style facts (per-style runtime effects) and the two
+      // special variants are not class features: documented allowance, see
+      // dnd5e-2024-progression-coverage.ts's Fighting Style section.
+      if (entry.featureName.startsWith('Fighting Style effect: ')) continue
+      if (entry.classSlug === 'paladin-xphb' && entry.featureName === 'Blessed Warrior') continue
+      if (entry.classSlug === 'ranger-xphb' && entry.featureName === 'Druidic Warrior') continue
       if (entry.featureName.endsWith(' Subclass')) continue // subclass-selection: special-cased above, always real
       if (entry.featureName === 'Spellcasting') continue // creation-time feature name, not scanned by classFeature (verified separately below)
       expect(

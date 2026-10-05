@@ -16,7 +16,8 @@ import type {
   FeatAbilityIncrease,
   FeatCategory,
   FeatPrerequisite,
-  FeatVariant
+  FeatVariant,
+  UnsupportedPrerequisite
 } from './types'
 
 const CATEGORY_MAP: Record<string, FeatCategory> = {
@@ -47,15 +48,23 @@ const SUPPORTED_PREREQUISITE_KEYS = new Set(['level', 'ability', 'proficiency', 
 
 type ResolvedPrerequisites = {
   groups: FeatPrerequisite[][]
-  unsupported: string[]
+  unsupported: UnsupportedPrerequisite[]
+}
+
+// The raw string values of an unsupported key, verbatim (`["Fighting Style"]`).
+// Anything that is not an array of strings yields no values -- and therefore
+// can never be covered by a package mapping.
+function rawStringValues(raw: unknown): string[] {
+  return Array.isArray(raw) && raw.every((item) => typeof item === 'string') ? [...raw] : []
 }
 
 function resolvePrerequisiteGroups(raw: unknown): ResolvedPrerequisites {
   const result: ResolvedPrerequisites = { groups: [], unsupported: [] }
   if (!Array.isArray(raw)) return result
 
-  const reportUnsupported = (key: string) => {
-    if (!result.unsupported.includes(key)) result.unsupported.push(key)
+  const reportUnsupported = (key: string, values: string[] = []) => {
+    const duplicate = result.unsupported.some((entry) => entry.key === key && entry.values.join('\u0000') === values.join('\u0000'))
+    if (!duplicate) result.unsupported.push({ key, values })
   }
 
   for (const group of raw) {
@@ -67,7 +76,7 @@ function resolvePrerequisiteGroups(raw: unknown): ResolvedPrerequisites {
     // is recognized but malformed is also unsupported, never silently
     // ignored -- ignoring it would read as "no prerequisite".
     for (const key of Object.keys(record)) {
-      if (!SUPPORTED_PREREQUISITE_KEYS.has(key)) reportUnsupported(key)
+      if (!SUPPORTED_PREREQUISITE_KEYS.has(key)) reportUnsupported(key, rawStringValues(record[key]))
     }
 
     if (typeof record.level === 'number') {

@@ -127,17 +127,19 @@ describe('prerequisites -- supported shapes evaluate, unsupported shapes are kep
   // The real Fighting Style prerequisite is `feature: ["Fighting Style"]`, which
   // the engine has no primitive for. It used to vanish silently, leaving the
   // feat with NO prerequisite -- i.e. accidentally legal. It must now be kept.
-  it('Archery keeps its feature prerequisite as UNSUPPORTED (never silently erased)', () => {
-    expect(mechanics('Archery').unsupportedPrerequisites).toEqual(['feature'])
+  it('Archery keeps its feature prerequisite as UNSUPPORTED, with its raw value (never silently erased)', () => {
+    expect(mechanics('Archery').unsupportedPrerequisites).toEqual([{ key: 'feature', values: ['Fighting Style'] }])
   })
 
   it('every Fighting Style FS feat keeps the feature prerequisite as unsupported', () => {
-    for (const feat of byCategory('FS')) expect(mechanics(feat.name).unsupportedPrerequisites, feat.name).toEqual(['feature'])
+    for (const feat of byCategory('FS')) {
+      expect(mechanics(feat.name).unsupportedPrerequisites, feat.name).toEqual([{ key: 'feature', values: ['Fighting Style'] }])
+    }
   })
 
   it('Blessed and Druidic Warrior keep their otherSummary prerequisite as unsupported', () => {
-    expect(mechanics('Blessed Warrior').unsupportedPrerequisites).toEqual(['otherSummary'])
-    expect(mechanics('Druidic Warrior').unsupportedPrerequisites).toEqual(['otherSummary'])
+    expect(mechanics('Blessed Warrior').unsupportedPrerequisites).toEqual([{ key: 'otherSummary', values: [] }])
+    expect(mechanics('Druidic Warrior').unsupportedPrerequisites).toEqual([{ key: 'otherSummary', values: [] }])
   })
 
   it('an unsupported prerequisite makes the feat illegal even when every OTHER check passes', () => {

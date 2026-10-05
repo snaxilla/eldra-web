@@ -137,9 +137,6 @@ const ACCUMULATING_OPTIONAL_FEATURE_BLOCKER =
 const EPIC_BOON_EFFECT_BLOCKER =
   'epic-boon-effects: acquisition and the ability increase (choose one ability, +1, cap 30) are implemented; the Boons\' OTHER text is not structurally applied. Energy Resistance (damage-type resistance), Speed, and Truesight need vocabulary the Rules Package does not declare (no resistance/speed/senses Definitions). Boon of Skill needs proficiency plus expertise nested choices, and expertise over a grant made by the same feat needs a `requiresActive` primitive that does not exist yet. The rest are prose-only effects, the same posture every General feat already has.'
 
-const FIGHTING_STYLE_FEAT_BLOCKER =
-  'fighting-style-acquisition (Phase 2C.2): the generic category + variant filter can express the choice, but the feat prerequisite `feature: ["Fighting Style"]` is an unsupported primitive and fails closed (no Fighting Style is legal until its semantics are implemented). Blessed/Druidic Warrior also grant nested cantrip choices that are not authored.'
-
 export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // -------------------------------------------------------------------
   // SUBCLASS SELECTION -- the defect this audit exists to close. All 12,
@@ -252,7 +249,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // EXCLUDED, with no way for a DIFFERENT ChoiceSet (a hypothetical
   // `choice:feat.fighting-style-selection`) to ask for category 'FS'
   // instead. This is the SAME missing primitive Epic Boon's own entry
-  // below independently needed. RETIRED in Phase 2C.1 -- see FIGHTING_STYLE_FEAT_BLOCKER for the real current blocker.
+  // below independently needed. RETIRED in Phase 2C.1 -- see the Fighting Style rows below for the real current blockers.
   {
     id: 'fighter-xphb:fighting-style',
     classSlug: 'fighter-xphb',
@@ -260,20 +257,160 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     levels: [1],
     surface: 'creation',
     status: 'ENGINE_BLOCKED',
-    blockerReason: `${FIGHTING_STYLE_FEAT_BLOCKER} Level-1 creation surface: create-v2 has no content-choice presentation or persistence for it.`
+    blockerReason: 'fighting-style-creation (Phase 2C.2B): Fighter Level-1 Fighting Style is a creation-time ContentRef choice. create-v2 has no ContentRef choice presentation, no ContentRef selection transport, and no creation-time progression.feats[] write. The generic feature Value (value:feature.fighting-style) and the FS filter exist; the creation surface does not.'
   },
-  ...([
-    ['paladin-xphb', [2]],
-    ['ranger-xphb', [2]]
-  ] as const).map(([classSlug, levels]): ProgressionCoverageEntry => ({
-    id: `${classSlug}:fighting-style`,
-    classSlug,
+  {
+    id: 'paladin-xphb:fighting-style',
+    classSlug: 'paladin-xphb',
     featureName: 'Fighting Style',
-    levels: [...levels],
+    levels: [2],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.fighting-style-fs-and-fs-p',
+    notes: 'Acquisition: at Level 2 the progression row activates value:feature.fighting-style and offers one Fighting Style feat, filtered to FS and FS:P. Only the ten ordinary FS feats are legal today: Blessed Warrior (FS:P) is refused because its otherSummary prerequisite is unsupported and its mandatory nested cantrips need Spell Acquisition. Runtime effects are classified separately (see the per-style rows).'
+  },
+  {
+    id: 'ranger-xphb:fighting-style',
+    classSlug: 'ranger-xphb',
+    featureName: 'Fighting Style',
+    levels: [2],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.fighting-style-fs-and-fs-r',
+    notes: 'Acquisition: at Level 2 the progression row activates value:feature.fighting-style and offers one Fighting Style feat, filtered to FS and FS:R. Only the ten ordinary FS feats are legal today: Druidic Warrior (FS:R) is refused because its otherSummary prerequisite is unsupported and its mandatory nested cantrips need Spell Acquisition. Runtime effects are classified separately (see the per-style rows).'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-replacement',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style',
+    levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
     surface: 'level-up',
     status: 'ENGINE_BLOCKED',
-    blockerReason: FIGHTING_STYLE_FEAT_BLOCKER
-  })),
+    blockerReason: 'fighting-style-replacement: "Whenever you gain a Fighter level, you can replace the feat you chose with a different Fighting Style feat." This is a re-answerable choice. Every existing choice is answered once and persists; no mutable/re-answerable choice primitive exists. Not implemented in Phase 2C.2A.'
+  },
+  {
+    id: 'fighter-xphb:additional-fighting-style',
+    classSlug: 'fighter-xphb',
+    featureName: 'Additional Fighting Style',
+    levels: [7],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'subclass-internal feature-level gating: Champion\'s Level-7 "Additional Fighting Style" is a subclass feature (subclassFeature, Champion). The engine has no subclass-internal, feature-level acquisition gate. Not implemented in Phase 2C.2A.'
+  },
+
+  // Fighting Style effects and the two special variants are feat-level facts,
+  // not class-level features: each is recorded here under the Fighter class (whose
+  // Fighting Style feature the ordinary feats originate from) and listed in the
+  // coverage test's documented out-of-scan allowance, never silently merged.
+
+  {
+    id: 'paladin-xphb:fighting-style-variant-blessed-warrior',
+    classSlug: 'paladin-xphb',
+    featureName: 'Blessed Warrior',
+    levels: [2],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'nested Spell Acquisition: Blessed Warrior (FS:P) requires two Cleric cantrip choices made immediately on acquisition, and its otherSummary prerequisite is unsupported. Neither can be completed yet, so it is never legal and never owned incompletely.'
+  },
+  {
+    id: 'ranger-xphb:fighting-style-variant-druidic-warrior',
+    classSlug: 'ranger-xphb',
+    featureName: 'Druidic Warrior',
+    levels: [2],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'nested Spell Acquisition: Druidic Warrior (FS:R) requires two Druid cantrip choices made immediately on acquisition, and its otherSummary prerequisite is unsupported. Neither can be completed yet, so it is never legal and never owned incompletely.'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-archery',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Archery',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Archery): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: representable today as a modifier on value:combat.ranged_attack_bonus, not authored.'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-blind-fighting',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Blind Fighting',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Blind Fighting): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing senses vocabulary (Blindsight).'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-defense',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Defense',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Defense): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing/unverified equipped-armor condition for the +1 AC.'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-dueling',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Dueling',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Dueling): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing damage vocabulary (+2 damage, one-handed melee).'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-great-weapon-fighting',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Great Weapon Fighting',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Great Weapon Fighting): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing roll-rewrite primitive (treat 1-2 as 3).'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-interception',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Interception',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Interception): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing reaction and damage-reduction primitives.'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-protection',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Protection',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Protection): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing reaction primitive (impose disadvantage).'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-thrown-weapon-fighting',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Thrown Weapon Fighting',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Thrown Weapon Fighting): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing damage vocabulary (+2 thrown damage).'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-two-weapon-fighting',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Two-Weapon Fighting',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Two-Weapon Fighting): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing damage vocabulary (ability modifier on off-hand damage).'
+  },
+  {
+    id: 'fighter-xphb:fighting-style-effect-unarmed-fighting',
+    classSlug: 'fighter-xphb',
+    featureName: 'Fighting Style effect: Unarmed Fighting',
+    levels: [1],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'fighting-style-effect (Unarmed Fighting): ACQUISITION is legal; the feat\'s mechanical effect is NOT authored. Classification: missing damage and unarmed-strike primitives.'
+  },
 
   // -------------------------------------------------------------------
   // WEAPON MASTERY -- CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B

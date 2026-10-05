@@ -453,7 +453,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // genuinely differ -- see `resource:channel_divinity.extended`'s own
       // comment).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-p']
     },
     'ranger-xphb': {
       grants: [
@@ -498,7 +498,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // you lack Expertise" at Level 9 only -- see bard-xphb's own note
       // immediately above for why no Ranger-specific skill list is
       // authored here either.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-r']
     },
     'rogue-xphb': {
       grants: [
@@ -808,6 +808,64 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
   // `choice:skill.proficiency`'s own `writesTo` already has with THIS
   // corpus's fully-qualified `value:skill.*.proficient` options.
   feat: {
+    // FIGHTING STYLE FEATS -- PHASE 2C.2A. The ten ordinary XPHB Fighting Style
+    // feats (raw category FS). Each declares its explicit coverage of the raw
+    // prerequisite `feature: ["Fighting Style"]` by pointing at the package's
+    // feature Value. The mapping is per-feat authored data, matched on the raw
+    // name verbatim -- never inferred. Blessed Warrior and Druidic Warrior (FS:P,
+    // FS:R) are deliberately NOT here: their `otherSummary` prerequisite stays
+    // unsupported, and their mandatory nested cantrip choices need Spell
+    // Acquisition, so they remain illegal (fail closed).
+    'archery-xphb': { // Archery
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'blind-fighting-xphb': { // Blind Fighting
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'defense-xphb': { // Defense
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'dueling-xphb': { // Dueling
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'great-weapon-fighting-xphb': { // Great Weapon Fighting
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'interception-xphb': { // Interception
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'protection-xphb': { // Protection
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'thrown-weapon-fighting-xphb': { // Thrown Weapon Fighting
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'two-weapon-fighting-xphb': { // Two-Weapon Fighting
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
+    'unarmed-fighting-xphb': { // Unarmed Fighting
+      featureRequirements: [
+        { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
+      ]
+    },
     // EPIC BOONS -- D&D 2024 Character Rules Phase 2C.1. All 12 native-XPHB
     // Epic Boons (`category: 'EB'`). Each authors ONLY its ability increase:
     // choose one listed ability, +1, cap 30 (`choice:feat.epic-boon-ability`'s

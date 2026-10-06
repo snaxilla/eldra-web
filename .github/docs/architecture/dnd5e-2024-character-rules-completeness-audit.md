@@ -1428,3 +1428,902 @@ succeeding through Level 20) — not merely "the Definition exists."
 **Regression preserved**: all 12 subclass choices, ASI/General Feat (incl. nested ASI, still
 collision-free), Generic Resources and resource-interaction performance, Tonso, Bob's subclass
 progression, spell slots/Cast/Rest — all unchanged, all still green (3550/3550).
+
+---
+
+## 25. CRITICAL PATH TO CHARACTER INFRASTRUCTURE COMPLETE (2026-10-06)
+
+Status: read-only roadmap audit. No application, package, or Rules/Content state was changed to
+produce this section. Baseline verified this pass: Rules `eldra.rules.dnd5e-2024@0.18.0` CURRENT,
+Content `eldra.solaris.xphb` CURRENT, Actions None (`pnpm packages:sync --world Solaris`, dry run).
+Ledger tests (`tests/rules/dnd5e-2024-progression-coverage.test.ts`,
+`tests/rules/dnd5e-2024-origin-feat-acquisition.test.ts`): 131 passing.
+
+### 25.0 Evidence basis and limits
+
+- **Ledger**: 104 rows, evaluated by bundling `app/lib/content-rules/dnd5e-2024-progression-coverage.ts`
+  (IMPLEMENTED 44, ENGINE_BLOCKED 56, CONTENT_BLOCKED 2, MILESTONE_DEFERRED 2). The ledger's
+  `ref(...)`-generated rows were included; a literal-source parse undercounts them.
+- **Corpus**: `/opt/eldra/datasets/5etools-src/data` (`class/class-*.json`, `races.json`,
+  `backgrounds.json`, `feats.json`, `items-base.json`, `optionalfeatures.json`,
+  `generated/gendata-spell-source-lookup.json`). Source scope is **XPHB only**; PHB 2014 features
+  (e.g. Warlock "Pact Boon", L3) are out of scope.
+- **Discovery heuristic**: the ledger's own detector (`discoverClassLevelFeatures`) was run as
+  written. It matched 94 class features (including the known-name set). A structural pass
+  (`"type": "options"` blocks, choose/choice/select/learn phrasing) over all XPHB class features
+  found real build decisions the detector misses (§25.3).
+- **Not verified this pass** (stated, not extrapolated): Battle Master maneuver increments beyond
+  Level 3; Paladin/Ranger/Rogue Weapon Mastery increments beyond Level 1; the exact Gnome/Elf/Tiefling
+  lineage spell lists; the Wizard per-level spellbook learning counts; the Metamagic and Eldritch
+  Invocation option text beyond counts and levels. These are named in the census rows as
+  "verify in phase".
+
+### 25.1 Definitions
+
+**MILESTONE A — CHARACTER LEGALITY.** Every mandatory character-building and level-progression
+decision of the XPHB Player's Handbook, for every class, background, species, and feat, can be made
+by the player, is persisted, survives reload, and resolves through Level 20. "Mandatory" means the
+PHB makes the player choose or the rule grants something that must be recorded. A decision that is
+merely *optional flexibility* ("you may replace…") is not Milestone A if the original legal answer
+remains valid.
+
+**MILESTONE B — FULL MECHANICAL AUTOMATION.** Eldra executes every feature, modifier, reaction,
+damage rider, resource effect, and per-use effect. Out of scope for Milestone A.
+
+**Silent-drop defect (new, critical).** Today a character can complete creation, and can select a
+General feat, with mandatory decisions never recorded. Verified for the four feats named below, and
+for species lineage and background ability and tool bonuses (no facet exists for them). The Builder's completeness gate
+(`missingRequirements`, `app/components/characters/builder/characterBuilderSelection.ts:498`)
+checks only: name, species/class/background, facet-declared choices, content choices, and ability
+scores. It does not check any ledger-blocked decision. In the four feat facets checked
+(`fey-touched-xphb`, `chef-xphb`, `keen-mind-xphb`, `heavily-armored-xphb`), only the ability choice is
+authored; none declares its spell, tool, skill, or proficiency decision. The result is a legal-looking character with an incomplete
+record. This is the first thing to fix, and it does not need a new primitive (§25.15, Phase 0).
+
+### 25.2 Stale audit items (corrected by this section; earlier sections not rewritten)
+
+| # | Audit location | Audit says | Repository truth (evidence) |
+|---|---|---|---|
+| S1 | §1 Exec Summary, finding 2 | No Resource Definition kind | Resource kind exists (`ResourceDefinition` extended with `recovery`/`presentation`, Phase 2A.2; §14 #2 already says DONE) |
+| S2 | §1 Exec Summary, finding 1; §14 #1 | `RulesFacetGrant` cannot increment; ASI blocked on it | ASI is implemented for all 12 classes (ledger ASI rows IMPLEMENTED; `source:asi.increase.*`, `choice:feat.asi-ability-increase`) |
+| S3 | §23 milestone list, item 2 | Weapon Mastery is CONTENT_BLOCKED | Ledger: ENGINE_BLOCKED (creation); primary blocker is mutable re-answer + item vocabulary, not content |
+| S4 | §23 milestone list, item 2 | Fighting Style is CONTENT_BLOCKED | Fighter L1 IMPLEMENTED; Paladin/Ranger L2 IMPLEMENTED for plain FS; only the variant options (Blessed/Druidic) remain blocked |
+| S5 | §23 milestone list, item 2 | Expertise for Bard/Ranger/Rogue is CONTENT_BLOCKED | Bard L2/L9, Ranger L9, Rogue L6 IMPLEMENTED. Rogue L1 still CONTENT_BLOCKED. Ranger L2 Deft Explorer expertise is not in the ledger (§25.3) |
+| S6 | §23 milestone list, item 1; §24 | Origin Feat selection not implemented | Fixed Origin acquisition IMPLEMENTED for 8 Backgrounds (Phase 2C.3A, commit `eef7b48`); 8 choice-bearing Backgrounds remain blocked |
+| S7 | §6 Spellcasting | "no class-spell-list filtering exists anywhere in the engine" | True for the V2 engine. V1 has a working class-list path: `server/api/worlds/[id]/class-spell-options.get.ts` reads the same `gendata-spell-source-lookup.json`, used by `ClassSpellChoicePanel.vue` and `FeatChoicePanel.vue`. Two parallel mechanisms; V2 must reuse one, not add a third |
+| S8 | §2 / §11 / §14 #4 | Starting equipment is "out of scope" | Required for Milestone A (every class and background has a mandatory A/B or gold choice) |
+| S9 | §5 Subclass | Only selection and feature content "unauthored" | Undercounted: 224 fixed and 48 choice spell-grant entries across XPHB subclasses (§25.11) are not in the ledger at all |
+| S10 | §23 / §24 coverage claim | Ledger discovery is "complete" for choice-bearing features | Discovery misses `options`-block features and several phrasings (§25.3) |
+
+Ledger corrections found in this pass (must be made in the ledger, not in this document):
+
+- `warlock-xphb:eldritch-invocations` levels are `[1,2,5,6,7,8,9,10]`. The corpus table
+  (`Invocations` column) increases at **L1, L2, L5, L7, L9, L12, L15, L18** (1→3→5→6→7→8→9→10).
+  Levels 6, 8, 10 are wrong; 12, 15, 18 are missing.
+- `fighter-xphb:weapon-mastery` and four other Weapon Mastery rows: the leading blocker is
+  item/proficiency vocabulary; re-answer is optional and deferrable (§25.8).
+- Blessed Warrior and Druidic Warrior rows say "never legal". Only the variant option is illegal.
+  The plain Fighting Style options remain legal, so Milestone A is not blocked by them.
+- `background:origin-feat:choice-acquisition` names "spell/cantrip acquisition" for Magic Initiate;
+  it should cite the spell primitive (§25.6) explicitly.
+- `barbarian-xphb:epic-boon-effects` (and the other 11 Epic Boon rows): the "Boon of Skill" nested
+  proficiency and expertise decisions are Milestone A (a player selecting Boon of Skill cannot
+  complete it), while the remaining Boon effects are runtime. Split the nested decision out.
+- `sorcerer-xphb:sorcery-incarnate`, `monk-xphb:heightened-focus`: the ledger already calls these
+  false positives. They should leave the coverage ledger rather than sit as MILESTONE_DEFERRED rows.
+
+### 25.3 Discovery gaps: real build decisions not in the ledger
+
+The structural pass found these real decisions. Each is absent from the ledger.
+
+| ID | Class / feature | Level | Decision | Corpus basis |
+|---|---|---|---|---|
+| D-01 | Cleric Divine Order | 1 | Protector OR Thaumaturge | `type:options` block, `refClassFeature` |
+| D-02 | Druid Primal Order | 1 | Magician OR Warden | same |
+| D-03 | Cleric Blessed Strikes | 7 | Divine Strike OR Potent Spellcasting | `type:options` / refClassFeature |
+| D-04 | Druid Elemental Fury | 7 | Potent Spellcasting OR Primal Strike | same |
+| D-05 | Barbarian Wild Heart: Aspect of the Wilds | 6 | one of the options; changeable each Long Rest | "gain one of the following options of your choice" |
+| D-06 | Ranger Hunter: Defensive Tactics | 7 | one of the feature options; replaceable on Short/Long Rest | same pattern |
+| D-07 | Ranger Gloom Stalker: Iron Mind | 7 | proficiency in Int or Cha saves (conditional on existing proficiency) | corpus text |
+| D-08 | Barbarian Primal Knowledge | 3 | one additional skill from the Barbarian skill list | "proficiency in another skill of your choice" |
+| D-09 | Ranger Deft Explorer: Expertise | 2 | Expertise in one skill you are proficient in (+ two languages) | corpus text; ledger has only the L9 expertise |
+| D-10 | Bard Magical Secrets | 10 (every prepared-spell increase from 10) | any new prepared spell from Bard/Cleric/Druid/Wizard lists | corpus text |
+| D-11 | Wizard Spell Mastery | 18 | one 1st- and one 2nd-level spellbook spell (action casting time) | corpus text |
+| D-12 | Wizard Signature Spells | 20 | two 3rd-level spellbook spells | corpus text |
+| D-13 | Sorcerer Draconic: Elemental Affinity | 6 | one damage type (from ancestry list) | "Choose one of those types" |
+| D-14 | Druid Land: circle terrain | 3 (subclass) | terrain type, which selects the Circle Spells list | subclass `additionalSpells` `name` variants |
+| D-15 | Paladin Oath, Cleric Domain, Druid Circle, Warlock Patron, Sorcerer Origin, Wizard School, Ranger/Monk/Rogue/Fighter subclasses | 3+ | fixed spell grants (§25.11) | structured `additionalSpells` |
+| D-16 | Species (6 of 10): see §25.5 | 1 | lineage / ancestry / origin feat | `races.json` |
+| D-17 | Background ability bonus (16) | 1 | two weighted choices across the Background's three listed abilities | `backgrounds.json` `ability` |
+| D-18 | Background tool proficiencies (16) | 1 | 11 fixed tools, 5 choose-one/three choices | `backgrounds.json` `toolProficiencies` |
+| D-19 | Class tool choices: Bard (3 instruments), Monk (1 artisan tool or instrument); fixed tools for Rogue (Thieves' Tools) and Druid (Herbalism Kit) | 1 | tool / instrument proficiency | class `startingProficiencies` |
+| D-20 | Class armor and weapon proficiency grants | 1 | fixed, all classes (Protector/Warden depend on them) | class `startingProficiencies` |
+| D-21 | General / Epic feats with nested non-ability decisions: 5 spell (Fey-Touched, Ritual Caster, Shadow-Touched, Telekinetic, Telepathic), 2 tool (Chef, Poisoner), 4 armor/weapon (Heavily/Lightly/Moderately Armored, Martial Weapon Training), 4 skill/tool/language (Keen Mind, Observant, Skill Expert, Boon of Skill) | 4+ / 19 | nested decision | `feats.json`; facets author only the ability choice (verified for four of them) |
+| D-22 | Starting equipment, A/B packages and gold alternative: 12 classes + 16 backgrounds | 1 | mandatory package choice | class and background `startingEquipment` |
+| D-23 | Per-level spell counts: Cantrips and Prepared Spells, 8 casters, levels 1–20 | 1–20 | count enforcement and increments | class `classTableGroups` |
+| D-24 | Wizard spellbook learning and copying | 1–20 | spellbook membership is the source for prepared/Spell Mastery/Signature | Spellcasting feature text (counts: verify in phase) |
+| D-25 | Languages (Rogue Thieves' Cant + one, Ranger Deft Explorer + two, species/background language grants) | 1+ | language choice | **corpus has no structured language grant**: prose only (see F-class, §25.4) |
+
+Not a decision (checked and excluded): Cleric Divine Intervention, Fighter Studied Attacks, Monk
+Empowered Strikes, Cleric Divine Strike, Druid Primal Strike, Barbarian Brutal Strike, Druid Natural
+Recovery, Druid Nature's Ward, Wizard Memorize Spell (replacement; §25.12), Sorcerer Tamed Surge,
+Warlock Celestial Resilience and Searing Vengeance, Ranger Beast Master Exceptional Training, Aasimar
+Celestial Revelation (chosen per transformation, runtime). These are combat-time or per-use choices.
+
+### 25.4 Remaining-blocker census
+
+Columns: **ID** · **Feature / decision** · **Owner** · **Level** · **C/P** (creation/progression) ·
+**Ledger** · **First broken boundary** · **Missing primitive or authoring** · **A?** (Milestone A
+critical) · **R?** (runtime-only) · **Deps**.
+
+Ledger keys are shorthand for the rows in `dnd5e-2024-progression-coverage.ts`. "NOT LISTED" means no
+row exists.
+
+**Creation (Level 1)**
+
+| ID | Feature / decision | Owner | Lvl | C/P | Ledger | First broken boundary | Primitive or authoring | A? | R? | Deps |
+|---|---|---|---|---|---|---|---|---|---|---|
+| C-01 | Spellcasting L1 selection (cantrips + prepared), 8 casters | Wizard, Cleric, Druid, Bard, Sorcerer, Warlock, Paladin, Ranger | 1 | C | ENGINE_BLOCKED ×8 | Builder never asks; silent drop | P2 + P3 | YES | no | P2, P3 |
+| C-02 | Weapon Mastery initial kinds | Barb 2, Fighter 3, Paladin 2, Ranger 2, Rogue 2 | 1 | C | ENGINE_BLOCKED ×5 | no weapon-kind vocabulary; silent drop | P1 (weapon kinds, 40 base weapons, 8 properties) + choice | YES | no | P1 |
+| C-03 | Weapon Mastery later replacement | same 5 | 1 + LR | P | in C-02 | re-answer | mutable choice | NO (optional) | no | defer |
+| C-04 | Cleric Divine Order (Protector / Thaumaturge) | Cleric | 1 | C | NOT LISTED | Protector needs armor/weapon proficiency vocabulary; Thaumaturge needs a cantrip | P1 + P2 + feature-option choice (P6) | YES | no | P1, P2, P6 |
+| C-05 | Druid Primal Order (Magician / Warden) | Druid | 1 | C | NOT LISTED | Warden needs armor/weapon vocab; Magician needs a cantrip | P1 + P2 + P6 | YES | no | P1, P2, P6 |
+| C-06 | Rogue Expertise (L1, 2 skills) | Rogue | 1 | C | CONTENT_BLOCKED | no Builder surface for a class skill-expertise picker | Builder surface (C) + creation `facet.choices` authoring (D) | YES | no | none |
+| C-07 | Fighter Fighting Style (L1) | Fighter | 1 | C | IMPLEMENTED | — | — | done | effects only | — |
+| C-08 | Background skills (16) | all | 1 | C | implemented (facet grants) | — | — | done | — | — |
+| C-09 | Background ability bonus (16) | all | 1 | C | NOT LISTED | no facet, no ability distribution; every character's derived scores miss it | P7 (bounded ability distribution) | YES | no | P7 |
+| C-10 | Background tool proficiencies (16: 11 fixed, 5 choice) | all | 1 | C | NOT LISTED | no tool vocabulary | P1 + one generic proficiency choice | YES | no | P1 |
+| C-11 | Background Origin feat, fixed (8 backgrounds, 6 feats) | Criminal, Guard, Farmer, Hermit, Merchant, Wayfarer, Sailor, Soldier | 1 | C | IMPLEMENTED | — | — | done | effects only (C-17..C-22) | — |
+| C-12 | Background Origin feat, choice (Crafter, Musician, Skilled, Magic Initiate) → Artisan, Entertainer, Charlatan, Noble, Scribe, Acolyte, Guide, Sage | 8 backgrounds | 1 | C | ENGINE_BLOCKED | blocked by tool/instrument/skill-or-tool/spell primitives | Crafter, Musician, Skilled: P1 only (see §25.7). Magic Initiate: P2 + P3 | YES | no | P1 (5 bg), P2+P3 (3 bg) |
+| C-13 | Species: Human Origin feat choice (anyFromCategory O, count 1) | Human | 1 | C | NOT LISTED | no species facet; option set includes C-12's blocked feats | authoring + `creationUnavailable` honoured on feat offers (generic extension of 2C.3A) | YES | no | P1, P2 for full option set |
+| C-14 | Species: Elf lineage (Drow / High Elf / Wood Elf) + spellcasting ability | Elf | 1 | C | NOT LISTED | lineage never asked; spells and ability choice missing | P2 (lineage cantrips) + P7 (ability choose) + authoring | YES | no | P2, P7 |
+| C-15 | Species: Gnome lineage (Forest / Rock) + ability | Gnome | 1 | C | NOT LISTED | same | P2 + P7 + authoring | YES | no | P2, P7 |
+| C-16 | Species: Tiefling legacy (Abyssal / Chthonic / Infernal) + ability + resistance choice | Tiefling | 1 | C | NOT LISTED | same, and resistance choice has no damage-type vocabulary | P1 (damage types), P2, P7, authoring | YES | resistance is R | P1, P2, P7 |
+| C-17 | Species: Dragonborn ancestry (damage type, 5 options) | Dragonborn | 1 | C | NOT LISTED | no damage-type vocabulary | P1 (damage types) + authoring | YES | effect R | P1 |
+| C-18 | Species: Goliath giant ancestry (choose 1 of 6 boons) | Goliath | 1 | C | NOT LISTED | no boon vocabulary | authoring (boon as Definition) | YES | effect R | P1 (partial) |
+| C-19 | Species: Aasimar Celestial Revelation | Aasimar | 3 (per transform) | P | NOT LISTED | chosen per use | — | NO | R | — |
+| C-20 | Class tool choices: Bard 3 instruments; Monk 1 artisan / instrument | Bard, Monk | 1 | C | NOT LISTED | no instrument vocabulary | P1 + generic choice | YES | no | P1 |
+| C-21 | Class fixed tools: Rogue Thieves' Tools; Druid Herbalism Kit | Rogue, Druid | 1 | C | NOT LISTED | no tool vocabulary | P1 + grant | YES | no | P1 |
+| C-22 | Class armor/weapon proficiency grants | all 12 | 1 | C | NOT LISTED | no armor/weapon vocabulary | P1 | YES (representation) | no | P1 |
+| C-23 | Starting equipment A/B, gold alternative | 12 classes + 16 backgrounds | 1 | C | ENGINE_BLOCKED (bg only) | no creation grant | P8 (equipment grants) | YES | no | P1 (weapon/armor refs), P8 |
+| C-24 | Expertise via Deft Explorer (Ranger) — at L2 (not L1) | Ranger | 2 | P | NOT LISTED (ledger has L9 only) | missing row | authoring (existing expertise primitive) | YES | no | none |
+| C-25 | Ability Score Improvement at L4/6/8/… and General feat ability | all | 4+ | P | IMPLEMENTED | — | — | done | — | — |
+| C-26 | Languages (Rogue Thieves' Cant +1; Ranger +2; species / background language grants) | several | 1–2 | C/P | NOT LISTED | **no structured language grant in the corpus** | F-class: policy decision (§25.4 F) | policy | no | policy |
+
+**Progression (Level 2–20)**
+
+| ID | Feature / decision | Owner | Lvl | C/P | Ledger | First broken boundary | Primitive or authoring | A? | R? | Deps |
+|---|---|---|---|---|---|---|---|---|---|---|
+| P-01 | Paladin Fighting Style (L2), plain options | Paladin | 2 | P | IMPLEMENTED | — | — | done | — | — |
+| P-02 | Paladin/Ranger FS variants Blessed Warrior / Druidic Warrior | Paladin, Ranger | 2 | P | ENGINE_BLOCKED | variant option only | P2 (cantrips) | NO (plain options legal) | — | P2 |
+| P-03 | Barbarian Primal Knowledge (skill) | Barbarian | 3 | P | NOT LISTED | missing row | authoring | YES | no | none |
+| P-04 | Subclass selection L3 | all 12 | 3 | P | IMPLEMENTED | — | — | done | — | — |
+| P-05 | Sorcerer Metamagic: 2 options at L2, +2 at L10, +2 at L17 (6 picks total) | Sorcerer | 2/10/17 | P | ENGINE_BLOCKED | no accumulating shape; no Metamagic option category | P5 | YES | options' effects R | P5 |
+| P-06 | Warlock Eldritch Invocations: 10 picks total, increases at L1, 2, 5, 7, 9, 12, 15, 18 | Warlock | 1–18 | C/P | ENGINE_BLOCKED (levels wrong) | accumulating shape; prerequisites | P5 + prerequisite evaluation | YES | effects R | P5 |
+| P-07 | Warlock Mystic Arcanum (6th–9th spell, one each at L11, 13, 15, 17) | Warlock | 11–17 | P | ENGINE_BLOCKED | no spell acquisition, no level filter | P2 + P3 | YES | no | P2, P3 |
+| P-08 | Fighter Champion Additional Fighting Style | Fighter (Champion) | 7 | P | ENGINE_BLOCKED | subclass-internal gating | P4 | YES | no | P4 |
+| P-09 | Fighter Fighting Style replacement | Fighter | any | P | ENGINE_BLOCKED | re-answer ("you can replace") | mutable choice | NO (optional) | no | defer |
+| P-10 | Fighter / Barbarian / Ranger / Paladin / Rogue Weapon Mastery increases | Barb, Fighter (verified 2→3→4, 3→4→5→6) | 4/10/16 | P | NOT LISTED | additive weapon-kind count | P1 + additive choice | YES | no | P1 |
+| P-11 | Expertise: Bard L2/L9, Ranger L9, Rogue L6 | — | 2–9 | P | IMPLEMENTED | — | — | done | — | — |
+| P-12 | Epic Boon acquisition L19 (12 classes) | all | 19 | P | IMPLEMENTED | — | — | done | — | — |
+| P-13 | Epic Boon nested: Boon of Skill (proficiency + expertise) | all (if selected) | 19 | P | inside epic-boon-effects (ENGINE_BLOCKED) | nested decision silently dropped | P1 + expertise nested choice + `requiresActive` | YES (conditional) | effects R | P1 |
+| P-14 | Bard Magical Lore Magical Discoveries (2 spells, Cleric/Druid/Wizard) | Bard (Lore) | 6 | P | ENGINE_BLOCKED | subclass gating + spell acquisition | P4 + P2 | YES | no | P4, P2 |
+| P-15 | Bard Magical Secrets (any-list spells at each prepared increase from L10) | Bard | 10–20 | P | NOT LISTED | missing row, spell acquisition | P2 + P3 + authoring | YES | no | P2, P3 |
+| P-16 | Wizard Memorize Spell (swap) | Wizard | 5 | P | NOT LISTED | optional replacement | mutable choice | NO | no | defer |
+| P-17 | Wizard Spell Mastery (L18) and Signature Spells (L20) | Wizard | 18, 20 | P | NOT LISTED | spellbook-restricted spell choices | P3 (spellbook) + P2 | YES | no | P2, P3 |
+| P-18 | Cleric Blessed Strikes (Divine Strike / Potent Spellcasting) | Cleric | 7 | P | NOT LISTED | options block | P6 | YES | effects R | P6 |
+| P-19 | Druid Elemental Fury (Potent Spellcasting / Primal Strike) | Druid | 7 | P | NOT LISTED | options block | P6 | YES | effects R | P6 |
+| P-20 | Barbarian Aspect of the Wilds (one option; replaceable) | Barbarian (Wild Heart) | 6 | P | NOT LISTED | options block, subclass gating | P4 + P6 | YES (acquisition) | effects R | P4, P6 |
+| P-21 | Ranger Defensive Tactics (one option; replaceable) | Ranger (Hunter) | 7 | P | NOT LISTED | options block, subclass gating | P4 + P6 | YES (acquisition) | effects R | P4, P6 |
+| P-22 | Ranger Iron Mind (Int or Cha save, conditional) | Ranger (Gloom Stalker) | 7 | P | NOT LISTED | conditional Definition-path choice | authoring (existing save-proficiency Definitions) + condition | YES | no | none |
+| P-23 | Sorcerer Draconic Elemental Affinity (one damage type) | Sorcerer (Draconic) | 6 | P | NOT LISTED | no damage-type vocabulary | P1 + authoring | YES | resistance R | P1 |
+| P-24 | Battle Master Combat Superiority maneuvers (3 at L3, further increments: verify) | Fighter (Battle Master) | 3+ | P | ENGINE_BLOCKED | subclass gating + accumulating shape | P4 + P5 | YES | dice effects R | P4, P5 |
+| P-25 | Eldritch Knight and Arcane Trickster third-caster progression (`1/3`, Int) | Fighter, Rogue (subclass) | 3+ | P | NOT LISTED | no third-caster slot table (package defines full/half/pact only) | P4 + new slot table (`table:spellcasting.slots_third`) | YES | no | P4 |
+| P-26 | Subclass fixed spell grants: 224 entries across 29 subclasses (L3–L19) | 29 subclasses | 3–19 | P | NOT LISTED | no grant type for spells | P4 + P2 (catalogue refs for the fixed spells) | YES | no | P4, P2 |
+| P-27 | Subclass choice spells: 48 entries across 7 subclasses (Bard Lore 2; Eldritch Knight 5; Arcane Trickster 5; Abjurer, Diviner, Evoker, Illusionist 9 each, school-filtered) | 7 subclasses | 3–9 | P | NOT LISTED | no school/class-filtered spell choice | P4 + P2 | YES | no | P4, P2 |
+| P-28 | Druid Land circle terrain (selects Circle Spells list) | Druid (Land) | 3 | P | NOT LISTED | subclass nested choice | P4 + authoring | YES | no | P4 |
+| P-29 | Druid Natural Recovery, Wizard Third Eye, Warlock Fiendish Resilience, Sculpt Spells, Illusory Reality, Monk Elemental Epitome | several | 6–17 | P | mixed | per-rest or per-cast choices | runtime / per-use | NO | R | defer |
+| P-30 | Heightened Focus; Sorcery Incarnate | Monk; Sorcerer | 10; 7 | — | MILESTONE_DEFERRED | not decisions | remove rows | NO | — | — |
+
+**Feats (any level via ASI or Epic)**
+
+| ID | Feature / decision | Owner | Lvl | C/P | Ledger | First broken boundary | Primitive or authoring | A? | R? | Deps |
+|---|---|---|---|---|---|---|---|---|---|---|
+| F-01 | General feats with nested spell choice (Fey-Touched, Ritual Caster, Shadow-Touched, Telekinetic, Telepathic) | any | 4+ | P | NOT LISTED | feat selection accepted; spell choice never recorded | P2 + P3 (immediate guard: P0) | YES | effects R | P0, P2 |
+| F-02 | General feats with nested tool choice (Chef, Poisoner) | any | 4+ | P | NOT LISTED | same | P1 | YES | no | P0, P1 |
+| F-03 | General feats with nested armor/weapon proficiency (Heavily / Lightly / Moderately Armored, Martial Weapon Training) | any | 4+ | P | NOT LISTED | same, and fixed proficiency never recorded | P1 | YES | no | P0, P1 |
+| F-04 | General/Epic feats with nested skill/tool/language (Keen Mind, Observant, Skill Expert) | any | 4+ | P | NOT LISTED | same | P1 + skill choice on feat | YES | no | P0, P1 |
+| F-05 | Origin feats: 6 IMPLEMENTED, effects blocked (Alert, Tough, Healer, Lucky, Tavern Brawler, Savage Attacker) | Backgrounds | 1 | C | ENGINE_BLOCKED / CONTENT_BLOCKED | — | effects | NO | R | defer |
+
+**Equipment**
+
+| ID | Feature / decision | Owner | Lvl | C/P | Ledger | First broken boundary | Primitive or authoring | A? | R? | Deps |
+|---|---|---|---|---|---|---|---|---|---|---|
+| E-01 | Starting equipment A/B (C-23) | — | 1 | C | in C-23 | — | P8 | YES | no | P8 |
+| E-02 | Ongoing inventory (add / equip / attune) | — | any | P | IMPLEMENTED (V2 inventory block) | — | — | done | — | — |
+
+### 25.5 Species census (XPHB, 10 species)
+
+| Species | Mandatory non-skill decision | Facet today | Status |
+|---|---|---|---|
+| Human | Origin feat choice (count 1) | skill choice only | C-13 |
+| Elf | Lineage (Drow / High / Wood), spellcasting ability | skill choice only | C-14 |
+| Gnome | Lineage (Forest / Rock), spellcasting ability | none | C-15 |
+| Tiefling | Legacy (Abyssal / Chthonic / Infernal), ability, resistance | none | C-16 |
+| Dragonborn | Draconic ancestry (damage type) | none | C-17 |
+| Goliath | Giant ancestry (1 of 6 boons) | none | C-18 |
+| Aasimar | Celestial Revelation (per transformation) | none | C-19, runtime |
+| Dwarf, Halfling, Orc | none (fixed traits) | none | no gap |
+
+### 25.6 Spell Acquisition: separated primitives
+
+The earlier "Spell Acquisition" grouping hides four engine requirements. They are separable, and
+the separation changes the order of work.
+
+1. **Spell catalogue reference with filter** (P2). A ContentRef choice over the spell catalogue
+   with class list, spell level, and school filters. The data exists (`gendata-spell-source-lookup.json`,
+   XPHB class and school per spell; 391 XPHB spells). Today the only content-catalogue selector is
+   `category` plus `variants` (`ContentCatalogueFilter`). Blast radius: every caster's L1 cantrip and
+   prepared choices, Mystic Arcanum, Bard Lore and Magical Secrets, Wizard Spell Mastery and Signature,
+   the two variant Fighting Styles, Thaumaturge and Magician, Magic Initiate, the five General spell
+   feats, Elf and Gnome and Tiefling lineage spells, and the subclass choice spells.
+2. **Count enforcement** (P3). Cantrip and prepared counts per class and level, from the corpus tables
+   (§25.10). Caster counts verified (Wizard cantrips 3→5 and prepared 4→25; Bard 2→4 and 4→22;
+   Cleric 3→5 and 4→22; Druid 2→4 and 4→22; Sorcerer 4→6 and 2→22; Paladin prepared 2→15 with no
+   cantrips; Ranger prepared 2→15; Warlock cantrips 2→4, prepared 2→15, plus slots). Paladin and
+   Ranger start at **Level 1**, so the ledger's L1 rows for them are correct.
+3. **Spellbook membership** (P3 extension). Wizard prepared spells come from a spellbook
+   (Spellcasting feature, Ritual Adept). Spell Mastery and Signature Spells choose from that book.
+4. **Per-level acquisition** (P3 extension). The prepared count rises at most levels (Wizard increases
+   at every level from 2 to 20 except Level 12, where the count is flat at 16; all counts above). Each increase is a
+   new mandatory choice unless the spell count is enforced as a maximum only. That needs a decision:
+   **the corpus says "prepared", so this is a maximum to fill at each increase, not a fixed sequence**.
+   Confirm the rule text in the phase before choosing the model.
+
+Blocked (not counted as separate primitives): spell **replacement / change** (Wizard Memorize Spell,
+Magical Secrets' replacement clause, Long Rest prepared changes). Optional flexibility; deferred.
+
+### 25.7 Tools, instruments, and mixed proficiency (Crafter, Musician, Skilled)
+
+The three do **not** need three primitives. One generic, Definition-backed proficiency choice with a
+category filter and a count covers them:
+
+- Crafter: choose 3 from the artisan's tools category.
+- Musician: choose 3 from the musical instrument category.
+- Skilled: choose 3 from the union of skills and tools (mixed).
+
+All three need a proficiency vocabulary (P1) that does not exist today: the package has no
+`value:tool.*`, no instrument, no gaming-set, no artisan-tool, no weapon-category, no armor-category,
+and no language definitions (verified by listing `packages/eldra-dnd5e-2024/definitions.json`).
+The existing choice-set machinery (`choice:skill.proficiency`, `ChoiceSet` with `from` and `count`,
+Definition-path eligibility) is the right host. The only new shape is a mixed `from` (skills and
+tools in one choice), which can be expressed as a union of two `from` lists if the engine supports
+it; verify in the phase.
+
+Unlocked by P1 alone: Artisan, Entertainer, Charlatan, Noble, Scribe (5 Backgrounds, 3 Origin
+feats). Acolyte, Guide, and Sage remain blocked on Magic Initiate (P2 + P3).
+
+### 25.8 Weapon Mastery re-audit
+
+- **Creation**: Barbarian 2, Fighter 3, Paladin 2, Ranger 2, Rogue 2 weapon kinds at Level 1 (corpus
+  text, verified for all five).
+- **Class coverage**: 5 classes at Level 1. Count increases verified only for Barbarian
+  (2 → 3 at L4 → 4 at L10) and Fighter (3 → 4 at L4 → 5 at L10 → 6 at L16). Paladin, Ranger, and
+  Rogue increases: verify in phase.
+- **Option identity**: 40 XPHB base weapons, every one with a mastery property; 8 mastery properties
+  (Cleave, Graze, Nick, Push, Sap, Slow, Topple, Vex). Source: `items-base.json`. Note that
+  `items.json` has no base weapons and only one mastery-bearing variant (Psychic Blade).
+  Eligibility is "kinds of weapons you have proficiency with", which needs C-22 (weapon categories).
+- **Persistence**: a Content-Catalogue-backed selection of weapon kinds; no existing choice type
+  holds an item reference beyond inventory.
+- **Re-selection**: "whenever you finish a Long Rest, you can change one" (Barbarian, Fighter) and
+  "you can change the kinds you chose" (Paladin, Ranger, Rogue). **Optional.** The original legal
+  answer remains legal. **Not Milestone A** (initial acquisition is Milestone A).
+
+Initial Weapon Mastery is therefore: P1 (weapon kinds) + one additive choice per count. Replacement
+is deferred.
+
+### 25.9 Starting equipment and gold
+
+Required for Milestone A. Every class (12) has an A/B package and `additionalFromBackground: true`.
+Every XPHB background (16) has an A/B package with a gold alternative (e.g. Charlatan `value: 1500`).
+The package defines no equipment grant shape (the ledger's `background:starting-equipment` row confirms).
+
+Existing V2 inventory already solves storage: `server/utils/character-inventory.ts`
+(`INVENTORY_BLOCK_KEY = 'inventory'`, own `block_instances` block), with add, equip, and attune
+operations and UI. The gap is **creation grants only**:
+
+- fixed item grants (references to base items, with quantity and display name);
+- A/B package selection (a choice between two fixed bundles, plus the gold alternative);
+- gold as a currency value (no currency exists in the package);
+- item ContentRefs resolved against the World's bound content.
+
+Classification: P8. Architectural risk MEDIUM. Milestone A YES. Do not describe inventory as missing.
+
+### 25.10 Optional-feature accumulation
+
+Metamagic and Eldritch Invocations share one shape. Both are "learn N options total from a catalogue
+category, count rising by level, kept permanently, with optional prerequisites." Metamagic: 2 at L2,
+2 at L10, 2 at L17 (6 total), from 10 XPHB options. Invocations: 10 picks total (1, +2, +2, +1, +1, +1,
++1, +1 at the eight increase levels), from 28 XPHB options, with prerequisites. Battle Master
+maneuvers are the same shape inside a subclass.
+
+One generic accumulating primitive covers the initial and additive acquisitions:
+
+- a catalogue category for optional features (Metamagic, Invocations, maneuvers);
+- a count that rises by level (a table or authored delta rows; the same decision as §25.6 item 4);
+- option prerequisites (level, pact, spell, feat), evaluated against the derived state;
+- permanence (no re-answer).
+
+**Replacement** is separate and optional. The corpus wording for Metamagic and Invocations is
+permanent: no replacement clause was found in the rule text read this pass. So replacement can be
+deferred beyond Milestone A for these two. Verify in the phase.
+
+Risk MEDIUM. Milestone A YES. Dependencies: P2 (for prerequisites that need spells) and the option
+category in the catalogue.
+
+### 25.11 Subclass-internal feature-level gating
+
+Real count, from the XPHB subclass corpus (48 subclasses):
+
+- **Persisted build decisions gated to a later subclass level: 8.** Champion Additional Fighting
+  Style (L7, ledger), Bard Lore Magical Discoveries (L6, ledger), Battle Master Combat Superiority
+  maneuvers (L3, ledger), Wild Heart Aspect of the Wilds (L6), Hunter Defensive Tactics (L7),
+  Gloom Stalker Iron Mind (L7), Draconic Elemental Affinity (L6), Druid Land circle terrain (L3).
+- **Ledger subclass rows that are per-use, per-rest, or per-cast (runtime, not gating): 5.** Steps of
+  the Fey (L3), Fiendish Resilience (L10), The Third Eye (L10), Sculpt Spells (L6), Illusory Reality
+  (L14). The 7 ledger subclass rows therefore split 2 persisted and 5 runtime.
+- **Fixed spell grants gated by subclass level**: **224 entries across 29 subclasses** (L3–L19). The
+  largest families: Paladin Oaths (4), Cleric Domains (4 with spells), Warlock Patrons (4), Sorcerer
+  Origins (3), Druid Circles (4), Wizard Schools (fixed portions).
+- **Choice spells gated by subclass level**: **48 entries across 7 subclasses** (Bard Lore; Eldritch
+  Knight and Arcane Trickster; Abjurer, Diviner, Evoker, Illusionist).
+- **Subclass-only casting**: Eldritch Knight and Arcane Trickster (`casterProgression 1/3`, Int).
+  Needs a third-caster slot table, which the package does not define.
+- **Per-use or per-rest effects (not gating)**: Divine Strike, Primal Strike, Brutal Strike, Elemental
+  Burst, Elemental Epitome, Sculpt Spells, Illusory Reality, Third Eye, Fiendish Resilience, Bulwark
+  of Force, Beguiling Twist, Steps of the Fey, Misty Escape, Exceptional Training, Natural Recovery.
+  These are runtime (Milestone B), with the exception of the choice itself where it persists.
+
+One generic primitive, **subclass-internal feature-level gating** (a subclass facet's own grant or
+choice that activates at a level later than the subclass selection), unlocks: 8 persisted build
+decisions, 224 + 48 structured spell-grant entries, the third-caster table for 2 subclasses. That is
+8 + 272 + 2 rows behind one primitive. The 272 are entries, not distinct spells.
+
+### 25.12 Mutable and re-answerable choices
+
+| Rule | Corpus wording | Milestone A? | Reason |
+|---|---|---|---|
+| Weapon Mastery change | "whenever you finish a Long Rest, you can change one" (Barbarian, Fighter); "you can change the kinds" (Paladin, Ranger, Rogue) | NO | optional; initial answer stays legal |
+| Fighting Style replacement | "you can replace the feat you chose" (Fighter, each level) | NO | "may" |
+| Aspect of the Wilds / Defensive Tactics replacement | "you can change your choice" on rest | NO | "can" |
+| Wizard Memorize Spell (L5) | swap a prepared spell | NO | optional flexibility |
+| Magical Secrets replacement clause | "whenever you replace a spell prepared for this class" | NO | optional |
+| Long Rest prepared-spell change (casters) | prepared list can change | NO | optional, legal state persists |
+| Fiendish Resilience, Third Eye (per rest) | choose each rest | NO | runtime per rest |
+| Sorcerer Metamagic / Warlock Invocations | permanent (no replacement found in text read) | — | not re-answerable; no deferral needed |
+
+Test for classification: a rule is Milestone A **only** if a legal character cannot exist without the
+re-answer. None of the rows above meets that test, so they are deferrable.
+
+### 25.13 Blast-radius table (ranked)
+
+Counts are real corpus rows or features. "Classes" and "Backgrounds" list only those affected.
+
+| Rank | Primitive | Exact blockers unlocked | Classes | Backgrounds | Subclasses | Creation impact | Progression impact | Deps | Risk | Milestone A |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | **Phase 0: silent-drop guard** (no new primitive) | every ledger-blocked and NOT LISTED decision (§25.3): 25 rows | 12 | 16 | — | refuses or shows outstanding for mandatory decisions the Builder cannot answer | refuses feat selection with unrecorded nested decisions (F-01..F-04) | none | LOW | YES (correctness) |
+| 1 | **P1 Proficiency vocabulary** (weapon kinds and categories, armor categories, artisan tools, instruments, gaming sets, skills+tools mixed, damage types) | C-02, C-10, C-20, C-21, C-22, C-16, C-17, P-10, P-23, P-13, F-02, F-03, F-04, Crafter, Musician, Skilled, Divine Order (Protector), Primal Order (Warden), Weapon Mastery option identity (40 weapons, 8 properties) | 12 (all, via Weapon Mastery and armor/weapon grants) | 5 unlocked directly (Artisan, Entertainer, Charlatan, Noble, Scribe) + 16 tool grants | — | 5 Backgrounds' Origin unlocked; 16 background tool grants recorded; C-02 Weapon Mastery; Divine/Primal Order half-unlocked | P-10 counts; Weapon Mastery increases | none | MEDIUM | YES |
+| 2 | **P2 Spell catalogue ContentRef with class / level / school filter** | C-01, C-04 (Thaumaturge), C-05 (Magician), C-14/C-15/C-16 (lineage spells), P-02, P-07, P-14, P-15, P-17, P-27, F-01, Magic Initiate (3 Backgrounds, and the Human option), P-26 | 8 casters + Cleric/Druid option grants | 3 (Acolyte, Guide, Sage) | 7 (choice) + 29 (fixed, via P4) | every caster's L1 selection; Magic Initiate creation | all arcanum/magical-secrets/mastery picks | V1 reuse (S7) | MEDIUM | YES |
+| 3 | **P3 Spell counts, spellbook, per-level acquisition** | C-01 counts, P-07, P-15, P-17, F-01 counts, P-26 counts, Magic Initiate counts | 8 casters | 3 (via Magic Initiate) | 7 | exact L1 cantrip and prepared counts | per-level prepared increases L2–L20 (8 casters × 19 increases) | P2 | MEDIUM-HIGH (the per-level model choice) | YES |
+| 4 | **P4 Subclass-internal feature-level gating** | P-08, P-14, P-20, P-21, P-24, P-25, P-26 (224), P-27 (48), P-28, D-03 choices | Fighter, Rogue (EK/AT), Barbarian, Ranger, Druid, Bard, Sorcerer, Wizard, Paladin, Warlock, Cleric, Monk | — | 48 subclasses in total; 29 with fixed grants; 7 with choice spells; 2 with third-caster | none (subclass selects at L3) | 13 build decisions + 272 structured entries | P2 for catalogue refs | HIGH (activation semantics, derived slots) | YES |
+| 5 | **P5 Accumulating options (catalogue category + count by level + prerequisites)** | P-05 (6 picks), P-06 (10 picks, 28 options), P-24 maneuvers | Sorcerer, Warlock, Fighter (BM) | — | Battle Master | — | Metamagic 3 levels; Invocations 8 levels; maneuvers | P2 for spell prerequisites | MEDIUM | YES |
+| 6 | **P6 Feature-option choice (one of N features at a level)** | D-01, D-02, D-03/P-18, D-04/P-19, D-05/P-20, D-06/P-21 | Cleric (2), Druid (2), Barbarian (1), Ranger (1) | — | Wild Heart, Hunter | Divine Order, Primal Order at creation | Blessed Strikes L7, Elemental Fury L7, Aspect L6, Defensive Tactics L7 | P1, P2, P4 | LOW–MEDIUM | YES |
+| 7 | **P7 Bounded ability distribution** (two weighted structures per Background; spellcasting-ability choose for lineages) | C-09 (16 Backgrounds × 2 structures), C-14, C-15, C-16 ability parts | 12 (every character) | 16 | — | every creation's derived ability scores | none | none | MEDIUM (extends `asi.increase` sources) | YES |
+| 8 | **P8 Creation equipment grants (A/B, gold, item refs)** | C-23 (12 classes + 16 backgrounds) | 12 | 16 | — | every creation | none | P1 (weapon/armor refs) | MEDIUM | YES |
+| 9 | **Species decision facets** (authoring on P1/P2/P7) | C-13, C-14, C-15, C-16, C-17, C-18 | — | — | — | 6 species | — | P1, P2, P7 | LOW (authoring) | YES |
+| 10 | **Authoring-only rows** (Deft Explorer expertise L2; Barbarian Primal Knowledge L3; Ranger Iron Mind L7; Rogue Expertise L1 with Builder surface) | C-06, C-24, P-03, P-22 | Ranger, Barbarian, Rogue | — | Gloom Stalker | Rogue L1 | Ranger L2, Barbarian L3, Ranger L7 | none | LOW | YES |
+| 11 | **Mutable / re-answerable choice** | C-03, P-09, P-16, P-20 replacement, P-21 replacement | 5 + Fighter + Wizard | — | Wild Heart, Hunter | — | — | — | MEDIUM | **NO** |
+| 12 | **Runtime / per-use effects** | Fighting Style effects ×13, Origin effects ×6, Epic Boon effects ×11 (excluding Boon of Skill), per-use subclass features (§25.11), Aasimar Revelation | all | 8 | many | none | none | — | HIGH (combat automation) | NO |
+| 13 | **Languages policy** | C-26, D-25 | several | several | — | — | — | policy decision | policy | policy |
+
+Ranking note: P1 has the largest breadth (12 classes and 16 backgrounds touch it). P4 has the
+largest count (272 entries). P2 is the largest single dependency: nothing in the caster or
+spell-feat path finishes without it.
+
+### 25.14 Dependency graph
+
+```
+Phase 0 (silent-drop guard)  ── no dependencies ──────────────────────────── must land first
+   │
+   ├── P1 Proficiency vocabulary ─┬── Crafter / Musician / Skilled (5 Backgrounds)
+   │                              ├── background tools (16)  ──┐
+   │                              ├── class tools (Bard, Monk, Rogue, Druid)
+   │                              ├── armor/weapon grants (12)
+   │                              ├── Weapon Mastery option identity + increases
+   │                              ├── Divine Order (Protector) / Primal Order (Warden)
+   │                              └── Elemental Affinity, Dragonborn, Tiefling resistance
+   │
+   ├── P7 Bounded ability distribution ── background ability (16), lineage ability (3)
+   │
+   ├── P8 Creation equipment grants ── needs P1 for weapon/armor refs
+   │
+   ├── P2 Spell catalogue + filters ─┬── P3 counts / spellbook / per-level
+   │                                 │      ├── Mystic Arcanum (4 levels)
+   │                                 │      ├── Magical Secrets (L10+)
+   │                                 │      ├── Spell Mastery (L18), Signature (L20)
+   │                                 │      └── Magic Initiate (3 Backgrounds, Human option)
+   │                                 ├── Thaumaturge / Magician (needs P6 for Divine/Primal Order)
+   │                                 ├── General spell feats (5)
+   │                                 ├── lineage spells (Elf, Gnome, Tiefling)
+   │                                 └── Blessed / Druidic variants (non-blocking)
+   │
+   ├── P4 Subclass feature-level gating ─┬── subclass fixed grants (224 entries; needs P2)
+   │                                     ├── subclass choice spells (48 entries; needs P2)
+   │                                     ├── Champion L7 FS
+   │                                     ├── Druid Land circle choice
+   │                                     ├── Aspect / Defensive Tactics (needs P6)
+   │                                     ├── Eldritch Knight / Arcane Trickster slots (third-caster table)
+   │                                     └── Battle Master maneuvers (needs P5)
+   │
+   ├── P5 Accumulating options ── Metamagic (6), Invocations (10); maneuvers (needs P4)
+   │
+   ├── P6 Feature-option choice ── Divine/Primal Order (creation), Blessed Strikes, Elemental Fury,
+   │                               Aspect, Defensive Tactics
+   │
+   ├── Authoring-only (leaf): Deft Explorer (L2), Primal Knowledge (L3), Iron Mind (L7),
+   │   Rogue Expertise L1 Builder surface, Epic Boon Boon of Skill nested (after P1)
+   │
+   └── Species facets (leaf authoring, after P1/P2/P7): Human, Elf, Gnome, Tiefling, Dragonborn, Goliath
+
+Unlocks other primitives: P1, P2, P3, P4, P7, P6 (P6 unlocks Divine/Primal Order, which in turn
+unlock Cleric/Druid creation). Leaf implementation work: species facets, authoring-only rows,
+equipment grants (after P1), per-level count tables.
+```
+
+### 25.15 Critical path (ordered; each phase has an exit condition)
+
+**Phase 0 — Silent-drop guard.** Refuse feat selection (and any creation) whose mandatory nested
+decision cannot be recorded, and show each ledger-blocked decision as an outstanding Sheet item.
+Recommended approval point: this changes creation behaviour and needs your decision on whether to
+refuse or to allow creation with outstanding decisions. The current Sheet already reports outstanding
+choices.
+*Exit:* a Fey-Touched, Chef, Keen Mind, or Cleric character with Divine Order unrecorded cannot be
+completed silently; the Builder and the feat-selection path both refuse, with tests for each family.
+
+**Phase 1A — P1 Proficiency vocabulary.** Definitions for weapon kinds and categories (40 weapons,
+8 mastery properties), armor categories, artisan tools, musical instruments, gaming sets, damage types.
+Generic proficiency choice with a category filter, count, and optional mixed skills+tools.
+*Exit:* Crafter, Musician, Skilled, Artisan, Entertainer, Charlatan, Noble, Scribe are creation-available;
+all 16 background tool grants are recorded; Bard, Monk, Rogue, Druid tools recorded; Weapon Mastery L1
+kinds recorded and validated; Protector and Warden grants recorded.
+
+**Phase 1B — P7 Bounded ability distribution.** Background ability (both structures) and lineage
+spellcasting-ability choices.
+*Exit:* derived ability scores equal the PHB result for each of the 16 Backgrounds in a fixture matrix;
+Elf, Gnome, and Tiefling spellcasting ability is recorded.
+
+**Phase 2 — P2 Spell catalogue reference with class / level / school filters.** Reuse the existing
+class-list lookup. Consolidate with the V1 path; do not add a third.
+*Exit:* Wizard, Cleric, Druid, Bard, Sorcerer, Warlock, Paladin, and Ranger can each pick a legal L1
+spell; an illegal class or level is refused server-side; Mystic Arcanum level filter works.
+
+**Phase 3 — P3 Counts, spellbook, per-level acquisition.** Cantrip and prepared counts from the
+corpus tables; spellbook membership for Wizard; per-level prepared increases.
+*Exit:* for every caster class, the derived cantrip and prepared counts equal the corpus table at
+every level 1–20; Magic Initiate (Acolyte, Guide, Sage) becomes creation-available; Wizard Spell
+Mastery and Signature Spells choose from the spellbook.
+
+**Phase 2B (parallel with Phase 3) — P6 Feature-option choice, creation half.** Divine Order and Primal
+Order, with Thaumaturge and Magician depending on P2.
+*Exit:* a Cleric and a Druid at L1 can complete Divine Order and Primal Order with either option.
+
+**Phase 4 — P4 Subclass-internal feature-level gating.** Mechanism; then fixed grants (224), choice
+spells (48), third-caster slots, Champion L7, Druid Land circle.
+*Exit:* for each of 48 subclasses, every fixed and choice spell and every subclass build decision is
+legal at its level; Eldritch Knight and Arcane Trickster compute slots from the new table.
+
+**Phase 5 — P5 Accumulating options and P6 remainder.** Metamagic, Invocations (with prerequisites),
+Battle Master maneuvers, Aspect of the Wilds, Defensive Tactics, Blessed Strikes, Elemental Fury.
+*Exit:* Sorcerer reaches 6 Metamagic picks at L17; Warlock reaches 10 Invocations at L18 with each
+prerequisite enforced; every L4–L20 option choice resolves.
+
+**Phase 6 — Authoring-only and species facets.** Deft Explorer (L2), Primal Knowledge (L3), Iron Mind
+(L7), Rogue Expertise L1 surface, Boon of Skill nested, six species facets, Human Origin option set
+(with the 2C.3A `creationUnavailable` rule applied to feat offers).
+*Exit:* each species' mandatory decision is answerable and persisted; Human's Origin choice offers
+only creation-available feats.
+
+**Phase 7 — P8 Creation equipment grants.** A/B packages and gold alternative for 12 classes and 16 backgrounds.
+*Exit:* a created character's inventory matches the chosen package (verified per class and background);
+gold is recorded.
+
+**Phase 8 — Milestone A exit sweep.** Corpus-derived mandatory-decision manifest test (§25.17), all
+ledger rows classified, and the polish gate (§25.18) passes.
+
+Each phase lands under its own ledger rows and tests. No phase depends on combat automation.
+
+### 25.16 Parallel work
+
+Genuine parallelism after the named foundation:
+
+- After **P1**: Weapon Mastery authoring; 16 background tool grants; Bard, Monk, Rogue, Druid tool
+  choices; Divine/Primal armor-weapon options; Epic Boon Boon of Skill nested.
+- After **P2**: Magic Initiate; Mystic Arcanum authoring (per-level lists); Bard Lore and Magical
+  Secrets authoring; the five General spell feats; the three lineage spell lists.
+- After **P4**: subclass fixed-grant authoring, which is data-only and splits by subclass (48
+  subclasses, each independent); subclass choice spells; Druid Land circle.
+- **Independent of P1–P5**: P7 (ability distribution) and P8 (equipment grants; weapon references
+  wait for P1). Authoring-only rows (Deft Explorer, Primal Knowledge, Iron Mind).
+- **Not parallel**: P3 counts depend on P2's spell references; P5 depends on P2 for prerequisites.
+
+### 25.17 Deferred to polish (does not block Milestone A)
+
+Runtime and automation (Milestone B):
+
+- Fighting Style effects (13 rows) and Fighting Style replacement.
+- Origin Feat effects (Alert, Tough, Healer, Lucky, Tavern Brawler, Savage Attacker).
+- Epic Boon effects (11 rows, excluding Boon of Skill's nested decision).
+- Per-use and per-attack subclass features (§25.11), Aasimar Revelation, and the Monk, Cleric, and
+  Druid strike choices.
+- Combat automation generally (damage riders, reactions, resistances, initiative).
+
+Optional flexibility (mutable):
+
+- Weapon Mastery change; Fighting Style replacement; Aspect and Defensive Tactics replacement;
+  Memorize Spell; Magical Secrets replacement; Long Rest prepared-spell changes; per-rest choices.
+
+Presentation and UX:
+
+- Character Decisions / Acquired Features presentation (`.github/docs/architecture/character-decisions-presentation-backlog.md`).
+- Sheet beauty pass; player-facing Level-Up Wizard (the Level Manager is an admin tool today).
+- Interaction polish.
+
+Policy (not an engine gap):
+
+- Languages (D-25, C-26): the corpus has no structured language grant. Decide whether language choices
+  are recorded as notes or a free-text field. It does not affect dice or derivations.
+
+Other:
+
+- Removing the two false-positive ledger rows and correcting the Invocation levels (§25.2).
+
+### 25.18 Polish gate (objective, testable)
+
+Eldra may declare **CHARACTER INFRASTRUCTURE COMPLETE** when every item below holds. Each is an
+automated test or a recorded dry-run, not a judgement.
+
+- **G1 — Creation, all classes.** For each of the 12 native XPHB classes, a Level 1 character can be
+  created entirely in-app, with every mandatory Level 1 decision either recorded or refused. The
+  test derives the decision list from the corpus (not a hand-written list).
+- **G2 — Backgrounds.** Each of the 16 XPHB Backgrounds is either creation-available (its Origin feat,
+  tools, ability bonus, and equipment recorded) or explicitly blocked with a reason. No Background is
+  silently partial.
+- **G3 — Species.** Each of the 10 XPHB species has its mandatory lineage, ancestry, origin, or ability
+  decision recorded.
+- **G4 — Progression to Level 20.** For each class, the derived cantrip, prepared, Invocation, Metamagic,
+  maneuver, and Weapon Mastery counts equal the corpus table at every level 1–20. Every progression
+  choice resolves.
+- **G5 — Persistence.** A fresh reload preserves every choice made at creation and at every level
+  (extend the existing round-trip tests to these rows).
+- **G6 — Ledger completeness in both directions.** The structural discovery (§25.17) finds every
+  mandatory decision, and every discovered decision maps to a ledger row. No row remains
+  ENGINE_BLOCKED, CONTENT_BLOCKED, or NOT LISTED with Milestone A = YES.
+- **G7 — Runtime exemptions are explicit.** Every non-IMPLEMENTED row is either a named runtime effect
+  (Milestone B) or a named optional mutable choice, listed in one set the test checks.
+- **G8 — No silent drop.** The Builder's completeness gate and the feat-selection path refuse, or
+  surface as outstanding, every ledger-blocked decision (Phase 0 test).
+- **G9 — Package.** Rules and Content are CURRENT with no PUBLISH_REQUIRED or REFRESH_REQUIRED action
+  in the dry run; Actions None.
+
+Until G1–G9 pass, the work is "finish infrastructure" and no Sheet beauty, Level-Up Wizard, or polish
+work starts.
+
+### 25.19 Test-suite gap
+
+What exists: the all-class Level 1→20 progression tests (proving the engine for the choices already
+implemented), Builder acceptance tests, the corpus and ledger contract tests, and persistence
+round trips for Fighter, Paladin/Ranger, Origin, and Epic Boon.
+
+What is missing, and the smallest set that would prove "any native XPHB legal character can be
+represented":
+
+1. **Structural mandatory-decision discovery test.** Generated from the corpus with the structural
+   signals (options blocks, `additionalSpells`, tool and proficiency `choose`, weighted `ability`,
+   `startingEquipment`, feat nested decisions). It fails if a discovered decision has no ledger row.
+   This closes the discovery gap (§25.3) that the current test cannot see.
+2. **Count-table test.** For each caster and each accumulating class, derived counts equal the corpus
+   table at every level (§25.10). Today only slot tables are tested.
+3. **Equivalence-class acceptance.** Not combinatorial. Ten representative characters, each a
+   distinct equivalence class:
+   - full caster (Wizard): spellbook, Spell Mastery and Signature;
+   - half caster (Paladin): L1 prepared, Fighting Style variant, Weapon Mastery;
+   - pact caster (Warlock): Invocations, Mystic Arcanum;
+   - subclass caster (Eldritch Knight): third-caster slots, fixed grants;
+   - options features (Cleric): Divine Order (both options), Blessed Strikes;
+   - accumulator (Sorcerer): Metamagic at L2, L10, L17;
+   - non-caster weapon class (Fighter): Weapon Mastery increases, Champion L7;
+   - lineage species (Elf or Tiefling): lineage, ability, spells, resistance;
+   - blocked and supported Backgrounds: one per blocker family (tool, instrument, skill-or-tool,
+     spell) plus one supported with tool grants;
+   - Human: the Origin option set.
+4. **Silent-drop refusal tests** (Phase 0), one per family (feat nested spell, tool, armor, skill).
+
+### 25.20 Package and verification record (this pass)
+
+- Rules: `eldra.rules.dnd5e-2024@0.18.0`, CURRENT (no change made).
+- Content: `eldra.solaris.xphb`, CURRENT (no change made).
+- Actions: None.
+- Writes: zero (dry run only: `pnpm packages:sync --world Solaris`).
+- Tests run: ledger and origin contract tests (131 passing). No code changed. Full suite not re-run
+  (no code changed in this pass).
+- Application and package code: unchanged. Only this audit document was modified.
+
+### 25.21 PHASE 0 — NO SILENT DROP + MANDATORY-DECISION DISCOVERY (2026-10-06)
+
+Status: implemented (application and audit infrastructure). No Rules Definition, Content facet
+semantics, or package version changed; `packages/eldra-dnd5e-2024` stays `0.18.0`. Package sync
+dry run: Rules CURRENT, Content CURRENT, Actions None. The decision index is application metadata
+generated from the corpus, not package semantics, so no package change was needed.
+
+**Product decision (fail closed):** a character is not creation-complete or progression-complete
+while a mandatory XPHB decision Eldra cannot record exists. "Cannot be completed yet" is preferred
+over silently dropping a mandatory decision.
+
+#### Architecture (three pure modules, one generated index, one generator)
+
+| Module | Role |
+|---|---|
+| `app/lib/content-rules/mandatory-decisions.ts` | Structural discovery. Reads the 5etools XPHB records and yields every mandatory decision with stable identity: owner, granted-by, level, timing, family, mandatory flag, cardinality, corpus source. |
+| `app/lib/content-rules/mandatory-decision-coverage.ts` | The coverage contract. Named rules classify each decision (implemented / blocked / optional / false-positive / runtime-effect) and name the ledger rows they account for. |
+| `app/lib/content-rules/creation-completeness.ts` | The fail-closed authority. `creationUnresolvedDecisions` and `progressionUnresolvedDecisions` return what blocks a selection or a level range; `describeUnresolved` and `decisionPhrase` are the one wording used by the server and the Builder. |
+| `scripts/content-rules/generate-mandatory-decisions.ts` + `write-mandatory-decisions.ts` | Loads the corpus and writes `app/lib/content-rules/dnd5e-2024-mandatory-decisions.json` (630 decisions). Run: `pnpm exec vite-node scripts/content-rules/write-mandatory-decisions.ts`. |
+
+The runtime does not read `/opt/eldra/datasets` (the production image does not ship it). It reads
+the committed index. A drift test fails when the committed index no longer equals a fresh detection
+over the corpus, so a regeneration is always a reviewed diff.
+
+#### Discovery contract (structure first; phrases only where no structure exists)
+
+Structural signals, in order: explicit `options` blocks over features (refClassFeature / refFeat /
+refSubclassFeature); `choose`/`any` in proficiency, tool, weapon, armor, skill, resist, weighted ability,
+`additionalSpells`, A/B `startingEquipment`, and feat `anyFromCategory`; table columns (`classTableGroups`)
+whose value rises by level (Cantrips, Prepared Spells, Invocations, Weapon Mastery); feature tags
+(`{@filter …|feats|category=X}`, `{@filter …|optionalfeatures|…}`, `{@5etools feat|feats.html}`,
+`{@variantrule Expertise}`); subclass-selection from the first subclass feature level.
+
+Documented PHRASE exceptions (no structured form exists in the corpus): "gain two Metamagic options of
+your choice from …"; "Choose one of those types"; "Choose a level 1 and a level 2 spell"; "gain a level 7
+Warlock Spell of your choice"; "starts with six level 1 Wizard spells"; "Whenever you gain a Wizard level
+after 1, add two … spells"; "Choose one of your skill proficiencies with which you lack Expertise";
+"one other language of your choice"; "proficiency in … saving throws (your choice)"; "weapon mastery
+properties of two kinds". Each is named in code with a `PHRASE` comment.
+
+Feats granted by a background are discovered as grants (`feat-grant`) and their own nested decisions are
+attributed to the granting background (`grantedBy`), so Origin acquisition sits in the same contract.
+
+#### Mandatory versus optional (rule)
+
+A surface is mandatory when the character cannot be legally complete without an answer. A clause that
+lets the player REPLACE or CHANGE an answer already given ("you can replace", "you can change",
+"whenever you … change") is an OPTIONAL `replacement` surface (`mandatory: false`) and never blocks. Proof
+in the corpus: Fighting Style replacement, Weapon Mastery change, Memorize Spell, Aspect of the Wilds and
+Defensive Tactics replacement, and the Long Rest prepared-spell change are all `replacement`.
+
+#### Runtime exemption (rule)
+
+A feature whose first sentence is a per-use trigger ("Whenever you activate…", "Once on each of your
+turns…", "Whenever you finish a rest…") is a runtime effect and produces no decision. Proof: Divine Strike,
+Primal Strike, Empowered Strikes, Sculpt Spells, Power of the Wilds, Steps of the Fey, Illusory Reality,
+Fiendish Resilience, The Third Eye produce zero mandatory decisions (discovery suite).
+
+#### Bidirectional coverage contract (proven, with bite)
+
+- **A.** Every discovered decision matches exactly one coverage rule. Real corpus: 630 decisions, 0
+  unclassified, 0 ambiguous. Result: 105 implemented, 490 blocked, 35 optional.
+- **B.** Every rule matches at least one decision, or is an explicit `false-positive` / `runtime-effect` rule
+  that matches zero by design. Every ledger row (104) is claimed by a rule, and every rule's ledger id exists.
+- **Bite.** A synthetic unclassified mandatory decision violates the contract. Removing the rule that covers
+  a real decision leaves it uncovered. A ledger row no rule claims violates it. A rule naming a non-existent
+  ledger row violates it. All four are tests (`tests/rules/mandatory-decision-coverage.test.ts`).
+
+False positives are represented, not buried: Steps of the Fey, Fiendish Resilience, The Third Eye,
+Sculpt Spells, Illusory Reality (per-use or per-rest choices during play), Heightened Focus, Sorcery
+Incarnate (no decision). Runtime effect ledger rows (Epic Boon effects ×12, Fighting Style effects ×10,
+Origin feat effects ×6) are documented Milestone B accountability, not decisions.
+
+The §25 D-01..D-25 items are regression fixtures in `tests/rules/mandatory-decision-discovery.test.ts`,
+not detector inputs. All 25 are discovered. The structural pass also found decisions §25 did not list,
+among them Barbarian Wild Heart's Level-3 Rage of the Wilds, Ranger Hunter's Prey at Level 3, the Wizard
+spellbook (six starting spells and two per level after 1), the Warlock Mystic Arcanum at 13/15/17, feat
+grants on every background, class starting equipment, and the feat skill choices (Keen Mind, Observant,
+Skill Expert).
+
+#### Enforcement points (server is authority; Builder is presentation)
+
+- **create-v2 POST:** the species, class, background, and feats acquired at creation are checked before
+  `createEntityRecord`. A blocked selection returns HTTP 400 with the decision named, and zero rows are
+  written (`tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts`).
+- **planProgression (Preview):** the levels crossed (from, to], the subclass in effect (persisted or chosen
+  in this transition), and any feat acquired in this transition are checked. A crossed blocked decision makes
+  the plan invalid and lists it in `plan.unresolvedDecisions`.
+- **confirmProgression:** refuses with `unsupported-decision` (HTTP 409) regardless of client state, before
+  any write. A crafted Confirm carrying a valid fingerprint is refused by the same plan
+  (`tests/server/utils/character-progression-plan.test.ts`, PHASE 0 block).
+- **Builder:** an option that owns a blocked decision is shown disabled with a plain reason. `isDraftComplete`
+  and the Create gate include the same blockers, so Create stays disabled. The reason never shows a rule id,
+  status word, or corpus field path (`tests/components/characters/builder/creationBlockerPresentation.test.ts`).
+- **Level Manager:** a blocked plan names each unresolved decision in plain words and no longer shows the
+  generic "resolve every required choice" line for a decision Eldra cannot answer.
+
+#### Historical characters (unchanged read, tested)
+
+Fail-closed applies to authoritative mutation only. `assembleCharacter` never calls the authority and never
+writes. A historical Elf Wizard with an unrecorded lineage assembles for display, and the read path performs no
+write (`tests/server/utils/character-assembly-historical-fail-closed.test.ts`). No migration, no retroactive grant.
+
+#### Production availability impact (measured, this pass)
+
+| Surface | Creatable under the contract | Blocked (examples and reason families) |
+|---|---|---|
+| Species | **3 of 10**: Dwarf, Halfling, Orc | Aasimar (fixed spell grant), Dragonborn and Tiefling (damage-type choice; Tiefling also lineage), Elf and Gnome and Goliath (lineage or ancestry), Human (Origin feat choice) |
+| Classes | **0 of 12** | Every class owns a Level-1 decision Eldra cannot record: caster spell counts and spell choices (8), Weapon Mastery (5), Divine Order and Primal Order (Cleric and Druid), Rogue Expertise (Level 1), Warlock Invocations, plus fixed armor, weapon, and tool proficiency grants and starting equipment for all 12 |
+| Backgrounds | **0 of 16** | Every background owns an ability score bonus and a starting-equipment choice; every background's tool proficiency (fixed or choice) is unrecordable; the 8 Origin backgrounds whose feat has a choice (Crafter, Musician, Skilled, Magic Initiate) are also blocked by that feat's choice |
+| Complete species × class × background combinations | **0 of 1,920** | — |
+
+Production-impact consequence: under the fail-closed contract, creating a native XPHB character is refused
+until the blocking primitives (proficiency vocabulary, spell acquisition and counts, ability distribution,
+starting equipment, option and feature choices) land. This is the product decision you approved; it is not a
+defect of the contract. Level-up is refused across any level whose crossed decisions are blocked. Most caster
+level-ups are blocked at Level 2 (prepared-spell increase), and a Fighter with the Battle Master subclass is
+blocked at Level 3.
+
+The earlier "supported" Origin backgrounds (Criminal, Guard, Farmer, Hermit, Merchant, Wayfarer, Sailor,
+Soldier) were not creation-complete: each owns the background ability bonus and tool proficiency that the
+contract now refuses. The fixed Origin feat itself is implemented (`impl:origin-fixed-feat`). Report, not
+regression: the fail-closed behavior wins, as the approval states.
+
+#### Ledger corrections in this phase
+
+- `warlock-xphb:eldritch-invocations` levels corrected to the corpus increases: 1, 2, 5, 7, 9, 12, 15, 18
+  (10 picks total). The earlier list `[1, 2, 5, 6, 7, 8, 9, 10]` was wrong.
+- The discovery detector, not the ledger, now defines what exists. The ledger remains the accountability
+  contract: every row is claimed by a rule, and every rule's ledger id is a real row.
+
+#### Known residuals (stated, not hidden)
+
+- Corpus scope is XPHB. PHB 2014 features are out of scope (e.g. Warlock Pact Boon).
+- The language choices (Thieves' Cant, Deft Explorer) are discovered; the corpus has no structured species or
+  background language grant, so species and background languages are not discovered (policy decision).
+- Phrase exceptions (listed above) are the only prose-derived surfaces. Each is named and tested.
+- Feat-granted proficiencies are fixed grants; they block only where Eldra cannot record them.
+- Silent-drop of a fixed grant that is not a mandatory decision (e.g. Tough's hit point effect) remains a
+  runtime-effect concern (Milestone B), not a creation blocker.
+
+### 25.22 TEST AUTHORITY AUDIT, NO-STUB POLICY, AND THE ACCEPTED TEMPORARY STATE (2026-10-06)
+
+**Product decisions, accepted:**
+
+- **Option 1: the temporary creation outage is accepted.** Phase 0's fail-closed behaviour is the desired product
+  behaviour. The mandatory-decision contract is not weakened, and no mandatory PHB state is exempted to restore
+  availability.
+- **Mandatory state is represented, not demoted.** Required fixed state (armor training, weapon proficiency,
+  tool proficiency, starting state) belongs to the authoritative character record, so it is represented and
+  persisted. It is not demoted to prose, notes, or non-blocking metadata. Milestone A requires mandatory character
+  state to be represented and persisted, not only mandatory player clicks.
+- **Silent drop is a regression.** A new mandatory XPHB decision discovered in the corpus without a classification
+  fails CI. A decision classified as blocked prevents the relevant authoritative mutation. This is a permanent
+  architecture invariant.
+
+**Accepted temporary availability (real authority, derived from the corpus, `tests/lib/content-rules/creation-availability.test.ts`):**
+
+| Measure | Baseline | Derivation |
+|---|---|---|
+| Species individually creation-complete | 3 of 10 | population from the corpus, each through the real authority |
+| Classes creation-complete | 0 of 12 | population from the corpus |
+| Backgrounds creation-complete | 0 of 16 | population from the corpus |
+| Complete native species × class × background combinations | 0 of 1,920 | every combination through the real authority |
+
+No name is hardcoded by class or background. The population is recorded in the decision index (an entity with no
+decision never appears among the owners, so availability reads the population, not the owners). When a primitive
+lands, the test's baseline is updated only after explaining the change. A computed result that differs from the
+baseline is a STOP.
+
+**Discovery accepted:** 630 decisions. By owner: class 356, subclass 168, background 64, feat 32, species 10. By
+classification: implemented 105, blocked 490, optional 35. D-01 through D-25 are preserved as regression fixtures,
+not detector inputs, and all are discovered (`tests/rules/mandatory-decision-discovery.test.ts`).
+
+**Structural detection preserved:** options blocks; `choose` and `any` fields; proficiency, tool, weapon, armor,
+skill, and resistance choices; weighted abilities; additional spells (nested innate and daily grants included);
+equipment alternatives; category choices; table-count increases; feat and optional-feature tags; subclass selection.
+Phrase exceptions are named and narrow (§25.21). They are not extended casually.
+
+**Bidirectional coverage preserved** (`tests/rules/mandatory-decision-coverage.test.ts`): every decision → exactly one
+rule; every rule → a real decision, or an explicit false positive or runtime effect; every ledger row → claimed by a
+rule; every rule's ledger id → a real row. Bite tests: a synthetic unclassified decision fails; removing the rule for a
+real decision fails; an unclaimed ledger row fails; a phantom ledger reference fails.
+
+**False positives kept visible, as zero-match rules and not fake decisions:** Steps of the Fey, Fiendish Resilience,
+The Third Eye, Sculpt Spells, Illusory Reality, Heightened Focus, Sorcery Incarnate.
+
+**Corrected Warlock acquisition levels preserved:** Eldritch Invocations at 1, 2, 5, 7, 9, 12, 15, 18.
+
+**Optional flexibility is non-blocking:** Fighting Style replacement, Weapon Mastery replacement, Memorize Spell,
+prepared-spell replacement where optional, and Aspect and Defensive Tactics replacement. An optional replacement
+does not block Milestone A, because the original legal answer may remain.
+
+**Runtime effects are non-blocking:** runtime automation does not block legality unless it contains a mandatory
+persistent character-building decision. Milestone A is character-state legality; Milestone B is automation.
+
+#### Test authority audit: every test file that stubs or references the completeness authority
+
+Classification is by claim, not by file name. Exactly one category per file:
+
+- **UNIT (mechanics isolation).** May stub the authority, through the single named helper
+  `tests/helpers/completeness-stub.ts`. Its assertions are about another subsystem, and it makes no claim that a real
+  PHB character can be created or progressed.
+- **ACCEPTANCE (production-path, real authority).** Must never stub. A test that reports production availability, or
+  claims that a real character is created or progresses, is ACCEPTANCE.
+- **AUTHORITY (real authority, tests the authority itself).** Counted with ACCEPTANCE: it uses the real authority and
+  never stubs it.
+
+| File | Category | Basis |
+|---|---|---|
+| `tests/components/characters/builder/characterBuilderSelection.test.ts` | UNIT | Builder draft and payload shape (a presentation primitive). The payload assertions use a complete draft, which real content cannot produce, so the authority is stubbed. |
+| `tests/components/characters/builder/creationChoiceEligibility.test.ts` | UNIT | Choice eligibility routing. |
+| `tests/server/api/worlds/[id]/characters/create-v2-fighter-mechanics.test.ts` | UNIT | Fighting Style routing, write order, and Origin routing (feat persistence). Renamed from `…-fighter-acceptance` (approved) so that the name carries no production-completeness claim. |
+| `tests/server/api/worlds/[id]/characters/create-v2.post.test.ts` | UNIT | Choice validation, ability scores, health seeding, and Definition-path eligibility (the Sage fixture keeps its grants and strips only the availability declaration). |
+| `tests/server/utils/character-progression-plan.test.ts` | UNIT | Plan mechanics (choice answering, plan shape, confirm writes, persistence, fingerprints). |
+| `tests/server/utils/character-progression-level-1-to-20.test.ts` | UNIT | Derivation (proficiency, HP, resource thresholds), feat mechanics, Epic Boon mechanics, nested ASI, and plan contract. |
+| `tests/server/utils/character-progression-all-class-subclass.test.ts` | UNIT | Subclass requirement presence and option shape. |
+| `tests/server/utils/character-progression-published-package.test.ts` | UNIT | Package publication and version mechanics. |
+| `tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts` | ACCEPTANCE | Real Elf, Fighter, Cleric, ability-bonus refusals, and all 8 creation-unavailable backgrounds refused, with zero writes. |
+| `tests/server/utils/character-progression-fail-closed.test.ts` | ACCEPTANCE | Wizard Level 1→2 Preview invalid, Confirm refused (`unsupported-decision`), crafted Confirm refused, and Fighter Level 1→2 still green. |
+| `tests/server/utils/character-assembly-historical-fail-closed.test.ts` | ACCEPTANCE | A historical Elf Wizard still assembles; the read path performs no write. |
+| `tests/lib/content-rules/creation-availability.test.ts` | ACCEPTANCE | The real availability baseline, derived. |
+| `tests/lib/content-rules/creation-completeness.test.ts` | AUTHORITY | Creation and progression answers, and the plain-words refusal wording. |
+| `tests/components/characters/builder/creationBlockerPresentation.test.ts` | ACCEPTANCE | Builder presentation of real blockers, and no internal identifier in any reason. |
+| `tests/rules/mandatory-decision-discovery.test.ts` | AUTHORITY | Discovery over the real corpus; D-01 to D-25; drift; mandatory versus optional; runtime exemption. |
+| `tests/rules/mandatory-decision-coverage.test.ts` | AUTHORITY | The bidirectional contract, with bite tests. |
+| `tests/rules/completeness-stub-policy.test.ts` | POLICY (meta) | Enforces this table in CI. |
+
+**Corrections made in this pass** (each made after finding the problem, and verified by `git diff --numstat`):
+
+1. The progression plan file's real-authority block (four fail-closed tests) moved out of a mechanics file into
+   `character-progression-fail-closed.test.ts`, an ACCEPTANCE file with no stub. The plan file's switch is removed.
+2. The Fighter file's titles claimed that real creations are "accepted through the real POST route". Retitled as
+   mechanics (completeness stubbed). Its blocked-Background refusals moved to the real-authority create-v2 file.
+3. The Barbarian "BOB ACCEPTANCE" describes and the "Confirm succeeds through Level 20" claim were retitled as mechanics
+   (completeness stubbed). Real Barbarian progression is refused by the real authority, and the Wizard Level 1→2 real
+   refusal is the production-path progression acceptance.
+4. The historical-read file stubbed the authority with trap spies. It now uses the real authority. The "read never
+   consults the authority" claim is a static assertion in the policy test.
+5. Inline vi.mock stubs were replaced by one named helper, `tests/helpers/completeness-stub.ts`, with the boundary
+   comment in each UNIT file. No "allow everything" seam exists anywhere else.
+6. **Incident, recorded for the record:** during this pass I replaced stub blocks with a search that matched a later
+   closing brace. Seven test files lost 989 lines. I restored them from git, which reverted only this phase's own edits
+   (those files were committed at 2C.3A with no other uncommitted work), then reapplied the intended edits with asserts.
+   `git diff --numstat` now shows only the intended changes. The plan file has one intended import change.
+
+**Naming debt resolved (approved rename):** the Fighter mechanics file was renamed from `create-v2-fighter-acceptance.test.ts`
+to `create-v2-fighter-mechanics.test.ts`. Its behaviour is unchanged. The policy manifest and the audit reference the new name.
+
+#### No-stub policy (permanent)
+
+- **UNIT** files may stub the authority, only through `tests/helpers/completeness-stub.ts`, and only for assertions about
+  another subsystem. They must carry the boundary comment and must not claim that a real PHB character can be created or
+  progressed.
+- **ACCEPTANCE and AUTHORITY** files must use the real authority. They must never stub it, and they must never use an
+  allow-everything seam.
+- **The Polish Gate (G1 to G9) is ACCEPTANCE.** It MUST NEVER stub mandatory-decision discovery, mandatory-decision
+  coverage, creation completeness, or progression completeness. The gate is meaningful only against production
+  authority.
+- `tests/rules/completeness-stub-policy.test.ts` enforces this in CI. It fails on an unlisted stub, a stale UNIT entry, an
+  ACCEPTANCE file that stubs, a UNIT file without its boundary comment, an allow-everything name, or a read-path import of
+  the authority. Bite-tested: inserting a real stub into an acceptance file fails CI, and the file is restored
+  byte-identical.
+
+#### Current authoritative baseline
+
+Species 3 of 10; classes 0 of 12; backgrounds 0 of 16; complete combinations 0 of 1,920. The first Phase-0 blockers are
+listed in §25.21. Expected change: these numbers improve as P1, P7, P2, and the other primitives land.

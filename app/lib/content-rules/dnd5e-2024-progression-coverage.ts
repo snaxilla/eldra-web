@@ -541,7 +541,9 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     id: 'warlock-xphb:eldritch-invocations',
     classSlug: 'warlock-xphb',
     featureName: 'Eldritch Invocations',
-    levels: [1, 2, 5, 6, 7, 8, 9, 10],
+    // Corrected in Phase 0 from the corpus Invocations column: the increases are
+    // 1, 2, 5, 7, 9, 12, 15, 18 (10 picks total). The earlier list was wrong.
+    levels: [1, 2, 5, 7, 9, 12, 15, 18],
     surface: 'level-up',
     status: 'ENGINE_BLOCKED',
     blockerReason: ACCUMULATING_OPTIONAL_FEATURE_BLOCKER,

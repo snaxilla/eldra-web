@@ -129,7 +129,8 @@ import {
   toCreatePayload,
   type BuilderCatalogueEntry,
   type BuilderChoiceKey,
-  type BuilderStepKey
+  type BuilderStepKey,
+  withCreationBlockers
 } from '~/components/characters/builder/characterBuilderSelection'
 import CharacterBuilderOptionPicker from '~/components/characters/builder/CharacterBuilderOptionPicker.vue'
 import CharacterChoiceSetPicker from '~/components/characters/builder/CharacterChoiceSetPicker.vue'
@@ -156,10 +157,11 @@ const { data: catalogue, pending: catalogueLoading, error: catalogueError } = aw
   () => `/api/worlds/${worldId.value}/catalogue`
 )
 
+// PHASE 0 -- each option says why it cannot be chosen yet (the same authority the server enforces).
 const optionsFor = computed<Record<BuilderChoiceKey, BuilderCatalogueEntry[]>>(() => ({
-  species: catalogue.value?.species ?? [],
-  class: catalogue.value?.classes ?? [],
-  background: catalogue.value?.backgrounds ?? []
+  species: withCreationBlockers(catalogue.value?.species ?? [], 'species'),
+  class: withCreationBlockers(catalogue.value?.classes ?? [], 'class'),
+  background: withCreationBlockers(catalogue.value?.backgrounds ?? [], 'background')
 }))
 
 const hasAnyBoundPack = computed(() => (catalogue.value?.packs?.length ?? 0) > 0)

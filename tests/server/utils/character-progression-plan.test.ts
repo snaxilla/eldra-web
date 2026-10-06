@@ -24,7 +24,15 @@
 // already requires of every real caller.
 
 import { readFileSync } from 'node:fs'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// UNIT-ISOLATION (see tests/helpers/completeness-stub.ts): the progression plan MECHANICS are tested with
+// the completeness authority stubbed. The fail-closed behaviour through this planner is tested with the REAL
+// authority in tests/server/utils/character-progression-fail-closed.test.ts.
+vi.mock('../../../app/lib/content-rules/creation-completeness', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../app/lib/content-rules/creation-completeness')>()),
+  ...(await import('../../helpers/completeness-stub')).MECHANICS_ONLY_COMPLETENESS
+}))
 
 const {
   assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock,

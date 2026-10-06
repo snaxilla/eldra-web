@@ -75,6 +75,7 @@ import {
   findDuplicateFeatAcquisition,
   resolveCreationOriginFeat
 } from '../../../../../app/lib/characters/creation-origin-feat'
+import { creationUnresolvedDecisions, describeUnresolved } from '../../../../../app/lib/content-rules/creation-completeness'
 import { saveCharacterAbilityScores } from '../../../../utils/character-ability-scores'
 import { saveCharacterRulesChoices } from '../../../../utils/character-rules-choices'
 import { getDerivedCharacter } from '../../../../utils/character-derived'
@@ -367,6 +368,19 @@ export default defineEventHandler(async (event) => {
   const duplicateFeat = findDuplicateFeatAcquisition(acquisitions)
   if (duplicateFeat) {
     throw createError({ statusCode: 400, statusMessage: `"${duplicateFeat}" would be acquired twice at creation and cannot be chosen` })
+  }
+
+  // PHASE 0 -- FAIL CLOSED. Every mandatory decision the selected species, class, and
+  // background own, plus the feats acquired here, must be representable. A decision
+  // Eldra cannot record refuses the whole creation before any entity is written.
+  const unresolved = creationUnresolvedDecisions({
+    species: species.slug,
+    class: characterClass.slug,
+    background: background.slug,
+    feats: acquisitions.map((acquisition) => acquisition.featRef.slug)
+  })
+  if (unresolved.length > 0) {
+    throw createError({ statusCode: 400, statusMessage: describeUnresolved(unresolved) })
   }
 
   const created = await createEntityRecord({

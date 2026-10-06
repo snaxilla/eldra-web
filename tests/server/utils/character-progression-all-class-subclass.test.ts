@@ -26,6 +26,14 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// UNIT-ISOLATION (classified in tests/rules/completeness-stub-policy.test.ts): this file asserts MECHANICS
+// only. The completeness authority is replaced by the explicit stub in tests/helpers/completeness-stub.ts, so it
+// makes no claim that a real PHB character can be created or progressed.
+vi.mock('../../../app/lib/content-rules/creation-completeness', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../app/lib/content-rules/creation-completeness')>()),
+  ...(await import('../../helpers/completeness-stub')).MECHANICS_ONLY_COMPLETENESS
+}))
+
 const {
   assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock,
   loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock,
@@ -338,7 +346,7 @@ describe.each(ALL_12_CLASS_SLUGS)('ALL-CLASS SUBCLASS CONTRACT -- %s', (classSlu
 // against the pre-fix package and pass against the fix.
 // ---------------------------------------------------------------------------
 
-describe('BOB ACCEPTANCE -- Barbarian, Level 1 -> 3, the exact reported real browser case', () => {
+describe('BOB CHOICE SURFACE -- Barbarian, Level 1 -> 3 requirement presence (mechanics; completeness stubbed)', () => {
   beforeEach(() => {
     getWorldContentCatalogueMock.mockResolvedValue(catalogueForClass('barbarian-xphb'))
     assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprintForClass('barbarian-xphb') })

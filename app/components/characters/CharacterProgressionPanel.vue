@@ -77,6 +77,7 @@ export type ProgressionPlanRow = {
   targetLevel: number
   steps: ProgressionLevelStepRow[]
   unresolvedChoiceIds: string[]
+  unresolvedDecisions?: { decisionId: string, source: string, level: number, owner: { name: string } }[]
   valid: boolean
   fingerprint: string
 }
@@ -506,8 +507,21 @@ function formatValue(value: unknown): string {
             Cancel
           </button>
 
+          <!-- PHASE 0 -- a mandatory decision Eldra cannot record yet is named, never omitted. -->
+          <div
+            v-if="plan.unresolvedDecisions?.length"
+            class="space-y-1 rounded-none border border-[rgba(224,169,74,0.4)] p-3 text-xs text-[#e0a94a]"
+          >
+            <p
+              v-for="item in plan.unresolvedDecisions"
+              :key="item.decisionId"
+            >
+              This level includes a required choice Eldra cannot record yet: {{ item.source }} ({{ item.owner.name }}, level {{ item.level }}).
+            </p>
+          </div>
+
           <p
-            v-if="!plan.valid"
+            v-if="!plan.valid && !plan.unresolvedDecisions?.length"
             class="text-xs text-[#e0a94a]"
           >
             Resolve every required choice above before confirming.

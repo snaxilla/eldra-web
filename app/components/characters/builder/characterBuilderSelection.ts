@@ -78,6 +78,7 @@ import {
   type StoredRulesChoices
 } from '~/lib/characters/rules-choices'
 import type { RulesFacet } from '~/lib/content-rules'
+import { creationUnresolvedDecisions, decisionPhrase as sharedDecisionPhrase, type UnresolvedDecision } from '~/lib/content-rules/creation-completeness'
 
 export type BuilderCatalogueEntry = {
   packageId: string
@@ -488,6 +489,8 @@ export function isDraftComplete(
     && isProficiencyStepComplete(draft, context)
     && isCreationContentComplete(draft, context)
     && isAbilityStepComplete(draft)
+    // PHASE 0 -- an entity with a mandatory decision Eldra cannot record cannot be created.
+    && creationBlockerMessages(draft).length === 0
 }
 
 // Human-readable list of what is still outstanding. Mirrors (never
@@ -519,6 +522,7 @@ export function missingRequirements(
     missing.push(`${STEP_LABELS[presentation.slot as BuilderChoiceKey] ?? presentation.slot}: ${reason}`)
   }
   if (!isAbilityStepComplete(draft)) missing.push('Finish assigning ability scores.')
+  missing.push(...creationBlockerMessages(draft))
   return missing
 }
 
@@ -583,4 +587,50 @@ export function previousStep(step: BuilderStepKey): BuilderStepKey | null {
   const index = STEP_KEYS.indexOf(step)
   if (index <= 0) return null
   return STEP_KEYS[index - 1]!
+}
+
+// PHASE 0 -- fail-closed presentation. The Builder asks the SAME authority the server
+// enforces, per selected entity, and says why an option cannot be chosen yet. Presentation
+// only: create-v2 POST refuses the same selection regardless.
+const NO_SLUG = '-'
+
+// The first mandatory decision a single entity owns that Eldra cannot record, or null.
+export function ownCreationBlocker(kind: 'species' | 'class' | 'background', slug: string): UnresolvedDecision | null {
+  return creationUnresolvedDecisions({
+    species: kind === 'species' ? slug : NO_SLUG,
+    class: kind === 'class' ? slug : NO_SLUG,
+    background: kind === 'background' ? slug : NO_SLUG
+  })[0] ?? null
+}
+
+// The Builder's wording is the authority's wording: one phrase table, shared with the server.
+export function decisionPhrase(blocker: UnresolvedDecision): string {
+  return sharedDecisionPhrase(blocker.family)
+}
+
+export function blockerReason(blocker: UnresolvedDecision): string {
+  return `Requires ${sharedDecisionPhrase(blocker.family)}${/^[A-Z]/.test(blocker.source) ? ` (${blocker.source})` : ''}.`
+}
+
+// Each catalogue entry, with the package's own availability reason filled in when the entry
+// owns an unrecordable decision. A reason the package already authored (Origin backgrounds) wins.
+export function withCreationBlockers<T extends BuilderCatalogueEntry>(entries: readonly T[], kind: 'species' | 'class' | 'background'): T[] {
+  return entries.map((entry) => {
+    if (entry.rulesFacet?.creationUnavailable) return entry
+    const blocker = ownCreationBlocker(kind, entry.slug)
+    if (!blocker) return entry
+    return { ...entry, rulesFacet: { ...(entry.rulesFacet ?? {}), creationUnavailable: blockerReason(blocker) } as RulesFacet }
+  })
+}
+
+// Messages for the Create gate: every selected entity that owns an unrecordable decision.
+export function creationBlockerMessages(draft: CharacterBuilderDraft): string[] {
+  const messages: string[] = []
+  for (const [key, kind] of [['species', 'species'], ['class', 'class'], ['background', 'background']] as const) {
+    const entry = draft[key]
+    if (!entry) continue
+    const blocker = ownCreationBlocker(kind, entry.slug)
+    if (blocker) messages.push(`${STEP_LABELS[key]} cannot be completed yet. ${blockerReason(blocker)}`)
+  }
+  return messages
 }

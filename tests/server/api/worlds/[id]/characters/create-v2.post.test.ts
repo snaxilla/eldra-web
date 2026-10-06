@@ -7,6 +7,14 @@
 // world-content-catalogue.test.ts).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// UNIT-ISOLATION (classified in tests/rules/completeness-stub-policy.test.ts): this file asserts MECHANICS
+// only. The completeness authority is replaced by the explicit stub in tests/helpers/completeness-stub.ts, so it
+// makes no claim that a real PHB character can be created or progressed.
+vi.mock('../../../../../../app/lib/content-rules/creation-completeness', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../../../app/lib/content-rules/creation-completeness')>()),
+  ...(await import('../../../../../helpers/completeness-stub')).MECHANICS_ONLY_COMPLETENESS
+}))
 import type { H3Event } from 'h3'
 
 const {
@@ -212,7 +220,7 @@ describe('POST /api/worlds/:id/characters/create-v2', () => {
     expect(createEntityRecordMock).not.toHaveBeenCalled()
   })
 
-  it('succeeds for a Player choosing real catalogue entries -- creates a minimal pc entity and records the selection, nothing more', async () => {
+  it('routes a valid selection to the entity write -- creates a minimal pc entity and records the selection, nothing more (mechanics; completeness stubbed)', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     createEntityRecordMock.mockResolvedValue({ success: true, id: 42, title: 'Aria', entity_type: 'pc' })
@@ -501,7 +509,7 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
   // (Sage's direct Arcana/History grants vs Wizard's skill choice), which is what
   // this describe owns. So this fixture strips ONLY the availability declaration
   // and keeps every grant. The refusal of a blocked Sage is asserted separately in
-  // create-v2-fighter-acceptance.test.ts ("PHASE 2C.3A -- fixed Origin Feat").
+  // create-v2-fighter-mechanics.test.ts ("PHASE 2C.3A -- fixed Origin Feat").
   function sageEntry() {
     const facet = findRulesFacet('dnd5e.2024', 'background', 'sage-xphb') ?? undefined
     return catalogueEntry({

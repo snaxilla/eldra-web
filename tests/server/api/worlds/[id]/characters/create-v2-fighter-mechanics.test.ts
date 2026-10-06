@@ -16,6 +16,14 @@
 
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// UNIT-ISOLATION (classified in tests/rules/completeness-stub-policy.test.ts): this file asserts MECHANICS
+// only. The completeness authority is replaced by the explicit stub in tests/helpers/completeness-stub.ts, so it
+// makes no claim that a real PHB character can be created or progressed.
+vi.mock('../../../../../../app/lib/content-rules/creation-completeness', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../../../app/lib/content-rules/creation-completeness')>()),
+  ...(await import('../../../../../helpers/completeness-stub')).MECHANICS_ONLY_COMPLETENESS
+}))
 import type { H3Event } from 'h3'
 
 const store = vi.hoisted(() => ({
@@ -300,8 +308,8 @@ beforeEach(() => {
 
 // ---- the real Fighter, created through the real route -----------------------
 
-describe('Fighter Level-1 creation -- accepted through the real POST route', () => {
-  it('a legal ordinary Fighting Style is accepted and the entity is created', async () => {
+describe('Fighter Level-1 Fighting Style routing (mechanics; completeness authority stubbed)', () => {
+  it('a Fighting Style answer is routed to the entity write (mechanics)', async () => {
     const result = await postCreate(fighterBody()) as any
     expect(result.id).toBe(store.createdEntityId)
     expect(mocks.createEntityRecord).toHaveBeenCalledTimes(1)
@@ -395,7 +403,7 @@ describe('Fighter creation -- server authority rejects every illegal request', (
 
 // ---- fail loudly ------------------------------------------------------------
 
-describe('Fighter creation -- catalogue identity and progression fail loudly', () => {
+describe('Fighter creation -- write-order mechanics (completeness stubbed)', () => {
   it('a failed catalogue_selection write fails the request (no silent success)', async () => {
     store.failCatalogueSelection = true
     await expect(postCreate(fighterBody())).rejects.toThrow('catalogue_selection')
@@ -474,7 +482,7 @@ function bodyWith(backgroundName: string, overrides: Record<string, unknown> = {
   }
 }
 
-describe('PHASE 2C.3A -- fixed Origin Feat acquisition', () => {
+describe('PHASE 2C.3A -- fixed Origin Feat routing (mechanics; completeness stubbed)', () => {
   beforeEach(() => {
     mocks.getWorldContentCatalogue.mockResolvedValue({ ...CATALOGUE, backgrounds: ALL_BACKGROUNDS })
   })
@@ -508,12 +516,6 @@ describe('PHASE 2C.3A -- fixed Origin Feat acquisition', () => {
     expect(feats.some((feat) => feat.choiceKey.includes('fighting-style'))).toBe(false)
   })
 
-  it.each(BLOCKED_BACKGROUNDS)('%s is creation-unavailable: rejected 400 before ANY entity or progression write', async (background) => {
-    await expect(postCreate(bodyWith(background))).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/cannot be chosen at creation yet/) })
-    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
-    expect(mocks.saveCharacterProgression).not.toHaveBeenCalled()
-    expect(mocks.dxFetch).not.toHaveBeenCalled()
-  })
 
   it('a crafted contentChoices entry naming the Origin key is rejected as an undeclared choice, and nothing is written', async () => {
     const body = bodyWith('Criminal', { contentChoices: { [ORIGIN_KEY]: [serializeContentRef(ref(CONTENT_PACKAGE, 'tough-xphb'))] } })
@@ -538,7 +540,7 @@ describe('PHASE 2C.3A -- fixed Origin Feat acquisition', () => {
     expect(mocks.createEntityRecord).not.toHaveBeenCalled()
   })
 
-  it('switching Background follows the CURRENT choice: blocked is refused, then supported is accepted, with no stale Origin carried over', async () => {
+  it('the CURRENT Background\'s Origin feat is routed, with no stale Origin carried over (mechanics; stubbed)', async () => {
     await expect(postCreate(bodyWith('Acolyte'))).rejects.toMatchObject({ statusCode: 400 })
     expect(mocks.createEntityRecord).not.toHaveBeenCalled()
 

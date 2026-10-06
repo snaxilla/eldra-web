@@ -186,6 +186,8 @@ export type ProgressionLevelStep = {
   requiredChoices: ProgressionChoice[]
 }
 
+import type { UnresolvedDecision } from '../content-rules/creation-completeness'
+
 export type ProgressionPlan = {
   currentLevel: number
   targetLevel: number
@@ -194,6 +196,9 @@ export type ProgressionPlan = {
   // Confirmation is blocked while this is non-empty (today: always empty,
   // so never blocking -- see this file's own header).
   unresolvedChoiceIds: string[]
+  // PHASE 0 -- mandatory decisions the levels crossed contain that Eldra cannot record yet.
+  // Presentation reads this; the server authority refuses Confirm independently.
+  unresolvedDecisions?: UnresolvedDecision[]
   valid: boolean
   // Stale-plan protection (this task's own explicit requirement) --
   // deliberately the smallest useful strategy, NOT a version/event-sourcing

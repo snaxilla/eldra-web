@@ -28,6 +28,14 @@
 
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it } from 'vitest'
+
+// UNIT-ISOLATION (classified in tests/rules/completeness-stub-policy.test.ts): this file asserts MECHANICS
+// only. The completeness authority is replaced by the explicit stub in tests/helpers/completeness-stub.ts, so it
+// makes no claim that a real PHB character can be created or progressed.
+vi.mock('../../../app/lib/content-rules/creation-completeness', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../app/lib/content-rules/creation-completeness')>()),
+  ...(await import('../../helpers/completeness-stub')).MECHANICS_ONLY_COMPLETENESS
+}))
 import { vi } from 'vitest'
 
 const {
@@ -580,7 +588,7 @@ describe.each(ALL_12_CLASS_SLUGS)('LEVEL 1 -> 20 ACCEPTANCE -- %s', (classSlug) 
     expect(effectsEntry!.status).toBe('ENGINE_BLOCKED')
   })
 
-  it('PLAN VALIDITY -- answering every real IMPLEMENTED choice resolves the plan to valid, and Confirm succeeds through Level 20', async () => {
+  it('PLAN VALIDITY (mechanics) -- answering every IMPLEMENTED choice resolves the plan to valid, and Confirm mechanics succeed (completeness stubbed)', async () => {
     const answers = legalAnswersFor(expected, subclassSlug, classSlug)
     const result = await planProgression(WORLD_ID, CHARACTER_ID, 20, answers)
     expect(result.ok).toBe(true)
@@ -877,7 +885,7 @@ describe('FEAT MECHANICS -- prerequisite filtering and repeatability (synthetic 
 // real ledger -- never from memory.
 // ---------------------------------------------------------------------------
 
-describe('BOB ACCEPTANCE -- Barbarian, Level 1 -> 20, the exact browser-visible sequence', () => {
+describe('BOB SEQUENCE -- Barbarian, Level 1 -> 20 browser-visible plan shape (mechanics; completeness stubbed)', () => {
   beforeEach(() => useClass('barbarian-xphb'))
 
   it('produces the real SHOULD-APPEAR sequence: Subclass at L3, Ability Score Improvement at L4/8/12/16, Epic Boon at L19, nothing else', async () => {

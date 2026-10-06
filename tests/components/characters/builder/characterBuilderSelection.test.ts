@@ -8,7 +8,15 @@
 // title, distinguished only by (packageId, slug). Matching on slug alone can
 // resolve to the wrong pack's entry.
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// UNIT-ISOLATION (classified in tests/rules/completeness-stub-policy.test.ts): this file asserts MECHANICS
+// only. The completeness authority is replaced by the explicit stub in tests/helpers/completeness-stub.ts, so it
+// makes no claim that a real PHB character can be created or progressed.
+vi.mock('../../../../app/lib/content-rules/creation-completeness', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../app/lib/content-rules/creation-completeness')>()),
+  ...(await import('../../../helpers/completeness-stub')).MECHANICS_ONLY_COMPLETENESS
+}))
 import {
   CHOICE_KEYS,
   STEP_KEYS,

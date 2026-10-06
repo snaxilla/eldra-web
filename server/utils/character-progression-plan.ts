@@ -226,6 +226,7 @@ import {
 import { emptyStoredRulesChoices, resolveChoiceTarget } from '../../app/lib/characters/rules-choices'
 import { featFilterVerdict, featOptionVerdict, type FeatPrerequisite, type FeatUnavailableReason } from '../../app/lib/feat-mechanics'
 import type { ContentCatalogueFilter } from '../../app/lib/rules/types'
+import { progressionUnresolvedDecisions, describeUnresolved } from '../../app/lib/content-rules/creation-completeness'
 
 // Phase 2C.1 -- how a content-backed progression answer is ROUTED. The
 // ChoiceSet's own typed selector declares what it asks for (`from.category`:
@@ -338,6 +339,9 @@ export type ProgressionFailureReason =
   // it," the same distinction `stale-plan` already draws against
   // `invalid-target-level`.
   | 'illegal-feat-selection'
+  // PHASE 0 -- the levels crossed (or a feat acquired in this transition) include a mandatory
+  // decision Eldra cannot record yet. Refused at Confirm regardless of what the client shows.
+  | 'unsupported-decision'
 
 export function statusForProgressionFailure(reason: ProgressionFailureReason): number {
   switch (reason) {
@@ -351,6 +355,7 @@ export function statusForProgressionFailure(reason: ProgressionFailureReason): n
     case 'stale-plan': return 409
     case 'unresolved-choices': return 409
     case 'illegal-feat-selection': return 400
+    case 'unsupported-decision': return 409
     default: {
       const exhaustive: never = reason
       return exhaustive
@@ -894,6 +899,20 @@ export async function planProgression(
   // it was applied before every `getDerivedCharacterAtLevel` call above.
   const unresolvedChoiceIds = steps.flatMap((step) => step.requiredChoices.filter((choice) => !choice.answered).map((choice) => choice.id))
 
+  // PHASE 0 -- FAIL CLOSED. The levels crossed by this transition, the subclass in effect for
+  // them (persisted, or chosen in this transition), and any feat acquired here must not own a
+  // mandatory decision Eldra cannot record. Computed from the structural decision index, not
+  // from the Rules Engine's choices, so a decision the planner never saw still blocks.
+  const tentativeContent = extractTentativeContentAnswers(tentativeAnswers, ctx.lookup)
+  const persisted = current.state.progression.classes[0]
+  const unresolvedDecisions = progressionUnresolvedDecisions({
+    classSlug: persisted?.classRef?.slug ?? '',
+    subclassSlug: tentativeContent.subclassRef?.slug ?? persisted?.subclassRef?.slug ?? null,
+    fromLevel: currentLevel,
+    toLevel: targetLevel,
+    feats: tentativeContent.feats.map((feat) => feat.ref.slug)
+  })
+
   const [packageIntegrityHash, contentBindingFingerprint] = await Promise.all([
     resolvePackageIntegrityHash(worldId),
     resolveContentBindingFingerprint(worldId)
@@ -906,7 +925,8 @@ export async function planProgression(
       targetLevel,
       steps,
       unresolvedChoiceIds,
-      valid: unresolvedChoiceIds.length === 0,
+      unresolvedDecisions,
+      valid: unresolvedChoiceIds.length === 0 && unresolvedDecisions.length === 0,
       fingerprint: fingerprintFor(currentLevel, packageIntegrityHash, contentBindingFingerprint)
     },
     featRejections
@@ -973,6 +993,10 @@ export async function confirmProgression(
   // still unresolved). Unresolved choices block here too.
   const planResult = await planProgression(worldId, characterId, targetLevel, answers)
   if (!planResult.ok) return planResult
+  const unsupported = planResult.plan.unresolvedDecisions ?? []
+  if (unsupported.length > 0) {
+    return { ok: false, reason: 'unsupported-decision', message: describeUnresolved(unsupported) }
+  }
   if (!planResult.plan.valid) {
     // A submitted feat the plan refused is named with the reason the shared
     // predicate produced -- never a generic "unresolved" for a real illegal pick.

@@ -43,6 +43,14 @@
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// UNIT-ISOLATION (classified in tests/rules/completeness-stub-policy.test.ts): this file asserts MECHANICS
+// only. The completeness authority is replaced by the explicit stub in tests/helpers/completeness-stub.ts, so it
+// makes no claim that a real PHB character can be created or progressed.
+vi.mock('../../../app/lib/content-rules/creation-completeness', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../app/lib/content-rules/creation-completeness')>()),
+  ...(await import('../../helpers/completeness-stub')).MECHANICS_ONLY_COMPLETENESS
+}))
+
 const { directusServiceRequestMock, assembleCharacterMock, loadWorldRulesConfigMock } = vi.hoisted(() => ({
   directusServiceRequestMock: vi.fn(),
   assembleCharacterMock: vi.fn(),

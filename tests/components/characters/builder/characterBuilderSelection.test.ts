@@ -248,7 +248,9 @@ describe('toCreatePayload', () => {
       // ChoiceSet answers travel the same way and for the same reason: they
       // are the player's decisions, not a reference to published content.
       // Empty here because the fixture's entries carry no Rules Facet.
-      choices: { selections: {} }
+      choices: { selections: {} },
+      // PHASE 2C.2B -- no content-backed declaration in this draft, so no content answers.
+      contentChoices: {}
     })
   })
 

@@ -11,14 +11,27 @@ import type { H3Event } from 'h3'
 
 const {
   getWorldContentCatalogueMock, createEntityRecordMock, dxFetchMock, saveCharacterAbilityScoresMock,
-  getDerivedCharacterMock, saveCharacterHealthMock
+  getDerivedCharacterMock, saveCharacterHealthMock, getWorldRuntimeMock, saveCharacterProgressionMock
 } = vi.hoisted(() => ({
   getWorldContentCatalogueMock: vi.fn(),
   createEntityRecordMock: vi.fn(),
   dxFetchMock: vi.fn(),
   saveCharacterAbilityScoresMock: vi.fn(),
   getDerivedCharacterMock: vi.fn(),
-  saveCharacterHealthMock: vi.fn()
+  saveCharacterHealthMock: vi.fn(),
+  getWorldRuntimeMock: vi.fn(),
+  saveCharacterProgressionMock: vi.fn()
+}))
+
+// PHASE 2C.2B -- the handler reads the World's registry to tell content-backed
+// choice sets from Definition-backed ones. Default: no package activated, so
+// every choice is Definition-backed (today's behavior). Content tests override it.
+vi.mock('../../../../../../server/utils/world-runtime-service', () => ({
+  getWorldRuntime: getWorldRuntimeMock
+}))
+
+vi.mock('../../../../../../server/utils/character-progression', () => ({
+  saveCharacterProgression: saveCharacterProgressionMock
 }))
 
 vi.mock('../../../../../../server/utils/world-content-catalogue', () => ({
@@ -105,6 +118,13 @@ function fakeEvent(worldId: string, principal: Principal | null, body: unknown):
   } as unknown as H3Event
 }
 
+// Nitro's auto-imported createError is not present under vitest. The handler
+// throws it for every rejected request, so this file defines it itself rather
+// than depending on another test file having leaked it into the worker.
+;(globalThis as any).createError = (input: { statusCode: number; statusMessage?: string; data?: unknown }) => {
+  return Object.assign(new Error(input.statusMessage ?? 'error'), { statusCode: input.statusCode, data: input.data })
+}
+
 vi.mock('h3', async () => {
   const actual = await vi.importActual<typeof import('h3')>('h3')
   return {
@@ -118,6 +138,10 @@ function selectionOf(entry: ReturnType<typeof catalogueEntry>) {
 }
 
 beforeEach(() => {
+  getWorldRuntimeMock.mockReset()
+  getWorldRuntimeMock.mockResolvedValue({ configured: false, ok: false })
+  saveCharacterProgressionMock.mockReset()
+  saveCharacterProgressionMock.mockResolvedValue(undefined)
   getWorldContentCatalogueMock.mockReset()
   createEntityRecordMock.mockReset()
   dxFetchMock.mockReset()

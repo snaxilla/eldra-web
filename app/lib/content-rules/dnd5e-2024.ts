@@ -342,7 +342,11 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:save.str.proficient', to: true },
         { set: 'value:save.con.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 10 }
+        { set: 'value:hit_points.hit_die_size', to: 10 },
+        // PHASE 2C.2B -- the Fighter's Level-1 Fighting Style feature (XPHB
+        // class-fighter.json "Fighting Style", level 1). Authored ONCE, here:
+        // the creation Builder and normal assembly both read this same grant.
+        { set: 'value:feature.fighting-style', to: true }
       ],
       // D&D 2024 Character Rules Phase 2A.2 -- Second Wind (XPHB
       // `classFeatures` level 1, real class-fighter.json
@@ -354,6 +358,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // phase's authoring pass.
       resources: ['resource:second_wind'],
       choices: [
+        // PHASE 2C.2B -- "gain a Fighting Style feat of your choice" (FS only).
+        // A CONTENT-backed choice (its ChoiceSet selects from the Content
+        // Catalogue), judged by creation-content-choices.ts, never a Definition.
+        { choiceSet: 'choice:feat.fighting-style.fs-only', count: 1 },
         {
           choiceSet: 'choice:skill.proficiency',
           count: 2,

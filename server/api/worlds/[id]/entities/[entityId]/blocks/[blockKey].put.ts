@@ -42,6 +42,26 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Missing world, entity, or block key' })
   }
 
+  // PHASE 2C.2B / 2C.2C -- two AUTHORITATIVE character blocks are never written
+  // through this generic endpoint:
+  //   catalogue_selection -- creation-owned identity (species, class, background).
+  //   progression          -- evolved state (class level, subclass, acquired feats).
+  // A generic write could bypass the authority that governs them: progression
+  // plan validation, Confirm, feat category/variant filtering, feat prerequisites,
+  // subclass legality, level progression, and canonical acquisition keys. Creation
+  // now writes progression too, so the same bypass would open immediately after
+  // a character is made. Future class/species/background changes, level changes,
+  // subclass respec, and feat acquisition/removal must use dedicated authoritative
+  // workflows that update every dependent block together. This is an explicit
+  // list, not a Fighter- or feature-specific rule.
+  const AUTHORITATIVE_BLOCKS = ['catalogue_selection', 'progression'] as const
+  if ((AUTHORITATIVE_BLOCKS as readonly string[]).includes(blockKey)) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: `${blockKey} is authoritative and cannot be changed through the generic block endpoint`
+    })
+  }
+
   const principal = event.context.principal ?? null
   if (!principal) {
     throw createError({ statusCode: 401, statusMessage: 'Authentication required' })

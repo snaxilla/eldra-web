@@ -256,8 +256,9 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Fighting Style',
     levels: [1],
     surface: 'creation',
-    status: 'ENGINE_BLOCKED',
-    blockerReason: 'fighting-style-creation (Phase 2C.2B): Fighter Level-1 Fighting Style is a creation-time ContentRef choice. create-v2 has no ContentRef choice presentation, no ContentRef selection transport, and no creation-time progression.feats[] write. The generic feature Value (value:feature.fighting-style) and the FS filter exist; the creation surface does not.'
+    status: 'IMPLEMENTED',
+    implementationRef: 'choice:feat.fighting-style.fs-only',
+    notes: 'Creation acquisition (Phase 2C.2B): the Fighter declares one content choice (FS only) and the feature Value value:feature.fighting-style via its own facet grant. Built through the V2 Builder, judged authoritatively by create-v2 POST, and persisted through canonical creation progression (progression.feats[]). Proven by the Fighter creation acceptance (real route, fresh persisted read) and the Builder browser-shape regression. Runtime effects of the chosen style are classified separately.'
   },
   {
     id: 'paladin-xphb:fighting-style',

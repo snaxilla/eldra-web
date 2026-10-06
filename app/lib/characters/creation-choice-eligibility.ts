@@ -82,13 +82,18 @@ export function directlyGrantedValues(slots: readonly CreationSlotInput[]): Set<
 // Builder draft and the save payload already use.
 export function resolveCreationChoices(
   slots: readonly CreationSlotInput[],
-  rawSelections: Readonly<Record<string, readonly string[]>>
+  rawSelections: Readonly<Record<string, readonly string[]>>,
+  // PHASE 2C.2B -- choice sets that are CONTENT-backed (Content Catalogue
+  // ContentRefs) are judged by creation-content-choices.ts, never here. Absent
+  // means every choice is Definition-backed, exactly as before.
+  isContentChoiceSet?: (choiceSetId: string) => boolean
 ): CreationChoicePresentation[] {
   const acquired = directlyGrantedValues(slots)
   const out: CreationChoicePresentation[] = []
 
   for (const { slot, facet } of slots) {
     for (const choice of facet?.choices ?? []) {
+      if (isContentChoiceSet?.(choice.choiceSet)) continue
       const key = `${slot}:${choice.choiceSet}`
       const offeredValues = choice.from ?? []
 

@@ -110,6 +110,11 @@ function derive(bp: CharacterAssemblyBlueprint) {
       const definition = registry.registry.getById(id)
       return definition && definition.kind === 'choiceSet' ? definition : null
     },
+    // PHASE 2C.2B -- the content-backed predicate character-derived.ts supplies.
+    isContentChoiceSet: (id) => {
+      const definition = registry.registry.getById(id)
+      return Boolean(definition && definition.kind === 'choiceSet' && definition.from.kind === 'fromContentCatalogue')
+    },
     // Character Progression Phase 1A -- exactly what character-derived.ts
     // supplies in production, via the active package's own semantic-role
     // binding.
@@ -187,11 +192,15 @@ describe('the hand-authored XPHB Rules Facets', () => {
       // size (the Health System's addition); a caster grants two more
       // (Spellcasting Ability, Caster Type -- the Spellcasting System's
       // addition), and offers one skill choice.
-      expect(facet!.grants).toHaveLength(casters.has(name) ? 5 : 3)
+      // The Fighter also grants its Level-1 feature fact (PHASE 2C.2B).
+      expect(facet!.grants).toHaveLength((casters.has(name) ? 5 : 3) + (name === 'fighter' ? 1 : 0))
       expect(facet!.grants!.some((g) => g.set === 'value:hit_points.hit_die_size'), name).toBe(true)
       expect(facet!.grants!.some((g) => g.set.startsWith('value:spellcasting.ability.')), name).toBe(casters.has(name))
       expect(facet!.grants!.some((g) => g.set.startsWith('value:spellcasting.caster_type.')), name).toBe(casters.has(name))
-      expect(facet!.choices).toHaveLength(1)
+      // PHASE 2C.2B -- the Fighter also declares its Level-1 Fighting Style, a
+      // CONTENT-backed choice (a ContentRef, judged by the creation content
+      // authority, not a Definition question). Every other class declares one.
+      expect(facet!.choices).toHaveLength(name === 'fighter' ? 2 : 1)
     }
 
     const backgrounds = ['acolyte', 'artisan', 'charlatan', 'criminal', 'entertainer',
@@ -390,7 +399,11 @@ describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
       // never something the engine computed. Its presence here is the SAME
       // ADR-003 invariant this test checks, not an exception to it.
       const isLevel = id === 'value:level'
-      expect(isAbilityScore || isProficiencyFlag || isHitDieGrant || isLevel, `unexpected stored value '${id}'`).toBe(true)
+      // PHASE 2C.2B -- a Class's authored feature grant (the Fighter's Level-1
+      // Fighting Style feature). Like the Hit Die grant above, it is a CONTENT
+      // fact the package states, never something the engine computed.
+      const isFeatureGrant = id === 'value:feature.fighting-style'
+      expect(isAbilityScore || isProficiencyFlag || isHitDieGrant || isLevel || isFeatureGrant, `unexpected stored value '${id}'`).toBe(true)
     }
 
     // ...and the derived values the sheet will show exist only in the

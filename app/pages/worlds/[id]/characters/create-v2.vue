@@ -110,6 +110,9 @@ import {
   STEP_LABELS,
   activeAssignment,
   creationChoicePresentation,
+  creationContentPresentation,
+  setContentChoiceSelections,
+  type BuilderCreationContext,
   declaredChoices,
   draftAbilityScores,
   emptyDraft,
@@ -145,6 +148,8 @@ type WorldCatalogue = {
   species: BuilderCatalogueEntry[]
   classes: BuilderCatalogueEntry[]
   backgrounds: BuilderCatalogueEntry[]
+  // PHASE 2C.2B -- content-backed creation choices (Fighting Style) pick from these.
+  feats: BuilderCatalogueEntry[]
 }
 
 const { data: catalogue, pending: catalogueLoading, error: catalogueError } = await useFetch<WorldCatalogue>(
@@ -239,20 +244,63 @@ function setAbility(key: AbilityKey, value: number | null) {
 // shows nothing to answer -- the Builder stays usable either way.
 const { data: choiceOptions } = await useFetch<{
   available: boolean
-  choiceSets?: Record<string, { prompt: string; label?: string }>
+  choiceSets?: Record<string, { prompt: string; label?: string; contentCategory?: string; contentFilter?: { category: string; variants?: readonly string[] } }>
   optionLabels?: Record<string, string>
 }>(() => `/api/worlds/${worldId.value}/rules/choice-options`)
 
 const optionLabels = computed(() => choiceOptions.value?.optionLabels ?? {})
 
-const proficiencyChoices = computed(() => declaredChoices(draft))
+// PHASE 2C.2B -- the one creation context the Builder judges against: which
+// choice sets are CONTENT-backed (the package's own declaration, echoed by the
+// choice-options endpoint) and the World's catalogue feats. Presentation only:
+// the server re-derives every decision from the same package and catalogue.
+const creationContext = computed<BuilderCreationContext>(() => {
+  const sets = choiceOptions.value?.choiceSets ?? {}
+  return {
+    contentSelectorOf: (choiceSetId) => {
+      const set = sets[choiceSetId]
+      return set?.contentCategory ? { category: set.contentCategory, filter: set.contentFilter } : null
+    },
+    feats: catalogue.value?.feats ?? []
+  }
+})
+
+const proficiencyChoices = computed(() => declaredChoices(draft, creationContext.value))
+
+// The content (ContentRef) choices the current selection declares, shaped for the
+// same generic picker: options are encoded refs, labels are catalogue titles.
+const contentPresentations = computed(() => creationContentPresentation(draft, creationContext.value))
+const contentChoicePickers = computed(() => contentPresentations.value.map((presentation) => ({
+  key: presentation.key,
+  slot: presentation.slot,
+  choiceSetId: presentation.choiceSetId,
+  count: presentation.count,
+  options: presentation.offered.filter((option) => option.eligible).map((option) => option.ref),
+  distinct: true
+})))
+const contentOffered = computed(() => new Map(contentPresentations.value.map((presentation) => [
+  presentation.key,
+  presentation.offered.map((option) => ({ value: option.ref, eligible: option.eligible, reason: option.reason }))
+])))
+const contentLabels = computed(() => Object.fromEntries(
+  contentPresentations.value.flatMap((presentation) => presentation.offered.map((option) => [option.ref, option.title]))
+))
+function contentSelectionsFor(key: string): string[] {
+  return contentPresentations.value.find((presentation) => presentation.key === key)?.selected ?? []
+}
+function contentOfferedFor(key: string) {
+  return contentOffered.value.get(key)
+}
+function chooseContentSelections(key: string, selected: string[]) {
+  setContentChoiceSelections(draft, key, selected, creationContext.value)
+}
 
 // The same shared eligibility the save route applies, keyed for the picker:
 // every offered option annotated, and the EFFECTIVE selection (never a stale
 // illegal answer). Recomputes whenever Species/Class/Background or any
 // proficiency answer changes -- no reload, no separate fetch.
 const presentationByKey = computed(() => new Map(
-  creationChoicePresentation(draft).map((presentation) => [presentation.key, presentation])
+  creationChoicePresentation(draft, creationContext.value).map((presentation) => [presentation.key, presentation])
 ))
 
 function promptFor(choiceSetId: string): string {
@@ -279,7 +327,7 @@ function chooseSelections(key: string, selected: string[]) {
 // time too, not only after the next slot change.
 watch(
   () => CHOICE_KEYS.map((key) => optionKey(draft[key])).join('|'),
-  () => pruneChoices(draft),
+  () => pruneChoices(draft, creationContext.value),
   { immediate: true }
 )
 
@@ -287,12 +335,12 @@ const steps = computed(() =>
   STEP_KEYS.map((key) => ({
     key,
     label: STEP_LABELS[key],
-    complete: isStepComplete(draft, key)
+    complete: isStepComplete(draft, key, creationContext.value)
   }))
 )
 
-const complete = computed(() => isDraftComplete(draft))
-const outstanding = computed(() => missingRequirements(draft))
+const complete = computed(() => isDraftComplete(draft, creationContext.value))
+const outstanding = computed(() => missingRequirements(draft, creationContext.value))
 
 const summaryRows = computed(() =>
   CHOICE_KEYS.map((key) => ({
@@ -324,7 +372,7 @@ const creating = ref(false)
 const createErrorMessage = ref('')
 
 async function createCharacter() {
-  const payload = toCreatePayload(draft)
+  const payload = toCreatePayload(draft, creationContext.value)
   if (!payload || creating.value) return
 
   creating.value = true
@@ -483,7 +531,7 @@ async function createCharacter() {
               {{ STEP_LABELS.proficiencies }}
             </h2>
             <p
-              v-if="!proficiencyChoices.length"
+              v-if="!proficiencyChoices.length && !contentChoicePickers.length"
               class="text-sm leading-6 text-[#9f9278]"
             >
               The Species, Class, and Background you chose ask no proficiency
@@ -504,6 +552,17 @@ async function createCharacter() {
                 :option-labels="optionLabels"
                 :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
                 @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+              />
+              <CharacterChoiceSetPicker
+                v-for="choice in contentChoicePickers"
+                :key="choice.key"
+                :choice="choice"
+                :selected="contentSelectionsFor(choice.key)"
+                :offered="contentOfferedFor(choice.key)"
+                :prompt="promptFor(choice.choiceSetId)"
+                :option-labels="contentLabels"
+                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
               />
             </div>
           </div>
@@ -711,7 +770,7 @@ async function createCharacter() {
                 {{ STEP_LABELS.proficiencies }}
               </h2>
             <p
-              v-if="!proficiencyChoices.length"
+              v-if="!proficiencyChoices.length && !contentChoicePickers.length"
               class="text-sm leading-6 text-[#9f9278]"
             >
               The Species, Class, and Background you chose ask no proficiency
@@ -732,6 +791,17 @@ async function createCharacter() {
                 :option-labels="optionLabels"
                 :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
                 @update:selected="(value: string[]) => chooseSelections(choice.key, value)"
+              />
+              <CharacterChoiceSetPicker
+                v-for="choice in contentChoicePickers"
+                :key="choice.key"
+                :choice="choice"
+                :selected="contentSelectionsFor(choice.key)"
+                :offered="contentOfferedFor(choice.key)"
+                :prompt="promptFor(choice.choiceSetId)"
+                :option-labels="contentLabels"
+                :slot-label="STEP_LABELS[choice.slot as BuilderChoiceKey]"
+                @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
               />
             </div>
             </section>

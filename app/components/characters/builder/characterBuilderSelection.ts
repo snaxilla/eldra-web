@@ -64,6 +64,13 @@ import {
   type CreationSlotInput
 } from '~/lib/characters/creation-choice-eligibility'
 import {
+  declaredCreationContentChoices,
+  resolveCreationContentChoices,
+  type ContentChoiceSelector,
+  type CreationContentPresentation,
+  type CreationFeatEntry
+} from '~/lib/characters/creation-content-choices'
+import {
   emptyStoredRulesChoices,
   selectionsFor,
   validateChoiceSelection,
@@ -117,6 +124,24 @@ export type CharacterBuilderDraft = {
   // persists and the bridge reads, so the draft needs no translation on
   // submit and no second shape can drift from the first.
   choices: StoredRulesChoices
+  // PHASE 2C.2B -- ContentRef answers to CONTENT-backed creation choices,
+  // keyed by the same progression key a declaration produces. A separate
+  // domain from `choices` (Definition answers): a ContentRef is never a
+  // DefinitionId and is never judged by the Definition path.
+  contentChoices: Record<string, string[]>
+}
+
+// What the Builder knows about this package's content choices. Supplied by the
+// page from the World's rules choice options and catalogue; the default knows of
+// none, so every Definition-only caller is unchanged.
+export type BuilderCreationContext = {
+  contentSelectorOf: (choiceSetId: string) => ContentChoiceSelector | null
+  feats: readonly CreationFeatEntry[]
+}
+
+export const NO_CREATION_CONTENT: BuilderCreationContext = {
+  contentSelectorOf: () => null,
+  feats: []
 }
 
 export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'proficiencies' | 'abilities' | 'review'
@@ -161,7 +186,8 @@ export function emptyDraft(): CharacterBuilderDraft {
     class: null,
     background: null,
     abilities: emptyAbilityDraft(),
-    choices: emptyStoredRulesChoices()
+    choices: emptyStoredRulesChoices(),
+    contentChoices: {}
   }
 }
 
@@ -275,16 +301,44 @@ export function hasAmbiguousTitles(options: readonly BuilderCatalogueEntry[]): b
 // creation-choice-eligibility.ts). The draft is passed whole so direct grants
 // from ALL three slots are visible to every choice -- never only the slot
 // that happens to render first.
-export function creationChoicePresentation(draft: CharacterBuilderDraft): CreationChoicePresentation[] {
+export function creationChoicePresentation(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): CreationChoicePresentation[] {
   const slots: CreationSlotInput[] = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
-  return resolveCreationChoices(slots, draft.choices.selections)
+  return resolveCreationChoices(slots, draft.choices.selections, (id) => context.contentSelectorOf(id) !== null)
+}
+
+// PHASE 2C.2B -- the creation-time ContentRef choices the CURRENT selected slots
+// declare (class switching changes this list), judged by the shared creation
+// content authority. Every presentation here is a content choice only.
+export function creationContentPresentation(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): CreationContentPresentation[] {
+  const slots = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
+  const declarations = declaredCreationContentChoices(slots, context.contentSelectorOf)
+  return resolveCreationContentChoices(declarations, slots, draft.contentChoices, context.feats)
+}
+
+// The ContentRef answers that count for the CURRENT selection, keyed by the
+// declared key. A stale answer for a slot no longer selected never appears here,
+// so it can never be submitted.
+export function effectiveContentChoices(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): Record<string, string[]> {
+  return Object.fromEntries(creationContentPresentation(draft, context).map((p) => [p.key, [...p.selected]]))
 }
 
 // The question as the rest of the Builder reads it: options are only the
 // ELIGIBLE ones, and the selection is the effective one. Callers that need to
 // SHOW unavailable options read creationChoicePresentation instead.
-export function declaredChoices(draft: CharacterBuilderDraft): ResolvableChoice[] {
-  return creationChoicePresentation(draft).map((presentation) => ({
+export function declaredChoices(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): ResolvableChoice[] {
+  return creationChoicePresentation(draft, context).map((presentation) => ({
     key: presentation.key,
     slot: presentation.slot,
     choiceSetId: presentation.choiceSetId,
@@ -327,8 +381,36 @@ export function setChoiceSelections(
 // the draft holding two picks for a two-pick question, so the picker would
 // consider itself full and DISABLE every option the new Class actually
 // offers -- a player unable to choose anything, with no visible reason.
-export function pruneChoices(draft: CharacterBuilderDraft): void {
-  const presentations = creationChoicePresentation(draft)
+// Records a ContentRef answer and prunes what the current selection no longer
+// declares -- the content counterpart of setChoiceSelections.
+export function setContentChoiceSelections(
+  draft: CharacterBuilderDraft,
+  key: string,
+  selected: readonly string[],
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): void {
+  draft.contentChoices[key] = [...selected]
+  pruneChoices(draft, context)
+}
+
+export function pruneChoices(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): void {
+  // Content answers follow the same rule as Definition answers: a key the
+  // current selection no longer declares is removed, so a class switch can never
+  // leave a hidden requirement behind (switching back re-asks the question).
+  const contentPresentations = creationContentPresentation(draft, context)
+  const liveContent = new Set(contentPresentations.map((presentation) => presentation.key))
+  for (const key of Object.keys(draft.contentChoices)) {
+    if (!liveContent.has(key)) delete draft.contentChoices[key]
+  }
+  for (const presentation of contentPresentations) {
+    const current = draft.contentChoices[presentation.key] ?? []
+    if (!sameSelection(current, presentation.selected)) draft.contentChoices[presentation.key] = [...presentation.selected]
+  }
+
+  const presentations = creationChoicePresentation(draft, context)
   const live = new Set(presentations.map((presentation) => presentation.key))
 
   for (const key of Object.keys(draft.choices.selections)) {
@@ -354,8 +436,20 @@ function sameSelection(a: readonly string[], b: readonly string[]): boolean {
 // True when every declared question is validly answered by ELIGIBLE answers.
 // Vacuously true when nothing declares a choice -- a World whose content
 // carries no facets has no proficiency step to complete.
-export function isProficiencyStepComplete(draft: CharacterBuilderDraft): boolean {
-  return creationChoicePresentation(draft).every((presentation) => presentation.answered)
+export function isProficiencyStepComplete(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): boolean {
+  return creationChoicePresentation(draft, context).every((presentation) => presentation.answered)
+}
+
+// Creation's ContentRef choices count toward the same proficiency-step validity as
+// the Definition choices: a required feat choice is unsatisfied until VALID.
+export function isCreationContentComplete(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): boolean {
+  return creationContentPresentation(draft, context).every((presentation) => presentation.valid)
 }
 
 export function isChoiceComplete(draft: CharacterBuilderDraft, key: BuilderChoiceKey): boolean {
@@ -366,18 +460,26 @@ export function isNameComplete(draft: CharacterBuilderDraft): boolean {
   return draft.name.trim().length > 0
 }
 
-export function isStepComplete(draft: CharacterBuilderDraft, step: BuilderStepKey): boolean {
+export function isStepComplete(
+  draft: CharacterBuilderDraft,
+  step: BuilderStepKey,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): boolean {
   if (step === 'identity') return isNameComplete(draft)
-  if (step === 'proficiencies') return isProficiencyStepComplete(draft)
+  if (step === 'proficiencies') return isProficiencyStepComplete(draft, context) && isCreationContentComplete(draft, context)
   if (step === 'abilities') return isAbilityStepComplete(draft)
-  if (step === 'review') return isDraftComplete(draft)
+  if (step === 'review') return isDraftComplete(draft, context)
   return isChoiceComplete(draft, step)
 }
 
-export function isDraftComplete(draft: CharacterBuilderDraft): boolean {
+export function isDraftComplete(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): boolean {
   return isNameComplete(draft)
     && CHOICE_KEYS.every((key) => isChoiceComplete(draft, key))
-    && isProficiencyStepComplete(draft)
+    && isProficiencyStepComplete(draft, context)
+    && isCreationContentComplete(draft, context)
     && isAbilityStepComplete(draft)
 }
 
@@ -386,13 +488,20 @@ export function isDraftComplete(draft: CharacterBuilderDraft): boolean {
 // authority on whether a create is actually valid; this only explains a
 // disabled button, the same posture AdminContentPackBuilderPanel.vue's
 // `validationMessages` already established.
-export function missingRequirements(draft: CharacterBuilderDraft): string[] {
+export function missingRequirements(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): string[] {
   const missing: string[] = []
   if (!isNameComplete(draft)) missing.push('Enter a character name.')
   for (const key of CHOICE_KEYS) {
     if (!isChoiceComplete(draft, key)) missing.push(`Choose a ${STEP_LABELS[key]}.`)
   }
-  for (const presentation of creationChoicePresentation(draft)) {
+  for (const presentation of creationContentPresentation(draft, context)) {
+    if (presentation.valid) continue
+    missing.push(`${STEP_LABELS[presentation.slot as BuilderChoiceKey] ?? presentation.slot}: choose ${presentation.count} option${presentation.count === 1 ? '' : 's'}.`)
+  }
+  for (const presentation of creationChoicePresentation(draft, context)) {
     if (presentation.answered) continue
     const eligible = presentation.offered.filter((option) => option.eligible).map((option) => option.value)
     const validation = validateChoiceSelection(
@@ -417,6 +526,10 @@ export type CharacterCreatePayload = {
   // data, so they are sent in full and the server validates shape/bounds
   // rather than looking anything up.
   abilities: { method: AbilityScoreMethod; scores: AbilityScores }
+  // PHASE 2C.2B -- ContentRef answers to content-backed creation choices, keyed
+  // by declared key, each value a list of encoded `packageId::slug` refs. The
+  // server re-resolves every ref against the declaration it names.
+  contentChoices: Record<string, string[]>
   // The player's ChoiceSet answers. Like ability scores -- and unlike the
   // three catalogue refs -- these ARE the player's data, so they are sent in
   // full. The server still re-derives the questions from the character's own
@@ -426,8 +539,11 @@ export type CharacterCreatePayload = {
 }
 
 // See design decision 3 -- only the two fields the save route actually reads.
-export function toCreatePayload(draft: CharacterBuilderDraft): CharacterCreatePayload | null {
-  if (!isDraftComplete(draft)) return null
+export function toCreatePayload(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): CharacterCreatePayload | null {
+  if (!isDraftComplete(draft, context)) return null
 
   const scores = draftAbilityScores(draft)
   if (!scores) return null
@@ -440,7 +556,10 @@ export function toCreatePayload(draft: CharacterBuilderDraft): CharacterCreatePa
     class: ref(draft.class!),
     background: ref(draft.background!),
     abilities: { method: draft.abilities.method, scores },
-    choices: { selections: { ...draft.choices.selections } }
+    choices: { selections: { ...draft.choices.selections } },
+    // PHASE 2C.2B -- only the answers the CURRENT selection declares and makes
+    // valid. A stale answer for a class no longer selected is never submitted.
+    contentChoices: effectiveContentChoices(draft, context)
   }
 }
 

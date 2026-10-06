@@ -3208,6 +3208,25 @@
     "distinct": true
   },
   {
+    "id": "choice:feat.fighting-style.fs-only",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Fighting Style",
+    "prompt": "Choose a Fighting Style feat.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "feats",
+      "filter": {
+        "category": "fighting-style",
+        "variants": [
+          "FS"
+        ]
+      }
+    },
+    "distinct": true
+  },
+  {
     "id": "progression:class.asi-standard",
     "kind": "progression",
     "category": "progression",

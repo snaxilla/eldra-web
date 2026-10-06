@@ -649,6 +649,11 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     }
 
     for (const choice of facet.choices ?? []) {
+      // PHASE 2C.2B -- a CONTENT-backed choice (its ChoiceSet selects from the
+      // Content Catalogue) is never a Definition question. Its answer is a
+      // ContentRef judged by the creation content authority, so the Definition
+      // path skips it here -- exactly the guard the progression loop applies.
+      if (input.isContentChoiceSet?.(choice.choiceSet)) continue
       // Shared with the Builder so both ask the identical question -- see
       // toResolvableChoice. A facet with no `from` offers nothing, which
       // validates as answerable only at count 0: correct, not a special case.

@@ -30,6 +30,11 @@ export type ChoiceSetPresentation = {
   id: string
   prompt: string
   label?: string
+  // PHASE 2C.2B -- present ONLY for a CONTENT-backed ChoiceSet (its `from` is
+  // `fromContentCatalogue`). Lets the Builder recognize a ContentRef choice from
+  // the package's own declaration, never from its id or the answer's shape.
+  contentCategory?: string
+  contentFilter?: { category: string; variants?: readonly string[] }
 }
 
 export type WorldRulesChoiceOptions =
@@ -72,7 +77,13 @@ export async function getWorldRulesChoiceOptions(
       choiceSets[definition.id] = {
         id: definition.id,
         prompt: definition.prompt,
-        label: definition.label
+        label: definition.label,
+        ...(definition.from.kind === 'fromContentCatalogue'
+          ? {
+              contentCategory: definition.from.category,
+              ...(definition.from.filter ? { contentFilter: definition.from.filter } : {})
+            }
+          : {})
       }
       continue
     }

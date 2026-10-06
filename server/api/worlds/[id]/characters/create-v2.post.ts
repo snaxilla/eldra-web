@@ -64,6 +64,13 @@ import { createError, defineEventHandler, getRouterParam, readBody } from 'h3'
 import { requireCapability } from '../../../../utils/authorization'
 import { getWorldContentCatalogue, type ContentCatalogueEntry } from '../../../../utils/world-content-catalogue'
 import { createEntityRecord, dxFetch } from '../../../../utils/entity-factory'
+import { saveCharacterProgression } from '../../../../utils/character-progression'
+import { getWorldRuntime } from '../../../../utils/world-runtime-service'
+import {
+  declaredCreationContentChoices,
+  resolveCreationContentChoices,
+  type ContentChoiceSelector
+} from '../../../../../app/lib/characters/creation-content-choices'
 import { saveCharacterAbilityScores } from '../../../../utils/character-ability-scores'
 import { saveCharacterRulesChoices } from '../../../../utils/character-rules-choices'
 import { getDerivedCharacter } from '../../../../utils/character-derived'
@@ -208,7 +215,21 @@ export default defineEventHandler(async (event) => {
     { slot: 'class', facet: characterClass.rulesFacet },
     { slot: 'background', facet: background.rulesFacet }
   ]
-  const declaredKeys = new Set(resolveCreationChoices(slots, {}).map((presentation) => presentation.key))
+  // PHASE 2C.2B -- a ChoiceSet is content-backed only by the PACKAGE's own
+  // declaration (`from.kind === 'fromContentCatalogue'`), read from the World's
+  // active registry. Never inferred from an id, a label, or the answer's shape.
+  const runtime = await getWorldRuntime(worldId)
+  const contentSelectorOf = (choiceSetId: string): ContentChoiceSelector | null => {
+    if (!(runtime.configured && runtime.ok)) return null
+    const definition = runtime.runtime.registry.getById(choiceSetId)
+    if (!definition || definition.kind !== 'choiceSet' || definition.from.kind !== 'fromContentCatalogue') return null
+    return { category: definition.from.category, filter: definition.from.filter }
+  }
+  const isContentChoiceSet = (choiceSetId: string) => contentSelectorOf(choiceSetId) !== null
+  const contentDeclarations = declaredCreationContentChoices(slots, contentSelectorOf)
+  const contentKeys = new Set(contentDeclarations.map((declaration) => declaration.key))
+
+  const declaredKeys = new Set(resolveCreationChoices(slots, {}, isContentChoiceSet).map((presentation) => presentation.key))
 
   const rulesChoices = emptyStoredRulesChoices()
   const rawSelections = body?.choices?.selections
@@ -236,7 +257,7 @@ export default defineEventHandler(async (event) => {
     // Judged once, together: a sibling's accepted answer makes a later
     // choice's duplicate ineligible, exactly as the Builder shows it.
     const submitted = Object.fromEntries(entries.map(([key, value]) => [key, value as string[]]))
-    const judged = new Map(resolveCreationChoices(slots, submitted).map((presentation) => [presentation.key, presentation]))
+    const judged = new Map(resolveCreationChoices(slots, submitted, isContentChoiceSet).map((presentation) => [presentation.key, presentation]))
 
     for (const [key, values] of Object.entries(submitted)) {
       const presentation = judged.get(key)!
@@ -273,6 +294,52 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // PHASE 2C.2B -- ContentRef answers to content-backed creation choices. The
+  // client names only (choice key, encoded ref). Category, variant, prerequisites,
+  // ownership, and the ref's real catalogue entry are all re-derived here from
+  // the package declaration and the World's catalogue -- never trusted.
+  const rawContent = body?.contentChoices
+  if (rawContent != null && (typeof rawContent !== 'object' || Array.isArray(rawContent))) {
+    throw createError({ statusCode: 400, statusMessage: '`contentChoices` must be an object of choice keys to ContentRef lists' })
+  }
+  const submittedContent = (rawContent ?? {}) as Record<string, unknown>
+  for (const [key, value] of Object.entries(submittedContent)) {
+    if (!contentKeys.has(key)) {
+      throw createError({ statusCode: 400, statusMessage: `This character's content declares no content choice "${key}"` })
+    }
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item)) {
+      throw createError({ statusCode: 400, statusMessage: `${key}: Selections must be a list of encoded ContentRefs.` })
+    }
+  }
+  const contentPresentations = resolveCreationContentChoices(
+    contentDeclarations,
+    slots,
+    Object.fromEntries(Object.entries(submittedContent).map(([key, value]) => [key, value as string[]])),
+    catalogue.feats
+  )
+  const contentAcquisitions: { featRef: { packageId: string, slug: string }, choiceKey: string }[] = []
+  for (const presentation of contentPresentations) {
+    const submitted = (submittedContent[presentation.key] as string[] | undefined) ?? []
+    if (submitted.length > presentation.count) {
+      throw createError({ statusCode: 400, statusMessage: `${presentation.key}: choose ${presentation.count}` })
+    }
+    for (const ref of submitted) {
+      const offer = presentation.offered.find((candidate) => candidate.ref === ref)
+      if (!offer) {
+        throw createError({ statusCode: 400, statusMessage: `${presentation.key}: "${ref}" is not a legal option for this choice` })
+      }
+      if (!offer.eligible) {
+        throw createError({ statusCode: 400, statusMessage: `${presentation.key}: "${offer.title}" is ${offer.reason ? offer.reason.toLowerCase() : 'not available'} and cannot be chosen` })
+      }
+    }
+    if (!presentation.valid) {
+      throw createError({ statusCode: 400, statusMessage: `${presentation.key}: choose ${presentation.count} option${presentation.count === 1 ? '' : 's'}` })
+    }
+    for (const offer of presentation.offered.filter((candidate) => presentation.selected.includes(candidate.ref))) {
+      contentAcquisitions.push({ featRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
+    }
+  }
+
   const created = await createEntityRecord({
     worldId,
     title,
@@ -280,6 +347,9 @@ export default defineEventHandler(async (event) => {
   })
 
   if (created?.id) {
+    // PHASE 2C.2B -- FAIL LOUDLY. catalogue_selection is the identity the
+    // canonical progression below depends on, so a failure here fails the
+    // request. No rollback is claimed: an entity row may already exist.
     await dxFetch('/items/block_instances', {
       method: 'POST',
       body: JSON.stringify({
@@ -293,7 +363,17 @@ export default defineEventHandler(async (event) => {
           background: toStoredChoice(background)
         }
       })
-    }).catch(() => null)
+    })
+
+    // PHASE 2C.2B -- canonical progression, written AFTER the catalogue identity
+    // it depends on. The class ref is built ONCE from the same selected catalogue
+    // entry that catalogue_selection stores, so the two are identical by
+    // construction (no re-resolution, no label inference). Fails loudly.
+    const classRef = { packageId: characterClass.packageId, slug: characterClass.slug }
+    await saveCharacterProgression(created.id, {
+      classes: [{ classRef, level: 1, subclassRef: null }],
+      feats: contentAcquisitions
+    })
 
     if (abilityScores) {
       await saveCharacterAbilityScores(created.id, abilityScores).catch(() => null)

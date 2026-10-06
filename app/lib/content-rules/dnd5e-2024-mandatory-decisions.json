@@ -101,7 +101,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.calligrapher's supplies"
+      "source": "toolProficiencies.calligrapher's supplies",
+      "detail": "tool:calligrapher's supplies"
     },
     {
       "id": "background:artisan-xphb:L1:ability-distribution:ability",
@@ -157,7 +158,8 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.anyArtisansTool"
+      "source": "toolProficiencies.anyArtisansTool",
+      "detail": "tools-choice:artisan"
     },
     {
       "id": "background:charlatan-xphb:L1:ability-distribution:ability",
@@ -213,7 +215,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.forgery kit"
+      "source": "toolProficiencies.forgery kit",
+      "detail": "tool:forgery kit"
     },
     {
       "id": "background:criminal-xphb:L1:ability-distribution:ability",
@@ -269,7 +272,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.thieves' tools"
+      "source": "toolProficiencies.thieves' tools",
+      "detail": "tool:thieves' tools"
     },
     {
       "id": "background:entertainer-xphb:L1:ability-distribution:ability",
@@ -325,7 +329,8 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.anyMusicalInstrument"
+      "source": "toolProficiencies.anyMusicalInstrument",
+      "detail": "tools-choice:instrument"
     },
     {
       "id": "background:farmer-xphb:L1:ability-distribution:ability",
@@ -381,7 +386,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.carpenter's tools"
+      "source": "toolProficiencies.carpenter's tools",
+      "detail": "tool:carpenter's tools"
     },
     {
       "id": "background:guard-xphb:L1:ability-distribution:ability",
@@ -437,7 +443,8 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.anyGamingSet"
+      "source": "toolProficiencies.anyGamingSet",
+      "detail": "tools-choice:gaming-set"
     },
     {
       "id": "background:guide-xphb:L1:ability-distribution:ability",
@@ -493,7 +500,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.cartographer's tools"
+      "source": "toolProficiencies.cartographer's tools",
+      "detail": "tool:cartographer's tools"
     },
     {
       "id": "background:hermit-xphb:L1:ability-distribution:ability",
@@ -549,7 +557,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.herbalism kit"
+      "source": "toolProficiencies.herbalism kit",
+      "detail": "tool:herbalism kit"
     },
     {
       "id": "background:merchant-xphb:L1:ability-distribution:ability",
@@ -605,7 +614,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.navigator's tools"
+      "source": "toolProficiencies.navigator's tools",
+      "detail": "tool:navigator's tools"
     },
     {
       "id": "background:noble-xphb:L1:ability-distribution:ability",
@@ -661,7 +671,8 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.anyGamingSet"
+      "source": "toolProficiencies.anyGamingSet",
+      "detail": "tools-choice:gaming-set"
     },
     {
       "id": "background:sage-xphb:L1:ability-distribution:ability",
@@ -717,7 +728,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.calligrapher's supplies"
+      "source": "toolProficiencies.calligrapher's supplies",
+      "detail": "tool:calligrapher's supplies"
     },
     {
       "id": "background:sailor-xphb:L1:ability-distribution:ability",
@@ -773,7 +785,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.navigator's tools"
+      "source": "toolProficiencies.navigator's tools",
+      "detail": "tool:navigator's tools"
     },
     {
       "id": "background:scribe-xphb:L1:ability-distribution:ability",
@@ -829,7 +842,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.calligrapher's supplies"
+      "source": "toolProficiencies.calligrapher's supplies",
+      "detail": "tool:calligrapher's supplies"
     },
     {
       "id": "background:soldier-xphb:L1:ability-distribution:ability",
@@ -885,7 +899,8 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.anyGamingSet"
+      "source": "toolProficiencies.anyGamingSet",
+      "detail": "tools-choice:gaming-set"
     },
     {
       "id": "background:wayfarer-xphb:L1:ability-distribution:ability",
@@ -941,7 +956,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.thieves' tools"
+      "source": "toolProficiencies.thieves' tools",
+      "detail": "tool:thieves' tools"
     },
     {
       "id": "class:barbarian-xphb:L1:equipment-package:startingequipment",
@@ -958,6 +974,21 @@
       "source": "startingEquipment"
     },
     {
+      "id": "class:barbarian-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "barbarian-xphb",
+        "name": "Barbarian"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:str,con"
+    },
+    {
       "id": "class:barbarian-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -969,7 +1000,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light,medium,shield"
     },
     {
       "id": "class:barbarian-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -983,7 +1015,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple,martial"
     },
     {
       "id": "class:barbarian-xphb:L1:skill-choice:startingproficiencies-skills",
@@ -1173,7 +1206,23 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 3,
-      "source": "startingProficiencies.tools:Choose three {@item Musical Instrument|X"
+      "source": "startingProficiencies.tools:Choose three {@item Musical Instrument|X",
+      "detail": "tools-choice:instrument"
+    },
+    {
+      "id": "class:bard-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "bard-xphb",
+        "name": "Bard"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:dex,cha"
     },
     {
       "id": "class:bard-xphb:L1:proficiency-grant:startingproficiencies-armor",
@@ -1187,7 +1236,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light"
     },
     {
       "id": "class:bard-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -1201,7 +1251,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple"
     },
     {
       "id": "class:bard-xphb:L1:replacement:spellcasting",
@@ -1708,6 +1759,21 @@
       "source": "Divine Order"
     },
     {
+      "id": "class:cleric-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "cleric-xphb",
+        "name": "Cleric"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:wis,cha"
+    },
+    {
       "id": "class:cleric-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -1719,7 +1785,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light,medium,shield"
     },
     {
       "id": "class:cleric-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -1733,7 +1800,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple"
     },
     {
       "id": "class:cleric-xphb:L1:replacement:spellcasting",
@@ -2197,6 +2265,21 @@
       "source": "Primal Order"
     },
     {
+      "id": "class:druid-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "druid-xphb",
+        "name": "Druid"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:int,wis"
+    },
+    {
       "id": "class:druid-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -2208,7 +2291,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light,shield"
     },
     {
       "id": "class:druid-xphb:L1:proficiency-grant:startingproficiencies-tools-item-herbalism-kit-xphb",
@@ -2222,7 +2306,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "startingProficiencies.tools:{@item Herbalism Kit|XPHB}"
+      "source": "startingProficiencies.tools:{@item Herbalism Kit|XPHB}",
+      "detail": "tool:Herbalism Kit"
     },
     {
       "id": "class:druid-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -2236,7 +2321,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple"
     },
     {
       "id": "class:druid-xphb:L1:replacement:spellcasting",
@@ -2715,6 +2801,21 @@
       "detail": "category=FS"
     },
     {
+      "id": "class:fighter-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "fighter-xphb",
+        "name": "Fighter"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:str,con"
+    },
+    {
       "id": "class:fighter-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -2726,7 +2827,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light,medium,heavy,shield"
     },
     {
       "id": "class:fighter-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -2740,7 +2842,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple,martial"
     },
     {
       "id": "class:fighter-xphb:L1:replacement:fighting-style",
@@ -2991,7 +3094,23 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 1,
-      "source": "startingProficiencies.tools:Choose one type of {@item Artisan's Tool"
+      "source": "startingProficiencies.tools:Choose one type of {@item Artisan's Tool",
+      "detail": "tools-choice:instrument,artisan"
+    },
+    {
+      "id": "class:monk-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "monk-xphb",
+        "name": "Monk"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:str,dex"
     },
     {
       "id": "class:monk-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -3005,7 +3124,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple,martial_light"
     },
     {
       "id": "class:monk-xphb:L1:skill-choice:startingproficiencies-skills",
@@ -3125,6 +3245,21 @@
       "source": "startingEquipment"
     },
     {
+      "id": "class:paladin-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "paladin-xphb",
+        "name": "Paladin"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:wis,cha"
+    },
+    {
       "id": "class:paladin-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -3136,7 +3271,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light,medium,heavy,shield"
     },
     {
       "id": "class:paladin-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -3150,7 +3286,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple,martial"
     },
     {
       "id": "class:paladin-xphb:L1:replacement:spellcasting",
@@ -3525,6 +3662,21 @@
       "source": "startingEquipment"
     },
     {
+      "id": "class:ranger-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "ranger-xphb",
+        "name": "Ranger"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:str,dex"
+    },
+    {
       "id": "class:ranger-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -3536,7 +3688,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light,medium,shield"
     },
     {
       "id": "class:ranger-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -3550,7 +3703,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple,martial"
     },
     {
       "id": "class:ranger-xphb:L1:replacement:spellcasting",
@@ -3996,6 +4150,21 @@
       "source": "Thieves' Cant"
     },
     {
+      "id": "class:rogue-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "rogue-xphb",
+        "name": "Rogue"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:dex,int"
+    },
+    {
       "id": "class:rogue-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -4007,7 +4176,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light"
     },
     {
       "id": "class:rogue-xphb:L1:proficiency-grant:startingproficiencies-tools-item-thieves-tools-xphb",
@@ -4021,7 +4191,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "startingProficiencies.tools:{@item Thieves' Tools|XPHB}"
+      "source": "startingProficiencies.tools:{@item Thieves' Tools|XPHB}",
+      "detail": "tool:Thieves' Tools"
     },
     {
       "id": "class:rogue-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -4035,7 +4206,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple,martial_finesse_light"
     },
     {
       "id": "class:rogue-xphb:L1:replacement:weapon-mastery",
@@ -4214,6 +4386,21 @@
       "source": "startingEquipment"
     },
     {
+      "id": "class:sorcerer-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "sorcerer-xphb",
+        "name": "Sorcerer"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:con,cha"
+    },
+    {
       "id": "class:sorcerer-xphb:L1:proficiency-grant:startingproficiencies-weapons",
       "owner": {
         "kind": "class",
@@ -4225,7 +4412,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple"
     },
     {
       "id": "class:sorcerer-xphb:L1:replacement:spellcasting",
@@ -4780,6 +4968,21 @@
       "source": "startingEquipment"
     },
     {
+      "id": "class:warlock-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "warlock-xphb",
+        "name": "Warlock"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:wis,cha"
+    },
+    {
       "id": "class:warlock-xphb:L1:proficiency-grant:startingproficiencies-armor",
       "owner": {
         "kind": "class",
@@ -4791,7 +4994,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.armor"
+      "source": "startingProficiencies.armor",
+      "detail": "armor:light"
     },
     {
       "id": "class:warlock-xphb:L1:proficiency-grant:startingproficiencies-weapons",
@@ -4805,7 +5009,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple"
     },
     {
       "id": "class:warlock-xphb:L1:replacement:eldritch-invocations",
@@ -5405,6 +5610,21 @@
       "source": "startingEquipment"
     },
     {
+      "id": "class:wizard-xphb:L1:proficiency-grant:proficiency",
+      "owner": {
+        "kind": "class",
+        "slug": "wizard-xphb",
+        "name": "Wizard"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-grant",
+      "mandatory": true,
+      "cardinality": null,
+      "source": "proficiency",
+      "detail": "save:int,wis"
+    },
+    {
       "id": "class:wizard-xphb:L1:proficiency-grant:startingproficiencies-weapons",
       "owner": {
         "kind": "class",
@@ -5416,7 +5636,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": null,
-      "source": "startingProficiencies.weapons"
+      "source": "startingProficiencies.weapons",
+      "detail": "weapon:simple"
     },
     {
       "id": "class:wizard-xphb:L1:replacement:spellcasting",
@@ -6237,7 +6458,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.cook's utensils"
+      "source": "toolProficiencies.cook's utensils",
+      "detail": "tool:cook's utensils"
     },
     {
       "id": "feat:crafter-xphb:L1:proficiency-choice:toolproficiencies-choose",
@@ -6250,8 +6472,9 @@
       "timing": "creation",
       "family": "proficiency-choice",
       "mandatory": true,
-      "cardinality": 1,
-      "source": "toolProficiencies.choose"
+      "cardinality": 3,
+      "source": "toolProficiencies.choose",
+      "detail": "tools-from:carpenter's tools|leatherworker's tools|mason's tools|potter's tools|smith's tools|tinker's tools|weaver's tools|woodcarver's tools"
     },
     {
       "id": "feat:crafter-xphb@artisan-xphb:L1:proficiency-choice:toolproficiencies-choose",
@@ -6264,8 +6487,9 @@
       "timing": "creation",
       "family": "proficiency-choice",
       "mandatory": true,
-      "cardinality": 1,
+      "cardinality": 3,
       "source": "toolProficiencies.choose",
+      "detail": "tools-from:carpenter's tools|leatherworker's tools|mason's tools|potter's tools|smith's tools|tinker's tools|weaver's tools|woodcarver's tools",
       "grantedBy": "artisan-xphb"
     },
     {
@@ -6322,7 +6546,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "armorProficiencies"
+      "source": "armorProficiencies",
+      "detail": "armor:heavy"
     },
     {
       "id": "feat:keen-mind-xphb:L1:proficiency-choice:skillproficiencies-choose",
@@ -6351,7 +6576,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "armorProficiencies"
+      "source": "armorProficiencies",
+      "detail": "armor:light,shield"
     },
     {
       "id": "feat:magic-initiate-xphb:LNaN:variant-choice:feat-additionalspells-variants",
@@ -6424,7 +6650,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "weaponProficiencies"
+      "source": "weaponProficiencies",
+      "detail": "weapon:martial"
     },
     {
       "id": "feat:moderately-armored-xphb:L1:proficiency-grant:armorproficiencies",
@@ -6438,7 +6665,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "armorProficiencies"
+      "source": "armorProficiencies",
+      "detail": "armor:medium"
     },
     {
       "id": "feat:musician-xphb:L1:proficiency-choice:toolproficiencies-anymusicalinstrument",
@@ -6452,7 +6680,8 @@
       "family": "proficiency-choice",
       "mandatory": true,
       "cardinality": 3,
-      "source": "toolProficiencies.anyMusicalInstrument"
+      "source": "toolProficiencies.anyMusicalInstrument",
+      "detail": "tools-choice:instrument"
     },
     {
       "id": "feat:musician-xphb@entertainer-xphb:L1:proficiency-choice:toolproficiencies-anymusicalinstrument",
@@ -6467,6 +6696,7 @@
       "mandatory": true,
       "cardinality": 3,
       "source": "toolProficiencies.anyMusicalInstrument",
+      "detail": "tools-choice:instrument",
       "grantedBy": "entertainer-xphb"
     },
     {
@@ -6496,7 +6726,23 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "toolProficiencies.poisoner's kit"
+      "source": "toolProficiencies.poisoner's kit",
+      "detail": "tool:poisoner's kit"
+    },
+    {
+      "id": "feat:resilient-xphb:L1:proficiency-choice:savingthrowproficiencies-choose",
+      "owner": {
+        "kind": "feat",
+        "slug": "resilient-xphb",
+        "name": "Resilient"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-choice",
+      "mandatory": true,
+      "cardinality": 1,
+      "source": "savingThrowProficiencies.choose",
+      "detail": "save:str,dex,con,int,wis,cha"
     },
     {
       "id": "feat:ritual-caster-xphb:L1:spell-choice:feat-additionalspells-prepared",
@@ -6612,6 +6858,69 @@
       "detail": "skill"
     },
     {
+      "id": "feat:skilled-xphb:L1:proficiency-choice:skilltoollanguageproficiencies-choose",
+      "owner": {
+        "kind": "feat",
+        "slug": "skilled-xphb",
+        "name": "Skilled"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-choice",
+      "mandatory": true,
+      "cardinality": 3,
+      "source": "skillToolLanguageProficiencies.choose",
+      "detail": "skill-tool:any"
+    },
+    {
+      "id": "feat:skilled-xphb@charlatan-xphb:L1:proficiency-choice:skilltoollanguageproficiencies-choose",
+      "owner": {
+        "kind": "feat",
+        "slug": "skilled-xphb",
+        "name": "Skilled"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-choice",
+      "mandatory": true,
+      "cardinality": 3,
+      "source": "skillToolLanguageProficiencies.choose",
+      "detail": "skill-tool:any",
+      "grantedBy": "charlatan-xphb"
+    },
+    {
+      "id": "feat:skilled-xphb@noble-xphb:L1:proficiency-choice:skilltoollanguageproficiencies-choose",
+      "owner": {
+        "kind": "feat",
+        "slug": "skilled-xphb",
+        "name": "Skilled"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-choice",
+      "mandatory": true,
+      "cardinality": 3,
+      "source": "skillToolLanguageProficiencies.choose",
+      "detail": "skill-tool:any",
+      "grantedBy": "noble-xphb"
+    },
+    {
+      "id": "feat:skilled-xphb@scribe-xphb:L1:proficiency-choice:skilltoollanguageproficiencies-choose",
+      "owner": {
+        "kind": "feat",
+        "slug": "skilled-xphb",
+        "name": "Skilled"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "proficiency-choice",
+      "mandatory": true,
+      "cardinality": 3,
+      "source": "skillToolLanguageProficiencies.choose",
+      "detail": "skill-tool:any",
+      "grantedBy": "scribe-xphb"
+    },
+    {
       "id": "feat:tavern-brawler-xphb:L1:proficiency-grant:weaponproficiencies",
       "owner": {
         "kind": "feat",
@@ -6623,7 +6932,8 @@
       "family": "proficiency-grant",
       "mandatory": true,
       "cardinality": 1,
-      "source": "weaponProficiencies"
+      "source": "weaponProficiencies",
+      "detail": "weapon:improvised"
     },
     {
       "id": "feat:tavern-brawler-xphb@sailor-xphb:L1:proficiency-grant:weaponproficiencies",
@@ -6638,6 +6948,7 @@
       "mandatory": true,
       "cardinality": 1,
       "source": "weaponProficiencies",
+      "detail": "weapon:improvised",
       "grantedBy": "sailor-xphb"
     },
     {

@@ -3822,5 +3822,753 @@
         ]
       }
     ]
+  },
+  {
+    "id": "value:armor.light.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Light Armor Training",
+    "tags": [
+      "armor-proficiency",
+      "armor:light"
+    ]
+  },
+  {
+    "id": "value:armor.medium.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Medium Armor Training",
+    "tags": [
+      "armor-proficiency",
+      "armor:medium"
+    ]
+  },
+  {
+    "id": "value:armor.heavy.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Heavy Armor Training",
+    "tags": [
+      "armor-proficiency",
+      "armor:heavy"
+    ]
+  },
+  {
+    "id": "value:armor.shield.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Shield Training",
+    "tags": [
+      "armor-proficiency",
+      "armor:shield"
+    ]
+  },
+  {
+    "id": "value:weapon.simple.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Simple Weapon Training",
+    "tags": [
+      "weapon-proficiency",
+      "weapon-group:simple"
+    ]
+  },
+  {
+    "id": "value:weapon.martial.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Martial Weapon Training",
+    "tags": [
+      "weapon-proficiency",
+      "weapon-group:martial"
+    ]
+  },
+  {
+    "id": "value:weapon.improvised.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Improvised Weapon Training",
+    "tags": [
+      "weapon-proficiency",
+      "weapon-group:improvised"
+    ]
+  },
+  {
+    "id": "value:weapon.martial_light.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Martial Light Weapon Training",
+    "tags": [
+      "weapon-proficiency",
+      "weapon-group:martial-light"
+    ]
+  },
+  {
+    "id": "value:weapon.martial_finesse_light.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Martial Finesse/Light Weapon Training",
+    "tags": [
+      "weapon-proficiency",
+      "weapon-group:martial-finesse-light"
+    ]
+  },
+  {
+    "id": "value:tool.alchemists_supplies.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Alchemist's Supplies Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.brewers_supplies.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Brewer's Supplies Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.calligraphers_supplies.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Calligrapher's Supplies Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.carpenters_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Carpenter's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.cartographers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Cartographer's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.cobblers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Cobbler's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.cooks_utensils.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Cook's Utensils Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.glassblowers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Glassblower's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.jewelers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Jeweler's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.leatherworkers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Leatherworker's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.masons_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Mason's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.painters_supplies.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Painter's Supplies Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.potters_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Potter's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.smiths_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Smith's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.tinkers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Tinker's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.weavers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Weaver's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.woodcarvers_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Woodcarver's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:artisan"
+    ]
+  },
+  {
+    "id": "value:tool.bagpipes.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Bagpipes Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.drum.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Drum Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.dulcimer.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Dulcimer Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.flute.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Flute Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.horn.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Horn Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.lute.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Lute Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.lyre.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Lyre Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.pan_flute.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Pan Flute Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.shawm.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Shawm Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.viol.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Viol Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:instrument"
+    ]
+  },
+  {
+    "id": "value:tool.dice_set.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Dice Set Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:gaming-set"
+    ]
+  },
+  {
+    "id": "value:tool.dragonchess_set.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Dragonchess Set Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:gaming-set"
+    ]
+  },
+  {
+    "id": "value:tool.playing_cards.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Playing Cards Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:gaming-set"
+    ]
+  },
+  {
+    "id": "value:tool.three_dragon_ante_set.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Three-Dragon Ante Set Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:gaming-set"
+    ]
+  },
+  {
+    "id": "value:tool.disguise_kit.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Disguise Kit Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:other"
+    ]
+  },
+  {
+    "id": "value:tool.forgery_kit.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Forgery Kit Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:other"
+    ]
+  },
+  {
+    "id": "value:tool.herbalism_kit.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Herbalism Kit Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:other"
+    ]
+  },
+  {
+    "id": "value:tool.navigators_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Navigator's Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:other"
+    ]
+  },
+  {
+    "id": "value:tool.poisoners_kit.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Poisoner's Kit Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:other"
+    ]
+  },
+  {
+    "id": "value:tool.thieves_tools.proficient",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Thieves' Tools Proficiency",
+    "tags": [
+      "tool-proficiency",
+      "tool-family:other"
+    ]
+  },
+  {
+    "id": "choice:proficiency.artisan-tool.background",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Artisan's Tool",
+    "prompt": "Choose an artisan's tool.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "choice:proficiency.instrument.background",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Musical Instrument",
+    "prompt": "Choose a musical instrument.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "choice:proficiency.gaming-set.background",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Gaming Set",
+    "prompt": "Choose a gaming set.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "choice:proficiency.instrument.class",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Musical Instruments",
+    "prompt": "Choose musical instruments.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "choice:proficiency.artisan-or-instrument.class",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Artisan's Tool or Musical Instrument",
+    "prompt": "Choose an artisan's tool or a musical instrument.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "choice:feat.crafter.tools",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Crafter's Tools",
+    "prompt": "Choose three artisan's tools.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "choice:feat.musician.instruments",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Musician's Instruments",
+    "prompt": "Choose three musical instruments.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "choice:feat.skilled.skill-or-tool",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Skilled",
+    "prompt": "Choose three skills or tools.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
   }
 ]

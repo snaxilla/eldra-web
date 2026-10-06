@@ -46,14 +46,16 @@ describe('PHASE 2C.3A -- Background Origin feat declarations match the real XPHB
     }
   })
 
-  it('exactly 8 Backgrounds are supported, and they cover 6 unique Origin feats', () => {
+  // P1: Crafter, Musician, and Skilled are representable (their tool and skill-or-tool choices are
+  // facet choices over Definition ids), so their Backgrounds are supported. Magic Initiate is not.
+  it('exactly 13 Backgrounds are supported, and they cover 9 unique Origin feats', () => {
     const supported = CLASSIFIED.filter(({ facet }) => facet?.originFeatSlug !== undefined)
-    expect(supported).toHaveLength(8)
-    expect(new Set(supported.map(({ facet }) => facet?.originFeatSlug)).size).toBe(6)
+    expect(supported).toHaveLength(13)
+    expect(new Set(supported.map(({ facet }) => facet?.originFeatSlug)).size).toBe(9)
   })
 
-  it('exactly 8 Backgrounds are creation-unavailable', () => {
-    expect(CLASSIFIED.filter(({ facet }) => facet?.creationUnavailable !== undefined)).toHaveLength(8)
+  it('exactly 3 Backgrounds (the Magic Initiate Origin feat) are creation-unavailable', () => {
+    expect(CLASSIFIED.filter(({ facet }) => facet?.creationUnavailable !== undefined)).toHaveLength(3)
   })
 
   it('a supported Background\'s declared Origin feat is the feat its own corpus entry grants', () => {
@@ -64,27 +66,32 @@ describe('PHASE 2C.3A -- Background Origin feat declarations match the real XPHB
     }
   })
 
-  it('the supported Background set is exactly the proven one (no choice-bearing feat was promoted)', () => {
+  it('the supported Background set is exactly the set whose Origin feat is fixed or representably chosen', () => {
     const supported = CLASSIFIED
       .filter(({ facet }) => facet?.originFeatSlug !== undefined)
       .map(({ background, facet }) => `${background.name}->${facet?.originFeatSlug}`)
       .sort()
     expect(supported).toEqual([
+      'Artisan->crafter-xphb',
+      'Charlatan->skilled-xphb',
       'Criminal->alert-xphb',
+      'Entertainer->musician-xphb',
       'Farmer->tough-xphb',
       'Guard->alert-xphb',
       'Hermit->healer-xphb',
       'Merchant->lucky-xphb',
+      'Noble->skilled-xphb',
       'Sailor->tavern-brawler-xphb',
+      'Scribe->skilled-xphb',
       'Soldier->savage-attacker-xphb',
       'Wayfarer->lucky-xphb'
     ])
   })
 
-  it('the blocked set is exactly the choice-bearing Origin feats, and every reason is user-facing prose', () => {
+  it('the blocked set is exactly the Magic Initiate Origin Backgrounds, and every reason is user-facing prose', () => {
     const blocked = CLASSIFIED.filter(({ facet }) => facet?.creationUnavailable !== undefined)
     expect(blocked.map(({ background }) => background.name).sort()).toEqual([
-      'Acolyte', 'Artisan', 'Charlatan', 'Entertainer', 'Guide', 'Noble', 'Sage', 'Scribe'
+      'Acolyte', 'Guide', 'Sage'
     ])
     for (const { facet } of blocked) {
       expect(facet?.creationUnavailable).toMatch(/cannot record yet\.$/)

@@ -151,6 +151,11 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
   class: {
     'barbarian-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:armor.medium.proficient', to: true },
+        { set: 'value:armor.shield.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
+        { set: 'value:weapon.martial.proficient', to: true },
         { set: 'value:save.str.proficient', to: true },
         { set: 'value:save.con.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 12 }
@@ -212,6 +217,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'bard-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
         { set: 'value:save.dex.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 8 },
@@ -235,6 +242,22 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // correct for every level), not a silent gap.
       resources: ['resource:bardic_inspiration'],
       choices: [
+        {
+          choiceSet: 'choice:proficiency.instrument.class',
+          count: 3,
+          from: [
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient'
+          ]
+        },
         {
           choiceSet: 'choice:skill.proficiency',
           count: 3,
@@ -277,6 +300,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'cleric-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:armor.medium.proficient', to: true },
+        { set: 'value:armor.shield.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 8 },
@@ -309,6 +336,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'druid-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:armor.shield.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
+        { set: 'value:tool.herbalism_kit.proficient', to: true },
         { set: 'value:save.int.proficient', to: true },
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 8 },
@@ -340,6 +371,12 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'fighter-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:armor.medium.proficient', to: true },
+        { set: 'value:armor.heavy.proficient', to: true },
+        { set: 'value:armor.shield.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
+        { set: 'value:weapon.martial.proficient', to: true },
         { set: 'value:save.str.proficient', to: true },
         { set: 'value:save.con.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 10 },
@@ -388,11 +425,46 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'monk-xphb': {
       grants: [
+        { set: 'value:weapon.simple.proficient', to: true },
+        { set: 'value:weapon.martial_light.proficient', to: true },
         { set: 'value:save.str.proficient', to: true },
         { set: 'value:save.dex.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 8 }
       ],
       choices: [
+        {
+          choiceSet: 'choice:proficiency.artisan-or-instrument.class',
+          count: 1,
+          from: [
+            'value:tool.alchemists_supplies.proficient',
+            'value:tool.brewers_supplies.proficient',
+            'value:tool.calligraphers_supplies.proficient',
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.cartographers_tools.proficient',
+            'value:tool.cobblers_tools.proficient',
+            'value:tool.cooks_utensils.proficient',
+            'value:tool.glassblowers_tools.proficient',
+            'value:tool.jewelers_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.painters_supplies.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient',
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient'
+          ]
+        },
         {
           choiceSet: 'choice:skill.proficiency',
           count: 2,
@@ -419,6 +491,12 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'paladin-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:armor.medium.proficient', to: true },
+        { set: 'value:armor.heavy.proficient', to: true },
+        { set: 'value:armor.shield.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
+        { set: 'value:weapon.martial.proficient', to: true },
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 10 },
@@ -465,6 +543,11 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'ranger-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:armor.medium.proficient', to: true },
+        { set: 'value:armor.shield.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
+        { set: 'value:weapon.martial.proficient', to: true },
         { set: 'value:save.str.proficient', to: true },
         { set: 'value:save.dex.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 10 },
@@ -510,6 +593,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'rogue-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
+        { set: 'value:weapon.martial_finesse_light.proficient', to: true },
+        { set: 'value:tool.thieves_tools.proficient', to: true },
         { set: 'value:save.dex.proficient', to: true },
         { set: 'value:save.int.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 8 }
@@ -553,6 +640,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'sorcerer-xphb': {
       grants: [
+        { set: 'value:weapon.simple.proficient', to: true },
         { set: 'value:save.con.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 6 },
@@ -590,6 +678,8 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'warlock-xphb': {
       grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:weapon.simple.proficient', to: true },
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:save.cha.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 8 },
@@ -618,6 +708,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'wizard-xphb': {
       grants: [
+        { set: 'value:weapon.simple.proficient', to: true },
         { set: 'value:save.int.proficient', to: true },
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 6 },
@@ -1022,6 +1113,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'chef-xphb': { // Chef
+      grants: [
+        { set: 'value:tool.cooks_utensils.proficient', to: true },
+      ],
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
@@ -1088,6 +1182,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       sources: ['source:asi.increase.str']
     },
     'heavily-armored-xphb': { // Heavily Armored
+      grants: [
+        { set: 'value:armor.heavy.proficient', to: true },
+      ],
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
@@ -1118,6 +1215,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       sources: ['source:asi.increase.int']
     },
     'lightly-armored-xphb': { // Lightly Armored
+      grants: [
+        { set: 'value:armor.light.proficient', to: true },
+        { set: 'value:armor.shield.proficient', to: true },
+      ],
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
@@ -1136,6 +1237,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'martial-weapon-training-xphb': { // Martial Weapon Training
+      grants: [
+        { set: 'value:weapon.martial.proficient', to: true },
+      ],
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
@@ -1154,6 +1258,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'moderately-armored-xphb': { // Moderately Armored
+      grants: [
+        { set: 'value:armor.medium.proficient', to: true },
+      ],
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
@@ -1190,6 +1297,9 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'poisoner-xphb': { // Poisoner
+      grants: [
+        { set: 'value:tool.poisoners_kit.proficient', to: true },
+      ],
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
@@ -1323,6 +1433,11 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           from: ['source:asi.increase.str', 'source:asi.increase.dex']
         }
       ]
+    },
+    'tavern-brawler-xphb': { // Tavern Brawler
+      grants: [
+        { set: 'value:weapon.improvised.proficient', to: true }
+      ]
     }
   },
 
@@ -1330,20 +1445,124 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'acolyte-xphb': {
       creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
+        { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.insight.proficient', to: true },
         { set: 'value:skill.religion.proficient', to: true }
       ]
     },
     'artisan-xphb': {
-      creationUnavailable: 'Its Origin Feat (Crafter) needs an artisan tool choice, which this rules package cannot record yet.',
+      choices: [
+        {
+          choiceSet: 'choice:proficiency.artisan-tool.background',
+          count: 1,
+          from: [
+            'value:tool.alchemists_supplies.proficient',
+            'value:tool.brewers_supplies.proficient',
+            'value:tool.calligraphers_supplies.proficient',
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.cartographers_tools.proficient',
+            'value:tool.cobblers_tools.proficient',
+            'value:tool.cooks_utensils.proficient',
+            'value:tool.glassblowers_tools.proficient',
+            'value:tool.jewelers_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.painters_supplies.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient'
+          ]
+        },
+        {
+          choiceSet: 'choice:feat.crafter.tools',
+          count: 3,
+          from: [
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient'
+          ]
+        },
+      ],
+      originFeatSlug: 'crafter-xphb',
       grants: [
         { set: 'value:skill.investigation.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
       ]
     },
     'charlatan-xphb': {
-      creationUnavailable: 'Its Origin Feat (Skilled) needs a skill or tool choice, which this rules package cannot record yet.',
+      choices: [
+        {
+          choiceSet: 'choice:feat.skilled.skill-or-tool',
+          count: 3,
+          from: [
+            'value:skill.acrobatics.proficient',
+            'value:skill.animal_handling.proficient',
+            'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient',
+            'value:skill.deception.proficient',
+            'value:skill.history.proficient',
+            'value:skill.insight.proficient',
+            'value:skill.intimidation.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.perception.proficient',
+            'value:skill.performance.proficient',
+            'value:skill.persuasion.proficient',
+            'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient',
+            'value:skill.stealth.proficient',
+            'value:skill.survival.proficient',
+            'value:tool.alchemists_supplies.proficient',
+            'value:tool.brewers_supplies.proficient',
+            'value:tool.calligraphers_supplies.proficient',
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.cartographers_tools.proficient',
+            'value:tool.cobblers_tools.proficient',
+            'value:tool.cooks_utensils.proficient',
+            'value:tool.glassblowers_tools.proficient',
+            'value:tool.jewelers_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.painters_supplies.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient',
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient',
+            'value:tool.dice_set.proficient',
+            'value:tool.dragonchess_set.proficient',
+            'value:tool.playing_cards.proficient',
+            'value:tool.three_dragon_ante_set.proficient',
+            'value:tool.disguise_kit.proficient',
+            'value:tool.forgery_kit.proficient',
+            'value:tool.herbalism_kit.proficient',
+            'value:tool.navigators_tools.proficient',
+            'value:tool.poisoners_kit.proficient',
+            'value:tool.thieves_tools.proficient'
+          ]
+        },
+      ],
+      originFeatSlug: 'skilled-xphb',
       grants: [
+        { set: 'value:tool.forgery_kit.proficient', to: true },
         { set: 'value:skill.deception.proficient', to: true },
         { set: 'value:skill.sleight_of_hand.proficient', to: true }
       ]
@@ -1351,12 +1570,47 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'criminal-xphb': {
       originFeatSlug: 'alert-xphb',
       grants: [
+        { set: 'value:tool.thieves_tools.proficient', to: true },
         { set: 'value:skill.sleight_of_hand.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true }
       ]
     },
     'entertainer-xphb': {
-      creationUnavailable: 'Its Origin Feat (Musician) needs a musical instrument choice, which this rules package cannot record yet.',
+      choices: [
+        {
+          choiceSet: 'choice:proficiency.instrument.background',
+          count: 1,
+          from: [
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient'
+          ]
+        },
+        {
+          choiceSet: 'choice:feat.musician.instruments',
+          count: 3,
+          from: [
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient'
+          ]
+        },
+      ],
+      originFeatSlug: 'musician-xphb',
       grants: [
         { set: 'value:skill.acrobatics.proficient', to: true },
         { set: 'value:skill.performance.proficient', to: true }
@@ -1365,11 +1619,24 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'farmer-xphb': {
       originFeatSlug: 'tough-xphb',
       grants: [
+        { set: 'value:tool.carpenters_tools.proficient', to: true },
         { set: 'value:skill.animal_handling.proficient', to: true },
         { set: 'value:skill.nature.proficient', to: true }
       ]
     },
     'guard-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:proficiency.gaming-set.background',
+          count: 1,
+          from: [
+            'value:tool.dice_set.proficient',
+            'value:tool.dragonchess_set.proficient',
+            'value:tool.playing_cards.proficient',
+            'value:tool.three_dragon_ante_set.proficient'
+          ]
+        },
+      ],
       originFeatSlug: 'alert-xphb',
       grants: [
         { set: 'value:skill.athletics.proficient', to: true },
@@ -1379,6 +1646,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'guide-xphb': {
       creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
+        { set: 'value:tool.cartographers_tools.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true },
         { set: 'value:skill.survival.proficient', to: true }
       ]
@@ -1386,6 +1654,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'hermit-xphb': {
       originFeatSlug: 'healer-xphb',
       grants: [
+        { set: 'value:tool.herbalism_kit.proficient', to: true },
         { set: 'value:skill.medicine.proficient', to: true },
         { set: 'value:skill.religion.proficient', to: true }
       ]
@@ -1393,12 +1662,86 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'merchant-xphb': {
       originFeatSlug: 'lucky-xphb',
       grants: [
+        { set: 'value:tool.navigators_tools.proficient', to: true },
         { set: 'value:skill.animal_handling.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
       ]
     },
     'noble-xphb': {
-      creationUnavailable: 'Its Origin Feat (Skilled) needs a skill or tool choice, which this rules package cannot record yet.',
+      choices: [
+        {
+          choiceSet: 'choice:proficiency.gaming-set.background',
+          count: 1,
+          from: [
+            'value:tool.dice_set.proficient',
+            'value:tool.dragonchess_set.proficient',
+            'value:tool.playing_cards.proficient',
+            'value:tool.three_dragon_ante_set.proficient'
+          ]
+        },
+        {
+          choiceSet: 'choice:feat.skilled.skill-or-tool',
+          count: 3,
+          from: [
+            'value:skill.acrobatics.proficient',
+            'value:skill.animal_handling.proficient',
+            'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient',
+            'value:skill.deception.proficient',
+            'value:skill.history.proficient',
+            'value:skill.insight.proficient',
+            'value:skill.intimidation.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.perception.proficient',
+            'value:skill.performance.proficient',
+            'value:skill.persuasion.proficient',
+            'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient',
+            'value:skill.stealth.proficient',
+            'value:skill.survival.proficient',
+            'value:tool.alchemists_supplies.proficient',
+            'value:tool.brewers_supplies.proficient',
+            'value:tool.calligraphers_supplies.proficient',
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.cartographers_tools.proficient',
+            'value:tool.cobblers_tools.proficient',
+            'value:tool.cooks_utensils.proficient',
+            'value:tool.glassblowers_tools.proficient',
+            'value:tool.jewelers_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.painters_supplies.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient',
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient',
+            'value:tool.dice_set.proficient',
+            'value:tool.dragonchess_set.proficient',
+            'value:tool.playing_cards.proficient',
+            'value:tool.three_dragon_ante_set.proficient',
+            'value:tool.disguise_kit.proficient',
+            'value:tool.forgery_kit.proficient',
+            'value:tool.herbalism_kit.proficient',
+            'value:tool.navigators_tools.proficient',
+            'value:tool.poisoners_kit.proficient',
+            'value:tool.thieves_tools.proficient'
+          ]
+        },
+      ],
+      originFeatSlug: 'skilled-xphb',
       grants: [
         { set: 'value:skill.history.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
@@ -1407,6 +1750,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'sage-xphb': {
       creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
+        { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.arcana.proficient', to: true },
         { set: 'value:skill.history.proficient', to: true }
       ]
@@ -1414,18 +1758,95 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'sailor-xphb': {
       originFeatSlug: 'tavern-brawler-xphb',
       grants: [
+        { set: 'value:tool.navigators_tools.proficient', to: true },
         { set: 'value:skill.acrobatics.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
       ]
     },
     'scribe-xphb': {
-      creationUnavailable: 'Its Origin Feat (Skilled) needs a skill or tool choice, which this rules package cannot record yet.',
+      choices: [
+        {
+          choiceSet: 'choice:feat.skilled.skill-or-tool',
+          count: 3,
+          from: [
+            'value:skill.acrobatics.proficient',
+            'value:skill.animal_handling.proficient',
+            'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient',
+            'value:skill.deception.proficient',
+            'value:skill.history.proficient',
+            'value:skill.insight.proficient',
+            'value:skill.intimidation.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.perception.proficient',
+            'value:skill.performance.proficient',
+            'value:skill.persuasion.proficient',
+            'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient',
+            'value:skill.stealth.proficient',
+            'value:skill.survival.proficient',
+            'value:tool.alchemists_supplies.proficient',
+            'value:tool.brewers_supplies.proficient',
+            'value:tool.calligraphers_supplies.proficient',
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.cartographers_tools.proficient',
+            'value:tool.cobblers_tools.proficient',
+            'value:tool.cooks_utensils.proficient',
+            'value:tool.glassblowers_tools.proficient',
+            'value:tool.jewelers_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.painters_supplies.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient',
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient',
+            'value:tool.dice_set.proficient',
+            'value:tool.dragonchess_set.proficient',
+            'value:tool.playing_cards.proficient',
+            'value:tool.three_dragon_ante_set.proficient',
+            'value:tool.disguise_kit.proficient',
+            'value:tool.forgery_kit.proficient',
+            'value:tool.herbalism_kit.proficient',
+            'value:tool.navigators_tools.proficient',
+            'value:tool.poisoners_kit.proficient',
+            'value:tool.thieves_tools.proficient'
+          ]
+        },
+      ],
+      originFeatSlug: 'skilled-xphb',
       grants: [
+        { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.investigation.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
       ]
     },
     'soldier-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:proficiency.gaming-set.background',
+          count: 1,
+          from: [
+            'value:tool.dice_set.proficient',
+            'value:tool.dragonchess_set.proficient',
+            'value:tool.playing_cards.proficient',
+            'value:tool.three_dragon_ante_set.proficient'
+          ]
+        },
+      ],
       originFeatSlug: 'savage-attacker-xphb',
       grants: [
         { set: 'value:skill.athletics.proficient', to: true },
@@ -1435,6 +1856,7 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'wayfarer-xphb': {
       originFeatSlug: 'lucky-xphb',
       grants: [
+        { set: 'value:tool.thieves_tools.proficient', to: true },
         { set: 'value:skill.insight.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true }
       ]

@@ -422,8 +422,12 @@ export default defineEventHandler(async (event) => {
       await saveCharacterAbilityScores(created.id, abilityScores).catch(() => null)
     }
 
+    // P1 -- FAIL LOUDLY. A recorded answer (Crafter's tools, a Musician's instruments, a Skilled
+    // pick) is part of what the character was created with; dropping it silently would leave a
+    // completed-looking character missing a proficiency it chose. No rollback is claimed: the
+    // entity and earlier blocks may already exist, the same as the writes above.
     if (Object.keys(rulesChoices.selections).length > 0) {
-      await saveCharacterRulesChoices(created.id, rulesChoices).catch(() => null)
+      await saveCharacterRulesChoices(created.id, rulesChoices)
     }
 
     // Character Sheet Caster Pass 0 -- INITIAL HEALTH. A newly-created

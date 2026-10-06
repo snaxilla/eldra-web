@@ -151,13 +151,16 @@ const HUMAN = entry({ title: 'Human', slug: 'human-xphb', rulesFacet: findRulesF
 // PHASE 2C.3A -- Criminal, not Sage: Sage is creation-blocked (Magic Initiate). Criminal is a supported
 // Background whose grants (Sleight of Hand, Stealth) do not touch a Fighter's own skill choice.
 const CRIMINAL = entry({ title: 'Criminal', slug: 'criminal-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'criminal-xphb') ?? undefined })
+// P1 -- Artisan: its Origin feat (Crafter) has a representable tool choice, so it is the Background that
+// exercises a rules_choices answer at creation.
+const ARTISAN = entry({ title: 'Artisan', slug: 'artisan-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'artisan-xphb') ?? undefined })
 
 const CATALOGUE = {
   worldId: WORLD_ID,
   packs: [],
   species: [HUMAN],
   classes: [FIGHTER, WIZARD],
-  backgrounds: [CRIMINAL],
+  backgrounds: [CRIMINAL, ARTISAN],
   feats: FEATS,
   subclasses: [], items: [], spells: [], monsters: []
 }
@@ -414,6 +417,25 @@ describe('Fighter creation -- write-order mechanics (completeness stubbed)', () 
     store.failProgression = true
     await expect(postCreate(fighterBody())).rejects.toThrow('progression')
     expect(store.catalogueSelection).not.toBeNull()
+  })
+
+  // P1 -- a proficiency answer made at creation is a rules choice. Its write fails LOUDLY (no
+  // swallowed .catch): a completed-looking character must not silently lack the tool it chose.
+  // Creation answers are keyed `slot:choiceSetId` (resolveCreationChoices), not the progression key form.
+  const ARTISAN_TOOL_KEY = 'background:choice:proficiency.artisan-tool.background'
+  const CARPENTERS = 'value:tool.carpenters_tools.proficient'
+
+  it('a P1 Artisan tool answer is persisted through rules_choices and survives a fresh read', async () => {
+    await postCreate(bodyWith('Artisan', { choices: { selections: { [ARTISAN_TOOL_KEY]: [CARPENTERS] } } }))
+    expect(mocks.saveCharacterRulesChoices).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(store.rules)).toContain(CARPENTERS)
+  })
+
+  it('a failed rules_choices write fails the request, and no health is written after it', async () => {
+    mocks.saveCharacterRulesChoices.mockRejectedValueOnce(new Error('rules_choices write failed'))
+    await expect(postCreate(bodyWith('Artisan', { choices: { selections: { [ARTISAN_TOOL_KEY]: [CARPENTERS] } } })))
+      .rejects.toThrow('rules_choices write failed')
+    expect(mocks.saveCharacterHealth).not.toHaveBeenCalled()
   })
 })
 

@@ -189,18 +189,20 @@ describe('the hand-authored XPHB Rules Facets', () => {
       const facet = findRulesFacet('dnd5e.2024', 'class', `${name}-xphb`)
       expect(facet, name).not.toBeNull()
       // Every 2024 class grants exactly two saving throws and one Hit Die
-      // size (the Health System's addition); a caster grants two more
-      // (Spellcasting Ability, Caster Type -- the Spellcasting System's
-      // addition), and offers one skill choice.
-      // The Fighter also grants its Level-1 feature fact (PHASE 2C.2B).
-      expect(facet!.grants).toHaveLength((casters.has(name) ? 5 : 3) + (name === 'fighter' ? 1 : 0))
+      // size (the Health System's addition); a caster grants Spellcasting
+      // Ability and Caster Type (the Spellcasting System's addition). P1 adds
+      // armor, weapon, and tool grants, so the total is no longer a fixed
+      // count: the structural facts below are what this test pins.
+      expect(facet!.grants!.filter((g) => g.set.startsWith('value:save.')), name).toHaveLength(2)
       expect(facet!.grants!.some((g) => g.set === 'value:hit_points.hit_die_size'), name).toBe(true)
       expect(facet!.grants!.some((g) => g.set.startsWith('value:spellcasting.ability.')), name).toBe(casters.has(name))
       expect(facet!.grants!.some((g) => g.set.startsWith('value:spellcasting.caster_type.')), name).toBe(casters.has(name))
       // PHASE 2C.2B -- the Fighter also declares its Level-1 Fighting Style, a
       // CONTENT-backed choice (a ContentRef, judged by the creation content
       // authority, not a Definition question). Every other class declares one.
-      expect(facet!.choices).toHaveLength(name === 'fighter' ? 2 : 1)
+      // P1 -- Bard (instruments) and Monk (artisan's tools or an instrument) also
+      // declare a tool choice over Definition ids.
+      expect(facet!.choices).toHaveLength(name === 'fighter' || name === 'bard' || name === 'monk' ? 2 : 1)
     }
 
     const backgrounds = ['acolyte', 'artisan', 'charlatan', 'criminal', 'entertainer',
@@ -209,7 +211,9 @@ describe('the hand-authored XPHB Rules Facets', () => {
     for (const name of backgrounds) {
       const facet = findRulesFacet('dnd5e.2024', 'background', `${name}-xphb`)
       expect(facet, name).not.toBeNull()
-      expect(facet!.grants).toHaveLength(2)
+      // Every XPHB background grants exactly two skills. P1 adds its fixed tool grant
+      // (and any tool choice); the skill pair is the invariant pinned here.
+      expect(facet!.grants!.filter((g) => g.set.startsWith('value:skill.')), name).toHaveLength(2)
     }
   })
 

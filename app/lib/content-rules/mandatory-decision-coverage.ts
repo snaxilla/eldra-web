@@ -26,6 +26,8 @@
 
 import { findRulesFacet } from './index'
 import { slugOf, type DecisionRecord } from './mandatory-decisions'
+import { valueIdsOfDetail } from './proficiency-vocabulary'
+import type { RulesFacet } from './types'
 
 export type CoverageStatus = 'implemented' | 'blocked' | 'optional' | 'false-positive' | 'runtime-effect'
 
@@ -61,6 +63,43 @@ function speciesFacetHasSkillChoice(slug: string): boolean {
 }
 function classProgression(slug: string): readonly string[] {
   return findRulesFacet('dnd5e.2024', 'class', slug)?.progression ?? []
+}
+
+// ---------------------------------------------------------------------------
+// Proficiency coverage (P1). A proficiency decision is covered only when a facet that owns it
+// really grants (fixed) or offers (choice) exactly the Values its discovery detail names. The
+// detail is the corpus's own universe, so a facet offering a narrower or wider list does not cover
+// it, and a decision with no recognized detail is never covered (fail closed).
+// ---------------------------------------------------------------------------
+
+function isProficiency(d: DecisionRecord): boolean {
+  return (d.family === 'proficiency-grant' || d.family === 'proficiency-choice')
+    && (d.owner.kind === 'class' || d.owner.kind === 'background' || d.owner.kind === 'feat')
+}
+
+// The facets that can satisfy a decision: its own owner, and for a feat granted by a background,
+// that background (its facet declares the feat's choice, e.g. Crafter's tools).
+function facetsOf(d: DecisionRecord): RulesFacet[] {
+  const own = findRulesFacet('dnd5e.2024', d.owner.kind, d.owner.slug)
+  const granted = d.grantedBy ? findRulesFacet('dnd5e.2024', 'background', d.grantedBy) : null
+  return [own, granted].filter((f): f is RulesFacet => f !== null)
+}
+
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  const left = new Set(a)
+  const right = new Set(b)
+  return left.size === right.size && [...left].every((v) => right.has(v))
+}
+
+export function proficiencyCovered(d: DecisionRecord): boolean {
+  if (!isProficiency(d)) return false
+  const ids = valueIdsOfDetail(d.detail)
+  if (ids.length === 0) return false
+  const facets = facetsOf(d)
+  if (d.family === 'proficiency-grant') {
+    return ids.every((id) => facets.some((f) => (f.grants ?? []).some((g) => g.set === id && g.to === true)))
+  }
+  return facets.some((f) => (f.choices ?? []).some((c) => c.count === d.cardinality && sameSet(c.from ?? [], ids)))
 }
 
 export const COVERAGE_RULES: readonly CoverageRule[] = [
@@ -120,6 +159,13 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     reason: 'Background fixed Origin feat, server-derived from facet.originFeatSlug (Phase 2C.3A).',
     ledgerIds: ['background:origin-feat:fixed-acquisition'],
     matches: (d) => is(d, 'background', 'feat-grant') && findRulesFacet('dnd5e.2024', 'background', d.owner.slug)?.originFeatSlug === `${slugOf(d.source)}-xphb`
+  },
+  {
+    id: 'impl:proficiency-facet',
+    status: 'implemented',
+    reason: 'Tool, armor, weapon, and saving-throw proficiency that the owning facet grants or offers with exactly the corpus Values (P1 vocabulary; value:tool/armor/weapon/save).',
+    ledgerIds: [],
+    matches: (d) => proficiencyCovered(d)
   },
 
   // ------------------------------------------------------------------ blocked
@@ -208,13 +254,6 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => is(d, 'class', 'skill-choice') && !(d.level === 1 && d.source.startsWith('startingProficiencies.skills'))
   },
   {
-    id: 'blk:class-proficiency',
-    status: 'blocked',
-    reason: 'Tool, instrument, weapon, armor, or saving-throw proficiency: no proficiency vocabulary in the Rules Package.',
-    ledgerIds: [],
-    matches: (d) => (is(d, 'class', 'proficiency-choice') || is(d, 'class', 'proficiency-grant')) && d.level === 1
-  },
-  {
     id: 'blk:class-language',
     status: 'blocked',
     reason: 'Language choice: the corpus has no structured language grant (policy decision).',
@@ -285,13 +324,6 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => is(d, 'background', 'ability-distribution')
   },
   {
-    id: 'blk:background-proficiency',
-    status: 'blocked',
-    reason: 'Background tool proficiency (fixed or choice): no tool vocabulary in the Rules Package.',
-    ledgerIds: [],
-    matches: (d) => is(d, 'background', 'proficiency-grant') || is(d, 'background', 'proficiency-choice')
-  },
-  {
     id: 'blk:background-equipment',
     status: 'blocked',
     reason: 'Background starting equipment (A/B or gold): no creation grant shape exists.',
@@ -322,9 +354,9 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'blk:feat-nested-proficiency',
     status: 'blocked',
-    reason: 'Feat-granted tool, armor, weapon, or skill/tool/language proficiency: no proficiency vocabulary.',
+    reason: 'Feat proficiency that no facet grants or offers: skill choices (Keen Mind, Observant, Skill Expert, Boon of Skill), Resilient saving throws, and unrecognized shapes. Fail closed.',
     ledgerIds: [],
-    matches: (d) => d.owner.kind === 'feat' && (d.family === 'proficiency-choice' || d.family === 'proficiency-grant')
+    matches: (d) => d.owner.kind === 'feat' && (d.family === 'proficiency-choice' || d.family === 'proficiency-grant') && !proficiencyCovered(d)
   },
   {
     id: 'blk:subclass-casting-class',

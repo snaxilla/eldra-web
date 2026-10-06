@@ -42,8 +42,13 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
   })
 
   it('a package-authored Origin reason is kept as written (it already names the feat)', () => {
+    const [acolyte] = withCreationBlockers([entry('acolyte-xphb', 'Acolyte')], 'background')
+    expect(acolyte!.rulesFacet?.creationUnavailable).toMatch(/Origin Feat \(Magic Initiate\)/)
+  })
+
+  it('Artisan is blocked by its ability bonus, not by its Origin feat (Crafter is representable)', () => {
     const [artisan] = withCreationBlockers([entry('artisan-xphb', 'Artisan')], 'background')
-    expect(artisan!.rulesFacet?.creationUnavailable).toMatch(/Origin Feat \(Crafter\)/)
+    expect(artisan!.rulesFacet?.creationUnavailable).toBe('Requires an ability score bonus.')
   })
 
   it('no reason ever exposes an internal identifier', () => {

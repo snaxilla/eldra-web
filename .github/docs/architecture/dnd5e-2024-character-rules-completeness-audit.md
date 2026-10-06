@@ -1700,7 +1700,10 @@ Definition-path eligibility) is the right host. The only new shape is a mixed `f
 tools in one choice), which can be expressed as a union of two `from` lists if the engine supports
 it; verify in the phase.
 
-Unlocked by P1 alone: Artisan, Entertainer, Charlatan, Noble, Scribe (5 Backgrounds, 3 Origin
+> **Corrected in §25.23:** P1 does not unlock these Backgrounds. Their Origin feats are now
+> representable, but ability, equipment, and Weapon Mastery blockers keep them unavailable.
+
+Originally written as: Unlocked by P1 alone: Artisan, Entertainer, Charlatan, Noble, Scribe (5 Backgrounds, 3 Origin
 feats). Acolyte, Guide, and Sage remain blocked on Magic Initiate (P2 + P3).
 
 ### 25.8 Weapon Mastery re-audit
@@ -2327,3 +2330,185 @@ to `create-v2-fighter-mechanics.test.ts`. Its behaviour is unchanged. The policy
 
 Species 3 of 10; classes 0 of 12; backgrounds 0 of 16; complete combinations 0 of 1,920. The first Phase-0 blockers are
 listed in §25.21. Expected change: these numbers improve as P1, P7, P2, and the other primitives land.
+
+### 25.23 PROFICIENCY / TRAINING VOCABULARY + GENERIC FILTERED PROFICIENCY CHOICES (P1, 2026-10-06)
+
+**Result.** P1 represents the proficiency state that Phase 0 identified as missing: armor, weapon, tool,
+and saving-throw training, as package facts and generic filtered choices, persisted and judged by the
+same authority. Creation availability did **not** move. P1 unblocks the proficiency decisions, not the
+Backgrounds: every class and background still has a blocker that P1 does not own (see Remaining blockers).
+
+**Correction to §25.7.** §25.7 says P1 alone unlocks Artisan, Entertainer, Charlatan, Noble, and Scribe.
+That is false. Those Backgrounds keep their ability-bonus, equipment, and Weapon Mastery blockers, so they
+remain creation-unavailable. §25.7 is not rewritten; this section supersedes it.
+
+#### Vocabulary census (corpus-derived, XPHB)
+
+| Family | Corpus source | Package Value form | Count |
+| --- | --- | --- | --- |
+| Armor training | class/species/feat `armor` (light, medium, heavy, shield) | `value:armor.<category>.proficient` | 4 |
+| Weapon training | class `weapons` (simple, martial); Monk and Rogue filtered martial weapons; Tavern Brawler (improvised); Martial Weapon Training (martial) | `value:weapon.<group>.proficient` | 5 |
+| Tool identities | Background/class/feat tool entries; items-base.json and items.json | `value:tool.<slug>.proficient`, one per identity | 37 (17 artisan, 10 instrument, 4 gaming-set, 6 other) |
+| Skills | class/species/feat/background `skills` | `value:skill.<x>.proficient` and `.expertise` (unchanged) | 18 |
+| Saving throws | class `proficiency` (12 classes); Resilient `savingThrowProficiencies` | `value:save.<x>.proficient` (unchanged singular model) | 6 |
+
+**Semantic families are deliberately separate.** Armor training, weapon training, tool proficiency,
+skill proficiency, and saving throws are different Values and never merged, even though English calls
+them all "proficiency". Weapon *training* (groups) is separate from Weapon *Mastery* (kinds, §25.8).
+
+**Why tools are Definition-backed Values, not item ContentRefs.** A tool proficiency is persistent
+boolean state. Mixed skill-or-tool choices (Skilled) need every option to be a Definition id, so one
+choice can target both families. An item ContentRef cannot be a skill option and would split the state.
+
+**Languages and damage types are NOT in P1.** Languages: the corpus gives species and background
+languages only as prose ("one other language of your choice"), with no structured grant, so there is no
+creation-grade shape. This is a policy decision and stays blocked. Damage types (Dragonborn, Tiefling,
+Elemental Affinity, Resistance) are a separate vocabulary and stay blocked.
+
+#### State model
+
+- **Fixed grants** are package facet grants (`{ set, to: true }`) on the class, background, or feat facet.
+  Every class grants its armor, weapon, and saving-throw Values; eleven backgrounds grant a fixed tool;
+  Chef, Poisoner, Heavily Armored, Lightly Armored, Moderately Armored, Martial Weapon Training, and
+  Tavern Brawler grant theirs on the feat facet.
+- **Choices** are package facet choices (`{ choiceSet, count, from }`) over Definition ids. The universe
+  is the corpus's own list, so a facet offering a narrower or wider list does not cover the decision.
+- **Answers** persist through `rules_choices` under the creation key `slot:choiceSetId`, and are judged by
+  the creation-choice eligibility authority that the Builder also shows.
+- **Already-owned** options are excluded by the existing Phase 2B rule (`directlyGrantedValues`). Charlatan's
+  Skilled offers 55 options, 52 eligible; Deception, Sleight of Hand, and the fixed Forgery Kit are
+  disabled as already acquired. The per-choice `excludeIfAlreadyActive` package flag exists but the
+  creation authority reads facets only, so the global rule is what applies. Recorded, not changed here.
+
+#### Generic choice (no bespoke pickers)
+
+One generic `choiceSet` per proficiency decision. There is no CrafterToolPicker, MusicianPicker, or
+SkilledPicker. Crafter (choose 3 of 8 artisan tools), Musician (choose 3 instruments), Skilled (choose 3
+skills or tools), Artisan (choose 1 artisan tool), Bard (choose 3 instruments), and Monk (choose 1 artisan
+tool or instrument) all resolve through `resolveCreationChoices`. Verified: Artisan 17 offered, Crafter 8,
+Charlatan's Skilled 55 offered (52 eligible), Bard instruments 10.
+
+#### Discovery changes (the detector was fixed, not weakened)
+
+Discovery went from 630 to 647 decisions. Every addition is a real surface the corpus declares:
+
+- Class saving-throw grants: 12 (one per class). Previously undiscovered.
+- Skilled: the corpus key is plural (`skillToolLanguageProficiencies`, `choose` as a list). The detector
+  read the singular key and found nothing. Now 4 decisions: the standalone feat plus one per granting
+  Background (Charlatan, Noble, Scribe). Cardinality is the corpus count, 3.
+- Resilient: a saving-throw choice (`savingThrowProficiencies`), 1 decision, blocked.
+- Crafter, Musician, and class/background tool details now carry their exact tokens, so coverage checks them.
+
+Net: 17 new decisions (12 + 1 + 4). Each is either implemented or blocked; none is dropped.
+
+#### Coverage (the real authority decides)
+
+`impl:proficiency-facet` matches a proficiency decision only when `proficiencyCovered` is true: the owning
+facet (or, for a Background-granted feat, that Background) grants every named Value, or offers a choice whose
+`from` set equals the decision's universe with the same count. `blk:feat-nested-proficiency` covers the
+complement for feats. The two Background and class blocked rules were removed because after P1 they match
+zero decisions, which the contract forbids; an uncovered proficiency now classifies as `unclassified` and
+blocks, the fail-closed default.
+
+Counts (Phase-0 baseline in §25.21 → P1):
+
+| | Decisions | Implemented | Blocked | Optional |
+| --- | --- | --- | --- | --- |
+| Phase 0 (§25.21) | 630 | 105 | 490 | 35 |
+| P1 | 647 | 176 | 436 | 35 |
+
+Derived from the totals: 56 existing blocked decisions became implemented, 15 new decisions are
+implemented (12 saves, 3 granted Skilled), and 2 new decisions are blocked (standalone Skilled and Resilient).
+
+#### Creation availability: before and after (unchanged)
+
+| | Before (Phase 0) | After (P1) |
+| --- | --- | --- |
+| Species | 3 / 10 | 3 / 10 |
+| Classes | 0 / 12 | 0 / 12 |
+| Backgrounds | 0 / 16 | 0 / 16 |
+| Complete combinations | 0 / 1,920 | 0 / 1,920 |
+
+Verified by `tests/lib/content-rules/creation-availability.test.ts`, which asserts exact equality with the
+baseline. The movement that P1 earns is in the proficiency decisions, not the creation scoreboard.
+
+#### Remaining blockers for the proficiency-touched Backgrounds
+
+- Artisan, Entertainer, Charlatan, Noble, Scribe: background ability bonus (P7), background equipment,
+  class starting equipment (every class), Weapon Mastery (class level 1 for Barbarian, Fighter, Paladin,
+  Ranger, Rogue), and the Human Origin feat choice (species). Their Origin feat (Crafter, Musician,
+  Skilled) is representable and no longer blocks them.
+- Acolyte, Guide, Sage: Magic Initiate spell acquisition (P2/P3), unchanged.
+
+#### Weapon Mastery dependency
+
+Weapon Mastery needs weapon *kinds* (for example, a specific dagger). Kinds live in the corpus item data
+(items-base.json), not in Eldra's curated content, so selecting them is a content selection expansion. That
+is a STOP per the P1 scope and remains blocked. P1 weapon Values are groups (simple, martial, improvised,
+martial_light, martial_finesse_light) and do not apply any mastery property.
+
+#### Transaction safety (create-v2 POST)
+
+The `rules_choices` creation write no longer swallows failure. Write order: entity, then catalogue_selection
+(loud), then progression (loud), then ability scores (soft, unchanged), then rules_choices (loud), then
+health (loud). The write sequence is not transactional. A failure after the entity exists leaves earlier
+rows in place, and no rollback is claimed. The fail-loud case is tested: a failed rules_choices write
+rejects the request, and no health is written after it.
+
+#### Known discovery gap (not fixed in P1)
+
+The Boon of Skill feat's `skillProficiencies` entry is an object with no `choose` or `any` key, so the
+detector emits nothing for it. It is a pre-existing gap from Phase 0 and needs a corpus-structure review
+before it is classified. It is recorded here rather than silently suppressed.
+
+#### Package version and sync
+
+`eldra.rules.dnd5e-2024` is bumped **0.18.0 → 0.19.0** (approved; manifest only, package id unchanged). Final dry run
+`pnpm run packages:sync -- --world Solaris` (no `--apply`):
+
+- Rules: `PUBLISH_REQUIRED`, `eldra.rules.dnd5e-2024@0.19.0` (authored version not yet published).
+- Content: `REFRESH_REQUIRED` for `eldra.solaris.xphb` (compiled content differs from the published version).
+- Actions: `PUBLISH_RULES`, `REFRESH_CONTENT`, `ACTIVATE_RULES`, `BIND_CONTENT`.
+- Preflight (dangling references, 0.19.0 against the proposed content): zero. Every grant target, choice set,
+  and offered option of the 94 facets that own a discovered decision resolves to a declared Definition
+  (223 Definitions). Facets owning no decision are outside this check.
+- Selection expansion: none proposed. Writes: none (dry run).
+
+#### Armor-training prerequisite regression (proof that the armor Values participate)
+
+`tests/server/utils/character-progression-armor-prerequisite.test.ts`, with no completeness stub. Real XPHB record:
+Heavily Armored (`prerequisite: [{ level: 4, proficiency: [{ armor: "medium" }] }]`), resolved through the real
+feat-mechanics resolver, judged by the real `planProgression` against the real 0.19.0 runtime. Only the class differs:
+
+- Wizard (no medium training in its facet): Heavily Armored is offered-and-refused, reason `prerequisite-unmet`.
+- Cleric (its facet grants `value:armor.medium.proficient`): Heavily Armored is offered, and not refused.
+
+#### Architecture follow-ups (recorded, not changed in P1)
+
+- `excludeIfAlreadyActive` is set on the P1 choice sets but is not read by the facet-only creation authority.
+  Current behavior is correct: the global Phase 2B `directlyGrantedValues` rule provides the exclusion. Redesign
+  of the per-choice flag is an architecture follow-up, not P1 scope.
+- Boon of Skill emits no decision. A named Phase-0 discovery gap; it needs a corpus-structure review (§25.23
+  "Known discovery gap") and is not fixed here.
+- Weapon Mastery is a STOP boundary (see "Weapon Mastery dependency"). It requires a separate deliberate
+  content-selection and weapon-identity phase. Solaris selection was not expanded.
+- Languages remain a policy gap. No structured language vocabulary was invented.
+- Damage types remain outside P1.
+
+#### Deferred (reported, not in P1)
+
+Resilient saving-throw choice (feat-nested proficiency); Keen Mind, Observant, Skill Expert, and Boon of Skill
+skill choices (expertise for Skill Expert and Boon); damage-type vocabulary (Dragonborn, Tiefling, Elemental
+Affinity); languages (policy); Weapon Mastery (needs selection expansion, STOP); Magic Initiate (P2/P3);
+P7 ability distribution; caster counts (P3); Divine and Primal Order (P6); Rogue Level-1 Expertise picker;
+Blessed and Druidic Warrior; starting equipment (P8).
+
+#### Verification
+
+- `pnpm run test`: all passing (see the final run recorded with this section).
+- `pnpm run typecheck`: the normalized metric is the unique (file, diagnostic-code) pair count. Baseline 243,
+  P1 candidate 243, new 0. Raw output (1,175 lines) carries established baseline debt and is not the metric.
+  The historical 301 figure is not reproducible and is no longer reported.
+- `pnpm run build`: passes.
+- `git diff --check`: clean.
+- `pnpm run lint`: not run; it is the accepted pre-existing configuration issue.

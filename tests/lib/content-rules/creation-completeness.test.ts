@@ -42,9 +42,13 @@ describe('the fail-closed reasons are specific to the decision that blocks', () 
   it('a Background owns an ability score bonus', () => {
     expect(ownOf('background', 'criminal-xphb').some((u) => u.family === 'ability-distribution')).toBe(true)
   })
-  it('an Origin background whose feat has a choice owns that choice through the granted feat', () => {
-    const artisan = ownOf('background', 'artisan-xphb')
-    expect(artisan.some((u) => u.owner.kind === 'feat' && u.owner.slug === 'crafter-xphb')).toBe(true)
+  // P1: Crafter's tool choice is representable (artisan facet choice), so it is classified
+  // implemented and owned by the granted feat, not an unresolved blocker.
+  it('an Origin background whose feat has a choice owns that choice through the granted feat, now implemented', () => {
+    const crafter = DND5E_2024_MANDATORY_DECISIONS.filter((d) => d.owner.slug === 'crafter-xphb' && d.grantedBy === 'artisan-xphb')
+    expect(crafter.length).toBeGreaterThan(0)
+    expect(crafter.every((d) => classifyDecision(d).status === 'implemented')).toBe(true)
+    expect(ownOf('background', 'artisan-xphb').some((u) => u.owner.kind === 'feat' && u.owner.slug === 'crafter-xphb')).toBe(false)
   })
   it('the creationUnresolved result is limited to the chosen entity (nothing from an unselected one)', () => {
     const wizardOnly = creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'wizard-xphb', background: NONE })

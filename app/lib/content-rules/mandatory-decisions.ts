@@ -72,6 +72,8 @@ export type RawSubclassFeature = { name: string, level: number, entries?: RawEnt
 export type RawSubclass = { name: string, shortName: string, className: string, additionalSpells?: unknown[], casterProgression?: string }
 export type RawClass = {
   name: string
+  // Saving-throw proficiencies are the class's `proficiency` array (abilities, e.g. "str").
+  proficiency?: unknown[]
   startingProficiencies?: Record<string, unknown>
   startingEquipment?: unknown
   classTableGroups?: { colLabels?: string[], rows?: unknown[][] }[]
@@ -85,7 +87,8 @@ export type RawFeat = {
   toolProficiencies?: unknown[]
   weaponProficiencies?: unknown[]
   armorProficiencies?: unknown[]
-  skillToolLanguageProficiency?: unknown[]
+  skillToolLanguageProficiencies?: unknown[]
+  savingThrowProficiencies?: unknown[]
 }
 
 export type RawCorpus = {
@@ -384,17 +387,41 @@ function startingProficiencyDecisions(cls: RawClass, owner: DecisionRecord['owne
   }
   for (const t of (sp.tools as unknown[] | undefined) ?? []) {
     const text = typeof t === 'string' ? t : plainText(t)
-    if (/^Choose/i.test(text)) {
-      const n = /^Choose (one|two|three|four)/i.exec(text)
-      out.push(make(owner, 1, 'proficiency-choice', `startingProficiencies.tools:${text.slice(0, 40)}`, numberOf(n?.[1]) ?? 1))
+    const plain = plainText(t)
+    if (/^Choose/i.test(plain)) {
+      const n = /^Choose (one|two|three|four)/i.exec(plain)
+      out.push(make(owner, 1, 'proficiency-choice', `startingProficiencies.tools:${text.slice(0, 40)}`, numberOf(n?.[1]) ?? 1, { detail: toolChoiceDetail(plain) }))
     } else {
-      out.push(make(owner, 1, 'proficiency-grant', `startingProficiencies.tools:${text.slice(0, 40)}`, 1))
+      out.push(make(owner, 1, 'proficiency-grant', `startingProficiencies.tools:${text.slice(0, 40)}`, 1, { detail: `tool:${plain}` }))
     }
   }
-  for (const key of ['weapons', 'armor'] as const) {
-    const list = sp[key] as unknown[] | undefined
-    if (Array.isArray(list) && list.length > 0) out.push(make(owner, 1, 'proficiency-grant', `startingProficiencies.${key}`, null))
-  }
+  const armor = (sp.armor as unknown[] | undefined) ?? []
+  if (armor.length > 0) out.push(make(owner, 1, 'proficiency-grant', 'startingProficiencies.armor', null, { detail: `armor:${armor.map(String).join(',')}` }))
+  const weapons = (sp.weapons as unknown[] | undefined) ?? []
+  if (weapons.length > 0) out.push(make(owner, 1, 'proficiency-grant', 'startingProficiencies.weapons', null, { detail: `weapon:${weapons.map(weaponGroupOf).join(',')}` }))
+  // Saving throws are fixed class proficiencies (one decision per class).
+  const saves = (cls.proficiency as unknown[] | undefined) ?? []
+  if (saves.length > 0) out.push(make(owner, 1, 'proficiency-grant', 'proficiency', null, { detail: `save:${saves.map(String).join(',')}` }))
+}
+
+// A class's weapon entry, reduced to its weapon group. The Monk and Rogue entries are filtered
+// martial weapons: "Light property" is martial_light, "Finesse or Light" is martial_finesse_light.
+function weaponGroupOf(entry: unknown): string {
+  const text = plainText(entry)
+  if (/^simple$/i.test(text)) return 'simple'
+  if (/^martial$/i.test(text)) return 'martial'
+  if (/finesse/i.test(text)) return 'martial_finesse_light'
+  if (/light property/i.test(text)) return 'martial_light'
+  return text.toLowerCase()
+}
+
+// The tool families a "Choose ..." tool entry names, in corpus order: "Musical Instrument" is
+// instrument, "Artisan's Tools" is artisan.
+function toolChoiceDetail(text: string): string {
+  const families: string[] = []
+  if (/Musical Instrument/i.test(text)) families.push('instrument')
+  if (/Artisan/i.test(text)) families.push('artisan')
+  return families.length > 0 ? `tools-choice:${families.join(',')}` : 'tools-choice:unknown'
 }
 
 // Table columns whose value rises by level. Counts are the per-level DELTA, so a
@@ -518,8 +545,8 @@ export function detectBackgroundDecisions(bg: RawBackground, featsByName: Readon
   const out: DecisionRecord[] = []
   for (const block of bg.toolProficiencies ?? []) {
     for (const [key, value] of Object.entries(block)) {
-      if (/^any/.test(key)) out.push(make(owner, 1, 'proficiency-choice', `toolProficiencies.${key}`, typeof value === 'number' ? value : 1))
-      else out.push(make(owner, 1, 'proficiency-grant', `toolProficiencies.${key}`, 1))
+      if (/^any/.test(key)) out.push(make(owner, 1, 'proficiency-choice', `toolProficiencies.${key}`, typeof value === 'number' ? value : 1, { detail: `tools-choice:${anyToolFamily(key)}` }))
+      else out.push(make(owner, 1, 'proficiency-grant', `toolProficiencies.${key}`, 1, { detail: `tool:${key}` }))
     }
   }
   const abilityChoices = (bg.ability ?? []).filter((a) => a && typeof a === 'object' && 'choose' in (a as object))
@@ -548,28 +575,64 @@ export function detectFeatDecisions(feat: RawFeat): DecisionRecord[] {
     if (!t || typeof t !== 'object') continue
     // `{anyArtisansTool: n}` / `{anyMusicalInstrument: n}` are choices; `{"chef's tools": true}` is a fixed grant.
     for (const [key, value] of Object.entries(t as Record<string, unknown>)) {
-      if ('choose' === key || /^any/.test(key)) {
-        out.push(make(owner, 1, 'proficiency-choice', `toolProficiencies.${key}`, typeof value === 'number' ? value : 1))
-      } else if (key !== 'choose') {
-        out.push(make(owner, 1, 'proficiency-grant', `toolProficiencies.${key}`, 1))
+      if ('choose' === key) {
+        // Crafter: `choose: { from: [tools], count }`. The universe is the corpus's own list.
+        const pick = value as { from?: unknown[], count?: number }
+        const from = (pick.from ?? []).map(String)
+        out.push(make(owner, 1, 'proficiency-choice', 'toolProficiencies.choose', pick.count ?? 1, { detail: `tools-from:${from.join('|')}` }))
+      } else if (/^any/.test(key)) {
+        out.push(make(owner, 1, 'proficiency-choice', `toolProficiencies.${key}`, typeof value === 'number' ? value : 1, { detail: `tools-choice:${anyToolFamily(key)}` }))
+      } else {
+        out.push(make(owner, 1, 'proficiency-grant', `toolProficiencies.${key}`, 1, { detail: `tool:${key}` }))
       }
     }
   }
   // Armor and weapon proficiency: a `choose` is a choice; any other entry is a fixed grant.
   for (const key of ['weaponProficiencies', 'armorProficiencies'] as const) {
     const entries = (feat[key] ?? []) as unknown[]
-    if (entries.some((p) => p && typeof p === 'object' && 'choose' in (p as object))) out.push(make(owner, 1, 'proficiency-choice', `${key}.choose`, 1))
-    if (entries.some((p) => !(p && typeof p === 'object' && 'choose' in (p as object)))) out.push(make(owner, 1, 'proficiency-grant', key, 1))
+    const prefix = key === 'weaponProficiencies' ? 'weapon' : 'armor'
+    if (entries.some((p) => p && typeof p === 'object' && 'choose' in (p as object))) out.push(make(owner, 1, 'proficiency-choice', `${key}.choose`, 1, { detail: `${prefix}:choose` }))
+    // Fixed entries are `{ heavy: true }` objects; their keys are the granted categories or groups.
+    const fixed = entries.filter((p) => p && typeof p === 'object' && !('choose' in (p as object))).flatMap((p) => Object.keys(p as object))
+    if (fixed.length > 0) out.push(make(owner, 1, 'proficiency-grant', key, 1, { detail: `${prefix}:${fixed.join(',')}` }))
   }
   for (const s of feat.skillProficiencies ?? []) {
     if (!s || typeof s !== 'object') continue
     if ('choose' in (s as object)) out.push(make(owner, 1, 'proficiency-choice', 'skillProficiencies.choose', (s as any).choose?.count ?? 1, { detail: 'skill' }))
     else if (typeof (s as any).any === 'number') out.push(make(owner, 1, 'proficiency-choice', 'skillProficiencies.any', (s as any).any, { detail: 'skill' }))
   }
-  for (const s of feat.skillToolLanguageProficiency ?? []) {
-    if (s && typeof s === 'object' && 'choose' in (s as object)) out.push(make(owner, 1, 'proficiency-choice', 'skillToolLanguageProficiency.choose', 1, { detail: 'skill-tool-language' }))
+  // Skilled: `[{ choose: [{ from: ["anySkill", "anyTool"], count: 3 }] }]`. A pick that is not the
+  // known skill-or-tool shape keeps its decision with no vocabulary, so it stays blocked (never dropped).
+  for (const s of feat.skillToolLanguageProficiencies ?? []) {
+    if (!s || typeof s !== 'object' || !('choose' in (s as object))) continue
+    for (const pick of pickList((s as { choose: unknown }).choose)) {
+      const from = (pick.from ?? []).map(String)
+      const skillOrTool = from.includes('anySkill') && from.includes('anyTool')
+      out.push(make(owner, 1, 'proficiency-choice', 'skillToolLanguageProficiencies.choose', pick.count ?? 1, { detail: skillOrTool ? 'skill-tool:any' : 'unrecognized' }))
+    }
+  }
+  // Resilient: a saving-throw choice. Its own feat owner has no choice surface, so it stays blocked.
+  for (const s of feat.savingThrowProficiencies ?? []) {
+    if (!s || typeof s !== 'object' || !('choose' in (s as object))) continue
+    for (const pick of pickList((s as { choose: unknown }).choose)) {
+      const from = (pick.from ?? []).map(String)
+      out.push(make(owner, 1, 'proficiency-choice', 'savingThrowProficiencies.choose', pick.count ?? 1, { detail: `save:${from.join(',')}` }))
+    }
   }
   return out
+}
+
+// A `choose` is either one pick object or a list of them (corpus shapes differ by record).
+function pickList(choose: unknown): { from?: unknown[], count?: number }[] {
+  return (Array.isArray(choose) ? choose : [choose]).filter((p): p is { from?: unknown[], count?: number } => !!p && typeof p === 'object')
+}
+
+// `anyArtisansTool` / `anyMusicalInstrument` / `anyGamingSet` name a tool family; anything else is unknown.
+function anyToolFamily(key: string): string {
+  if (/artisan/i.test(key)) return 'artisan'
+  if (/musical/i.test(key)) return 'instrument'
+  if (/gaming/i.test(key)) return 'gaming-set'
+  return 'unknown'
 }
 
 // ---------------------------------------------------------------------------

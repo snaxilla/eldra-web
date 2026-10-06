@@ -13,8 +13,11 @@ const entryOf = (name: string) => ({
   rulesFacet: findRulesFacet('dnd5e.2024', 'background', slugOf(name)) ?? undefined
 })
 
-const SUPPORTED = ['Criminal', 'Guard', 'Farmer', 'Hermit', 'Merchant', 'Wayfarer', 'Sailor', 'Soldier']
-const BLOCKED = ['Artisan', 'Entertainer', 'Charlatan', 'Noble', 'Scribe', 'Acolyte', 'Guide', 'Sage']
+// P1: Artisan, Entertainer, Charlatan, Noble, and Scribe have a representable Origin feat, so the
+// package no longer authors an Origin-feat reason for them. Their remaining blockers (ability bonus,
+// equipment, Weapon Mastery) come from the completeness authority, not from this facet field.
+const SUPPORTED = ['Criminal', 'Guard', 'Farmer', 'Hermit', 'Merchant', 'Wayfarer', 'Sailor', 'Soldier', 'Artisan', 'Entertainer', 'Charlatan', 'Noble', 'Scribe']
+const BLOCKED = ['Acolyte', 'Guide', 'Sage']
 
 describe('Builder availability -- visible, disabled, with a reason', () => {
   it.each(SUPPORTED)('%s is selectable (no unavailable reason)', (name) => {

@@ -659,25 +659,85 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // Given stable identity here for CI tracking even though the owning
   // SURFACE is Character Creation, not the Level Manager.
   // -------------------------------------------------------------------
+  // PHASE 2C.3A -- the Origin Feat, split honestly. The FIXED acquisition is
+  // implemented for the 8 Backgrounds whose Origin feat needs no choice (6 unique
+  // feats). The 8 whose feat needs a choice stay blocked. Runtime EFFECTS of the
+  // acquired feats are separate rows: acquiring a feat is not the same as the
+  // feat changing play.
   {
-    id: 'background:origin-feat',
+    id: 'background:origin-feat:fixed-acquisition',
+    classSlug: 'background',
+    featureName: 'Origin Feat',
+    levels: [1],
+    surface: 'creation',
+    status: 'IMPLEMENTED',
+    // Not a Rules Package Definition: the grant is the Background facet's own
+    // structured `originFeatSlug`. The coverage test verifies the facet directly.
+    implementationRef: 'facet:background.originFeatSlug',
+    notes: 'Criminal, Guard -> Alert; Farmer -> Tough; Hermit -> Healer; Merchant, Wayfarer -> Lucky; Sailor -> Tavern Brawler; Soldier -> Savage Attacker. Acquisition only (progression.feats[] at creation); no retroactive grant to existing characters.'
+  },
+  {
+    id: 'background:origin-feat:choice-acquisition',
     classSlug: 'background',
     featureName: 'Origin Feat',
     levels: [1],
     surface: 'creation',
     status: 'ENGINE_BLOCKED',
-    // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- CORRECTED: the
-    // prior reason ("no Feat Definition category at all") is now stale --
-    // `choice:feat.selection` (General) is real, proven, and tested (the
-    // ALL-CLASS PROGRESSION CONTRACT AUDIT's own ASI work). The real
-    // blocker is the SAME one Fighting Style/Epic Boon independently
-    // surfaced this phase: real XPHB Origin feats carry their own feat
-    // category (`feats.json`'s own `category: 'O'`), and the option
-    // resolver cannot ask for anything but 'general'. ALSO a genuine
-    // creation-surface gap (no Builder step exists for this at all) --
-    // two independent blockers, named honestly rather than collapsed into
-    // one.
-    blockerReason: 'origin-feat (Phase 2C.2+): every XPHB Background grants ONE FIXED Origin Feat (no choice). Persisting that grant into progression.feats[] at creation is not implemented (approved in principle, a separate slice); create-v2 writes no progression today. The Origin category filter itself is available.'
+    blockerReason: 'Origin feats that need a choice: Crafter (artisan tool choice), Musician (instrument choice), Skilled (skill-or-tool choice), Magic Initiate (spell/cantrip acquisition). Each needs a primitive the Rules Package does not have yet. Builder shows these Backgrounds disabled with the reason.'
+  },
+  {
+    id: 'background:origin-feat-effect:alert',
+    classSlug: 'background',
+    featureName: 'Origin Feat effect: Alert',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Alert initiative bonus and Initiative Proficiency need an initiative primitive; none exists.'
+  },
+  {
+    id: 'background:origin-feat-effect:tough',
+    classSlug: 'background',
+    featureName: 'Origin Feat effect: Tough',
+    levels: [1],
+    surface: 'creation',
+    status: 'CONTENT_BLOCKED',
+    blockerReason: 'Tough (+2 hit points per level) is representable with value:hit_points.max, but the effect is not authored in the Rules Package.'
+  },
+  {
+    id: 'background:origin-feat-effect:healer',
+    classSlug: 'background',
+    featureName: 'Origin Feat effect: Healer',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Healer healing-kit action is prose-only and needs an action/resource primitive.'
+  },
+  {
+    id: 'background:origin-feat-effect:lucky',
+    classSlug: 'background',
+    featureName: 'Origin Feat effect: Lucky',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Lucky Luck Points resource and reroll need a resource and roll-modifier primitive; neither is authored for feats.'
+  },
+  {
+    id: 'background:origin-feat-effect:tavern-brawler',
+    classSlug: 'background',
+    featureName: 'Origin Feat effect: Tavern Brawler',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Tavern Brawler improvised-weapon proficiency and unarmed grapple need weapon-proficiency and attack-action primitives.'
+  },
+  {
+    id: 'background:origin-feat-effect:savage-attacker',
+    classSlug: 'background',
+    featureName: 'Origin Feat effect: Savage Attacker',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Savage Attacker reroll-weapon-damage needs a damage-roll modifier primitive.'
   },
   {
     id: 'background:starting-equipment',

@@ -33,6 +33,7 @@
 // as muted secondary text. See characterBuilderSelection.ts design decision 1.
 
 import {
+  creationUnavailableReason,
   filterOptions,
   findOptionByKey,
   hasAmbiguousTitles,
@@ -66,7 +67,10 @@ const selectionHidden = computed(() => isSelectionHidden(visibleOptions.value, p
 // XPHB alone has 10 species, so this stays hidden for small categories.
 const showSearch = computed(() => props.options.length > 8)
 
+// A visible-but-unavailable option (creationUnavailableReason) is disabled with its
+// reason and never emits a selection. create-v2 POST enforces the same rule.
 function select(entry: BuilderCatalogueEntry) {
+  if (creationUnavailableReason(entry)) return
   emit('update:modelValue', optionKey(entry))
 }
 </script>
@@ -126,10 +130,13 @@ function select(entry: BuilderCatalogueEntry) {
       <label
         v-for="entry in visibleOptions"
         :key="optionKey(entry)"
-        class="group relative flex min-h-14 cursor-pointer items-center gap-3 rounded-none border px-4 py-3 transition"
-        :class="modelValue === optionKey(entry)
-          ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
-          : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)]'"
+        class="group relative flex min-h-14 items-center gap-3 rounded-none border px-4 py-3 transition"
+        :class="[
+          creationUnavailableReason(entry) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+          modelValue === optionKey(entry)
+            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
+            : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)]'
+        ]"
       >
         <input
           :name="name"
@@ -137,6 +144,7 @@ function select(entry: BuilderCatalogueEntry) {
           class="peer sr-only"
           :value="optionKey(entry)"
           :checked="modelValue === optionKey(entry)"
+          :disabled="!!creationUnavailableReason(entry)"
           @change="select(entry)"
         >
 
@@ -163,6 +171,12 @@ function select(entry: BuilderCatalogueEntry) {
             :class="ambiguous ? 'text-[#d8ceb8]' : 'text-[#9f9278]'"
           >
             <template v-if="entry.sourceBook">{{ entry.sourceBook }} · </template>{{ entry.packageId }}
+          </span>
+          <span
+            v-if="creationUnavailableReason(entry)"
+            class="mt-1 block text-xs text-[#c9b98d]"
+          >
+            Not available yet. {{ creationUnavailableReason(entry) }}
           </span>
         </span>
 

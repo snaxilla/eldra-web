@@ -71,6 +71,10 @@ import {
   resolveCreationContentChoices,
   type ContentChoiceSelector
 } from '../../../../../app/lib/characters/creation-content-choices'
+import {
+  findDuplicateFeatAcquisition,
+  resolveCreationOriginFeat
+} from '../../../../../app/lib/characters/creation-origin-feat'
 import { saveCharacterAbilityScores } from '../../../../utils/character-ability-scores'
 import { saveCharacterRulesChoices } from '../../../../utils/character-rules-choices'
 import { getDerivedCharacter } from '../../../../utils/character-derived'
@@ -186,6 +190,17 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: "Species, Class, and Background must each be chosen from the World's current Content Catalogue"
+    })
+  }
+
+  // PHASE 2C.3A -- a Background the package marks creation-unavailable is refused
+  // here, before any entity exists. The Builder shows it disabled; that display is
+  // not the authority, so a crafted request naming it fails loudly on this line.
+  const backgroundUnavailable = background.rulesFacet?.creationUnavailable
+  if (backgroundUnavailable) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `${background.title} cannot be chosen at creation yet: ${backgroundUnavailable}`
     })
   }
 
@@ -340,6 +355,20 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // PHASE 2C.3A -- the Background's FIXED Origin Feat, derived from its structured
+  // facet, joins the SAME progression.feats[] collection as the content choices.
+  // Illegal or unresolvable declarations fail closed before any entity exists.
+  const originResolution = resolveCreationOriginFeat({ background, feats: catalogue.feats })
+  if (originResolution.status === 'illegal') {
+    throw createError({ statusCode: 500, statusMessage: `${background.title}: ${originResolution.reason}` })
+  }
+  const originAcquisitions = originResolution.status === 'acquired' ? [originResolution.acquisition] : []
+  const acquisitions = [...originAcquisitions, ...contentAcquisitions]
+  const duplicateFeat = findDuplicateFeatAcquisition(acquisitions)
+  if (duplicateFeat) {
+    throw createError({ statusCode: 400, statusMessage: `"${duplicateFeat}" would be acquired twice at creation and cannot be chosen` })
+  }
+
   const created = await createEntityRecord({
     worldId,
     title,
@@ -372,7 +401,7 @@ export default defineEventHandler(async (event) => {
     const classRef = { packageId: characterClass.packageId, slug: characterClass.slug }
     await saveCharacterProgression(created.id, {
       classes: [{ classRef, level: 1, subclassRef: null }],
-      feats: contentAcquisitions
+      feats: acquisitions
     })
 
     if (abilityScores) {

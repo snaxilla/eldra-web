@@ -1328,96 +1328,112 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
 
   background: {
     'acolyte-xphb': {
+      creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.insight.proficient', to: true },
         { set: 'value:skill.religion.proficient', to: true }
       ]
     },
     'artisan-xphb': {
+      creationUnavailable: 'Its Origin Feat (Crafter) needs an artisan tool choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.investigation.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
       ]
     },
     'charlatan-xphb': {
+      creationUnavailable: 'Its Origin Feat (Skilled) needs a skill or tool choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.deception.proficient', to: true },
         { set: 'value:skill.sleight_of_hand.proficient', to: true }
       ]
     },
     'criminal-xphb': {
+      originFeatSlug: 'alert-xphb',
       grants: [
         { set: 'value:skill.sleight_of_hand.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true }
       ]
     },
     'entertainer-xphb': {
+      creationUnavailable: 'Its Origin Feat (Musician) needs a musical instrument choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.acrobatics.proficient', to: true },
         { set: 'value:skill.performance.proficient', to: true }
       ]
     },
     'farmer-xphb': {
+      originFeatSlug: 'tough-xphb',
       grants: [
         { set: 'value:skill.animal_handling.proficient', to: true },
         { set: 'value:skill.nature.proficient', to: true }
       ]
     },
     'guard-xphb': {
+      originFeatSlug: 'alert-xphb',
       grants: [
         { set: 'value:skill.athletics.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
       ]
     },
     'guide-xphb': {
+      creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.stealth.proficient', to: true },
         { set: 'value:skill.survival.proficient', to: true }
       ]
     },
     'hermit-xphb': {
+      originFeatSlug: 'healer-xphb',
       grants: [
         { set: 'value:skill.medicine.proficient', to: true },
         { set: 'value:skill.religion.proficient', to: true }
       ]
     },
     'merchant-xphb': {
+      originFeatSlug: 'lucky-xphb',
       grants: [
         { set: 'value:skill.animal_handling.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
       ]
     },
     'noble-xphb': {
+      creationUnavailable: 'Its Origin Feat (Skilled) needs a skill or tool choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.history.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
       ]
     },
     'sage-xphb': {
+      creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.arcana.proficient', to: true },
         { set: 'value:skill.history.proficient', to: true }
       ]
     },
     'sailor-xphb': {
+      originFeatSlug: 'tavern-brawler-xphb',
       grants: [
         { set: 'value:skill.acrobatics.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
       ]
     },
     'scribe-xphb': {
+      creationUnavailable: 'Its Origin Feat (Skilled) needs a skill or tool choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:skill.investigation.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
       ]
     },
     'soldier-xphb': {
+      originFeatSlug: 'savage-attacker-xphb',
       grants: [
         { set: 'value:skill.athletics.proficient', to: true },
         { set: 'value:skill.intimidation.proficient', to: true }
       ]
     },
     'wayfarer-xphb': {
+      originFeatSlug: 'lucky-xphb',
       grants: [
         { set: 'value:skill.insight.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true }

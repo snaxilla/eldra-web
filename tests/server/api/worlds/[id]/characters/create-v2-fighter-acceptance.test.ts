@@ -140,14 +140,16 @@ const FEATS = xphbFeats.feats.map((raw) => {
 const FIGHTER = entry({ title: 'Fighter', slug: 'fighter-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb') ?? undefined })
 const WIZARD = entry({ title: 'Wizard', slug: 'wizard-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb') ?? undefined })
 const HUMAN = entry({ title: 'Human', slug: 'human-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'species', 'human-xphb') ?? undefined })
-const SAGE = entry({ title: 'Sage', slug: 'sage-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'sage-xphb') ?? undefined })
+// PHASE 2C.3A -- Criminal, not Sage: Sage is creation-blocked (Magic Initiate). Criminal is a supported
+// Background whose grants (Sleight of Hand, Stealth) do not touch a Fighter's own skill choice.
+const CRIMINAL = entry({ title: 'Criminal', slug: 'criminal-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'criminal-xphb') ?? undefined })
 
 const CATALOGUE = {
   worldId: WORLD_ID,
   packs: [],
   species: [HUMAN],
   classes: [FIGHTER, WIZARD],
-  backgrounds: [SAGE],
+  backgrounds: [CRIMINAL],
   feats: FEATS,
   subclasses: [], items: [], spells: [], monsters: []
 }
@@ -180,7 +182,7 @@ function fighterBody(overrides: Record<string, unknown> = {}) {
     title: 'Brenna',
     species: ref(CONTENT_PACKAGE, 'human-xphb'),
     class: ref(CONTENT_PACKAGE, 'fighter-xphb'),
-    background: ref(CONTENT_PACKAGE, 'sage-xphb'),
+    background: ref(CONTENT_PACKAGE, 'criminal-xphb'),
     abilities: STANDARD_ARRAY,
     contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(archery)] },
     ...overrides
@@ -322,7 +324,13 @@ describe('Fighter Level-1 creation -- accepted through the real POST route', () 
   it('the selected Fighting Style is stored ONLY in progression.feats[] under a stable creation choice key', async () => {
     await postCreate(fighterBody())
     const progression = store.progression as any
-    expect(progression.feats).toEqual([{ featRef: archery, choiceKey: FS_ONLY_KEY }])
+    // PHASE 2C.3A -- the default Background (Criminal) grants Alert as a fixed Origin
+    // feat, so the Fighter holds BOTH; the Fighting Style stays under its own key.
+    expect(progression.feats).toHaveLength(2)
+    expect(progression.feats).toEqual(expect.arrayContaining([
+      { featRef: archery, choiceKey: FS_ONLY_KEY },
+      { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: 'background:progression:1:grant:origin' }
+    ]))
     expect(FS_ONLY_KEY).toBe('class:progression:1:choice:feat.fighting-style.fs-only')
     expect(store.rules).toBeNull()
   })
@@ -337,9 +345,11 @@ describe('Fighter Level-1 creation -- accepted through the real POST route', () 
     // Ownership: the normal assembly derived state consumes resolves the feat slot
     // from progression.feats[] -- the same blueprint the derived read above used.
     const assembled = blueprintFromStore(String(store.createdEntityId))
-    expect(assembled.feats).toEqual([
-      expect.objectContaining({ status: 'resolved', choiceKey: FS_ONLY_KEY, entry: expect.objectContaining({ slug: 'archery-xphb' }) })
-    ])
+    expect(assembled.feats).toHaveLength(2)
+    expect(assembled.feats).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 'resolved', choiceKey: FS_ONLY_KEY, entry: expect.objectContaining({ slug: 'archery-xphb' }) }),
+      expect.objectContaining({ status: 'resolved', choiceKey: 'background:progression:1:grant:origin', entry: expect.objectContaining({ slug: 'alert-xphb' }) })
+    ]))
   })
 
   it('Level Manager sees the current Level 1 from the stored state, and the Fighter\'s next level plans from it', async () => {
@@ -433,5 +443,120 @@ describe('creation progression -- backward compatibility and model coexistence',
 
   it('the parsed ContentRef transport is the canonical packageId::slug encoding', () => {
     expect(parseContentRef(serializeContentRef(archery))).toEqual(archery)
+  })
+})
+
+// ---- PHASE 2C.3A -- fixed Origin Feat acquisition, through the real POST route -
+
+const ORIGIN_KEY = progressionChoiceKey('background', 1, 'grant:origin')
+const ALL_BACKGROUND_NAMES = [
+  'Acolyte', 'Artisan', 'Charlatan', 'Criminal', 'Entertainer', 'Farmer', 'Guard', 'Guide',
+  'Hermit', 'Merchant', 'Noble', 'Sage', 'Sailor', 'Scribe', 'Soldier', 'Wayfarer'
+]
+const ALL_BACKGROUNDS = ALL_BACKGROUND_NAMES.map((name) => entry({
+  title: name, slug: slugOf(name), rulesFacet: findRulesFacet('dnd5e.2024', 'background', slugOf(name)) ?? undefined
+}))
+// Fixture-level expectations (the real XPHB corpus), never application branching.
+const SUPPORTED_ORIGIN: [string, string][] = [
+  ['Criminal', 'alert-xphb'], ['Guard', 'alert-xphb'], ['Farmer', 'tough-xphb'], ['Hermit', 'healer-xphb'],
+  ['Merchant', 'lucky-xphb'], ['Wayfarer', 'lucky-xphb'], ['Sailor', 'tavern-brawler-xphb'], ['Soldier', 'savage-attacker-xphb']
+]
+const BLOCKED_BACKGROUNDS = ['Acolyte', 'Artisan', 'Charlatan', 'Entertainer', 'Guide', 'Noble', 'Sage', 'Scribe']
+
+function bodyWith(backgroundName: string, overrides: Record<string, unknown> = {}) {
+  return {
+    title: 'Brenna',
+    species: ref(CONTENT_PACKAGE, 'human-xphb'),
+    class: ref(CONTENT_PACKAGE, 'wizard-xphb'),
+    background: ref(CONTENT_PACKAGE, slugOf(backgroundName)),
+    abilities: STANDARD_ARRAY,
+    ...overrides
+  }
+}
+
+describe('PHASE 2C.3A -- fixed Origin Feat acquisition', () => {
+  beforeEach(() => {
+    mocks.getWorldContentCatalogue.mockResolvedValue({ ...CATALOGUE, backgrounds: ALL_BACKGROUNDS })
+  })
+
+  it('the Origin grant key is the canonical background-source key, distinct from every class-side key', () => {
+    expect(ORIGIN_KEY).toBe('background:progression:1:grant:origin')
+    expect(new Set([ORIGIN_KEY, FS_ONLY_KEY, progressionChoiceKey('class', 19, 'choice:feat.epic-boon'), progressionChoiceKey('class', 4, 'choice:feat.selection')]).size).toBe(4)
+  })
+
+  it.each(SUPPORTED_ORIGIN)('%s acquires %s from the server-derived Background facet, with no client-supplied feat', async (background, feat) => {
+    await postCreate(bodyWith(background))
+    expect((store.progression as any).feats).toEqual([{ featRef: ref(CONTENT_PACKAGE, feat), choiceKey: ORIGIN_KEY }])
+  })
+
+  it('Fighter + Criminal: progression.feats[] holds BOTH the Fighting Style and the Origin feat under distinct keys, and a fresh read keeps both', async () => {
+    await postCreate(fighterBody({ background: ref(CONTENT_PACKAGE, 'criminal-xphb') }))
+    const feats = (store.progression as any).feats as { featRef: ContentRef; choiceKey: string }[]
+    expect(feats).toHaveLength(2)
+    expect(feats).toEqual(expect.arrayContaining([
+      { featRef: archery, choiceKey: FS_ONLY_KEY },
+      { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: ORIGIN_KEY }
+    ]))
+    const fresh = blueprintFromStore('4242')
+    expect(fresh.feats.map((feat) => feat.choiceKey).sort()).toEqual([FS_ONLY_KEY, ORIGIN_KEY].sort())
+  })
+
+  it('a NON-Fighter with a supported Background owns the Origin feat and NO Fighting Style', async () => {
+    await postCreate(bodyWith('Criminal'))
+    const feats = (store.progression as any).feats as { choiceKey: string }[]
+    expect(feats.map((feat) => feat.choiceKey)).toEqual([ORIGIN_KEY])
+    expect(feats.some((feat) => feat.choiceKey.includes('fighting-style'))).toBe(false)
+  })
+
+  it.each(BLOCKED_BACKGROUNDS)('%s is creation-unavailable: rejected 400 before ANY entity or progression write', async (background) => {
+    await expect(postCreate(bodyWith(background))).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/cannot be chosen at creation yet/) })
+    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+    expect(mocks.saveCharacterProgression).not.toHaveBeenCalled()
+    expect(mocks.dxFetch).not.toHaveBeenCalled()
+  })
+
+  it('a crafted contentChoices entry naming the Origin key is rejected as an undeclared choice, and nothing is written', async () => {
+    const body = bodyWith('Criminal', { contentChoices: { [ORIGIN_KEY]: [serializeContentRef(ref(CONTENT_PACKAGE, 'tough-xphb'))] } })
+    await expect(postCreate(body)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+  })
+
+  it('a crafted choices.selections entry naming the Origin key is rejected as an undeclared choice', async () => {
+    const body = bodyWith('Criminal', { choices: { selections: { [ORIGIN_KEY]: ['x'] } } })
+    await expect(postCreate(body)).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+  })
+
+  it('client-supplied fixed-feat fields are IGNORED: a Criminal cannot be substituted with Tough', async () => {
+    await postCreate(bodyWith('Criminal', { fixedFeats: [serializeContentRef(ref(CONTENT_PACKAGE, 'tough-xphb'))], originFeat: 'tough-xphb' }))
+    expect((store.progression as any).feats).toEqual([{ featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: ORIGIN_KEY }])
+  })
+
+  it('an Origin feat missing from the World catalogue fails CLOSED before any entity exists', async () => {
+    mocks.getWorldContentCatalogue.mockResolvedValue({ ...CATALOGUE, backgrounds: ALL_BACKGROUNDS, feats: FEATS.filter((feat) => feat.slug !== 'alert-xphb') })
+    await expect(postCreate(bodyWith('Criminal'))).rejects.toMatchObject({ statusCode: 500 })
+    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+  })
+
+  it('switching Background follows the CURRENT choice: blocked is refused, then supported is accepted, with no stale Origin carried over', async () => {
+    await expect(postCreate(bodyWith('Acolyte'))).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+
+    await postCreate(bodyWith('Criminal'))
+    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['alert-xphb'])
+
+    resetStore()
+    await postCreate(bodyWith('Farmer'))
+    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['tough-xphb'])
+  })
+
+  it('an OLD Criminal character (catalogue_selection only, no progression) carries NO retroactive Origin grant on read', () => {
+    store.catalogueSelection = {
+      species: { packageId: CONTENT_PACKAGE, slug: 'human-xphb' },
+      class: { packageId: CONTENT_PACKAGE, slug: 'wizard-xphb' },
+      background: { packageId: CONTENT_PACKAGE, slug: 'criminal-xphb' }
+    }
+    store.progression = null
+    expect(blueprintFromStore('4242').feats).toEqual([])
   })
 })

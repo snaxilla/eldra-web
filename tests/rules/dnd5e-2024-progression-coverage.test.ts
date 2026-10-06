@@ -217,6 +217,10 @@ describe('PROGRESSION COVERAGE LEDGER -- cross-checked against the real corpus',
       // special variants are not class features: documented allowance, see
       // dnd5e-2024-progression-coverage.ts's Fighting Style section.
       if (entry.featureName.startsWith('Fighting Style effect: ')) continue
+      // PHASE 2C.3A -- the runtime effects of Origin feats, classified separately
+      // from the fixed acquisition (feat-level, not class features). Verified by
+      // the Origin feat facet test below, not by the class-feature corpus scan.
+      if (entry.featureName.startsWith('Origin Feat effect: ')) continue
       if (entry.classSlug === 'paladin-xphb' && entry.featureName === 'Blessed Warrior') continue
       if (entry.classSlug === 'ranger-xphb' && entry.featureName === 'Druidic Warrior') continue
       if (entry.featureName.endsWith(' Subclass')) continue // subclass-selection: special-cased above, always real
@@ -255,7 +259,10 @@ describe('PROGRESSION COVERAGE LEDGER -- cross-checked against the real corpus',
   it('every IMPLEMENTED entry\'s implementationRef Definition actually exists in the published Rules Package', () => {
     const definitions = JSON.parse(readFileSync(`${PACKAGE_DIR}/definitions.json`, 'utf8')) as Definition[]
     const ids = new Set(definitions.map((d) => d.id))
-    const implemented = DND5E_2024_PROGRESSION_COVERAGE.filter((e) => e.status === 'IMPLEMENTED' && e.implementationRef)
+    // `facet:` refs name a Background facet field (PHASE 2C.3A: fixed Origin
+    // acquisition is not a Definition). They are verified by the Origin facet test
+    // below, not by this Definition lookup.
+    const implemented = DND5E_2024_PROGRESSION_COVERAGE.filter((e) => e.status === 'IMPLEMENTED' && e.implementationRef && !e.implementationRef.startsWith('facet:'))
     expect(implemented.length).toBeGreaterThan(0)
     for (const entry of implemented) {
       expect(

@@ -495,10 +495,18 @@ describe('POST /api/worlds/:id/characters/create-v2 -- initial health', () => {
 // ---------------------------------------------------------------------------
 
 describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the Class\'s own separate skill choice', () => {
+  // PHASE 2C.3A -- Sage is creation-BLOCKED in the real corpus (its Origin feat,
+  // Magic Initiate, needs a spell choice), so the real POST would refuse it before
+  // any eligibility is judged. These tests exercise the DEFINITION-collision rule
+  // (Sage's direct Arcana/History grants vs Wizard's skill choice), which is what
+  // this describe owns. So this fixture strips ONLY the availability declaration
+  // and keeps every grant. The refusal of a blocked Sage is asserted separately in
+  // create-v2-fighter-acceptance.test.ts ("PHASE 2C.3A -- fixed Origin Feat").
   function sageEntry() {
+    const facet = findRulesFacet('dnd5e.2024', 'background', 'sage-xphb') ?? undefined
     return catalogueEntry({
       title: 'Sage', slug: 'sage-xphb',
-      rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'sage-xphb') ?? undefined
+      rulesFacet: facet ? { ...facet, creationUnavailable: undefined } : undefined
     } as any)
   }
 

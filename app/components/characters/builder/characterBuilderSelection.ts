@@ -234,6 +234,13 @@ export function optionKey(entry: Pick<BuilderCatalogueEntry, 'packageId' | 'slug
   return `${entry.packageId}::${entry.slug}`
 }
 
+// PHASE 2C.3A -- the package's own creation availability, read generically. A
+// non-null reason means the option is VISIBLE but DISABLED. This is presentation
+// only: create-v2 POST refuses the same selection before any entity is written.
+export function creationUnavailableReason(entry: Pick<BuilderCatalogueEntry, 'rulesFacet'> | null | undefined): string | null {
+  return entry?.rulesFacet?.creationUnavailable ?? null
+}
+
 export function findOptionByKey(
   options: readonly BuilderCatalogueEntry[],
   key: string

@@ -148,6 +148,17 @@ export type RulesFacet = {
   // unsupported and fails closed. Lives on the FEAT facet, because the
   // prerequisite is a property of the feat.
   featureRequirements?: RulesFacetFeatureRequirement[]
+  // PHASE 2C.3A -- a Background's FIXED Origin Feat, named by the feat's slug in
+  // the SAME package (XPHB Backgrounds grant exactly one feat, no choice). Only
+  // read by create-v2 POST, which derives the acquisition server-side and writes
+  // it into progression.feats[] under a background-source key. Never read by
+  // assembly: an existing character gets no retroactive grant.
+  originFeatSlug?: string
+  // PHASE 2C.3A -- package-authored CREATION availability. Present means this
+  // content is visible in the Builder but cannot be chosen at creation yet; the
+  // string is the user-facing reason. Absent means available. Consumed generically
+  // by the Builder and by create-v2 POST; nothing branches on a content name.
+  creationUnavailable?: string
 }
 
 export type RulesFacetFeatureRequirement = {

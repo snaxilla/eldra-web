@@ -37,7 +37,7 @@
 // rules; rules never depend on content). It is a type-only import, erased at
 // runtime, and nothing in app/lib/rules/ imports anything from here.
 
-import type { DefinitionId } from '../rules/types'
+import type { DefinitionId, SpellCatalogueFilter } from '../rules/types'
 
 // Scalars only -- see rule 2 above. Never an Expression, never an object.
 export type RulesFacetLiteral = boolean | number | string
@@ -159,6 +159,50 @@ export type RulesFacet = {
   // string is the user-facing reason. Absent means available. Consumed generically
   // by the Builder and by create-v2 POST; nothing branches on a content name.
   creationUnavailable?: string
+  // D&D 2024 Character Rules P3.1 -- which spell-state pools this content requires, and how many
+  // selections each needs at every character level. See SpellRequirement's own header
+  // (app/lib/characters/spell-requirements.ts owns the validator; the TYPE lives here, beside every
+  // other RulesFacet field, because a requirement is a published fact about content, exactly like
+  // `grants`/`choices`). Lives only on class facets today; nothing here names a class.
+  spellRequirements?: SpellRequirement[]
+}
+
+// D&D 2024 Character Rules P3.1 -- the generic shape for "this content requires the player to own
+// this many spells from this pool, by character level." Four pool kinds are enough for every real
+// 2024 caster mechanic the §25.26 audit found:
+//   'cantrip'   -- a bounded selected set (exact count required; over-count illegal).
+//   'spell'     -- the SAME bounded shape, for leveled "Prepared Spells of Level 1+" (every one of
+//                  the 8 classes uses this identical mechanic -- the 2024 corpus itself draws no
+//                  "known" vs "prepared" caster distinction; see the audit for the corpus citations).
+//   'spellbook' -- a cumulative MINIMUM membership set (Wizard only). Never shrinks, so "owns AT
+//                  LEAST this many" is the correct comparison, never "exactly."
+//   'arcanum'   -- Mystic Arcanum's own exact-level tier slot (Warlock only). The SAME bounded shape
+//                  as 'cantrip'/'spell' (count 1, exact), just with `filter.level` pinned to one
+//                  spell level and `totalByLevel` staying 0 until the tier's own acquisition level,
+//                  then 1 for every level after -- no special primitive, one requirement per tier.
+export type SpellRequirementPoolKind = 'cantrip' | 'spell' | 'spellbook' | 'arcanum'
+
+export type SpellRequirement = {
+  // Stable identity. Read by the application only to report which requirement an issue belongs to,
+  // and to resolve `requiresMembershipPool` below -- never a class-name branch target.
+  id: DefinitionId
+  pool: SpellRequirementPoolKind
+  // Reused verbatim from P2 (app/lib/rules/types.ts) -- the SAME filter spellOptionVerdict already
+  // judges a spell against. `level` here is EXACT (cantrip: 0; arcanum: the tier's own spell
+  // level); omitted for 'spell'/'spellbook', whose maximum legal spell level is derived from the
+  // character's OWN spell-slot progression at validation time, never duplicated here (see
+  // app/lib/characters/spell-requirements.ts's own header on why slot tables are not re-stated).
+  filter: SpellCatalogueFilter
+  // Index 0 = character level 1 ... index 19 = character level 20. The corpus's own TOTAL (never a
+  // delta) required at that level; 0 means "not yet available." A level jump computes one lookup
+  // against the target level, never a sequential walk.
+  totalByLevel: readonly number[]
+  // Only meaningful for pool 'spell': the `id` of a 'spellbook'-pool requirement ON THE SAME FACET
+  // that every legal entry here must ALSO already satisfy (Wizard's own "prepare FROM your
+  // spellbook" rule -- the prepared pool is a subset of the membership pool). Absent for every
+  // class whose 'spell' pool has no membership gate (every class but Wizard). Nothing here names
+  // "Wizard" -- a future class with the same two-tier shape sets this identically.
+  requiresMembershipPool?: DefinitionId
 }
 
 export type RulesFacetFeatureRequirement = {

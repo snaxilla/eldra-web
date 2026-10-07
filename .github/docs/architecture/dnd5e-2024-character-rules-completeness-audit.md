@@ -2935,3 +2935,790 @@ the 94 decision-owning facets (unchanged). No selection expansion. No mutation; 
 - `pnpm run build`: passes.
 - `git diff --check`: clean.
 - `pnpm run lint`: not run; the accepted pre-existing configuration issue.
+
+### 25.26 SPELL ACQUISITION STATE + COUNT ARCHITECTURE AUDIT (P3A, 2026-10-08)
+
+**AUDIT ONLY. No implementation. No Rules/Content/manifest change. No commit.**
+
+**Production state confirmed empirically** (not assumed from the prior turn's framing): the P2
+Content refresh was applied out-of-band before this audit. `pnpm run packages:sync -- --world
+Solaris` (dry run) reports Rules `CURRENT` at 0.20.0, Content `CURRENT` (`eldra.solaris.xphb` is
+now version 1.0.17, up from 1.0.16), Actions `None`. Queried the live catalogue directly: all
+391/391 XPHB spells now carry `spellMechanics.classLists` (Fireball's own live entry verified:
+`classLists: ["Sorcerer","Wizard"]`). P3A's entire premise -- that canonical filtering metadata is
+already live -- holds.
+
+#### Eight-class spell model (corpus truth, not memory)
+
+Every one of the eight classes' level-1 Spellcasting/Pact Magic feature is now a **single 2024
+shape**, with the SAME structural fields on the class record itself (verified directly; no feature
+text was read from memory):
+
+| Field | What it is |
+| --- | --- |
+| `preparedSpellsProgression` | 20-element array, levels 1-20: the TOTAL count of leveled (level 1+) spells "on your list" at that level. Not a delta. |
+| `preparedSpellsChange` | `"level"` (Bard, Sorcerer, Warlock) or `"restLong"` (Cleric, Druid, Paladin, Ranger, Wizard) -- WHEN the count-holding list's *contents* may be swapped. Governs REPLACEMENT only, never the count itself. |
+| `cantripProgression` | 20-element array, levels 1-20: TOTAL cantrip count at that level. Absent for Paladin and Ranger (they get none). |
+| `spellcastingAbility` | Rules Engine output already (unrelated to count). |
+| `casterProgression` | `full` / `artificer` (= half, the 5etools label for the slot table) / `pact`. |
+
+**2024 genuinely unifies "spells known" and "spells prepared" into one term and one mechanical
+shape: "Prepared Spells of Level 1+".** Verified directly in every one of the eight classes' own
+feature text (Bard, Cleric, Druid, Paladin, Ranger, Sorcerer, Warlock, Wizard): each says "You
+prepare the list of level 1+ spells... To start, choose N spells... The number of spells on your
+list increases as you gain \<Class\> levels... Whenever that number increases, choose additional
+spells until the number on your list matches the number in the table." **None of the eight
+mentions a spellcasting-ability-modifier term in this formula** (checked by searching every
+Spellcasting/Pact Magic feature's text for "modifier"; zero matches across all eight) -- this is a
+real, confirmed 2024 RAW simplification from 2014's "ability modifier + level": the table value
+IS the final count, with no ability-score dependency at all. Do not reintroduce one.
+
+What differs between classes is the ELIGIBLE POOL the N spells are drawn from, and the swap cadence:
+
+| Class | Pool for leveled spells | Swap cadence | Cantrips | Cantrip swap cadence | Max spell level by L20 |
+| --- | --- | --- | --- | --- | --- |
+| Bard | Full Bard list | on level-up | 2 base, +1 at 4/10 (table) | on level-up | 9 |
+| Cleric | Full Cleric list | on Long Rest | 3 base, +1 at 4/10 | on level-up | 9 |
+| Druid | Full Druid list | on Long Rest | 2 base, +1 at 4/10 | on level-up | 9 |
+| Paladin | Full Paladin list | on Long Rest | none | n/a | 5 |
+| Ranger | Full Ranger list | on Long Rest | none | n/a | 5 |
+| Sorcerer | Full Sorcerer list | on level-up | 4 base, +1 at 4/10 | on level-up | 9 |
+| Warlock | Full Warlock list, level <= current Pact Magic slot level | on level-up | 2 base, +1 at 4/10 | on level-up | 9 (via Mystic Arcanum; Pact slots cap at 5) |
+| Wizard | **Spellbook subset only** (not the full list) | on Long Rest | 3 base, +1 at 4/10 | on Long Rest | 9 |
+
+Real `preparedSpellsProgression` arrays (level 1 -> 20), verified against the raw class JSON, not
+retyped from memory:
+
+```
+Bard:      [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+Cleric:    [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+Druid:     [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+Paladin:   [2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15]
+Ranger:    [2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15]
+Sorcerer:  [2,4,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+Warlock:   [2,3,4,5,6,7,8,9,10,10,11,11,12,12,13,13,14,14,15,15]
+Wizard:    [4,5,6,7,9,10,11,12,14,15,16,16,17,18,19,21,22,23,24,25]
+```
+
+Cantrip progressions (absent rows = no cantrips):
+
+```
+Bard:     [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4]
+Cleric:   [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5]
+Druid:    [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4]
+Sorcerer: [4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6]
+Warlock:  [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4]
+Wizard:   [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5]
+```
+
+Wizard-only fields: `spellsKnownProgressionFixed: [6,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2]` (the
+**spellbook**, a DIFFERENT count from prepared: 6 at level 1, +2 every level after) and
+`spellsKnownProgressionFixedAllowLowerLevel: true` (each addition may be of any level the Wizard can
+currently cast, not only the newest). Warlock-only: `spellsKnownProgressionFixedByLevel: {"11":
+{"6":1}, "13":{"7":1}, "15":{"8":1}, "17":{"9":1}}` -- Mystic Arcanum, verified against its own real
+feature text: one FIXED, independent, exact-level slot per tier (level 6 at 11, 7 at 13, 8 at 15, 9
+at 17), each cast once free per Long Rest, each independently replaceable "whenever you gain a
+Warlock level" -- **not** part of the ordinary prepared-spell count or pool.
+
+**Special state models, named precisely**:
+- **Wizard**: two-tier gate. The SPELLBOOK (what you *know*, cumulative, never shrinks) bounds the
+  PREPARED list (what you can *cast right now*, a subset of the spellbook, re-choosable every Long
+  Rest). Preparing a spell NOT in the spellbook is illegal.
+- **Warlock**: Pact Magic slots (already exists, unmodified by this audit) are orthogonal to spell
+  identity. The ordinary prepared-list mechanic applies (pool = Warlock list, filtered to level <=
+  current max Pact slot level -- itself already Rules Engine output), PLUS the four independent
+  Mystic Arcanum tier-slots described above.
+- **Paladin/Ranger**: ordinary full-caster shape (NOT the 2014 "half of X, round down, min 1"
+  formula -- 2024 states the total directly in the table, confirmed by the table values
+  themselves, e.g. Paladin L1 = 2, not "half of (1+Cha mod)"), just starting at level 1 with a
+  smaller table and no cantrips.
+- **Cleric/Druid/Paladin/Ranger**: `preparedSpellsChange: "restLong"` -- their day-to-day swap
+  privilege is explicitly MORE flexible than Bard/Sorcerer/Warlock/Wizard's (restLong is a stronger
+  swap right than Wizard's own restLong, since Wizard is pool-gated by spellbook first). This does
+  NOT change what is mandatory for Milestone A (see Mandatory vs Optional below).
+
+#### State families -- which are genuinely distinct
+
+| Family | Distinct? | Why |
+| --- | --- | --- |
+| Cantrips | YES, from leveled spells | Separate count column (`cantripProgression`), separate pool rule (level 0), separate swap cadence per class (not always equal to `preparedSpellsChange`) |
+| Leveled "prepared" spells (all 8 classes) | ONE family across all 8 | Identical mechanical shape (count + pool + swap cadence), differing only in which pool/cadence -- confirmed above. Modeling "known" casters and "prepared" casters as two families would be a DISTINCTION THE 2024 CORPUS ITSELF DOES NOT MAKE. |
+| Wizard spellbook | YES, from prepared | A SUPERSET gate on the pool, with its OWN independent count/cadence (`spellsKnownProgressionFixed`, additive only, no swap -- it never shrinks) |
+| Fixed/always-prepared grants (`additionalSpells.prepared` on the class/subclass/species/feat record) | YES, from player-chosen spells | Package-DERIVABLE facts (Druid's "speak with animals"@1, Ranger's "hunter's mark"@1, Paladin's "divine smite"@2, Bard's "power word heal/kill"@20, Warlock's "contact other plane"@9), never a player choice -- see Fixed grants below |
+| Mystic Arcanum | YES, from ordinary prepared spells | Independent exact-level tier slots, not pooled against the ordinary count (confirmed above) |
+| Pact Magic SLOTS (not spell identity) | Already exists, unmodified | Numeric derivation only (`table:spellcasting.slots_pact`); P3 never touches it |
+
+Not merged merely because every value is a Spell ContentRef (per this task's own instruction): six
+genuinely separate concepts, reducible to exactly **three storable shapes** (see State models below):
+a bounded count-pool (cantrips, leveled prepared spells, Mystic Arcanum tiers all fit this ONE
+shape with different parameters), a cumulative-only membership set (spellbook), and a derived,
+unstored fact (fixed grants).
+
+#### Current `spellcasting` block -- audited, not redesigned
+
+**This is NOT legacy. It is the current, intentionally partial canonical store, already shaped for
+exactly what P3 needs.** `app/lib/characters/spellcasting.ts`'s own header states its scope
+verbatim: "Persist only: Known spells, Prepared spells, Expended spell slots... A single
+`known`/`prepared` boolean pair per entry... serves every 2024 caster archetype uniformly,
+deliberately not modeling the RAW distinction between 'prepares from the class list'... and
+'learns a fixed number of spells'... and any enforced maximum, is a deliberate, stated absence
+**this pass** rather than an oversight." That deferred enforcement is exactly P3's job.
+
+- **Stored shape**: `{ spells: StoredSpellEntry[], expendedSlots: Record<string, number> }`.
+  `StoredSpellEntry = { instanceId, ref?: {packageId, slug} | name?: string, known: boolean,
+  prepared: boolean }` -- a spell is EITHER a catalogue ContentRef OR a player-typed custom name
+  (mirrors `StoredInventoryItem` exactly), with two independent booleans.
+- **Writers** (all in `server/utils/`): `character-spellcasting.ts`'s `saveCharacterSpellcasting`
+  (full replace), called from exactly three places: `spellcasting.put.ts` (the GENERIC, UNPROTECTED
+  full-replace route -- `requireCapability('world.character.edit_any')` only, zero count/level/
+  class-list legality check), `character-recovery.ts` (Long/Short Rest resets `expendedSlots` only,
+  read-modify-write, `spells` untouched), `character-cast.ts` (spending a slot, same read-modify-
+  write, `spells` untouched). **Creation (`create-v2.post.ts`) and progression
+  (`character-progression-plan.ts`'s `confirmProgression`) currently NEVER write to this block --
+  confirmed by grep, zero call sites.** A brand-new character's `spells` array is `[]` until a
+  player manually PUTs it.
+- **Reader**: `character-assembly.ts`'s `resolveSpells(spellcasting?.spells ?? [], catalogue.spells,
+  catalogue.packs)` -- the ONLY path Cast/the Sheet gets available spells from. **Confirmed: a spell
+  not in `spellcasting.spells[]` is not castable, regardless of where it came from** (class choice,
+  Magic Initiate, a fixed grant). This is the deciding fact for the rules_choices-vs-spell-state
+  question below.
+- **Slots** (`expendedSlots`) are out of scope for P3 -- already fully derived/tracked, unmodified.
+- **Canonical, not legacy.** Generically writable today (no protection like `catalogue_selection`/
+  `progression`). See Mutation authority below for the recommendation.
+
+#### rules_choices vs. canonical spell state -- not every Spell ContentRef belongs in the same place
+
+Two genuinely different concerns, both real:
+
+- **A. The ACQUISITION DECISION** -- "which N spells, from which pool, does this choice resolve to"
+  -- is a character-building CHOICE, structurally identical to every ContentRef choice P1/P2 already
+  built (a package-declared ChoiceSet, `category: 'spells'`, a `SpellCatalogueFilter`, a `count`).
+  Its ANSWER, while being validated/transported, is exactly `rules_choices`-shaped (a creation or
+  progression key -> a list of ContentRef strings) -- no different from a feat pick.
+- **B. The DURABLE OWNERSHIP RECORD** -- "which spells does this character actually have, known or
+  prepared, right now" -- is NOT naturally a `rules_choices` row, because (confirmed above) Cast
+  reads ONLY `spellcasting.spells[]`. A choice answer that stayed parked in `rules_choices` forever
+  would be invisible to Cast and to the Sheet's spell list.
+
+**Recommended synthesis** (not implemented in this audit): A is the TRANSPORT/validation layer at
+the moment of acquisition (creation, or a progression level crossed); its CONFIRMED answer is then
+APPLIED by merging it into B, the canonical `spellcasting` block -- exactly mirroring how P7's
+Background ability answer is transported through `rules_choices` but takes effect by activating a
+Source, except here the "effect" is a block write (spell identity is inventory-shaped, not a
+numeric modifier). Magic Initiate's picks are case A at the moment of choosing, and ALSO need to
+reach B (the spellcasting block) to ever be castable -- so "A vs. B" is not "either/or" per
+decision, it is "A, then write-through to B" for every spell acquisition uniformly, including
+Magic Initiate's.
+
+#### Source of truth after reload, by family
+
+| Family | Persisted record that makes it true after a hard reload |
+| --- | --- |
+| Leveled prepared spells (any of 8 classes) | `spellcasting.spells[]` entries with `known: true, prepared: true` (merged in by creation/progression confirm, see below) |
+| Cantrips | Same store, same entries, distinguished by the spell's own `level === 0` (via `spellMechanics`), not a new field |
+| Wizard spellbook | Same store; `known: true` marks spellbook membership; `prepared: true` additionally marks it as currently prepared (a spell can be `known` without `prepared`, never the reverse for Wizard) |
+| Mystic Arcanum | Same store; identified by the acquiring feature/level + the spell's own level matching the tier (6/7/8/9), not a new boolean (see State models) |
+| Fixed/always-prepared grants | **Derived, not persisted** -- read live from the package facet's own fixed-spell declaration at assembly time (once that facet field exists; see Fixed grants below). Stable and automatic; storing a duplicate copy risks drift the moment a package Definition changes. |
+| Magic Initiate / Fey-Touched / Ritual Caster / Shadow-Touched / Telekinetic / Telepathic / Blessed-Druidic Warrior cantrips | The SAME `spellcasting.spells[]` store (so Cast can see them), reached via a nested feat ChoiceSet answer at the moment the feat is acquired, exactly like A -> B above |
+
+No family is reconstructed from the Builder draft, from level alone, or from prose, at reload --
+every mandatory family above either reads the persisted block or derives from an immutable package
+fact.
+
+#### Count tables -- can existing Rules expressions/tables encode them?
+
+**Not cleanly, and this is a real, precisely-named blocker.** The engine's `table:` kind (Table
+Definitions) is the natural fit for a 20-row, level-keyed lookup -- `table:spellcasting.slots_full`
+already proves the SHAPE works for slots. But `preparedSpellsProgression`/`cantripProgression` are
+PER-CLASS data (8 different 20-element arrays), and today's Rules Package convention keeps per-class
+facts on the FACET (`RulesFacet`), not as 8 separate Table Definitions keyed by class. The honest
+options are: (a) one Table per class (8 new Tables, mirroring the slots tables' own per-class-type
+pattern, but per CLASS not per caster-TYPE, since `full`/`half`/`pact` already collapses 8 classes
+into 3 slot tables, while prepared counts do NOT collapse that way -- Paladin and Ranger share a
+slots type but Paladin/Ranger's prepared counts are IDENTICAL to each other but NOT to any other
+class, so a `half` table would still work for exactly these two); or (b) the array lives on the
+FACET itself as a new, package-authored field (mirroring how `classTableGroups`' per-class delta
+rows already feed `tableCountDecisions` in discovery) and the ENGINE never evaluates it directly --
+the APPLICATION layer (creation/progression, same posture as `ContentCatalogueFilter`/
+`SpellCatalogueFilter`) reads it to compute the requirement. Given `SpellCatalogueFilter` and the
+`'spells'` category routing already live entirely at the application layer (P2), **(b) is the
+pattern already established and requires no new engine evaluator work** -- it is additive facet
+authoring, not a Table-evaluator feature. No missing table-evaluation capability blocks this; the
+blocker, if any, is only the AUTHORING of 8 arrays onto 8 class facets (and the half-caster/
+full-caster count tables, 1-2 shared arrays for Paladin/Ranger if a shared-type pattern is
+preferred) -- a small, mechanical content task, not a new engine capability.
+
+#### Delta vs. total, and the Level 1 -> N jump requirement
+
+`preparedSpellsProgression`/`cantripProgression` ARE total-at-level values (confirmed above, "the
+number of spells on your list increases... until the number matches the number in the table").
+**The generic model must therefore compute, at any target level N (never assuming sequential
+one-level steps): required count = table[N]; owned count = count of entries in `spellcasting.
+spells[]` matching this family's filter (class, kind); delta = required - owned, if positive.** A
+Level 1 -> 8 jump (the Level Manager's own real capability) asks for exactly ONE delta computed
+against table[8], not seven sequential deltas -- the SAME "resolve the whole target state at once"
+posture `character-progression-plan.ts`'s existing level-jump machinery already uses for feats/ASI/
+subclass selection (it already walks `step.requiredChoices` per crossed level and lets the UI/
+Confirm answer them together; spell counts fit the identical per-level-row shape, one more
+`requiredChoices` entry per level crossed whose `count` is that level's own delta, not a cumulative
+re-ask of everything already owned). This is not a new capability to invent; it is one more
+decision family flowing through the existing per-level-row walk.
+
+#### Wizard spellbook, deep audit
+
+- Initial size: 6 level-1 spells (mandatory, from the class's own recommended list or player choice,
+  drawn from the Wizard spell list at level 1).
+- Per-level addition: +2 "whenever you gain a Wizard level after 1" -- MANDATORY (a core class
+  feature granting arcane-research spells, not optional flavor), cumulative, additive-only (a
+  spellbook never loses an entry).
+- Level restriction: each addition "must be of a level for which you have spell slots" -- i.e.,
+  level <= current max castable level; `spellsKnownProgressionFixedAllowLowerLevel: true` means a
+  LOWER-level spell is always a legal addition too (not only the newest tier).
+- Preparation's relation to the spellbook: preparation CHOOSES a subset of the spellbook (never
+  spells outside it) up to `preparedSpellsProgression[level]`; the spellbook membership is the
+  SUPERSET gate, preparation the subset, exactly the two-tier model named above.
+- **Milestone A boundary, as instructed**: spellbook ACQUISITION (which spells got written into the
+  book, growing by the mandatory +2/level formula) is MANDATORY and must be persisted and validated.
+  Day-to-day PREPARATION changes (swapping which spellbook entries are currently `prepared`) are
+  OPTIONAL flexibility -- a Wizard whose spellbook is complete and whose CURRENT prepared set is any
+  legal subset of it is already a legally complete character; which specific subset is prepared
+  right now does not block Milestone A.
+
+#### Cleric / Druid -- is day-to-day preparation deferrable?
+
+**Yes, with the SAME mandatory/optional split as every other prepared caster, confirmed by the
+corpus's own two-feature structure.** "Prepared Spells of Level 1+" (the COUNT, growing with level)
+is one feature; "Changing Your Prepared Spells" (the SWAP privilege, gated on Long Rest for both) is
+a SEPARATE, later feature in the same text block. The corpus itself draws this exact line. Cleric/
+Druid need a persisted, valid, correctly-SIZED set of prepared spells to be legally complete
+(MANDATORY); which Long Rest most recently changed that set, or whether it has ever been changed
+since the count last grew, is never itself a legality question (OPTIONAL). No assumption was made
+here -- this is the literal corpus wording.
+
+#### Paladin / Ranger
+
+Confirmed: both begin spellcasting at Level 1 (their own `preparedSpellsProgression[0]` is 2, not 0
+or absent), no cantrips, `casterProgression: "artificer"` (5etools' own label for the half-caster
+slot table), swap cadence `restLong`. Mechanically identical in SHAPE to every other prepared
+caster; the only class-specific facts are the (smaller) count table and the absence of cantrips.
+
+#### Bard / Sorcerer
+
+Cumulative acquisition, swap cadence `level` (narrower than Cleric/Druid/Paladin/Ranger/Wizard's
+`restLong` -- may only change spell identity when gaining a class level, never mid-tier). Mandatory
+for Milestone A: the count and the INITIAL + cumulative choices. Optional: exercising the per-level-
+up replace privilege -- an unexercised replace right never makes an otherwise-legal, correctly-sized
+list illegal.
+
+#### Warlock
+
+Pact Magic SLOT derivation (`table:spellcasting.slots_pact`, `SLOT_TABLE_BY_CASTER_TYPE.pact`) is
+unmodified and out of scope -- confirmed already fully implemented and untouched by this audit.
+Missing character-BUILDING state, precisely: (1) 2 initial Warlock cantrips + 2 initial prepared
+spells at level 1, both growing per their own tables; (2) the four Mystic Arcanum tier picks at
+levels 11/13/15/17, each its own independent exact-level slot. Both fit the SAME generic bounded-
+count-pool shape (see State models), with Mystic Arcanum needing `count: 1` per tier and an
+exact-level `SpellCatalogueFilter`, not a special primitive.
+
+#### Fixed / always-prepared spells -- derive, do not duplicate
+
+The RAW class JSON already structurally encodes every fixed grant this audit found, under
+`additionalSpells.prepared`: Druid ("speak with animals"@1, "find familiar"@2), Ranger ("hunter's
+mark"@1), Paladin ("divine smite"@2, "find steed"@5), Bard ("power word heal/kill"@20), Warlock
+("contact other plane"@9). **These are package-DERIVABLE, never a player choice, and never belong
+in `spellcasting.spells[]` as a stored duplicate** -- preferred: derive them at assembly time from a
+NEW RulesFacet field (the current facets, per the §25.21/P1 audit, do not yet encode
+`additionalSpells` at all -- `blk:subclass-spells`/`blk:feat-nested-spells` are exactly the still-
+blocked decisions this gap produces). Authoring that facet field is real work, but it is CONTENT
+authoring (mirroring how P1 authored proficiency facets), not a new persistence concept -- it feeds
+the SAME `resolveSpells` presentation path that spellcasting.spells[] already feeds, as an
+ADDITIONAL, derived source, never written to the stored block.
+
+#### P2/P3/P4/P5 boundaries, named exactly
+
+- **P2 (done)**: legal spell OPTION universe (classList/level/school filtering). Unchanged by this
+  audit.
+- **P3 (this audit's target, not yet implemented)**: count requirement computation (delta vs.
+  total, any level jump), canonical ownership persistence (reusing `spellcasting.spells[]`),
+  creation-time and progression-time write-through from a `'spells'`-category ChoiceSet answer,
+  Wizard spellbook as a second, superset state, Mystic Arcanum as 4 exact-level tier slots.
+- **P4 (subclass-internal gating, untouched)**: 142 `blk:subclass-spells` + 2
+  `blk:subclass-casting-class` decisions -- subclass spell grants/choices and third-caster slot
+  tables. P3's state model is DESIGNED to receive a subclass grant later (the same `spellcasting.
+  spells[]` entries, written by a subclass-owned `additionalSpells` facet once P4 authors it) but
+  does not itself gate on subclass selection.
+- **P5 (accumulator-shaped decisions, e.g. Invocations/Metamagic)**: unrelated to spells directly,
+  named only because the discovery/coverage map below must not misclassify any accumulator-owned
+  decision as spell-family; none of the 332 spell-family decisions are accumulator-owned.
+- **Feat configuration (facet-authoring-dependent, separate from the generic P3 model)**: Magic
+  Initiate, Fey-Touched, Ritual Caster, Shadow-Touched, Telekinetic, Telepathic (11 `blk:feat-
+  nested-spells` decisions), Blessed Warrior/Druidic Warrior (2 `blk:feat-nested-blessed-druidic`),
+  and one `blk:species-lineage` decision (a lineage-granted spell variant). Each needs its OWN
+  feat/species facet declaring a nested `'spells'`-category (or variant) ChoiceSet -- the generic
+  P3 model makes this POSSIBLE, but does not make any one of these 14 decisions implemented by
+  itself; each needs its own facet authored. Reported as dependent follow-on content work, not
+  bundled into "P3 alone."
+
+#### Magic Initiate -- P3 boundary, explicit
+
+P3's state model CAN support Magic Initiate's two cantrips + one level-1 spell as a nested feat
+ChoiceSet (category 'spells', `SpellCatalogueFilter.classList` set to whichever of Cleric/Druid/
+Wizard the player chose), with the chosen spells written through to `spellcasting.spells[]` (known:
+true, prepared: true, no count-growth -- Magic Initiate grants a FIXED one-time set, not a
+progression). The spellcasting-ABILITY choice for those spells is Definition-backed (an
+ability-key `source:`-shaped answer, like every other ability-affecting feat pick) and is
+SEPARATE from the spell-identity choice. **Not implemented here.** Still blocked; needs its own
+facet (the `variant-choice` wrapping which list, plus the nested spell picks) authored as a
+follow-on.
+
+#### Blessed Warrior / Druidic Warrior
+
+Their cantrip acquisition (one Cleric or Druid cantrip, once, fixed) fits a NESTED FEAT CHOICE
+(category 'spells', `level: 0`, `classList` fixed to the Fighting Style's own named class) -- not
+class spellcasting state, since it is not tied to a class's own `preparedSpellsProgression`/
+`cantripProgression` at all; it is a feat-granted, one-time pick. Same write-through to
+`spellcasting.spells[]` as Magic Initiate. **Not implemented here.**
+
+#### Mystic Arcanum -- resolved above, restated for this heading
+
+Ordinary Warlock spell ownership with SPECIAL use semantics (free cast, Long-Rest recharge, no slot
+spent), **not** a separate acquired-feature state family at the STORAGE layer: it is 4 independent
+`count: 1`, exact-level bounded-count-pool decisions, using the identical generic shape every other
+prepared-spell decision uses. Its "specialness" (free cast, no slot) is a CAST-time concern already
+unrelated to P3's acquisition/count/persistence scope.
+
+#### Persistence model options (3 candidates, 1 recommendation)
+
+**Model 1 -- Reuse `spellcasting.spells[]` as the single canonical store, RECOMMENDED.**
+- Stored shape: unchanged (`StoredSpellEntry[]` + `expendedSlots`, already exists).
+- Creation flow: `create-v2.post.ts` gains a new, protected write (after `rules_choices`, mirroring
+  its existing write order) that merges the confirmed `'spells'`-category creation answers into
+  `spellcasting.spells[]` via `known: true, prepared: true` entries (new function,
+  `saveCharacterSpellcasting`, called where `saveCharacterHealth` already is -- same non-
+  transactional posture as every other P1-era creation write).
+- Progression flow: `confirmProgression` gains the same merge, for every crossed level's spell-count
+  delta, after `progression`/`rules_choices`.
+- Level 1->N jump: the delta model above -- one `requiredChoices` row per crossed level whose count
+  is that level's own table delta, computed once against the target level, not sequentially.
+- Reload: `resolveSpells` already reads this store; nothing new to build there.
+- Fixed grants: derived (see above), never written here.
+- Feat-granted spells (Magic Initiate, etc.): same merge target, written by the SAME mechanism once
+  each feat's facet exists.
+- Cast compatibility: perfect -- Cast already reads only this store; no new read path needed.
+- Spellcasting-block compatibility: this IS the existing block; zero schema migration.
+- Backward compatibility: perfect -- an existing character's `spells: []` or arbitrary hand-entered
+  state is untouched; completeness authority treats an under-filled list as BLOCKED (same as today,
+  just for a NAMED reason now), never erased or rewritten without the character owner acting.
+- Pros: zero new storage concept, reuses a store already explicitly built for this, zero Cast/
+  Recovery/Cast-slot regression risk (none of those three existing writers change). Cons: the
+  "mandatory vs. optional" line (which entries are the REQUIRED ones vs. a GM's free-form addition)
+  lives in the VALIDATION layer, not a stored flag -- acceptable, since completeness authority
+  already works this way for every other family (it classifies decisions, not stored records).
+
+**Model 2 -- A new `spellProgression` block, parallel to `spellcasting`, tracking acquisition
+HISTORY (which choice granted which entry, at which level) separately from the sheet's free-form
+`spellcasting.spells[]`.**
+- Pros: a clean separation between "what the engine granted" and "what the player has since edited
+  on the sheet" -- closer to how `catalogue_selection`/`progression` are protected and separate from
+  freely-editable blocks.
+- Cons: TWO stores can drift (an entry removed from `spellcasting.spells[]` by a GM edit would still
+  show as "acquired" in `spellProgression`, or vice versa); Cast would need to reconcile both or
+  this phase would need to decide which one Cast trusts, reopening the exact "generic PUT can
+  silently diverge from engine-authoritative state" question this task flags for `spellcasting`
+  itself; strictly more storage and more consumers to keep honest for no capability
+  `rules_choices`-style transport-plus-merge (Model 1) doesn't already give. **Rejected**: adds a
+  second source of truth the task's own instructions (and the existing architecture's precedent)
+  argue against inventing without a forcing requirement, and none was found.
+
+**Model 3 -- Keep spell answers ENTIRELY in `rules_choices`, with Cast's `resolveSpells` widened to
+ALSO read resolved `rules_choices` answers directly (no write-through to `spellcasting.spells[]` at
+all).**
+- Pros: no new write path into `spellcasting`; reuses `rules_choices` end to end.
+- Cons: **breaks the confirmed architectural fact that Cast reads only `spellcasting.spells[]`** --
+  would require a NEW resolution path threading every historical creation/progression `rules_choices`
+  key through Cast, duplicating/re-deriving "which choices were ever spell choices" logic that P1/P2
+  already solved once for the CREATION/PROGRESSION side only; day-to-day prepared-spell SWAPS (the
+  optional flexibility every class explicitly RAW-permits) would have no home at all, since
+  `rules_choices` answers are keyed to a specific creation/progression DECISION, not a freely
+  re-editable sheet state. **Rejected**: works against the existing Cast architecture instead of
+  with it, and has no answer for day-to-day flexibility.
+
+**Recommendation: Model 1.** It is the smallest change, reuses a store built for exactly this
+purpose, and regresses nothing (Cast, Recovery, the generic PUT, and every existing consumer stay
+exactly as they are; P3 only adds two NEW writers, at creation and at progression confirm).
+
+#### Backward compatibility
+
+An existing character with `spellcasting: null` (never saved), an empty `spells: []`, or
+hand-entered historical state loads exactly as it does today -- `loadCharacterSpellcasting`'s
+"absence is legal" posture is unchanged, `resolveSpells` degrades identically, and Model 1 adds no
+migration (no schema change, same `StoredSpellEntry` shape). A character predating P3 simply reads
+as "has fewer prepared spells than the current table requires" the moment completeness authority
+starts checking it -- the SAME kind of newly-named (not newly-caused) blocker P1 and P7 already
+established for proficiency and ability-distribution. No destructive migration is needed or
+proposed.
+
+#### Mutation authority
+
+**Recommendation: do NOT protect `spellcasting.put.ts` the way `catalogue_selection`/`progression`
+are protected.** Those two are IDENTITY (written once, at a specific controlled moment, never
+freely re-editable). `spellcasting` is SHEET state like `inventory`/`health` -- a GM already needs
+to freely add homebrew spells, correct a mis-entered prepared flag, or hand-wave an exception, and
+taking that away would be a real regression with no Milestone-A benefit. Instead: creation and
+progression confirm become two NEW, additional writers (read-merge-write, the exact pattern
+`character-recovery.ts`/`character-cast.ts` already use for `expendedSlots`), and Phase-0
+completeness authority performs READ-ONLY validation against whatever is currently stored --
+exactly how every other family's authority already works (it classifies decisions by inspecting
+STATE, it does not lock down every writer of that state). This also means a GM who manually
+over-grants a spell through the generic PUT does not "break" anything: completeness authority
+checks for AT LEAST the required count from the required pool, never an exact-match ceiling, so
+extra sheet-added spells are harmless.
+
+#### Mandatory vs. optional, classified exactly
+
+| Decision | Classification | Why |
+| --- | --- | --- |
+| Initial spell/cantrip selection (any class) | **MANDATORY** | A character legally cannot exist without it; the corpus states a hard minimum count at level 1 |
+| Count increases at later levels | **MANDATORY** | "Whenever that number increases, choose additional spells until the number... matches the table" -- stated as a requirement, not an option |
+| Wizard spellbook additions | **MANDATORY** | A core class feature with a fixed formula (+2/level), not flavor |
+| Mystic Arcanum tier acquisition | **MANDATORY** | A named, leveled class feature with a fixed schedule |
+| Fixed/always-prepared grants | **MANDATORY, but AUTOMATIC** (derived, no player decision) | The corpus grants them unconditionally; nothing to persist as a player answer |
+| Replacement clauses (any class's "Changing Your Prepared Spells"/cantrip replace) | **OPTIONAL FLEXIBILITY** | The corpus's own two-feature split (count feature vs. separate change feature); an unexercised replace right never makes an existing, correctly-sized, pool-valid list illegal |
+| Daily/Long-Rest prepared-spell changes | **OPTIONAL FLEXIBILITY** | Same reasoning; which VALID subset is currently prepared is never itself a legality fact |
+| "Memorize Spell" / any other day-to-day flavor mechanic | **OPTIONAL FLEXIBILITY** | Not found as a named XPHB mechanic in this audit under that name; if it refers to the general swap privilege, it is covered by the row above |
+
+#### Discovery / coverage map (classifications read, not modified)
+
+| Coverage rule | Count | Owner kind | P3 (generic model) relevance |
+| --- | --- | --- | --- |
+| `blk:caster-counts` | 143 | class | Directly resolved by the count/delta model |
+| `blk:caster-l1-spell-choice` | 5 | class | Directly resolved (identity choice at L1) |
+| `blk:class-spell-choice-other` | 22 | class | Directly resolved (identity choices beyond L1, incl. Wizard spellbook growth, Magical Secrets' broad-list cases) |
+| `blk:mystic-arcanum` | 4 | class (Warlock) | Directly resolved, as 4 independent tier slots |
+| `blk:feat-nested-spells` | 11 | feat | Needs the generic model PLUS per-feat facet authoring (Magic Initiate, Fey-Touched, Ritual Caster, Shadow-Touched, Telekinetic, Telepathic) |
+| `blk:feat-nested-blessed-druidic` | 2 | feat | Needs the generic model PLUS facet authoring (Blessed/Druidic Warrior) |
+| `blk:species-lineage` | 1 | species | Needs the generic model PLUS species facet authoring (lineage spell variant) |
+| `blk:subclass-spells` | 142 | subclass | **P4's scope.** Untouched by P3. |
+| `blk:subclass-casting-class` | 2 | subclass | **P4's scope.** Untouched by P3. |
+
+Total spell-family (`spell-choice`/`spell-grant`/`spell-count`) decisions: **332** (class 174,
+subclass 144, feat 13, species 1). `174 = 143 + 22 + 5 + 4` exactly -- every class-owned spell
+decision accounted for. Magic Initiate's own background-granted decision is classified under
+`blk:feat-nested-spells` with family `variant-choice` (choosing WHICH of Cleric/Druid/Wizard), one
+level outside this family filter but blocked by the identical rule and dependent on the identical
+follow-on authoring. No classification was changed to produce these counts; they are a read of the
+existing, unmodified coverage map.
+
+#### Blast radius (exact, not estimated)
+
+**P3's generic model ALONE (no per-feat/species facet authoring) could transition exactly 174
+decisions from blocked to implemented** -- every class-owned spell-family decision
+(`143 + 22 + 5 + 4`), broken down:
+
+| Class | Spell-family decisions owned |
+| --- | --- |
+| Bard | 2 creation-visible + its own share of the 143/22 level-walk decisions |
+| Cleric | 2 creation-visible + its own share |
+| Druid | 2 creation-visible + its own share |
+| Paladin | 2 creation-visible + its own share |
+| Ranger | 2 creation-visible + its own share |
+| Sorcerer | 3 creation-visible + its own share |
+| Warlock | 3 creation-visible + its own share (incl. Mystic Arcanum's 4) |
+| Wizard | 3 creation-visible + its own share (incl. spellbook growth) |
+
+(The "creation-visible" counts above are each class's own Level-1 decisions, already confirmed
+individually via `creationUnresolvedDecisions`; the full 174 spans every level 1-20 row each class's
+table actually changes at, listed exactly in the Eight-class matrix above.)
+
+**NOT unlocked by P3 alone**: the 144 subclass-owned decisions (P4), and the 14 feat/species-owned
+decisions (11 + 2 + 1) pending their own facet authoring -- a real, separate, smaller follow-on, not
+automatically bundled into "P3."
+
+#### Availability forecast (real authority, not a promise)
+
+**No class becomes individually creation-complete after P3 alone.** Checked directly, per class,
+what remains besides spell-family decisions:
+
+| Class | Remaining non-spell blockers after P3 alone |
+| --- | --- |
+| Bard | starting equipment (P8) only |
+| Cleric | starting equipment (P8), Divine Order feature-option (unrelated accumulator/option gap) |
+| Druid | starting equipment (P8), Primal Order feature-option |
+| Paladin | starting equipment (P8), Weapon Mastery |
+| Ranger | starting equipment (P8), Weapon Mastery |
+| Sorcerer | starting equipment (P8) only |
+| Warlock | starting equipment (P8), Eldritch Invocations (accumulator) |
+| Wizard | starting equipment (P8) only |
+
+Every one of the 8 casters still has starting equipment (P8) blocking it at minimum; four
+(Bard/Sorcerer/Wizard, and effectively Cleric/Druid once their unrelated feature-option gap is also
+counted) would be down to EXACTLY ONE remaining blocker family. The three Magic-Initiate backgrounds
+(Acolyte/Guide/Sage) each currently show 3 blockers (background equipment, the fixed-feat-
+unsupported classification, and the feat-nested variant-choice); if Magic Initiate's OWN facet is
+ALSO authored (a follow-on beyond "P3 alone," per the Boundaries section), both the origin-feat and
+the nested-spell blockers would flip the same way P1's Crafter/Musician/Skilled did, leaving ONLY
+background equipment. **Do not promise scoreboard movement**: the creation availability scoreboard
+(species/classes/backgrounds/combinations) does NOT move after P3 alone, because equipment (P8)
+independently blocks every one of the 8 casters and all 16 backgrounds regardless of spell state.
+The meaningful P3 metric is the 174-decision delta above, not the scoreboard.
+
+#### Implementation slices (derived from this audit, dependency-ordered)
+
+1. **P3.1 -- Canonical count/pool primitive.** Author the per-class `preparedSpellsProgression`/
+   `cantripProgression` arrays (and Warlock's Mystic Arcanum tiers, Wizard's spellbook increments) as
+   package-authored facet data (additive facet fields, no engine change -- see Count tables above).
+   Exit: every class facet carries its own real count data, verified against the corpus arrays
+   above, with a bidirectional test (facet <-> corpus) mirroring every prior phase's pattern.
+2. **P3.2 -- The generic bounded count-pool choice.** One new category-'spells' ChoiceSet shape per
+   decision (level, count = that level's delta, `SpellCatalogueFilter` = the class's pool at that
+   point), reusing P2's resolver/routing unchanged. Exit: `resolveCreationContentChoices`/
+   progression's content routing offer and validate a real class's Level-1 spell choice end to end,
+   proven with synthetic and real-corpus fixtures (no real facet wired yet).
+3. **P3.3 -- Creation write-through.** `create-v2.post.ts` merges confirmed 'spells' answers into
+   `spellcasting.spells[]` (new protected write, Model 1). Exit: a real creation round-trip (one
+   class, Level 1) persists the correct prepared/cantrip set and survives reload.
+4. **P3.4 -- Progression write-through + level-jump delta.** `confirmProgression` computes and
+   applies the delta for every crossed level in one jump (1 -> N), not sequentially. Exit: a Level 1
+   -> 8 jump test produces the exact total the table requires, in one write.
+5. **P3.5 -- Phase-0 reclassification.** Flip the 174 class-owned decisions' coverage rule from
+   blocked to implemented, gated on the facet data from P3.1 actually existing -- mirrors P1/P7's own
+   "coverage checks the facet, not the mere existence of code" pattern exactly. Exit: discovery/
+   coverage tests show exactly 174 decisions reclassified, zero elsewhere, availability scoreboard
+   unchanged (equipment still blocks), both proven by test.
+6. **(Follow-on, not P3 core) Feat/species facet authoring** for the 14 feat/species-owned
+   decisions and fixed-grant facet authoring for the derived-grant family -- each its own small,
+   independent slice once P3.1-P3.5 exist.
+
+#### Test strategy (equivalence classes, not combinatorics)
+
+Six equivalence classes cover every real mechanical shape found in this audit; no per-spell
+combinatorial matrix is proposed:
+
+1. **Prepared caster, Long-Rest swap** (Cleric or Druid) -- count/pool/level-jump/reload.
+2. **Prepared caster, level-up-only swap** (Bard or Sorcerer) -- same, differing cadence (cadence
+   itself is OPTIONAL-flexibility, so this class mainly re-proves the SAME mandatory behavior under
+   a different optional rule, confirming cadence never affects legality).
+3. **Wizard** (spellbook superset + prepared subset) -- the only two-tier case; prepared-outside-
+   spellbook must be rejected.
+4. **Half-caster starting at Level 1** (Paladin or Ranger) -- smaller table, no cantrips, confirms
+   the model does not assume a caster tier starts above Level 1.
+5. **Pact caster** (Warlock) -- ordinary prepared-shape spells, cantrips, AND the 4 independent
+   Mystic Arcanum tier slots, proven distinct from the ordinary pool.
+6. **Feat-granted spells** (a synthetic fixture mirroring Magic Initiate's shape, since no real
+   facet exists yet) -- proves the SAME generic model a class uses also serves a feat-nested
+   acquisition, write-through to `spellcasting.spells[]` included.
+
+#### Package sync (dry run only, confirms the given production state)
+
+```
+RULES:    eldra.rules.dnd5e-2024@0.20.0 -- CURRENT
+CONTENT:  eldra.solaris.xphb -- CURRENT (now 1.0.17; the P2 refresh ran)
+ACTIONS:  None
+```
+
+No mutation. No selection expansion. Matches the expected state exactly -- no STOP condition.
+
+### 25.27 SPELL REQUIREMENT MODEL + COUNT AUTHORITY + CANONICAL SPELL-STATE VALIDATION (P3.1, 2026-10-07)
+
+**Implemented this pass: §25.26's planned P3.1 facet primitive, PLUS the pure validator originally
+implied as "the shared authority consumed by later P3 slices."** No ChoiceSet/routing work (that
+remains P3.2, unchanged below), no creation/progression writes, no mutation of the 174 class-owned
+spell decisions' classification. No commit. No `packages:sync --apply`.
+
+#### Requirement model (package data, not application branches)
+
+One new optional field on the existing `RulesFacet` type (`app/lib/content-rules/types.ts`):
+`spellRequirements?: SpellRequirement[]`, flowing through the SAME generic facet-attach pipeline
+(`attachRulesFacets`, `server/utils/content-sources/dnd5e/5etools-collection.ts`) already used by
+every other facet field -- zero pipeline changes, confirmed by inspection (the whole facet object is
+spread onto compiled candidates verbatim).
+
+```ts
+type SpellRequirementPoolKind = 'cantrip' | 'spell' | 'spellbook' | 'arcanum'
+
+type SpellRequirement = {
+  id: DefinitionId
+  pool: SpellRequirementPoolKind
+  filter: SpellCatalogueFilter          // reused verbatim from P2, no new filter syntax
+  totalByLevel: readonly number[]       // TOTAL at level, index 0 = level 1; never a delta
+  requiresMembershipPool?: DefinitionId // Wizard-only: gates this pool by another pool's legal set
+}
+```
+
+Four pool identities, not eight class branches: `cantrip` (class cantrip totals), `spell` (the
+unified 2024 "Prepared Spells of Level 1+" mechanic, every leveled caster), `spellbook` (Wizard's
+cumulative membership superset), `arcanum` (Warlock's four independent Mystic Arcanum tiers). All
+eight classes' facets in `app/lib/content-rules/dnd5e-2024.ts` now carry a `spellRequirements` array
+authored from this shape -- `grep -c "spellRequirements"` confirms exactly 8 (one per class facet).
+
+#### Eight classes -- authored counts, re-derived from the real corpus, not the §25.26 audit's tables
+
+A new test file, `tests/lib/content-rules/spell-requirements-corpus.test.ts` (19 tests, all passing),
+reads the real class JSON directly from `/opt/eldra/datasets/5etools-src/data/class/` at test time --
+never trusting §25.26's written arrays, never trusting this session's own scratch notes -- and
+independently recomputes: `cantripProgression` per class (present for Bard/Cleric/Druid/Sorcerer/
+Warlock/Wizard, absent for Paladin/Ranger -- re-confirmed empirically), `preparedSpellsProgression`
+per class (all 8, length 20), Wizard's cumulative spellbook total from `spellsKnownProgressionFixed`'s
+increment array (6 at level 1, +2/level, running sum reaching 44 at level 20), and Warlock's four
+Mystic Arcanum tiers from `spellsKnownProgressionFixedByLevel` (`{11:{6:1}, 13:{7:1}, 15:{8:1},
+17:{9:1}}`, each independently re-expanded into its own 20-row 0/1 `totalByLevel`). Every authored
+facet array is asserted equal to this independent recomputation. All 19 pass.
+
+#### Spell state -- `known`/`prepared` flags, audited not renamed
+
+`spellcasting.spells[]`'s existing `StoredSpellEntry.known`/`.prepared` booleans (§25.26's confirmed
+canonical, non-legacy store) are sufficient to represent every pool without a schema change:
+- `spell` pool reads `prepared` -- the corpus's own verb for the unified leveled mechanic ("you
+  PREPARE the list of level 1+ spells").
+- `cantrip`, `spellbook`, `arcanum` pools read `known` -- the corpus's own verb ("you KNOW two
+  cantrips"; spellbook/Arcanum are membership, not day-to-day preparation).
+- Wizard's two-tier gate needs no third flag: a spell can be `known: true` (spellbook member) without
+  `prepared: true` (currently castable), never the reverse -- exactly the existing two independent
+  booleans, used as-is.
+- Counting semantics, determined from corpus wording, not assumed: `cantrip`/`spell`/`arcanum` are
+  EXACT-count pools (over-count is illegal, since the corpus states a fixed "number on your list");
+  `spellbook` is a cumulative MINIMUM (over-count is never illegal, since spellbook entries are only
+  ever added, never removed -- test 16 proves `owned=7 > required=6` still satisfied).
+- The same spell ContentRef legally satisfying two pools at once (Wizard spellbook AND prepared) is
+  not duplicate corruption -- each pool is evaluated with its own independent legal-identity Set;
+  proven by test 18 (one Wizard's 6 spellbook entries, 4 of them also prepared, both pools satisfied
+  simultaneously against their own real required counts).
+
+#### Validator (`app/lib/characters/spell-requirements.ts`, new file)
+
+One pure function, `validateSpellRequirements({requirements, characterLevel, candidates,
+spellSlotLevels})`, returning a `SpellRequirementResult[]` (per requirement: `required`, `owned`,
+`satisfied`, and a typed `issues[]` -- `missing`, `over-count`, `illegal-wrong-class-list`,
+`illegal-wrong-level`, `illegal-unresolved`, `illegal-not-in-membership-pool`). Fails closed: a
+candidate with no resolved `CanonicalSpellMechanics` (`illegal-unresolved`), the wrong class list or
+above the legal max spell level (reusing P2's `spellOptionVerdict` for classList/level legality --
+never reimplemented), or (Wizard only) a `spell`-pool candidate not already a legal `spellbook`
+member, are all reported as illegal, never silently dropped or silently counted. Too few is `missing`,
+never `illegal`. No `requirement.pool` outside the four known kinds is accepted (fails closed with a
+full-`missing` result rather than silently passing).
+
+- **Max selectable spell level**: derived generically as `Math.max(...spellSlotLevels.map(s =>
+  s.level))` from the CALLER-supplied, already-existing `deriveSpellSlotLevels` output -- works
+  uniformly for full/half casters (highest nonzero slot column) and Pact casters (the single pact
+  slot's own level). No new slot table authored or duplicated; `table:spellcasting.slots_full/half/
+  pact` remain the single source of truth.
+- **Wizard's two-tier gate**: generic, not Wizard-specific code. A `spell`-pool requirement can name
+  another requirement's id via `requiresMembershipPool`; the validator runs in two passes
+  (ungated requirements first, caching each one's legal-identity Set; gated requirements second,
+  looking up the real cached Set) so evaluation order in the facet array never matters. Only Wizard's
+  facet actually sets the field -- the mechanism itself names no class.
+- **Mystic Arcanum**: no new primitive -- each tier is an ordinary `arcanum` pool requirement with an
+  exact `filter.level` and a `totalByLevel` that is 0 until its real acquisition level, then 1. Four
+  instances of the one generic shape, not a special case in the validator.
+- **Level-jump safety**: `required = requirement.totalByLevel[characterLevel - 1]`, a direct table
+  lookup against the TARGET level only -- no sequential-level mutation assumption anywhere in the
+  function. Proven at Level 1, a mid-range level, and Level 20 (tests 19-21, using Bard's real facet).
+- **P2 reuse, not duplication**: `spellOptionVerdict` (P2's fail-closed classList/level/school
+  resolver) is called directly for class-list and non-gated exact-level checks; the validator adds
+  only the level-1..maxSpellLevel range check for gated pools and the membership-pool check, both of
+  which are outside P2's own scope.
+- **No mutation**: the function reads `candidates`/`requirements`/`spellSlotLevels` and returns a new
+  result array; nothing it touches is written back.
+
+#### Cast / slots -- regression status
+
+No existing file under `server/utils/character-cast.ts`, `character-recovery.ts`, or
+`app/lib/characters/spellcasting.ts`'s slot derivation was modified. `resolveSpells` (private to
+`character-assembly.ts`, intentionally left unexported rather than redesigned) is unchanged. A new
+test extends the PRE-EXISTING `describe('assembleCharacter -- spellcasting', ...)` block in
+`tests/server/utils/character-assembly.test.ts` (test 27): a spell persisted exactly as before
+(`known: true, prepared: true` in `spellcasting.spells[]`) remains visible through the real,
+unmodified `assembleCharacter` entry point with `status: 'resolved'`, AND separately satisfies a
+`spell`-pool `SpellRequirement` when fed through the new validator -- proving the new authority layer
+sits beside Cast's existing read path without altering it. File now passes 44/44 (43 pre-existing + 1
+new).
+
+#### Historical compatibility
+
+No migration; no automatic mutation. A character with `spellcasting: null`, an empty `spells: []`, or
+hand-entered incomplete state still loads -- the validator reports `missing`/`illegal` issues without
+touching stored data (tests 25-26). This is the same "newly-named, not newly-caused" blocker posture
+P1/P7/§25.26 already established for proficiency, ability distribution, and spell count respectively.
+
+#### Mutation authority -- restated, not changed
+
+`spellcasting.put.ts` remains the generic, unprotected full-replace route; this pass does NOT add
+`requireCapability`/count/legality enforcement to it. **Recorded explicitly, per instruction: this is
+not a decision that the generic PUT is the final authoritative mutation API.** §25.26's Model 1 (two
+NEW, additional writers at creation and progression confirm, read-merge-write, mirroring
+`character-recovery.ts`/`character-cast.ts`'s existing pattern for `expendedSlots`) remains the
+recommended path once P3.2-P3.4 exist; the generic PUT is not being cemented as approved architecture
+by this pass's inaction on it.
+
+#### Phase 0 -- unchanged, verified not assumed
+
+`DND5E_2024_MANDATORY_DECISIONS.length` is still 647 (192 implemented / 420 blocked / 35 optional --
+`tests/lib/content-rules/spell-corpus-authority.test.ts`'s existing assertion, re-run this pass,
+unchanged). The 174 class-owned spell-family decisions (`blk:caster-counts` 143 +
+`blk:class-spell-choice-other` 22 + `blk:caster-l1-spell-choice` 5 + `blk:mystic-arcanum` 4) remain
+BLOCKED -- `mandatory-decisions.ts`/`mandatory-decision-coverage.ts` were not touched this pass, by
+design. **The validator existing is not the same as a player being able to satisfy it**: creation and
+progression still have no write path into `spellcasting.spells[]` (P3.3/P3.4, not yet built), so
+completeness has nothing new to ask yet. Availability scoreboard unchanged: Species 3/10, Classes
+0/12, Backgrounds 0/16, Combinations 0/1,920 (equipment, P8, still blocks every caster independently
+of spell state, exactly as §25.26 forecast).
+
+#### P3 slices -- renumbering check against §25.26's plan
+
+§25.26 planned P3.1 as facet-authoring only. This pass delivered that PLUS the validator (originally
+only implied, not its own numbered slice) -- in the user's own framing, "the shared authority
+consumed by later P3 slices." The remaining slices are UNCHANGED from §25.26's own numbering, since
+nothing here does their work:
+- **P3.2 -- the generic bounded count-pool ChoiceSet.** One category-`'spells'` ChoiceSet shape per
+  decision, reusing P2's resolver/routing unchanged, now ALSO able to call this pass's validator to
+  self-check a proposed answer before it is ever offered as resolved. Not started.
+- **P3.3 -- creation write-through.** `create-v2.post.ts` merges confirmed `'spells'` answers into
+  `spellcasting.spells[]` (§25.26 Model 1). Not started.
+- **P3.4 -- progression write-through + level-jump delta.** `confirmProgression` applies the delta for
+  every crossed level in one jump. Not started. (This pass's validator computes the TARGET total, not
+  a delta; P3.4 still owns `delta = target - owned`.)
+- **P3.5 -- Phase-0 reclassification.** Flips the 174 decisions from blocked to implemented, gated on
+  P3.3/P3.4 actually existing. Not started, and must not be started early -- explicitly not done here.
+
+#### Package impact
+
+`app/lib/content-rules/dnd5e-2024.ts` is Content-facet data (hand-authored, merged into compiled
+Content candidates at Content Pack build time), not the Rules Package
+(`packages/eldra-dnd5e-2024/definitions.json`/`manifest.json`) -- neither file was touched this pass.
+Confirmed empirically, not merely by the P2-precedent reasoning in §25.25/§25.26:
+
+```
+pnpm run packages:sync -- --world Solaris   (DRY RUN, no --apply)
+
+RULES:    eldra.rules.dnd5e-2024@0.20.0 -- CURRENT          (unchanged; definitions/manifest untouched)
+CONTENT:  eldra.solaris.xphb -- REFRESH_REQUIRED            (expected: compiled candidates now carry
+                                                               the new spellRequirements facet data)
+ACTIONS:  REFRESH_CONTENT (eldra.solaris.xphb), BIND_CONTENT (eldra.solaris.xphb)
+```
+
+No `SOURCE_VERSION_COLLISION`, no `ERROR` -- no STOP condition. Zero Directus writes (the script
+returns before any apply-path code runs when `--apply` is absent; confirmed by reading
+`scripts/directus/packages-sync.mjs`'s `main()`, not merely by the printed "DRY RUN" line). **No Rules
+version bump recommended** -- Rules truth did not change, only Content's compiled facet data did; the
+existing `eldra.rules.dnd5e-2024@0.20.0` remains correct. Content refresh (`REFRESH_CONTENT` +
+`BIND_CONTENT`) is a real, pending action but is NOT run in this pass (no `--apply` was issued).
+
+#### Files
+
+- Modified: `app/lib/content-rules/types.ts` (new `spellRequirements` facet field + two new exported
+  types), `app/lib/content-rules/dnd5e-2024.ts` (8 class facets each gain a `spellRequirements` array),
+  `tests/server/utils/character-assembly.test.ts` (one new test, existing describe block).
+- Created: `app/lib/characters/spell-requirements.ts` (the validator), `tests/lib/content-rules/
+  spell-requirements-corpus.test.ts` (19 tests), `tests/lib/characters/spell-requirements.test.ts`
+  (26 tests).
+
+#### Verification
+
+`pnpm run test`: 194 files / 4030 tests passed (full suite, including the 45 new tests above and the
+existing 647/192/420/35 census + availability-scoreboard assertions, all unchanged and re-passing).
+`pnpm run typecheck`: 243 unique (file, diagnostic-code) pairs -- identical count to the established
+baseline, zero of them in any file touched this pass (all pre-existing, unrelated to P3.1: `server/
+utils/import-*.ts`, `map-data.ts`, `map-pins.ts`, `map-tiles.ts`, `players.ts`, `roll-events.ts`,
+`rules-packages.ts`, `world-memberships.ts`, `world-rules-roll.ts`, `worlds.ts`, `nuxt.config.ts`).
+Zero new diagnostics. `pnpm run build`: succeeds. `git diff --check`: clean, no whitespace/conflict
+markers. No commit made. No `packages:sync --apply` run.

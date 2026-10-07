@@ -216,6 +216,20 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon']
     },
     'bard-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.bard-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Bard'] },
+          totalByLevel: [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+        },
+        {
+          id: 'spell-requirement.bard-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Bard'], level: 0 },
+          totalByLevel: [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4]
+        }
+      ],
       grants: [
         { set: 'value:armor.light.proficient', to: true },
         { set: 'value:weapon.simple.proficient', to: true },
@@ -299,6 +313,20 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.skill-expertise-choose-two-at-2-and-9', 'progression:class.epic-boon']
     },
     'cleric-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.cleric-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Cleric'] },
+          totalByLevel: [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+        },
+        {
+          id: 'spell-requirement.cleric-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Cleric'], level: 0 },
+          totalByLevel: [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5]
+        }
+      ],
       grants: [
         { set: 'value:armor.light.proficient', to: true },
         { set: 'value:armor.medium.proficient', to: true },
@@ -335,6 +363,20 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard', 'progression:class.epic-boon']
     },
     'druid-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.druid-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Druid'] },
+          totalByLevel: [4,5,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+        },
+        {
+          id: 'spell-requirement.druid-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Druid'], level: 0 },
+          totalByLevel: [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4]
+        }
+      ],
       grants: [
         { set: 'value:armor.light.proficient', to: true },
         { set: 'value:armor.shield.proficient', to: true },
@@ -490,6 +532,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-focus-points', 'progression:class.epic-boon']
     },
     'paladin-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.paladin-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Paladin'] },
+          totalByLevel: [2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15]
+        }
+      ],
       grants: [
         { set: 'value:armor.light.proficient', to: true },
         { set: 'value:armor.medium.proficient', to: true },
@@ -542,6 +592,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-p']
     },
     'ranger-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.ranger-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Ranger'] },
+          totalByLevel: [2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15]
+        }
+      ],
       grants: [
         { set: 'value:armor.light.proficient', to: true },
         { set: 'value:armor.medium.proficient', to: true },
@@ -639,6 +697,20 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent', 'progression:class.skill-expertise-choose-two-at-6', 'progression:class.epic-boon']
     },
     'sorcerer-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.sorcerer-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Sorcerer'] },
+          totalByLevel: [2,4,6,7,9,10,11,12,14,15,16,16,17,17,18,18,19,20,21,22]
+        },
+        {
+          id: 'spell-requirement.sorcerer-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Sorcerer'], level: 0 },
+          totalByLevel: [4,4,4,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6]
+        }
+      ],
       grants: [
         { set: 'value:weapon.simple.proficient', to: true },
         { set: 'value:save.con.proficient', to: true },
@@ -677,6 +749,44 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points', 'progression:class.epic-boon']
     },
     'warlock-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.warlock-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Warlock'] },
+          totalByLevel: [2,3,4,5,6,7,8,9,10,10,11,11,12,12,13,13,14,14,15,15]
+        },
+        {
+          id: 'spell-requirement.warlock-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Warlock'], level: 0 },
+          totalByLevel: [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4]
+        },
+        {
+          id: 'spell-requirement.warlock-xphb.arcanum.6',
+          pool: 'arcanum',
+          filter: { classList: ['Warlock'], level: 6 },
+          totalByLevel: [0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1]
+        },
+        {
+          id: 'spell-requirement.warlock-xphb.arcanum.7',
+          pool: 'arcanum',
+          filter: { classList: ['Warlock'], level: 7 },
+          totalByLevel: [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1]
+        },
+        {
+          id: 'spell-requirement.warlock-xphb.arcanum.8',
+          pool: 'arcanum',
+          filter: { classList: ['Warlock'], level: 8 },
+          totalByLevel: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1]
+        },
+        {
+          id: 'spell-requirement.warlock-xphb.arcanum.9',
+          pool: 'arcanum',
+          filter: { classList: ['Warlock'], level: 9 },
+          totalByLevel: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1]
+        }
+      ],
       grants: [
         { set: 'value:armor.light.proficient', to: true },
         { set: 'value:weapon.simple.proficient', to: true },
@@ -707,6 +817,27 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon']
     },
     'wizard-xphb': {
+      spellRequirements: [
+        {
+          id: 'spell-requirement.wizard-xphb.spellbook',
+          pool: 'spellbook',
+          filter: { classList: ['Wizard'] },
+          totalByLevel: [6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44]
+        },
+        {
+          id: 'spell-requirement.wizard-xphb.spell',
+          pool: 'spell',
+          filter: { classList: ['Wizard'] },
+          totalByLevel: [4,5,6,7,9,10,11,12,14,15,16,16,17,18,19,21,22,23,24,25],
+          requiresMembershipPool: 'spell-requirement.wizard-xphb.spellbook'
+        },
+        {
+          id: 'spell-requirement.wizard-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Wizard'], level: 0 },
+          totalByLevel: [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5]
+        }
+      ],
       grants: [
         { set: 'value:weapon.simple.proficient', to: true },
         { set: 'value:save.int.proficient', to: true },

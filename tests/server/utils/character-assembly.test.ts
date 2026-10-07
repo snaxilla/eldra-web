@@ -21,6 +21,9 @@ vi.mock('../../../server/utils/directus', () => ({
 }))
 
 import { assembleCharacter } from '../../../server/utils/character-assembly'
+import { resolveDnd5eSpellMechanics } from '../../../app/lib/spell-mechanics/dnd5e'
+import { spellIdentityOf, validateSpellRequirements } from '../../../app/lib/characters/spell-requirements'
+import type { SpellRequirement } from '../../../app/lib/content-rules/types'
 
 function catalogueEntry(overrides: Partial<{ packageId: string; slug: string; title: string }> = {}) {
   return {
@@ -832,5 +835,32 @@ describe('assembleCharacter -- spellcasting', () => {
 
     const result = await assembleCharacter('5', '42')
     expect(result.available && result.blueprint.spells).toHaveLength(1)
+  })
+
+  // D&D 2024 Character Rules P3.1 -- CAST REGRESSION. P3.1 adds no code to this file at all; this
+  // proves it. A spell that is P3.1-VALID (resolvable, with real spellMechanics, matching a real
+  // requirement's pool/filter) is still exposed through `assembleCharacter`'s `blueprint.spells`
+  // EXACTLY as every test above already proves for an ordinary spell -- Cast's own read path
+  // (`resolveSpells`, unexported and untouched) needs no change for P3.1 to exist beside it.
+  it('P3.1: a spell that the new validator would also accept remains visible to assembly/Cast, unchanged', async () => {
+    const mechanics = resolveDnd5eSpellMechanics({ name: 'Fireball', source: 'XPHB', level: 3, school: 'V', classLists: ['Wizard'] })!
+    const WIZARD_FIREBALL = { ...catalogueEntry({ title: 'Fireball', slug: 'fireball', sourceBook: 'XPHB' }), spellMechanics: mechanics }
+
+    withSpellcasting({
+      spells: [{ instanceId: 'spell-1', ref: { packageId: WIZARD_FIREBALL.packageId, slug: 'fireball' }, known: true, prepared: true }]
+    }, [WIZARD_FIREBALL])
+
+    const result = await assembleCharacter('5', '42')
+    const spell = result.available ? result.blueprint.spells[0] : null
+
+    // Assembly's own contract, unchanged: resolved, titled from the catalogue, flags relayed.
+    expect(spell).toMatchObject({ status: 'resolved', title: 'Fireball', known: true, prepared: true })
+
+    // And the SAME assembled entry, fed into the P3.1 validator, is independently legal -- the two
+    // layers compose with no change to this file.
+    const requirement: SpellRequirement = { id: 'req.test', pool: 'spell', filter: { classList: ['Wizard'] }, totalByLevel: [1] }
+    const candidate = { identity: spellIdentityOf({ ref: spell!.ref }), known: spell!.known, prepared: spell!.prepared, mechanics: spell!.entry!.spellMechanics ?? null }
+    const [validated] = validateSpellRequirements({ requirements: [requirement], characterLevel: 1, spellSlotLevels: [{ level: 3, max: 2, expended: 0 }], candidates: [candidate] })
+    expect(validated.satisfied).toBe(true)
   })
 })

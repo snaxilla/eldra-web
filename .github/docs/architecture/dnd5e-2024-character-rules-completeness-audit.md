@@ -3949,3 +3949,41 @@ established baseline, zero new, none in any file touched this pass. `pnpm run bu
 `git diff --check`: clean. `pnpm packages:sync -- --world Solaris` (dry run): Rules
 `eldra.rules.dnd5e-2024@0.20.0` CURRENT, Content `eldra.solaris.xphb` CURRENT, Actions None -- no
 package change, confirmed empirically, not merely expected.
+
+### 25.29 RULES HOTFIX -- HALF-CASTER LEVEL-1 SPELL SLOTS (0.21.0, 2026-10-07)
+
+**Correction, not a new phase.** Discovered while deriving P3.3's mandatory Level-1 matrix (P3.3
+itself was stopped pending this fix and has not resumed -- see its own section once it exists).
+`table:spellcasting.slots_half`'s `key: 1` row authored `slot_1: 0`; the real XPHB corpus grants
+Paladin and Ranger (both `casterProgression: "artificer"`, 2024's half-caster shape) **two Level-1
+slots at character Level 1** -- confirmed directly against both classes' own `rowsSpellProgression`
+table, which are identical to each other and to every other row (2-20) our package already had
+correct. Only the Level-1 row was wrong; nothing else moved.
+
+**Real-world impact (independent of P3)**: `deriveSpellSlotLevels` returned `[]` for a Level-1
+Paladin/Ranger, so Cast's `checkSpellSlotAvailability` refused every Level-1 cast with
+`invalid-cast-level`, even though 2024 RAW grants two real slots. This is a production Cast bug the
+2024 corpus itself disproves, not a design question.
+
+**Fix**: one field, `packages/eldra-dnd5e-2024/definitions.json`, `table:spellcasting.slots_half`,
+row `key: 1`, `slot_1: 0 -> 2`. Rows 2-20 unchanged (verified unchanged, not merely left alone --
+`tests/rules/dnd5e-2024-package.test.ts`'s new all-20-row corpus comparison asserts every row against
+the real Paladin/Ranger table). No application code changed -- `deriveSpellSlotLevels`, Cast, the
+Sheet, and P3's own spell-requirement/planner infrastructure already read the table generically; none
+of them contain a Paladin/Ranger branch, and none needed one.
+
+**Version**: `eldra.rules.dnd5e-2024` `0.20.0 -> 0.21.0`, following this package's own established
+convention (every manifest/definitions change bumps the minor digit, with no patch-level precedent).
+
+**Tests**: `tests/rules/dnd5e-2024-package.test.ts` -- the stale "no slots at level 1" assertion/title
+corrected to the real value, boundary assertions at levels 2/5/9/17/20 (proving rows 2-20 untouched),
+a full 20-row corpus-vs-package comparison for both Paladin and Ranger (test-time corpus read only,
+no runtime dependency), and a real-facet-driven derivation proof (`findRulesFacet` -> the real
+`caster_type.half` grant -> `deriveSpellSlotLevels` -> `maxSpellLevelOf`) for both class slugs via one
+parametrized test, proving no Paladin/Ranger branch exists in the generic path itself.
+`tests/server/utils/character-cast.test.ts` -- a Level-1 Paladin with one prepared Level-1 spell now
+casts successfully through the real Cast authority path (bite-proven: reverting the row to `0`
+reproduces the exact pre-fix failure, confirmed, then restored).
+
+Not part of this correction: P3.3 (Level-1 creation spell acquisition) remains stopped, as it was
+when this bug was found -- this hotfix does not resume it.

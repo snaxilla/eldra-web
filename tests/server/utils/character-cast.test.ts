@@ -1868,3 +1868,31 @@ describe('Phase 1B.5 -- regression: every prior archetype/resource/orchestration
     expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
   })
 })
+
+// RULES HOTFIX 0.21.0 -- the Cast regression. Before the fix, `table:spellcasting.slots_half`'s
+// Level-1 row was all zeros, so `deriveSpellSlotLevels` produced an EMPTY levels array for any
+// Level-1 Paladin/Ranger, and `checkSpellSlotAvailability` refused every Level-1 cast with
+// `invalid-cast-level` ("no level 1 spell slots") even though 2024 RAW grants two. This proves the
+// REAL Cast authority path (not a hand-built slot check) now succeeds through the real Rules
+// Engine/package for a Level-1 half caster, with no change to Cast itself -- only the package row
+// changed. The prepared spell is reused from the Wizard fixture above (Magic Missile's resolved
+// mechanics); which real spell it is is irrelevant to this slot-availability regression, matching
+// this file's own "no spell-name special cases" rule.
+describe('RULES HOTFIX 0.21.0 -- Level-1 half caster (Paladin) is no longer refused for "no spell slots"', () => {
+  it('a Level-1 Paladin with one prepared Level-1 spell and an available Level-1 slot casts successfully, never invalid-cast-level', async () => {
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: wizardBlueprint({
+        class: {
+          status: 'resolved',
+          entry: baseEntry({ title: 'Paladin', slug: 'paladin-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'paladin-xphb') ?? undefined })
+        },
+        abilityScores: { method: 'standard-array', scores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 16 } },
+        spells: [preparedSpell('spell-1', 'Magic Missile', MAGIC_MISSILE_MECHANICS)]
+      })
+    })
+
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-1' })
+    expect(result.ok).toBe(true)
+  })
+})

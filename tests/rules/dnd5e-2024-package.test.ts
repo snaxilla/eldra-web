@@ -33,6 +33,9 @@ import {
   type RulesPackageManifest,
   type RuleValue
 } from '../../app/lib/rules/types'
+import { findRulesFacet } from '../../app/lib/content-rules'
+import { deriveSpellSlotLevels } from '../../app/lib/characters/spellcasting'
+import { maxSpellLevelOf } from '../../app/lib/characters/spell-requirements'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 
@@ -309,11 +312,73 @@ describe('spell slot progression tables (reference data -- read directly, never 
     })
   })
 
-  it('half caster: no slots at level 1, first slot at level 2, 5th-level slots only from level 17', () => {
-    expect(rowFor('table:spellcasting.slots_half', 1)).toMatchObject({ slot_1: 0 })
-    expect(rowFor('table:spellcasting.slots_half', 2)).toMatchObject({ slot_1: 2 })
-    expect(rowFor('table:spellcasting.slots_half', 17)).toMatchObject({ slot_4: 3, slot_5: 1 })
+  // RULES HOTFIX 0.21.0 -- the 2024 half caster (Paladin/Ranger) receives Level-1 spell slots AT
+  // Level 1 (two of them), confirmed directly against the real XPHB corpus below -- NOT "no slots
+  // until level 2", which was this test's own PRE-0.21.0 title and assertion, encoding a stale
+  // 2014-style half-caster delay the 2024 corpus does not have. Rows 2-20 were already correct and
+  // are reasserted here unchanged, as boundary proof that only row 1 moved.
+  it('half caster: Level 1 already grants two Level-1 slots (2024 RAW); boundaries through Level 20 unchanged', () => {
+    expect(rowFor('table:spellcasting.slots_half', 1)).toMatchObject({ slot_1: 2, slot_2: 0, slot_3: 0, slot_4: 0, slot_5: 0 })
+    expect(rowFor('table:spellcasting.slots_half', 2)).toMatchObject({ slot_1: 2, slot_2: 0, slot_3: 0, slot_4: 0, slot_5: 0 })
+    expect(rowFor('table:spellcasting.slots_half', 5)).toMatchObject({ slot_1: 4, slot_2: 2, slot_3: 0, slot_4: 0, slot_5: 0 })
+    expect(rowFor('table:spellcasting.slots_half', 9)).toMatchObject({ slot_1: 4, slot_2: 3, slot_3: 2, slot_4: 0, slot_5: 0 })
+    expect(rowFor('table:spellcasting.slots_half', 17)).toMatchObject({ slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 3, slot_5: 1 })
+    expect(rowFor('table:spellcasting.slots_half', 20)).toMatchObject({ slot_1: 4, slot_2: 3, slot_3: 3, slot_4: 3, slot_5: 2 })
   })
+
+  // RULES HOTFIX 0.21.0 -- the bite proof. Reads the REAL Paladin and Ranger class JSON directly
+  // (never retyped from memory, never trusted from the table above) and compares the authored
+  // `table:spellcasting.slots_half` against BOTH corpus tables, all 20 levels x 5 columns, so a
+  // single-row drift like the one just fixed fails this test immediately rather than waiting for a
+  // player-visible Cast refusal to surface it. Paladin and Ranger are asserted equal to each other
+  // first (both use `casterProgression: "artificer"`, i.e. the SAME half-caster table), then each is
+  // compared to the authored table -- test-time corpus reads only, no runtime dependency on the
+  // dataset directory.
+  it('half caster table matches the real XPHB Paladin AND Ranger spell-slot progression, all 20 levels', () => {
+    const DATA_ROOT = '/opt/eldra/datasets/5etools-src/data/class'
+
+    function realHalfCasterRows(className: 'Paladin' | 'Ranger'): number[][] {
+      const data = JSON.parse(readFileSync(`${DATA_ROOT}/class-${className.toLowerCase()}.json`, 'utf8'))
+      const cls = (data.class ?? []).find((c: { source: string, name: string }) => c.source === 'XPHB' && c.name === className)
+      const group = (cls?.classTableGroups ?? []).find((g: { rowsSpellProgression?: number[][] }) => g.rowsSpellProgression)
+      return group.rowsSpellProgression
+    }
+
+    const paladinRows = realHalfCasterRows('Paladin')
+    const rangerRows = realHalfCasterRows('Ranger')
+    expect(paladinRows).toEqual(rangerRows)
+    expect(paladinRows).toHaveLength(20)
+
+    for (let level = 1; level <= 20; level++) {
+      const [slot1, slot2, slot3, slot4, slot5] = paladinRows[level - 1]
+      expect(rowFor('table:spellcasting.slots_half', level), `level ${level}`).toEqual({
+        key: level, slot_1: slot1, slot_2: slot2, slot_3: slot3, slot_4: slot4, slot_5: slot5
+      })
+    }
+  })
+
+  // RULES HOTFIX 0.21.0 -- proves the fix reaches the REAL generic derivation path end to end
+  // (real class facet -> caster type -> real table row -> deriveSpellSlotLevels ->
+  // maxSpellLevelOf), for BOTH Paladin and Ranger, via one parametrized test -- not two hand-copied
+  // ones -- precisely because there is no Paladin/Ranger branch anywhere in this path: both classes
+  // GRANT the identical `value:spellcasting.caster_type.half` boolean (confirmed against their own
+  // real facets below) and therefore resolve to the identical table row.
+  it.each(['paladin-xphb', 'ranger-xphb'] as const)(
+    '%s: facet grants caster_type.half, and Level 1 resolves to 2 real slots with legal maximum spell level 1',
+    (slug) => {
+      const facet = findRulesFacet('dnd5e.2024', 'class', slug)!
+      expect(facet.grants).toEqual(expect.arrayContaining([{ set: 'value:spellcasting.caster_type.half', to: true }]))
+
+      const { manifest, definitions } = loadPackage()
+      const built = RulesRegistry.create(manifest, definitions)
+      if (!built.ok) throw new Error('registry failed')
+      const table = built.registry.getById('table:spellcasting.slots_half') as { rows: Record<string, unknown>[] }
+
+      const levels = deriveSpellSlotLevels({ casterType: 'half', tableRows: table.rows, characterLevel: 1, expendedSlots: {} })
+      expect(levels).toEqual([{ level: 1, max: 2, expended: 0 }])
+      expect(maxSpellLevelOf(levels)).toBe(1)
+    }
+  )
 
   it('pact caster: slots and slot level both climb independently of the full/half tables', () => {
     expect(rowFor('table:spellcasting.slots_pact', 1)).toEqual({ key: 1, slots: 1, slot_level: 1 })

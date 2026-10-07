@@ -11,6 +11,7 @@ import type { SpellRequirement } from '../../../app/lib/content-rules/types'
 import { resolveDnd5eSpellMechanics } from '../../../app/lib/spell-mechanics/dnd5e'
 import {
   allSpellRequirementsSatisfied,
+  detectRequirementTopologyIssues,
   spellIdentityOf,
   validateSpellRequirements,
   type SpellStateCandidate
@@ -304,5 +305,51 @@ describe('P3.1 validator -- historical read compatibility (tests 25-26)', () => 
     const results = validateSpellRequirements({ requirements, characterLevel: 5, spellSlotLevels: [{ level: 1, max: 4, expended: 0 }], candidates })
     expect(results.some((r) => !r.satisfied)).toBe(true)
     expect(candidates).toHaveLength(1) // frozen input, unmutated
+  })
+})
+
+describe('P3.2 HARDENING -- requirement dependency topology (unknown / self / cycle)', () => {
+  const unknownTarget: SpellRequirement = { id: 'req.a', pool: 'spell', filter: { classList: ['Wizard'] }, totalByLevel: Array(20).fill(1), requiresMembershipPool: 'req.ghost' }
+  const selfTarget: SpellRequirement = { id: 'req.a', pool: 'spell', filter: { classList: ['Wizard'] }, totalByLevel: Array(20).fill(1), requiresMembershipPool: 'req.a' }
+  const cycleA: SpellRequirement = { id: 'req.a', pool: 'spell', filter: { classList: ['Wizard'] }, totalByLevel: Array(20).fill(1), requiresMembershipPool: 'req.b' }
+  const cycleB: SpellRequirement = { id: 'req.b', pool: 'spellbook', filter: { classList: ['Wizard'] }, totalByLevel: Array(20).fill(1), requiresMembershipPool: 'req.a' }
+
+  it('an unknown requiresMembershipPool reference is an explicit configuration issue, not a silently-empty membership pool', () => {
+    const [result] = validateSpellRequirements({ requirements: [unknownTarget], characterLevel: 1, spellSlotLevels: [], candidates: [] })
+    expect(result.issues).toEqual(expect.arrayContaining([{ kind: 'invalid-requirement-dependency', reason: 'unknown', membershipPoolId: 'req.ghost' }]))
+  })
+
+  it('a requirement that names itself is an explicit configuration issue', () => {
+    const [result] = validateSpellRequirements({ requirements: [selfTarget], characterLevel: 1, spellSlotLevels: [], candidates: [] })
+    expect(result.issues).toEqual(expect.arrayContaining([{ kind: 'invalid-requirement-dependency', reason: 'self', membershipPoolId: 'req.a' }]))
+  })
+
+  it('an A -> B -> A cycle is an explicit configuration issue on BOTH requirements', () => {
+    const results = validateSpellRequirements({ requirements: [cycleA, cycleB], characterLevel: 1, spellSlotLevels: [], candidates: [] })
+    expect(results.find((r) => r.requirementId === 'req.a')!.issues).toEqual(expect.arrayContaining([{ kind: 'invalid-requirement-dependency', reason: 'cycle', membershipPoolId: 'req.b' }]))
+    expect(results.find((r) => r.requirementId === 'req.b')!.issues).toEqual(expect.arrayContaining([{ kind: 'invalid-requirement-dependency', reason: 'cycle', membershipPoolId: 'req.a' }]))
+  })
+
+  it('no otherwise-legal candidate can satisfy a cyclic requirement -- malformed topology can never appear complete', () => {
+    const candidates = [candidate('x', { known: true, prepared: true, mechanics: mechanics('X', 1, ['Wizard']) })]
+    const results = validateSpellRequirements({ requirements: [cycleA, cycleB], characterLevel: 1, spellSlotLevels: [{ level: 1, max: 2, expended: 0 }], candidates })
+    for (const result of results) {
+      expect(result.owned).toBe(0)
+      expect(result.satisfied).toBe(false)
+    }
+  })
+
+  it('a longer (3-requirement) cycle is caught by the same generic bounded walk', () => {
+    const x: SpellRequirement = { id: 'req.x', pool: 'spell', filter: { classList: ['Wizard'] }, totalByLevel: Array(20).fill(1), requiresMembershipPool: 'req.y' }
+    const y: SpellRequirement = { id: 'req.y', pool: 'spellbook', filter: { classList: ['Wizard'] }, totalByLevel: Array(20).fill(1), requiresMembershipPool: 'req.z' }
+    const z: SpellRequirement = { id: 'req.z', pool: 'cantrip', filter: { classList: ['Wizard'], level: 0 }, totalByLevel: Array(20).fill(1), requiresMembershipPool: 'req.x' }
+    const issues = detectRequirementTopologyIssues([x, y, z])
+    expect(issues.size).toBe(3)
+    for (const requirement of [x, y, z]) expect(issues.get(requirement.id)!.kind).toBe('invalid-requirement-dependency')
+  })
+
+  it('the real Wizard dependency (prepared requires spellbook) is well-formed -- zero topology issues', () => {
+    const requirements = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')!.spellRequirements!
+    expect(detectRequirementTopologyIssues(requirements).size).toBe(0)
   })
 })

@@ -46,6 +46,32 @@
 // requirement that names one, looking its membership pool's ALREADY-COMPUTED legal identity set up
 // by id. A `requiresMembershipPool` can therefore never point at another requirement that ALSO
 // names one -- the real corpus has no such chain, and this function does not invent support for one.
+//
+// P3.2 HARDENING -- a malformed `requiresMembershipPool` (an id naming a requirement NOT PRESENT in
+// the same array, a requirement naming itself, or a cycle of two or more requirements naming each
+// other) is detected explicitly, BEFORE pass 2 runs, by `detectRequirementTopologyIssues` below, and
+// short-circuits that requirement to `{legal: new Set(), issues: [the topology issue]}` -- no
+// candidate is ever evaluated against it, and no legal acquisition of any kind can make it appear
+// satisfied. This replaces the earlier posture (letting `legalSetsById.get(...) ?? new Set()` fall
+// back to empty) with an EXPLICIT configuration diagnostic: the earlier fallback already prevented an
+// illegal selection from becoming legal, but it reported a malformed requirement the same way it
+// reports a legitimately empty, well-formed one ("you have zero legal members"), which is not
+// sufficient as a diagnostic for a package authoring mistake.
+//
+// ---------------------------------------------------------------------------
+// P3.2 REUSE -- WHY `evaluate`, `evaluateRequirements`, `toResult`, `maxSpellLevelOf`, and `flagFor`
+// ARE EXPORTED
+// ---------------------------------------------------------------------------
+// `app/lib/characters/spell-acquisition-plan.ts` (P3.2) needs the IDENTICAL per-candidate legality
+// classification and the IDENTICAL dependency-respecting evaluation order this file already uses for
+// `validateSpellRequirements` -- both to judge a character's CURRENT (persisted + tentative) state,
+// and to discover which CATALOGUE spells would be legal if newly selected (by evaluating the full
+// catalogue AS IF every entry already carried the relevant flag, then reading which land in `legal`).
+// These five are exported, narrowly, as the ONE shared implementation both modules consume --
+// `validateSpellRequirements` itself is UNCHANGED in signature and behavior (refactored to call
+// `evaluateRequirements` internally; every P3.1 test still exercises the identical code path and
+// output). There is exactly one interpretation of count/pool/membership/filtering/legality in this
+// codebase; P3.2 never re-implements any part of it.
 
 import type { CanonicalSpellMechanics } from '../spell-mechanics/types'
 import { spellOptionVerdict } from '../spell-mechanics/spell-option-eligibility'
@@ -81,6 +107,13 @@ export type SpellRequirementIssue =
   | { kind: 'illegal-wrong-level'; identity: string; level: number; maxLevel: number }
   | { kind: 'illegal-unresolved'; identity: string }
   | { kind: 'illegal-not-in-membership-pool'; identity: string; membershipPoolId: string }
+  // P3.2 HARDENING -- the REQUIREMENT itself is misconfigured (never attached to a spell identity,
+  // since no candidate caused this): `reason: 'unknown'` means `requiresMembershipPool` names an id
+  // not present in this same requirements array; `'self'` means it names itself; `'cycle'` means it
+  // and one or more other requirements in the array name each other in a loop. `membershipPoolId` is
+  // always the reference that is broken (for 'self' this equals the requirement's own id). See
+  // `detectRequirementTopologyIssues` below -- never attached by `evaluate` itself.
+  | { kind: 'invalid-requirement-dependency'; reason: 'unknown' | 'self' | 'cycle'; membershipPoolId: string }
 
 export type SpellRequirementResult = {
   requirementId: string
@@ -92,14 +125,17 @@ export type SpellRequirementResult = {
   issues: SpellRequirementIssue[]
 }
 
-const KNOWN_POOL_KINDS: readonly SpellRequirementPoolKind[] = ['cantrip', 'spell', 'spellbook', 'arcanum']
+// Exported so P3.2's planner applies the IDENTICAL "unrecognized pool kind fails closed" rule when
+// deciding whether to compute catalogue OPTIONS for a requirement -- never a second, independently
+// maintained list of the same four strings.
+export const KNOWN_POOL_KINDS: readonly SpellRequirementPoolKind[] = ['cantrip', 'spell', 'spellbook', 'arcanum']
 
 // The flag each pool kind reads. 'spell' (ordinary leveled casting, every one of the 8 classes'
 // unified "Prepared Spells of Level 1+") reads `prepared`; every other pool ('cantrip' -- the
 // corpus's own "you KNOW two cantrips" wording; 'spellbook' -- membership; 'arcanum' -- a fixed,
 // permanent pick, never daily-prepared) reads `known`. See SpellRequirementPoolKind's own header
 // (app/lib/content-rules/types.ts) for the corpus citations this mapping rests on.
-function flagFor(pool: SpellRequirementPoolKind): 'known' | 'prepared' {
+export function flagFor(pool: SpellRequirementPoolKind): 'known' | 'prepared' {
   return pool === 'spell' ? 'prepared' : 'known'
 }
 
@@ -110,16 +146,24 @@ function isLevelGated(pool: SpellRequirementPoolKind): boolean {
   return pool === 'spell' || pool === 'spellbook'
 }
 
-function maxSpellLevelOf(spellSlotLevels: readonly SpellSlotLevel[]): number {
+export function maxSpellLevelOf(spellSlotLevels: readonly SpellSlotLevel[]): number {
   return spellSlotLevels.length ? Math.max(...spellSlotLevels.map((s) => s.level)) : 0
 }
 
-type Evaluated = { legal: Set<string>; issues: SpellRequirementIssue[] }
+export type Evaluated = { legal: Set<string>; issues: SpellRequirementIssue[] }
 
 // Walks every candidate once for ONE requirement, classifying each flagged candidate as legal or
 // into exactly one issue kind. `membershipIdentities`, when given, additionally requires a legal
 // candidate to already belong to that set (Wizard's "prepare FROM your spellbook" rule).
-function evaluate(
+//
+// P3.2 ALSO calls this directly (exported) to discover LEGAL OPTIONS: it builds a synthetic
+// candidate per catalogue spell with the relevant flag forced true (so every catalogue entry is
+// "visible" regardless of which flag the pool reads), passes the REAL, already-resolved membership
+// set for a gated requirement (never a catalogue-wide recomputation -- a spell must be in the
+// character's ACTUAL effective spellbook to be a legal prepared option, not merely "any spell that
+// could theoretically belong to one"), and reads the resulting `legal` set as "every catalogue spell
+// that would be legal if selected." Exactly the same function, zero parallel interpretation.
+export function evaluate(
   requirement: SpellRequirement,
   candidates: readonly SpellStateCandidate[],
   maxSpellLevel: number,
@@ -170,7 +214,7 @@ function evaluate(
   return { legal, issues }
 }
 
-function toResult(requirement: SpellRequirement, required: number, evaluated: Evaluated): SpellRequirementResult {
+export function toResult(requirement: SpellRequirement, required: number, evaluated: Evaluated): SpellRequirementResult {
   const owned = evaluated.legal.size
   const issues = [...evaluated.issues]
 
@@ -193,6 +237,98 @@ function toResult(requirement: SpellRequirement, required: number, evaluated: Ev
   }
 }
 
+// P3.2 HARDENING -- the smallest pure check that a requirement's `requiresMembershipPool` chain is
+// well-formed, independent of any character state. Three direct reasons, checked cheaply before any
+// traversal: absent (nothing to check), self (`target === requirement.id`), unknown (`target` not in
+// `byId`). A chain of two or more requirements naming each other is caught by a bounded walk from
+// `requirement.id` itself, following `requiresMembershipPool` pointers and recording every id seen --
+// revisiting ANY already-seen id (whether that is `requirement.id` again or some other node along the
+// way) means the chain can never terminate in a legitimate membership pool, so it is reported as
+// `'cycle'`. The walk is bounded by `requirements.length` (every step either adds a new id to
+// `visited` or returns), so it always terminates even on malformed input -- no general graph library,
+// just one small bounded loop.
+export function detectRequirementTopologyIssues(requirements: readonly SpellRequirement[]): Map<string, SpellRequirementIssue> {
+  const byId = new Map(requirements.map((r) => [r.id, r] as const))
+  const issues = new Map<string, SpellRequirementIssue>()
+
+  for (const requirement of requirements) {
+    const target = requirement.requiresMembershipPool
+    if (!target) continue
+
+    if (target === requirement.id) {
+      issues.set(requirement.id, { kind: 'invalid-requirement-dependency', reason: 'self', membershipPoolId: target })
+      continue
+    }
+    if (!byId.has(target)) {
+      issues.set(requirement.id, { kind: 'invalid-requirement-dependency', reason: 'unknown', membershipPoolId: target })
+      continue
+    }
+
+    const visited = new Set<string>([requirement.id])
+    let current: SpellRequirement | undefined = byId.get(target)
+    let cyclic = false
+    while (current) {
+      if (visited.has(current.id)) {
+        cyclic = true
+        break
+      }
+      visited.add(current.id)
+      const next = current.requiresMembershipPool
+      current = next ? byId.get(next) : undefined
+    }
+    if (cyclic) {
+      issues.set(requirement.id, { kind: 'invalid-requirement-dependency', reason: 'cycle', membershipPoolId: target })
+    }
+  }
+
+  return issues
+}
+
+// The shared two-pass orchestration (see this file's own EVALUATION ORDER / P3.2 REUSE header
+// above). Returns the raw `Evaluated` (legal identity set + issues) per requirement id, in
+// requirement-declaration iteration order internally, keyed for either caller to read in whatever
+// order it needs. Exported so P3.2's planner can call this SAME function against a second,
+// different `candidates` array (a merged current+tentative state, or a catalogue-as-candidates
+// probe) without re-deriving the dependency order, the fail-closed-on-unknown-pool rule, or the
+// topology check a second time.
+export function evaluateRequirements(
+  requirements: readonly SpellRequirement[],
+  candidates: readonly SpellStateCandidate[],
+  maxSpellLevel: number
+): Map<string, Evaluated> {
+  const evaluated = new Map<string, Evaluated>()
+  const topologyIssues = detectRequirementTopologyIssues(requirements)
+
+  // Pass 1: every requirement with no membership dependency.
+  for (const requirement of requirements) {
+    if (requirement.requiresMembershipPool) continue
+    if (!KNOWN_POOL_KINDS.includes(requirement.pool)) {
+      // Fail closed: an unrecognized pool kind is never silently satisfied -- no candidate is ever
+      // legal for it.
+      evaluated.set(requirement.id, { legal: new Set(), issues: [] })
+      continue
+    }
+    evaluated.set(requirement.id, evaluate(requirement, candidates, maxSpellLevel, null))
+  }
+
+  // Pass 2: every requirement that names a membership pool. A malformed reference (unknown/self/
+  // cycle) short-circuits to an explicit configuration issue -- no candidate is evaluated against
+  // it, and no candidate, tentative or otherwise, can ever populate its `legal` set. A well-formed
+  // reference resolves against Pass 1's own result.
+  for (const requirement of requirements) {
+    if (!requirement.requiresMembershipPool) continue
+    const topologyIssue = topologyIssues.get(requirement.id)
+    if (topologyIssue) {
+      evaluated.set(requirement.id, { legal: new Set(), issues: [topologyIssue] })
+      continue
+    }
+    const membershipIdentities = evaluated.get(requirement.requiresMembershipPool)?.legal ?? new Set<string>()
+    evaluated.set(requirement.id, evaluate(requirement, candidates, maxSpellLevel, membershipIdentities))
+  }
+
+  return evaluated
+}
+
 // Evaluates every requirement a class facet declares against one character's current level and
 // persisted spell state. Pure; never mutates `candidates`. A level jump (1, 8, or 20) costs the
 // identical single lookup against `totalByLevel[level - 1]` -- no sequential walk.
@@ -204,35 +340,17 @@ export function validateSpellRequirements(input: {
 }): SpellRequirementResult[] {
   const { requirements, characterLevel, candidates, spellSlotLevels } = input
   const maxSpellLevel = maxSpellLevelOf(spellSlotLevels)
-  const results = new Map<string, SpellRequirementResult>()
-  const legalSetsById = new Map<string, Set<string>>()
-
-  // Pass 1: every requirement with no membership dependency.
-  for (const requirement of requirements) {
-    if (requirement.requiresMembershipPool) continue
-    const required = requirement.totalByLevel[characterLevel - 1] ?? 0
-    if (!KNOWN_POOL_KINDS.includes(requirement.pool)) {
-      // Fail closed: an unrecognized pool kind is never silently satisfied.
-      results.set(requirement.id, { requirementId: requirement.id, pool: requirement.pool, required, owned: 0, satisfied: false, issues: [{ kind: 'missing', count: required }] })
-      continue
-    }
-    const evaluated = evaluate(requirement, candidates, maxSpellLevel, null)
-    legalSetsById.set(requirement.id, evaluated.legal)
-    results.set(requirement.id, toResult(requirement, required, evaluated))
-  }
-
-  // Pass 2: every requirement that names a membership pool, resolved against Pass 1's own result.
-  for (const requirement of requirements) {
-    if (!requirement.requiresMembershipPool) continue
-    const required = requirement.totalByLevel[characterLevel - 1] ?? 0
-    const membershipIdentities = legalSetsById.get(requirement.requiresMembershipPool) ?? new Set<string>()
-    const evaluated = evaluate(requirement, candidates, maxSpellLevel, membershipIdentities)
-    results.set(requirement.id, toResult(requirement, required, evaluated))
-  }
+  const evaluated = evaluateRequirements(requirements, candidates, maxSpellLevel)
 
   // Original declaration order, not pass order -- callers should see requirements in the same
   // order the facet declared them.
-  return requirements.map((r) => results.get(r.id)!)
+  return requirements.map((requirement) => {
+    const required = requirement.totalByLevel[characterLevel - 1] ?? 0
+    if (!KNOWN_POOL_KINDS.includes(requirement.pool)) {
+      return { requirementId: requirement.id, pool: requirement.pool, required, owned: 0, satisfied: false, issues: [{ kind: 'missing' as const, count: required }] }
+    }
+    return toResult(requirement, required, evaluated.get(requirement.id)!)
+  })
 }
 
 export function allSpellRequirementsSatisfied(results: readonly SpellRequirementResult[]): boolean {

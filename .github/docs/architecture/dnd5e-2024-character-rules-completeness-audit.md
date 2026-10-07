@@ -3722,3 +3722,230 @@ utils/import-*.ts`, `map-data.ts`, `map-pins.ts`, `map-tiles.ts`, `players.ts`, 
 `rules-packages.ts`, `world-memberships.ts`, `world-rules-roll.ts`, `worlds.ts`, `nuxt.config.ts`).
 Zero new diagnostics. `pnpm run build`: succeeds. `git diff --check`: clean, no whitespace/conflict
 markers. No commit made. No `packages:sync --apply` run.
+
+### 25.28 GENERIC SPELL ACQUISITION PLAN + MISSING-SELECTION OPTION RESOLUTION (P3.2, 2026-10-07)
+
+**Implemented this pass: a pure acquisition PLANNER on top of P3.1's validator -- which requirements
+are satisfied, how many selections are missing, which real catalogue spells would legally fill each
+one, and a tentative-answer mechanism that lets a hypothetical pick for one requirement (Wizard's
+spellbook) immediately feed another requirement's legality (prepared) within the SAME planning call.**
+No spellcasting/rules_choices/progression writes, no Builder/Level Manager UI, no Magic Initiate/
+Blessed/Druidic Warrior/subclass work, no Phase-0 reclassification. No commit. No
+`packages:sync --apply`.
+
+#### Why this never re-implements P3.1's own interpretation
+
+`validateSpellRequirements` was NOT replaced, and its public signature/behavior is unchanged (all 89
+pre-existing P3.1/Cast-regression tests re-pass, byte-for-byte, after the refactor below). Five pieces
+were exported, narrowly, from `app/lib/characters/spell-requirements.ts` for the planner to reuse
+directly rather than reinterpret:
+- `evaluate` -- the per-requirement candidate classifier. The planner calls it TWICE per requirement:
+  once (indirectly, via the new `evaluateRequirements`) against the character's EFFECTIVE state, and
+  once directly against a synthetic "every catalogue entry, flags forced true" probe, to discover
+  which NOT-YET-OWNED spells would be legal if selected. Same function, two different candidate lists
+  -- never two different rules.
+- `evaluateRequirements` -- the dependency-ordered two-pass orchestration, EXTRACTED verbatim from
+  `validateSpellRequirements`'s own loop body (a pure refactor; `validateSpellRequirements` is now a
+  thin wrapper: compute `maxSpellLevel`, call this, map through `toResult`). Confirms the "unknown or
+  cyclic `requiresMembershipPool` reference fails closed" behavior already built into the `?? new
+  Set()` fallback (see this file's own updated header) -- no separate cycle detector was needed, since
+  an id that is not yet in the legal-sets map (unknown, or part of a cycle neither side resolves
+  first) already produces an EMPTY membership set, and an empty set satisfies nothing.
+- `toResult`, `maxSpellLevelOf`, `flagFor`, `KNOWN_POOL_KINDS` -- the remaining small, pure pieces
+  the planner needed to avoid re-deriving required/owned/satisfied shaping, the slot-derived max
+  level, the pool-to-flag mapping, or the fail-closed-on-unrecognized-pool rule a second time.
+
+A new test (`spell-acquisition-plan.test.ts`'s own "agreement with P3.1's own validator" describe
+block) proves the two can never disagree: with `tentative: []`, every requirement's `target`/
+`legalCount`/`satisfied`/`issues` from the planner is asserted equal, field for field, to
+`validateSpellRequirements`'s own `required`/`owned`/`satisfied`/`issues` for the identical
+requirements/candidates/level/slots.
+
+#### Plan model
+
+New file `app/lib/characters/spell-acquisition-plan.ts`, one function:
+```ts
+function planSpellAcquisition(input: {
+  requirements: readonly SpellRequirement[]
+  characterLevel: number
+  candidates: readonly SpellStateCandidate[]       // current effective state (persisted, + any fixed grants the caller already expresses as a candidate)
+  catalogue: readonly SpellCatalogueEntry[]          // packageId/slug/title/spellMechanics -- mirrors CreationSpellEntry (P2) exactly, restated not re-exported
+  spellSlotLevels: readonly SpellSlotLevel[]
+  tentative?: readonly TentativeSpellSelection[]     // { requirementId, ref } -- hypothetical, not-yet-persisted answers, this call only
+}): SpellAcquisitionPlan
+```
+`SpellAcquisitionPlan = { characterLevel, requirements: SpellAcquisitionRequirementPlan[], complete }`.
+Each `SpellAcquisitionRequirementPlan` carries `requirementId`, `pool`, `target` (P3.1's `required`,
+renamed for this surface), `legalCount` (P3.1's `owned`), `missing` (`max(0, target - legalCount)`),
+`satisfied` (false whenever ANY issue is present, even one that doesn't affect `missing` --
+no-automatic-repair, inherited from `toResult`), `selected` (P3.1 `spellIdentityOf` identities),
+`options` (legal, not-yet-selected catalogue refs -- `[]` whenever `missing` is 0), and `issues`
+(P3.1's own `SpellRequirementIssue` union plus two planner-only kinds: `tentative-duplicate`,
+`tentative-unresolved`). `complete` is true only when every requirement is satisfied.
+
+#### Tentative answers
+
+A `TentativeSpellSelection` names one requirement and one catalogue `ContentRef`. Each surviving one
+(not a duplicate ref for the same requirement, not an unresolved ref) becomes a synthetic
+`SpellStateCandidate` carrying ONLY the flag its requirement's pool reads (`flagFor`) -- never both.
+Persisted candidates and every tentative row are then merged BY IDENTITY (OR-ing `known`/`prepared`,
+preferring whichever row has resolved mechanics) into the EFFECTIVE state the planner evaluates --
+exactly the shape a real save into `spellcasting.spells[]` would eventually produce. A tentative
+answer that is itself illegal for its requirement (wrong class list, wrong level, not in the
+resulting membership pool, unresolved ContentRef) is never silently absorbed: it either never joins
+the effective state (unresolved/duplicate -- a dedicated planner-only issue) or joins it and then
+fails to land in that requirement's own `legal` set, surfacing as the SAME `SpellRequirementIssue`
+kind P3.1 already uses (`illegal-wrong-class-list`/`illegal-wrong-level`/
+`illegal-not-in-membership-pool`), attached to that identity. Purity: `candidates`/`tentative` are
+only ever read, never mutated (tests 27-28).
+
+#### Wizard dependency, within one call
+
+Wizard's `spell` requirement names the `spellbook` requirement via `requiresMembershipPool`
+(unchanged since P3.1). The planner's merge step means a TENTATIVE spellbook addition is already
+part of the effective spellbook the SAME call's prepared-pool evaluation reads as its membership
+gate -- no save/reload/then-prepare round trip (tests 14-18): an empty Level-1 Wizard shows a
+spellbook deficit of 6 and zero prepared OPTIONS (nothing to draw from yet); six tentative spellbook
+picks satisfy the spellbook AND simultaneously become legal prepared OPTIONS; a tentative prepared
+pick naming a spell NOT among those six is refused with `illegal-not-in-membership-pool`; the same
+spell may tentatively satisfy both pools at once (submitted as two separate tentative selections,
+one per requirement id) with each pool counting it independently, never flagged as duplicate
+corruption.
+
+#### Option resolution
+
+Options reuse `spellOptionVerdict` (via `evaluate`, unchanged since P3.1) for class-list/level
+legality -- never a second filtering implementation. A spell already legally counted toward a
+requirement's OWN pool is excluded from that requirement's own options (never re-offered); the SAME
+spell remains a legal option for a DIFFERENT requirement it does not yet satisfy (tests 9-10, Wizard's
+own spellbook-vs-prepared case). Options are computed only when `missing > 0`, matching this phase's
+own CORE GOAL ("legal ContentRefs for each MISSING selection," not an open-ended enumeration of every
+spell that could ever extend a cumulative-minimum pool like `spellbook`).
+
+#### Class equivalence, level jumps, fixed grants
+
+Tested against the REAL authored facets: a cantrip caster (Sorcerer), a non-Wizard ordinary caster
+(Cleric), a Level-1 half caster (Paladin -- confirmed non-zero at Level 1, no cantrips, no 2014
+"starts at Level 2" assumption anywhere in this code), and Warlock (ordinary cantrip/spell pools plus
+the four independent Mystic Arcanum tiers, each appearing only once its own acquisition level is
+reached via the same direct `totalByLevel[level - 1]` lookup P3.1 already uses -- never a sequential
+walk, proven again directly through the planner at Level 1/8/20 on Bard's real facet). A Mystic
+Arcanum pick and an ordinary Warlock spell pick, submitted as tentative answers in the SAME call,
+never consume each other's counts (test 23). No real package facet authors a fixed/always-prepared
+grant yet (confirmed unchanged since §25.26); two synthetic tests prove the mechanism is already
+capable of receiving one as effective state (a candidate carrying the pool's OWN flag counts; one
+carrying the WRONG flag never reduces `missing`) -- no code change would be needed the day a real one
+is authored.
+
+#### Proposed answer-key shape (reported, not persisted)
+
+`spellRequirementAnswerKey(slot, at, requirement)` reuses `progressionChoiceKey` VERBATIM --
+`slot`/`at` are the same creation/progression identity concepts every other Content/Definition choice
+already keys by (creation: `at: CREATION_LEVEL`, exactly like `creation-content-choices.ts`'s own
+`'spells'` category declarations; progression: the crossed row's own `at`), and `requirement.id` is
+already a stable, package-authored `DefinitionId`. No new key-building rule, no class-name parsing,
+no spell-name parsing, no persistence -- this phase only reports the shape and proves it by equality
+against the existing function, it does not write anywhere.
+
+#### P3.3 / P3.4 consumption contract
+
+Both future surfaces consume the SAME `planSpellAcquisition` output:
+- **P3.3 (creation)**: no `spellcasting` block exists yet, so `candidates: []`; `characterLevel: 1`.
+  A real submitted creation answer becomes a `TentativeSpellSelection` for planning/preview, and (not
+  built here) a confirmed write merges the accepted selections into a new `spellcasting.spells[]` via
+  `known`/`prepared` exactly as `flagFor` already determines per pool.
+- **P3.4 (progression)**: `candidates` comes from the character's real persisted
+  `spellcasting.spells[]`; `characterLevel` is the TARGET level of a (possibly multi-level) jump; the
+  SAME `missing`/`options` per requirement is what a Level 1->8 jump needs, computed directly against
+  the target row, never per intermediate level.
+
+Neither surface needs its own spell-legality logic; both read `SpellAcquisitionPlan.requirements[]`
+and render/submit against its `options`/`missing`.
+
+#### Phase 0 -- unchanged, verified not assumed
+
+647 total / 192 implemented / 420 blocked / 35 optional, re-asserted by the pre-existing test, still
+passing. The 174 class-owned spell-family decisions remain BLOCKED -- `mandatory-decisions.ts`/
+`mandatory-decision-coverage.ts` untouched. Availability scoreboard unchanged: Species 3/10, Classes
+0/12, Backgrounds 0/16, Combinations 0/1,920 (the pre-existing test for this, also re-run, still
+passes). A planner existing is not a player workflow existing -- creation/progression still have no
+write path into `spellcasting.spells[]` (P3.3/P3.4, not yet built).
+
+#### Package impact
+
+`app/lib/characters/spell-acquisition-plan.ts` and the `spell-requirements.ts` refactor are pure
+application code -- no `RulesFacet` field, no Content-rule data, no Rules Package definition touched.
+Confirmed empirically:
+```
+pnpm run packages:sync -- --world Solaris   (DRY RUN, no --apply)
+
+RULES:    eldra.rules.dnd5e-2024@0.20.0 -- CURRENT
+CONTENT:  eldra.solaris.xphb -- CURRENT
+ACTIONS:  None
+```
+No collision, no STOP, zero writes (dry run; no `--apply` passed). Content shows `CURRENT` (not
+`REFRESH_REQUIRED`, unlike P3.1's own pass) because nothing compiled into a Content candidate changed
+this time -- the planner reads the SAME `spellRequirements` facet data P3.1 already authored, through
+code that lives entirely outside the Content compilation pipeline.
+
+#### Dependency topology hardening (same pass, added before acceptance)
+
+The ORIGINAL posture ("an unknown or cyclic `requiresMembershipPool` reference falls back to an empty
+membership Set, which already fails closed") was correct for PREVENTING an illegal spell selection
+from becoming legal, but insufficient as a CONFIGURATION diagnostic: a malformed package declaration
+looked identical to a legitimately empty, well-formed membership pool ("you have zero legal
+members"), with no signal that the real problem was the requirement's own authoring, not the
+character's state.
+
+`detectRequirementTopologyIssues` (new, exported from `spell-requirements.ts`) is the smallest pure
+check that closes this gap, run once per `evaluateRequirements` call, before pass 2:
+- **Unknown** -- `requiresMembershipPool` names an id not present in the same requirements array.
+- **Self** -- a requirement names itself.
+- **Cycle** -- a bounded walk from the requirement's own id, following `requiresMembershipPool`
+  pointers and recording every id seen, revisits an already-seen id. This single generic walk also
+  catches a 3+-requirement cycle with no extra code (verified directly: a synthetic X->Y->Z->X chain
+  flags all three), and correctly flags a requirement that merely DEPENDS on a self-referencing or
+  cyclic node even when it is not itself part of the loop (the walk passes through the broken node a
+  second time either way) -- no separate "propagate brokenness" step was needed; it falls out of the
+  one bounded traversal. No general graph library was added; the walk is bounded by
+  `requirements.length` and always terminates.
+
+A requirement with a detected topology issue short-circuits to `{legal: new Set(), issues: [the
+issue]}` in `evaluateRequirements` -- no candidate (persisted, tentative, or catalogue-probed) is ever
+evaluated against it, so no acquisition of any kind can make a topologically malformed requirement
+appear satisfied. New issue kind on `SpellRequirementIssue`: `{kind:
+'invalid-requirement-dependency', reason: 'unknown'|'self'|'cycle', membershipPoolId}` -- attached to
+the REQUIREMENT, never to a spell identity, since no candidate caused it.
+
+The real Wizard dependency (`spell` requires `spellbook`) was re-verified well-formed both directly
+(`detectRequirementTopologyIssues` returns zero issues for the real authored facet) and through the
+planner (the spellbook requirement's plan carries no `invalid-requirement-dependency` issue) -- it
+remains green, with no class-name branch anywhere in the check.
+
+Bite proof performed (not committed): the pass-2 short-circuit was temporarily disabled, the four new
+unknown/self/cycle unit tests were confirmed to FAIL against the un-hardened code (falling back to an
+ordinary `{kind: 'missing', count: 1}` with no configuration signal -- exactly the insufficiency this
+hardening fixes), then the short-circuit was restored and the full suite re-confirmed green.
+
+#### Files
+
+- Modified: `app/lib/characters/spell-requirements.ts` (five narrow exports + one pure extract-method
+  refactor of `validateSpellRequirements`'s own loop body into `evaluateRequirements`, now ALSO
+  running `detectRequirementTopologyIssues` -- see above -- plus one new exported function and one
+  new `SpellRequirementIssue` member; zero behavior change for any well-formed requirement, all 89
+  pre-existing P3.1 tests still re-pass unchanged), `tests/lib/characters/spell-requirements.test.ts`
+  (6 new topology tests).
+- Created: `app/lib/characters/spell-acquisition-plan.ts` (the planner),
+  `tests/lib/characters/spell-acquisition-plan.test.ts` (34 tests: the 28 requested, a
+  validator-agreement test, two fixed-grant-shaped tests, the answer-key-shape test, and 2 topology
+  tests proving the hardening is visible through the planner too).
+
+#### Verification
+
+`pnpm run test`: 195 files / **4070 tests** passed (full suite, including the 8 additional hardening
+tests above and the existing 647/192/420/35 census + availability-scoreboard assertions, unchanged
+and re-passing). `pnpm run typecheck`: 243 unique (file, diagnostic-code) pairs -- identical to the
+established baseline, zero new, none in any file touched this pass. `pnpm run build`: succeeds.
+`git diff --check`: clean. `pnpm packages:sync -- --world Solaris` (dry run): Rules
+`eldra.rules.dnd5e-2024@0.20.0` CURRENT, Content `eldra.solaris.xphb` CURRENT, Actions None -- no
+package change, confirmed empirically, not merely expected.

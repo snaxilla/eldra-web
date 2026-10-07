@@ -43,6 +43,7 @@
 
 import { evaluate, evaluateStandaloneExpression } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
+import type { ContentCatalogueFilter } from '../../app/lib/rules/types'
 import type {
   CollectionSlotDefinition,
   DefinitionId,
@@ -464,7 +465,10 @@ async function getDerivedCharacterInternal(
         // preview/Confirm authority (app/lib/feat-mechanics/eligibility.ts).
         // A choice with no filter offers nothing (fail closed).
         const filter = choiceSet && choiceSet.from.kind === 'fromContentCatalogue' ? choiceSet.from.filter : undefined
-        legalOptions = catalogue.feats.filter((entry) => featFilterVerdict(entry.featMechanics, filter).eligible)
+        // 'feats'-only branch (see the `category === 'feats'` guard above): the declared filter is
+        // always feat-shaped here, never a spell's -- see app/lib/rules/types.ts's own
+        // SpellCatalogueFilter header for why the two are never interchangeable.
+        legalOptions = catalogue.feats.filter((entry) => featFilterVerdict(entry.featMechanics, filter as ContentCatalogueFilter | undefined).eligible)
       }
 
       const options = legalOptions.map((entry) => serializeContentRef({ packageId: entry.packageId, slug: entry.slug }))

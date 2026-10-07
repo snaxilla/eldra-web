@@ -293,6 +293,18 @@ export type CanonicalSpellMechanics = {
   // proceed to `supported-spell-attack` with no change to that classifier's
   // own code at all.
   hasUnresolvedChoice?: boolean
+
+  // D&D 2024 Character Rules P2 -- the real class names (Bard, Cleric, ...) this spell's own
+  // source names as able to learn/know it, sourced from the generated spell-source lookup at
+  // Content compile time (never re-derived at request time -- see 5etools-dataset.ts's own
+  // `enrichSpellClassLists` header). Absent, never an empty array, when the compiled `data` carries
+  // no `classLists` at all -- a Content entry compiled before this phase, or one this phase's
+  // lookup found no membership for. A spell-selection filter that NEEDS this and finds it absent
+  // fails closed (see spell-option-eligibility.ts), it never treats absence as "matches anything."
+  // Deliberately DIRECT class-list membership only -- a subclass's own granted spells (Eldritch
+  // Knight's bonus spells, an always-prepared addition, not a class-list pick) are a different
+  // mechanic and are not merged in here; that remains P4's scope.
+  classLists?: readonly string[]
 }
 
 // One game system's translation of raw Content Pack `data` into this

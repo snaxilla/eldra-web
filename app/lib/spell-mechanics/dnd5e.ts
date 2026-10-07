@@ -722,6 +722,13 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     : extractSlotLevelDiceScaling(raw, level, damage, 'scaledamage')
   const healingScaling = level > 0 ? extractSlotLevelDiceScaling(raw, level, healing, 'scaledice') : undefined
 
+  // D&D 2024 Character Rules P2 -- see CanonicalSpellMechanics.classLists's own header. Read only
+  // from the already-compiled `data.classLists` (never a live corpus read here); absent when the
+  // compile step found no membership or has not run this enrichment yet.
+  const classLists = Array.isArray(raw.classLists)
+    ? raw.classLists.filter((entry): entry is string => typeof entry === 'string')
+    : undefined
+
   return {
     level,
     school,
@@ -737,6 +744,7 @@ export function resolveDnd5eSpellMechanics(data: unknown): CanonicalSpellMechani
     healing: healing && healingScaling ? { ...healing, diceScaling: healingScaling } : healing,
     scaling: resolveScaling(raw.entriesHigherLevel),
     ...(choices.length ? { choices } : {}),
-    ...(hasUnresolvedChoice ? { hasUnresolvedChoice: true } : {})
+    ...(hasUnresolvedChoice ? { hasUnresolvedChoice: true } : {}),
+    ...(classLists && classLists.length > 0 ? { classLists } : {})
   }
 }

@@ -12,6 +12,8 @@ import { resolveCreationChoices, type CreationSlotInput } from '../../../app/lib
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 import { serializeContentRef } from '../../../app/lib/characters/progression-plan'
 import { resolveDnd5eFeatMechanics } from '../../../app/lib/feat-mechanics/dnd5e'
+import { resolveDnd5eSpellMechanics } from '../../../app/lib/spell-mechanics/dnd5e'
+import type { CreationSpellEntry } from '../../../app/lib/characters/creation-content-choices'
 
 const PKG = 'eldra.solaris.xphb'
 const FS_SELECTOR = { category: 'feats', filter: { category: 'fighting-style', variants: ['FS'] } }
@@ -106,6 +108,81 @@ describe('authority -- the content presentation uses the shared feat verdict', (
     const unknown = [{ key: 'k', slot: 'class', choiceSetId: 'choice:x', count: 1, selector: { category: 'mystery' } }]
     const [presentation] = resolveCreationContentChoices(unknown, slotsWithFeature, { k: ['x'] }, FEATS)
     expect(presentation).toMatchObject({ category: 'mystery', offered: [], selected: [], valid: false })
+  })
+})
+
+// D&D 2024 Character Rules P2 -- the SAME generic mechanism, routed to 'spells' instead of
+// 'feats'. Synthetic spell fixtures here, exactly like ARCHERY/DEFENSE above are synthetic feat
+// fixtures: this describe block proves the GENERIC routing/ownership mechanism, not real-corpus
+// class-list membership (that is spell-option-eligibility.test.ts's own job, with real spells).
+const SPELL_CHOICE = 'choice:spell.selection.test'
+const WIZARD_L1_SELECTOR = { category: 'spells', filter: { classList: ['Wizard'], level: 1 } }
+
+function spell(name: string, raw: Record<string, unknown>): CreationSpellEntry {
+  return {
+    packageId: PKG,
+    slug: `${name.toLowerCase().replace(/ /g, '-')}-xphb`,
+    title: name,
+    spellMechanics: resolveDnd5eSpellMechanics({ name, source: 'XPHB', level: 1, school: 'V', ...raw })
+  }
+}
+
+const MAGIC_MISSILE = spell('Magic Missile', { classLists: ['Sorcerer', 'Wizard'] })
+const CURE_WOUNDS = spell('Cure Wounds', { classLists: ['Bard', 'Cleric', 'Druid', 'Paladin', 'Ranger'] })
+const SPELLS = [MAGIC_MISSILE, CURE_WOUNDS]
+
+describe('authority -- spells category (P2), using the shared spell verdict', () => {
+  const slots = [{ slot: 'class', facet: { choices: [{ choiceSet: SPELL_CHOICE, count: 1 }] } }] as (CreationSlotInput & { slot: string })[]
+  const declared = declaredCreationContentChoices(slots, () => WIZARD_L1_SELECTOR)
+
+  it('a spell on the declared class list, at the declared level, is offered and eligible', () => {
+    const [presentation] = resolveCreationContentChoices(declared, slots, {}, [], SPELLS)
+    expect(presentation!.offered.find((o) => o.slug === 'magic-missile-xphb')).toMatchObject({ eligible: true })
+  })
+
+  it('a spell NOT on the declared class list is offered but refused (wrong-class-list), never silently omitted', () => {
+    const [presentation] = resolveCreationContentChoices(declared, slots, {}, [], SPELLS)
+    expect(presentation!.offered.find((o) => o.slug === 'cure-wounds-xphb')).toMatchObject({ eligible: false, reason: 'wrong-class-list' })
+  })
+
+  it('a crafted selection of the ineligible spell is rejected, never trusted from the client', () => {
+    const [presentation] = resolveCreationContentChoices(
+      declared, slots,
+      { [declared[0]!.key]: [serializeContentRef({ packageId: PKG, slug: 'cure-wounds-xphb' })] },
+      [], SPELLS
+    )
+    expect(presentation!.selected).toEqual([])
+    expect(presentation!.valid).toBe(false)
+  })
+
+  it('two spell choices cannot both take the same spell: the later one is refused as already owned', () => {
+    const twoSlots = [
+      { slot: 'class', facet: { choices: [{ choiceSet: SPELL_CHOICE, count: 1 }] } },
+      { slot: 'background', facet: { choices: [{ choiceSet: 'choice:spell.other', count: 1 }] } }
+    ] as (CreationSlotInput & { slot: string })[]
+    const twoDeclared = declaredCreationContentChoices(twoSlots, () => WIZARD_L1_SELECTOR)
+    const missileRef = serializeContentRef({ packageId: PKG, slug: 'magic-missile-xphb' })
+    const presentations = resolveCreationContentChoices(twoDeclared, twoSlots, {
+      [twoDeclared[0]!.key]: [missileRef],
+      [twoDeclared[1]!.key]: [missileRef]
+    }, [], SPELLS)
+    expect(presentations[0]!.selected).toEqual([missileRef])
+    expect(presentations[1]!.selected).toEqual([])
+    expect(presentations[1]!.offered.find((o) => o.slug === 'magic-missile-xphb')).toMatchObject({ eligible: false, reason: 'already-owned' })
+  })
+
+  it('feats and spells coexist as distinct destinations, with no cross-contamination', () => {
+    const mixedSlots = [{
+      slot: 'class',
+      facet: { ...granting('value:feature.fighting-style'), choices: [{ choiceSet: CONTENT_CHOICE, count: 1 }, { choiceSet: SPELL_CHOICE, count: 1 }] }
+    }] as (CreationSlotInput & { slot: string })[]
+    const mixedDeclared = declaredCreationContentChoices(
+      mixedSlots,
+      (id) => (id === CONTENT_CHOICE ? FS_SELECTOR : id === SPELL_CHOICE ? WIZARD_L1_SELECTOR : null)
+    )
+    const presentations = resolveCreationContentChoices(mixedDeclared, mixedSlots, {}, FEATS, SPELLS)
+    expect(presentations.find((p) => p.choiceSetId === CONTENT_CHOICE)!.offered.map((o) => o.slug)).toContain('archery-xphb')
+    expect(presentations.find((p) => p.choiceSetId === SPELL_CHOICE)!.offered.map((o) => o.slug)).toContain('magic-missile-xphb')
   })
 })
 

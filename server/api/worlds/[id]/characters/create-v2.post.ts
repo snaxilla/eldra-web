@@ -341,7 +341,14 @@ export default defineEventHandler(async (event) => {
     contentDeclarations,
     slots,
     Object.fromEntries(Object.entries(submittedContent).map(([key, value]) => [key, value as string[]])),
-    catalogue.feats
+    catalogue.feats,
+    // D&D 2024 Character Rules P2 -- independently re-resolved server-side, exactly like
+    // `catalogue.feats` above: a crafted spell ContentRef is judged against THIS catalogue entry's
+    // own spellMechanics and the declared package filter, never against a client-submitted fact.
+    // No real facet declares a 'spells' choice yet (P3 owns acquisition counts), so this is
+    // currently always judged against zero declared choices -- wired now so the transport is not
+    // tied to one surface, per this phase's own scope.
+    catalogue.spells
   )
   const contentAcquisitions: { featRef: { packageId: string, slug: string }, choiceKey: string }[] = []
   for (const presentation of contentPresentations) {

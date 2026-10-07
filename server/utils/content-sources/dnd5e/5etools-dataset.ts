@@ -468,3 +468,72 @@ export async function loadDatasetEntriesWithFluff(
     fluff: fluffByKey.get(fluffJoinKey(row?.name, row?.source)) ?? row?.fluff ?? null
   }))
 }
+
+// ---------------------------------------------------------------------------
+// Spell class-list enrichment -- D&D 2024 Character Rules P2.
+// ---------------------------------------------------------------------------
+// A 2024-edition spell record (`spells-xphb.json`, and every other book this
+// corpus has: verified directly, PHB included) carries NO inline `classes`
+// field -- 2014's `classes.fromClassList` is gone. Class-list membership
+// exists only in the SEPARATE generated file below, keyed by lowercase
+// source then lowercase spell name, with the membership itself nested under
+// `.class.<SOURCE>.<ClassName>: true` (verified directly against Fireball/
+// Acid Splash). This is compile-time-only: it runs during Content Pack
+// compilation (this module's own callers), never at server request time --
+// the 5etools dataset directory is a local/CI build input, not something a
+// deployed Nitro process can read (Dockerfile-built images ship `.output`
+// only). A published Content entry's `data` either already carries
+// `classLists` (set here, at the compile that produced it) or it does not;
+// the runtime resolver (app/lib/spell-mechanics/dnd5e.ts) never re-derives
+// it live.
+//
+// Only DIRECT class-list membership (`.class`) is merged in. `.subclass`
+// (a spell a subclass feature grants as an always-prepared addition, e.g.
+// Eldritch Knight's bonus spells) is a DIFFERENT mechanic -- not "this
+// spell is a legal pick from the class list" -- and is deliberately left
+// for a later phase (P4, subclass spell grants), not merged here.
+const SPELL_CLASS_LIST_LOOKUP = join(DATA_ROOT, 'generated/gendata-spell-source-lookup.json')
+
+let cachedSpellClassListLookup: Record<string, Record<string, unknown>> | null = null
+
+async function loadSpellClassListLookup(): Promise<Record<string, Record<string, unknown>>> {
+  if (cachedSpellClassListLookup) return cachedSpellClassListLookup
+  try {
+    cachedSpellClassListLookup = JSON.parse(await readFile(SPELL_CLASS_LIST_LOOKUP, 'utf8'))
+  } catch {
+    // Matches every other loader in this file: a missing/unreadable generated file degrades to
+    // "nothing found" (every spell keeps no `classLists`), never a thrown compile failure.
+    cachedSpellClassListLookup = {}
+  }
+  return cachedSpellClassListLookup as Record<string, Record<string, unknown>>
+}
+
+// The real XPHB class names (Bard, Cleric, ...) one spell's OWN source bucket names as able to
+// learn/know it, sorted for a stable, diffable candidate. Empty when the lookup has no entry, or
+// the entry names no class for this spell's own source (e.g. a spell no class in THIS book grants,
+// only a subclass) -- an empty list is not an error, it is "not on any class's list here."
+export async function classListsFor(source: string, name: string): Promise<string[]> {
+  const lookup = await loadSpellClassListLookup()
+  const sourceKey = String(source || '').toLowerCase()
+  const nameKey = String(name || '').toLowerCase()
+  const entry = lookup[sourceKey]?.[nameKey] as { class?: Record<string, Record<string, unknown>> } | undefined
+  const classesForSource = entry?.class?.[String(source || '').toUpperCase()]
+  if (!classesForSource || typeof classesForSource !== 'object') return []
+  return Object.entries(classesForSource)
+    .filter(([, isOnList]) => isOnList === true)
+    .map(([className]) => className)
+    .sort()
+}
+
+// Attaches `classLists` to a copy of each spell row (never mutates the row the corpus file loader
+// returned). A row whose lookup has no membership keeps no `classLists` key at all -- absence, not
+// an empty array, so a downstream resolver can tell "known to have none" apart from "not merged".
+export async function enrichSpellClassLists(rows: readonly unknown[]): Promise<unknown[]> {
+  const out: unknown[] = []
+  for (const row of rows) {
+    const record = row as { name?: string, source?: string }
+    const classLists = await classListsFor(record?.source ?? '', record?.name ?? '')
+    out.push(classLists.length > 0 ? { ...record, classLists } : row)
+  }
+  return out
+}

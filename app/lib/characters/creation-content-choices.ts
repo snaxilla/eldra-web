@@ -15,13 +15,17 @@
 
 import { featFilterVerdict, featOptionVerdict, type FeatOptionVerdict } from '../feat-mechanics/eligibility'
 import type { CanonicalFeatMechanics } from '../feat-mechanics/types'
-import type { ContentCatalogueFilter } from '../rules/types'
+import { spellOptionVerdict } from '../spell-mechanics/spell-option-eligibility'
+import type { CanonicalSpellMechanics } from '../spell-mechanics/types'
+import type { ContentCatalogueFilter, SpellCatalogueFilter } from '../rules/types'
 import { progressionChoiceKey } from './rules-choices'
 import { serializeContentRef } from './progression-plan'
 import { directlyGrantedValues, type CreationSlotInput } from './creation-choice-eligibility'
 
-// A content choice set's selector, as the package declares it.
-export type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter }
+// A content choice set's selector, as the package declares it. `filter`'s real shape depends on
+// `category` ('feats' -> ContentCatalogueFilter, 'spells' -> SpellCatalogueFilter, P2); this module
+// itself never reads filter fields (that is featFilterVerdict's/spellOptionVerdict's job).
+export type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter }
 
 // The entry shape this module needs from the World Content Catalogue. Structural,
 // so both the server catalogue and the Builder's copy satisfy it.
@@ -31,6 +35,15 @@ export type CreationFeatEntry = {
   title: string
   featMechanics?: CanonicalFeatMechanics | null
   rulesFacet?: { featureRequirements?: readonly { feature: string; requires: string }[] } | null
+}
+
+// D&D 2024 Character Rules P2 -- the entry shape a 'spells' category choice judges against,
+// mirroring CreationFeatEntry exactly (same envelope, one mechanics field).
+export type CreationSpellEntry = {
+  packageId: string
+  slug: string
+  title: string
+  spellMechanics?: CanonicalSpellMechanics | null
 }
 
 // One declared content choice, keyed by the SAME progression key convention used
@@ -60,8 +73,9 @@ export type CreationContentPresentation = {
   // The content DESTINATION (routing): `feats`, `subclasses`, ...
   category: string
   // The package's own restriction on the destination (e.g. feat category
-  // `fighting-style`, variants `['FS']`). Presentation and authority read the same.
-  filter?: ContentCatalogueFilter
+  // `fighting-style`, variants `['FS']`; P2: a spell's classList/level/school). Presentation and
+  // authority read the same.
+  filter?: ContentCatalogueFilter | SpellCatalogueFilter
   offered: CreationContentOffer[]
   selected: string[]
   valid: boolean
@@ -96,12 +110,23 @@ export function declaredCreationContentChoices(
 // Judges every declared content choice against the same creation state. Sibling
 // choices are judged in declaration order, so a ref already taken by an earlier
 // choice is "owned" for a later one -- the same ordering rule Phase 2C.1 uses for
-// progression. A choice whose category is not `feats` is never valid (fail closed).
+// progression. A choice whose category is neither `feats` nor `spells` is never
+// valid (fail closed) -- no magic choice-id branch, only these two named destinations.
+//
+// D&D 2024 Character Rules P2 -- `spells` is a SECOND recognized category, added
+// alongside `feats` with the same shape (offer every candidate, judge it, collect
+// eligible refs, accept up to `count` of the submitted answer), using
+// spellOptionVerdict rather than featOptionVerdict. No real class/background/feat
+// facet declares a `spells` choice yet (P3 owns acquisition counts); this function
+// is exercised today only by tests that declare one on a synthetic facet, exactly
+// as this phase's own scope requires ("the underlying resolver/transport must not
+// be tied to one surface", never "fake a count to prove the resolver works").
 export function resolveCreationContentChoices(
   declarations: readonly CreationContentDeclaration[],
   slots: readonly (CreationSlotInput & { slot: string })[],
   selections: Readonly<Record<string, readonly string[]>>,
-  feats: readonly CreationFeatEntry[]
+  feats: readonly CreationFeatEntry[],
+  spells: readonly CreationSpellEntry[] = []
 ): CreationContentPresentation[] {
   const featureActive = directlyGrantedValues(slots)
   const takenByEarlier = new Set<string>()
@@ -109,34 +134,57 @@ export function resolveCreationContentChoices(
 
   for (const declaration of declarations) {
     const { key, slot, choiceSetId, count, selector } = declaration
-    if (selector.category !== 'feats') {
+    if (selector.category !== 'feats' && selector.category !== 'spells') {
       out.push({ key, slot, choiceSetId, count, category: selector.category, filter: selector.filter, offered: [], selected: [], valid: false })
       continue
     }
 
     const offered: CreationContentOffer[] = []
-    for (const entry of feats) {
-      if (!featFilterVerdict(entry.featMechanics, selector.filter).eligible) continue
-      const ref = serializeContentRef({ packageId: entry.packageId, slug: entry.slug })
-      const verdict: FeatOptionVerdict = featOptionVerdict({
-        mechanics: entry.featMechanics,
-        filter: selector.filter,
-        mappings: entry.rulesFacet?.featureRequirements ?? [],
-        featureActive: (id) => featureActive.has(id),
-        ownedElsewhere: takenByEarlier.has(ref),
-        // Creation evaluates prerequisite-free feats only. A feat with supported
-        // prerequisite groups stays illegal here until creation-state prerequisite
-        // evaluation exists -- fail closed, never "assumed met".
-        prerequisitesMet: () => (entry.featMechanics?.prerequisiteGroups.length ?? 0) === 0
-      })
-      offered.push({
-        ref,
-        packageId: entry.packageId,
-        slug: entry.slug,
-        title: entry.title,
-        eligible: verdict.eligible,
-        ...(verdict.eligible ? {} : { reason: verdict.reason })
-      })
+
+    if (selector.category === 'feats') {
+      for (const entry of feats) {
+        if (!featFilterVerdict(entry.featMechanics, selector.filter as ContentCatalogueFilter).eligible) continue
+        const ref = serializeContentRef({ packageId: entry.packageId, slug: entry.slug })
+        const verdict: FeatOptionVerdict = featOptionVerdict({
+          mechanics: entry.featMechanics,
+          filter: selector.filter as ContentCatalogueFilter,
+          mappings: entry.rulesFacet?.featureRequirements ?? [],
+          featureActive: (id) => featureActive.has(id),
+          ownedElsewhere: takenByEarlier.has(ref),
+          // Creation evaluates prerequisite-free feats only. A feat with supported
+          // prerequisite groups stays illegal here until creation-state prerequisite
+          // evaluation exists -- fail closed, never "assumed met".
+          prerequisitesMet: () => (entry.featMechanics?.prerequisiteGroups.length ?? 0) === 0
+        })
+        offered.push({
+          ref,
+          packageId: entry.packageId,
+          slug: entry.slug,
+          title: entry.title,
+          eligible: verdict.eligible,
+          ...(verdict.eligible ? {} : { reason: verdict.reason })
+        })
+      }
+    } else {
+      for (const entry of spells) {
+        const ref = serializeContentRef({ packageId: entry.packageId, slug: entry.slug })
+        const verdict = spellOptionVerdict({ mechanics: entry.spellMechanics, filter: selector.filter as SpellCatalogueFilter })
+        // A spell already taken by an earlier sibling choice is not offered twice, the same rule
+        // the feat branch enforces via `ownedElsewhere` inside featOptionVerdict -- spells have no
+        // feat-shaped prerequisite/repeatable concept, so the check is inlined here instead.
+        if (verdict.eligible && takenByEarlier.has(ref)) {
+          offered.push({ ref, packageId: entry.packageId, slug: entry.slug, title: entry.title, eligible: false, reason: 'already-owned' })
+          continue
+        }
+        offered.push({
+          ref,
+          packageId: entry.packageId,
+          slug: entry.slug,
+          title: entry.title,
+          eligible: verdict.eligible,
+          ...(verdict.eligible ? {} : { reason: verdict.reason })
+        })
+      }
     }
 
     const eligibleRefs = new Set(offered.filter((o) => o.eligible).map((o) => o.ref))

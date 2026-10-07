@@ -151,6 +151,8 @@ type WorldCatalogue = {
   backgrounds: BuilderCatalogueEntry[]
   // PHASE 2C.2B -- content-backed creation choices (Fighting Style) pick from these.
   feats: BuilderCatalogueEntry[]
+  // D&D 2024 Character Rules P2 -- for a 'spells' category content choice (mirrors `feats`).
+  spells: BuilderCatalogueEntry[]
 }
 
 const { data: catalogue, pending: catalogueLoading, error: catalogueError } = await useFetch<WorldCatalogue>(
@@ -268,7 +270,10 @@ const creationContext = computed<BuilderCreationContext>(() => {
       const set = sets[choiceSetId]
       return set ? { distinct: set.distinct, maxPerOption: set.maxPerOption } : null
     },
-    feats: catalogue.value?.feats ?? []
+    feats: catalogue.value?.feats ?? [],
+    // D&D 2024 Character Rules P2 -- already fetched (the same /catalogue response), just threaded
+    // through now so a future real 'spells' choice needs no new wiring here.
+    spells: catalogue.value?.spells ?? []
   }
 })
 

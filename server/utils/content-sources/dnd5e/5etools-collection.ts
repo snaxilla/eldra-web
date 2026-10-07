@@ -43,7 +43,7 @@ import { readdir } from 'node:fs/promises'
 import { findRulesFacet } from '../../../../app/lib/content-rules'
 import { toContentPublicationCandidates } from '../../content-pack-5etools-adapter'
 import type { SourceAvailability, SourceCategory, SourceCategoryLoadResult, SourceCollectionProvider } from '../types'
-import { DATA_ROOT, getPreviewFn, isFluffJoinDatasetKey, loadDatasetEntries, loadDatasetEntriesWithFluff, type DatasetKey } from './5etools-dataset'
+import { DATA_ROOT, enrichSpellClassLists, getPreviewFn, isFluffJoinDatasetKey, loadDatasetEntries, loadDatasetEntriesWithFluff, type DatasetKey } from './5etools-dataset'
 
 type FiveEToolsCategoryDefinition = {
   key: string
@@ -145,7 +145,11 @@ export function create5eToolsCollectionProvider(input: FiveEToolsCollectionInput
     const rows = isFluffJoinDatasetKey(category.datasetKey)
       ? await loadDatasetEntriesWithFluff(category.datasetKey, input.membership)
       : await loadDatasetEntries(category.datasetKey, input.membership)
-    const preview = getPreviewFn(category.datasetKey)(rows)
+    // D&D 2024 Character Rules P2 -- class-list membership, merged from the generated lookup
+    // (5etools-dataset.ts's own header). Every collection that compiles a `spells` category gets
+    // it, not just XPHB -- no source-specific branch here.
+    const enrichedRows = category.datasetKey === 'spells' ? await enrichSpellClassLists(rows) : rows
+    const preview = getPreviewFn(category.datasetKey)(enrichedRows)
     const candidates = attachRulesFacets(toContentPublicationCandidates(preview), input.vocabulary)
 
     return { candidates, warnings: preview.warnings }

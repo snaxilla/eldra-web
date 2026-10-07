@@ -225,7 +225,7 @@ import {
 } from './character-rules-choices'
 import { emptyStoredRulesChoices, resolveChoiceTarget } from '../../app/lib/characters/rules-choices'
 import { featFilterVerdict, featOptionVerdict, type FeatPrerequisite, type FeatUnavailableReason } from '../../app/lib/feat-mechanics'
-import type { ContentCatalogueFilter } from '../../app/lib/rules/types'
+import type { ContentCatalogueFilter, SpellCatalogueFilter } from '../../app/lib/rules/types'
 import { progressionUnresolvedDecisions, describeUnresolved } from '../../app/lib/content-rules/creation-completeness'
 
 // Phase 2C.1 -- how a content-backed progression answer is ROUTED. The
@@ -234,7 +234,10 @@ import { progressionUnresolvedDecisions, describeUnresolved } from '../../app/li
 // never the choice set's id: a second feat choice set lands in
 // progression.feats[] with no new branch here, and an unknown category fails
 // closed rather than being written as a subclass.
-type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter }
+// `filter`'s real shape depends on `category` (P2: 'spells' carries a SpellCatalogueFilter, never
+// a feat's ContentCatalogueFilter) -- this file's own routing below reads `category` only; a
+// filter's fields are read by featFilterVerdict/spellOptionVerdict, never here.
+type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter }
 type ContentChoiceLookup = (choiceSetId: string) => ContentChoiceSelector | null
 
 async function loadContentChoiceLookup(worldId: string | number): Promise<ContentChoiceLookup> {
@@ -305,7 +308,8 @@ async function findRefusedFeatAnswer(
         const ref = parseContentRef(submitted)
         const entry = ref ? catalogue.feats.find((candidate) => candidate.packageId === ref.packageId && candidate.slug === ref.slug) : undefined
         if (!entry || choice.options.some((option) => option.id === submitted)) continue
-        const verdict = featFilterVerdict(entry.featMechanics, selector.filter)
+        // Guarded above by `selector?.category !== 'feats'`: always feat-shaped here.
+        const verdict = featFilterVerdict(entry.featMechanics, selector.filter as ContentCatalogueFilter | undefined)
         if (!verdict.eligible) return featRejectionMessage(entry.title, verdict.reason)
       }
     }
@@ -816,9 +820,10 @@ async function legalizeFeatChoices(
     for (const option of choice.options) {
       const entry = entriesByKey.get(option.id)
       if (!entry) continue
+      // Guarded above by `selector?.category !== 'feats'`: always feat-shaped here.
       const verdict = featOptionVerdict({
         mechanics: entry.featMechanics,
-        filter: selector.filter,
+        filter: selector.filter as ContentCatalogueFilter | undefined,
         mappings: entry.rulesFacet?.featureRequirements ?? [],
         featureActive: (id) => findBooleanIn(priorDerived.derived, id),
         ownedElsewhere: known.some((other) =>
@@ -1225,7 +1230,9 @@ export async function confirmProgression(
         return { ok: false, reason: 'rules-unavailable', message: priorDerived.reason === 'character-not-found' ? 'Character not found in this world' : priorDerived.message }
       }
 
-      const filter = lookupContent(acquisition.choiceSetId)?.filter
+      // `acquisition` is always a FEAT acquisition (progression.feats[]'s own persisted shape;
+      // this function processes no other category) -- the filter is always feat-shaped here.
+      const filter = lookupContent(acquisition.choiceSetId)?.filter as ContentCatalogueFilter | undefined
       const verdict = featOptionVerdict({
         mechanics: catalogueEntry.featMechanics,
         filter,

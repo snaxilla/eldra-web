@@ -69,7 +69,8 @@ import {
   resolveCreationContentChoices,
   type ContentChoiceSelector,
   type CreationContentPresentation,
-  type CreationFeatEntry
+  type CreationFeatEntry,
+  type CreationSpellEntry
 } from '~/lib/characters/creation-content-choices'
 import {
   emptyStoredRulesChoices,
@@ -139,6 +140,9 @@ export type CharacterBuilderDraft = {
 export type BuilderCreationContext = {
   contentSelectorOf: (choiceSetId: string) => ContentChoiceSelector | null
   feats: readonly CreationFeatEntry[]
+  // D&D 2024 Character Rules P2 -- the catalogue's own spells, for a 'spells' category content
+  // choice (mirrors `feats` exactly). Defaults to none so every existing caller is unchanged.
+  spells?: readonly CreationSpellEntry[]
   // P7 -- the package's distinctness and per-option ceiling per ChoiceSet, echoed by the
   // choice-options endpoint. Absent means every choice is distinct (the pre-P7 rule).
   choiceSetRule?: (choiceSetId: string) => ChoiceSetRule
@@ -335,7 +339,7 @@ export function creationContentPresentation(
 ): CreationContentPresentation[] {
   const slots = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
   const declarations = declaredCreationContentChoices(slots, context.contentSelectorOf)
-  return resolveCreationContentChoices(declarations, slots, draft.contentChoices, context.feats)
+  return resolveCreationContentChoices(declarations, slots, draft.contentChoices, context.feats, context.spells ?? [])
 }
 
 // The ContentRef answers that count for the CURRENT selection, keyed by the

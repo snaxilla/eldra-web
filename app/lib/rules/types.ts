@@ -1195,11 +1195,39 @@ export type ContentCatalogueFilter = {
   variants?: readonly string[]
 }
 
+// D&D 2024 Character Rules P2 -- the smallest typed filter a package-authored spell-selection
+// choice needs, fit to this file's own existing shape rather than widened into it:
+// `ContentCatalogueFilter.category`/`.variants` are FEAT vocabulary (a feat's own category/variant
+// taxonomy, read by featFilterVerdict) and stay exactly that; bolting spell fields onto it would
+// make a feat-shaped type carry spell meaning no feat has. This is a SEPARATE closed shape for the
+// SAME `fromContentCatalogue` selector's `filter` slot, chosen by which catalogue `category` the
+// selector itself already names ('spells'). All declared dimensions AND together (a spell must
+// satisfy every one that is present); `classList` is an OR within itself (any one named class is
+// enough). Package-declared, like every other selector field here -- the engine never evaluates it
+// (ChoiceSet stays "the one form that is never evaluated"); resolving it against a live spell's
+// own normalized mechanics is application-layer work (app/lib/spell-mechanics/
+// spell-option-eligibility.ts), exactly mirroring how `ContentCatalogueFilter` is resolved by
+// featFilterVerdict, not by this engine.
+export type SpellCatalogueFilter = {
+  // At least one of these named classes' list this spell must be on. Real XPHB class names
+  // (Bard, Cleric, ...), matched against CanonicalSpellMechanics.classLists verbatim -- the owning
+  // resolver fails closed on a class name it cannot verify, never guesses a normalized form.
+  classList?: readonly string[]
+  // Exact spell level: 0 is a cantrip, 1-9 a leveled spell. Matched against
+  // CanonicalSpellMechanics.level exactly -- no range, no "at most"/"at least", because no real
+  // Milestone-A selection rule needs one (see this phase's own report).
+  level?: number
+  // A real spell school label (e.g. "Evocation"), matched against CanonicalSpellMechanics.school
+  // exactly. Supported because the metadata is already canonical and the check is free, not
+  // because a current Milestone-A rule requires it (see this phase's own report).
+  school?: string
+}
+
 export type ChoiceSetSelector =
   | { kind: 'explicit'; ids: DefinitionId[] }
   | { kind: 'definitionsInCategory'; category: RuleCategory }
   | { kind: 'fromContentFacet' }
-  | { kind: 'fromContentCatalogue'; category: string; filter?: ContentCatalogueFilter }
+  | { kind: 'fromContentCatalogue'; category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter }
 
 export type ChoiceSetDefinition = DefinitionCategorization & {
   id: DefinitionId

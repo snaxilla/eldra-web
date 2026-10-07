@@ -25,6 +25,7 @@
 // simply have no label and render by id -- visible degradation, not a crash.
 
 import { getWorldRuntime } from './world-runtime-service'
+import type { SpellCatalogueFilter } from '../../app/lib/rules/types'
 
 export type ChoiceSetPresentation = {
   id: string
@@ -38,7 +39,10 @@ export type ChoiceSetPresentation = {
   // `fromContentCatalogue`). Lets the Builder recognize a ContentRef choice from
   // the package's own declaration, never from its id or the answer's shape.
   contentCategory?: string
-  contentFilter?: { category: string; variants?: readonly string[] }
+  // D&D 2024 Character Rules P2 -- a 'spells' category ChoiceSet's filter is a SpellCatalogueFilter,
+  // not a feat's {category, variants}; the Builder narrows by the same `contentCategory` it already
+  // reads above, exactly as server-side routing narrows by `selector.category`.
+  contentFilter?: { category: string; variants?: readonly string[] } | SpellCatalogueFilter
 }
 
 export type WorldRulesChoiceOptions =

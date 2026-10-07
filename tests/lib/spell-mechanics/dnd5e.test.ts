@@ -887,3 +887,29 @@ describe('resolveDnd5eSpellMechanics -- diceScaling cross-validation, synthetic 
     expect(mechanics.damage?.diceScaling).toEqual({ trigger: 'cast-level', perLevelDiceCount: 3 })
   })
 })
+
+// D&D 2024 Character Rules P2 -- `classLists`, the one additive field P2 adds to this resolver.
+// Read only from the already-compiled `data.classLists` (set by 5etools-dataset.ts's
+// `enrichSpellClassLists` at Content compile time); this resolver never re-derives it.
+describe('resolveDnd5eSpellMechanics -- classLists (P2 addition)', () => {
+  it('is populated verbatim when the compiled data carries it', () => {
+    const mechanics = resolveDnd5eSpellMechanics({
+      name: 'Fireball', source: 'XPHB', level: 3, school: 'V',
+      classLists: ['Sorcerer', 'Wizard']
+    })!
+    expect(mechanics.classLists).toEqual(['Sorcerer', 'Wizard'])
+  })
+
+  it('is absent (never an empty array) when the compiled data carries none -- a Content entry compiled before this phase, or one the lookup found no membership for', () => {
+    const mechanics = resolveDnd5eSpellMechanics({ name: 'Fireball', source: 'XPHB', level: 3, school: 'V' })!
+    expect(mechanics.classLists).toBeUndefined()
+  })
+
+  it('a malformed classLists value (not an array of strings) resolves to absent, never a thrown error or a guessed value', () => {
+    const notArray = resolveDnd5eSpellMechanics({ name: 'Fireball', source: 'XPHB', level: 3, school: 'V', classLists: 'Wizard' })!
+    expect(notArray.classLists).toBeUndefined()
+
+    const mixedArray = resolveDnd5eSpellMechanics({ name: 'Fireball', source: 'XPHB', level: 3, school: 'V', classLists: ['Wizard', 42, null] })!
+    expect(mixedArray.classLists).toEqual(['Wizard'])
+  })
+})

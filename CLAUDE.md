@@ -335,6 +335,27 @@ account can read/write items in it; verify both if a newly-provisioned collectio
 - **Loose typing at the Directus boundary**: server utils frequently use `any` for Directus API
   responses and hand-roll snake_case → camelCase normalization per endpoint (see `normalizeMap`,
   `normalizeUser`, `normalize` in `map-data.ts`) rather than a shared schema/validation layer.
+- **Two legacy endpoints read the 5etools source dataset live, at request time** (found during D&D
+  2024 Character Rules P2, not fixed there — see the completeness audit's §25.25 for the fuller
+  investigation): [server/api/worlds/[id]/spell-options.get.ts](server/api/worlds/%5Bid%5D/spell-options.get.ts)
+  and [server/api/worlds/[id]/class-spell-options.get.ts](server/api/worlds/%5Bid%5D/class-spell-options.get.ts).
+  Both read `/opt/eldra/datasets/5etools-src/data/generated/gendata-spell-source-lookup.json`
+  (`class-spell-options.get.ts` also probes several fallback paths, including
+  `ELDRA_5ETOOLS_DATA_DIR`/`ELDRA_5ETOOLS_SPELL_SOURCE_LOOKUP`) directly off disk inside the request
+  handler, and both operate on the **legacy** World-Entity/`block_instances` system (`entities` +
+  `block_instances` via `directusServiceRequest`/`dxFetch`), not the V2 Content Pack/ContentRef
+  architecture. This is unsafe because the real production image is built from [Dockerfile](Dockerfile) and
+  ships `.output` only — no source tree, no `/opt/eldra/datasets`. In a true production deployment
+  both endpoints' lookup read fails, each degrades to `{}` (its own documented fallback), and every
+  call then returns no spell options at all — silently, not as an error. They only appear to work
+  today because this dev/ops environment happens to have that path mounted. Desired direction: stop
+  reading the source dataset at request time; consume the compiled Content Pack's own normalized
+  spell metadata instead (`CanonicalSpellMechanics.classLists`, `app/lib/spell-mechanics/types.ts` —
+  compiled in at Content build time by `server/utils/content-sources/dnd5e/5etools-dataset.ts`'s
+  `enrichSpellClassLists`, exactly the mechanism P2 built for the V2 ContentRef path). Not fixed in
+  P2: these two endpoints serve the legacy character-sheet system, which P2 did not touch, and
+  migrating them means first deciding whether they are still load-bearing for any live Sheet surface
+  — confirm that before changing or removing either one.
 
 ## Known Architectural Boundaries
 

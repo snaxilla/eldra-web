@@ -2735,3 +2735,203 @@ deferral, unchanged).
 - `pnpm run build`: passes.
 - `git diff --check`: clean.
 - `pnpm run lint`: not run; the accepted pre-existing configuration issue.
+
+### 25.25 SPELL CATALOGUE + AUTHORITATIVE SPELL OPTION FILTERING (P2, 2026-10-07)
+
+**Result.** P2 answers exactly the one question it set out to answer -- given a package-authored
+spell-selection filter, which real XPHB spell ContentRefs are legal options -- and nothing more. No
+mandatory decision moves blocked -> implemented. No class spell choice, Magic Initiate completion,
+Mystic Arcanum acquisition, or Fighting Style cantrip exists after this phase; all of that is P3.
+
+#### Spell data authority (mandatory first step, verified against the real corpus)
+
+- **391 XPHB spells**, counted directly from `spells/*.json` filtered to `source === 'XPHB'` --
+  matches the prior audit's figure; re-verified rather than assumed.
+- **Identity**: `name`, `level` (0 cantrip, 1-9 leveled), `school` (single-letter code, e.g. `V`),
+  `ritual`/`concentration` (`meta.ritual`/`meta.concentration`) are on the spell record itself.
+  **Class-list membership is NOT** -- verified directly that no XPHB (or PHB) spell record carries
+  an inline `classes` field; 2014's `classes.fromClassList` is gone from this corpus entirely. The
+  ONLY authoritative source is the separate generated file `generated/gendata-spell-source-lookup.
+  json`, keyed lowercase-source then lowercase-name, with direct membership nested under
+  `.class.<SOURCE>.<ClassName>: true` (verified against Fireball, Acid Splash, Cure Wounds).
+  `.subclass` in that same file is a DIFFERENT mechanic (a subclass's own always-prepared grant,
+  e.g. Eldritch Knight's bonus spells) and is never merged into class-list membership -- P4's scope.
+- **The eight spellcasting classes**, derived two independent ways and cross-checked rather than
+  assumed: the class corpus's own `spellcastingAbility` field, and the aggregated class-list
+  membership across all 391 spells. Both agree exactly: Bard, Cleric, Druid, Paladin, Ranger,
+  Sorcerer, Warlock, Wizard. No discrepancy from the prior audit's "8 casters" to report.
+
+#### Content selection -- the STOP gate did NOT trigger
+
+Queried the LIVE `eldra.solaris.xphb` Content Pack directly (`getWorldContentCatalogue`, the real
+production function, via the same local jiti/runtime-shim `scripts/directus/packages-sync.mjs`
+itself uses -- no new query mechanism): **391 of 391 XPHB spells are already curated as Content
+entries** (`catalogue.spells.length === 391`), accounting exactly for the Pack's own
+`entryCount: 771` (10 species + 12 classes + 16 backgrounds + 77 feats + 217 items + 391 spells +
+48 subclasses). Zero missing. No selection expansion was required, proposed, or made. The content-
+source definition (`server/utils/content-sources/dnd5e/xphb.ts`) already lists `spells` as a full
+category alongside feats/items, uniformly for every book this pipeline compiles -- not a partial or
+curated subset.
+
+#### Spell content identity
+
+A spell's canonical identity is the SAME ContentRef (`packageId`/`slug`, `packageId::slug`
+transport) every other catalogue category already uses. No `DefinitionId` was created for an
+individual spell -- spells remain content entities; Rules state references them only through
+ContentRefs, exactly as the architecture requires.
+
+#### Normalized spell metadata -- reused, then extended by exactly one field
+
+`CanonicalSpellMechanics` (`app/lib/spell-mechanics/types.ts`) already normalizes `level`, `school`
+(the real label, e.g. "Evocation"), `ritual`, and `concentration`, computed unconditionally for
+every spell catalogue entry by the SAME resolver the Cast action system already uses
+(`resolveDnd5eSpellMechanics`, wired into `getWorldContentCatalogue` since "Character Sheet Body
+Phase 1B.1"). P2 reuses this directly -- it does not duplicate it, and does not dump the raw spell
+record into a RulesFacet. The one real gap, confirmed by the audit above, is class-list membership;
+P2 adds exactly one additive field, `CanonicalSpellMechanics.classLists?: readonly string[]`,
+sourced at Content COMPILE time (never a live corpus read at request time -- the 5etools dataset
+directory is a local/CI build input; the Dockerfile-built production image ships `.output` only and
+cannot read it). `server/utils/content-sources/dnd5e/5etools-dataset.ts` gained
+`classListsFor`/`enrichSpellClassLists`, wired into the ONE generic collection-compile path
+(`5etools-collection.ts`'s `loadCategory`) for every book's `spells` category, not an XPHB-specific
+branch.
+
+> **P2 DEPLOYMENT REQUIRES CONTENT REFRESH.** Solaris's CURRENTLY PUBLISHED spell entries (version
+> 1.0.16, compiled before this phase) do not yet carry `classLists` -- the currently-published data
+> predates this phase's compiled metadata. After this phase's code is deployed, `spellOptionVerdict`
+> against the live catalogue fails closed on `classList` for every spell until a Content refresh
+> runs (`REFRESH_CONTENT` + `BIND_CONTENT` -- see Package version and sync below). That failure
+> mode is intentional and safe (absence is never treated as "matches anything" -- see Filters
+> below; proven directly in both `5etools-spell-class-lists.test.ts`'s own "currently-published
+> shape, pre-refresh" case and `spell-option-eligibility.test.ts`'s own "published-old-content"
+> case), not a bug to work around -- it is the reason this phase did not run the refresh itself
+> (dry run only).
+
+The resolver, the type, and the compile-time code are real and tested against the real corpus;
+only the already-published data has not yet picked it up.
+
+**A pre-existing, out-of-scope finding, not fixed here, recorded as a named backlog item** (CLAUDE.md's
+own "Current Technical Debt" section has the full identification: exact files, what they read, why
+it is unsafe, and the desired direction): two LEGACY endpoints
+(`server/api/worlds/[id]/spell-options.get.ts`, `.../class-spell-options.get.ts`) already read
+`gendata-spell-source-lookup.json` LIVE, at request time, against the legacy World-Entity/
+`block_instances` system (not the V2 Content Pack/ContentRef architecture this phase extends). That
+only works because this dev/ops environment happens to have the dataset directory mounted; per this
+project's own deployment notes, the real production container ships `.output` only, with no source
+tree, so that live read would silently return `{}` (empty lookup, every call degrading to "no
+options") in a true production deployment. P2 does not touch or rely on either endpoint, and does
+not repeat that pattern -- the new resolver reads class-list membership only from already-compiled
+Content data, never from a live corpus file.
+
+#### Filter vocabulary (the smallest the corpus actually requires)
+
+`SpellCatalogueFilter` (`app/lib/rules/types.ts`, alongside `ContentCatalogueFilter`, never bolted
+onto it -- that type is feat vocabulary, `category`/`variants`, and stays exactly that):
+`classList?: readonly string[]` (OR within itself -- any one named class is enough), `level?:
+number` (exact match; cantrip is 0), `school?: string` (the real label). All declared dimensions
+AND together. `ChoiceSetSelector`'s `fromContentCatalogue.filter` is now `ContentCatalogueFilter |
+SpellCatalogueFilter`, chosen by the selector's own `category` ('feats' vs 'spells'), additive and
+backward compatible -- every existing feat-shaped filter is still exactly one of the two union
+members.
+
+**Level**: supports exact level only (0-9), which is everything any real Milestone-A rule needs --
+no range operator was added. **School**: audited the real corpus directly for a Milestone-A rule
+that requires it (Eldritch Knight's and Arcane Trickster's real XPHB Spellcasting features were
+checked for a school restriction; neither has one -- 2024 removed it). **No current Milestone-A
+rule requires school filtering.** It is supported anyway because the metadata is already canonical
+and the check is free (`mechanics.school` already existed for Cast), per this phase's own
+instruction to support a cheap, already-canonical dimension generically -- never claimed as
+"required" when it is not. **Deferred, not supported**: ritual, damage type, casting time,
+components, concentration, source -- no Milestone-A selection rule audited here needs any of them;
+adding filter vocabulary nobody needs is explicitly out of scope.
+
+#### Category routing and the resolver
+
+`spellOptionVerdict` (`app/lib/spell-mechanics/spell-option-eligibility.ts`) is a NEW, independent
+pure function -- not bolted onto `featOptionVerdict`, mirroring its fail-closed POSTURE (absent
+filter refuses, unrecognized field refuses, absent mechanics refuses) without sharing its code, for
+the same reason `SpellCatalogueFilter` is a separate type from `ContentCatalogueFilter`: a spell has
+no category/variant, a feat has no level/school/class-list.
+
+`'spells'` is now a second recognized `fromContentCatalogue` destination, alongside `'feats'`, in
+the ONE place that is safe to extend without deciding P3's persistence shape:
+`app/lib/characters/creation-content-choices.ts`'s `resolveCreationContentChoices` (CREATION-time
+only, answers persisted through the already category-agnostic `rules_choices`/`choices.selections`
+mechanism -- no new persistence shape). It was deliberately NOT wired into
+`character-progression-plan.ts`'s or `character-derived.ts`'s PERSISTED-ACQUISITION routing (the
+branches that write a confirmed answer into `progression.feats[]`), because doing so would force
+deciding the Wizard spellbook/known/prepared persistence shape -- exactly the premature design
+decision this phase's own instructions require a STOP on. The pure resolver itself
+(`spellOptionVerdict`, `SpellCatalogueFilter`, `CanonicalSpellMechanics.classLists`) has no
+creation-vs-progression dependency; P3 can call it from either surface with no change here. An
+unrecognized category still fails closed exactly as before (unchanged, verified by the existing
+test asserting it).
+
+Server authority: `create-v2.post.ts` now independently re-resolves a 'spells' choice the same way
+it already does for 'feats' -- against `catalogue.spells` (the real World Content Catalogue, fetched
+server-side), never a client-submitted level/class/school fact. The Builder's `creationContext` was
+threaded the same real `catalogue.spells` data the page already fetches (zero added request cost --
+the full catalogue, spells included, is already sent to the client today). No real facet declares a
+`'spells'` choice yet, so this is proven today only through tests that declare one on a synthetic
+facet -- exactly this phase's own required posture ("the underlying resolver/transport must not be
+tied to one surface," never "fake a count to prove the resolver works").
+
+#### Magic Initiate, Fighting Style cantrips, class spellcasting, Mystic Arcanum, subclass spells -- the P2/P3 boundary
+
+Every one of these remains blocked after P2, unchanged:
+
+- **Magic Initiate**: P2 can now answer "which cantrips are legal for Cleric/Druid/Wizard" and
+  "which level-1 spells are legal for those lists" with the real resolver. It does NOT implement
+  choosing two cantrips, choosing one level-1 spell, the spellcasting-ability choice, persisted
+  count state, or Spell Change. Still blocked (Acolyte, Guide, Sage) -- P2/P3's own boundary,
+  unchanged from P1's report.
+- **Blessed Warrior / Druidic Warrior**: the legal cantrip option universe may now be knowable, but
+  every nested decision still needs correct cardinality/persistence authoring (P3). Still blocked.
+- **Class spellcasting** (all 8 casters): P2 solves the legal option universe per class/level/
+  school. It does NOT solve count (cantrips known, spells known/prepared), known/prepared/spellbook
+  state, or per-level acquisition. No class spell-count or spell-choice decision is implemented
+  (verified directly: every `spell-choice`/`spell-grant`/`spell-count` decision in the census still
+  classifies as blocked after this phase).
+- **Mystic Arcanum**: the legal Warlock option universe by level may be resolvable; acquisition
+  cadence/count/persistence remain P3 (or later). Not marked implemented.
+- **Subclass spells**: P2 establishes the spell identity/filtering primitive a subclass spell grant
+  would need; P4's own subclass-level gating is untouched and not implemented here.
+
+#### Phase 0
+
+| | Decisions | Implemented | Blocked | Optional |
+| --- | --- | --- | --- | --- |
+| P7 (§25.24) | 647 | 192 | 420 | 35 |
+| P2 | 647 | 192 | 420 | 35 |
+
+Unchanged, verified directly (not assumed): every `spell-choice`/`spell-grant`/`spell-count`
+decision in the census still classifies `blocked`. Discovery was not suppressed or altered.
+
+#### Availability (unchanged, as expected -- P2 is foundational, not a creation unblock)
+
+| | Species | Classes | Backgrounds | Combinations |
+| --- | --- | --- | --- | --- |
+| Before P2 | 3 / 10 | 0 / 12 | 0 / 16 | 0 / 1,920 |
+| After P2 | 3 / 10 | 0 / 12 | 0 / 16 | 0 / 1,920 |
+
+#### Package version and sync
+
+**No Rules bump.** P2 changed Rules ENGINE types (`app/lib/rules/types.ts`: the additive
+`SpellCatalogueFilter` type and a widened `ChoiceSetSelector.filter` union) and application/Content-
+compile code, but touched neither `packages/eldra-dnd5e-2024/definitions.json` nor `manifest.json`
+-- the Rules Package's own published content is byte-identical to what is live. Verified directly,
+not assumed: the dry run reports Rules **`CURRENT`** at 0.20.0, no collision. Content is
+`REFRESH_REQUIRED` for `eldra.solaris.xphb` (the class-list compile-time enrichment would produce
+different compiled content than the currently published version) -- actions `REFRESH_CONTENT`,
+`BIND_CONTENT`. Preflight: zero dangling references across 230 Definitions (unchanged from P7) and
+the 94 decision-owning facets (unchanged). No selection expansion. No mutation; dry run only.
+
+#### Verification
+
+- `pnpm run test`: 192 files, 3,982 tests, all passing (40 new: 5 creation-content-choices
+  'spells' authority, 19 real-corpus spell-option-eligibility, 8 class-list enrichment, 5 spell
+  corpus authority / Phase-0-unchanged, 3 `classLists` resolver unit).
+- `pnpm run typecheck`: unique (file, diagnostic-code) pairs: 243 baseline, 243 candidate, 0 new.
+- `pnpm run build`: passes.
+- `git diff --check`: clean.
+- `pnpm run lint`: not run; the accepted pre-existing configuration issue.

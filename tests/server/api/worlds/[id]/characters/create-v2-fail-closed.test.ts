@@ -136,10 +136,12 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
     expectNoWrites()
   })
 
-  it('a background whose ability bonus cannot be recorded is refused, and the reason names the decision in plain words', async () => {
+  // P7: Criminal's ability bonus is now representable; starting equipment (P8, out of scope) is
+  // its remaining blocker, and the refusal names it in plain words.
+  it('a background whose starting equipment cannot be recorded is refused, and the reason names the decision in plain words', async () => {
     const rejected = await handler(fakeEvent(bodyWith('dwarf-xphb', 'fighter-xphb', 'criminal-xphb')) as any).catch((error: any) => error)
     expect(rejected.statusCode).toBe(400)
-    expect(rejected.message).toMatch(/ability score bonus/)
+    expect(rejected.message).toMatch(/starting equipment/)
     expectNoWrites()
   })
 

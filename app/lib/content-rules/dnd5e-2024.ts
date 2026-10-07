@@ -1443,6 +1443,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
 
   background: {
     'acolyte-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.int',
+            'source:background.increase.wis',
+            'source:background.increase.cha'
+          ]
+        }
+      ],
       creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
@@ -1452,6 +1463,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'artisan-xphb': {
       choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.str',
+            'source:background.increase.dex',
+            'source:background.increase.int'
+          ]
+        },
         {
           choiceSet: 'choice:proficiency.artisan-tool.background',
           count: 1,
@@ -1498,6 +1518,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'charlatan-xphb': {
       choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.dex',
+            'source:background.increase.con',
+            'source:background.increase.cha'
+          ]
+        },
         {
           choiceSet: 'choice:feat.skilled.skill-or-tool',
           count: 3,
@@ -1568,6 +1597,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'criminal-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.dex',
+            'source:background.increase.con',
+            'source:background.increase.int'
+          ]
+        }
+      ],
       originFeatSlug: 'alert-xphb',
       grants: [
         { set: 'value:tool.thieves_tools.proficient', to: true },
@@ -1577,6 +1617,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'entertainer-xphb': {
       choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.str',
+            'source:background.increase.dex',
+            'source:background.increase.cha'
+          ]
+        },
         {
           choiceSet: 'choice:proficiency.instrument.background',
           count: 1,
@@ -1617,6 +1666,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'farmer-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.str',
+            'source:background.increase.con',
+            'source:background.increase.wis'
+          ]
+        }
+      ],
       originFeatSlug: 'tough-xphb',
       grants: [
         { set: 'value:tool.carpenters_tools.proficient', to: true },
@@ -1626,6 +1686,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'guard-xphb': {
       choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.str',
+            'source:background.increase.int',
+            'source:background.increase.wis'
+          ]
+        },
         {
           choiceSet: 'choice:proficiency.gaming-set.background',
           count: 1,
@@ -1644,6 +1713,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'guide-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.dex',
+            'source:background.increase.con',
+            'source:background.increase.wis'
+          ]
+        }
+      ],
       creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:tool.cartographers_tools.proficient', to: true },
@@ -1652,6 +1732,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'hermit-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.con',
+            'source:background.increase.wis',
+            'source:background.increase.cha'
+          ]
+        }
+      ],
       originFeatSlug: 'healer-xphb',
       grants: [
         { set: 'value:tool.herbalism_kit.proficient', to: true },
@@ -1660,6 +1751,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'merchant-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.con',
+            'source:background.increase.int',
+            'source:background.increase.cha'
+          ]
+        }
+      ],
       originFeatSlug: 'lucky-xphb',
       grants: [
         { set: 'value:tool.navigators_tools.proficient', to: true },
@@ -1669,6 +1771,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'noble-xphb': {
       choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.str',
+            'source:background.increase.int',
+            'source:background.increase.cha'
+          ]
+        },
         {
           choiceSet: 'choice:proficiency.gaming-set.background',
           count: 1,
@@ -1748,6 +1859,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'sage-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.con',
+            'source:background.increase.int',
+            'source:background.increase.wis'
+          ]
+        }
+      ],
       creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
       grants: [
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
@@ -1756,6 +1878,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'sailor-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.str',
+            'source:background.increase.dex',
+            'source:background.increase.wis'
+          ]
+        }
+      ],
       originFeatSlug: 'tavern-brawler-xphb',
       grants: [
         { set: 'value:tool.navigators_tools.proficient', to: true },
@@ -1765,6 +1898,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     },
     'scribe-xphb': {
       choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.dex',
+            'source:background.increase.int',
+            'source:background.increase.wis'
+          ]
+        },
         {
           choiceSet: 'choice:feat.skilled.skill-or-tool',
           count: 3,
@@ -1837,6 +1979,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'soldier-xphb': {
       choices: [
         {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.str',
+            'source:background.increase.dex',
+            'source:background.increase.con'
+          ]
+        },
+        {
           choiceSet: 'choice:proficiency.gaming-set.background',
           count: 1,
           from: [
@@ -1854,6 +2005,17 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ]
     },
     'wayfarer-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:background.ability-distribution',
+          count: 3,
+          from: [
+            'source:background.increase.dex',
+            'source:background.increase.wis',
+            'source:background.increase.cha'
+          ]
+        }
+      ],
       originFeatSlug: 'lucky-xphb',
       grants: [
         { set: 'value:tool.thieves_tools.proficient', to: true },

@@ -437,6 +437,38 @@ describe('Fighter creation -- write-order mechanics (completeness stubbed)', () 
       .rejects.toThrow('rules_choices write failed')
     expect(mocks.saveCharacterHealth).not.toHaveBeenCalled()
   })
+
+  // P7 -- ROUND-TRIP ACCEPTANCE (MECHANICS ISOLATION, completeness stubbed; this file is on the
+  // policy's UNIT_STUBBING list). Creation through the REAL route, with Criminal's own real three
+  // abilities (dex, con, int). Real-authority creation of Criminal is refused today by its OWN
+  // separate, unrelated blocker (starting equipment, P8) -- this proves PERSISTENCE through
+  // rules_choices, not that a real Criminal character can be created end to end; that claim is
+  // deliberately NOT made here.
+  const BACKGROUND_ABILITY_KEY = 'background:choice:background.ability-distribution'
+  const DEX_INCREASE = 'source:background.increase.dex'
+  const CON_INCREASE = 'source:background.increase.con'
+  const INT_INCREASE = 'source:background.increase.int'
+
+  it('a P7 +2/+1 Background ability answer is persisted through rules_choices and survives a fresh read', async () => {
+    await postCreate(bodyWith('Criminal', { choices: { selections: { [BACKGROUND_ABILITY_KEY]: [DEX_INCREASE, DEX_INCREASE, CON_INCREASE] } } }))
+    expect(mocks.saveCharacterRulesChoices).toHaveBeenCalledTimes(1)
+    const persisted = JSON.parse(JSON.stringify(store.rules))
+    expect(persisted.selections[BACKGROUND_ABILITY_KEY]).toEqual([DEX_INCREASE, DEX_INCREASE, CON_INCREASE])
+  })
+
+  it('a P7 +1/+1/+1 Background ability answer is persisted through rules_choices and survives a fresh read', async () => {
+    await postCreate(bodyWith('Criminal', { choices: { selections: { [BACKGROUND_ABILITY_KEY]: [DEX_INCREASE, CON_INCREASE, INT_INCREASE] } } }))
+    expect(mocks.saveCharacterRulesChoices).toHaveBeenCalledTimes(1)
+    const persisted = JSON.parse(JSON.stringify(store.rules))
+    expect(persisted.selections[BACKGROUND_ABILITY_KEY]).toEqual([DEX_INCREASE, CON_INCREASE, INT_INCREASE])
+  })
+
+  it('a crafted +3-to-one-ability answer is rejected before any write (choice validation runs before the entity is created)', async () => {
+    await expect(postCreate(bodyWith('Criminal', { choices: { selections: { [BACKGROUND_ABILITY_KEY]: [DEX_INCREASE, DEX_INCREASE, DEX_INCREASE] } } })))
+      .rejects.toThrow()
+    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+    expect(mocks.saveCharacterRulesChoices).not.toHaveBeenCalled()
+  })
 })
 
 // ---- backward compatibility and multiple creation acquisitions --------------

@@ -8,6 +8,7 @@
 // what another slot offers) -- they never stand in for production behavior, and
 // nothing in production branches on Sage, Wizard, or any skill name.
 
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 
 // UNIT-ISOLATION (classified in tests/rules/completeness-stub-policy.test.ts): this file asserts MECHANICS
@@ -32,8 +33,10 @@ import {
   isProficiencyStepComplete,
   missingRequirements,
   pruneChoices,
+  NO_CREATION_CONTENT,
   setChoiceSelections,
   type BuilderCatalogueEntry,
+  type BuilderCreationContext,
   type CharacterBuilderDraft
 } from '../../../../app/components/characters/builder/characterBuilderSelection'
 
@@ -63,6 +66,21 @@ function entryFor(title: string, slug: string, rulesFacet: unknown): BuilderCata
     rulesFacet
   } as unknown as BuilderCatalogueEntry
 }
+
+// The Builder's context carries the package's own ChoiceSet rule (distinctness and per-option
+// ceiling), read from the real definitions.json. Without it the Builder would judge the repeatable
+// Background choice as distinct, which is the very false refusal this test exists to catch.
+const PACKAGE_DEFINITIONS = JSON.parse(readFileSync('packages/eldra-dnd5e-2024/definitions.json', 'utf8')) as { id: string, kind: string, distinct?: boolean, maxPerOption?: number }[]
+const PACKAGE_CONTEXT: BuilderCreationContext = {
+  ...NO_CREATION_CONTENT,
+  choiceSetRule: (id) => {
+    const definition = PACKAGE_DEFINITIONS.find((d) => d.id === id && d.kind === 'choiceSet')
+    return definition ? { distinct: definition.distinct, maxPerOption: definition.maxPerOption } : null
+  }
+}
+const SAGE_ABILITY_KEY = 'background:choice:background.ability-distribution'
+const INT_SOURCE = 'source:background.increase.int'
+const WIS_SOURCE = 'source:background.increase.wis'
 
 function realDraft(overrides: Partial<CharacterBuilderDraft> = {}): CharacterBuilderDraft {
   return {
@@ -245,9 +263,11 @@ describe('the Builder draft -- interactive, never silently illegal', () => {
   it('two legal alternatives complete the proficiency step and clear the requirement', () => {
     const draft = realDraft()
     setChoiceSelections(draft, CLASS_KEY, [INSIGHT, NATURE])
+    // Sage also asks its P7 ability distribution (the proficiency step includes every creation choice).
+    setChoiceSelections(draft, SAGE_ABILITY_KEY, [INT_SOURCE, INT_SOURCE, WIS_SOURCE], PACKAGE_CONTEXT)
 
-    expect(isProficiencyStepComplete(draft)).toBe(true)
-    expect(missingRequirements(draft).some((line) => line.includes('Class'))).toBe(false)
+    expect(isProficiencyStepComplete(draft, PACKAGE_CONTEXT)).toBe(true)
+    expect(missingRequirements(draft, PACKAGE_CONTEXT).some((line) => line.includes('Class'))).toBe(false)
   })
 
   // 14: unrelated choices are not globally disabled by a grant on another key.

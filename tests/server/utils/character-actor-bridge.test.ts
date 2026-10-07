@@ -284,9 +284,10 @@ describe('the bridge translates, and only translates', () => {
 
   it('reports unanswered choices instead of resolving them', () => {
     const { bridged } = derive(blueprint())
-    // Human offers 1 skill of any; Fighter offers 2 from its list.
-    expect(bridged.pendingChoices.map((choice) => choice.slot)).toEqual(['species', 'class'])
+    // Human offers 1 skill of any; Fighter offers 2 from its list; Acolyte asks its P7 ability distribution.
+    expect(bridged.pendingChoices.map((choice) => choice.slot)).toEqual(['species', 'class', 'background'])
     expect(bridged.pendingChoices.find((choice) => choice.slot === 'class')?.count).toBe(2)
+    expect(bridged.pendingChoices.find((choice) => choice.slot === 'background')?.count).toBe(3)
     // ...and none of them silently became a proficiency.
     expect(bridged.actorState.choices).toEqual({})
   })
@@ -295,7 +296,8 @@ describe('the bridge translates, and only translates', () => {
     const { bridged } = derive(blueprint())
     expect(bridged.declaredChoices.map((choice) => choice.key)).toEqual([
       'species:choice:skill.proficiency',
-      'class:choice:skill.proficiency'
+      'class:choice:skill.proficiency',
+      'background:choice:background.ability-distribution'
     ])
     // The pending records carry the same key, so a surface that wants to
     // ANSWER one never has to reconstruct it.
@@ -553,6 +555,7 @@ describe('DND5E Playability Audit: Monk Hit Die grant', () => {
 
 const CLASS_SKILLS = choiceKey('class', 'choice:skill.proficiency')
 const SPECIES_SKILLS = choiceKey('species', 'choice:skill.proficiency')
+const BACKGROUND_ABILITY = choiceKey('background', 'choice:background.ability-distribution')
 
 // Two of the nine skills the Fighter facet actually offers.
 const ATHLETICS = 'value:skill.athletics.proficient'
@@ -597,8 +600,8 @@ describe('Bobbert chooses two class skills', () => {
 
   it('an answered choice is no longer outstanding', () => {
     const { bridged } = derive(withClassSkills(ATHLETICS, PERCEPTION))
-    // The Species choice is still unanswered; the Class one is not.
-    expect(bridged.pendingChoices.map((choice) => choice.key)).toEqual([SPECIES_SKILLS])
+    // The Species choice and the Background ability distribution are still unanswered; the Class one is not.
+    expect(bridged.pendingChoices.map((choice) => choice.key)).toEqual([SPECIES_SKILLS, BACKGROUND_ABILITY])
   })
 
   it('answering every choice leaves nothing outstanding', () => {
@@ -606,7 +609,9 @@ describe('Bobbert chooses two class skills', () => {
       rulesChoices: {
         selections: {
           [CLASS_SKILLS]: [ATHLETICS, PERCEPTION],
-          [SPECIES_SKILLS]: ['value:skill.arcana.proficient']
+          [SPECIES_SKILLS]: ['value:skill.arcana.proficient'],
+          // Acolyte: +2 Intelligence, +1 Wisdom (a legal +2/+1 over its three abilities).
+          [BACKGROUND_ABILITY]: ['source:background.increase.int', 'source:background.increase.int', 'source:background.increase.wis']
         }
       }
     }))

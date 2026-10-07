@@ -246,7 +246,7 @@ function setAbility(key: AbilityKey, value: number | null) {
 // shows nothing to answer -- the Builder stays usable either way.
 const { data: choiceOptions } = await useFetch<{
   available: boolean
-  choiceSets?: Record<string, { prompt: string; label?: string; contentCategory?: string; contentFilter?: { category: string; variants?: readonly string[] } }>
+  choiceSets?: Record<string, { prompt: string; label?: string; distinct?: boolean; maxPerOption?: number; contentCategory?: string; contentFilter?: { category: string; variants?: readonly string[] } }>
   optionLabels?: Record<string, string>
 }>(() => `/api/worlds/${worldId.value}/rules/choice-options`)
 
@@ -262,6 +262,11 @@ const creationContext = computed<BuilderCreationContext>(() => {
     contentSelectorOf: (choiceSetId) => {
       const set = sets[choiceSetId]
       return set?.contentCategory ? { category: set.contentCategory, filter: set.contentFilter } : null
+    },
+    // P7 -- the package's own distinctness and per-option ceiling, the same rule the server applies.
+    choiceSetRule: (choiceSetId) => {
+      const set = sets[choiceSetId]
+      return set ? { distinct: set.distinct, maxPerOption: set.maxPerOption } : null
     },
     feats: catalogue.value?.feats ?? []
   }
@@ -318,7 +323,7 @@ function offeredFor(key: string) {
 }
 
 function chooseSelections(key: string, selected: string[]) {
-  setChoiceSelections(draft, key, selected)
+  setChoiceSelections(draft, key, selected, creationContext.value)
 }
 
 // Changing Species/Class/Background changes which questions are asked, so

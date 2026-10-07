@@ -353,6 +353,8 @@ export type ActorBridgeInput = {
     effect?: 'set-value' | 'activate-source'
     resultCap?: number
     distinct?: boolean
+    // P7 -- mirrors ChoiceSetDefinition.maxPerOption: the per-option ceiling for a repeatable choice.
+    maxPerOption?: number
     // CHOICE ELIGIBILITY PHASE 2B -- mirrors `ChoiceSetDefinition.
     // excludeIfAlreadyActive` (app/lib/rules/types.ts), relayed through
     // for the same "type completeness, read selectively" reason every
@@ -663,6 +665,7 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
       // doc comment for why that is correct).
       const choiceSetInfo = input.lookupChoiceSet?.(choice.choiceSet)
       const distinct = choiceSetInfo?.distinct
+      const maxPerOption = choiceSetInfo?.maxPerOption
       // CHOICE ELIGIBILITY PHASE 2B -- filtered BEFORE `toResolvableChoice`
       // builds `options`, so the ineligible option never reaches the
       // client's own offered list OR `validateChoiceSelection`'s own
@@ -675,7 +678,7 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
       const eligibleFrom = filterEligibleOptions(
         choice.from ?? [], choice.requiresActive, choiceSetInfo?.excludeIfAlreadyActive, isActive
       )
-      applyChoice(toResolvableChoice(slotKey, { ...choice, from: eligibleFrom }, distinct), choice, slotKey)
+      applyChoice(toResolvableChoice(slotKey, { ...choice, from: eligibleFrom }, distinct, maxPerOption), choice, slotKey)
     }
 
     // Character Progression Phase 1B -- see this file's own PROGRESSION

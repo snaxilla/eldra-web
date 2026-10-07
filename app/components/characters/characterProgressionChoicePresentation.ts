@@ -175,3 +175,17 @@ export function reconcileSlotDrafts(
 
   return next
 }
+
+// P7 -- true when ONE option already fills its per-option ceiling in the OTHER slots, so this
+// slot must not offer it again. No ceiling (`undefined`) means an option is never at its cap.
+// Pure and slot-positional, so it is testable without a DOM (see this file's header).
+export function isSlotOptionAtCap(
+  draft: readonly string[],
+  slotIndex: number,
+  option: string,
+  maxPerOption: number | undefined
+): boolean {
+  if (maxPerOption === undefined) return false
+  const elsewhere = draft.filter((value, index) => index !== slotIndex && value === option).length
+  return elsewhere >= maxPerOption
+}

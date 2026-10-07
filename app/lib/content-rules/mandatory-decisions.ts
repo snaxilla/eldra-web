@@ -549,8 +549,16 @@ export function detectBackgroundDecisions(bg: RawBackground, featsByName: Readon
       else out.push(make(owner, 1, 'proficiency-grant', `toolProficiencies.${key}`, 1, { detail: `tool:${key}` }))
     }
   }
-  const abilityChoices = (bg.ability ?? []).filter((a) => a && typeof a === 'object' && 'choose' in (a as object))
-  if (abilityChoices.length > 0) out.push(make(owner, 1, 'ability-distribution', 'ability', abilityChoices.length))
+  // The `ability` array is two ALTERNATIVE modes ("Choose one of", 5etools renderer): one weighted
+  // mode of +2/+1 and one of +1/+1/+1 over the same three abilities. One decision, whose total is
+  // the common total of its modes (3) and whose per-option ceiling is the largest single weight (2).
+  const abilityDistribution = backgroundAbilityDistribution(bg.ability ?? [])
+  if (abilityDistribution) {
+    out.push(make(owner, 1, 'ability-distribution', 'ability', abilityDistribution.total, { detail: abilityDistribution.detail }))
+  } else if ((bg.ability ?? []).some((a) => a && typeof a === 'object' && 'choose' in (a as object))) {
+    // An unrecognized ability structure is still a decision: it stays blocked, never dropped.
+    out.push(make(owner, 1, 'ability-distribution', 'ability', 1, { detail: 'unrecognized' }))
+  }
   for (const entry of bg.feats ?? []) {
     for (const key of Object.keys(entry)) {
       const featName = (key.split('|')[0] ?? key).split(';')[0]!.trim().toLowerCase()
@@ -565,6 +573,24 @@ export function detectBackgroundDecisions(bg: RawBackground, featsByName: Readon
   }
   if (bg.startingEquipment) out.push(make(owner, 1, 'equipment-package', 'startingEquipment', 1))
   return out
+}
+
+// The Background ability distribution, read from the corpus's own weighted modes. Returns null when
+// the structure is not the one this reads (the caller then records an unrecognized decision, which
+// stays blocked, never silently dropped).
+export function backgroundAbilityDistribution(abilityEntries: unknown[]): { total: number, max: number, detail: string } | null {
+  const modes = abilityEntries.flatMap((entry) => {
+    const weighted = entry && typeof entry === 'object' ? ((entry as any).choose?.weighted ?? null) : null
+    return weighted && Array.isArray(weighted.from) && Array.isArray(weighted.weights) ? [weighted as { from: string[], weights: number[] }] : []
+  })
+  if (modes.length === 0 || modes.length !== abilityEntries.length) return null
+  const from = [...new Set(modes.flatMap((mode) => mode.from))].sort()
+  const sameFrom = modes.every((mode) => mode.from.length === modes[0]!.from.length && mode.from.every((a) => modes[0]!.from.includes(a)))
+  const totals = new Set(modes.map((mode) => mode.weights.reduce((sum, w) => sum + w, 0)))
+  if (!sameFrom || totals.size !== 1) return null
+  const total = [...totals][0]!
+  const max = Math.max(...modes.map((mode) => Math.max(...mode.weights)))
+  return { total, max, detail: `weighted-abilities:${from.join(',')};total:${total};max:${max}` }
 }
 
 export function detectFeatDecisions(feat: RawFeat): DecisionRecord[] {

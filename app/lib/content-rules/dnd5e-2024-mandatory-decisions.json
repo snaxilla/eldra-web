@@ -58,8 +58,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:cha,int,wis;total:3;max:2"
     },
     {
       "id": "background:acolyte-xphb:L1:equipment-package:startingequipment",
@@ -115,8 +116,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:dex,int,str;total:3;max:2"
     },
     {
       "id": "background:artisan-xphb:L1:equipment-package:startingequipment",
@@ -172,8 +174,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:cha,con,dex;total:3;max:2"
     },
     {
       "id": "background:charlatan-xphb:L1:equipment-package:startingequipment",
@@ -229,8 +232,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:con,dex,int;total:3;max:2"
     },
     {
       "id": "background:criminal-xphb:L1:equipment-package:startingequipment",
@@ -286,8 +290,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:cha,dex,str;total:3;max:2"
     },
     {
       "id": "background:entertainer-xphb:L1:equipment-package:startingequipment",
@@ -343,8 +348,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:con,str,wis;total:3;max:2"
     },
     {
       "id": "background:farmer-xphb:L1:equipment-package:startingequipment",
@@ -400,8 +406,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:int,str,wis;total:3;max:2"
     },
     {
       "id": "background:guard-xphb:L1:equipment-package:startingequipment",
@@ -457,8 +464,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:con,dex,wis;total:3;max:2"
     },
     {
       "id": "background:guide-xphb:L1:equipment-package:startingequipment",
@@ -514,8 +522,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:cha,con,wis;total:3;max:2"
     },
     {
       "id": "background:hermit-xphb:L1:equipment-package:startingequipment",
@@ -571,8 +580,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:cha,con,int;total:3;max:2"
     },
     {
       "id": "background:merchant-xphb:L1:equipment-package:startingequipment",
@@ -628,8 +638,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:cha,int,str;total:3;max:2"
     },
     {
       "id": "background:noble-xphb:L1:equipment-package:startingequipment",
@@ -685,8 +696,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:con,int,wis;total:3;max:2"
     },
     {
       "id": "background:sage-xphb:L1:equipment-package:startingequipment",
@@ -742,8 +754,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:dex,str,wis;total:3;max:2"
     },
     {
       "id": "background:sailor-xphb:L1:equipment-package:startingequipment",
@@ -799,8 +812,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:dex,int,wis;total:3;max:2"
     },
     {
       "id": "background:scribe-xphb:L1:equipment-package:startingequipment",
@@ -856,8 +870,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:con,dex,str;total:3;max:2"
     },
     {
       "id": "background:soldier-xphb:L1:equipment-package:startingequipment",
@@ -913,8 +928,9 @@
       "timing": "creation",
       "family": "ability-distribution",
       "mandatory": true,
-      "cardinality": 2,
-      "source": "ability"
+      "cardinality": 3,
+      "source": "ability",
+      "detail": "weighted-abilities:cha,dex,wis;total:3;max:2"
     },
     {
       "id": "background:wayfarer-xphb:L1:equipment-package:startingequipment",

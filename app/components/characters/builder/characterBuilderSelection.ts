@@ -60,6 +60,7 @@ import {
 } from '~/lib/characters/ability-scores'
 import {
   resolveCreationChoices,
+  type ChoiceSetRule,
   type CreationChoicePresentation,
   type CreationSlotInput
 } from '~/lib/characters/creation-choice-eligibility'
@@ -138,6 +139,9 @@ export type CharacterBuilderDraft = {
 export type BuilderCreationContext = {
   contentSelectorOf: (choiceSetId: string) => ContentChoiceSelector | null
   feats: readonly CreationFeatEntry[]
+  // P7 -- the package's distinctness and per-option ceiling per ChoiceSet, echoed by the
+  // choice-options endpoint. Absent means every choice is distinct (the pre-P7 rule).
+  choiceSetRule?: (choiceSetId: string) => ChoiceSetRule
 }
 
 export const NO_CREATION_CONTENT: BuilderCreationContext = {
@@ -314,7 +318,12 @@ export function creationChoicePresentation(
   context: BuilderCreationContext = NO_CREATION_CONTENT
 ): CreationChoicePresentation[] {
   const slots: CreationSlotInput[] = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
-  return resolveCreationChoices(slots, draft.choices.selections, (id) => context.contentSelectorOf(id) !== null)
+  return resolveCreationChoices(
+    slots,
+    draft.choices.selections,
+    (id) => context.contentSelectorOf(id) !== null,
+    (id) => context.choiceSetRule?.(id) ?? null
+  )
 }
 
 // PHASE 2C.2B -- the creation-time ContentRef choices the CURRENT selected slots
@@ -351,7 +360,9 @@ export function declaredChoices(
     slot: presentation.slot,
     choiceSetId: presentation.choiceSetId,
     count: presentation.count,
-    options: presentation.offered.filter((option) => option.eligible).map((option) => option.value)
+    options: presentation.offered.filter((option) => option.eligible).map((option) => option.value),
+    distinct: presentation.distinct,
+    maxPerOption: presentation.maxPerOption
   }))
 }
 
@@ -366,13 +377,16 @@ export function choiceSelections(draft: CharacterBuilderDraft, key: string): str
 // carry two Fighter-only skills into a Wizard character. The stale key would
 // fail server validation anyway, but failing at the end of a form is a worse
 // experience than never holding invalid state at all.
+// P7 -- the context is required in practice: pruning judges a repeatable answer by the package's
+// rule, and without it a legal repeat (two picks of one Background ability) would be pruned away.
 export function setChoiceSelections(
   draft: CharacterBuilderDraft,
   key: string,
-  selected: readonly string[]
+  selected: readonly string[],
+  context: BuilderCreationContext = NO_CREATION_CONTENT
 ): void {
   draft.choices.selections[key] = [...selected]
-  pruneChoices(draft)
+  pruneChoices(draft, context)
 }
 
 // Drops answers that the CURRENT questions no longer accept, in both ways
@@ -515,7 +529,7 @@ export function missingRequirements(
     if (presentation.answered) continue
     const eligible = presentation.offered.filter((option) => option.eligible).map((option) => option.value)
     const validation = validateChoiceSelection(
-      { key: presentation.key, slot: presentation.slot, choiceSetId: presentation.choiceSetId, count: presentation.count, options: eligible, distinct: true },
+      { key: presentation.key, slot: presentation.slot, choiceSetId: presentation.choiceSetId, count: presentation.count, options: eligible, distinct: presentation.distinct, maxPerOption: presentation.maxPerOption },
       presentation.selected
     )
     const reason = validation.ok ? 'Choose your options.' : validation.reason

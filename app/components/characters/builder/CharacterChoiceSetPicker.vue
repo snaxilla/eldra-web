@@ -43,6 +43,13 @@ import {
   nextSelectionAfterToggle,
   type OfferedOption
 } from '~/lib/characters/creation-choice-eligibility'
+import {
+  applySlotChange,
+  draftFromAnswer,
+  draftToAnswer,
+  isNonDistinctMultiSelect,
+  isSlotOptionAtCap
+} from '~/components/characters/characterProgressionChoicePresentation'
 
 // `offered` -- when given, every option the content offers, each annotated
 // eligible/unavailable with a reason. An unavailable option stays visible,
@@ -103,6 +110,40 @@ function toggle(option: string) {
     offered: displayed.value
   }, option))
 }
+
+// P7 -- a REPEATABLE choice (`distinct: false`, more than one pick) answers one select per slot,
+// because a checkbox cannot say "the same option twice". The draft keeps each slot's position
+// (see characterProgressionChoicePresentation.ts); only the filled slots are emitted.
+const isSlotMode = computed(() => isNonDistinctMultiSelect(props.choice))
+const slotDraft = ref<string[]>(draftFromAnswer(props.selected, props.choice.count))
+
+watch(() => props.selected, (next) => {
+  if (JSON.stringify(draftToAnswer(slotDraft.value)) !== JSON.stringify(next)) {
+    slotDraft.value = draftFromAnswer(next, props.choice.count)
+  }
+})
+
+const slotIndexes = computed(() => Array.from({ length: props.choice.count }, (_, index) => index))
+
+// Every offered option for one slot. An ineligible option is disabled with its reason; an option
+// that already fills its ceiling in the OTHER slots is disabled. Both stay visible, never hidden.
+function slotOptions(slotIndex: number) {
+  return displayed.value.map((offered) => {
+    const atCap = isSlotOptionAtCap(slotDraft.value, slotIndex, offered.value, props.choice.maxPerOption)
+    return {
+      value: offered.value,
+      label: labelFor(offered.value),
+      disabled: !offered.eligible || atCap,
+      note: !offered.eligible ? offered.reason : atCap ? 'Maximum reached' : undefined
+    }
+  })
+}
+
+function onSlotSelect(slotIndex: number, event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  slotDraft.value = applySlotChange(slotDraft.value, slotIndex, value)
+  emit('update:selected', draftToAnswer(slotDraft.value))
+}
 </script>
 
 <template>
@@ -144,7 +185,37 @@ function toggle(option: string) {
     </p>
 
     <div
-      v-else
+      v-else-if="isSlotMode"
+      class="mt-3 grid gap-2 sm:grid-cols-2"
+    >
+      <label
+        v-for="slotIndex in slotIndexes"
+        :key="slotIndex"
+        class="flex min-h-14 flex-col justify-center gap-1 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.55)] px-3 py-2"
+      >
+        <span class="text-xs text-[#9f9278]">Selection {{ slotIndex + 1 }}</span>
+        <select
+          class="min-h-11 bg-transparent text-sm text-[#e8dcc0]"
+          :value="slotDraft[slotIndex]"
+          @change="onSlotSelect(slotIndex, $event)"
+        >
+          <option value="">
+            Choose&hellip;
+          </option>
+          <option
+            v-for="option in slotOptions(slotIndex)"
+            :key="option.value"
+            :value="option.value"
+            :disabled="option.disabled"
+          >
+            {{ option.label }}{{ option.note ? ` (${option.note})` : '' }}
+          </option>
+        </select>
+      </label>
+    </div>
+
+    <div
+      v-else-if="!isSlotMode"
       class="mt-3 grid gap-2 sm:grid-cols-2"
     >
       <label

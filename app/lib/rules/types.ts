@@ -1215,6 +1215,12 @@ export type ChoiceSetDefinition = DefinitionCategorization & {
   count: Expression | RuleValue
   from: ChoiceSetSelector
   distinct?: boolean
+  // P7 -- ONLY meaningful when `distinct === false`. The most times ONE option may appear in
+  // the answer. `distinct: false` alone permits any repetition (the ASI feat's "+2 to one" is
+  // safe there only because its count is 2); a choice whose total exceeds its per-option ceiling
+  // (Background ability distribution: 3 picks, at most 2 on one ability, which excludes +3) names
+  // the ceiling here. Omitted means no ceiling, byte-identical to every choice authored before P7.
+  maxPerOption?: number
   // CHOICE ELIGIBILITY PHASE 2B -- when `true`, an option whose own
   // Value/Source is ALREADY active in the current ActorState is excluded
   // from this ChoiceSet's offered options wherever it is asked (creation

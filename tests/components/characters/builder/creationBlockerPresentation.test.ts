@@ -36,9 +36,11 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
     expect(dwarf!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
-  it('a background whose ability bonus Eldra cannot record says so in plain words', () => {
+  // P7: the ability score bonus is now representable; starting equipment (P8, out of scope) is
+  // Criminal's remaining blocker.
+  it('a background\'s remaining blocker (starting equipment) is named in plain words', () => {
     const [criminal] = withCreationBlockers([entry('criminal-xphb', 'Criminal')], 'background')
-    expect(criminal!.rulesFacet?.creationUnavailable).toBe('Requires an ability score bonus.')
+    expect(criminal!.rulesFacet?.creationUnavailable).toBe('Requires starting equipment.')
   })
 
   it('a package-authored Origin reason is kept as written (it already names the feat)', () => {
@@ -46,9 +48,11 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
     expect(acolyte!.rulesFacet?.creationUnavailable).toMatch(/Origin Feat \(Magic Initiate\)/)
   })
 
-  it('Artisan is blocked by its ability bonus, not by its Origin feat (Crafter is representable)', () => {
+  // P7: Artisan's ability bonus is now representable too, same as Crafter's tool choice (P1).
+  // Starting equipment is its remaining blocker.
+  it('Artisan is blocked by starting equipment, not by its Origin feat or ability bonus', () => {
     const [artisan] = withCreationBlockers([entry('artisan-xphb', 'Artisan')], 'background')
-    expect(artisan!.rulesFacet?.creationUnavailable).toBe('Requires an ability score bonus.')
+    expect(artisan!.rulesFacet?.creationUnavailable).toBe('Requires starting equipment.')
   })
 
   it('no reason ever exposes an internal identifier', () => {

@@ -91,6 +91,34 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return left.size === right.size && [...left].every((v) => right.has(v))
 }
 
+// ---------------------------------------------------------------------------
+// Background ability distribution (P7). The corpus names three abilities, a total, and a per-option
+// ceiling (discovery's detail). Covered when the Background's facet offers exactly those abilities,
+// as Background Sources, under the one bounded ChoiceSet, with the corpus total as its count.
+// ---------------------------------------------------------------------------
+
+export const BACKGROUND_ABILITY_CHOICE_SET = 'choice:background.ability-distribution'
+
+export function backgroundIncreaseSourceId(ability: string): string {
+  return `source:background.increase.${ability}`
+}
+
+function parseAbilityDistributionDetail(detail: string | undefined): { abilities: string[], total: number, max: number } | null {
+  const match = /^weighted-abilities:([a-z,]+);total:(\d+);max:(\d+)$/.exec(detail ?? '')
+  if (!match) return null
+  return { abilities: match[1]!.split(','), total: Number(match[2]), max: Number(match[3]) }
+}
+
+export function abilityDistributionCovered(d: DecisionRecord): boolean {
+  if (!(d.family === 'ability-distribution' && d.owner.kind === 'background')) return false
+  const parsed = parseAbilityDistributionDetail(d.detail)
+  if (!parsed) return false
+  const expected = parsed.abilities.map(backgroundIncreaseSourceId)
+  const facet = findRulesFacet('dnd5e.2024', 'background', d.owner.slug)
+  return (facet?.choices ?? []).some((c) => c.choiceSet === BACKGROUND_ABILITY_CHOICE_SET && c.count === parsed.total && sameSet(c.from ?? [], expected))
+    && parsed.max === 2
+}
+
 export function proficiencyCovered(d: DecisionRecord): boolean {
   if (!isProficiency(d)) return false
   const ids = valueIdsOfDetail(d.detail)
@@ -159,6 +187,13 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     reason: 'Background fixed Origin feat, server-derived from facet.originFeatSlug (Phase 2C.3A).',
     ledgerIds: ['background:origin-feat:fixed-acquisition'],
     matches: (d) => is(d, 'background', 'feat-grant') && findRulesFacet('dnd5e.2024', 'background', d.owner.slug)?.originFeatSlug === `${slugOf(d.source)}-xphb`
+  },
+  {
+    id: 'impl:background-ability-distribution',
+    status: 'implemented',
+    reason: 'Background ability increase (+2/+1 or +1/+1/+1 over the same three abilities): one bounded choice (choice:background.ability-distribution, at most 2 on one ability), activating Background Sources (P7).',
+    ledgerIds: [],
+    matches: (d) => abilityDistributionCovered(d)
   },
   {
     id: 'impl:proficiency-facet',
@@ -315,13 +350,6 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     reason: 'Species damage-type choice (ancestry resistance): no damage-type vocabulary.',
     ledgerIds: [],
     matches: (d) => is(d, 'species', 'damage-type-choice')
-  },
-  {
-    id: 'blk:background-ability',
-    status: 'blocked',
-    reason: 'Background ability score bonus (two weighted choices): no ability distribution is recorded.',
-    ledgerIds: [],
-    matches: (d) => is(d, 'background', 'ability-distribution')
   },
   {
     id: 'blk:background-equipment',

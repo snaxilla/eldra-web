@@ -3091,6 +3091,84 @@
     ]
   },
   {
+    "id": "source:background.increase.str",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Background Increase (Strength)",
+    "modifiers": [
+      {
+        "target": "value:ability.str",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:background.increase.dex",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Background Increase (Dexterity)",
+    "modifiers": [
+      {
+        "target": "value:ability.dex",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:background.increase.con",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Background Increase (Constitution)",
+    "modifiers": [
+      {
+        "target": "value:ability.con",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:background.increase.int",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Background Increase (Intelligence)",
+    "modifiers": [
+      {
+        "target": "value:ability.int",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:background.increase.wis",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Background Increase (Wisdom)",
+    "modifiers": [
+      {
+        "target": "value:ability.wis",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "id": "source:background.increase.cha",
+    "kind": "source",
+    "category": "core.abilities",
+    "label": "Background Increase (Charisma)",
+    "modifiers": [
+      {
+        "target": "value:ability.cha",
+        "phase": "add",
+        "value": 1
+      }
+    ]
+  },
+  {
     "id": "choice:feat.asi-ability-increase",
     "kind": "choiceSet",
     "category": "progression",
@@ -3104,6 +3182,20 @@
     "effect": "activate-source",
     "writesTo": "source:asi.increase.{selected}",
     "resultCap": 20
+  },
+  {
+    "id": "choice:background.ability-distribution",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Background Ability Increase",
+    "prompt": "Increase one of these abilities by 2 and a different one by 1, or increase three of them by 1 each.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": false,
+    "maxPerOption": 2,
+    "effect": "activate-source"
   },
   {
     "id": "choice:feat.ability-choice-1",

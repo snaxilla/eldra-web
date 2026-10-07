@@ -168,6 +168,9 @@ export type ResolvableChoice = {
   // picks correctly express "+2 to Strength" via two independently-
   // activated +1 Sources; see app/lib/rules/types.ts's own `effect` header).
   distinct?: boolean
+  // P7 -- mirrors ChoiceSetDefinition.maxPerOption. Only read when `distinct === false`: the
+  // most times ONE option may appear in the answer. Omitted means no per-option ceiling.
+  maxPerOption?: number
 }
 
 // The ONE definition of how a facet's declared choice becomes an answerable
@@ -186,7 +189,8 @@ export type ResolvableChoice = {
 export function toResolvableChoice(
   slot: string,
   choice: { choiceSet: DefinitionId; count: number; from?: readonly DefinitionId[] },
-  distinct?: boolean
+  distinct?: boolean,
+  maxPerOption?: number
 ): ResolvableChoice {
   return {
     key: choiceKey(slot, choice.choiceSet),
@@ -194,7 +198,8 @@ export function toResolvableChoice(
     choiceSetId: choice.choiceSet,
     count: choice.count,
     options: [...(choice.from ?? [])],
-    distinct
+    distinct,
+    maxPerOption
   }
 }
 
@@ -268,6 +273,18 @@ export function validateChoiceSelection(
     return {
       ok: false,
       reason: `Choose exactly ${choice.count}; ${selected.length} selected.`
+    }
+  }
+
+  // P7 -- the per-option ceiling for a repeatable choice. Checked on the whole answer, so an
+  // over-picked option is refused rather than trimmed. With count 3 and a ceiling of 2 this
+  // is exactly the legal set {+2/+1, +1/+1/+1}: AAA is refused here, not by a special case.
+  if (choice.distinct === false && choice.maxPerOption !== undefined) {
+    for (const option of new Set(selected)) {
+      const times = selected.filter((value) => value === option).length
+      if (times > choice.maxPerOption) {
+        return { ok: false, reason: `"${option}" can be selected at most ${choice.maxPerOption} times.` }
+      }
     }
   }
 

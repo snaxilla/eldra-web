@@ -20,8 +20,8 @@
 // leaking into the presentation layer. The package already declares the
 // label ("Animal Handling Proficiency"); this reads it.
 //
-// It returns labels for VALUE definitions only, which is every id a facet's
-// `from` list can currently name. A `from` naming something else would
+// It returns labels for VALUE and SOURCE definitions (P7: a Background ability option is a Source),
+// which covers every id a facet's `from` list can currently name. A `from` naming something else would
 // simply have no label and render by id -- visible degradation, not a crash.
 
 import { getWorldRuntime } from './world-runtime-service'
@@ -30,6 +30,10 @@ export type ChoiceSetPresentation = {
   id: string
   prompt: string
   label?: string
+  // P7 -- the package's distinctness rule for this ChoiceSet, so the Builder judges a repeatable
+  // answer by the same rule the server does. `distinct` absent means distinct (the pre-P7 rule).
+  distinct?: boolean
+  maxPerOption?: number
   // PHASE 2C.2B -- present ONLY for a CONTENT-backed ChoiceSet (its `from` is
   // `fromContentCatalogue`). Lets the Builder recognize a ContentRef choice from
   // the package's own declaration, never from its id or the answer's shape.
@@ -78,6 +82,8 @@ export async function getWorldRulesChoiceOptions(
         id: definition.id,
         prompt: definition.prompt,
         label: definition.label,
+        ...(definition.distinct !== undefined ? { distinct: definition.distinct } : {}),
+        ...(definition.maxPerOption !== undefined ? { maxPerOption: definition.maxPerOption } : {}),
         ...(definition.from.kind === 'fromContentCatalogue'
           ? {
               contentCategory: definition.from.category,
@@ -88,7 +94,9 @@ export async function getWorldRulesChoiceOptions(
       continue
     }
 
-    if (definition.kind === 'value' && definition.label) {
+    // P7 -- Sources too: an ability option is a Source (`source:background.increase.str`), and its
+    // label is what the player reads. Previously ASI's Source options fell back to the raw id.
+    if ((definition.kind === 'value' || definition.kind === 'source') && definition.label) {
       optionLabels[definition.id] = definition.label
     }
   }

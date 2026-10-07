@@ -84,7 +84,7 @@ import {
   emptyStoredRulesChoices,
   validateChoiceSelection
 } from '../../../../../app/lib/characters/rules-choices'
-import { resolveCreationChoices } from '../../../../../app/lib/characters/creation-choice-eligibility'
+import { resolveCreationChoices, type ChoiceSetRule } from '../../../../../app/lib/characters/creation-choice-eligibility'
 import { normalizeStoredAbilityScores } from '../../../../../app/lib/characters/ability-scores'
 import { initializeCharacterHealth } from '../../../../../app/lib/characters/health'
 
@@ -242,10 +242,19 @@ export default defineEventHandler(async (event) => {
     return { category: definition.from.category, filter: definition.from.filter }
   }
   const isContentChoiceSet = (choiceSetId: string) => contentSelectorOf(choiceSetId) !== null
+  // P7 -- the package's own distinctness and per-option ceiling for each ChoiceSet. The creation
+  // authority judges a repeatable answer (a Background ability activation) by this rule, never
+  // by a hard-coded assumption that every creation choice is distinct.
+  const choiceSetRule = (choiceSetId: string): ChoiceSetRule => {
+    if (!(runtime.configured && runtime.ok)) return null
+    const definition = runtime.runtime.registry.getById(choiceSetId)
+    if (!definition || definition.kind !== 'choiceSet') return null
+    return { distinct: definition.distinct, maxPerOption: definition.maxPerOption }
+  }
   const contentDeclarations = declaredCreationContentChoices(slots, contentSelectorOf)
   const contentKeys = new Set(contentDeclarations.map((declaration) => declaration.key))
 
-  const declaredKeys = new Set(resolveCreationChoices(slots, {}, isContentChoiceSet).map((presentation) => presentation.key))
+  const declaredKeys = new Set(resolveCreationChoices(slots, {}, isContentChoiceSet, choiceSetRule).map((presentation) => presentation.key))
 
   const rulesChoices = emptyStoredRulesChoices()
   const rawSelections = body?.choices?.selections
@@ -273,7 +282,7 @@ export default defineEventHandler(async (event) => {
     // Judged once, together: a sibling's accepted answer makes a later
     // choice's duplicate ineligible, exactly as the Builder shows it.
     const submitted = Object.fromEntries(entries.map(([key, value]) => [key, value as string[]]))
-    const judged = new Map(resolveCreationChoices(slots, submitted, isContentChoiceSet).map((presentation) => [presentation.key, presentation]))
+    const judged = new Map(resolveCreationChoices(slots, submitted, isContentChoiceSet, choiceSetRule).map((presentation) => [presentation.key, presentation]))
 
     for (const [key, values] of Object.entries(submitted)) {
       const presentation = judged.get(key)!
@@ -297,7 +306,8 @@ export default defineEventHandler(async (event) => {
         choiceSetId: presentation.choiceSetId,
         count: presentation.count,
         options: presentation.offered.filter((option) => option.eligible).map((option) => option.value),
-        distinct: true
+        distinct: presentation.distinct,
+        maxPerOption: presentation.maxPerOption
       }
 
       const validation = validateChoiceSelection(eligibleChoice, values)

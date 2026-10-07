@@ -39,8 +39,13 @@ describe('the fail-closed reasons are specific to the decision that blocks', () 
     const cleric = ownOf('class', 'cleric-xphb')
     expect(cleric.some((u) => u.source === 'Divine Order' && u.level === 1 && u.family === 'feature-option')).toBe(true)
   })
-  it('a Background owns an ability score bonus', () => {
-    expect(ownOf('background', 'criminal-xphb').some((u) => u.family === 'ability-distribution')).toBe(true)
+  // P7: the Background ability distribution is representable (one bounded choice, activating
+  // Background Sources), so it is classified implemented and no longer unresolved.
+  it('a Background\'s ability score bonus is representable, now implemented', () => {
+    const ability = DND5E_2024_MANDATORY_DECISIONS.find((d) => d.owner.slug === 'criminal-xphb' && d.family === 'ability-distribution')
+    expect(ability).toBeDefined()
+    expect(classifyDecision(ability!).status).toBe('implemented')
+    expect(ownOf('background', 'criminal-xphb').some((u) => u.family === 'ability-distribution')).toBe(false)
   })
   // P1: Crafter's tool choice is representable (artisan facet choice), so it is classified
   // implemented and owned by the granted feat, not an unresolved blocker.

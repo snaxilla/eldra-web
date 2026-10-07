@@ -64,7 +64,15 @@ export type CreationChoicePresentation = {
   // illegal input is dropped here, so a count is never satisfied by it.
   selected: DefinitionId[]
   answered: boolean
+  // P7 -- carried from the package ChoiceSet, so the Builder and the server judge one rule.
+  // `distinct` defaults to true (the rule every creation choice had before P7).
+  distinct: boolean
+  maxPerOption?: number
 }
+
+// The package's own rule for a ChoiceSet id (`distinct`, `maxPerOption`), or null when the
+// caller has no registry. Null means the pre-P7 defaults.
+export type ChoiceSetRule = { distinct?: boolean; maxPerOption?: number } | null
 
 // Unconditional grants only, the same boolean-Value shape the bridge's own
 // pre-pass seeds (`grant.to === true`). A grant is never a choice.
@@ -86,7 +94,10 @@ export function resolveCreationChoices(
   // PHASE 2C.2B -- choice sets that are CONTENT-backed (Content Catalogue
   // ContentRefs) are judged by creation-content-choices.ts, never here. Absent
   // means every choice is Definition-backed, exactly as before.
-  isContentChoiceSet?: (choiceSetId: string) => boolean
+  isContentChoiceSet?: (choiceSetId: string) => boolean,
+  // P7 -- the package's rule per ChoiceSet (distinctness and per-option ceiling). Absent or null
+  // means every choice is distinct, exactly as before P7.
+  choiceSetRule?: (choiceSetId: string) => ChoiceSetRule
 ): CreationChoicePresentation[] {
   const acquired = directlyGrantedValues(slots)
   const out: CreationChoicePresentation[] = []
@@ -95,6 +106,9 @@ export function resolveCreationChoices(
     for (const choice of facet?.choices ?? []) {
       if (isContentChoiceSet?.(choice.choiceSet)) continue
       const key = `${slot}:${choice.choiceSet}`
+      const rule = choiceSetRule?.(choice.choiceSet) ?? null
+      const distinct = rule?.distinct !== false
+      const maxPerOption = rule?.maxPerOption
       const offeredValues = choice.from ?? []
 
       const offered: OfferedOption[] = offeredValues.map((value) => {
@@ -112,10 +126,11 @@ export function resolveCreationChoices(
         choiceSetId: choice.choiceSet,
         count: choice.count,
         options: eligibleOptions,
-        distinct: true
+        distinct,
+        maxPerOption
       }
 
-      const effective = dropIllegal(rawSelections[key] ?? [], eligibleOptions, choice.count)
+      const effective = dropIllegal(rawSelections[key] ?? [], eligibleOptions, choice.count, distinct, maxPerOption)
       const validation = validateChoiceSelection(resolvable, effective)
 
       out.push({
@@ -125,11 +140,15 @@ export function resolveCreationChoices(
         count: choice.count,
         offered,
         selected: effective,
-        answered: validation.ok
+        answered: validation.ok,
+        distinct,
+        ...(maxPerOption !== undefined ? { maxPerOption } : {})
       })
 
-      // Only an answer that is itself eligible may constrain a later choice.
-      for (const value of effective) acquired.add(value)
+      // Only a DISTINCT answer that is itself eligible constrains a later choice: a proficiency
+      // already held. A repeatable answer (a Background ability activation) is not a held fact,
+      // so it must not exclude that option anywhere else.
+      if (distinct) for (const value of effective) acquired.add(value)
     }
   }
 
@@ -139,11 +158,21 @@ export function resolveCreationChoices(
 // Keeps eligible, de-duplicated values in order, up to `count`. Anything else
 // is dropped silently here; the SAVE route does not use this -- it rejects a
 // submitted ineligible value outright (see create-v2.post.ts).
-function dropIllegal(raw: readonly string[], eligible: readonly string[], count: number): DefinitionId[] {
+// P7 -- a non-distinct choice keeps repeats (up to its per-option ceiling); every other choice
+// keeps the original de-duplication. A repeat is never silently dropped for a repeatable choice.
+function dropIllegal(
+  raw: readonly string[],
+  eligible: readonly string[],
+  count: number,
+  distinct: boolean,
+  maxPerOption?: number
+): DefinitionId[] {
   const kept: DefinitionId[] = []
   for (const value of raw) {
     if (kept.length >= count) break
-    if (!eligible.includes(value) || kept.includes(value)) continue
+    if (!eligible.includes(value)) continue
+    if (distinct && kept.includes(value)) continue
+    if (!distinct && maxPerOption !== undefined && kept.filter((taken) => taken === value).length >= maxPerOption) continue
     kept.push(value)
   }
   return kept

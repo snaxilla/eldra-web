@@ -464,7 +464,9 @@ describe('declaredChoices', () => {
       slot: 'class',
       choiceSetId: 'choice:skill.proficiency',
       count: 2,
-      options: [ATHLETICS, PERCEPTION, 'value:skill.survival.proficient']
+      options: [ATHLETICS, PERCEPTION, 'value:skill.survival.proficient'],
+      distinct: true,
+      maxPerOption: undefined
     }])
   })
 

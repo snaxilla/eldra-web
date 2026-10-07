@@ -2512,3 +2512,226 @@ Blessed and Druidic Warrior; starting equipment (P8).
 - `pnpm run build`: passes.
 - `git diff --check`: clean.
 - `pnpm run lint`: not run; it is the accepted pre-existing configuration issue.
+
+### 25.24 BACKGROUND ABILITY SCORE DISTRIBUTION (P7, 2026-10-07)
+
+**Result.** All 16 native-XPHB Backgrounds' ability-distribution decision is now implemented, through
+one generic bounded-distribution primitive and a dedicated `source:background.increase.*` family.
+Creation availability did not move (and was not required to): every Background still has its
+separate, unrelated starting-equipment blocker (P8). The meaningful P7 metric is the 16
+blocked-to-implemented decisions, not the scoreboard.
+
+#### Corpus truth (mandatory first step, verified against all 16)
+
+Every XPHB Background's `ability` field is **two alternative modes** -- the 5etools renderer's own
+"Choose one of: (a) ... (b) ..." for a length-2 `ability` array (`Renderer.getAbilityData`,
+5etools-src/js/render.js) -- over the SAME three abilities: `choose.weighted` with `weights: [2, 1]`
+(one ability +2, a different one +1) and `choose.weighted` with `weights: [1, 1, 1]` (all three +1).
+No Background differs: every mode pair shares its three abilities, every mode totals 3, and the
+largest single weight across both modes is 2. This matches §25's expected rule exactly (choose among
+exactly three Background abilities, +2/+1 or +1/+1/+1), with no exception requiring a stop.
+
+The weighted shape is unique to `backgrounds.json`; no class, species, or feat record in the corpus
+uses `choose.weighted`. The per-slot semantics (5etools-src/js/statgen/statgen-ui-comp-levelone-
+entitybase.js) confirm each weight is one DISTINCT ability pick, never a second weight on the same
+ability within one mode -- which is why the two real outcomes are "+2 to one, +1 to a different one"
+and "+1 to each of all three," never "+2 to one and +1 to the same one."
+
+#### Raw structure -> discovery
+
+`backgroundAbilityDistribution` (`app/lib/content-rules/mandatory-decisions.ts`) reads the two modes
+directly: it requires every mode to name the same ability set and the same total, then records that
+total (3, always) and the largest single weight across every mode (2, always) as the decision's
+`detail` (`weighted-abilities:<abilities>;total:<n>;max:<n>`). A Background whose modes disagree
+(hypothetical future content) returns `null` and is recorded as `unrecognized` -- still a decision,
+still blocked, never silently dropped. The 630-decision Phase-0 artifact already discovered one
+ability-distribution decision per Background (16); P7 does not add decisions, it corrects what that
+decision's `detail`/cardinality says (cardinality 3, the real total, not 2, the mode COUNT) so coverage
+can verify it against the facet.
+
+#### Current V2 Builder ability-score architecture (traced before implementation)
+
+Builder base-score method (standard array / point buy / manual) -> `draft.abilityScores` ->
+create-v2 POST `abilityScores` -> `saveCharacterAbilityScores` (a separate persisted block,
+unrelated to `rules_choices`) -> `buildActorState` sets `values['value:ability.<x>']` to that stored
+number verbatim (`character-actor-bridge.ts`, the ONE place ability scores become Definition ids) ->
+the EvaluationSession/DependencyGraph apply every active Source's `phase: 'add'` modifier on top.
+**Base** is the stored number in `values['value:ability.<x>']`, read directly off ActorState, never
+re-derived. **Derived** is `evaluate('value:ability.<x>', session)`, which sums base plus every
+active Source targeting it. A Background increase is implemented entirely as a Source activation: it
+never writes to the base block, and the architectural invariant (base + Background + ASI + Epic Boon
++ future modifiers, composing) holds by construction, not by a special case.
+
+#### Source/modifier provenance
+
+Reusing `source:asi.increase.<ability>` was considered and rejected. The ASI family's own ChoiceSet
+(`choice:feat.asi-ability-increase`) carries `resultCap: 20`, a real ASI-specific RAW ceiling that
+does not apply to a Background increase identically (see Ability cap, below); sharing the Source
+would also erase provenance (a Sheet or a future audit could no longer tell a Background's +2 from an
+ASI's +2 on the same ability). A new family, `source:background.increase.<ability>` (6 Sources, one
+per ability, `phase: 'add'`, `value: 1`, mirroring `source:asi.increase.*`'s own shape), keeps the
+identity distinct while reusing the exact same Modifier pipeline. Repeated activation (two selections
+of the same option) produces two Source instances, which the existing `stack` policy sums to +2 --
+proven in `tests/server/utils/character-background-ability-distribution.test.ts`.
+
+#### The generic bounded-distribution primitive
+
+`ChoiceSetDefinition.maxPerOption` (optional, `app/lib/rules/types.ts`): only meaningful when
+`distinct: false`; the most times ONE option may appear in the answer. `choice:background.ability-
+distribution` declares `count: 0` (count comes from the facet, as every ChoiceSet already does),
+`distinct: false`, `maxPerOption: 2`, `effect: 'activate-source'`. Every Background facet declares one
+choice over this ChoiceSet, with `count: 3` and its own three Background Sources as `from` -- no
+Background-name branching anywhere in the application code.
+
+**Proof the shape is exactly right** (`tests/rules/background-ability-distribution.test.ts`): with 3
+options and `count: 3, maxPerOption: 2`, every ordering of every 3-multiset with no option above 2 is
+legal, and the full legal set is exactly `{AAB, AAC, ABB, BBC, ACC, BCC, ABC}` -- 7 outcomes, which are
+precisely +2/+1 (six ways: pick-2 x pick-1 over 3 options) and +1/+1/+1 (one way). `[A,A,A]` is refused
+by the per-option ceiling itself, with no distribution-mode selector anywhere in the Definition or the
+validator.
+
+`validateChoiceSelection` (`app/lib/characters/rules-choices.ts`) enforces the ceiling: after the
+existing count check, for `distinct === false` with `maxPerOption` set, any option appearing more
+than `maxPerOption` times in the answer is rejected (`"<option>" can be selected at most N times.`).
+This is the SAME function the bridge and create-v2 POST already call -- no second validator.
+
+#### Already-active / duplicate semantics
+
+The existing Phase 2B "already acquired" rule (`directlyGrantedValues`, a FIXED grant's target) never
+applies to a repeatable Source choice: `resolveCreationChoices` now seeds its cross-choice `acquired`
+set only from a `distinct` answer's selections (P7), so a Background's own repeated pick is never
+treated as "already acquired" on its second occurrence, and it never excludes an unrelated choice
+elsewhere either. Proven directly in the rules and Builder test files.
+
+#### Builder: presentation, switching, validity
+
+- **Presentation**: `declaredChoices`/`creationChoicePresentation` now carry `distinct`/`maxPerOption`
+  from the package's own `ChoiceSetRule` (threaded through `BuilderCreationContext.choiceSetRule`,
+  echoed by `GET /api/worlds/:id/rules/choice-options`, read from the live registry). The EXISTING
+  generic picker (`CharacterChoiceSetPicker.vue`) was extended, not replaced: a `distinct: false`
+  choice with `count > 1` now renders one `<select>` per slot (reusing the SAME positional draft
+  helpers `CharacterProgressionPanel.vue`'s own non-distinct rendering already uses), each option
+  disabled once it has reached `maxPerOption` in the OTHER slots. No `BackgroundAbilityPicker.vue` was
+  created. Option labels now also resolve for Source definitions (previously Value-only), so a
+  Background Source option reads its real label rather than its raw id -- a side effect that also
+  improves the pre-existing ASI ability picker's labels.
+- **Switching Background**: the choice's key (`background:choice:background.ability-distribution`) is
+  the SAME for every Background (it names the package ChoiceSet, not the content); what changes is the
+  facet's own `from` list. The EXISTING generic `pruneChoices`/`dropIllegal` path already drops any
+  selected value no longer in the new Background's eligible list, so a stale distribution is pruned
+  down to an incomplete (never silently "complete") answer with zero Background-specific code.
+  Switching the ABILITY-SCORE METHOD never touches `draft.choices.selections`, so eligibility stays
+  keyed to the selected Background alone, as required.
+- **A real hazard this task's own review caught**: `setChoiceSelections` pruned with the DEFAULT
+  context (no package rule) before this task, which would have silently stripped a legal repeated
+  pick in the live Builder the instant it was recorded. Fixed: `setChoiceSelections` now takes the
+  creation context and the page threads it through (`create-v2.vue`). Recorded here because it was a
+  real correctness bug found while implementing P7, not a hypothetical.
+
+#### Server authority -- rejection matrix
+
+All against the SAME `validateChoiceSelection` the bridge and the Builder's own completeness check use
+(`tests/rules/background-ability-distribution.test.ts`): (1) +2/+1 accepted; (2) +1/+1/+1 accepted;
+(3) +3 to one ability rejected (ceiling); (4) an ability outside the Background's three rejected (not
+offered); (5) too few (2) rejected; (6) too many (4) rejected; (7) malformed (non-array, non-string
+entries) rejected; (8) a stale answer naming a DIFFERENT Background's abilities rejected (not offered
+here); (9) an absent answer is not itself a server rejection -- `create-v2.post.ts`'s own documented
+invariant ("a character may be created with its choices still outstanding... a legal state") is
+preserved, unredesigned; what gates on it is the Builder's own step completeness, proven in the
+Builder browser-shape test.
+
+#### Persistence and the base-score invariant
+
+The answer persists through the existing `rules_choices` architecture under the creation key
+`background:choice:background.ability-distribution` -- no `background_abilities` block, no base-score
+mutation. `tests/server/utils/character-background-ability-distribution.test.ts` proves, through the
+REAL engine (RulesRegistry/DependencyGraph/EvaluationSession, no mock): after a +2/+1 and after a
++1/+1/+1 answer, `ActorState.values['value:ability.<x>']` (base) is byte-identical to what was
+submitted, while `evaluate('value:ability.<x>', session)` (derived) is base plus the increase. A fresh
+read with no Builder draft reproduces this from `rulesChoices` alone.
+
+`tests/server/api/worlds/[id]/characters/create-v2-fighter-mechanics.test.ts` (UNIT, mechanics
+isolation, already on the stub policy's list) proves the real CREATE route persists a +2/+1 and a
++1/+1/+1 answer through `saveCharacterRulesChoices`, and that a crafted +3 answer is rejected before
+any write (entity creation included) -- labeled explicitly as mechanics isolation, since Criminal's
+real-authority creation is separately refused today by starting equipment (P8), a claim this test does
+not make.
+
+#### Composition
+
+- **ASI**: Background +2 Dex, then a later ASI +2 Dex (the real `choice:feat.asi-ability-increase`,
+  attached to a test slot as a labeled mechanics-isolation fixture -- see that test file's own
+  header): derived Dex is base + 4. Base stays untouched throughout.
+- **Epic Boon**: Background +2 Dex composes with Boon of Fortitude's real ability-increase choice
+  (`choice:feat.epic-boon-ability`, the SAME `source:asi.increase.*` family ASI uses): derived Dex
+  is base + 3. Two proofs, kept distinct (each Epic Boon has its OWN permitted ability list, so
+  legality is never assumed): a **corpus-legality** check, read directly from `feats.json`, that
+  Boon of Fortitude's real `ability` field permits all six abilities (Dexterity included), and that
+  the package's authored facet offers exactly that universe, with no widening; and a separate
+  **engine-composition** check, using that real, unmodified facet (its SLOT attachment is a labeled
+  test-fixture choice, not a change to its own ability list), that the Background Source family
+  does not collide with or shadow the Epic Boon's.
+
+#### Ability cap
+
+The 2024 PHB's "none of these increases can raise a score above 20" is NOT present in the XPHB corpus
+background entries (checked directly; zero matches for "above 20"/"maximum"/"exceed" in any XPHB
+Background's `entries`). `resultCap` is a per-ChoiceSet, package-authored field (ASI's own is 20; Epic
+Boon's own is 30) -- Background's ChoiceSet declares none, so no cap is enforced structurally for a
+Background increase. This is NOT invented from memory: it is the literal absence of a structural cap
+in the data this phase could find. **Reported, not fixed**: an explicit Background-specific
+`resultCap` may be worth authoring later if a canonical source is found; until then, a Background
+increase is capped only by the engine's own absolute `constraints.max: 30` on the ability Value
+itself (unreachable in practice under standard array or point buy, reachable only with the manual
+method at very high base scores).
+
+#### Discovery and coverage
+
+| | Decisions | Implemented | Blocked | Optional |
+| --- | --- | --- | --- | --- |
+| P1 (§25.23) | 647 | 176 | 436 | 35 |
+| P7 | 647 | 192 | 420 | 35 |
+
+No new decisions: this is the SAME 16 ability-distribution decisions Phase 0 already discovered,
+reclassified from blocked to implemented now that the package represents them. `blk:background-
+ability` (the Phase-0 blocked rule) was removed because, like P1's two removed proficiency rules, it
+now matches zero decisions, which the coverage contract forbids; an unrecognized future ability
+structure still falls to `unclassified` and blocks, fail-closed, unchanged.
+
+#### Availability (unchanged, as expected)
+
+| | Species | Classes | Backgrounds | Combinations |
+| --- | --- | --- | --- | --- |
+| Before P7 | 3 / 10 | 0 / 12 | 0 / 16 | 0 / 1,920 |
+| After P7 | 3 / 10 | 0 / 12 | 0 / 16 | 0 / 1,920 |
+
+Verified by the same exact-equality baseline test as P1. Every Background's remaining blocker is
+starting equipment (P8), untouched and unweakened by this phase.
+
+#### Package version and sync
+
+Manifest stays at 0.19.0 in this pass (not bumped, per instruction). Final dry run
+(`pnpm run packages:sync -- --world Solaris`, no `--apply`): Rules `SOURCE_VERSION_COLLISION`
+(0.19.0 already published with different content); Content `REFRESH_REQUIRED` for
+`eldra.solaris.xphb`; actions `REFRESH_CONTENT`, `BIND_CONTENT`. Preflight: zero dangling references
+across 230 Definitions (223 + 6 Background Sources + 1 ChoiceSet) and the 94 facets that own a
+discovered decision. No selection expansion. No mutation. Recommendation: bump to **0.20.0**
+(additive -- a new optional ChoiceSet field, a new Source family, new facet choices; no existing
+Definition or facet shape changed incompatibly).
+
+#### Deferred (reported, not in P7)
+
+Starting equipment (P8, the remaining Background blocker); Weapon Mastery (STOP, needs a content
+selection/identity phase); the Background ability-increase `resultCap` gap (above); Resilient, Keen
+Mind, Observant, Skill Expert, Boon of Skill (P1 deferrals, unchanged); languages and damage types
+(policy gaps, unchanged); Magic Initiate (P2/P3); `excludeIfAlreadyActive` architecture cleanup (P1
+deferral, unchanged).
+
+#### Verification
+
+- `pnpm run test`: 189 files, 3,942 tests, all passing (44 new: 23 rules, 10 Builder, 8 real-engine
+  composition and corpus-legality, 3 creation-route round-trip).
+- `pnpm run typecheck`: unique (file, diagnostic-code) pairs: 243 baseline, 243 candidate, 0 new.
+- `pnpm run build`: passes.
+- `git diff --check`: clean.
+- `pnpm run lint`: not run; the accepted pre-existing configuration issue.

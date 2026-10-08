@@ -335,23 +335,32 @@ beforeEach(() => {
 // even when the caller holds a fingerprint from a valid-looking plan.
 describe('PHASE 0 -- fail-closed progression, with the REAL completeness authority', () => {
 
-  it('a Wizard 1 -> 2 Preview is invalid and names the decisions it crosses (the prepared spells and spellbook growth)', async () => {
+  // D&D 2024 Character Rules P3.5 -- the prepared-spell/cantrip/spellbook growth decisions this
+  // test originally named are now `impl:spell-count`/`impl:spellbook-growth`
+  // (mandatory-decision-coverage.ts): the Phase-0 STRUCTURAL block ("Eldra cannot represent this
+  // decision at all") is gone, correctly replaced by the real, MECHANICAL requirement that the
+  // player actually answer it (planSpellAcquisition, P3.1-P3.4) -- this is the intended outcome of
+  // P3.5's reclassification, not a regression. A Wizard 1 -> 2 Preview with no answers is still
+  // invalid, but now for the real reason: the Scholar/Expertise Definition choice is unanswered
+  // AND the spell plan itself is incomplete (nothing persisted, nothing tentatively answered).
+  it('a Wizard 1 -> 2 Preview is invalid for a real, mechanical reason (unanswered Scholar choice + incomplete spell plan) -- Phase 0 no longer structurally blocks it', async () => {
     assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
     const result = await planProgression('5', '42', 2, {})
     expect(result.ok).toBe(true)
     if (!result.ok) return
+    expect(result.plan.unresolvedDecisions ?? [], 'Phase 0 no longer names a structural blocker here').toEqual([])
     expect(result.plan.valid).toBe(false)
-    const families = (result.plan.unresolvedDecisions ?? []).map((u) => u.family)
-    expect(families).toEqual(expect.arrayContaining(['spell-count', 'spell-choice']))
+    expect(result.plan.spellPlan?.complete, 'the real spell plan is still incomplete -- nothing was answered').toBe(false)
+    expect(result.plan.unresolvedChoiceIds.length, 'Scholar/Expertise is still an unanswered Definition choice').toBeGreaterThan(0)
   })
 
-  it('a Wizard 1 -> 2 Confirm is refused as unsupported-decision and writes nothing', async () => {
+  it('a Wizard 1 -> 2 Confirm with no answers is refused as unresolved-spell-selection (the real mechanical gate, not Phase 0) and writes nothing', async () => {
     assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
     const preview = await planProgression('5', '42', 2, {})
     expect(preview.ok).toBe(true)
     if (!preview.ok) return
     const confirm = await confirmProgression('5', '42', 2, preview.plan.fingerprint, {})
-    expect(confirm).toMatchObject({ ok: false, reason: 'unsupported-decision' })
+    expect(confirm).toMatchObject({ ok: false, reason: 'unresolved-spell-selection' })
     expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
   })
 

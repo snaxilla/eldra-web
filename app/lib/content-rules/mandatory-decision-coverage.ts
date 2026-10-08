@@ -66,6 +66,72 @@ function classProgression(slug: string): readonly string[] {
 }
 
 // ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P3.5 -- SPELL ACQUISITION COVERAGE.
+// ---------------------------------------------------------------------------
+// The generic P2 (spellOptionVerdict) -> P3.1 (validateSpellRequirements) -> P3.2
+// (planSpellAcquisition) -> P3.2.1 (provenance) -> P3.3 (Level-1 creation write-through) -> P3.4
+// (progression write-through, Level 1-20) pipeline is now real and deployed. These four functions
+// are the ONLY thing that decides whether a given class-owned spell decision is actually covered by
+// it end-to-end -- never a name/family match alone (that would be an aspirational green). Each one
+// re-reads the REAL authored facet (`RulesFacet.spellRequirements`, app/lib/content-rules/dnd5e-2024.ts)
+// and checks the SPECIFIC fact this decision claims (which pool, which level, which tier), the same
+// "verify against the real facet, never assume" discipline `classFacetHasSkillChoice` above already
+// established. A class whose facet does not actually back a claim here is NOT reclassified -- it
+// stays unclassified and fails the bidirectional contract loudly, rather than silently matching a
+// blocked rule that would hide the gap.
+
+function classSpellRequirements(slug: string) {
+  return findRulesFacet('dnd5e.2024', 'class', slug)?.spellRequirements ?? []
+}
+
+// `spell-count` family (table-column deltas: "Cantrips" / "Prepared Spells"). Covered when the
+// class's own facet declares the matching pool (`cantrip` reads the 'cantrips' detail, `spell`
+// reads 'prepared') AND that pool's own real totalByLevel table actually carries a value at this
+// decision's exact level -- the SAME table P3.1's count authority already reads, never re-derived.
+function spellCountCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'class', 'spell-count')) return false
+  const pool = d.detail === 'cantrips' ? 'cantrip' : d.detail === 'prepared' ? 'spell' : null
+  if (!pool) return false
+  const requirement = classSpellRequirements(d.owner.slug).find((r) => r.pool === pool)
+  return !!requirement && (requirement.totalByLevel[d.level - 1] ?? 0) > 0
+}
+
+// `spell-choice` family, Level 1, source "Spellcasting"/"Pact Magic" -- the class's own creation-
+// time spell/cantrip/spellbook selection. Covered when the class declares ANY real spellRequirements
+// at all: the generic Level-1 creation write-through (P3.3, create-v2.post.ts's own
+// `characterClass.rulesFacet?.spellRequirements`) applies identically to every one, never gated by
+// which specific pool phrase discovery happened to detect.
+function casterCreationSpellChoiceCovered(d: DecisionRecord): boolean {
+  if (!(is(d, 'class', 'spell-choice') && d.level === 1 && (d.source === 'Spellcasting' || d.source === 'Pact Magic'))) return false
+  return classSpellRequirements(d.owner.slug).length > 0
+}
+
+// `spell-choice` family, source "Mystic Arcanum" -- one of Warlock's four independent tiers (6/7/8/9,
+// encoded in the decision's own `detail`). Covered only when the facet declares an `arcanum` pool
+// requirement at EXACTLY that tier's own level -- never "Warlock has Mystic Arcanum at all," so a
+// tier the facet does not (yet) author stays its own, individually unclassified gap rather than
+// riding along on a sibling tier's coverage.
+function mysticArcanumCovered(d: DecisionRecord): boolean {
+  if (!(is(d, 'class', 'spell-choice') && d.source === 'Mystic Arcanum')) return false
+  const tier = Number(/spell-level=(\d+)/.exec(d.detail ?? '')?.[1] ?? '')
+  if (!tier) return false
+  return classSpellRequirements(d.owner.slug).some((r) => r.pool === 'arcanum' && r.filter.level === tier)
+}
+
+// `spell-choice` family, source "Spellcasting", detail "spellbook-growth" -- Wizard's own one real
+// authored case, one decision per level 2-20 (P3.4's own target-state model covers all of them from
+// a SINGLE authored `spellbook` requirement row, never a per-level special case). Covered when the
+// facet's own spellbook requirement actually carries a HIGHER cumulative total at this level than at
+// the previous one -- the real "+2 per level" growth this decision claims, read off the table, never
+// asserted blind.
+function spellbookGrowthCovered(d: DecisionRecord): boolean {
+  if (!(is(d, 'class', 'spell-choice') && d.source === 'Spellcasting' && d.detail === 'spellbook-growth')) return false
+  const requirement = classSpellRequirements(d.owner.slug).find((r) => r.pool === 'spellbook')
+  if (!requirement) return false
+  return (requirement.totalByLevel[d.level - 1] ?? 0) > (requirement.totalByLevel[d.level - 2] ?? 0)
+}
+
+// ---------------------------------------------------------------------------
 // Proficiency coverage (P1). A proficiency decision is covered only when a facet that owns it
 // really grants (fixed) or offers (choice) exactly the Values its discovery detail names. The
 // detail is the corpus's own universe, so a facet offering a narrower or wider list does not cover
@@ -232,33 +298,51 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: ['fighter-xphb:battle-master-xphb:combat-superiority'],
     matches: (d) => is(d, 'subclass', 'accumulating-option')
   },
+  // ---------------------------------------------------------------- P3.5 reclassification
+  // RECLASSIFIED (was `blk:caster-counts`/`blk:caster-l1-spell-choice`/`blk:mystic-arcanum`,
+  // split from `blk:class-spell-choice-other`): the P2->P3.4 generic spell acquisition pipeline
+  // is now real and deployed (SpellRequirement model, count/membership/filtering legality,
+  // target-state planning, provenance, Level-1 creation write-through, progression write-through
+  // through Level 20). Every rule below is a VERIFIED reclassification -- each checks the real
+  // authored facet for the exact fact the decision claims, never a bare family/name match. See
+  // this file's own SPELL ACQUISITION COVERAGE header above for the four verification functions.
   {
-    id: 'blk:caster-counts',
-    status: 'blocked',
-    reason: 'Cantrip and prepared-spell counts. Level 1 uses the caster spell-selection row; later increases need count enforcement.',
+    id: 'impl:spell-count',
+    status: 'implemented',
+    reason: 'Cantrip and prepared-spell counts, at every level: SpellRequirement.totalByLevel is the count authority (P3.1), enforced through creation (P3.3) and progression (P3.4) alike.',
     ledgerIds: ['bard-xphb:spellcasting-spell-selection', 'cleric-xphb:spellcasting-spell-selection', 'druid-xphb:spellcasting-spell-selection', 'paladin-xphb:spellcasting-spell-selection', 'ranger-xphb:spellcasting-spell-selection', 'sorcerer-xphb:spellcasting-spell-selection', 'warlock-xphb:spellcasting-spell-selection', 'wizard-xphb:spellcasting-spell-selection'],
-    matches: (d) => is(d, 'class', 'spell-count')
+    matches: spellCountCovered
   },
   {
-    id: 'blk:caster-l1-spell-choice',
-    status: 'blocked',
-    reason: 'Level 1 spell selection: class spell list, level, and count are not enforced.',
+    id: 'impl:caster-creation-spell-choice',
+    status: 'implemented',
+    reason: 'Level 1 spell/cantrip/spellbook selection: class spell list, level, and count are enforced by planSpellAcquisition (P3.2) and persisted with provenance through create-v2.post.ts\'s canonical write-through (P3.3).',
     ledgerIds: ['bard-xphb:spellcasting-spell-selection', 'cleric-xphb:spellcasting-spell-selection', 'druid-xphb:spellcasting-spell-selection', 'paladin-xphb:spellcasting-spell-selection', 'ranger-xphb:spellcasting-spell-selection', 'sorcerer-xphb:spellcasting-spell-selection', 'warlock-xphb:spellcasting-spell-selection', 'wizard-xphb:spellcasting-spell-selection'],
-    matches: (d) => is(d, 'class', 'spell-choice') && d.level === 1 && (d.source === 'Spellcasting' || d.source === 'Pact Magic')
+    matches: casterCreationSpellChoiceCovered
   },
   {
-    id: 'blk:mystic-arcanum',
-    status: 'blocked',
-    reason: 'Mystic Arcanum: one spell per arcanum level from the Warlock list at a fixed level.',
+    id: 'impl:mystic-arcanum',
+    status: 'implemented',
+    reason: 'Mystic Arcanum: each of the four tiers (6/7/8/9) is its own authored arcanum SpellRequirement, acquired through the Level Manager\'s progression write-through (P3.4) and reachable at its own real target level (11/13/15/17).',
     ledgerIds: ['warlock-xphb:mystic-arcanum'],
-    matches: (d) => is(d, 'class', 'spell-choice') && d.source === 'Mystic Arcanum'
+    matches: mysticArcanumCovered
+  },
+  {
+    id: 'impl:spellbook-growth',
+    status: 'implemented',
+    reason: 'Wizard spellbook growth (+2 per level after 1): one authored `spellbook` SpellRequirement whose cumulative totalByLevel the Level Manager\'s target-state planner (P3.4) already satisfies for every level 2-20 from a single acquisition workflow, never a per-level special case.',
+    ledgerIds: [],
+    matches: (d) => is(d, 'class', 'spell-choice') && d.source === 'Spellcasting' && d.detail === 'spellbook-growth' && spellbookGrowthCovered(d)
   },
   {
     id: 'blk:class-spell-choice-other',
     status: 'blocked',
-    reason: 'Spell choices beyond Level 1 (Magical Secrets, Spell Mastery, Signature Spells, spellbook growth): spell list and spellbook enforcement.',
+    reason: 'Spell choices the generic acquisition pipeline does not model: Magical Secrets (choosing from ANY class\'s spell list, not the owning class\'s own classList filter), Spell Mastery / Signature Spells (flagging an ALREADY-KNOWN spellbook spell as always-prepared/free-cast, not a new acquisition at all). Confirmed residual by P3.5\'s own audit, not reclassified.',
     ledgerIds: [],
-    matches: (d) => is(d, 'class', 'spell-choice') && !(d.level === 1 && (d.source === 'Spellcasting' || d.source === 'Pact Magic')) && d.source !== 'Mystic Arcanum'
+    matches: (d) => is(d, 'class', 'spell-choice')
+      && !(d.level === 1 && (d.source === 'Spellcasting' || d.source === 'Pact Magic'))
+      && d.source !== 'Mystic Arcanum'
+      && !(d.source === 'Spellcasting' && d.detail === 'spellbook-growth')
   },
   {
     id: 'blk:class-feature-option',

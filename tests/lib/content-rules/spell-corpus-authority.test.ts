@@ -54,29 +54,61 @@ describe('P2 spell corpus authority', () => {
     expect([...byAbility].sort()).toEqual(['Bard', 'Cleric', 'Druid', 'Paladin', 'Ranger', 'Sorcerer', 'Warlock', 'Wizard'])
   })
 
-  // P2 may improve how a spell decision would be CLASSIFIED if a real facet declared a spell
-  // choice (it does not yet -- no real class/background/feat declares a 'spells' category choice
-  // in this phase), but it must not itself move any mandatory decision from blocked to implemented.
-  // Acquisition count/cadence/persistence (P3) is what coverage actually requires.
-  it('the Phase-0 decision census is unchanged by P2: 647 total, 192 implemented, 420 blocked, 35 optional', () => {
+  // P2 itself (option-filtering infrastructure alone -- no real facet declared a 'spells' category
+  // choice in that phase) moved NO mandatory decision from blocked to implemented; the census at
+  // the end of P2 was still 647/192/420/35. D&D 2024 Character Rules P3.5 -- SPELL DECISION
+  // RECONCILIATION reclassified 171 of the 174 class-owned spell-family decisions once the real
+  // P2(count/filtering)->P3.1(count authority)->P3.2(target-state planning)->P3.2.1(provenance)->
+  // P3.3(creation write-through)->P3.4(progression write-through) pipeline existed end-to-end --
+  // see mandatory-decision-coverage.ts's own SPELL ACQUISITION COVERAGE header and
+  // .github/docs/architecture/dnd5e-2024-character-rules-completeness-audit.md §25.35 for the full
+  // per-decision proof. This is the CURRENT census, not P2's own (that invariant is preserved
+  // historically by this phase's own audit, not re-asserted here now that it is stale).
+  it('the Phase-0 decision census after P3.5: 647 total, 363 implemented, 249 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(647)
-    expect(counts.implemented).toBe(192)
-    expect(counts.blocked).toBe(420)
+    expect(counts.implemented).toBe(363)
+    expect(counts.blocked).toBe(249)
     expect(counts.optional).toBe(35)
   })
 
-  // No spell-shaped (spell-choice/spell-grant/spell-count) decision is implemented by P2 alone --
-  // every one of them still requires P3's acquisition count/cadence, which P2 does not provide.
-  it('no spell-family mandatory decision is implemented (every one still needs P3)', () => {
-    const spellFamilies = new Set(['spell-choice', 'spell-grant', 'spell-count'])
-    const spellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter((d) => spellFamilies.has(d.family))
-    expect(spellDecisions.length).toBeGreaterThan(0)
-    for (const decision of spellDecisions) {
+  // D&D 2024 Character Rules P3.5 -- exactly 171 of the 174 class-owned spell-family decisions are
+  // now implemented (cantrip/prepared counts, Level-1 creation selection, Mystic Arcanum's four
+  // tiers, Wizard's spellbook growth) -- proven per-decision, never a bare family/name match, by
+  // tests/rules/mandatory-decision-coverage.test.ts's own bidirectional contract. The three real
+  // residuals (Magical Secrets, Spell Mastery, Signature Spells) are confirmed still NOT
+  // implemented: none of them is a new ACQUISITION the generic pipeline models (Magical Secrets
+  // reads from ANY class's list, not the owning class's own; Spell Mastery/Signature Spells flag
+  // an ALREADY-KNOWN spellbook spell, never acquire a new one).
+  it('class-owned spell-family decisions: 171 of 174 are now implemented; the 3 real residuals are not', () => {
+    const classSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
+      (d) => d.owner.kind === 'class' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
+    )
+    expect(classSpellDecisions.length).toBe(174)
+    const implemented = classSpellDecisions.filter((d) => classifyDecision(d).status === 'implemented')
+    const residual = classSpellDecisions.filter((d) => classifyDecision(d).status !== 'implemented')
+    expect(implemented.length).toBe(171)
+    expect(residual.map((d) => d.id).sort()).toEqual([
+      'class:bard-xphb:L10:spell-choice:magical-secrets',
+      'class:wizard-xphb:L18:spell-choice:spell-mastery',
+      'class:wizard-xphb:L20:spell-choice:signature-spells'
+    ])
+  })
+
+  // The P4/follow-on ownership boundary (subclass/species/feat-granted spells) is untouched by
+  // P3.5 -- none of those decisions is owned by a class, so none is reclassified by this phase's
+  // own class-scoped coverage rules, regardless of what the generic pipeline could theoretically
+  // reuse later.
+  it('subclass/species/feat-owned spell-family decisions remain NOT implemented -- P3.5 touches class ownership only', () => {
+    const nonClassSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
+      (d) => d.owner.kind !== 'class' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
+    )
+    expect(nonClassSpellDecisions.length).toBeGreaterThan(0)
+    for (const decision of nonClassSpellDecisions) {
       expect(classifyDecision(decision).status, decision.id).not.toBe('implemented')
     }
   })

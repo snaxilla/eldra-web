@@ -90,8 +90,14 @@ describe('progression -- the levels crossed decide what must be recorded', () =>
   it('a Champion crossing Level 3 owns nothing unrecordable', () => {
     expect(prog('fighter-xphb', 2, 3, 'champion-xphb')).toEqual([])
   })
-  it('a Cleric crossing Level 2 owns the prepared-spell increase', () => {
-    expect(prog('cleric-xphb', 1, 2).some((u) => u.family === 'spell-count')).toBe(true)
+  // D&D 2024 Character Rules P3.5 -- the prepared-spell increase this test named is now
+  // `impl:spell-count` (mandatory-decision-coverage.ts), backed by the real, deployed
+  // SpellRequirement count authority (P3.1-P3.4) -- it is no longer an UNRESOLVABLE decision
+  // Phase 0 must block, so a Cleric crossing Level 2 owns nothing unrecordable at the Phase-0
+  // structural layer (the real spell answer is still required, just by the MECHANICAL authority,
+  // proven in character-progression-plan-spell-acquisition.test.ts, not by this structural one).
+  it('a Cleric crossing Level 2 owns nothing unrecordable at the Phase-0 layer (the prepared-spell increase is now implemented)', () => {
+    expect(prog('cleric-xphb', 1, 2)).toEqual([])
   })
   it('a feat acquired in the transition brings its own nested decisions (Fey-Touched)', () => {
     expect(prog('fighter-xphb', 3, 4, null, ['fey-touched-xphb']).some((u) => u.owner.slug === 'fey-touched-xphb')).toBe(true)

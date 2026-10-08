@@ -4964,3 +4964,193 @@ no exclusions. `pnpm run typecheck`: 243 unique (file, diagnostic-code) pairs, i
 established baseline, zero new. `pnpm run build`: succeeds. `git diff --check`: clean.
 `pnpm packages:sync --world Solaris` (dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions
 None -- zero writes. No commit made. No `packages:sync --apply` run.
+
+### 25.35 P3.5 -- SPELL DECISION RECONCILIATION + COVERAGE RECLASSIFICATION (2026-10-08)
+
+#### Scope
+
+An AUDIT/ACCOUNTING phase, not an implementation one: reconciles the 174 class-owned spell-family
+mandatory decisions (`mandatory-decision-coverage.ts`'s pre-existing `blk:caster-counts`/
+`blk:caster-l1-spell-choice`/`blk:mystic-arcanum`/`blk:class-spell-choice-other` rules) against the
+real, now-deployed P2->P3.4 generic spell acquisition pipeline, and reclassifies exactly what that
+pipeline can PROVE it satisfies end-to-end -- never an aspirational green. Touches ONLY coverage
+classification (`mandatory-decision-coverage.ts`, `dnd5e-2024-progression-coverage.ts`) and tests/
+documentation. Zero new engine primitives, zero Rules/Content package change.
+
+#### POPULATION -- no discrepancy
+
+Recomputed directly from the committed decision artifact (`dnd5e-2024-mandatory-decisions.json`,
+never trusted from the old audit's memory): **exactly 174** class-owned decisions across the four
+families `spell-count`/`spell-choice` match the old expectation precisely. Breakdown: 143
+`spell-count` (18 Cantrips + 125 Prepared Spells, table-column deltas across all 8 casters), 31
+`spell-choice` (5 Level-1 creation selection [3 "Spellcasting", 1 "Pact Magic", 1 Wizard's own
+"starting-spellbook" phrasing -- all three forms are the SAME Level-1 creation fact under different
+corpus phrasing], 4 Mystic Arcanum tiers, 19 Wizard spellbook-growth rows [one per level 2-20], 3
+residual: Magical Secrets/Spell Mastery/Signature Spells). `143+5+4+19+3 = 174`. **Old expectation
+174, recomputed 174, discrepancy: none.**
+
+#### RECLASSIFICATION -- exact result, not the naive arithmetic
+
+**171 of 174 reclassified BLOCKED -> IMPLEMENTED.** Not all 174: the naive "174 move" arithmetic
+(implemented 366, blocked 246) does NOT hold -- three real, honestly-identified residuals (below)
+are NOT covered by the generic pipeline and remain blocked.
+
+Each reclassification is a VERIFIED rule, never a bare family/name match (`mandatory-decision-
+coverage.ts`'s new SPELL ACQUISITION COVERAGE section): `spellCountCovered`, `casterCreationSpell
+ChoiceCovered`, `mysticArcanumCovered`, and `spellbookGrowthCovered` each re-read the REAL authored
+`RulesFacet.spellRequirements` and check the SPECIFIC fact the decision claims (which pool, which
+level, which tier, against the real `totalByLevel` table) -- confirmed empirically against all 174
+decisions with **zero verification failures** before this file was ever edited (a disposable
+`tsx` probe script, deleted after use, never committed).
+
+New scoreboard: **647 total / 363 implemented / 249 blocked / 35 optional** (192+171=363,
+420-171=249, 35 unchanged). `363+249+35 = 647`.
+
+#### BY CLASS
+
+All eight casters have at least one reclassified decision; none was left out:
+
+| Class | Cantrip+Prepared (`impl:spell-count`) | L1 creation (`impl:caster-creation-spell-choice`) | Mystic Arcanum (`impl:mystic-arcanum`) | Spellbook growth (`impl:spellbook-growth`) |
+|---|---|---|---|---|
+| Bard | 20 | 1 | -- | -- |
+| Cleric | 20 | 1 | -- | -- |
+| Druid | 20 | 1 | -- | -- |
+| Paladin | 12 | 1 | -- | -- |
+| Ranger | 12 | 1 | -- | -- |
+| Sorcerer | 20 | 1 | -- | -- |
+| Warlock | 17 | 1 | 4 | -- |
+| Wizard | 22 | 1 | -- | 19 |
+
+(Non-caster classes -- Barbarian, Fighter, Monk, Rogue -- own zero spell-family decisions at all;
+confirmed, not merely assumed.)
+
+#### STILL BLOCKED
+
+- **3 real class-owned residuals**, confirmed by this audit, not merely carried forward: Magical
+  Secrets (Bard L10 -- "choose any of your new prepared spells" from ANY class's list, not the
+  owning class's own `filter.classList`; the generic pipeline has no "any class" wildcard), Spell
+  Mastery (Wizard L18) and Signature Spells (Wizard L20) -- both flag an ALREADY-KNOWN spellbook
+  spell as always-prepared/free-cast, which is not a new acquisition at all; `StoredSpellEntry`'s
+  `known`/`prepared` pair has no "free-cast" concept. All three remain `blk:class-spell-choice-other`.
+- **Subclass-owned spell decisions** (`blk:subclass-spells`, College of Lore's Magical Discoveries,
+  etc.): untouched by this phase, confirmed still not implemented. Owned by P4's own subclass
+  feature-level gating/authoring boundary, not reclassified here even though the P2/P3 primitives
+  could in principle be reused once that gating exists.
+- **Feat-granted and species-granted spell decisions** (Magic Initiate, Fey-Touched, Shadow-Touched,
+  Telekinetic, Telepathic, Blessed Warrior/Druidic Warrior variants, species lineage spells):
+  untouched, confirmed still not implemented. Their own owner-specific authoring (a feat/species
+  facet declaring its own spell grant/choice, routed to its own requirement) does not exist today --
+  P3 core deliberately did not build it, and P3.5 does not either.
+- **Fixed package-derived spell grants** are a separate concept from player-SELECTED decisions and
+  were never conflated here: nothing in this reclassification touches a `grants`-sourced Value.
+
+#### OPTIONAL (unchanged, confirmed)
+
+Every `family: 'replacement'` decision (Bard/Sorcerer/Warlock level-up spell swap, Long-Rest
+prepared-spell changes, Wizard's eventual Memorize Spell) remains classified `optional` via the
+pre-existing `opt:replacement` rule -- never promoted to a mandatory acquisition, never made a
+blocker. Confirmed directly: every decision with `family === 'replacement'` classifies `optional`
+and carries `mandatory: false`.
+
+#### WIZARD (separate audit)
+
+Cantrip acquisition, the initial 6-spell spellbook, the +2-per-level spellbook growth (19 decisions,
+levels 2-20, one authored `spellbook` SpellRequirement table), and the prepared-spell target totals
+are ALL now implemented -- 22 (spell-count) + 1 (L1 creation) + 19 (spellbook growth) = 42 of
+Wizard's own real spell decisions. Provenance distinguishes all three pools by construction
+(`requirementIds` tagging, P3.2.1) -- cross-pool contamination was the exact defect that phase fixed,
+re-confirmed here by the SAME `tests/server/utils/character-progression-spell-acquisition.test.ts`
+Wizard suite P3.4 already proved, not re-derived.
+
+#### WARLOCK (separate audit)
+
+Cantrip and ordinary Warlock spell counts: implemented (part of the 17 `impl:spell-count` rows).
+Mystic Arcanum 6/7/8/9: all four implemented, each its own authored `arcanum` SpellRequirement at
+its own real level, reachable at the real target level (11/13/15/17) -- 4 of 4. **Invocations are
+explicitly NOT classified as spell acquisition** -- `blk:invocations` (`accumulating-option` family,
+source `'Invocations'`) is an entirely separate rule, untouched by this phase, and remains blocked.
+
+#### PALADIN / RANGER (separate audit)
+
+Level-1 acquisition genuinely covered using the Rules 0.21.0 corrected half-caster slot table --
+re-confirmed via `impl:spell-count`/`impl:caster-creation-spell-choice`'s own verification reading
+the REAL facet, not an assumed Level-2 start (the exact defect the Rules Hotfix fixed, re-verified
+here, not re-litigated). 12 (spell-count) + 1 (L1 creation) = 13 decisions each, 26 total.
+
+#### SUBCLASS SPELLS / FEAT-SPECIES SPELLS -- boundary honesty
+
+Both boundaries (P4 subclass gating; the feat/species follow-on authoring surface) are reported,
+never silently reclassified, per this phase's own explicit instruction. See STILL BLOCKED above.
+
+#### COVERAGE -- bidirectional contract
+
+Re-verified after reclassification: `tests/rules/mandatory-decision-coverage.test.ts`'s own A/B
+contract (every decision matches exactly one rule; every rule matches a real decision or is an
+explicit false-positive/runtime exemption; every ledger row is claimed, no phantom row) holds with
+**zero violations**. Two new BITE proofs added: deleting `impl:mystic-arcanum` leaves its 4
+decisions uncovered and fails the contract; a synthetic "this is actually fine" rule falsely
+covering the real Spell Mastery residual creates a genuine double-match the contract (A) rejects.
+
+The SEPARATE `dnd5e-2024-progression-coverage.ts` ledger (a companion accountability file, scoped to
+"one entry per casting class/feature," cross-checked by its own, different test) made the IDENTICAL
+factual claim in two places (`warlock-xphb:mystic-arcanum`, and the 8 `${classSlug}:spellcasting-
+spell-selection` rows) -- left stale, these would have been a real, silent inconsistency the moment
+this phase shipped. Updated to `IMPLEMENTED` with `implementationRef: 'facet:spellRequirements'`
+(the `facet:` escape this ledger's own test already established for a non-Definition-id reference,
+precedented by the Background Origin feat entry) -- its own dedicated test file
+(`tests/rules/dnd5e-2024-progression-coverage.test.ts`) passes unchanged, 123/123.
+
+#### AVAILABILITY -- unweakened, confirmed not merely assumed
+
+`tests/lib/content-rules/creation-availability.test.ts`'s own real baseline passed UNCHANGED
+through this entire phase, with zero edits to that file: **Species 3/10, Classes 0/12, Backgrounds
+0/16, Combinations 0/1,920.** Every real caster class still owns at least one genuine, non-spell
+blocked decision (starting equipment, at minimum) -- confirmed directly, not assumed -- so P3.5
+narrows WHICH decisions block a caster without making any single caster (or any combination)
+individually creation-complete. This was the expected, predicted outcome, not a surprise.
+
+#### P3.3 / P3.4 browser acceptance (unchanged)
+
+Both remain DEFERRED for the same reason already recorded (§25.32-§25.34): the production Phase-0
+creation gate still correctly blocks every real class on OTHER, unrelated upstream mandatory
+decisions (starting equipment, at minimum, for every one of the 12 classes). Neither gate was
+weakened or bypassed to reach this reconciliation. Acceptance becomes reachable naturally once those
+upstream blockers (starting equipment chief among them) are implemented in a later phase.
+
+#### Package impact
+
+Zero. Confirmed via `pnpm packages:sync --world Solaris` (dry run): Rules CURRENT at 0.21.0, Content
+CURRENT, Actions None. No version bump, no refresh, no apply -- this phase touched classification and
+tests only.
+
+#### Files
+
+- Modified: `app/lib/content-rules/mandatory-decision-coverage.ts` (4 new verification functions;
+  `blk:caster-counts`/`blk:caster-l1-spell-choice`/`blk:mystic-arcanum` replaced by
+  `impl:spell-count`/`impl:caster-creation-spell-choice`/`impl:mystic-arcanum`;
+  `blk:class-spell-choice-other` split into `impl:spellbook-growth` + a narrowed, still-blocked
+  `blk:class-spell-choice-other` covering exactly the 3 real residuals),
+  `app/lib/content-rules/dnd5e-2024-progression-coverage.ts` (9 entries' status flipped to
+  IMPLEMENTED for consistency with the primary ledger -- see COVERAGE above),
+  `tests/lib/content-rules/spell-corpus-authority.test.ts` (the two P2-era census/"no spell decision
+  implemented" assertions updated to the current, post-P3.5 reality; two new tests added),
+  `tests/lib/content-rules/creation-completeness.test.ts` (one stale example updated: Cleric
+  crossing Level 2 is no longer Phase-0-blocked by the prepared-spell decision),
+  `tests/server/utils/character-progression-fail-closed.test.ts` (two Wizard tests updated to
+  assert the real, mechanical gate -- `unresolved-spell-selection` -- rather than the now-obsolete
+  Phase-0 `unsupported-decision`), `tests/rules/mandatory-decision-coverage.test.ts` (+11 tests, one
+  new describe block covering population/reclassification/by-class/still-blocked/optional/coverage/
+  bite/availability).
+- No production (non-test, non-coverage) source file touched. No engine primitive added.
+
+#### Verification
+
+`pnpm run test`: **199 files / 4228 tests -- all passing** (4216 pre-existing + 12 net new -- +1 from
+spell-corpus-authority.test.ts's two P2-era tests replaced by three current ones, +11 from
+mandatory-decision-coverage.test.ts's new P3.5 describe block; creation-completeness.test.ts and
+character-progression-fail-closed.test.ts each had one test's assertion updated in place, net 0),
+full suite, no exclusions.
+`pnpm run typecheck`: 243 unique (file, diagnostic-code) pairs, identical to the established
+baseline, zero new. `pnpm run build`: succeeds. `git diff --check`: clean. `pnpm packages:sync
+--world Solaris` (dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions None -- zero writes.
+No commit made. No `packages:sync --apply` run.

@@ -551,11 +551,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   },
 
   // -------------------------------------------------------------------
-  // MYSTIC ARCANUM (Warlock) -- learn one 6th/7th/8th/9th-level spell,
-  // kept permanently; a spell-SELECTION choice, classified alongside
-  // ordinary spell acquisition/preparation below (same blocker: no
-  // class-spell-list filtering exists anywhere in the engine, per the
-  // original completeness audit §6).
+  // MYSTIC ARCANUM (Warlock) -- learn one 6th/7th/8th/9th-level spell, kept permanently.
   // -------------------------------------------------------------------
   {
     id: 'warlock-xphb:mystic-arcanum',
@@ -563,15 +559,17 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Mystic Arcanum',
     levels: [11, 13, 15, 17],
     surface: 'level-up',
-    // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- RECLASSIFIED
-    // ENGINE_BLOCKED (was CONTENT_BLOCKED): "no class-spell-list
-    // filtering/known-prepared enforcement exists" names a missing
-    // CAPABILITY, not merely unauthored content -- no authoring effort
-    // alone can close this. Explicitly owned by the future Spell
-    // Acquisition phase named in this task's own scope boundary, not
-    // this one.
-    status: 'ENGINE_BLOCKED',
-    blockerReason: 'class-spell-list-filtering: no class-spell-list filtering or known/prepared count enforcement exists anywhere in the engine yet (original completeness audit §6) -- the same gap every other casting class\'s own spell acquisition has. Owned by the future Spell Acquisition phase.'
+    // D&D 2024 Character Rules P3.5 -- RECLASSIFIED IMPLEMENTED (was ENGINE_BLOCKED): the
+    // class-spell-list-filtering/known-prepared enforcement capability this entry's own history
+    // named as missing now exists end-to-end (P2 spellOptionVerdict -> P3.1 count authority ->
+    // P3.2 target-state planning -> P3.2.1 provenance -> P3.4 progression write-through). Each of
+    // the four tiers is its own authored `arcanum` SpellRequirement at the matching real level
+    // (6/7/8/9), reachable through the Level Manager's Confirm at its own real target level
+    // (11/13/15/17) -- proven in tests/server/utils/character-progression-spell-acquisition.test.ts's
+    // own WARLOCK describe block and mandatory-decision-coverage.ts's own `impl:mystic-arcanum` rule.
+    status: 'IMPLEMENTED',
+    implementationRef: 'facet:spellRequirements',
+    notes: 'Reclassified P3.5 (2026-10-08) -- see mandatory-decision-coverage.ts\'s own impl:mystic-arcanum rule for the per-tier verification this status rests on.'
   },
 
   // -------------------------------------------------------------------
@@ -591,12 +589,17 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Spellcasting',
     levels: [1],
     surface: 'creation',
-    // CHOICE ELIGIBILITY / CONTENT COVERAGE PHASE 2B -- RECLASSIFIED
-    // ENGINE_BLOCKED (was CONTENT_BLOCKED), same reasoning as Mystic
-    // Arcanum immediately above: a missing CAPABILITY, not unauthored
-    // content. Owned by the future Spell Acquisition phase.
-    status: 'ENGINE_BLOCKED',
-    blockerReason: 'class-spell-list-filtering: confirmed absent, not merely unverified (original completeness audit §6): no class-spell-list filtering exists on the add-spell path (any spell in the bound catalogue can be added to any character), and no known/prepared maximum is enforced. Slot COUNT itself is unaffected -- that is derived output, already A. COMPLETE, and is not a player decision. Owned by the future Spell Acquisition phase.'
+    // D&D 2024 Character Rules P3.5 -- RECLASSIFIED IMPLEMENTED (was ENGINE_BLOCKED): the
+    // class-spell-list-filtering/known-prepared enforcement capability this entry's own history
+    // named as missing now exists end-to-end. Level 1 (this entry's own `surface: 'creation'`
+    // scope) is covered by the Builder's own real write-through
+    // (server/api/worlds/[id]/characters/create-v2.post.ts, P3.3) -- the submitted class list,
+    // spell level, pool, and known/prepared count are all independently re-derived and validated
+    // through planSpellAcquisition (P3.2) against the real activated package, never trusted from
+    // the client. Slot COUNT itself remains derived output, unaffected by this reclassification.
+    status: 'IMPLEMENTED',
+    implementationRef: 'facet:spellRequirements',
+    notes: 'Reclassified P3.5 (2026-10-08) -- see mandatory-decision-coverage.ts\'s own impl:spell-count/impl:caster-creation-spell-choice rules for the per-class verification this status rests on. Later-level (progression) spell growth for this same class is a SEPARATE Phase-0 decision family (spell-count/spell-choice table deltas), independently reclassified by the same P3.5 pass -- this entry\'s own scope stays Level 1 only, per its `surface: \'creation\'` field.'
   })),
 
   // -------------------------------------------------------------------

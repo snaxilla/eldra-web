@@ -87,7 +87,7 @@
 import type { CanonicalSpellMechanics } from '../spell-mechanics/types'
 import type { SpellRequirement, SpellRequirementPoolKind } from '../content-rules/types'
 import { progressionChoiceKey } from './rules-choices'
-import { type ContentRef, serializeContentRef } from './progression-plan'
+import { type ContentRef, parseContentRef, serializeContentRef } from './progression-plan'
 import type { SpellSlotLevel } from './spellcasting'
 import {
   evaluate,
@@ -296,4 +296,47 @@ export function planSpellAcquisition(input: {
 
 export function spellRequirementAnswerKey(slot: string, at: unknown, requirement: SpellRequirement): string {
   return progressionChoiceKey(slot, at, requirement.id)
+}
+
+// D&D 2024 Character Rules P3.4 -- the one pool-kind -> player-facing label mapping, shared by the
+// V2 Builder (P3.3B, `characterBuilderSelection.ts`) and the Level Manager (P3.4,
+// `CharacterProgressionPanel.vue`'s own spell section) -- moved here once a SECOND surface needed
+// the identical mapping, per this codebase's own "avoid a shared abstraction until multiple
+// consumers need it" convention. Keyed by POOL KIND, never by class -- a homebrew class's spell
+// requirements render through the identical four labels with no new branch.
+const SPELL_POOL_LABELS: Record<SpellRequirementPoolKind, string> = {
+  cantrip: 'Cantrips',
+  spell: 'Prepared Spells',
+  spellbook: 'Spellbook',
+  arcanum: 'Mystic Arcanum'
+}
+
+export function spellPoolLabel(pool: SpellRequirementPoolKind): string {
+  return SPELL_POOL_LABELS[pool] ?? pool
+}
+
+// D&D 2024 Character Rules P3.4 -- decodes the WIRE answers map (the same `Record<string,
+// string[]>` both `/progression/plan` and `/progression/confirm` already carry) into
+// `TentativeSpellSelection[]`, one requirement at a time, by its own stable `spellRequirementAnswerKey`.
+// Mirrors `characterBuilderSelection.ts`'s own `tentativeSpellSelections` (P3.3), generalized to any
+// `slot`/`at` pair rather than hardcoding creation's own Level-1/no-key shape -- P3.4 reuses this
+// single decoder rather than inventing a second one for progression's own answer key. An entry that
+// fails to parse as a ContentRef is silently skipped, never surfaced as a caller error -- the exact
+// same posture `extractTentativeContentAnswers` (server/utils/character-progression-plan.ts) already
+// takes for a malformed content answer.
+export function extractTentativeSpellSelections(
+  answers: Readonly<Record<string, readonly string[]>>,
+  requirements: readonly SpellRequirement[],
+  slot: string,
+  at: unknown
+): TentativeSpellSelection[] {
+  const out: TentativeSpellSelection[] = []
+  for (const requirement of requirements) {
+    const key = spellRequirementAnswerKey(slot, at, requirement)
+    for (const raw of answers[key] ?? []) {
+      const ref = parseContentRef(raw)
+      if (ref) out.push({ requirementId: requirement.id, ref })
+    }
+  }
+  return out
 }

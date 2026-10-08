@@ -37,7 +37,8 @@ vi.mock('../../../app/lib/content-rules/creation-completeness', async (importOri
 const {
   assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock,
   loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock,
-  listContentPackBindingsForWorldMock, getWorldContentCatalogueMock
+  listContentPackBindingsForWorldMock, getWorldContentCatalogueMock,
+  saveCharacterSpellcastingMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
@@ -45,7 +46,8 @@ const {
   loadCharacterRulesChoicesMock: vi.fn(),
   saveCharacterRulesChoicesMock: vi.fn(),
   listContentPackBindingsForWorldMock: vi.fn(),
-  getWorldContentCatalogueMock: vi.fn()
+  getWorldContentCatalogueMock: vi.fn(),
+  saveCharacterSpellcastingMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -67,6 +69,9 @@ vi.mock('../../../server/utils/world-content-packs', () => ({
 vi.mock('../../../server/utils/world-content-catalogue', () => ({
   getWorldContentCatalogue: getWorldContentCatalogueMock
 }))
+vi.mock('../../../server/utils/character-spellcasting', () => ({
+  saveCharacterSpellcasting: saveCharacterSpellcastingMock
+}))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
@@ -78,6 +83,7 @@ import {
 } from '../../../server/utils/character-progression-plan'
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 import { serializeContentRef } from '../../../app/lib/characters/progression-plan'
+import { fullySatisfyingSpellState } from '../../helpers/satisfying-spell-fixture'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 const WORLD_ID = '5'
@@ -161,7 +167,14 @@ function catalogueForClass(classSlug: string) {
   }
 }
 
-function blueprintForClass(classSlug: string) {
+// D&D 2024 Character Rules P3.4 -- `targetLevel` defaults to 3 (every real class's own Subclass
+// choice, this file's own entire subject) so every pre-existing call site is unaffected; a caster
+// class's own persisted spell state must satisfy its real spellRequirements AT the level this
+// fixture is actually evaluated against, or P3.4's own spell acquisition gate would spuriously
+// block a test about an unrelated choice family (see tests/helpers/satisfying-spell-fixture.ts's
+// own header). A non-caster class's `spellRequirements` is `[]`, so this is a no-op for it,
+// unchanged.
+function blueprintForClass(classSlug: string, targetLevel = 3) {
   return {
     worldId: WORLD_ID,
     characterId: CHARACTER_ID,
@@ -177,7 +190,7 @@ function blueprintForClass(classSlug: string) {
     inventory: [],
     notes: null,
     health: null,
-    spells: [],
+    spells: fullySatisfyingSpellState(findRulesFacet('dnd5e.2024', 'class', classSlug)?.spellRequirements ?? [], targetLevel),
     expendedSlots: {},
     progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: classSlug }, level: 1 }] },
     resources: null,
@@ -193,6 +206,7 @@ beforeEach(() => {
   saveCharacterRulesChoicesMock.mockReset()
   listContentPackBindingsForWorldMock.mockReset()
   getWorldContentCatalogueMock.mockReset()
+  saveCharacterSpellcastingMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -203,6 +217,7 @@ beforeEach(() => {
   loadCharacterRulesChoicesMock.mockResolvedValue(null)
   saveCharacterRulesChoicesMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
   listContentPackBindingsForWorldMock.mockResolvedValue([])
+  saveCharacterSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
 })
 
 describe.each(ALL_12_CLASS_SLUGS)('ALL-CLASS SUBCLASS CONTRACT -- %s', (classSlug) => {

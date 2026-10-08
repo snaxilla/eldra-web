@@ -210,7 +210,8 @@ import type {
   ProgressionAutomaticConsequence,
   ProgressionChoice,
   ProgressionLevelStep,
-  ProgressionPlan
+  ProgressionPlan,
+  ProgressionSpellPlan
 } from '../../app/lib/characters/progression-plan'
 import { parseContentRef, serializeContentRef } from '../../app/lib/characters/progression-plan'
 import { assembleCharacter } from './character-assembly'
@@ -227,6 +228,19 @@ import { emptyStoredRulesChoices, resolveChoiceTarget } from '../../app/lib/char
 import { featFilterVerdict, featOptionVerdict, type FeatPrerequisite, type FeatUnavailableReason } from '../../app/lib/feat-mechanics'
 import type { ContentCatalogueFilter, SpellCatalogueFilter } from '../../app/lib/rules/types'
 import { progressionUnresolvedDecisions, describeUnresolved } from '../../app/lib/content-rules/creation-completeness'
+import type { RulesFacet } from '../../app/lib/content-rules'
+import type { AssembledSpellEntry } from '../../app/lib/characters/spellcasting'
+import { toStoredSpellEntry } from '../../app/lib/characters/spellcasting'
+import type { SpellAcquisitionPlan, TentativeSpellSelection } from '../../app/lib/characters/spell-acquisition-plan'
+import {
+  buildProgressionAcceptedSpellEntries,
+  buildProgressionSpellPlan,
+  progressionSpellSlotLevels,
+  spellTentativeSelectionsFromAnswers,
+  toProgressionSpellPlan
+} from './character-progression-spell-acquisition'
+import { describeSpellPlanFailure } from './character-spell-acquisition'
+import { saveCharacterSpellcasting } from './character-spellcasting'
 
 // Phase 2C.1 -- how a content-backed progression answer is ROUTED. The
 // ChoiceSet's own typed selector declares what it asks for (`from.category`:
@@ -346,6 +360,13 @@ export type ProgressionFailureReason =
   // PHASE 0 -- the levels crossed (or a feat acquired in this transition) include a mandatory
   // decision Eldra cannot record yet. Refused at Confirm regardless of what the client shows.
   | 'unsupported-decision'
+  // D&D 2024 Character Rules P3.4 -- this class's TARGET-STATE spell acquisition plan is not
+  // `complete` (a missing, illegal, duplicate, wrong-tier, or Wizard-membership-violating answer),
+  // re-validated fresh from the SUBMITTED answers, never the client's own remembered plan. Distinct
+  // from `unresolved-choices` (Definition/content choices) because this is the SEPARATE spell
+  // acquisition authority (planSpellAcquisition, P3.2) -- never folded into the same reason, so a
+  // caller can tell which family of required selection is still outstanding.
+  | 'unresolved-spell-selection'
 
 export function statusForProgressionFailure(reason: ProgressionFailureReason): number {
   switch (reason) {
@@ -360,6 +381,7 @@ export function statusForProgressionFailure(reason: ProgressionFailureReason): n
     case 'unresolved-choices': return 409
     case 'illegal-feat-selection': return 400
     case 'unsupported-decision': return 409
+    case 'unresolved-spell-selection': return 409
     default: {
       const exhaustive: never = reason
       return exhaustive
@@ -377,6 +399,16 @@ export type ProgressionFailure = { ok: false; reason: ProgressionFailureReason; 
 export type CurrentProgressionState = {
   progression: StoredCharacterProgression
   currentLevel: number
+  // D&D 2024 Character Rules P3.4 -- the character's REAL persisted spell state and the currently
+  // resolved class facet (for its own `spellRequirements`), read off the SAME `assembleCharacter`
+  // call this function already makes -- zero extra fetches. `spells`/`expendedSlots` default to `[]`/
+  // `{}` for a character with no spellcasting block yet (every character predating this phase), the
+  // same "absence is legal" reading every sibling stored record in this family already gives a
+  // missing block. `classFacet` is `null` for an unresolved class slot (Phase 0 may still refuse the
+  // transition on other grounds; this field alone never does).
+  spells: readonly AssembledSpellEntry[]
+  expendedSlots: Record<string, number>
+  classFacet: RulesFacet | null
 }
 
 export async function resolveCurrentProgression(
@@ -392,7 +424,19 @@ export async function resolveCurrentProgression(
   }
 
   const progression = assembly.blueprint.progression
-  return { ok: true, state: { progression, currentLevel: totalCharacterLevel(progression) } }
+  const classFacet = assembly.blueprint.class.status === 'resolved'
+    ? (assembly.blueprint.class.entry.rulesFacet ?? null)
+    : null
+  return {
+    ok: true,
+    state: {
+      progression,
+      currentLevel: totalCharacterLevel(progression),
+      spells: assembly.blueprint.spells ?? [],
+      expendedSlots: assembly.blueprint.expendedSlots ?? {},
+      classFacet
+    }
+  }
 }
 
 // Character Progression Phase 1B -- the package's own integrity hash joins
@@ -863,7 +907,10 @@ export async function planProgression(
   characterId: string | number,
   targetLevel: number,
   tentativeAnswers: Record<string, string[]> = {}
-): Promise<{ ok: true; plan: ProgressionPlan; featRejections: FeatRejections } | ProgressionFailure> {
+): Promise<
+  | { ok: true; plan: ProgressionPlan; featRejections: FeatRejections; spellPlan: SpellAcquisitionPlan | null; spellTentative: readonly TentativeSpellSelection[] }
+  | ProgressionFailure
+> {
   if (!isValidClassLevel(targetLevel)) {
     return { ok: false, reason: 'invalid-target-level', message: 'targetLevel must be an integer from 1 to 20' }
   }
@@ -923,6 +970,34 @@ export async function planProgression(
     resolveContentBindingFingerprint(worldId)
   ])
 
+  // D&D 2024 Character Rules P3.4 -- TARGET-STATE spell acquisition, computed exactly ONCE against
+  // `targetLevel` (never per crossed level -- see character-progression-spell-acquisition.ts's own
+  // header). `null` for a class with no `spellRequirements` at all -- no plan built, no gate added,
+  // mirroring create-v2.post.ts's own identical "a non-caster skips this entirely" rule.
+  const spellRequirements = current.state.classFacet?.spellRequirements ?? []
+  let spellPlan: SpellAcquisitionPlan | null = null
+  let progressionSpellPlan: ProgressionSpellPlan | null = null
+  const spellTentative = spellTentativeSelectionsFromAnswers(tentativeAnswers, spellRequirements, targetLevel)
+
+  if (spellRequirements.length > 0) {
+    const [catalogue, runtime] = await Promise.all([
+      getWorldContentCatalogue(worldId),
+      getWorldRuntime(worldId)
+    ])
+    const registry = runtime.configured && runtime.ok ? runtime.runtime.registry : null
+    const spellSlotLevels = progressionSpellSlotLevels(registry, current.state.classFacet, targetLevel)
+
+    spellPlan = buildProgressionSpellPlan({
+      requirements: spellRequirements,
+      catalogue: catalogue.spells,
+      spellSlotLevels,
+      targetLevel,
+      persisted: current.state.spells,
+      tentative: spellTentative
+    })
+    progressionSpellPlan = toProgressionSpellPlan(spellRequirements, spellPlan, targetLevel)
+  }
+
   return {
     ok: true,
     plan: {
@@ -931,10 +1006,13 @@ export async function planProgression(
       steps,
       unresolvedChoiceIds,
       unresolvedDecisions,
-      valid: unresolvedChoiceIds.length === 0 && unresolvedDecisions.length === 0,
+      spellPlan: progressionSpellPlan,
+      valid: unresolvedChoiceIds.length === 0 && unresolvedDecisions.length === 0 && (spellPlan === null || spellPlan.complete),
       fingerprint: fingerprintFor(currentLevel, packageIntegrityHash, contentBindingFingerprint)
     },
-    featRejections
+    featRejections,
+    spellPlan,
+    spellTentative
   }
 }
 
@@ -965,6 +1043,7 @@ export async function confirmProgression(
   if (!current.ok) return current
 
   const { progression, currentLevel } = current.state
+  const spellRequirements = current.state.classFacet?.spellRequirements ?? []
   const [packageIntegrityHash, contentBindingFingerprint] = await Promise.all([
     resolvePackageIntegrityHash(worldId),
     resolveContentBindingFingerprint(worldId)
@@ -1002,20 +1081,14 @@ export async function confirmProgression(
   if (unsupported.length > 0) {
     return { ok: false, reason: 'unsupported-decision', message: describeUnresolved(unsupported) }
   }
-  if (!planResult.plan.valid) {
-    // A submitted feat the plan refused is named with the reason the shared
-    // predicate produced -- never a generic "unresolved" for a real illegal pick.
-    const illegalFeat = await findRefusedFeatAnswer(worldId, planResult.plan, planResult.featRejections, answers)
-    if (illegalFeat) {
-      return { ok: false, reason: 'illegal-feat-selection', message: illegalFeat }
-    }
-    return {
-      ok: false,
-      reason: 'unresolved-choices',
-      message: `This transition still has unresolved required choices: ${planResult.plan.unresolvedChoiceIds.join(', ')}`
-    }
-  }
 
+  // Structural preconditions for THIS planner -- more fundamental than any required-selection
+  // family (Definition/content choices, spell acquisition), since this planner's own
+  // single-class-entry assumption (every plan built so far already assumed `base.classes[0]`)
+  // means neither family's completeness is even a well-formed question for a character this
+  // Level Manager cannot represent at all. Checked BEFORE either, so a multiclass character is
+  // told exactly that -- never "finish answering your other required selections first" for a
+  // selection family a single-class planner cannot evaluate correctly anyway.
   const base = progression.classes.length ? progression : emptyCharacterProgression()
 
   if (base.classes.length === 0) {
@@ -1034,6 +1107,34 @@ export async function confirmProgression(
       ok: false,
       reason: 'multiclass-not-supported',
       message: 'This character has more than one class entry -- multiclass leveling is not supported by this Level Manager yet'
+    }
+  }
+
+  // D&D 2024 Character Rules P3.4 -- SPELL ACQUISITION AUTHORITY. Re-validated against the SAME
+  // fresh plan `planProgression` just rebuilt from these exact submitted `answers` -- never the
+  // client's own remembered plan. Checked before the generic Definition/content-choice branch below
+  // (which has no vocabulary for a spell-specific issue) so a missing/illegal/duplicate/wrong-tier
+  // spell answer is reported as exactly that, never folded into a misleading generic "unresolved
+  // choices" message when `unresolvedChoiceIds` itself is empty.
+  if (planResult.spellPlan && !planResult.spellPlan.complete) {
+    return {
+      ok: false,
+      reason: 'unresolved-spell-selection',
+      message: describeSpellPlanFailure(planResult.spellPlan) ?? 'Spell selections are incomplete.'
+    }
+  }
+
+  if (!planResult.plan.valid) {
+    // A submitted feat the plan refused is named with the reason the shared
+    // predicate produced -- never a generic "unresolved" for a real illegal pick.
+    const illegalFeat = await findRefusedFeatAnswer(worldId, planResult.plan, planResult.featRejections, answers)
+    if (illegalFeat) {
+      return { ok: false, reason: 'illegal-feat-selection', message: illegalFeat }
+    }
+    return {
+      ok: false,
+      reason: 'unresolved-choices',
+      message: `This transition still has unresolved required choices: ${planResult.plan.unresolvedChoiceIds.join(', ')}`
     }
   }
 
@@ -1336,5 +1437,28 @@ export async function confirmProgression(
   }
 
   const saved = await saveCharacterProgression(characterId, nextProgression)
+
+  // D&D 2024 Character Rules P3.4 -- CANONICAL SPELLCASTING WRITE-THROUGH. WRITE ORDER: deliberately
+  // LAST, after rules_choices and after the level write immediately above -- see this file's own
+  // header for the full ordering rationale, extended here. Writing spellcasting BEFORE the level
+  // write would risk a WORSE partial-state failure than either existing write's own documented
+  // residual risk: a bounded pool (cantrip/spell/arcanum) validates against `totalByLevel[level-1]`,
+  // so persisting NEW spells while the character's OWN persisted level is still the OLD one could
+  // leave it showing a real, player-visible OVER-COUNT (too many spells for its current level) if
+  // this write then failed to reach the level write at all. Writing it LAST means a failure here
+  // instead leaves the character at the NEW level with its OLD (now under-target) spell state --
+  // benign, visible as "missing N more" exactly like every other real, untouched completeness gap
+  // this system already tolerates, and self-healing on the NEXT Level Manager Preview/Confirm for
+  // this class (the target-state planner always re-asks for whatever is still missing, regardless of
+  // which level first surfaced it -- see REPEAT PREVIEW/SECOND LEVEL-UP in this phase's own report).
+  // FAIL LOUDLY (no `.catch`) -- a completed-looking level-up silently missing its spells is exactly
+  // the bug this phase exists to prevent, the same posture create-v2.post.ts's own identical write
+  // already takes.
+  if (planResult.spellPlan && spellRequirements.length > 0) {
+    const persistedStoredSpells = current.state.spells.map(toStoredSpellEntry)
+    const nextSpells = buildProgressionAcceptedSpellEntries(persistedStoredSpells, spellRequirements, planResult.spellPlan, planResult.spellTentative)
+    await saveCharacterSpellcasting(characterId, { spells: nextSpells, expendedSlots: current.state.expendedSlots })
+  }
+
   return { ok: true, progression: saved, currentLevel: targetLevel }
 }

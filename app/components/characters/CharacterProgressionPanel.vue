@@ -72,12 +72,39 @@ export type ProgressionLevelStepRow = {
   requiredChoices: ProgressionChoiceRow[]
 }
 
+// D&D 2024 Character Rules P3.4 -- mirrors ProgressionSpellRequirementPlan/ProgressionSpellPlan
+// (app/lib/characters/progression-plan.ts) exactly. Rendered through its own generic section below
+// -- GENERIC ON PURPOSE, the same rule this file's own header states for `requiredChoices`: no
+// class name, no "Wizard", `label` is already pool-kind English the server computed
+// (spellPoolLabel), never derived here.
+export type ProgressionSpellOptionRow = { ref: string, packageId: string, slug: string, title: string }
+
+export type ProgressionSpellRequirementRow = {
+  requirementId: string
+  pool: string
+  label: string
+  answerKey: string
+  target: number
+  legalCount: number
+  missing: number
+  satisfied: boolean
+  selectedRefs: string[]
+  options: ProgressionSpellOptionRow[]
+  issues: unknown[]
+}
+
+export type ProgressionSpellPlanRow = {
+  requirements: ProgressionSpellRequirementRow[]
+  complete: boolean
+}
+
 export type ProgressionPlanRow = {
   currentLevel: number
   targetLevel: number
   steps: ProgressionLevelStepRow[]
   unresolvedChoiceIds: string[]
   unresolvedDecisions?: { decisionId: string, source: string, level: number, owner: { name: string } }[]
+  spellPlan: ProgressionSpellPlanRow | null
   valid: boolean
   fingerprint: string
 }
@@ -261,6 +288,23 @@ function formatValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
+}
+
+// D&D 2024 Character Rules P3.4 -- SPELL ACQUISITION. Reuses the same infrastructure-grade
+// control the Builder's own spell-acquisition section (P3.3B, CharacterChoiceSetPicker's slot
+// mode) already established -- a plain <select> per missing slot, no searchable/autocomplete
+// component (recorded as backlog, same as P3.3B). Unlike a Definition/content choice, a spell
+// requirement's own TARGET-STATE plan already echoes every currently-legal identity (persisted
+// AND this-session's own tentative picks, indistinguishable) back as `selectedRefs` the moment it
+// is accepted -- never gated behind "the whole requirement must be answered first" the way
+// `choice.selected` is for a fixed-count Definition choice (see this file's own header on
+// `draftFromAnswer`'s "echoed only when complete" rule, which does NOT apply here). This panel
+// therefore holds NO local draft state for spells at all: picking a NEW option resubmits
+// `selectedRefs` (everything already legally counted) plus the one freshly chosen ref, and the
+// next plan response is the single source of truth for what is still missing.
+function selectSpellOption(requirement: ProgressionSpellRequirementRow, ref: string) {
+  if (!ref || requirement.selectedRefs.includes(ref)) return
+  emit('answer', { choiceId: requirement.answerKey, selected: [...requirement.selectedRefs, ref] })
 }
 </script>
 
@@ -478,6 +522,66 @@ function formatValue(value: unknown): string {
                   {{ option.label }}
                 </label>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- D&D 2024 Character Rules P3.4 -- TARGET-STATE spell acquisition, rendered once for the
+             whole plan (never per level step -- a class's own spell targets are cumulative at
+             `targetLevel`, not a per-level delta; see character-progression-spell-acquisition.ts's
+             own header). GENERIC: `label` is pool-kind English the server already computed
+             (spellPoolLabel), never a class name. Only requirements with a nonzero target render at
+             all; within one, only a NONZERO `missing` adds a new acquisition control -- the already
+             -legal count is still shown as plain text ("3 already selected, choose 2 more"). -->
+        <div
+          v-if="plan.spellPlan && plan.spellPlan.requirements.some((requirement) => requirement.target > 0)"
+          class="eldra-well grid gap-2 rounded-none p-3"
+        >
+          <p class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Spell Selections</p>
+
+          <div
+            v-for="requirement in plan.spellPlan.requirements.filter((requirement) => requirement.target > 0)"
+            :key="requirement.requirementId"
+            class="eldra-well rounded-none p-2"
+          >
+            <p class="text-xs font-semibold text-[#e0a94a]">
+              {{ requirement.label }}: {{ requirement.legalCount }} of {{ requirement.target }} selected
+              <span v-if="requirement.satisfied">✓</span>
+            </p>
+
+            <div
+              v-if="requirement.missing > 0"
+              class="mt-1.5 grid gap-1.5"
+            >
+              <label
+                v-for="slot in requirement.missing"
+                :key="slot"
+                class="block"
+              >
+                <span class="mb-1 block text-[0.65rem] uppercase tracking-[0.18em] text-[#9f9278]">
+                  Choose {{ requirement.label }} ({{ slot }} of {{ requirement.missing }} still missing)
+                </span>
+                <select
+                  value=""
+                  class="eldra-input min-h-9 w-full rounded-none px-2 py-1.5 text-xs text-white"
+                  @change="selectSpellOption(requirement, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option
+                    value=""
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    Select…
+                  </option>
+                  <option
+                    v-for="option in requirement.options"
+                    :key="option.ref"
+                    :value="option.ref"
+                    class="bg-[#090909] text-[#f5e7bd]"
+                  >
+                    {{ option.title }}
+                  </option>
+                </select>
+              </label>
             </div>
           </div>
         </div>

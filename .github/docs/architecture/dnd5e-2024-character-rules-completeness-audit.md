@@ -4681,3 +4681,286 @@ Actions None.
 baseline, zero new. `pnpm run build`: succeeds. `git diff --check`: clean. `pnpm packages:sync --
 --world Solaris` (dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions None -- zero writes.
 No commit made. No `packages:sync --apply` run.
+
+### 25.34 P3.4 -- PROGRESSION SPELL ACQUISITION + LEVEL MANAGER WRITE-THROUGH (2026-10-08)
+
+#### Scope
+
+Makes the existing P3.2 target-state acquisition planner (`planSpellAcquisition`) usable during the
+Game Admin Level Manager's own Preview/Confirm cycle (`server/utils/character-progression-plan.ts`'s
+`planProgression`/`confirmProgression`). The SAME shared authority P3.1/P3.2/P3.3 already built --
+`evaluateRequirements`/`evaluate`/`toResult`/`mergeSpellStateCandidate`/`planSpellAcquisition` --
+is reused verbatim; this phase adds exactly one new server util
+(`server/utils/character-progression-spell-acquisition.ts`, P3.3's creation-side sibling) and wires
+its output into the planner, never a second interpretation of count/pool/membership/filtering
+legality.
+
+#### Target-state model, not an adjacent delta
+
+A class's `SpellRequirement.totalByLevel` is already a CUMULATIVE target at any given level (P3.1's
+own model). `buildProgressionSpellPlan` therefore calls `planSpellAcquisition` exactly ONCE, at
+`targetLevel`, against the character's REAL PERSISTED `spellcasting.spells[]` (via
+`character-assembly.ts`'s own already-resolved `AssembledSpellEntry[]`, never reconstructed from
+`rules_choices`/progression history) -- `missing` is always `(target at targetLevel) - (currently
+legal)`, never a sum of per-level deltas. A direct Level 1 -> 20 jump produces the complete deficit
+in ONE Preview, proven directly (`tests/server/utils/character-progression-spell-acquisition.test.ts`'s
+own Wizard 1->2/1->8/1->20 suite) and through the full Preview/Confirm route
+(`tests/server/utils/character-progression-plan-spell-acquisition.test.ts`'s SUCCESS MATRIX/SECOND
+LEVEL-UP). The EXISTING per-level `buildLevelStep` walk (automatic consequences, Definition/content
+choices) is untouched -- spell acquisition deliberately does NOT reuse it.
+
+#### Preview/Confirm contract
+
+`planProgression` computes `spellPlan: ProgressionSpellPlan | null` (null for a class with no
+`spellRequirements` at all) alongside the existing `steps`/`unresolvedChoiceIds`/
+`unresolvedDecisions`, and folds its own completeness into `plan.valid` (`unresolvedChoiceIds.length
+=== 0 && unresolvedDecisions.length === 0 && (spellPlan === null || spellPlan.complete)`) -- a
+caster's spell deficit blocks Confirm exactly like an unanswered Definition choice, and an answered
+Definition choice never bypasses a real spell deficit (or vice versa), per this phase's own LEVEL
+MANAGER VALIDITY requirement.
+
+`confirmProgression` rebuilds the IDENTICAL plan from the submitted `answers` (never trusting the
+client's remembered plan) and checks, in order: Phase 0 unresolved decisions -> structural
+preconditions (no-class-recorded / multiclass-not-supported, moved EARLIER than both choice families
+this phase -- see WRITE ORDER / ORDERING below) -> the new spell plan's own completeness
+(`reason: 'unresolved-spell-selection'`, 409) -> the existing Definition/content choice validity.
+A crafted illegal/missing/duplicate/wrong-tier spell answer is refused before any write, proven by
+the REJECTION MATRIX (12 cases: missing, unknown requirement, unknown ContentRef, wrong package,
+wrong class list, wrong spell level, duplicate same-pool spell, over-count, Wizard prepared-outside-
+membership, wrong Arcanum tier, stale fingerprint, and the generic "answers at a key naming no real
+requirement changes nothing" case) -- every one asserts zero write
+(`saveCharacterProgressionMock`/`saveCharacterSpellcastingMock` never called).
+
+#### Ordering correction found while implementing (not a pre-existing bug)
+
+The EXISTING `no-class-recorded`/`multiclass-not-supported` checks lived AFTER the Definition/
+content choice validity check in the pre-P3.4 code. Adding the spell check in that same late
+position broke an existing, approved test
+(`confirmProgression -- persistence, ordering, and idempotency > refuses to guess when more than
+one class entry exists`): a multiclass character with an otherwise-valid (nothing crossed) plan now
+hit the NEW spell check first and reported `unresolved-spell-selection` instead of
+`multiclass-not-supported`. Moved BOTH structural checks earlier (right after the Phase 0 check, before
+either choice family) -- more fundamental than "is this one specific required-selection family
+answered," since neither choice family's completeness is even a well-formed question for a character
+this single-class-assuming planner cannot represent at all. This is a correction, not a scope change:
+the checks' own logic is byte-identical, only their position moved.
+
+#### WRITE ORDER (deliberate, and why)
+
+Three writes may now occur on a single Confirm: `rules_choices` (existing, Phase 1B/1C), `progression`
+/level (existing), `spellcasting` (new). Order: **rules_choices -> progression -> spellcasting**,
+spellcasting strictly LAST.
+
+Reasoning (extends, never reorders, the existing pair's own documented rationale at this file's own
+header): writing spellcasting BEFORE the level write risks a WORSE partial-state failure than either
+existing write's own accepted residual risk -- a bounded pool (cantrip/`spell`/arcanum) validates
+against `totalByLevel[level - 1]`, so persisting NEW spells while the character's OWN persisted level
+is still the OLD one could leave it showing a real, player-visible OVER-COUNT (too many spells for its
+displayed level) if the level write then failed to happen at all. Writing it LAST means a failure here
+instead leaves the character at the NEW level with its OLD (now under-target) spell state -- the SAME
+"missing N more" degradation this system already tolerates for every untouched completeness gap, and
+self-healing on the next Level Manager use for this class (the target-state planner always re-asks for
+whatever is still missing, regardless of which level first surfaced it). FAIL LOUDLY (no `.catch`) --
+the same posture create-v2.post.ts's own identical write already takes.
+
+**Residual risk, reported honestly (per this phase's own instruction):** if `progression` succeeds but
+`spellcasting` then fails, the character is now AT the new level with an incomplete spell state, and
+re-confirming the EXACT SAME target level is impossible (`targetLevel <= currentLevel` now holds,
+`not-advancement`). Recovery is NOT blocked, only indirect: the NEXT Level Manager Preview to any
+HIGHER target re-surfaces the unmet deficit (target-state, not a delta, so nothing already-missing is
+ever lost), or a GM can use the existing generic `spellcasting` PUT as a manual fallback (already
+documented technical debt, unchanged by this phase). Judged the least-bad of the two orderings
+available with no cross-collection transaction in this codebase -- not "materially worse" than the
+existing accepted risk, so this was implemented directly rather than escalated.
+
+#### FINAL FAILURE POSTURE -- proven, not merely argued (2026-10-08 follow-up)
+
+The residual risk above was argued from the code's own structure; this follow-up proves it directly.
+A new, focused mechanics-isolation test
+(`tests/server/utils/character-progression-plan-spell-acquisition.test.ts`'s own `FINAL FAILURE
+POSTURE` describe block) arranges a real Wizard Level 1 -> 2 Confirm that is otherwise fully valid
+(Scholar answered, every spell requirement answered, `plan.valid: true`), then makes ONLY the new
+`saveCharacterSpellcasting` write reject. Proven:
+
+1. **Confirm fails loudly** -- the call REJECTS (`await expect(...).rejects.toThrow(...)`), never
+   swallowed into a quiet `{ ok: false }`.
+2. **No rollback is claimed or performed** -- `saveCharacterRulesChoices` and `saveCharacterProgression`
+   were both already called (and, per their own mocks, succeeded) before the failing write; nothing
+   here invents a compensating undo.
+3. **Persisted `progression` reflects the new target level** -- asserted directly against the exact
+   object `saveCharacterProgression` was called with (`classes[0].level === 2`).
+4. **Persisted `spellcasting` remains old/incomplete** -- the write never landed; no repair or
+   reconciliation workflow is invented for this case.
+5. **A FRESH, independent re-evaluation of that EXACT partial state still reports a real, visible
+   deficit.** `planProgression` itself would correctly refuse to even preview this exact state
+   (`targetLevel === currentLevel` now that progression already advanced -> `not-advancement`) --
+   so the invariant is proven one layer down, at the lowest authority boundary that actually answers
+   "is this spell state complete at this level": `planSpellAcquisition` (P3.2) called directly with
+   the real Wizard requirements, the real Level-2 slot table, and the TRUE (empty) persisted
+   candidate set. `freshPlan.complete` is `false`, and spellbook/`spell`/cantrip each independently
+   report `missing > 0`. **`progression.level` reaching the target is never treated as the spell
+   state also being complete** -- the missing state stays detectable, fail-closed, by construction.
+
+Repair/reconciliation UX for this exact partial state is explicitly NOT built in this phase --
+recorded here as technical debt, not silently assumed away. No Level Manager redesign was undertaken
+to provide one.
+
+#### FINGERPRINT -- the literal ask vs. the actual protection (reported, not silently substituted)
+
+This phase's own brief asked that the fingerprint change whenever a spell answer changes. Investigated
+directly: the EXISTING `fingerprintFor(currentLevel, packageIntegrityHash, contentBindingFingerprint)`
+is deliberately answer-independent (this file's own header: "there are no choices today whose ANSWERS
+could also go stale independently"). Extending it to also hash the submitted `answers` map was
+prototyped and REJECTED after tracing its effect against the existing, approved test
+`confirmProgression re-derives everything -- a valid fresh fingerprint plus a real answer succeeds`:
+that test (and the real workflow it proves) previews with NO answers, then confirms DIRECTLY with the
+real final answer under the SAME fingerprint -- an answer-sensitive fingerprint would reject this
+exact, already-accepted pattern as "stale" purely because the answers differ from what was hashed at
+preview time, which is not what staleness means here.
+
+**The real protection was already in place and is stronger than a fingerprint check:** `confirmProgression`
+rebuilds the ENTIRE plan (Definition/content choices AND the new spell plan) from the SUBMITTED
+answers on every call, and refuses if incomplete/illegal -- regardless of what the fingerprint
+encodes. Proven directly
+(`tests/server/utils/character-progression-plan-spell-acquisition.test.ts`'s own FINGERPRINT
+describe block): two previews with different (irrelevant) answers under the SAME starting state
+produce the IDENTICAL fingerprint by design, and confirming under that fingerprint with incomplete
+spell answers is STILL refused (`unresolved-spell-selection`) -- not because the fingerprint caught
+anything, but because full re-validation did. The shared fingerprint formula was left unmodified. If
+an answer-sensitive fingerprint is still wanted as a UX nicety (e.g. so a stale PREVIEW can be flagged
+before the illegal-answer message appears), that is a separate, larger change to the fingerprint's own
+opaque contract (every existing confirm test's own "(fingerprint, answers)" pairing would need
+re-auditing) and was not undertaken without explicit sign-off.
+
+#### WIZARD -- the critical two-tier case
+
+Proven at Level 1 -> 2 (totals genuinely increase: spellbook 6 -> 8, cantrip 3 -> 4), Level 1 -> 8
+(spellbook target 20, the exact `20 - 6 = 14` deficit this phase's own brief cites), and Level 1 -> 20
+(spellbook 44, prepared 25, cantrip 5, each independently `target - persisted`) --
+`tests/server/utils/character-progression-spell-acquisition.test.ts`. DEPENDENT EVALUATION: a NEW
+tentative spellbook pick becomes a legal PREPARED option within the SAME `buildProgressionSpellPlan`
+call, no save/reload/prepare round trip (`mergeSpellStateCandidate` merging tentative + persisted
+candidates before the membership-gated `spell` pool is evaluated). The full real walk (Scholar @2,
+Subclass @3, two ASI thresholds @4/@8, answered ALONGSIDE the spell deficit in one Confirm) is proven
+end-to-end in `character-progression-plan-spell-acquisition.test.ts`'s SUCCESS MATRIX C, including the
+canonical write: spellbookTarget + cantripTarget physical rows, the `spell`-tagged (prepared) refs
+merging onto the SAME rows as their spellbook membership (never a second physical row).
+
+#### WARLOCK -- four independent Arcanum tiers
+
+Proven that tiers 6/7/8/9 each have a nonzero target ONLY at targets 11/13/15/17 respectively (and
+every combination in between), with zero cross-tier contamination (an already-satisfied Arcanum-6
+never leaks into Arcanum-7's own count at Level 13) --
+`tests/server/utils/character-progression-spell-acquisition.test.ts`. SECOND LEVEL-UP proven through
+the full route: Confirm to Level 11 (Arcanum-6), then a LATER Confirm to Level 13 only requests
+Arcanum-7 -- Arcanum-6 is never re-asked, and its own physical row survives untouched through the
+canonical merge (`character-progression-plan-spell-acquisition.test.ts`).
+
+#### HALF CASTERS -- Paladin/Ranger
+
+`progressionSpellSlotLevels` proven to grow strictly between Level 2 and Level 20 for BOTH classes
+independently, off the REAL Rules 0.21.0 corrected `table:spellcasting.slots_half` -- no 2014
+assumption, no class branch. The full Preview/Confirm route for Paladin/Ranger specifically was NOT
+additionally driven through the integration harness in this phase (their own Level-2 Fighting Style
+choice is an unrelated required family this phase did not need to re-prove); the pure target-level
+legality proof above is the acceptance evidence for D/E, reported honestly rather than claimed via a
+test that doesn't exist.
+
+#### OTHER CASTERS -- Bard/Sorcerer, Cleric/Druid
+
+Sorcerer (cantrip + ordinary) and Cleric (ordinary prepared, no spellbook) proven end-to-end through
+Confirm, Level 1 -> 2 (the one real target level with zero unrelated required choices for either
+class) -- SUCCESS MATRIX A/B.
+
+#### REPEAT PREVIEW / fresh reload
+
+After a successful Confirm, re-deriving the written rows as the new persisted state and previewing a
+HIGHER target level shows the already-answered portion still legally owned (`legalCount` preserved)
+and `missing` equal to only the INCREMENTAL deficit, never the full total again --
+`character-progression-plan-spell-acquisition.test.ts`'s REPEAT PREVIEW block (Sorcerer) and the
+SECOND LEVEL-UP block (Warlock) both prove this independently.
+
+#### PERSISTENCE SENSITIVITY
+
+Wizard (the real cross-pool collision) and Sorcerer (a simpler single-pool case), per this phase's own
+explicit "Wizard + one non-Wizard" instruction: Confirm-written rows validate `spellPlan.complete` on
+a fresh reload; a BROKEN COPY with every `requirementIds` stripped reproduces the real pre-P3.2.1
+cross-pool collision for Wizard (`complete: false`) without ever mutating the original write (asserted
+via `Object.freeze` + a post-probe re-check of the SAME written object).
+
+#### Canonical write -- a DIFFERENT merge function from P3.3's, not a generalization of it
+
+`buildProgressionAcceptedSpellEntries` (new, `character-progression-spell-acquisition.ts`) PATCHES the
+character's EXISTING persisted rows (by identity, preserving `instanceId` and any unrelated tag) and
+adds exactly one NEW row per genuinely new identity -- `buildAcceptedSpellEntries` (P3.3, creation)
+is correct only for creation's own `candidates: []` starting point and was deliberately NOT reused or
+generalized for progression, which must never rebuild the array from scratch. Proven: an untouched
+existing row survives byte-for-byte; a newly-accepted identity across TWO requirements at once (e.g.
+Wizard spellbook+prepared) gets exactly one row; an identity that already has a row gains a SECOND
+tag on the SAME row when a later confirm also accepts it under another requirement; retrying the
+identical accepted answers twice reproduces the exact same rows (idempotent).
+
+#### P3.3 regression
+
+Zero changes to `server/api/worlds/[id]/characters/create-v2.post.ts`, `character-spell-acquisition.ts`,
+or the Builder's own P3.3B presentation. The full suite (including every P3.3 creation/Builder test)
+remains green. P3.3's own live DOM acceptance remains deferred for the same, unrelated Phase 0 reason
+already recorded (§25.32/§25.33) -- not reopened by this phase.
+
+#### Browser acceptance status
+
+The Level Manager's spell section (`CharacterProgressionPanel.vue`, new template block +
+`selectSpellOption` handler, reusing the Builder's own "plain `<select>` per missing slot" control --
+no new searchable/autocomplete component, same backlog note as P3.3B) is wired through the identical
+generic `answer`/`setAnswer` wire protocol every existing Definition choice already uses -- zero
+changes to `useCharacterProgression.ts`/`sheet-v2.vue`'s own handlers, which were already fully
+generic. **Live browser acceptance is deferred for the SAME reason P3.3's was** (§25.32/§25.33): the
+real production Phase 0 completeness gate still blocks every real caster class on OTHER, unrelated
+mandatory decisions (starting equipment, weapon mastery, etc.) regardless of spell-progression
+mechanics, so a real admin cannot yet reach a confirmable Level-Up for any real caster in production.
+This is not a P3.4 failure, and the creation gate was not weakened to expose it.
+
+#### P3.5 boundary (untouched)
+
+Zero reclassification. The 174 class-owned spell decisions (`blk:caster-counts`/
+`blk:caster-l1-spell-choice`/`blk:class-spell-choice-other` in `mandatory-decision-coverage.ts`)
+remain `blocked` -- the mechanism to CORRECTLY resolve them now exists (creation AND progression
+alike), but the Phase 0 classification itself is P3.5's own, separate, not-yet-started job. Phase 0
+counts unchanged: 647 total / 192 implemented / 420 blocked / 35 optional. Availability unchanged:
+Species 3/10, Classes 0/12, Backgrounds 0/16, Combinations 0/1,920.
+
+#### Package impact
+
+Zero. `packages/eldra-dnd5e-2024` untouched -- confirmed via `pnpm packages:sync --world Solaris`
+(dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions None.
+
+#### Files
+
+- New: `server/utils/character-progression-spell-acquisition.ts`, `tests/helpers/
+  satisfying-spell-fixture.ts`, `tests/server/utils/character-progression-spell-acquisition.test.ts`
+  (32 tests, pure-module), `tests/server/utils/character-progression-plan-spell-acquisition.test.ts`
+  (21 tests, full Preview/Confirm integration, including the FINAL FAILURE POSTURE proof above).
+- Modified: `app/lib/characters/progression-plan.ts` (`ProgressionSpellPlan`/
+  `ProgressionSpellRequirementPlan` types, `spellPlan` field on `ProgressionPlan`),
+  `app/lib/characters/spell-acquisition-plan.ts` (`spellPoolLabel` promoted here from the Builder,
+  `extractTentativeSpellSelections` added), `app/components/characters/builder/
+  characterBuilderSelection.ts` (re-exports the promoted `spellPoolLabel`, no logic change),
+  `server/utils/character-progression-plan.ts` (`CurrentProgressionState` gained `spells`/
+  `expendedSlots`/`classFacet`; `planProgression`/`confirmProgression` wired to the new spell
+  authority; structural-precondition checks moved earlier -- see ORDERING CORRECTION above),
+  `app/components/characters/CharacterProgressionPanel.vue` (spell section, generic, no class name),
+  `tests/rules/completeness-stub-policy.test.ts` (+1 `UNIT_STUBBING` entry), four existing
+  progression test files (`character-progression-plan.test.ts`,
+  `character-progression-all-class-subclass.test.ts`, `character-progression-level-1-to-20.test.ts`,
+  `character-progression-published-package.test.ts`) given satisfying persisted spell-state
+  fixtures wherever a caster class was already used as a convenience fixture for unrelated
+  mechanics -- the identical remediation P3.3 already applied to
+  `create-v2-fighter-mechanics.test.ts`'s own Wizard fixture.
+
+#### Verification
+
+`pnpm run test`: **199 files / 4216 tests -- all passing** (4163 pre-existing + 53 new), full suite,
+no exclusions. `pnpm run typecheck`: 243 unique (file, diagnostic-code) pairs, identical to the
+established baseline, zero new. `pnpm run build`: succeeds. `git diff --check`: clean.
+`pnpm packages:sync --world Solaris` (dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions
+None -- zero writes. No commit made. No `packages:sync --apply` run.

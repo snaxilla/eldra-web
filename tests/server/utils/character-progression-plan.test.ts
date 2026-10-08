@@ -37,7 +37,8 @@ vi.mock('../../../app/lib/content-rules/creation-completeness', async (importOri
 const {
   assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock,
   loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock,
-  listContentPackBindingsForWorldMock, getWorldContentCatalogueMock
+  listContentPackBindingsForWorldMock, getWorldContentCatalogueMock,
+  saveCharacterSpellcastingMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
@@ -51,7 +52,13 @@ const {
   // correct, inert state for every test in this file that predates Phase
   // 1C and never selects a subclass.
   listContentPackBindingsForWorldMock: vi.fn(),
-  getWorldContentCatalogueMock: vi.fn()
+  getWorldContentCatalogueMock: vi.fn(),
+  // D&D 2024 Character Rules P3.4 -- the ONE new write this module's own
+  // confirmProgression gained, mocked the same way saveCharacterProgression/
+  // saveCharacterRulesChoices already are -- the real Directus client would
+  // otherwise reach `useRuntimeConfig()`, which does not exist in this plain
+  // Node Vitest environment.
+  saveCharacterSpellcastingMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({
@@ -79,6 +86,10 @@ vi.mock('../../../server/utils/world-content-catalogue', () => ({
   getWorldContentCatalogue: getWorldContentCatalogueMock
 }))
 
+vi.mock('../../../server/utils/character-spellcasting', () => ({
+  saveCharacterSpellcasting: saveCharacterSpellcastingMock
+}))
+
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../app/lib/rules/types'
@@ -90,9 +101,15 @@ import {
 } from '../../../server/utils/character-progression-plan'
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
 import { serializeContentRef } from '../../../app/lib/characters/progression-plan'
+import { fullySatisfyingSpellState } from '../../helpers/satisfying-spell-fixture'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 const CLASS_REF = { packageId: 'eldra.content.xphb', slug: 'wizard-xphb' }
+// D&D 2024 Character Rules P3.4 -- DragoWizard is a REAL-fixture convenience Wizard this whole file
+// uses for UNRELATED mechanics (Scholar, Subclass, Feat Selection, ASI). See
+// tests/helpers/satisfying-spell-fixture.ts's own header for why its persisted spell state must now
+// satisfy Wizard's own real spellRequirements at whatever target level a given test uses.
+const WIZARD_SPELL_REQUIREMENTS = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')?.spellRequirements ?? []
 
 // Character Progression Phase 1B -- the real, package-declared identity of
 // the one real Wizard choice this phase authors (Level 2's real XPHB
@@ -291,7 +308,11 @@ function wizardBlueprint(overrides: Record<string, unknown> = {}) {
     inventory: [],
     notes: null,
     health: null,
-    spells: [],
+    // D&D 2024 Character Rules P3.4 -- a fully satisfying spell state at Level 5, DragoWizard's
+    // own established acceptance target throughout this file (this describe block's own title).
+    // A test targeting a DIFFERENT level (8, in the feat-authority block below) overrides this
+    // field explicitly with its own `fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, <level>)`.
+    spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 5),
     expendedSlots: {},
     progression: { classes: [{ classRef: CLASS_REF, level: 1 }] },
     packs: [],
@@ -307,6 +328,7 @@ beforeEach(() => {
   saveCharacterRulesChoicesMock.mockReset()
   listContentPackBindingsForWorldMock.mockReset()
   getWorldContentCatalogueMock.mockReset()
+  saveCharacterSpellcastingMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -315,6 +337,7 @@ beforeEach(() => {
   })
   assembleCharacterMock.mockResolvedValue({ available: true, blueprint: wizardBlueprint() })
   saveCharacterProgressionMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
+  saveCharacterSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
   // No creation-time rules choices recorded, by default -- matching
   // `wizardBlueprint`'s own `rulesChoices: null` above.
   loadCharacterRulesChoicesMock.mockResolvedValue(null)
@@ -977,7 +1000,11 @@ describe('confirmProgression -- feat authority (repeatability, prerequisite, cap
         progression: {
           classes: [{ classRef: CLASS_REF, level: 4 }],
           feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
-        }
+        },
+        // D&D 2024 Character Rules P3.4 -- this confirm targets Level 8, not the file's own
+        // default Level 5 -- the satisfying spell state must match the TARGET this test actually
+        // uses (an under-sized Level-5 set would spuriously fail as "missing").
+        spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 8)
       })
     })
     // A SECOND, later ASI-tier confirm tries to take Actor again.
@@ -997,7 +1024,9 @@ describe('confirmProgression -- feat authority (repeatability, prerequisite, cap
         progression: {
           classes: [{ classRef: CLASS_REF, level: 4 }],
           feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
-        }
+        },
+        // D&D 2024 Character Rules P3.4 -- see the identical note in the previous test.
+        spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 8)
       })
     })
     const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')

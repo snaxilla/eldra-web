@@ -84,9 +84,14 @@ import { findRulesFacet } from '../../../app/lib/content-rules'
 import { planProgression } from '../../../server/utils/character-progression-plan'
 import { getDerivedCharacterAtLevel } from '../../../server/utils/character-derived'
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
+import { fullySatisfyingSpellState } from '../../helpers/satisfying-spell-fixture'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 const CLASS_REF = { packageId: 'eldra.content.xphb', slug: 'wizard-xphb' }
+// D&D 2024 Character Rules P3.4 -- Wizard is used throughout this file as a REAL-fixture
+// convenience class for Phase 1B's own Scholar/Expertise regression, unrelated to spell
+// acquisition. See tests/helpers/satisfying-spell-fixture.ts's own header.
+const WIZARD_SPELL_REQUIREMENTS = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')?.spellRequirements ?? []
 
 function hydrate(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(hydrate)
@@ -333,7 +338,11 @@ describe('FIX PROOF -- the identical plan against the PUBLISHED-AND-ACTIVATED cu
     assembleCharacterMock.mockResolvedValue({
       available: true,
       blueprint: wizardBlueprint({
-        rulesChoices: { selections: { 'class:choice:skill.proficiency': ['value:skill.arcana.proficient', 'value:skill.history.proficient'] } }
+        rulesChoices: { selections: { 'class:choice:skill.proficiency': ['value:skill.arcana.proficient', 'value:skill.history.proficient'] } },
+        // D&D 2024 Character Rules P3.4 -- a fully satisfying Level-2 spell state, so this
+        // describe block's own real subject (the Scholar/Expertise regression) is unaffected by
+        // the separate, newly-wired spell acquisition gate.
+        spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 2)
       })
     })
     loadWorldRulesConfigMock.mockResolvedValue({

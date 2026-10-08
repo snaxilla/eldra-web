@@ -187,6 +187,41 @@ export type ProgressionLevelStep = {
 }
 
 import type { UnresolvedDecision } from '../content-rules/creation-completeness'
+import type { SpellRequirementPoolKind } from '../content-rules/types'
+// D&D 2024 Character Rules P3.4 -- type-only; `spell-acquisition-plan.ts` itself imports VALUES from
+// this file (`serializeContentRef`, `progressionChoiceKey`'s wrapper `spellRequirementAnswerKey`),
+// so only a type-only import back is safe here (erased before any runtime module cycle could form) --
+// the same cross-import already established for `UnresolvedDecision` immediately above.
+import type { SpellAcquisitionIssue, SpellAcquisitionOption } from './spell-acquisition-plan'
+
+// D&D 2024 Character Rules P3.4 -- the Level Manager's own per-requirement row, restated (never
+// cross-imported as a VALUE) from `SpellAcquisitionRequirementPlan` (P3.2) plus exactly two fields
+// a creation-time consumer never needed: `label` (pool-kind English, so the panel names no class)
+// and `answerKey` (the stable wire key this requirement's tentative answers live under -- see
+// `spellRequirementAnswerKey`/`character-progression-spell-acquisition.ts`'s own header). `selectedRefs`
+// is the WIRE-FORMAT subset of `selected` (P3.2's own catalogue-ref identities, converted back to
+// `serializeContentRef` strings) -- a custom/homebrew identity has no ref and is never listed here.
+export type ProgressionSpellRequirementPlan = {
+  requirementId: string
+  pool: SpellRequirementPoolKind
+  label: string
+  answerKey: string
+  target: number
+  legalCount: number
+  missing: number
+  satisfied: boolean
+  selectedRefs: string[]
+  options: SpellAcquisitionOption[]
+  issues: SpellAcquisitionIssue[]
+}
+
+// `null` for a class with no `spellRequirements` at all (a non-caster) -- never an empty
+// `{requirements: [], complete: true}`, so a caller can tell "this class has nothing to ask" apart
+// from "nothing is missing right now" without inspecting the array.
+export type ProgressionSpellPlan = {
+  requirements: ProgressionSpellRequirementPlan[]
+  complete: boolean
+}
 
 export type ProgressionPlan = {
   currentLevel: number
@@ -199,6 +234,11 @@ export type ProgressionPlan = {
   // PHASE 0 -- mandatory decisions the levels crossed contain that Eldra cannot record yet.
   // Presentation reads this; the server authority refuses Confirm independently.
   unresolvedDecisions?: UnresolvedDecision[]
+  // D&D 2024 Character Rules P3.4 -- the TARGET-STATE spell acquisition plan for `targetLevel`
+  // (never a per-level delta -- see character-progression-spell-acquisition.ts's own header). `null`
+  // for a class with no spell requirements at all. Gates `valid` below exactly like
+  // `unresolvedChoiceIds`/`unresolvedDecisions` already do.
+  spellPlan: ProgressionSpellPlan | null
   valid: boolean
   // Stale-plan protection (this task's own explicit requirement) --
   // deliberately the smallest useful strategy, NOT a version/event-sourcing

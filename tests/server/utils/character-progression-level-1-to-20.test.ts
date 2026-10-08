@@ -41,7 +41,8 @@ import { vi } from 'vitest'
 const {
   assembleCharacterMock, getWorldRuntimeMock, saveCharacterProgressionMock,
   loadCharacterRulesChoicesMock, saveCharacterRulesChoicesMock,
-  listContentPackBindingsForWorldMock, getWorldContentCatalogueMock
+  listContentPackBindingsForWorldMock, getWorldContentCatalogueMock,
+  saveCharacterSpellcastingMock
 } = vi.hoisted(() => ({
   assembleCharacterMock: vi.fn(),
   getWorldRuntimeMock: vi.fn(),
@@ -49,7 +50,8 @@ const {
   loadCharacterRulesChoicesMock: vi.fn(),
   saveCharacterRulesChoicesMock: vi.fn(),
   listContentPackBindingsForWorldMock: vi.fn(),
-  getWorldContentCatalogueMock: vi.fn()
+  getWorldContentCatalogueMock: vi.fn(),
+  saveCharacterSpellcastingMock: vi.fn()
 }))
 
 vi.mock('../../../server/utils/character-assembly', () => ({ assembleCharacter: assembleCharacterMock }))
@@ -61,6 +63,7 @@ vi.mock('../../../server/utils/character-rules-choices', () => ({
 }))
 vi.mock('../../../server/utils/world-content-packs', () => ({ listContentPackBindingsForWorld: listContentPackBindingsForWorldMock }))
 vi.mock('../../../server/utils/world-content-catalogue', () => ({ getWorldContentCatalogue: getWorldContentCatalogueMock }))
+vi.mock('../../../server/utils/character-spellcasting', () => ({ saveCharacterSpellcasting: saveCharacterSpellcastingMock }))
 
 import { createWorldRuntime } from '../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../app/lib/rules/parser'
@@ -79,6 +82,7 @@ import { normalizeStoredRulesChoices } from '../../../app/lib/characters/rules-c
 import { resolveDnd5eFeatMechanics } from '../../../app/lib/feat-mechanics/dnd5e'
 import xphbFeats from '../../lib/feat-mechanics/fixtures/xphb-feats.json'
 import { DND5E_2024_PROGRESSION_COVERAGE } from '../../../app/lib/content-rules/dnd5e-2024-progression-coverage'
+import { fullySatisfyingSpellState } from '../../helpers/satisfying-spell-fixture'
 
 const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 const WORLD_ID = '5'
@@ -265,7 +269,8 @@ function realSkillProficiencyAnswer(classSlug: string): string[] {
 // and would otherwise silently drop every tentative feat acquisition.
 function blueprintForClass(
   classSlug: string,
-  tentativeFeatAcquisitions: readonly { choiceKey: string, ref: { packageId: string, slug: string } }[] = []
+  tentativeFeatAcquisitions: readonly { choiceKey: string, ref: { packageId: string, slug: string } }[] = [],
+  targetLevel = 20
 ) {
   return {
     worldId: WORLD_ID,
@@ -289,7 +294,9 @@ function blueprintForClass(
     inventory: [],
     notes: null,
     health: null,
-    spells: [],
+    // D&D 2024 Character Rules P3.4 -- see `useClass`'s own header for why `targetLevel` must
+    // match whatever level the caller actually plans/confirms against.
+    spells: fullySatisfyingSpellState(findRulesFacet('dnd5e.2024', 'class', classSlug)?.spellRequirements ?? [], targetLevel),
     expendedSlots: {},
     progression: { classes: [{ classRef: { packageId: FEAT_PACKAGE_ID, slug: classSlug }, level: 1 }] },
     feats: tentativeFeatAcquisitions.map(({ choiceKey, ref }) => {
@@ -319,6 +326,7 @@ beforeEach(() => {
   saveCharacterRulesChoicesMock.mockReset()
   listContentPackBindingsForWorldMock.mockReset()
   getWorldContentCatalogueMock.mockReset()
+  saveCharacterSpellcastingMock.mockReset()
 
   const runtime = loadRealRuntime()
   getWorldRuntimeMock.mockResolvedValue({
@@ -329,9 +337,18 @@ beforeEach(() => {
   loadCharacterRulesChoicesMock.mockResolvedValue(null)
   saveCharacterRulesChoicesMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
   listContentPackBindingsForWorldMock.mockResolvedValue([])
+  saveCharacterSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
 })
 
-function useClass(classSlug: string) {
+// D&D 2024 Character Rules P3.4 -- `targetLevel` (default 20, this file's own overwhelming
+// majority usage -- the whole "LEVEL 1 -> 20 ACCEPTANCE" describe.each block) sizes the fixture's
+// own persisted spell state (tests/helpers/satisfying-spell-fixture.ts) to whatever level the
+// CALLER of `useClass` actually plans/confirms against -- a caster class's exact-bounded pools
+// (cantrip, a non-Wizard `spell` pool, Arcanum) would otherwise over-count at a LOWER target than
+// the size this fixture was built for. The two FIGHTING STYLE describe.each blocks (Paladin/Ranger,
+// Level 1->2) pass `2` explicitly; every other call site in this file is a non-caster class or
+// targets Level 20, so the default covers it.
+function useClass(classSlug: string, targetLevel = 20) {
   getWorldContentCatalogueMock.mockResolvedValue(catalogueForClass(classSlug))
   // `mockImplementation`, not `mockResolvedValue` -- real `assembleCharacter`
   // is called with `(worldId, characterId, tentativeSubclassRef,
@@ -347,7 +364,7 @@ function useClass(classSlug: string) {
     tentativeFeatAcquisitions?: readonly { choiceKey: string, ref: { packageId: string, slug: string } }[]
   ) => ({
     available: true,
-    blueprint: blueprintForClass(classSlug, tentativeFeatAcquisitions ?? [])
+    blueprint: blueprintForClass(classSlug, tentativeFeatAcquisitions ?? [], targetLevel)
   }))
 }
 
@@ -1243,7 +1260,7 @@ describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug Level 1 -> 2 (who
   const styleKey = progressionChoiceKey('class', 2, style.choiceSetId)
   const archery = { packageId: FEAT_PACKAGE_ID, slug: 'archery-xphb' }
   beforeEach(() => {
-    useClass(style.classSlug)
+    useClass(style.classSlug, 2)
     getWorldContentCatalogueMock.mockResolvedValue({ ...catalogueForClass(style.classSlug), feats: ALL_XPHB_FEAT_ENTRIES })
   })
 
@@ -1345,7 +1362,7 @@ describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug persist -> fresh 
   const archery = { packageId: FEAT_PACKAGE_ID, slug: 'archery-xphb' }
   let store: { progression: unknown }
   beforeEach(() => {
-    useClass(style.classSlug)
+    useClass(style.classSlug, 2)
     getWorldContentCatalogueMock.mockResolvedValue({ ...catalogueForClass(style.classSlug), feats: ALL_XPHB_FEAT_ENTRIES })
     store = { progression: null }
     saveCharacterProgressionMock.mockImplementation(async (_id: unknown, progression: unknown) => {
@@ -1356,7 +1373,7 @@ describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug persist -> fresh 
       const acquisitions = new Map<string, { choiceKey: string, ref: { packageId: string, slug: string } }>()
       for (const feat of persisted?.feats ?? []) acquisitions.set(feat.choiceKey, { choiceKey: feat.choiceKey, ref: feat.featRef })
       for (const feat of tentativeFeats ?? []) acquisitions.set(feat.choiceKey, feat)
-      const base = blueprintForClass(style.classSlug, [...acquisitions.values()])
+      const base = blueprintForClass(style.classSlug, [...acquisitions.values()], 2)
       return { available: true, blueprint: { ...base, progression: persisted ?? base.progression } }
     })
   })

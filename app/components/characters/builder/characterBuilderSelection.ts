@@ -84,10 +84,18 @@ import { creationUnresolvedDecisions, decisionPhrase as sharedDecisionPhrase, ty
 import { parseContentRef, serializeContentRef } from '~/lib/characters/progression-plan'
 import {
   planSpellAcquisition,
+  spellPoolLabel,
   type SpellAcquisitionPlan,
   type TentativeSpellSelection
 } from '~/lib/characters/spell-acquisition-plan'
 import type { SpellRequirementPoolKind } from '~/lib/content-rules/types'
+
+// D&D 2024 Character Rules P3.4 -- re-exported, not redefined: the Level Manager
+// (CharacterProgressionPanel.vue) now needs the identical pool-kind label mapping, so it was
+// promoted to app/lib/characters/spell-acquisition-plan.ts (the shared module both this Builder and
+// the planner already import). Re-exported here so no existing import site in this file or its
+// tests needs to change.
+export { spellPoolLabel }
 
 // ---------------------------------------------------------------------------
 // D&D 2024 Character Rules P3.3 -- LEVEL-1 SPELL ACQUISITION
@@ -109,17 +117,6 @@ import type { SpellRequirementPoolKind } from '~/lib/content-rules/types'
 const CREATION_SPELL_SLOT_LEVELS: readonly { level: number; max: number; expended: number }[] = [
   { level: 1, max: 1, expended: 0 }
 ]
-
-const SPELL_POOL_LABELS: Record<SpellRequirementPoolKind, string> = {
-  cantrip: 'Cantrips',
-  spell: 'Prepared Spells',
-  spellbook: 'Spellbook',
-  arcanum: 'Mystic Arcanum'
-}
-
-export function spellPoolLabel(pool: SpellRequirementPoolKind): string {
-  return SPELL_POOL_LABELS[pool] ?? pool
-}
 
 export type BuilderCatalogueEntry = {
   packageId: string

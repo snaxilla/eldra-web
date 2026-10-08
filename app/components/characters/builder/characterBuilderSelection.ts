@@ -81,6 +81,45 @@ import {
 } from '~/lib/characters/rules-choices'
 import type { RulesFacet } from '~/lib/content-rules'
 import { creationUnresolvedDecisions, decisionPhrase as sharedDecisionPhrase, type UnresolvedDecision } from '~/lib/content-rules/creation-completeness'
+import { parseContentRef, serializeContentRef } from '~/lib/characters/progression-plan'
+import {
+  planSpellAcquisition,
+  type SpellAcquisitionPlan,
+  type TentativeSpellSelection
+} from '~/lib/characters/spell-acquisition-plan'
+import type { SpellRequirementPoolKind } from '~/lib/content-rules/types'
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P3.3 -- LEVEL-1 SPELL ACQUISITION
+// ---------------------------------------------------------------------------
+// The Builder has no Rules Engine registry (this file's own design decisions,
+// above), so it cannot derive a character's legal maximum castable spell
+// level the way the server does (server/utils/character-spell-acquisition.ts,
+// which reads the real activated package's own slot table). At CREATION,
+// though, that value is not a per-character fact to derive at all: P3.3's own
+// Level-1 matrix (re-verified against the real corpus, and -- for Paladin/
+// Ranger -- against the Rules Hotfix 0.21.0 corrected table) proves every one
+// of the 8 real 2024 casters grants AT LEAST one Level-1 spell slot at
+// character Level 1, with no exception. `CREATION_SPELL_SLOT_LEVELS` is that
+// proven constant, never a per-class branch and never a client-trusted
+// substitute for anything the server does not ALSO independently re-derive:
+// the server builds its own copy from the real activated package and refuses
+// a creation whose spell state does not satisfy it, exactly as it already
+// does for every other creation choice this module presents.
+const CREATION_SPELL_SLOT_LEVELS: readonly { level: number; max: number; expended: number }[] = [
+  { level: 1, max: 1, expended: 0 }
+]
+
+const SPELL_POOL_LABELS: Record<SpellRequirementPoolKind, string> = {
+  cantrip: 'Cantrips',
+  spell: 'Prepared Spells',
+  spellbook: 'Spellbook',
+  arcanum: 'Mystic Arcanum'
+}
+
+export function spellPoolLabel(pool: SpellRequirementPoolKind): string {
+  return SPELL_POOL_LABELS[pool] ?? pool
+}
 
 export type BuilderCatalogueEntry = {
   packageId: string
@@ -132,6 +171,13 @@ export type CharacterBuilderDraft = {
   // domain from `choices` (Definition answers): a ContentRef is never a
   // DefinitionId and is never judged by the Definition path.
   contentChoices: Record<string, string[]>
+  // D&D 2024 Character Rules P3.3 -- tentative Level-1 spell acquisition answers, keyed by the
+  // package-authored SpellRequirement.id (never an array index, never a class/spell name -- see
+  // app/lib/characters/spell-acquisition-plan.ts's own ANSWER IDENTITY header), each value a list
+  // of `serializeContentRef`-encoded refs. A separate domain from `contentChoices`: a spell
+  // requirement is not a ChoiceSet and is never judged by that path -- it is judged entirely by
+  // `planSpellAcquisition`, the ONE shared authority this module and the server both call.
+  spellSelections: Record<string, string[]>
 }
 
 // What the Builder knows about this package's content choices. Supplied by the
@@ -142,6 +188,10 @@ export type BuilderCreationContext = {
   feats: readonly CreationFeatEntry[]
   // D&D 2024 Character Rules P2 -- the catalogue's own spells, for a 'spells' category content
   // choice (mirrors `feats` exactly). Defaults to none so every existing caller is unchanged.
+  // D&D 2024 Character Rules P3.3 -- ALSO the catalogue `planSpellAcquisition` reads directly:
+  // `CreationSpellEntry` and the planner's own `SpellCatalogueEntry` are the SAME shape
+  // (packageId/slug/title/spellMechanics), so this one array now serves both the P2 'spells'
+  // content-choice path and the P3.3 spell-acquisition path, never a second copy.
   spells?: readonly CreationSpellEntry[]
   // P7 -- the package's distinctness and per-option ceiling per ChoiceSet, echoed by the
   // choice-options endpoint. Absent means every choice is distinct (the pre-P7 rule).
@@ -153,7 +203,7 @@ export const NO_CREATION_CONTENT: BuilderCreationContext = {
   feats: []
 }
 
-export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'proficiencies' | 'abilities' | 'review'
+export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'proficiencies' | 'spells' | 'abilities' | 'review'
 
 export const CHOICE_KEYS: readonly BuilderChoiceKey[] = ['species', 'class', 'background']
 
@@ -162,7 +212,12 @@ export const CHOICE_KEYS: readonly BuilderChoiceKey[] = ['species', 'class', 'ba
 // nothing to ask until a Class is picked. It is a real step even when it is
 // empty (see isStepComplete): a step that appears and disappears as a
 // player changes Class would make the progress rail jump under their thumb.
-export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'proficiencies', 'abilities', 'review']
+//
+// D&D 2024 Character Rules P3.3 -- 'spells' sits right after 'proficiencies' for the identical
+// reason: its questions are declared by the chosen Class's own facet, so there is nothing to ask
+// until a Class is picked, and it is a real, always-present step (empty for a non-caster) for the
+// same "the rail must not jump under a player's thumb" reasoning.
+export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'abilities', 'review']
 
 export const STEP_LABELS: Record<BuilderStepKey, string> = {
   identity: 'Name',
@@ -170,6 +225,7 @@ export const STEP_LABELS: Record<BuilderStepKey, string> = {
   class: 'Class',
   background: 'Background',
   proficiencies: 'Proficiencies',
+  spells: 'Spells',
   abilities: 'Ability Scores',
   review: 'Review'
 }
@@ -196,7 +252,8 @@ export function emptyDraft(): CharacterBuilderDraft {
     background: null,
     abilities: emptyAbilityDraft(),
     choices: emptyStoredRulesChoices(),
-    contentChoices: {}
+    contentChoices: {},
+    spellSelections: {}
   }
 }
 
@@ -352,6 +409,124 @@ export function effectiveContentChoices(
   return Object.fromEntries(creationContentPresentation(draft, context).map((p) => [p.key, [...p.selected]]))
 }
 
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P3.3 -- Level-1 spell acquisition.
+// ---------------------------------------------------------------------------
+// ONE shared authority, `planSpellAcquisition` (P3.2), consumed identically here and by the server
+// (server/utils/character-spell-acquisition.ts) -- this module never re-implements count, pool,
+// membership, or filtering legality. The only thing specific to CREATION is the inputs: no persisted
+// state yet (`candidates: []`), Level 1 always, and the fixed `CREATION_SPELL_SLOT_LEVELS` constant
+// above.
+export function spellRequirementsFor(draft: CharacterBuilderDraft) {
+  return draft.class?.rulesFacet?.spellRequirements ?? []
+}
+
+function tentativeSpellSelections(draft: CharacterBuilderDraft): TentativeSpellSelection[] {
+  const out: TentativeSpellSelection[] = []
+  for (const [requirementId, refs] of Object.entries(draft.spellSelections)) {
+    for (const ref of refs) {
+      const parsed = parseContentRef(ref)
+      if (parsed) out.push({ requirementId, ref: parsed })
+    }
+  }
+  return out
+}
+
+export function spellAcquisitionPresentation(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): SpellAcquisitionPlan {
+  return planSpellAcquisition({
+    requirements: spellRequirementsFor(draft),
+    characterLevel: 1,
+    candidates: [],
+    catalogue: context.spells ?? [],
+    spellSlotLevels: CREATION_SPELL_SLOT_LEVELS,
+    tentative: tentativeSpellSelections(draft)
+  })
+}
+
+export function setSpellSelections(draft: CharacterBuilderDraft, requirementId: string, selected: readonly string[]): void {
+  draft.spellSelections[requirementId] = [...selected]
+}
+
+export function isSpellStepComplete(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): boolean {
+  return spellAcquisitionPresentation(draft, context).complete
+}
+
+// The answers that count for the CURRENTLY selected Class, in P3.2's own wire shape. A prior
+// Class's answers are not deleted from the draft (switching back re-validates them against the
+// current plan rather than losing them), but they are never live here and are therefore never
+// submitted -- see this module's own header on why re-validating on read is enough.
+export function effectiveSpellSelections(draft: CharacterBuilderDraft): TentativeSpellSelection[] {
+  const liveIds = new Set(spellRequirementsFor(draft).map((r) => r.id))
+  return tentativeSpellSelections(draft).filter((selection) => liveIds.has(selection.requirementId))
+}
+
+export type SpellRequirementSection = {
+  requirementId: string
+  pool: SpellRequirementPoolKind
+  label: string
+  choice: ResolvableChoice
+  optionLabels: Record<string, string>
+  satisfied: boolean
+}
+
+// One renderable section per requirement whose Level-1 target is non-zero (Mystic Arcanum's own
+// four requirements are always 0 at Level 1 -- see `planSpellAcquisition`'s own header on why a
+// requirement with nothing missing requests no selection -- so they never produce a section here).
+// `choice.count` is the requirement's FULL target, never `missing`: a picker counts UP to a fixed
+// total exactly like every other ChoiceSet in this codebase, rather than a shrinking "remaining"
+// number that would renumber the player's own slots as they fill them.
+// `choice.options` is the union of `r.options` (legal, not-yet-selected catalogue spells) and
+// whatever is ALREADY selected for this requirement -- a slot's own currently-chosen value must be
+// one of its renderable options, or the underlying <select> would hold a value with no matching
+// <option> (P3.2's own `options` deliberately excludes an already-selected spell FROM BEING OFFERED
+// AGAIN, which is correct for new picks but would otherwise silently break the picker that holds the
+// existing pick).
+// `distinct: false, maxPerOption: 1` reuses the SAME slot-mode CharacterChoiceSetPicker machinery
+// Ability Score Improvement's own repeatable choice already exercises -- the smallest existing
+// control for "N independent slots, each one spell, no repeats" already in this codebase (see this
+// phase's own report for why no new searchable/autocomplete component was introduced).
+export function spellRequirementSections(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): SpellRequirementSection[] {
+  const plan = spellAcquisitionPresentation(draft, context)
+  const catalogueTitleByRef = new Map(
+    (context.spells ?? []).map((entry) => [serializeContentRef({ packageId: entry.packageId, slug: entry.slug }), entry.title])
+  )
+
+  return plan.requirements
+    .filter((requirement) => requirement.target > 0)
+    .map((requirement) => {
+      const selectedRefs = draft.spellSelections[requirement.requirementId] ?? []
+      const optionLabels: Record<string, string> = {}
+      for (const option of requirement.options) optionLabels[option.ref] = option.title
+      for (const ref of selectedRefs) if (!(ref in optionLabels)) optionLabels[ref] = catalogueTitleByRef.get(ref) ?? ref
+
+      return {
+        requirementId: requirement.requirementId,
+        pool: requirement.pool,
+        label: spellPoolLabel(requirement.pool),
+        choice: {
+          key: requirement.requirementId,
+          slot: 'class',
+          choiceSetId: requirement.pool,
+          count: requirement.target,
+          options: Object.keys(optionLabels),
+          distinct: false,
+          maxPerOption: 1
+        },
+        optionLabels,
+        satisfied: requirement.satisfied
+      }
+    })
+}
+
 // The question as the rest of the Builder reads it: options are only the
 // ELIGIBLE ones, and the selection is the effective one. Callers that need to
 // SHOW unavailable options read creationChoicePresentation instead.
@@ -493,6 +668,7 @@ export function isStepComplete(
 ): boolean {
   if (step === 'identity') return isNameComplete(draft)
   if (step === 'proficiencies') return isProficiencyStepComplete(draft, context) && isCreationContentComplete(draft, context)
+  if (step === 'spells') return isSpellStepComplete(draft, context)
   if (step === 'abilities') return isAbilityStepComplete(draft)
   if (step === 'review') return isDraftComplete(draft, context)
   return isChoiceComplete(draft, step)
@@ -506,6 +682,7 @@ export function isDraftComplete(
     && CHOICE_KEYS.every((key) => isChoiceComplete(draft, key))
     && isProficiencyStepComplete(draft, context)
     && isCreationContentComplete(draft, context)
+    && isSpellStepComplete(draft, context)
     && isAbilityStepComplete(draft)
     // PHASE 0 -- an entity with a mandatory decision Eldra cannot record cannot be created.
     && creationBlockerMessages(draft).length === 0
@@ -539,6 +716,11 @@ export function missingRequirements(
     const reason = validation.ok ? 'Choose your options.' : validation.reason
     missing.push(`${STEP_LABELS[presentation.slot as BuilderChoiceKey] ?? presentation.slot}: ${reason}`)
   }
+  for (const section of spellRequirementSections(draft, context)) {
+    if (section.satisfied) continue
+    const chosen = (draft.spellSelections[section.requirementId] ?? []).length
+    missing.push(`${section.label}: choose ${chosen} of ${section.choice.count}.`)
+  }
   if (!isAbilityStepComplete(draft)) missing.push('Finish assigning ability scores.')
   missing.push(...creationBlockerMessages(draft))
   return missing
@@ -565,6 +747,12 @@ export type CharacterCreatePayload = {
   // facets and validates every answer against them; sending them does not
   // make them trusted.
   choices: StoredRulesChoices
+  // D&D 2024 Character Rules P3.3 -- tentative Level-1 spell acquisition answers, in P3.2's own
+  // wire shape. The client submits ONLY requirement identity + Spell ContentRef -- never a class
+  // name, spell level, school, pool kind, or known/prepared flag. The server independently
+  // re-derives every one of those from the selected Class's own package facet and rebuilds the
+  // SAME plan before trusting any of it (see server/utils/character-spell-acquisition.ts).
+  spellSelections: TentativeSpellSelection[]
 }
 
 // See design decision 3 -- only the two fields the save route actually reads.
@@ -588,7 +776,10 @@ export function toCreatePayload(
     choices: { selections: { ...draft.choices.selections } },
     // PHASE 2C.2B -- only the answers the CURRENT selection declares and makes
     // valid. A stale answer for a class no longer selected is never submitted.
-    contentChoices: effectiveContentChoices(draft, context)
+    contentChoices: effectiveContentChoices(draft, context),
+    // D&D 2024 Character Rules P3.3 -- only the answers the CURRENTLY selected Class's own
+    // requirements declare; a prior Class's stale answers are never live and are never submitted.
+    spellSelections: effectiveSpellSelections(draft)
   }
 }
 

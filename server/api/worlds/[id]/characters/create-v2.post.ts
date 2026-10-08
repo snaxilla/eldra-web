@@ -87,6 +87,16 @@ import {
 import { resolveCreationChoices, type ChoiceSetRule } from '../../../../../app/lib/characters/creation-choice-eligibility'
 import { normalizeStoredAbilityScores } from '../../../../../app/lib/characters/ability-scores'
 import { initializeCharacterHealth } from '../../../../../app/lib/characters/health'
+import type { TentativeSpellSelection } from '../../../../../app/lib/characters/spell-acquisition-plan'
+import {
+  buildAcceptedSpellEntries,
+  buildCreationSpellPlan,
+  casterTypeOf,
+  creationSpellSlotLevels,
+  describeSpellPlanFailure,
+  slotTableRows
+} from '../../../../utils/character-spell-acquisition'
+import { saveCharacterSpellcasting } from '../../../../utils/character-spellcasting'
 
 // Character Sheet Caster Pass 0 -- restated, not shared, from
 // server/utils/character-recovery.ts's own identically-shaped, module-private
@@ -390,6 +400,13 @@ export default defineEventHandler(async (event) => {
   // PHASE 0 -- FAIL CLOSED. Every mandatory decision the selected species, class, and
   // background own, plus the feats acquired here, must be representable. A decision
   // Eldra cannot record refuses the whole creation before any entity is written.
+  //
+  // D&D 2024 Character Rules P3.3 -- deliberately checked BEFORE spell acquisition, never after:
+  // this is "can this species/class/background/feat combination be represented at all," a more
+  // fundamental gate than "did you also answer this already-supported class's spell questions."
+  // A combination Phase 0 cannot represent is refused here regardless of spell state, so a player
+  // (or a test) is never asked to resolve spell selections for a character that cannot be created
+  // for an unrelated reason anyway.
   const unresolved = creationUnresolvedDecisions({
     species: species.slug,
     class: characterClass.slug,
@@ -398,6 +415,58 @@ export default defineEventHandler(async (event) => {
   })
   if (unresolved.length > 0) {
     throw createError({ statusCode: 400, statusMessage: describeUnresolved(unresolved) })
+  }
+
+  // D&D 2024 Character Rules P3.3 -- Level-1 CLASS spell acquisition. CLIENT AUTHORITY BOUNDARY
+  // (this route's own header, extended): the client submits ONLY requirement identity + Spell
+  // ContentRef; every legality fact -- class list, spell level, pool, membership, known/prepared --
+  // is re-derived here from the SAME package facet and catalogue already resolved above, through the
+  // ONE shared authority (planSpellAcquisition, P3.2 -- itself built on P3.1's validator and P2's
+  // spellOptionVerdict; nothing here re-implements any of it). A class that declares no
+  // spellRequirements (a non-caster) skips this entirely -- no plan built, no write, no payload
+  // required. Validated and refused BEFORE any entity is written, same as every check above.
+  const spellRequirements = characterClass.rulesFacet?.spellRequirements ?? []
+  let spellPlan: ReturnType<typeof buildCreationSpellPlan> | null = null
+  const submittedSpellSelections: TentativeSpellSelection[] = []
+
+  if (spellRequirements.length > 0) {
+    const rawSpellSelections = body?.spellSelections
+    if (rawSpellSelections != null && !Array.isArray(rawSpellSelections)) {
+      throw createError({ statusCode: 400, statusMessage: '`spellSelections` must be a list of { requirementId, ref } answers' })
+    }
+
+    for (const raw of (rawSpellSelections ?? []) as unknown[]) {
+      const record = raw as { requirementId?: unknown, ref?: { packageId?: unknown, slug?: unknown } }
+      const requirementId = typeof record?.requirementId === 'string' ? record.requirementId : ''
+      const packageId = typeof record?.ref?.packageId === 'string' ? record.ref.packageId : ''
+      const slug = typeof record?.ref?.slug === 'string' ? record.ref.slug : ''
+      if (!requirementId || !packageId || !slug) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'Each spellSelections entry must be { requirementId: string, ref: { packageId: string, slug: string } }'
+        })
+      }
+      submittedSpellSelections.push({ requirementId, ref: { packageId, slug } })
+    }
+
+    // SERVER PRE-WRITE AUTHORITY -- the real activated package's own slot table, read directly off
+    // the World's Rules Runtime registry already fetched above (no entity exists yet to derive this
+    // from the usual character-level path; see character-spell-acquisition.ts's own header for why
+    // this is still a real, non-hardcoded derivation rather than the Builder's fixed constant).
+    const casterType = casterTypeOf(characterClass.rulesFacet)
+    const tableRows = runtime.configured && runtime.ok ? slotTableRows(runtime.runtime.registry, casterType) : undefined
+    const spellSlotLevels = creationSpellSlotLevels(casterType, tableRows)
+
+    spellPlan = buildCreationSpellPlan({
+      requirements: spellRequirements,
+      catalogue: catalogue.spells,
+      spellSlotLevels,
+      tentative: submittedSpellSelections
+    })
+
+    if (!spellPlan.complete) {
+      throw createError({ statusCode: 400, statusMessage: describeSpellPlanFailure(spellPlan) ?? 'Spell selections are incomplete.' })
+    }
   }
 
   const created = await createEntityRecord({
@@ -434,6 +503,21 @@ export default defineEventHandler(async (event) => {
       classes: [{ classRef, level: 1, subclassRef: null }],
       feats: acquisitions
     })
+
+    // D&D 2024 Character Rules P3.3 -- CANONICAL SPELLCASTING WRITE-THROUGH. FAIL LOUDLY (no
+    // `.catch`): selected spell state is mandatory for a class that declares requirements, exactly
+    // the same posture `saveCharacterRulesChoices`/`saveCharacterHealth` already take below, for the
+    // same reason -- a completed-looking caster silently missing its spells would be the exact bug
+    // this phase exists to prevent. Builds CANONICAL entries from the validated plan's accepted
+    // answers (`buildAcceptedSpellEntries`) -- never the raw submitted payload. Uses the existing
+    // canonical persistence helper (`server/utils/character-spellcasting.ts`), never the generic,
+    // unprotected `spellcasting` PUT route -- this write does not change that route's own posture;
+    // it remains technical debt for a future validated day-to-day preparation workflow (see this
+    // phase's own report).
+    if (spellPlan && spellRequirements.length > 0) {
+      const spellEntries = buildAcceptedSpellEntries(spellRequirements, spellPlan, submittedSpellSelections)
+      await saveCharacterSpellcasting(created.id, { spells: spellEntries, expendedSlots: {} })
+    }
 
     if (abilityScores) {
       await saveCharacterAbilityScores(created.id, abilityScores).catch(() => null)

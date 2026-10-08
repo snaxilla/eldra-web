@@ -125,6 +125,8 @@ import {
   previousStep,
   pruneChoices,
   setChoiceSelections,
+  setSpellSelections,
+  spellRequirementSections,
   switchAbilityMethod,
   toCreatePayload,
   type BuilderCatalogueEntry,
@@ -329,6 +331,23 @@ function offeredFor(key: string) {
 
 function chooseSelections(key: string, selected: string[]) {
   setChoiceSelections(draft, key, selected, creationContext.value)
+}
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P3.3 -- Level-1 spell acquisition. One generic section
+// per requirement the chosen Class's own facet declares (cantrips, prepared spells,
+// Wizard's spellbook, ...) -- no eight-class branch, no hardcoded picker. Recomputes
+// from `draft`/`creationContext` exactly like every other step, including Wizard's
+// own spellbook -> prepared dependency: a tentative spellbook answer is already part
+// of the SAME plan the prepared section reads, so no save/reload/prepare round trip.
+const spellSections = computed(() => spellRequirementSections(draft, creationContext.value))
+
+function spellSelectionsFor(requirementId: string): string[] {
+  return draft.spellSelections[requirementId] ?? []
+}
+
+function chooseSpellSelections(requirementId: string, selected: string[]) {
+  setSpellSelections(draft, requirementId, selected)
 }
 
 // Changing Species/Class/Background changes which questions are asked, so
@@ -579,6 +598,34 @@ async function createCharacter() {
             </div>
           </div>
 
+          <div v-if="activeStep === 'spells'">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+              {{ STEP_LABELS.spells }}
+            </h2>
+            <p
+              v-if="!spellSections.length"
+              class="text-sm leading-6 text-[#9f9278]"
+            >
+              The Class you chose grants no spells at Level 1, so there is nothing to answer here.
+            </p>
+
+            <div
+              v-else
+              class="grid gap-6"
+            >
+              <CharacterChoiceSetPicker
+                v-for="section in spellSections"
+                :key="section.requirementId"
+                :choice="section.choice"
+                :selected="spellSelectionsFor(section.requirementId)"
+                :option-labels="section.optionLabels"
+                :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
+                :slot-label="STEP_LABELS.class"
+                @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
+              />
+            </div>
+          </div>
+
           <div v-if="activeStep === 'abilities'">
             <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
               {{ STEP_LABELS.abilities }}
@@ -816,6 +863,33 @@ async function createCharacter() {
                 @update:selected="(value: string[]) => chooseContentSelections(choice.key, value)"
               />
             </div>
+            </section>
+
+            <section>
+              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+                {{ STEP_LABELS.spells }}
+              </h2>
+              <p
+                v-if="!spellSections.length"
+                class="text-sm leading-6 text-[#9f9278]"
+              >
+                The Class you chose grants no spells at Level 1, so there is nothing to answer here.
+              </p>
+              <div
+                v-else
+                class="grid gap-6"
+              >
+                <CharacterChoiceSetPicker
+                  v-for="section in spellSections"
+                  :key="section.requirementId"
+                  :choice="section.choice"
+                  :selected="spellSelectionsFor(section.requirementId)"
+                  :option-labels="section.optionLabels"
+                  :prompt="`Choose ${section.choice.count} ${section.label.toLowerCase()}`"
+                  :slot-label="STEP_LABELS.class"
+                  @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
+                />
+              </div>
             </section>
 
             <section>

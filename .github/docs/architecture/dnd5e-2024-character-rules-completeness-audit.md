@@ -4355,3 +4355,329 @@ failures** -- zero regressions from this phase's own changes. `pnpm run typechec
 (file, diagnostic-code) pairs, identical to the established baseline, zero new, none in any file
 this phase touched. `pnpm run build`: succeeds. `git diff --check`: clean. No commit made. No
 `packages:sync --apply` run.
+
+### 25.32 P3.3A -- CREATION SPELL ACQUISITION AUTHORITY + PERSISTENCE (2026-10-08)
+
+**Resumed from the P3.2.1-preserved worktree, byte-for-byte, and completed.** This section covers
+the SERVER half only: plan rebuild, rejection matrix, canonical provenance-tagged write. The CORRECTION
+below this section's own original text: an earlier report in this same pass said "Builder files:
+unchanged (confirmed)," which was READ as "Builder presentation was never built." That reading was
+wrong, but the sentence itself was ambiguous enough to cause it -- the Builder presentation work
+(§25.33) was ALREADY built, in full, in the SAME working session, BEFORE the P3.2.1 collision was
+discovered and this whole effort paused; "unchanged" meant exactly that: the already-complete
+Builder code needed zero further changes once provenance (P3.2.1) and the server authority (this
+section) were done, since the Builder only ever touches TENTATIVE, planning-time state, never a
+persisted `requirementIds`. §25.33 documents that work directly, including the additional browser-
+shape tests this round added to close real coverage gaps the first pass left (every caster
+archetype, not only Wizard). P3.4 (progression) and P3.5 (174-decision reclassification) remain
+untouched and out of scope.
+
+#### Wizard success path, re-run first (the exact scenario that exposed the P3.2.1 collision)
+
+3 real cantrips, 6 real spellbook spells, 4 of those 6 also prepared, submitted as one tentative
+plan: `planSpellAcquisition` reports `complete: true`; the write-side (`buildAcceptedSpellEntries`)
+persists exactly 9 physical rows (not 10 -- the 4 overlapping spells never duplicate), each tagged
+with exactly the requirement id(s) its acquisition actually satisfies; a FRESH reload (no Builder,
+no tentative state -- just the persisted rows re-resolved against the catalogue) re-validates
+`complete: true` with zero cantrip/spellbook contamination in either direction. Proven at the unit
+level (`tests/server/utils/character-spell-acquisition.test.ts`) and through the real HTTP route
+(`tests/server/api/.../create-v2-spell-acquisition.test.ts`'s own Success Matrix item C).
+
+#### Paladin/Ranger on Rules 0.21.0
+
+Both resolve to `casterTypeOf -> 'half'` (the real class facet's own `caster_type.half` grant);
+`creationSpellSlotLevels('half', the real slots_half table)` now correctly returns a Level-1 slot
+with `max: 2` (the Rules Hotfix's own fix), so the legal maximum spell level at Level-1 creation is
+genuinely `1`, derived through the SAME canonical `deriveSpellSlotLevels`/`SLOT_TABLE_BY_CASTER_TYPE`
+machinery Cast and the Sheet already use -- no override, no class branch. Proven as Success Matrix
+item D.
+
+#### P3.2.1 provenance: no workaround, no heuristic
+
+`buildAcceptedSpellEntries` (the ONLY place canonical spell rows are constructed) derives
+`requirementIds` SERVER-SIDE from each accepted answer's own `requirementId` -- the client never
+submits provenance. The merge for a spell satisfying two requirements at once reuses
+`mergeSpellStateCandidate` (P3.2.1's own exported helper) verbatim: `known`/`prepared` OR,
+`requirementIds` UNION, one physical row. No second, independently-maintained merge rule was
+introduced; no heuristic (level/classList/flag inference) was added anywhere in this phase.
+
+#### Builder (unchanged from the paused worktree -- confirmed, not merely assumed)
+
+`characterBuilderSelection.ts`/`create-v2.vue` deal ONLY in tentative, planning-time state
+(`draft.spellSelections`); persisted `requirementIds` is a server-write-side concept the Builder
+never touches. P3.2.1 added no field or behavior the Builder needed to react to, confirmed by the
+Builder's own test file re-passing unchanged (56 -> 63 tests across this whole P3.3 effort, zero
+regressions at any point) and by inspection: nothing in `spellRequirementSections`/
+`spellAcquisitionPresentation` reads or writes a `StoredSpellEntry`.
+
+#### Payload / server authority (unchanged from the paused worktree's own design)
+
+Transport: `spellSelections: {requirementId, ref: {packageId, slug}}[]` -- requirement identity and
+a Spell ContentRef only, never class list/level/school/pool/flags. Server rebuilds the Level-1 plan
+from the SAME package facet + World catalogue already resolved for every other check in this route,
+through `planSpellAcquisition` (P3.2) unchanged.
+
+#### Ordering decision: Phase 0 runs BEFORE spell acquisition (corrected this pass)
+
+The ORIGINAL paused wiring checked spell acquisition before Phase-0's own `creationUnresolvedDecisions`
+check. This produced 22 pre-existing test failures (discovered, not introduced, by P3.2.1's own full-
+suite run) in two UNRELATED test files that use Wizard/Cleric as a convenience fixture for Origin-
+feat/rules_choices mechanics and Phase-0-refusal mechanics, with no spell answers in mind at all.
+Reordering to run Phase 0 FIRST is the architecturally correct fix, not a workaround: "can this
+species/class/background/feat combination be represented at all" is a more fundamental gate than
+"did you also answer this already-supported class's spell questions," so a combination Phase 0
+cannot represent is refused regardless of spell state -- a player is never asked to resolve spell
+selections for a character that cannot be created anyway. All 22 pre-existing failures are fixed by
+this reordering plus (for the two mechanics-isolation describe blocks that complete successfully,
+where Phase 0 is stubbed and spell validation IS reached) a legal, fixed, always-satisfied Wizard
+spell answer supplied by the test fixture itself -- never a change to spell legality/validation
+logic.
+
+#### Server rejection matrix (10 cases, all before `createEntityRecord`, zero writes)
+
+Missing selection, unknown requirement id, unknown spell ref, wrong package, wrong class list,
+wrong spell level, duplicate same-requirement spell, Wizard prepared spell outside the effective
+spellbook, over-count (extra selection beyond target), and a malformed `requiresMembershipPool`
+dependency (injected via a crafted facet, proving P3.2's own topology hardening is reachable through
+the real route) -- plus malformed payload shape and the non-caster "no write at all" case. All 12
+proven through the real route in `create-v2-spell-acquisition.test.ts`.
+
+#### Success matrix (5 archetypes, real facets, real planner, real write-through)
+
+A. Bard (cantrip + ordinary). B. Cleric (prepared caster). C. Wizard (spellbook -> prepared
+dependency). D. Paladin (half caster, Rules 0.21.0). E. Warlock (ordinary pools; Mystic Arcanum
+correctly requests zero selections at Level 1 and is never offered).
+
+#### Persistence write order (final)
+
+entity -> `catalogue_selection` -> progression -> **spellcasting** (new, FAIL LOUDLY, no `.catch`) ->
+ability scores -> rules_choices -> health. Unchanged from the paused worktree's own design; reasoning
+unchanged (spellcasting is mandatory once a class declares requirements, exactly like
+`saveCharacterRulesChoices`/`saveCharacterHealth`'s existing fail-loud posture, for the identical
+reason -- a completed-looking caster silently missing its spells is the bug this phase exists to
+prevent).
+
+#### Persistence sensitivity (Wizard + Warlock, proven, not assumed)
+
+For both, a fresh-reload validation against the REAL persisted (tagged) rows is `complete: true`;
+the IDENTICAL rows with `requirementIds` stripped (simulating historical/untagged state) reproduce
+the exact pre-P3.2.1 cross-pool collision (`complete: false`) -- proving reload correctness
+genuinely depends on persisted provenance, not on any lingering tentative answer. The original,
+tagged rows are never mutated by this proof.
+
+#### Generic PUT
+
+Unchanged posture: still not protected, still explicitly not the final authoritative mutation API.
+Creation now uses the validated, authoritative write-through described above; day-to-day
+preparation changes remain future, separately-validated work.
+
+#### Phase 0 / availability
+
+Unchanged, re-verified: 647 total / 192 implemented / 420 blocked / 35 optional. The 174 class-owned
+spell decisions remain BLOCKED -- `mandatory-decisions.ts`/`mandatory-decision-coverage.ts`
+untouched. Availability: Species 3/10, Classes 0/12, Backgrounds 0/16, Combinations 0/1,920,
+unchanged (equipment and other Phase-0 blockers are independent of spell state).
+
+#### Package impact
+
+Pure application/UI/server-persistence work. Confirmed empirically:
+```
+RULES:    eldra.rules.dnd5e-2024@0.21.0 -- CURRENT
+CONTENT:  eldra.solaris.xphb -- CURRENT
+ACTIONS:  None
+```
+
+#### Files
+
+- Modified (the paused worktree, completed): `app/components/characters/builder/
+  characterBuilderSelection.ts` (unchanged this pass, confirmed), `app/pages/worlds/[id]/characters/
+  create-v2.vue` (unchanged this pass, confirmed), `server/api/worlds/[id]/characters/
+  create-v2.post.ts` (Phase-0/spell-check reordering), `server/utils/character-spell-acquisition.ts`
+  (`buildAcceptedSpellEntries` now derives and merges `requirementIds`), `tests/server/api/worlds/
+  [id]/characters/create-v2.post.test.ts`, `tests/server/api/worlds/[id]/characters/
+  create-v2-fail-closed.test.ts` (fixed by the reordering alone, zero fixture changes),
+  `tests/server/api/worlds/[id]/characters/create-v2-fighter-mechanics.test.ts` (fixed with a legal
+  default Wizard spell answer), `tests/rules/completeness-stub-policy.test.ts` (new UNIT_STUBBING
+  entry).
+- Created: `tests/server/utils/character-spell-acquisition.test.ts` (26 tests), `tests/server/api/
+  worlds/[id]/characters/create-v2-spell-acquisition.test.ts` (18 tests: 5 success-matrix + 1
+  round-trip + 12 rejection-matrix).
+
+#### Verification (P3.3A alone, superseded by §25.33's combined final numbers)
+
+`pnpm run test`: 197 files / 4153 tests -- all passing at the time this section was first written.
+`pnpm run typecheck`: 243 unique (file, diagnostic-code) pairs, identical to the established
+baseline, zero new. `pnpm run build`: succeeds. `git diff --check`: clean. `pnpm packages:sync --
+--world Solaris` (dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions None -- zero writes.
+No commit made. No `packages:sync --apply` run.
+
+### 25.33 P3.3B -- V2 BUILDER SPELL ACQUISITION PRESENTATION (2026-10-08)
+
+**The Builder half of P3.3, confirmed already implemented (same session, before the P3.2.1 pause),
+verified line-by-line against every P3.3B requirement, and extended with the browser-shape test
+coverage the first pass was missing.** No Builder code changed this round -- the existing
+implementation already satisfied every requirement traced below; only test coverage was added.
+
+#### Trace: smallest insertion point (confirmed, not redesigned)
+
+`CharacterBuilderDraft` gained exactly one field, `spellSelections: Record<string, string[]>` --
+`SpellRequirement.id` -> a list of `serializeContentRef`-encoded refs. Nothing else in the draft
+shape changed. `toCreatePayload` gained exactly one additional field,
+`spellSelections: TentativeSpellSelection[]`, sourced from `effectiveSpellSelections(draft)`.
+
+#### Draft representation (P3.2's own shape, nothing more)
+
+The draft stores ONLY `{requirementId -> ref[]}`. It does NOT store `known`, `prepared`,
+`requirementIds`, class list, spell level, school, or any label -- all of those are derived, either
+by `planSpellAcquisition` (presentation-time) or by the server (`buildAcceptedSpellEntries`,
+write-time). The draft is sufficient, and only sufficient, to reconstruct a
+`TentativeSpellSelection[]` and call `planSpellAcquisition` again.
+
+#### Builder plan (reuses P3.2 verbatim, zero re-implementation)
+
+`spellAcquisitionPresentation(draft, context)` calls `planSpellAcquisition` with: `requirements`
+from the selected class's own real facet (`draft.class?.rulesFacet?.spellRequirements`),
+`characterLevel: 1`, `candidates: []` (nothing persisted yet at creation), `catalogue:
+context.spells` (the real World catalogue, already fetched for the page), `spellSlotLevels` the
+fixed, corpus-proven `CREATION_SPELL_SLOT_LEVELS` constant (see that constant's own header: a
+provable Level-1-only fact, re-confirmed against Rules 0.21.0's corrected half-caster table, never
+a client-trusted legality substitute -- the server independently re-derives the real value and is
+the only side ever treated as authoritative), and `tentative` built from the draft. The resulting
+plan is the ONLY source `spellRequirementSections`/`isSpellStepComplete`/`missingRequirements` read
+from -- no Vue-level spell filtering exists anywhere.
+
+#### Generic presentation (no class-specific component, confirmed)
+
+`spellRequirementSections` renders one section per requirement with `target > 0` (Mystic Arcanum's
+four Level-1 requirements, always target 0, correctly produce no section -- not via an `if arcanum`
+special case, simply because the generic `target > 0` filter already excludes them). Labels come
+from `spellPoolLabel(pool)`, a fixed four-entry map keyed by the POOL KIND enum
+(`cantrip`/`spell`/`spellbook`/`arcanum` -- P3.1's own closed vocabulary, not a class name):
+Cantrips / Prepared Spells / Spellbook / Mystic Arcanum. **On the LABELS section's own "STOP and
+report if package-authored labels are required" instruction**: not triggered -- these four words
+describe the GENERIC POOL KIND (already a closed, class-agnostic enum fixed since P3.1), not any
+one class's own terminology; a homebrew class whose own `SpellRequirement.pool` is `'spellbook'`
+would see the identical "Spellbook" label, correctly, because it genuinely has a spellbook-shaped
+mechanic -- the label names the MECHANIC SHAPE, never a class. No requirement-id parsing, no
+class-slug branching, anywhere in this path.
+
+#### Option control
+
+Reuses `CharacterChoiceSetPicker`'s existing SLOT-MODE rendering (`distinct: false, maxPerOption:
+1`) -- the same machinery Ability Score Improvement's own repeatable choice already exercises, and
+the smallest existing control in this codebase for "N independent slots, each one option, no
+repeats." No searchable/autocomplete component exists anywhere in `app/` (checked: zero
+`USelectMenu`/`UInputMenu`/combobox usage) so building one would have been a new design-system
+piece inside a feature-correctness phase -- explicitly out of scope. **Recorded as Player UX
+backlog**, not silently accepted as final: see `project_spell_selection_ux_backlog` (session
+memory) for the exact drop-in replacement path once a beauty pass is scheduled.
+
+#### Distinctness
+
+Enforced by the SAME `maxPerOption: 1` slot-mode mechanism already proven for ASI -- a spell
+selected in one slot is disabled in every other slot of the SAME requirement, never across
+different requirements (Wizard: the same spell may be picked for spellbook AND prepared, two
+separate requirement keys, two separate pickers).
+
+#### Wizard (the critical case, confirmed working within one plan recomputation)
+
+A tentative spellbook pick becomes part of the EFFECTIVE spellbook the SAME `spellAcquisitionPresentation`
+call's prepared-pool evaluation reads as its membership gate -- no save/reload/then-prepare round
+trip. A prepared pick naming a spell outside the resulting effective spellbook is refused
+(`illegal-not-in-membership-pool`), proven directly at the Builder plan level (new test 9). Removing
+a spellbook pick that a prepared pick depends on is handled GENERICALLY: nothing deletes the stale
+prepared answer from the draft, but the NEXT plan recomputation (triggered by any draft change,
+exactly like every other Builder answer in this codebase) re-evaluates it against the NEW effective
+spellbook and reports it unsatisfied -- the same "re-validate on read, never delete on write"
+posture `pruneChoices`/`effectiveContentChoices` already established for Definition/content
+choices, extended here with zero Wizard-specific code.
+
+#### Ordering
+
+Dependency order comes from `requiresMembershipPool`, resolved by `planSpellAcquisition`'s own
+(P3.2) two-pass evaluation -- the Builder never orders sections by array position or by checking
+for "Wizard" anywhere; it renders whatever `plan.requirements` returns, in that order.
+
+#### Class equivalence (browser-shape matrix, this round's own added coverage)
+
+Fighter (no section at all), Sorcerer (cantrip + ordinary, both generic sections), Cleric (ordinary
+prepared requirement, no spellbook dependency), Paladin AND Ranger (a real Level-1 section with real
+Level-1 legal options -- the mandatory regression for the Rules 0.21.0 half-caster correction),
+Warlock (cantrip + ordinary sections, zero Arcanum control, no special-case code), Wizard (all three
+sections simultaneously, exact real counts 3/6/4).
+
+#### Class switching
+
+`effectiveSpellSelections` filters the draft to only the CURRENTLY selected class's own live
+requirement ids -- a prior class's answers are invisible to both presentation
+(`spellRequirementSections` renders nothing for them) and submission (never appear in the payload).
+The draft entry itself is NOT deleted on switch (switching back re-validates it against the current
+plan rather than losing it), matching this module's own established "re-validate on read" rule. No
+hidden stale answer can ever reach payload authority, because `effectiveSpellSelections` is the
+ONLY path `toCreatePayload` reads from.
+
+#### Builder completeness
+
+`isSpellStepComplete` participates in `isStepComplete('spells', ...)` and `isDraftComplete` exactly
+like every other step. This is Builder MECHANICS only -- it does not and must not bypass the real
+Phase-0 production blocker (`creationBlockerMessages`), which independently still refuses every
+real class today for unrelated reasons (starting equipment, etc.) regardless of spell state; proven
+explicitly by test 12's own design (it tests the spell-payload SHAPE directly via
+`effectiveSpellSelections`, not through the full `toCreatePayload` gate, precisely because routing
+around the real Phase-0 gate to make a payload test pass would have been exactly the kind of
+production-completeness weakening this phase was told never to introduce).
+
+#### Payload
+
+`spellSelections: {requirementId, ref: {packageId, slug}}[]` only -- no `known`/`prepared`/
+`requirementIds`/class list/level/school. Proven directly: every submitted entry's own key set is
+exactly `['ref', 'requirementId']`.
+
+#### Browser-shape tests added this round
+
+`tests/components/characters/builder/characterBuilderSelection.test.ts` gained a new describe block
+(10 tests) closing the exact gaps a prior pass left (only Wizard/Cleric/Fighter were covered):
+Fighter (no section), Sorcerer (cantrip+ordinary), Cleric (ordinary prepared, no spellbook),
+Paladin and Ranger (Level-1 half-caster baseline), Warlock (no Arcanum control), Wizard (3/6/4 all
+at once), Wizard prepared-outside-spellbook refusal at the Builder plan level, a generic
+same-requirement duplicate refusal (Cleric), and the payload transport-shape proof. Combined with
+the pre-existing 7 tests (real caster/missing requirements, legal answer reduces missing, duplicate
+refused, Wizard dependency, class switch, step completeness, non-caster), the file now covers all
+12 scenarios this phase's own BROWSER-SHAPE TESTS section asked for.
+
+#### DOM coverage, stated honestly
+
+What IS tested: the pure Builder presentation/state boundary (`characterBuilderSelection.ts`'s own
+exported functions), in Node, against the SAME normalized draft/context/plan shapes the real
+`create-v2.vue` page constructs and reads -- not merely `planSpellAcquisition` in isolation. What is
+NOT tested here: the actual rendered DOM (`CharacterChoiceSetPicker.vue`'s template, `create-v2.vue`'s
+own compact/roomy markup) -- this repository's vitest config has no DOM environment (`environment:
+'node'`), matching every other Builder-adjacent test file's own documented limitation. **Live
+browser acceptance of the actual rendered Wizard flow (and the other four archetypes) is still
+required after deployment**, and is not claimed here.
+
+#### Phase 0 / availability (unchanged, re-verified)
+
+647 total / 192 implemented / 420 blocked / 35 optional. Species 3/10, Classes 0/12, Backgrounds
+0/16, Combinations 0/1,920.
+
+#### Package impact
+
+No package touched by this section at all (pure `app/components/characters/builder/` + its tests).
+Confirmed via the same dry run §25.32 already ran: Rules CURRENT at 0.21.0, Content CURRENT,
+Actions None.
+
+#### Files
+
+- Unchanged (confirmed, not redesigned): `app/components/characters/builder/
+  characterBuilderSelection.ts`, `app/pages/worlds/[id]/characters/create-v2.vue`.
+- Modified: `tests/components/characters/builder/characterBuilderSelection.test.ts` (+10 tests, one
+  new describe block).
+
+#### Verification (combined P3.3A + P3.3B, final)
+
+`pnpm run test`: **197 files / 4163 tests -- all passing**, full suite, no exclusions.
+`pnpm run typecheck`: 243 unique (file, diagnostic-code) pairs, identical to the established
+baseline, zero new. `pnpm run build`: succeeds. `git diff --check`: clean. `pnpm packages:sync --
+--world Solaris` (dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions None -- zero writes.
+No commit made. No `packages:sync --apply` run.

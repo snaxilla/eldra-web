@@ -22,6 +22,7 @@ import {
   STEP_KEYS,
   choiceSelections,
   declaredChoices,
+  effectiveSpellSelections,
   emptyDraft,
   filterOptions,
   findOptionByKey,
@@ -29,10 +30,14 @@ import {
   isSelectionHidden,
   isDraftComplete,
   isProficiencyStepComplete,
+  isSpellStepComplete,
   isStepComplete,
   missingRequirements,
   pruneChoices,
   setChoiceSelections,
+  setSpellSelections,
+  spellAcquisitionPresentation,
+  spellRequirementSections,
   nextStep,
   optionKey,
   previousStep,
@@ -42,8 +47,13 @@ import {
   isAbilityStepComplete,
   switchAbilityMethod,
   type BuilderCatalogueEntry,
+  type BuilderCreationContext,
   type CharacterBuilderDraft
 } from '../../../../app/components/characters/builder/characterBuilderSelection'
+import { findRulesFacet } from '../../../../app/lib/content-rules'
+import { resolveDnd5eSpellMechanics } from '../../../../app/lib/spell-mechanics/dnd5e'
+import { serializeContentRef } from '../../../../app/lib/characters/progression-plan'
+import type { CreationSpellEntry } from '../../../../app/lib/characters/creation-content-choices'
 import {
   defaultAssignmentForMethod,
   filledAssignment,
@@ -258,7 +268,9 @@ describe('toCreatePayload', () => {
       // Empty here because the fixture's entries carry no Rules Facet.
       choices: { selections: {} },
       // PHASE 2C.2B -- no content-backed declaration in this draft, so no content answers.
-      contentChoices: {}
+      contentChoices: {},
+      // D&D 2024 Character Rules P3.3 -- Fighter declares no spellRequirements, so no spell answers.
+      spellSelections: []
     })
   })
 
@@ -348,11 +360,14 @@ describe('step navigation', () => {
     // Proficiencies sits after the three content choices, because the
     // questions it asks are declared BY those choices.
     expect(STEP_KEYS).toEqual([
-      'identity', 'species', 'class', 'background', 'proficiencies', 'abilities', 'review'
+      'identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'abilities', 'review'
     ])
     expect(nextStep('identity')).toBe('species')
     expect(nextStep('background')).toBe('proficiencies')
-    expect(nextStep('proficiencies')).toBe('abilities')
+    // D&D 2024 Character Rules P3.3 -- 'spells' sits right after 'proficiencies', for the same
+    // "its questions are declared by the chosen Class" reason.
+    expect(nextStep('proficiencies')).toBe('spells')
+    expect(nextStep('spells')).toBe('abilities')
     expect(nextStep('abilities')).toBe('review')
     expect(previousStep('species')).toBe('identity')
   })
@@ -602,5 +617,263 @@ describe('toCreatePayload carries the answers', () => {
     setChoiceSelections(draft, CLASS_KEY, [ATHLETICS, 'value:skill.survival.proficient'])
 
     expect(payload.choices.selections[CLASS_KEY]).toEqual([ATHLETICS, PERCEPTION])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P3.3 -- the Builder browser-shape test. Exercises the SAME
+// normalized catalogue/facet/plan shape the real V2 Builder page receives (real authored class
+// facets via findRulesFacet, a synthetic but realistically-shaped spell catalogue), never a
+// hand-built fake SpellRequirement -- "Builder wiring has false-greened before" is this phase's
+// own stated reason to test exactly this shape, not just planSpellAcquisition in isolation (P3.2
+// already does that).
+// ---------------------------------------------------------------------------
+describe('D&D 2024 Character Rules P3.3 -- Builder spell acquisition (real facets, catalogue shape)', () => {
+  function wizardSpell(slug: string, level: number, classLists: string[] = ['Wizard']) {
+    return resolveDnd5eSpellMechanics({ name: slug, source: 'XPHB', level, school: 'V', classLists })!
+  }
+
+  function spellEntry(slug: string, level: number, classLists: string[], title = slug): CreationSpellEntry {
+    return { packageId: 'eldra.solaris.xphb', slug, title, spellMechanics: wizardSpell(slug, level, classLists) }
+  }
+
+  const WIZARD_ENTRY = entry({ title: 'Wizard', slug: 'wizard-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb') })
+  const CLERIC_ENTRY = entry({ title: 'Cleric', slug: 'cleric-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'cleric-xphb') })
+
+  const WIZARD_SPELLBOOK = [...'abcdefghij'].map((s) => spellEntry(s, 1, ['Wizard']))
+  const CLERIC_SPELL = spellEntry('cleric-one', 1, ['Cleric'])
+
+  function wizardDraft(): CharacterBuilderDraft {
+    const draft = emptyDraft()
+    draft.name = 'Elminster'
+    draft.class = WIZARD_ENTRY
+    return draft
+  }
+
+  function contextWith(spells: CreationSpellEntry[]): BuilderCreationContext {
+    return { contentSelectorOf: () => null, feats: [], spells }
+  }
+
+  it('a real caster (Wizard) selected produces real missing spell requirements, with real titles', () => {
+    const plan = spellAcquisitionPresentation(wizardDraft(), contextWith(WIZARD_SPELLBOOK))
+    const spellbook = plan.requirements.find((r) => r.pool === 'spellbook')!
+    expect(spellbook.missing).toBe(6)
+    expect(spellbook.options.map((o) => o.title).sort()).toEqual([...'abcdefghij'].sort())
+  })
+
+  it('a legal answer reduces the missing count, recomputed from the SAME draft', () => {
+    const draft = wizardDraft()
+    const sections = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK))
+    const spellbook = sections.find((s) => s.pool === 'spellbook')!
+    setSpellSelections(draft, spellbook.requirementId, [serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'a' })])
+
+    const after = spellAcquisitionPresentation(draft, contextWith(WIZARD_SPELLBOOK)).requirements.find((r) => r.pool === 'spellbook')!
+    expect(after.missing).toBe(5)
+  })
+
+  it('a duplicate selection for the same requirement is refused (never silently inflates the count)', () => {
+    const draft = wizardDraft()
+    const sections = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK))
+    const spellbookId = sections.find((s) => s.pool === 'spellbook')!.requirementId
+    const ref = serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'a' })
+    setSpellSelections(draft, spellbookId, [ref, ref])
+
+    const plan = spellAcquisitionPresentation(draft, contextWith(WIZARD_SPELLBOOK))
+    const spellbook = plan.requirements.find((r) => r.pool === 'spellbook')!
+    expect(spellbook.legalCount).toBe(1)
+    expect(spellbook.issues.some((issue) => issue.kind === 'tentative-duplicate')).toBe(true)
+  })
+
+  it('Wizard: a tentative spellbook answer immediately feeds eligible prepared options, within the SAME plan', () => {
+    const draft = wizardDraft()
+    const sections = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK))
+    const spellbookId = sections.find((s) => s.pool === 'spellbook')!.requirementId
+    setSpellSelections(draft, spellbookId, [...'abcdef'].map((s) => serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: s })))
+
+    const preparedSection = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK)).find((s) => s.pool === 'spell')!
+    for (const s of [...'abcdef']) {
+      expect(Object.keys(preparedSection.optionLabels)).toContain(serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: s }))
+    }
+  })
+
+  it('a Class switch makes the prior Class\'s answers invisible to both presentation and submission', () => {
+    const draft = wizardDraft()
+    const spellbookId = spellRequirementSections(draft, contextWith(WIZARD_SPELLBOOK)).find((s) => s.pool === 'spellbook')!.requirementId
+    setSpellSelections(draft, spellbookId, [serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'a' })])
+
+    draft.class = CLERIC_ENTRY
+    const clericSections = spellRequirementSections(draft, contextWith([...WIZARD_SPELLBOOK, CLERIC_SPELL]))
+    expect(clericSections.some((s) => s.pool === 'spellbook')).toBe(false)
+    expect(effectiveSpellSelections(draft)).toEqual([])
+    // The stale draft entry itself is preserved (switching back re-validates it), never deleted.
+    expect(draft.spellSelections[spellbookId]).toEqual([serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'a' })])
+  })
+
+  it('the spell step is incomplete for a real caster with unanswered requirements, and complete once satisfied', () => {
+    const draft = wizardDraft()
+    expect(isSpellStepComplete(draft, contextWith(WIZARD_SPELLBOOK))).toBe(false)
+  })
+
+  it('a non-caster Class (Fighter, no spellRequirements) has no spell sections and an already-complete spell step', () => {
+    const draft = fighterDraft()
+    expect(spellRequirementSections(draft, contextWith([]))).toEqual([])
+    expect(isSpellStepComplete(draft, contextWith([]))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P3.3B -- the Builder browser-shape matrix, every real caster archetype
+// plus the two Builder-specific proofs (prepared-outside-spellbook refusal, payload inclusion) not
+// yet covered above. Tests the SAME normalized draft/context/plan shape the real V2 page receives
+// -- "Builder wiring has false-greened before" is this phase's own stated reason to prove this
+// shape directly, never just planSpellAcquisition in isolation (P3.2 already does that).
+// ---------------------------------------------------------------------------
+describe('D&D 2024 Character Rules P3.3B -- Builder browser-shape matrix (every real caster archetype)', () => {
+  function classCatalogueEntry(slug: string, title: string): BuilderCatalogueEntry {
+    return entry({ title, slug, rulesFacet: findRulesFacet('dnd5e.2024', 'class', slug) })
+  }
+
+  function spell(slug: string, level: number, classLists: string[]): CreationSpellEntry {
+    return { packageId: 'eldra.solaris.xphb', slug, title: slug, spellMechanics: resolveDnd5eSpellMechanics({ name: slug, source: 'XPHB', level, school: 'V', classLists })! }
+  }
+
+  function draftFor(classEntry: BuilderCatalogueEntry): CharacterBuilderDraft {
+    const draft = emptyDraft()
+    draft.name = 'Rowan'
+    draft.class = classEntry
+    return draft
+  }
+
+  function contextWith(spells: CreationSpellEntry[]): BuilderCreationContext {
+    return { contentSelectorOf: () => null, feats: [], spells }
+  }
+
+  it('1. Fighter: no spell requirements at all', () => {
+    const draft = draftFor(classCatalogueEntry('fighter-xphb', 'Fighter'))
+    expect(spellRequirementSections(draft, contextWith([]))).toEqual([])
+  })
+
+  it('2. Sorcerer: real cantrip + ordinary requirements, both generic sections, real P2 options', () => {
+    const SORCERER = classCatalogueEntry('sorcerer-xphb', 'Sorcerer')
+    const catalogue = [...'ab'].map((s) => spell(`sorc-${s}`, 0, ['Sorcerer'])).concat([...'cd'].map((s) => spell(`sorc-${s}`, 1, ['Sorcerer'])))
+    const draft = draftFor(SORCERER)
+    const sections = spellRequirementSections(draft, contextWith(catalogue))
+    expect(sections.map((s) => s.pool).sort()).toEqual(['cantrip', 'spell'])
+    expect(sections.every((s) => s.label.length > 0)).toBe(true)
+  })
+
+  it('3. Cleric: real prepared requirement, no spellbook dependency', () => {
+    const CLERIC = classCatalogueEntry('cleric-xphb', 'Cleric')
+    const draft = draftFor(CLERIC)
+    const sections = spellRequirementSections(draft, contextWith([]))
+    expect(sections.some((s) => s.pool === 'spellbook')).toBe(false)
+    expect(sections.some((s) => s.pool === 'spell')).toBe(true)
+  })
+
+  it('4. Paladin: a real Level-1 spell section appears, with legal Level-1 options (Rules 0.21.0 half-caster baseline)', () => {
+    const PALADIN = classCatalogueEntry('paladin-xphb', 'Paladin')
+    const catalogue = [spell('pal-a', 1, ['Paladin'])]
+    const draft = draftFor(PALADIN)
+    const sections = spellRequirementSections(draft, contextWith(catalogue))
+    const spellSection = sections.find((s) => s.pool === 'spell')!
+    expect(spellSection.choice.count).toBeGreaterThan(0)
+    expect(Object.keys(spellSection.optionLabels)).toContain(serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'pal-a' }))
+  })
+
+  it('5. Ranger: a real Level-1 spell section appears, with legal Level-1 options', () => {
+    const RANGER = classCatalogueEntry('ranger-xphb', 'Ranger')
+    const catalogue = [spell('ran-a', 1, ['Ranger'])]
+    const draft = draftFor(RANGER)
+    const sections = spellRequirementSections(draft, contextWith(catalogue))
+    const spellSection = sections.find((s) => s.pool === 'spell')!
+    expect(spellSection.choice.count).toBeGreaterThan(0)
+    expect(Object.keys(spellSection.optionLabels)).toContain(serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'ran-a' }))
+  })
+
+  it('6. Warlock: cantrip + ordinary sections appear; no Mystic Arcanum control at Level 1 (target is 0, no special-case needed)', () => {
+    const WARLOCK = classCatalogueEntry('warlock-xphb', 'Warlock')
+    const draft = draftFor(WARLOCK)
+    const sections = spellRequirementSections(draft, contextWith([]))
+    expect(sections.map((s) => s.pool).sort()).toEqual(['cantrip', 'spell'])
+    expect(sections.some((s) => s.pool === 'arcanum')).toBe(false)
+  })
+
+  it('7. Wizard: exactly 3 cantrip + 6 spellbook + 4 prepared, all three sections present simultaneously', () => {
+    const WIZARD = classCatalogueEntry('wizard-xphb', 'Wizard')
+    const catalogue = [
+      ...[...'abcdef'].map((s) => spell(s, 1, ['Wizard'])),
+      ...[...'xyz'].map((s) => spell(`c-${s}`, 0, ['Wizard']))
+    ]
+    const draft = draftFor(WIZARD)
+    const sections = spellRequirementSections(draft, contextWith(catalogue))
+    expect(sections.find((s) => s.pool === 'cantrip')!.choice.count).toBe(3)
+    expect(sections.find((s) => s.pool === 'spellbook')!.choice.count).toBe(6)
+    expect(sections.find((s) => s.pool === 'spell')!.choice.count).toBe(4)
+  })
+
+  it('9. Wizard: a prepared pick outside the effective spellbook is refused (unavailable), at the Builder plan level', () => {
+    const WIZARD = classCatalogueEntry('wizard-xphb', 'Wizard')
+    const catalogue = [...'abcdefg'].map((s) => spell(s, 1, ['Wizard']))
+    const draft = draftFor(WIZARD)
+    const plan = spellAcquisitionPresentation(draft, contextWith(catalogue))
+    const spellbookId = plan.requirements.find((r) => r.pool === 'spellbook')!.requirementId
+    const spellId = plan.requirements.find((r) => r.pool === 'spell')!.requirementId
+
+    setSpellSelections(draft, spellbookId, [...'abcdef'].map((s) => serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: s })))
+    setSpellSelections(draft, spellId, [serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'g' })]) // never added to the spellbook
+
+    const after = spellAcquisitionPresentation(draft, contextWith(catalogue))
+    const prepared = after.requirements.find((r) => r.requirementId === spellId)!
+    expect(prepared.satisfied).toBe(false)
+    expect(prepared.issues.some((i) => i.kind === 'illegal-not-in-membership-pool')).toBe(true)
+  })
+
+  it('10. a same-requirement duplicate selection is unavailable/refused (already proven above for Wizard\'s spellbook; reconfirmed generically for an ordinary pool)', () => {
+    const CLERIC = classCatalogueEntry('cleric-xphb', 'Cleric')
+    const catalogue = [spell('cleric-a', 1, ['Cleric'])]
+    const draft = draftFor(CLERIC)
+    const spellId = spellAcquisitionPresentation(draft, contextWith(catalogue)).requirements.find((r) => r.pool === 'spell')!.requirementId
+    const dupRef = serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'cleric-a' })
+    setSpellSelections(draft, spellId, [dupRef, dupRef])
+
+    const plan = spellAcquisitionPresentation(draft, contextWith(catalogue))
+    const result = plan.requirements.find((r) => r.requirementId === spellId)!
+    expect(result.legalCount).toBe(1)
+    expect(result.issues.some((i) => i.kind === 'tentative-duplicate')).toBe(true)
+  })
+
+  // `toCreatePayload` gates on the FULL draft being complete, including REAL Phase-0 authority
+  // (creationBlockerMessages) -- and per the real availability scoreboard, NO real class is
+  // individually creation-complete yet (equipment and other unrelated blockers), regardless of
+  // spell state. That is a correct, already-proven Phase-0 fact, not something this test should
+  // route around. What P3.3B actually owns is narrower: the SPELL portion of the payload
+  // (`effectiveSpellSelections`, the exact function `toCreatePayload` itself calls for its own
+  // `spellSelections` field) is shaped correctly and is complete once the spell step itself is
+  // satisfied -- proven directly, independent of the rest of the draft's Phase-0 state.
+  it('12. legal, complete spell answers are shaped exactly as the create-v2 transport expects (requirementId + ref only)', () => {
+    const WIZARD = classCatalogueEntry('wizard-xphb', 'Wizard')
+    const catalogue = [
+      ...[...'abcdef'].map((s) => spell(s, 1, ['Wizard'])),
+      ...[...'xyz'].map((s) => spell(`c-${s}`, 0, ['Wizard']))
+    ]
+    const draft = draftFor(WIZARD)
+
+    const plan = spellAcquisitionPresentation(draft, contextWith(catalogue))
+    const spellbookId = plan.requirements.find((r) => r.pool === 'spellbook')!.requirementId
+    const spellId = plan.requirements.find((r) => r.pool === 'spell')!.requirementId
+    const cantripId = plan.requirements.find((r) => r.pool === 'cantrip')!.requirementId
+    setSpellSelections(draft, spellbookId, [...'abcdef'].map((s) => serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: s })))
+    setSpellSelections(draft, spellId, [...'abcd'].map((s) => serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: s })))
+    setSpellSelections(draft, cantripId, [...'xyz'].map((s) => serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: `c-${s}` })))
+
+    const context = contextWith(catalogue)
+    expect(isSpellStepComplete(draft, context)).toBe(true)
+
+    const submitted = effectiveSpellSelections(draft)
+    expect(submitted).toHaveLength(13) // 6 spellbook + 4 prepared + 3 cantrip
+    for (const selection of submitted) {
+      expect(Object.keys(selection).sort()).toEqual(['ref', 'requirementId']) // transport shape only
+      expect(Object.keys(selection.ref).sort()).toEqual(['packageId', 'slug'])
+    }
   })
 })

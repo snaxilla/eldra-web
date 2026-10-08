@@ -155,6 +155,32 @@ const CRIMINAL = entry({ title: 'Criminal', slug: 'criminal-xphb', rulesFacet: f
 // exercises a rules_choices answer at creation.
 const ARTISAN = entry({ title: 'Artisan', slug: 'artisan-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'artisan-xphb') ?? undefined })
 
+// D&D 2024 Character Rules P3.3 -- the real Wizard facet used above now carries real
+// spellRequirements, so every `bodyWith` call (Wizard is this file's own default class, unrelated
+// to the mechanics each test actually asserts on) needs a legal spell answer or the request is
+// refused before it ever reaches the rules_choices/Origin-feat mechanics these tests exist to
+// prove. A small, fixed, always-legal spell catalogue + answer set, built once.
+const WIZARD_SPELL_SLUGS = [...'abcdef']
+const WIZARD_CANTRIP_SLUGS = [...'xyz']
+const WIZARD_SPELLS = [
+  ...WIZARD_SPELL_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `wiz-${s}`, title: `Wizard Spell ${s.toUpperCase()}`, spellMechanics: { level: 1, concentration: false, ritual: false, resolution: null, classLists: ['Wizard'] } })),
+  ...WIZARD_CANTRIP_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `wiz-cantrip-${s}`, title: `Wizard Cantrip ${s.toUpperCase()}`, spellMechanics: { level: 0, concentration: false, ritual: false, resolution: null, classLists: ['Wizard'] } }))
+]
+
+function wizardSpellSelections() {
+  const requirements = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')!.spellRequirements!
+  const spellbookId = requirements.find((r) => r.pool === 'spellbook')!.id
+  const spellId = requirements.find((r) => r.pool === 'spell')!.id
+  const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
+  const spellRefs = WIZARD_SPELL_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `wiz-${s}` }))
+  const cantripRefs = WIZARD_CANTRIP_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `wiz-cantrip-${s}` }))
+  return [
+    ...spellRefs.map((ref) => ({ requirementId: spellbookId, ref })),
+    ...spellRefs.slice(0, 4).map((ref) => ({ requirementId: spellId, ref })),
+    ...cantripRefs.map((ref) => ({ requirementId: cantripId, ref }))
+  ]
+}
+
 const CATALOGUE = {
   worldId: WORLD_ID,
   packs: [],
@@ -162,7 +188,7 @@ const CATALOGUE = {
   classes: [FIGHTER, WIZARD],
   backgrounds: [CRIMINAL, ARTISAN],
   feats: FEATS,
-  subclasses: [], items: [], spells: [], monsters: []
+  subclasses: [], items: [], spells: WIZARD_SPELLS, monsters: []
 }
 
 const ref = (packageId: string, slug: string) => ({ packageId, slug })
@@ -532,6 +558,11 @@ function bodyWith(backgroundName: string, overrides: Record<string, unknown> = {
     class: ref(CONTENT_PACKAGE, 'wizard-xphb'),
     background: ref(CONTENT_PACKAGE, slugOf(backgroundName)),
     abilities: STANDARD_ARRAY,
+    // D&D 2024 Character Rules P3.3 -- this file's own default class (Wizard) now has real Level-1
+    // spell requirements; a legal answer is supplied by default so every pre-existing test here
+    // keeps asserting exactly what it always asserted (rules_choices/Origin-feat mechanics), not
+    // spell completeness. A test that needs to prove something ABOUT spells overrides this key.
+    spellSelections: wizardSpellSelections(),
     ...overrides
   }
 }

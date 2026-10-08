@@ -67,9 +67,42 @@ vi.mock('../../../../../../server/utils/character-health', () => ({
   saveCharacterHealth: saveCharacterHealthMock
 }))
 
+import { readFileSync } from 'node:fs'
 import handler from '../../../../../../server/api/worlds/[id]/characters/create-v2.post'
 import type { Principal } from '../../../../../../server/utils/authorization'
 import { findRulesFacet } from '../../../../../../app/lib/content-rules'
+import { createWorldRuntime } from '../../../../../../app/lib/rules/world-runtime'
+import { parseExpression } from '../../../../../../app/lib/rules/parser'
+import type { Definition, RulesPackageManifest } from '../../../../../../app/lib/rules/types'
+
+// D&D 2024 Character Rules P3.3 -- the REAL Rules Runtime, built from the real package on disk
+// exactly like character-cast.test.ts's/dnd5e-2024-package.test.ts's own `loadRealRuntime`/
+// `loadPackage` -- needed only by the Wizard spell-acquisition fixtures below, which must derive a
+// real legal maximum spell level (via the real `table:spellcasting.slots_full`) rather than the
+// file's own default `{configured: false, ok: false}` (every other test in this file has no reason
+// to touch the registry at all).
+function hydrate(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(hydrate)
+  if (node && typeof node === 'object') {
+    const record = node as Record<string, unknown>
+    if (typeof record.text === 'string' && !record.ast) {
+      const parsed = parseExpression(record.text)
+      if (!parsed.ok) throw new Error(`Failed to parse: ${record.text}`)
+      return { text: record.text, ast: parsed.ast }
+    }
+    return Object.fromEntries(Object.entries(record).map(([k, v]) => [k, hydrate(v)]))
+  }
+  return node
+}
+
+function loadRealRuntime() {
+  const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
+  const manifest = JSON.parse(readFileSync(`${PACKAGE_DIR}/manifest.json`, 'utf8')) as RulesPackageManifest
+  const definitions = hydrate(JSON.parse(readFileSync(`${PACKAGE_DIR}/definitions.json`, 'utf8'))) as Definition[]
+  const result = createWorldRuntime(manifest, definitions, '5', null)
+  if (!result.ok) throw new Error(`runtime build failed: ${result.stage}`)
+  return result.runtimePackage
+}
 
 function catalogueEntry(overrides: Partial<{ packageId: string; packageVersion: string; slug: string; title: string }> = {}) {
   return {
@@ -86,7 +119,7 @@ function catalogueEntry(overrides: Partial<{ packageId: string; packageVersion: 
   }
 }
 
-function fullCatalogue(overrides: Partial<{ species: any[]; classes: any[]; backgrounds: any[] }> = {}) {
+function fullCatalogue(overrides: Partial<{ species: any[]; classes: any[]; backgrounds: any[]; spells: any[] }> = {}) {
   return {
     worldId: '5',
     packs: [],
@@ -503,6 +536,18 @@ describe('POST /api/worlds/:id/characters/create-v2 -- initial health', () => {
 // ---------------------------------------------------------------------------
 
 describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the Class\'s own separate skill choice', () => {
+  // D&D 2024 Character Rules P3.3 -- the real Wizard facet now declares real spellRequirements,
+  // which need a real registry to derive a legal maximum spell level from (see loadRealRuntime's
+  // own header). Harmless for the two reject-tests below (they fail at the earlier skill-choice
+  // check and never reach spell validation at all).
+  beforeEach(() => {
+    getWorldRuntimeMock.mockResolvedValue({
+      configured: true, ok: true, runtime: loadRealRuntime(),
+      integrityHash: 'sha256-test', settings: {}, rollTypeOverrides: {}
+    })
+  })
+
+
   // PHASE 2C.3A -- Sage is creation-BLOCKED in the real corpus (its Origin feat,
   // Magic Initiate, needs a spell choice), so the real POST would refuse it before
   // any eligibility is judged. These tests exercise the DEFINITION-collision rule
@@ -532,11 +577,48 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
     return catalogueEntry({ title: 'Gnome', slug: 'gnome-xphb' })
   }
 
+  // D&D 2024 Character Rules P3.3 -- the real Wizard facet used above now carries real
+  // spellRequirements, so a Wizard creation request is only VALID once they are satisfied. This
+  // describe owns an unrelated concern (skill-choice eligibility), so a small, fixed, always-legal
+  // spell answer is supplied for every request here -- never the thing any of these tests actually
+  // assert on -- so a rejection in this describe remains attributable to the skill-choice collision
+  // it names, not to an incidentally-unsatisfied spell requirement.
+  function wizardSpellEntries() {
+    const leveled = [...'abcdef'].map((slug) => ({
+      packageId: 'eldra.content.xphb',
+      slug: `wiz-${slug}`,
+      title: `Wizard Spell ${slug.toUpperCase()}`,
+      spellMechanics: { level: 1, concentration: false, ritual: false, resolution: null, classLists: ['Wizard'] }
+    }))
+    const cantrips = [...'xyz'].map((slug) => ({
+      packageId: 'eldra.content.xphb',
+      slug: `wiz-cantrip-${slug}`,
+      title: `Wizard Cantrip ${slug.toUpperCase()}`,
+      spellMechanics: { level: 0, concentration: false, ritual: false, resolution: null, classLists: ['Wizard'] }
+    }))
+    return [...leveled, ...cantrips]
+  }
+
+  function wizardSpellSelections() {
+    const requirements = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')!.spellRequirements!
+    const spellbookId = requirements.find((r) => r.pool === 'spellbook')!.id
+    const spellId = requirements.find((r) => r.pool === 'spell')!.id
+    const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
+    const refs = [...'abcdef'].map((slug) => ({ packageId: 'eldra.content.xphb', slug: `wiz-${slug}` }))
+    const cantripRefs = [...'xyz'].map((slug) => ({ packageId: 'eldra.content.xphb', slug: `wiz-cantrip-${slug}` }))
+    return [
+      ...refs.map((ref) => ({ requirementId: spellbookId, ref })),
+      ...refs.slice(0, 4).map((ref) => ({ requirementId: spellId, ref })),
+      ...cantripRefs.map((ref) => ({ requirementId: cantripId, ref }))
+    ]
+  }
+
   function wizardCatalogue() {
     return fullCatalogue({
       species: [gnomeEntry()],
       classes: [wizardEntry()],
-      backgrounds: [sageEntry()]
+      backgrounds: [sageEntry()],
+      spells: wizardSpellEntries()
     })
   }
 
@@ -585,7 +667,8 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
       species: selectionOf(gnomeEntry()),
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry()),
-      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.nature.proficient'] } }
+      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.nature.proficient'] } },
+      spellSelections: wizardSpellSelections()
     }))
 
     expect(result.rulesChoices.selections[CLASS_SKILL_KEY]).toEqual(['value:skill.insight.proficient', 'value:skill.nature.proficient'])
@@ -601,7 +684,8 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
       species: selectionOf(gnomeEntry()),
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry()),
-      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.investigation.proficient'] } }
+      choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.investigation.proficient'] } },
+      spellSelections: wizardSpellSelections()
     }))
 
     expect(result.rulesChoices.selections[CLASS_SKILL_KEY]).toEqual(['value:skill.insight.proficient', 'value:skill.investigation.proficient'])
@@ -621,7 +705,8 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
       title: 'Aria',
       species: selectionOf(gnomeEntry()),
       class: selectionOf(wizardEntry()),
-      background: selectionOf(sageEntry())
+      background: selectionOf(sageEntry()),
+      spellSelections: wizardSpellSelections()
     }))
 
     expect(result.rulesChoices.selections).toEqual({})

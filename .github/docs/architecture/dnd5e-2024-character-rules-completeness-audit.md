@@ -3987,3 +3987,371 @@ reproduces the exact pre-fix failure, confirmed, then restored).
 
 Not part of this correction: P3.3 (Level-1 creation spell acquisition) remains stopped, as it was
 when this bug was found -- this hotfix does not resume it.
+
+### 25.30 SPELL ACQUISITION PROVENANCE AUDIT (architecture audit only, no implementation, 2026-10-07)
+
+**Discovered resuming P3.3, which remains stopped.** Building the required Wizard Level-1 integration
+test (cantrip + spellbook + prepared all real and satisfied simultaneously), `planSpellAcquisition`
+never reached `complete: true`.
+
+**Root cause**: `evaluate()` (`app/lib/characters/spell-requirements.ts`, shared by P3.1's
+`validateSpellRequirements` and P3.2's `planSpellAcquisition`, unchanged by P3.3) walks EVERY
+candidate carrying a requirement's own flag (`known`/`prepared`), with no way to tell "this candidate
+was acquired for THIS requirement" from "this candidate happens to carry the same broad flag because
+ANOTHER requirement on the same class ALSO reads it." Wizard's `cantrip`, `spellbook`, and (Warlock's)
+`arcanum` all read `known`. A real cantrip gets correctly counted toward `cantrip`, but ALSO gets
+walked against `spellbook` (same flag), fails `spellbook`'s implicit "must be level 1+" floor, and is
+pushed as a spurious `illegal-wrong-level` issue onto `spellbook` -- which makes `spellbook.satisfied`
+false even though its own count (6/6) is exactly right. Symmetrically, real spellbook spells pollute
+`cantrip`'s issues. Verified directly against a correctly-filled real Wizard state. Two heuristic
+fixes were tried (silently drop non-gated wrong-level mismatches; drop only if legal elsewhere) and
+both were REJECTED -- each broke the existing, approved P3.1 test "a wrong-level pick is refused for
+that tier" (test 23), which deliberately wants a wrong-level candidate flagged against the SPECIFIC
+tier it was tested against. No heuristic can distinguish the two cases; they require explicit
+provenance. **Not fixed. No code changed.** This section is an architecture audit of the fix only.
+
+#### Current stored shape, traced
+
+`StoredSpellEntry` (`app/lib/characters/spellcasting.ts`): `{instanceId, ref?: {packageId, slug},
+name?, known: boolean, prepared: boolean}` -- a "ref XOR name" rule, no other fields. Consumers,
+traced directly:
+- **Normalization** (`normalizeStoredSpellcasting`): reads exactly these fields, drops anything else,
+  defaults `known`/`prepared` to `false` if not literally `true`.
+- **Assembly** (`character-assembly.ts`'s `resolveSpells`): spreads the WHOLE stored entry (`{...entry,
+  status, title, ...}`) into `AssembledSpellEntry` -- any new field added to `StoredSpellEntry`
+  reaches the Sheet automatically, no code change needed there.
+- **Cast** (`character-cast.ts`): reads `known`/`prepared`/`ref`/`instanceId`/`spellMechanics` (via the
+  resolved catalogue entry) -- never anything else. Confirmed by tracing every read site.
+- **Recovery** (`character-recovery.ts`): touches only `expendedSlots`, never `spells[]`.
+- **Generic PUT** (`.../spellcasting.put.ts`): a FULL REPLACE -- `normalizeStoredSpellcasting(body)`,
+  whatever the client sends, no catalogue re-verification (deliberately, matching `inventory.put.ts`).
+- **The one real client of that PUT**, `useCharacterMutations.ts`'s `persistSpellcasting` (called by
+  every Sheet-side spell mutation -- add/remove/toggle-flag/expend/restore, all funneled through this
+  ONE function): rebuilds `StoredSpellEntry[]` from the in-memory `AssembledSpellEntry[]` by hand,
+  explicitly listing `{instanceId, ref/name, known, prepared}` -- **any field not in that literal would
+  be silently dropped on the very next Sheet-side spell edit**, because this is a full-replace PUT, not
+  a patch. This is the one finding with real teeth for GENERIC PUT IMPLICATIONS below.
+
+#### Existing acquisition-provenance precedent
+
+`StoredAcquiredFeat` (`app/lib/characters/progression.ts`): `{featRef: ClassRef, choiceKey: string}` --
+a ContentRef paired with the STABLE `progressionChoiceKey(slot, at, choiceSetId)` string that granted
+it, persisted directly in `progression.feats[]`. Exactly the pattern needed: the acquired reference
+and a small, stable provenance tag, co-located, one record, no second store. `rules_choices`'s own
+content-choice answers (P2C.2B) already encode a ContentRef as a plain string
+(`serializeContentRef`) inside the SAME generic `Record<string, DefinitionId[]>` shape Definition
+answers use -- confirming ContentRefs-as-strings is already an established, unremarkable pattern in
+this codebase, not a new idea P3.3 would be inventing.
+
+#### Requirement id stability
+
+Every `SpellRequirement.id` (e.g. `spell-requirement.wizard-xphb.spellbook`) is a literal, hand-authored
+string in `app/lib/content-rules/dnd5e-2024.ts` -- stable across reload (same source, same string every
+read), stable across a Content refresh (the facet source itself, not a database row, is what would have
+to change for the id to change -- the same stability every other hand-authored `DefinitionId` in this
+codebase already has), and unique by construction (namespaced `spell-requirement.<class-slug>.<pool>
+[.tier]` -- two classes can never collide, and this ALREADY satisfies the multiclass future-proofing
+requirement below with zero extra work). **A requirement id is sufficient provenance by itself** --
+no additional class/slot/level context is needed, because the id already encodes "which class, which
+pool, which tier" in its own string.
+
+#### Three models
+
+**Model A -- provenance co-located on the spellcasting row (RECOMMENDED).** Add one optional field:
+`StoredSpellEntry.requirementIds?: readonly string[]` -- every `SpellRequirement.id` this physical row's
+acquisition satisfies. ONE row, multiple memberships (Magic Missile: `['spell-requirement.wizard-xphb
+.spellbook', 'spell-requirement.wizard-xphb.spell']`), no duplicate rows. Canonical acquisition truth
+AND canonical effective truth are the SAME record -- there is nothing to derive, nothing to drift.
+`known`/`prepared` remain independently stored (never derived from `requirementIds`), preserving every
+existing consumer and every legacy row untouched.
+
+**Model B -- separate acquisition-provenance store, `spellcasting.spells[]` as a derived/merged
+projection.** Rejected. This is §25.26/P3A's own Model 2 (`spellProgression`, rejected there for
+"adds a second source of truth... strictly more storage and more consumers to keep honest for no
+capability Model 1 doesn't already give"), re-litigated here for the identical reason: Cast and the
+Sheet would need either a NEW merge step on every read (duplicating `resolveSpells`'s existing
+contract) or direct provenance-store access (violating "Cast should stay ignorant of provenance").
+
+**Model C -- requirement-scoped ContentRefs in `rules_choices`, `spellcasting.spells[]` as the
+write-time-merged effective state.** Architecturally real (reuses the exact `rules_choices` content-
+choice-answer shape P2C.2B already established, keyed by `progressionChoiceKey(slot, at,
+requirement.id)` -- literally P3.2's own proposed answer key), but does NOT by itself fix `evaluate()`:
+the validator builds candidates from the SPELLCASTING block, never from `rules_choices`, so `evaluate()`
+would still need per-candidate provenance from SOMEWHERE -- meaning Model C would have to carry Model
+A's own field anyway to close the actual bug, making it an ADDITIVE acquisition-history layer on top
+of Model A, not a substitute for it. Not chosen for the core fix (not the smallest model that closes
+the bug); worth keeping in mind if a future phase wants an audit trail of "which specific choice
+granted this" distinct from "which pool does this currently satisfy."
+
+#### Recommendation
+
+**Model A.** `StoredSpellEntry.requirementIds?: readonly string[]`, additive, optional, backward
+compatible by construction (absence already means "legal, legacy, evaluated under today's heuristic").
+
+#### Wizard proof (Level 1: 3 cantrips, 6 spellbook, 4 prepared, real requirement ids)
+
+```
+cantrip x3:     requirementIds: ['spell-requirement.wizard-xphb.cantrip']
+spellbook 1-4:  requirementIds: ['spell-requirement.wizard-xphb.spellbook', 'spell-requirement.wizard-xphb.spell']
+spellbook 5-6:  requirementIds: ['spell-requirement.wizard-xphb.spellbook']
+```
+Re-evaluating `cantrip`: only rows tagged for it are even walked -> exactly 3, satisfied, zero
+cross-contamination from the 6 spellbook rows (they are never inspected for `cantrip` at all, not
+merely excluded after inspection). Re-evaluating `spellbook`: only rows tagged for it -> 6, satisfied.
+Re-evaluating `spell` (depends on `spellbook` membership): only rows tagged for `spell` -> the 4
+overlapping rows, each ALSO confirmed already-legal for `spellbook` (membership check, unchanged
+mechanism, now fed a correctly-scoped set) -> satisfied. All three simultaneously true. **Proven.**
+
+#### Warlock proof (Level 20: cantrip, ordinary spell, Arcanum 6/7/8/9)
+
+Each of the 4 Arcanum entries is tagged with its OWN tier id only (`[...arcanum.6]`,
+`[...arcanum.7]`, ...). Evaluating `arcanum.6` walks ONLY rows tagged for `arcanum.6` -- the
+`arcanum.7` row is never a candidate for `arcanum.6`'s evaluation, structurally, not by a level
+comparison. No contamination among tiers, cantrip, or the ordinary pool. **Proven.**
+
+#### Feat collision proof (Magic Initiate)
+
+A future Magic-Initiate-granted Wizard cantrip is tagged with ITS OWN requirement id (e.g.
+`spell-requirement.feat.magic-initiate.<id>`), never the class's `spell-requirement.wizard-xphb
+.cantrip`. Evaluating the CLASS cantrip requirement walks only rows tagged for that exact id -- the
+Magic Initiate cantrip is never inspected, regardless of sharing `level: 0`, `classLists: ['Wizard']`,
+and `known: true`. The collision this task flagged as critical cannot occur under explicit
+provenance, by construction, not by a heuristic that happens to work today.
+
+#### Test 23, revisited
+
+Test 23's own candidate must be explicitly tagged (by whatever constructed it -- the planner's
+tentative-merge step, matching its own submission intent) `requirementIds: [tier6.id]` to be
+evaluated AS a tier6 candidate at all. Tagged that way, `evaluate()` walks it for tier6, finds
+level 7 != 6, and flags `illegal-wrong-level` on tier6 -- test 23's exact existing assertion,
+unchanged. The SAME candidate, if instead submitted for `arcanum.7` (a DIFFERENT tentative
+selection, tagged `[tier7.id]`), is never even walked for tier6 -- resolving the tension this audit
+opened with: explicit provenance makes "submitted for X, wrong for X" (still illegal, as test 23
+wants) and "acquired for Y, incidentally resembles X" (never evaluated against X at all) cleanly
+distinguishable, where level/classList/flag heuristics could not be.
+
+#### Validator fix shape (not implemented)
+
+`SpellStateCandidate` gains `requirementIds?: readonly string[]`. `evaluate()`'s per-candidate loop
+gains ONE additional guard, checked immediately after the existing flag check: `if (candidate
+.requirementIds && !candidate.requirementIds.includes(requirement.id)) continue`. A candidate WITH
+tags participates ONLY in requirements it is explicitly tagged for (no heuristic). A candidate
+WITHOUT tags (every legacy row, every row a GM free-typed through the generic PUT with no provenance
+concept) falls back to EXACTLY today's flag-based evaluation -- the same pre-existing ambiguity,
+never worse, exactly the "legacy ambiguity the validator may report" the backward-compatibility
+posture already permits. `toResult`/`evaluateRequirements`/`planSpellAcquisition` need no change --
+the fix is local to `evaluate()`'s own filter line.
+
+#### Tentative answers already have this
+
+P3.2's `TentativeSpellSelection = {requirementId, ref}` already carries exactly the provenance the
+persisted side lacks -- planning-time candidates are ALREADY correct by construction (each tentative
+names its own intended requirement). The gap is purely on the PERSISTED side: nothing carries that
+same fact across a save/reload today. The fix is to have the WRITE step (already drafted for P3.3,
+`buildAcceptedSpellEntries`) ALSO accumulate `requirementIds` per merged identity, mirroring exactly
+how it already OR-merges `known`/`prepared` -- no new write path, one more accumulated field.
+
+#### Write path implications (not implemented)
+
+- **P3.3 creation**: `buildAcceptedSpellEntries` stamps `requirementIds` per merged row from the
+  accepted tentative answers it already processes.
+- **P3.4 progression**: the same merge function, reused, accumulating `requirementIds` for spells
+  added at a newly-crossed level, consistent with "one plan authority."
+- **A future validated preparation-change workflow**: a well-defined provenance add/remove (drop the
+  `spell`/prepared-pool id from a swapped-out spell's list, or delete the row if it then has no
+  provenance left; add it to a swapped-in spell's list, creating the row if new) -- mechanical,
+  because `requirementIds` is an explicit set, not a derived heuristic. Day-to-day preparation
+  changes remain OPTIONAL flexibility (§25.26/P3A), now simply WELL-DEFINED rather than ambiguous.
+
+#### Generic PUT, revised
+
+The endpoint's AUTHORIZATION posture needs no change (still `world.character.edit_any`, still
+unprotected against arbitrary rewrites, exactly as previously recorded). But there is a concrete,
+previously-unflagged mechanical risk: `useCharacterMutations.ts`'s `persistSpellcasting` -- the ONE
+function every Sheet-side spell mutation already funnels through -- rebuilds `StoredSpellEntry[]` by
+hand, explicitly listing `{instanceId, ref/name, known, prepared}`. Adding `requirementIds` without
+ALSO updating this one function to forward it unchanged would mean the VERY NEXT ordinary Sheet-side
+spell edit after creation (toggling a flag, adding a custom spell, anything) silently DESTROYS every
+tag on the whole character, via the existing full-replace PUT -- not because the route needs
+protecting, but because its one real caller doesn't yet know this field exists. A future
+implementation must update `persistSpellcasting` in the SAME change that adds the field, or ship the
+two atomically. This does not change the recommendation to leave the PUT itself unprotected; it adds
+one concrete must-do to whichever phase implements Model A.
+
+#### Package impact
+
+Application storage schema only. `StoredSpellEntry` gains one optional field in the `spellcasting`
+block's JSON shape (`app/lib/characters/spellcasting.ts` + its normalization in
+`server/utils/character-spellcasting.ts`) -- the exact same kind of change `StoredAcquiredFeat
+.choiceKey` already was for `progression.feats[]`. `SpellRequirement.id` itself is unchanged; this
+only stores a REFERENCE to an id that already exists. Zero Rules Package change, zero Content facet
+change. A future `packages:sync` dry run implementing this would be expected to show Rules CURRENT,
+Content CURRENT, Actions None.
+
+#### Backward compatibility
+
+`normalizeStoredSpellcasting` would gain one additive read (an array of non-empty strings, or
+absent) -- never fails the record. A historical row with no `requirementIds` degrades to exactly
+today's behavior (flag-based evaluation, including today's pre-existing cross-pool ambiguity for any
+historical Wizard who already has both cantrips and spellbook/prepared spells saved) -- the same
+"newly-named, not newly-caused" posture P1/P7/P3A already established elsewhere. No destructive
+migration; a character re-saved through a NEW provenance-aware write path (progression confirm, or a
+future preparation-change workflow) gains tags going forward, never retroactively rewritten.
+
+#### P3.3 worktree, preserved exactly
+
+No application code was touched during this audit. The P3.3-owned files already in progress when this
+audit began remain exactly as they were, uncommitted, unstaged:
+`app/components/characters/builder/characterBuilderSelection.ts`,
+`app/pages/worlds/[id]/characters/create-v2.vue`,
+`server/api/worlds/[id]/characters/create-v2.post.ts`,
+`server/utils/character-spell-acquisition.ts` (new file),
+`tests/components/characters/builder/characterBuilderSelection.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2.post.test.ts`. P3.3 remains paused pending
+direction on this provenance fix; this section is analysis only.
+
+### 25.31 SPELL REQUIREMENT PROVENANCE -- IMPLEMENTED (P3.2.1, 2026-10-07)
+
+**Model A, accepted and implemented.** P3.3 remains paused; nothing in this phase touches the
+paused P3.3-owned files (confirmed: diffed against the exact snapshot taken before this phase
+began, byte-identical throughout).
+
+#### Stored shape
+
+`StoredSpellEntry` (`app/lib/characters/spellcasting.ts`) gains one additive, optional field:
+```ts
+requirementIds?: readonly string[]
+```
+Every package-authored `SpellRequirement.id` this physical row's acquisition satisfies. ONE row,
+multiple memberships (Magic Missile: `known: true, prepared: true, requirementIds:
+['...spellbook', '...spell']`), never two physical rows. `normalizeStoredSpellcasting` reads it
+additively: valid non-empty strings retained verbatim (duplicates and order preserved -- no
+destructive dedup write; `evaluate()` uses set semantics at READ time instead), a non-array or
+all-invalid result folds to the field being ABSENT (never a stray `[]`), and every existing
+envelope/entry validation rule is unchanged.
+
+#### Evaluation
+
+`evaluate()` (`app/lib/characters/spell-requirements.ts`) gains one guard, checked immediately
+after the existing flag check and before any legality check: a candidate with a non-empty
+`requirementIds` participates in a requirement IFF that requirement's id is in the list -- P2/P3.1's
+own legality checks (class list, level, membership, unresolved mechanics) still run in full
+afterward for every candidate that passes this gate; provenance answers "does this candidate even
+apply," never "is it legal." A candidate with an absent OR EMPTY `requirementIds` falls back to
+EXACTLY the pre-P3.2.1 flag-only heuristic -- untouched, including its known cross-pool-collision
+limitation for untagged rows (see below). `toResult`/`evaluateRequirements`/`planSpellAcquisition`
+needed no change; the fix is local to this one guard.
+
+Two new exported pure helpers: `mergeSpellStateCandidate(base, next)` (OR known/prepared, UNION
+requirementIds via a Set, never emits an empty array when neither side has one) and
+`orphanedProvenanceIdentities(requirements, candidates)` (identities whose EVERY tag is unknown to
+the current requirement set -- never silently re-routed to some other requirement; a partial match
+is not orphaned).
+
+#### Wizard proof (real requirement ids, explicitly tagged)
+
+3 cantrips tagged `[cantripId]`, 2 spellbook-only tagged `[spellbookId]`, 4 spellbook+prepared
+tagged `[spellbookId, spellId]` on the SAME rows -- `validateSpellRequirements` returns `complete`
+(`allSpellRequirementsSatisfied`), cantrip owned 3/zero issues, spellbook owned 6/zero issues,
+prepared owned 4/zero issues. Zero cross-pool issues in either direction. Proven both at the
+validator level (`tests/lib/characters/spell-requirements.test.ts`) and end-to-end through the
+PLANNER with TENTATIVE answers (`tests/lib/characters/spell-acquisition-plan.test.ts`'s own new
+P3.2.1 test) -- the exact original bug reproduction, now `complete: true`.
+
+#### Warlock proof (real requirement ids, Level 20)
+
+Real cantrip/ordinary targets plus one candidate per Arcanum tier (6/7/8/9), each tagged ONLY its
+own tier id. All four tiers independently satisfied; zero contamination among tiers, cantrip, or
+the ordinary pool.
+
+#### Test 23
+
+Updated (not replaced) to explicitly tag its candidate `requirementIds: [tier6.id]`, matching how a
+real acquisition would actually arrive -- the exact original assertion (`illegal-wrong-level` on
+tier6 for a level-7 pick) is unchanged. New companion: the identical level-7 spell, tagged ONLY for
+tier7, produces zero issues on tier6 (`[{kind: 'missing', count: 1}]` only) -- it is never even a
+tier6 candidate. The tension this phase's own audit (§25.30) opened with is resolved exactly as
+predicted.
+
+#### Feat collision (Magic Initiate, synthetic id)
+
+A cantrip tagged `['spell-requirement.feat.magic-initiate.synthetic']` against a Wizard CLASS
+`cantrip` requirement: `owned: 0`, `issues: [{kind: 'missing', count: 3}]` -- never counted, never
+even flagged illegal, despite matching on level/classList/flag. Magic Initiate itself remains
+unauthored; this proves only that the mechanism isolates correctly once it is.
+
+#### P3.2 alignment
+
+`planSpellAcquisition`'s tentative-candidate construction now stamps `requirementIds:
+[requirement.id]` (the tentative answer already names its requirement; this only preserves that
+fact onto the synthetic candidate), and its merge step now calls the shared
+`mergeSpellStateCandidate` instead of a hand-rolled known/prepared-only merge. No change to any
+public signature; all 34 pre-existing P3.2 tests re-pass unchanged, plus the one new end-to-end
+proof above.
+
+#### Writers audited, proven, not merely inspected
+
+- **Sheet** (`useCharacterMutations.ts`'s `persistSpellcasting`, the one function every Sheet-side
+  spell edit already funnels through): previously rebuilt `StoredSpellEntry[]` from a fixed field
+  list, which would have silently dropped `requirementIds` on the very next ordinary edit after
+  creation. Fixed by extracting `toStoredSpellEntry` (a pure, directly-testable function, mirroring
+  `characterBuilderSelection.ts`'s own "no DOM test environment" extraction convention) and having
+  `persistSpellcasting` map through it instead of hand-listing fields.
+- **Assembly** (`character-assembly.ts`'s `resolveSpells`): already spreads the stored entry
+  verbatim; a new regression proves `requirementIds` survives, so a future edit cannot silently
+  regress this.
+- **Cast** (`character-cast.ts`): read-modify-write touching only `expendedSlots`
+  (`{...stored, expendedSlots: next}`); a new regression casts through a tagged `spells[]` and
+  proves it is byte-identical in the save call, only `expendedSlots` changed.
+- **Recovery** (`character-recovery.ts`): identical shape, identical new regression.
+- **Generic PUT**: normalization alone (already fixed above) is what it relies on; no route code
+  change. Authorization posture unchanged (still `world.character.edit_any`, still a full replace).
+  Recorded explicitly: this remains technical debt for a future validated day-to-day preparation
+  workflow, NOT the final authoritative mutation API -- unchanged conclusion from §25.27.
+
+#### Backward compatibility
+
+A historical row with no `requirementIds` degrades to exactly the pre-P3.2.1 heuristic -- the same
+"newly-named, not newly-caused" posture already established elsewhere, never worse. No destructive
+migration; no automatic provenance inference written back to storage.
+
+#### Homebrew / multiclass
+
+Requirement ids are opaque, package-authored strings; nothing in `evaluate()`,
+`mergeSpellStateCandidate`, or `orphanedProvenanceIdentities` parses one for a class name or pool
+kind. A homebrew class authoring its own stable ids uses the identical mechanism with zero
+application branching. Ids already encode class identity in their own string
+(`spell-requirement.<class-slug>.<pool>`), so a future multi-class character needs no additional
+ownership field -- confirmed, not newly added.
+
+#### Package impact
+
+Confirmed empirically, not merely expected: `pnpm packages:sync -- --world Solaris` (dry run) --
+Rules `eldra.rules.dnd5e-2024@0.21.0` CURRENT, Content `eldra.solaris.xphb` CURRENT, Actions None.
+Pure application storage-schema and type change; zero Rules/Content impact.
+
+#### Files
+
+- Modified: `app/lib/characters/spellcasting.ts` (field + normalization + `toStoredSpellEntry`),
+  `app/lib/characters/spell-requirements.ts` (field + `evaluate()` guard + two new helpers),
+  `app/lib/characters/spell-acquisition-plan.ts` (tentative tagging + shared merge, narrow
+  adaptation, no public signature change), `app/composables/useCharacterMutations.ts`
+  (`persistSpellcasting` now maps through `toStoredSpellEntry`), and the test files for each of the
+  above plus `tests/server/utils/character-assembly.test.ts`,
+  `tests/server/utils/character-recovery.test.ts`, `tests/server/utils/character-cast.test.ts`.
+- Untouched (confirmed byte-identical against the pre-phase snapshot): every paused P3.3-owned file.
+
+#### Verification
+
+`pnpm run test` (full suite): 195 files, 4109 tests collected; **4087 passed**, 22 failed -- all 22
+confirmed, by diffing against the snapshot taken before this phase began, to be PRE-EXISTING
+failures in two test files (`create-v2-fail-closed.test.ts`,
+`create-v2-fighter-mechanics.test.ts`) that exercise the PAUSED, incomplete P3.3 wiring in
+`create-v2.post.ts` against fixtures that happen to use the real Wizard class (which now has real
+spell requirements) for unrelated mechanics (Phase-0 refusal messages, Origin Feat routing,
+rules_choices persistence) -- the exact check this phase's own snapshot confirms already existed,
+unmodified, before P3.2.1 began. Excluding those two files: **193 files, 4052 tests, zero
+failures** -- zero regressions from this phase's own changes. `pnpm run typecheck`: 243 unique
+(file, diagnostic-code) pairs, identical to the established baseline, zero new, none in any file
+this phase touched. `pnpm run build`: succeeds. `git diff --check`: clean. No commit made. No
+`packages:sync --apply` run.

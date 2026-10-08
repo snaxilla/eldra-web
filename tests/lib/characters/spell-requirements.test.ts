@@ -12,6 +12,8 @@ import { resolveDnd5eSpellMechanics } from '../../../app/lib/spell-mechanics/dnd
 import {
   allSpellRequirementsSatisfied,
   detectRequirementTopologyIssues,
+  mergeSpellStateCandidate,
+  orphanedProvenanceIdentities,
   spellIdentityOf,
   validateSpellRequirements,
   type SpellStateCandidate
@@ -22,12 +24,13 @@ function mechanics(name: string, level: number, classLists?: string[]) {
   return resolveDnd5eSpellMechanics({ name, source: 'XPHB', level, school: 'V', ...(classLists ? { classLists } : {}) })!
 }
 
-function candidate(ref: string, opts: { known?: boolean, prepared?: boolean, mechanics: ReturnType<typeof mechanics> | null }): SpellStateCandidate {
+function candidate(ref: string, opts: { known?: boolean, prepared?: boolean, mechanics: ReturnType<typeof mechanics> | null, requirementIds?: readonly string[] }): SpellStateCandidate {
   return {
     identity: spellIdentityOf({ ref: { packageId: 'eldra.solaris.xphb', slug: ref } }),
     known: opts.known ?? false,
     prepared: opts.prepared ?? false,
-    mechanics: opts.mechanics
+    mechanics: opts.mechanics,
+    ...(opts.requirementIds ? { requirementIds: opts.requirementIds } : {})
   }
 }
 
@@ -268,14 +271,34 @@ describe('P3.1 validator -- Mystic Arcanum (tests 22-24), using the REAL authore
     expect(results.find((r) => r.requirementId === tier6.id)!.satisfied).toBe(true)
   })
 
-  it('23. a wrong-level pick is refused for that tier (a level-7 spell does not satisfy the Level-6 tier)', () => {
+  // P3.2.1 -- updated to tag the candidate explicitly for tier6 (`requirementIds: [tier6.id]`),
+  // matching how a REAL tentative/persisted acquisition would actually arrive (P3.2's own
+  // `{requirementId, ref}` shape, now carried onto the persisted candidate). The exact original
+  // assertion is unchanged: a wrong-level pick EXPLICITLY SUBMITTED FOR tier6 is still refused for
+  // tier6. See the companion test immediately below for the other half of what provenance now
+  // resolves: the SAME spell, tagged for a DIFFERENT tier, is never even a tier6 candidate.
+  it('23. a wrong-level pick explicitly tagged for this tier is refused for that tier (a level-7 spell does not satisfy the Level-6 tier)', () => {
     const results = validateSpellRequirements({
       requirements, characterLevel: 11, spellSlotLevels: [],
-      candidates: [candidate('wrong', { known: true, mechanics: mechanics('Wrong Tier', 7, ['Warlock']) })]
+      candidates: [candidate('wrong', { known: true, mechanics: mechanics('Wrong Tier', 7, ['Warlock']), requirementIds: [tier6.id] })]
     })
     const result = results.find((r) => r.requirementId === tier6.id)!
     expect(result.satisfied).toBe(false)
     expect(result.issues.some((i) => i.kind === 'illegal-wrong-level')).toBe(true)
+  })
+
+  it('23 companion (P3.2.1) -- the SAME level-7 spell, tagged ONLY for tier7, is not even evaluated as a tier6 candidate', () => {
+    const tier7 = requirements.find((r) => r.pool === 'arcanum' && r.filter.level === 7)!
+    const results = validateSpellRequirements({
+      requirements, characterLevel: 13, spellSlotLevels: [],
+      candidates: [candidate('wrong', { known: true, mechanics: mechanics('Wrong Tier', 7, ['Warlock']), requirementIds: [tier7.id] })]
+    })
+    const tier6Result = results.find((r) => r.requirementId === tier6.id)!
+    const tier7Result = results.find((r) => r.requirementId === tier7.id)!
+    // tier6 never sees it at all -- no issue naming it, not even "illegal": it is simply not a
+    // candidate for tier6, exactly as an untagged, unrelated spell would also not be.
+    expect(tier6Result.issues).toEqual([{ kind: 'missing', count: 1 }])
+    expect(tier7Result.satisfied).toBe(true)
   })
 
   it('24. the ordinary Warlock spell pool and the Arcanum tier pool do not consume each other\'s counts', () => {
@@ -351,5 +374,191 @@ describe('P3.2 HARDENING -- requirement dependency topology (unknown / self / cy
   it('the real Wizard dependency (prepared requires spellbook) is well-formed -- zero topology issues', () => {
     const requirements = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')!.spellRequirements!
     expect(detectRequirementTopologyIssues(requirements).size).toBe(0)
+  })
+})
+
+describe('P3.2.1 -- SPELL REQUIREMENT PROVENANCE (the cross-pool collision fix)', () => {
+  const SYN_CANTRIP_A: SpellRequirement = { id: 'req.cantripA', pool: 'cantrip', filter: { classList: ['Wizard'], level: 0 }, totalByLevel: Array(20).fill(1) }
+  const SYN_SPELLBOOK: SpellRequirement = { id: 'req.spellbook', pool: 'spellbook', filter: { classList: ['Wizard'] }, totalByLevel: Array(20).fill(1) }
+
+  it('a candidate tagged for requirement A is evaluated for A even if it would ALSO match B\'s flag', () => {
+    const tagged = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']), requirementIds: [SYN_CANTRIP_A.id] })
+    const results = validateSpellRequirements({ requirements: [SYN_CANTRIP_A], characterLevel: 1, spellSlotLevels: [], candidates: [tagged] })
+    expect(results[0]!.satisfied).toBe(true)
+  })
+
+  it('that SAME tagged candidate does NOT pollute a DIFFERENT requirement sharing the same flag, even though it previously would have', () => {
+    // SYN_SPELLBOOK also reads `known` and requires level >= 1 -- the EXACT shape that produced the
+    // spurious cross-pool issue this phase fixed. A cantrip (level 0), tagged ONLY for
+    // SYN_CANTRIP_A, must never even be walked for SYN_SPELLBOOK.
+    const tagged = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']), requirementIds: [SYN_CANTRIP_A.id] })
+    const results = validateSpellRequirements({ requirements: [SYN_CANTRIP_A, SYN_SPELLBOOK], characterLevel: 1, spellSlotLevels: [], candidates: [tagged] })
+    const spellbookResult = results.find((r) => r.requirementId === SYN_SPELLBOOK.id)!
+    expect(spellbookResult.owned).toBe(0)
+    expect(spellbookResult.issues).toEqual([{ kind: 'missing', count: 1 }]) // no illegal-wrong-level -- never even a candidate
+  })
+
+  it('an UNTAGGED candidate still exhibits the pre-P3.2.1 legacy heuristic (documented, not fixed, for backward compatibility)', () => {
+    // The same scenario as above, but WITHOUT a tag -- proving the legacy fallback is truly
+    // unchanged (including its known limitation) rather than silently also fixed, which would be
+    // an undocumented behavior change for historical rows.
+    const untagged = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']) })
+    const results = validateSpellRequirements({ requirements: [SYN_CANTRIP_A, SYN_SPELLBOOK], characterLevel: 1, spellSlotLevels: [], candidates: [untagged] })
+    const spellbookResult = results.find((r) => r.requirementId === SYN_SPELLBOOK.id)!
+    expect(spellbookResult.issues.some((i) => i.kind === 'illegal-wrong-level')).toBe(true)
+  })
+
+  it('an empty requirementIds array behaves identically to absent -- never "tagged with nothing, invisible everywhere"', () => {
+    const emptyTagged = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']), requirementIds: [] })
+    const results = validateSpellRequirements({ requirements: [SYN_CANTRIP_A], characterLevel: 1, spellSlotLevels: [], candidates: [emptyTagged] })
+    expect(results[0]!.satisfied).toBe(true)
+  })
+
+  it('duplicate requirementIds on one candidate never double-count', () => {
+    const tagged = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']), requirementIds: [SYN_CANTRIP_A.id, SYN_CANTRIP_A.id, SYN_CANTRIP_A.id] })
+    const results = validateSpellRequirements({ requirements: [SYN_CANTRIP_A], characterLevel: 1, spellSlotLevels: [], candidates: [tagged] })
+    expect(results[0]!.owned).toBe(1)
+    expect(results[0]!.satisfied).toBe(true)
+  })
+
+  describe('orphanedProvenanceIdentities', () => {
+    it('reports a candidate whose EVERY tag is unknown to the current requirement set', () => {
+      const orphan = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']), requirementIds: ['req.stale-from-a-prior-package-version'] })
+      const identities = orphanedProvenanceIdentities([SYN_CANTRIP_A], [orphan])
+      expect(identities).toEqual([spellIdentityOf({ ref: { packageId: 'eldra.solaris.xphb', slug: 'a' } })])
+    })
+
+    it('does NOT report a candidate with at least one known tag, even alongside an unknown one', () => {
+      const mixed = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']), requirementIds: ['req.stale', SYN_CANTRIP_A.id] })
+      expect(orphanedProvenanceIdentities([SYN_CANTRIP_A], [mixed])).toEqual([])
+    })
+
+    it('does NOT report an untagged (legacy) candidate', () => {
+      const legacy = candidate('a', { known: true, mechanics: mechanics('A', 0, ['Wizard']) })
+      expect(orphanedProvenanceIdentities([SYN_CANTRIP_A], [legacy])).toEqual([])
+    })
+  })
+
+  describe('mergeSpellStateCandidate', () => {
+    it('unions requirementIds and ORs known/prepared, never producing a duplicate physical row', () => {
+      const a = candidate('magic-missile', { known: true, mechanics: mechanics('Magic Missile', 1, ['Wizard']), requirementIds: ['req.spellbook'] })
+      const b = candidate('magic-missile', { prepared: true, mechanics: mechanics('Magic Missile', 1, ['Wizard']), requirementIds: ['req.spell'] })
+      const merged = mergeSpellStateCandidate(a, b)
+      expect(merged.known).toBe(true)
+      expect(merged.prepared).toBe(true)
+      expect(merged.requirementIds).toEqual(expect.arrayContaining(['req.spellbook', 'req.spell']))
+      expect(merged.requirementIds).toHaveLength(2)
+    })
+
+    it('never produces an empty requirementIds array when neither side has one', () => {
+      const a = candidate('a', { known: true, mechanics: mechanics('A', 1, ['Wizard']) })
+      const b = candidate('a', { prepared: true, mechanics: mechanics('A', 1, ['Wizard']) })
+      expect(mergeSpellStateCandidate(a, b).requirementIds).toBeUndefined()
+    })
+
+    it('with no base, returns a copy of next (first insert)', () => {
+      const next = candidate('a', { known: true, mechanics: mechanics('A', 1, ['Wizard']), requirementIds: ['req.x'] })
+      const merged = mergeSpellStateCandidate(undefined, next)
+      expect(merged).toEqual(next)
+      expect(merged).not.toBe(next) // a copy, not the same reference
+    })
+  })
+
+  describe('REAL Wizard, full Level-1 state, explicitly tagged (3 cantrips + 6 spellbook + 4 prepared)', () => {
+    const requirements = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')!.spellRequirements!
+    const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
+    const spellbookId = requirements.find((r) => r.pool === 'spellbook')!.id
+    const spellId = requirements.find((r) => r.pool === 'spell')!.id
+    const SLOTS_L1: SpellSlotLevel[] = [{ level: 1, max: 2, expended: 0 }]
+
+    function wizardSpell(name: string, level: number) {
+      return mechanics(name, level, ['Wizard'])
+    }
+
+    it('reaches complete, each pool exact, zero cross-contamination -- no heuristic filtering needed', () => {
+      const cantrips = ['c1', 'c2', 'c3'].map((s) => candidate(s, { known: true, mechanics: wizardSpell(s, 0), requirementIds: [cantripId] }))
+      const spellbookOnly = ['s5', 's6'].map((s) => candidate(s, { known: true, mechanics: wizardSpell(s, 1), requirementIds: [spellbookId] }))
+      const spellbookAndPrepared = ['s1', 's2', 's3', 's4'].map((s) => candidate(s, {
+        known: true, prepared: true, mechanics: wizardSpell(s, 1), requirementIds: [spellbookId, spellId]
+      }))
+
+      const results = validateSpellRequirements({
+        requirements, characterLevel: 1, spellSlotLevels: SLOTS_L1,
+        candidates: [...cantrips, ...spellbookOnly, ...spellbookAndPrepared]
+      })
+
+      expect(allSpellRequirementsSatisfied(results)).toBe(true)
+
+      const cantripResult = results.find((r) => r.requirementId === cantripId)!
+      expect(cantripResult.owned).toBe(3)
+      expect(cantripResult.issues).toEqual([])
+
+      const spellbookResult = results.find((r) => r.requirementId === spellbookId)!
+      expect(spellbookResult.owned).toBe(6)
+      expect(spellbookResult.issues).toEqual([])
+
+      const preparedResult = results.find((r) => r.requirementId === spellId)!
+      expect(preparedResult.owned).toBe(4)
+      expect(preparedResult.issues).toEqual([])
+    })
+  })
+
+  describe('REAL Warlock, Level 20, every shared-`known` pool simultaneously (cantrip, ordinary, 4 Arcanum tiers)', () => {
+    const requirements = findRulesFacet('dnd5e.2024', 'class', 'warlock-xphb')!.spellRequirements!
+    const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
+    const spellId = requirements.find((r) => r.pool === 'spell')!.id
+    const tier6 = requirements.find((r) => r.pool === 'arcanum' && r.filter.level === 6)!
+    const tier7 = requirements.find((r) => r.pool === 'arcanum' && r.filter.level === 7)!
+    const tier8 = requirements.find((r) => r.pool === 'arcanum' && r.filter.level === 8)!
+    const tier9 = requirements.find((r) => r.pool === 'arcanum' && r.filter.level === 9)!
+
+    function warlockSpell(name: string, level: number) {
+      return mechanics(name, level, ['Warlock'])
+    }
+
+    it('every pool evaluates independently at real Level-20 target counts, no tier contaminating cantrip/ordinary/another tier', () => {
+      const cantripTarget = requirements.find((r) => r.pool === 'cantrip')!.totalByLevel[19]!
+      const spellTarget = requirements.find((r) => r.pool === 'spell')!.totalByLevel[19]!
+
+      const cantrips = Array.from({ length: cantripTarget }, (_, i) => candidate(`cantrip-${i}`, {
+        known: true, mechanics: warlockSpell(`Cantrip ${i}`, 0), requirementIds: [cantripId]
+      }))
+      const ordinary = Array.from({ length: spellTarget }, (_, i) => candidate(`ordinary-${i}`, {
+        prepared: true, mechanics: warlockSpell(`Ordinary ${i}`, 1), requirementIds: [spellId]
+      }))
+      const arcanum6 = candidate('arcanum-6', { known: true, mechanics: warlockSpell('Arcanum Six', 6), requirementIds: [tier6.id] })
+      const arcanum7 = candidate('arcanum-7', { known: true, mechanics: warlockSpell('Arcanum Seven', 7), requirementIds: [tier7.id] })
+      const arcanum8 = candidate('arcanum-8', { known: true, mechanics: warlockSpell('Arcanum Eight', 8), requirementIds: [tier8.id] })
+      const arcanum9 = candidate('arcanum-9', { known: true, mechanics: warlockSpell('Arcanum Nine', 9), requirementIds: [tier9.id] })
+
+      const results = validateSpellRequirements({
+        requirements, characterLevel: 20, spellSlotLevels: [{ level: 5, max: 3, expended: 0 }],
+        candidates: [...cantrips, ...ordinary, arcanum6, arcanum7, arcanum8, arcanum9]
+      })
+
+      expect(allSpellRequirementsSatisfied(results)).toBe(true)
+      for (const tier of [tier6, tier7, tier8, tier9]) {
+        const result = results.find((r) => r.requirementId === tier.id)!
+        expect(result.owned).toBe(1)
+        expect(result.issues).toEqual([])
+      }
+      expect(results.find((r) => r.requirementId === cantripId)!.owned).toBe(cantripTarget)
+      expect(results.find((r) => r.requirementId === spellId)!.owned).toBe(spellTarget)
+    })
+  })
+
+  describe('Magic Initiate collision isolation (synthetic feat requirement id -- Magic Initiate authoring is not implemented yet)', () => {
+    it('a feat-granted Wizard-list cantrip, tagged with a feat requirement id, does NOT count toward the Wizard CLASS cantrip requirement', () => {
+      const classCantrip: SpellRequirement = { id: 'spell-requirement.wizard-xphb.cantrip', pool: 'cantrip', filter: { classList: ['Wizard'], level: 0 }, totalByLevel: Array(20).fill(3) }
+      const featCantrip = candidate('magic-initiate-cantrip', {
+        known: true,
+        mechanics: mechanics('Magic Initiate Cantrip', 0, ['Wizard']), // level 0, classLists includes Wizard, known: true -- every heuristic signal matches
+        requirementIds: ['spell-requirement.feat.magic-initiate.synthetic'] // but tagged for a DIFFERENT (feat) requirement entirely
+      })
+
+      const [result] = validateSpellRequirements({ requirements: [classCantrip], characterLevel: 1, spellSlotLevels: [], candidates: [featCantrip] })
+      expect(result.owned).toBe(0)
+      expect(result.issues).toEqual([{ kind: 'missing', count: 3 }]) // never counted, never even flagged illegal -- simply not a candidate
+    })
   })
 })

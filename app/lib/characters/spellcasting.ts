@@ -63,6 +63,34 @@ export type StoredSpellEntry = {
   name?: string
   known: boolean
   prepared: boolean
+  // D&D 2024 Character Rules P3.2.1 -- SPELL REQUIREMENT PROVENANCE. Every package-authored
+  // `SpellRequirement.id` (app/lib/content-rules/types.ts) this physical row's acquisition
+  // satisfies. ONE row may name several (Magic Missile can be BOTH a Wizard spellbook member AND a
+  // Wizard prepared spell at once -- `known: true, prepared: true, requirementIds: [spellbookId,
+  // spellId]`), never two physical rows for the same spell identity.
+  //
+  // AUTHORITATIVE WHEN PRESENT (a non-empty array): `app/lib/characters/spell-requirements.ts`'s
+  // `evaluate()` considers a tagged row a candidate ONLY for a requirement whose id appears here --
+  // never inferred from level, classList, or another requirement's own legality. This is what stops
+  // a real cantrip (which also carries `known: true`) from being swept into a Wizard spellbook
+  // requirement's evaluation merely because both pools happen to read the same flag, and what stops
+  // a future Magic-Initiate-granted cantrip (tagged with its OWN feat-requirement id) from ever
+  // satisfying the Wizard CLASS cantrip requirement merely because it matches on level/classList/flag
+  // too. Requirement ids are opaque, package-authored strings -- nothing here, or in `evaluate()`,
+  // ever parses one for a class name or pool kind; a homebrew class authors its own ids and the exact
+  // same mechanism applies with zero branching.
+  //
+  // ABSENT OR EMPTY means LEGACY: every row persisted before this phase, and any row a GM free-types
+  // through the generic `spellcasting` PUT without this concept in mind, falls back to the PRE-P3.2.1
+  // flag/level heuristic (`evaluate()`'s own documented fallback) -- the same pre-existing, honestly
+  // imperfect behavior, never worse, never silently migrated. An empty array is deliberately treated
+  // identically to absent (never a "tagged with nothing, invisible everywhere" state).
+  //
+  // An id naming a requirement NOT in the character's CURRENT requirement set (a stale tag from a
+  // prior package version, or a class no longer selected) does not make the row relevant to some
+  // OTHER requirement by accident -- `evaluate()`'s containment check is exact-match only. See
+  // `orphanedProvenanceIdentities` for surfacing a row whose every tag is now unknown.
+  requirementIds?: readonly string[]
 }
 
 export type StoredCharacterSpellcasting = {
@@ -137,6 +165,18 @@ function normalizeExpendedSlots(value: unknown): Record<string, number> {
   return result
 }
 
+// D&D 2024 Character Rules P3.2.1 -- shape-only. Keeps every valid, non-empty string id, in
+// submitted order, duplicates and all: `evaluate()` reads this with `.includes`, which does not
+// care about repeats, and `legal.add(identity)` is already a Set -- a destructive dedup WRITE here
+// would answer a question (semantic "is this requirement id meaningful") this function has no
+// business asking (it only knows "is this a non-empty string"). Returns `[]`, never a malformed
+// envelope, for anything that is not an array at all -- the caller folds an empty result into
+// "field absent" (see its own call site).
+function readRequirementIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
 // Re-validated on read, never trusted -- the same posture
 // normalizeStoredInventory takes. A malformed ENTRY is dropped rather than
 // failing the whole record (a character's whole spell list should not
@@ -169,7 +209,11 @@ export function normalizeStoredSpellcasting(value: unknown): StoredCharacterSpel
       instanceId,
       ...(ref ? { ref } : { name }),
       known: record.known === true,
-      prepared: record.prepared === true
+      prepared: record.prepared === true,
+      ...(() => {
+        const ids = readRequirementIds(record.requirementIds)
+        return ids.length ? { requirementIds: ids } : {}
+      })()
     })
   }
 
@@ -212,6 +256,26 @@ export type AssembledSpellEntry = StoredSpellEntry & {
 
 export function unresolvedSpellLabel(ref: SpellRef): string {
   return `${ref.slug} (unavailable)`
+}
+
+// D&D 2024 Character Rules P3.2.1 -- the inverse of assembly's own spread (`resolveSpells`'s
+// `{...entry, status, title, ...}`), kept here as a pure, directly-testable function for the SAME
+// reason `characterBuilderSelection.ts`'s own header gives for extracting Builder logic: this repo
+// has no DOM test environment, so "does an ordinary Sheet-side spell edit preserve requirementIds"
+// needs to be provable without mounting a composable. `useCharacterMutations.ts`'s
+// `persistSpellcasting` -- the ONE function every Sheet-side spell mutation already funnels through,
+// and which rebuilds the full `spells[]` array before every PUT (a full replace, never a patch) --
+// calls this per entry instead of hand-listing fields, so a future field added to `StoredSpellEntry`
+// only has to be taught to THIS function once, not re-discovered the next time something silently
+// stops round-tripping through an ordinary edit.
+export function toStoredSpellEntry(entry: AssembledSpellEntry): StoredSpellEntry {
+  return {
+    instanceId: entry.instanceId,
+    ...(entry.ref ? { ref: entry.ref } : { name: entry.name }),
+    known: entry.known,
+    prepared: entry.prepared,
+    ...(entry.requirementIds?.length ? { requirementIds: entry.requirementIds } : {})
+  }
 }
 
 // ---------------------------------------------------------------------------

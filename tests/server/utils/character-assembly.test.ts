@@ -780,6 +780,26 @@ describe('assembleCharacter -- spellcasting', () => {
     expect(spell?.entry?.sourceBook).toBe('XPHB')
   })
 
+  // D&D 2024 Character Rules P3.2.1 -- `resolveSpells` spreads the stored entry verbatim
+  // (`{...entry, status, title, ...}`); this proves `requirementIds` is not an exception to that,
+  // so a future edit to assembly cannot silently start dropping it.
+  it('P3.2.1: preserves requirementIds through assembly, verbatim', async () => {
+    withSpellcasting({
+      spells: [{
+        instanceId: 'spell-1',
+        ref: { packageId: FIREBALL.packageId, slug: 'fireball' },
+        known: true,
+        prepared: true,
+        requirementIds: ['spell-requirement.wizard-xphb.spellbook', 'spell-requirement.wizard-xphb.spell']
+      }]
+    })
+
+    const result = await assembleCharacter('5', '42')
+    const spell = result.available ? result.blueprint.spells[0] : null
+
+    expect(spell?.requirementIds).toEqual(['spell-requirement.wizard-xphb.spellbook', 'spell-requirement.wizard-xphb.spell'])
+  })
+
   it('reports a spell reference that no longer resolves instead of dropping it', async () => {
     withSpellcasting({
       spells: [{ instanceId: 'spell-1', ref: { packageId: FIREBALL.packageId, slug: 'gone' }, known: true, prepared: false }]

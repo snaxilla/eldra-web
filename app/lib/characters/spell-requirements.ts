@@ -72,6 +72,34 @@
 // `evaluateRequirements` internally; every P3.1 test still exercises the identical code path and
 // output). There is exactly one interpretation of count/pool/membership/filtering/legality in this
 // codebase; P3.2 never re-implements any part of it.
+//
+// ---------------------------------------------------------------------------
+// P3.2.1 -- SPELL REQUIREMENT PROVENANCE (the cross-pool collision fix)
+// ---------------------------------------------------------------------------
+// Discovered resuming P3.3: Wizard's `cantrip` and `spellbook` pools (and Warlock's `cantrip` and
+// `arcanum` tiers) all read the SAME flag (`known`). Before this phase, `evaluate()` walked EVERY
+// candidate carrying a requirement's flag, with no way to tell "acquired for this requirement" from
+// "happens to carry the same broad flag because another requirement on the same class also reads
+// it" -- a real cantrip got correctly counted toward `cantrip` but ALSO got walked against
+// `spellbook`, failed its implicit "level 1+" floor, and polluted `spellbook` with a spurious
+// `illegal-wrong-level` issue even though `spellbook`'s own count was exactly right. Two heuristics
+// (silently drop a non-gated wrong-level mismatch; drop it only if the candidate is legal somewhere
+// else) were tried and rejected -- both broke the already-approved "wrong-level pick is refused for
+// that tier" test, which deliberately wants a wrong-level candidate flagged against the SPECIFIC
+// tier it was tested against. No heuristic can distinguish the two cases; only explicit provenance
+// can (see `SpellStateCandidate.requirementIds`'s own header and
+// `.github/docs/architecture/dnd5e-2024-character-rules-completeness-audit.md` §25.30/§25.31 for the
+// full audit and the accepted model).
+//
+// THE FIX, exactly: `evaluate()` gains ONE additional guard, checked immediately after the existing
+// flag check, before any legality check runs. A TAGGED candidate (non-empty `requirementIds`)
+// participates in a requirement IFF that requirement's id is IN the tag list -- never inferred from
+// level, classList, or another requirement's own legality, and P2/P3.1's own legality checks
+// (class list, level, membership) still run in full afterward; provenance answers "does this
+// candidate even belong to this requirement," never "is it legal for it." An UNTAGGED candidate
+// (absent or empty `requirementIds` -- every row persisted before this phase, and any row a GM
+// free-types through the generic PUT with no provenance concept) falls back to EXACTLY the
+// pre-P3.2.1 flag-based heuristic, preserving every existing legacy-read guarantee unchanged.
 
 import type { CanonicalSpellMechanics } from '../spell-mechanics/types'
 import { spellOptionVerdict } from '../spell-mechanics/spell-option-eligibility'
@@ -89,6 +117,11 @@ export type SpellStateCandidate = {
   // null means the ContentRef did not resolve to a real catalogue spell, or resolved but has no
   // mechanics (a custom/homebrew entry, or content compiled before P2's classLists enrichment).
   mechanics: CanonicalSpellMechanics | null
+  // P3.2.1 -- mirrors `StoredSpellEntry.requirementIds` (app/lib/characters/spellcasting.ts) exactly;
+  // read this file's own P3.2.1 header above for the full semantics. A non-empty array is
+  // AUTHORITATIVE (the candidate is a candidate ONLY for requirements named here); absent or empty
+  // falls back to the legacy flag heuristic, identically.
+  requirementIds?: readonly string[]
 }
 
 // A stable identity for a `StoredSpellEntry`-shaped value, usable both by a real caller (building
@@ -98,6 +131,52 @@ export type SpellStateCandidate = {
 export function spellIdentityOf(entry: { ref?: { packageId: string, slug: string }, name?: string }): string {
   if (entry.ref) return `ref:${entry.ref.packageId}::${entry.ref.slug}`
   return `name:${(entry.name ?? '').trim().toLowerCase()}`
+}
+
+// P3.2.1 -- combines two PARTIAL observations of the SAME spell identity (e.g. a persisted
+// spellbook row and a tentative prepared-pool answer for the identical spell) into ONE physical
+// candidate, never two. `known`/`prepared` OR; `mechanics` prefers whichever side actually resolved
+// one; `requirementIds` UNIONS (via a Set, so a tag named by both sides is never duplicated) --
+// never produces an EMPTY array merely because neither side tagged anything (that would wrongly
+// flip an untagged candidate into "tagged with nothing, invisible everywhere"; see this file's own
+// P3.2.1 header). Exported so `app/lib/characters/spell-acquisition-plan.ts`'s own tentative-merge
+// step, and any future write-time merge (P3.3/P3.4's eventual persisted-answer builder), share the
+// IDENTICAL merge rule rather than two independently-drifting copies of it.
+export function mergeSpellStateCandidate(
+  base: SpellStateCandidate | undefined,
+  next: SpellStateCandidate
+): SpellStateCandidate {
+  if (!base) return { ...next }
+
+  const merged: SpellStateCandidate = {
+    identity: base.identity,
+    known: base.known || next.known,
+    prepared: base.prepared || next.prepared,
+    mechanics: base.mechanics ?? next.mechanics
+  }
+
+  const ids = [...(base.requirementIds ?? []), ...(next.requirementIds ?? [])]
+  if (ids.length) merged.requirementIds = [...new Set(ids)]
+
+  return merged
+}
+
+// P3.2.1 -- the smallest honest diagnostic for a tagged row whose EVERY tag names a requirement not
+// in the CURRENT requirement set (a stale tag from a prior package version, or a class no longer
+// selected) -- never silently re-routed to some OTHER requirement it does not name (the exact-match
+// containment check in `evaluate()` already guarantees that); this only tells a caller WHICH rows
+// are now provably invisible to every requirement at once, so completeness/UI code can surface it
+// rather than the row simply vanishing with no explanation. A row with SOME known tags and some
+// unknown ones is not orphaned -- it is fully evaluated under its valid tag(s); only total mismatch
+// is reported here. An untagged (legacy) candidate is never orphaned -- it has the legacy fallback.
+export function orphanedProvenanceIdentities(
+  requirements: readonly SpellRequirement[],
+  candidates: readonly SpellStateCandidate[]
+): string[] {
+  const knownIds = new Set(requirements.map((requirement) => requirement.id))
+  return candidates
+    .filter((candidate) => candidate.requirementIds?.length && !candidate.requirementIds.some((id) => knownIds.has(id)))
+    .map((candidate) => candidate.identity)
 }
 
 export type SpellRequirementIssue =
@@ -176,6 +255,13 @@ export function evaluate(
 
   for (const candidate of candidates) {
     if (!candidate[flag]) continue
+
+    // P3.2.1 -- PROVENANCE IS AUTHORITATIVE WHEN PRESENT. A tagged candidate is a candidate for
+    // THIS requirement only if this requirement's id is one of its tags; untagged (legacy) falls
+    // through to the flag-only heuristic below, unchanged. This is checked BEFORE any legality
+    // check runs: provenance decides "does this even apply," P2/P3.1's own checks still decide
+    // "is it legal" afterward, for every candidate that reaches them.
+    if (candidate.requirementIds?.length && !candidate.requirementIds.includes(requirement.id)) continue
 
     if (!candidate.mechanics) {
       issues.push({ kind: 'illegal-unresolved', identity: candidate.identity })

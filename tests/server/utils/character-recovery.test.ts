@@ -490,6 +490,20 @@ describe('applyRecoveryAction -- long-rest', () => {
     await applyRecoveryAction('5', '42', { type: 'long-rest' }, 'account-1')
     expect(saveSpellcastingMock).toHaveBeenCalledWith('42', expect.objectContaining({ expendedSlots: {} }))
   })
+
+  // D&D 2024 Character Rules P3.2.1 -- Recovery is a read-modify-write that touches ONLY
+  // `expendedSlots` (`{...currentSpellcasting, expendedSlots: resetAllSlots()}`); this proves the
+  // `spells[]` array -- requirementIds included -- survives byte-for-byte, not merely by code
+  // inspection.
+  it('preserves spells[] (requirementIds included) byte-for-byte -- only expendedSlots changes', async () => {
+    loadHealthMock.mockResolvedValue({ currentHp: 5, temporaryHp: 0, hitDiceSpent: 0, deathSaves: { successes: 0, failures: 0 } })
+    const taggedSpells = [{ instanceId: 'spell-1', ref: { packageId: 'eldra.solaris.xphb', slug: 'fireball' }, known: true, prepared: true, requirementIds: ['spell-requirement.wizard-xphb.spell'] }]
+    loadSpellcastingMock.mockResolvedValue({ spells: taggedSpells, expendedSlots: { 1: 2 } })
+
+    await applyRecoveryAction('5', '42', { type: 'long-rest' }, 'account-1')
+
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: taggedSpells, expendedSlots: {} })
+  })
 })
 
 describe('applyRecoveryAction -- spell slot recovery hooks (Short Rest, Pact Magic only)', () => {

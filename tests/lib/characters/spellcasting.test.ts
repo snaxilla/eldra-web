@@ -20,6 +20,7 @@ import {
   resetAllSlots,
   restoreSlot,
   toggleSpellFlag,
+  toStoredSpellEntry,
   unresolvedSpellLabel,
   type StoredSpellEntry
 } from '../../../app/lib/characters/spellcasting'
@@ -104,6 +105,64 @@ describe('normalizeStoredSpellcasting', () => {
   it('defaults to {} when expendedSlots is absent or malformed', () => {
     expect(normalizeStoredSpellcasting({ spells: [] })?.expendedSlots).toEqual({})
     expect(normalizeStoredSpellcasting({ spells: [], expendedSlots: 'nope' })?.expendedSlots).toEqual({})
+  })
+
+  // D&D 2024 Character Rules P3.2.1 -- SPELL REQUIREMENT PROVENANCE normalization.
+  describe('requirementIds', () => {
+    it('round-trips a valid, non-empty array unchanged', () => {
+      const result = normalizeStoredSpellcasting({
+        spells: [{ ...spell(), requirementIds: ['spell-requirement.wizard-xphb.spellbook', 'spell-requirement.wizard-xphb.spell'] }]
+      })
+      expect(result?.spells[0]!.requirementIds).toEqual(['spell-requirement.wizard-xphb.spellbook', 'spell-requirement.wizard-xphb.spell'])
+    })
+
+    it('leaves the field absent when the entry never had it (legacy row)', () => {
+      const result = normalizeStoredSpellcasting({ spells: [spell()] })
+      expect(result?.spells[0]).not.toHaveProperty('requirementIds')
+    })
+
+    it('drops non-string / empty-string entries, keeping the valid ones', () => {
+      const result = normalizeStoredSpellcasting({
+        spells: [{ ...spell(), requirementIds: ['spell-requirement.wizard-xphb.spellbook', 42, '', '   ', null, 'spell-requirement.wizard-xphb.spell'] }]
+      })
+      expect(result?.spells[0]!.requirementIds).toEqual(['spell-requirement.wizard-xphb.spellbook', 'spell-requirement.wizard-xphb.spell'])
+    })
+
+    it('omits the field entirely (never an empty array) when nothing valid survives', () => {
+      const result = normalizeStoredSpellcasting({ spells: [{ ...spell(), requirementIds: [42, '', null] }] })
+      expect(result?.spells[0]).not.toHaveProperty('requirementIds')
+    })
+
+    it('treats a non-array requirementIds as absent, degrading the field rather than the entry', () => {
+      const result = normalizeStoredSpellcasting({ spells: [{ ...spell(), requirementIds: 'not-an-array' }] })
+      expect(result?.spells).toHaveLength(1)
+      expect(result?.spells[0]).not.toHaveProperty('requirementIds')
+    })
+
+    it('preserves duplicate ids verbatim -- no destructive dedup write (evaluation uses set semantics, not storage)', () => {
+      const result = normalizeStoredSpellcasting({
+        spells: [{ ...spell(), requirementIds: ['spell-requirement.wizard-xphb.cantrip', 'spell-requirement.wizard-xphb.cantrip'] }]
+      })
+      expect(result?.spells[0]!.requirementIds).toEqual(['spell-requirement.wizard-xphb.cantrip', 'spell-requirement.wizard-xphb.cantrip'])
+    })
+  })
+})
+
+describe('toStoredSpellEntry', () => {
+  it('carries requirementIds through when present', () => {
+    const assembled = { instanceId: 'spell-1', ref: REF, known: true, prepared: true, requirementIds: ['req.a', 'req.b'], status: 'resolved' as const, title: 'Fireball' }
+    expect(toStoredSpellEntry(assembled)).toEqual({ instanceId: 'spell-1', ref: REF, known: true, prepared: true, requirementIds: ['req.a', 'req.b'] })
+  })
+
+  it('omits requirementIds when absent -- never forces an empty array onto a legacy/untagged entry', () => {
+    const assembled = { instanceId: 'spell-1', ref: REF, known: true, prepared: false, status: 'resolved' as const, title: 'Fireball' }
+    const result = toStoredSpellEntry(assembled)
+    expect(result).not.toHaveProperty('requirementIds')
+  })
+
+  it('carries a custom (named) spell through exactly as addSpell/toggleSpellFlag already shape it', () => {
+    const assembled = { instanceId: 'spell-1', name: 'Bramblewood Ward', known: true, prepared: false, status: 'custom' as const, title: 'Bramblewood Ward' }
+    expect(toStoredSpellEntry(assembled)).toEqual({ instanceId: 'spell-1', name: 'Bramblewood Ward', known: true, prepared: false })
   })
 })
 

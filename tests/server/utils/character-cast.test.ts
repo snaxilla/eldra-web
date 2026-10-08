@@ -282,6 +282,19 @@ describe('castSpellAutomaticDamage -- Magic Missile (leveled, required acceptanc
     expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: [], expendedSlots: { '1': 1 } })
   })
 
+  // D&D 2024 Character Rules P3.2.1 -- Cast's slot expenditure is a read-modify-write touching
+  // ONLY `expendedSlots` (`{...stored, expendedSlots: nextExpendedSlots}`); this proves tagged
+  // `spells[]` rows survive byte-for-byte through a real Cast, not merely by code inspection.
+  it('preserves requirementIds-tagged spells[] byte-for-byte through a real Cast -- only expendedSlots changes', async () => {
+    const taggedSpells = [{ instanceId: 'spell-1', ref: { packageId: 'eldra.solaris.xphb', slug: 'fireball' }, known: true, prepared: true, requirementIds: ['spell-requirement.wizard-xphb.spellbook'] }]
+    loadSpellcastingMock.mockResolvedValue({ spells: taggedSpells, expendedSlots: {} })
+
+    const result = await castSpellAutomaticDamage({ ...CAST_INPUT, actionId: 'spell:spell-2' })
+
+    expect(result.ok).toBe(true)
+    expect(saveSpellcastingMock).toHaveBeenCalledWith('42', { spells: taggedSpells, expendedSlots: { '1': 1 } })
+  })
+
   it('broadcasts the roll only AFTER the slot mutation has succeeded', async () => {
     const callOrder: string[] = []
     saveSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => {

@@ -41,12 +41,20 @@
 // spell tentatively answering a 'spellbook' requirement gets `known: true, prepared: false`; the
 // SAME spell tentatively ALSO answering the 'spell' (prepared) requirement, submitted as a SECOND,
 // separate tentative selection naming the other requirement, gets its own row with `prepared: true`.
-// Persisted candidates and every tentative row are then merged BY IDENTITY (OR-ing `known`/
-// `prepared`, preferring whichever row has resolved `mechanics`) into one `SpellStateCandidate` per
-// identity -- exactly the shape a real save into `spellcasting.spells[]` would eventually produce.
-// This is what lets Wizard's two-tier dependency resolve WITHIN ONE PLANNING CALL: a tentative
-// spellbook addition becomes part of the EFFECTIVE spellbook the very same call's prepared-pool
-// evaluation reads as its membership gate -- no save, reload, then prepare round trip.
+// P3.2.1 -- it ALSO carries `requirementIds: [requirement.id]`: a tentative answer already names
+// exactly which requirement it is for, so stamping that onto the synthetic candidate is not new
+// information, only PRESERVING information P3.2 already had but previously discarded. This is what
+// fixes the cross-pool collision this phase's own audit found (§25.30/§25.31): without the tag, a
+// tentative cantrip pick and a tentative spellbook pick for the SAME class would each ALSO get
+// walked against the OTHER's requirement (both read `known`), producing spurious issues even during
+// PLANNING, not merely on a persisted re-read.
+// Persisted candidates and every tentative row are then merged BY IDENTITY
+// (`mergeSpellStateCandidate` -- OR-ing `known`/`prepared`, preferring whichever row has resolved
+// `mechanics`, UNIONING `requirementIds`) into one `SpellStateCandidate` per identity -- exactly the
+// shape a real save into `spellcasting.spells[]` would eventually produce. This is what lets
+// Wizard's two-tier dependency resolve WITHIN ONE PLANNING CALL: a tentative spellbook addition
+// becomes part of the EFFECTIVE spellbook the very same call's prepared-pool evaluation reads as
+// its membership gate -- no save, reload, then prepare round trip.
 //
 // ---------------------------------------------------------------------------
 // OPTION DISCOVERY -- WHY A SEPARATE CATALOGUE-AS-CANDIDATES PROBE, NOT A NEW RESOLVER
@@ -87,6 +95,7 @@ import {
   flagFor,
   KNOWN_POOL_KINDS,
   maxSpellLevelOf,
+  mergeSpellStateCandidate,
   spellIdentityOf,
   toResult,
   type SpellRequirementIssue,
@@ -220,21 +229,16 @@ export function planSpellAcquisition(input: {
       identity: spellIdentityOf({ ref: selection.ref }),
       known: flag === 'known',
       prepared: flag === 'prepared',
-      mechanics: entry.spellMechanics ?? null
+      mechanics: entry.spellMechanics ?? null,
+      // P3.2.1 -- see this file's own TENTATIVE ANSWERS header.
+      requirementIds: [requirement.id]
     })
   }
 
   // --- Merge persisted + tentative by identity -- see this file's own TENTATIVE ANSWERS header. --
   const effectiveByIdentity = new Map<string, SpellStateCandidate>()
   for (const row of [...candidates, ...tentativeCandidates]) {
-    const existing = effectiveByIdentity.get(row.identity)
-    if (!existing) {
-      effectiveByIdentity.set(row.identity, { ...row })
-      continue
-    }
-    existing.known = existing.known || row.known
-    existing.prepared = existing.prepared || row.prepared
-    existing.mechanics = existing.mechanics ?? row.mechanics
+    effectiveByIdentity.set(row.identity, mergeSpellStateCandidate(effectiveByIdentity.get(row.identity), row))
   }
   const effectiveCandidates = [...effectiveByIdentity.values()]
 

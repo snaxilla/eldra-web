@@ -60,6 +60,7 @@ import {
   removeSpell,
   restoreSlot,
   toggleSpellFlag,
+  toStoredSpellEntry,
   type AssembledSpellEntry,
   type SpellFlag,
   type StoredSpellEntry
@@ -396,12 +397,10 @@ export function useCharacterMutations(worldId: Ref<string>, characterId: Ref<str
     spellcastingError.value = ''
 
     try {
-      const spells: StoredSpellEntry[] = nextSpells.map((entry) => ({
-        instanceId: entry.instanceId,
-        ...(entry.ref ? { ref: entry.ref } : { name: entry.name }),
-        known: entry.known,
-        prepared: entry.prepared
-      }))
+      // D&D 2024 Character Rules P3.2.1 -- `toStoredSpellEntry`, never a hand-listed field set: this
+      // is a full-replace PUT, so any field this rebuild forgot to carry through (requirementIds
+      // included) would be silently erased on the very next ordinary Sheet-side spell edit.
+      const spells: StoredSpellEntry[] = nextSpells.map(toStoredSpellEntry)
 
       await $fetch(`/api/worlds/${worldId.value}/characters/${characterId.value}/spellcasting`, {
         method: 'PUT',

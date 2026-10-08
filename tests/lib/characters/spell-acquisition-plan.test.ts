@@ -248,6 +248,34 @@ describe('P3.2 planner -- Wizard dependency (tests 14-18), using the REAL author
     expect(planOf(plan, spellbookId).legalCount).toBe(6)
     expect(planOf(plan, spellId).legalCount).toBe(2)
   })
+
+  // P3.2.1 -- the real bug this phase's own audit found and fixed: cantrip and spellbook BOTH read
+  // `known`, so a real Wizard answering all three pools at once (the exact real Level-1 shape)
+  // previously never reached `complete: true` -- a tentative cantrip pick got spuriously walked
+  // against spellbook's "level 1+" floor, and vice versa. Proven fixed end-to-end through the
+  // PLANNER (tentative-driven, not merely a persisted-state re-read -- see
+  // tests/lib/characters/spell-requirements.test.ts for the persisted-state proof).
+  it('P3.2.1: cantrip + spellbook + prepared, ALL answered by tentative selections at once, reach complete -- no cross-pool contamination', () => {
+    const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
+    const cantripCatalogue = [...'xyz'].map((s) => entry(`cantrip-${s}`, 0, ['Wizard']))
+    const fullCatalogue = [...catalogue, ...cantripCatalogue]
+
+    const tentative = [
+      ...[...'abcdef'].map((s) => tentativeFor(spellbookId, s)),
+      ...[...'abcd'].map((s) => tentativeFor(spellId, s)),
+      ...[...'xyz'].map((s) => tentativeFor(cantripId, `cantrip-${s}`))
+    ]
+
+    const plan = planSpellAcquisition({ requirements, characterLevel: 1, candidates: [], catalogue: fullCatalogue, spellSlotLevels: SLOTS_WIZ_L1, tentative })
+
+    expect(planOf(plan, cantripId).legalCount).toBe(3)
+    expect(planOf(plan, cantripId).satisfied).toBe(true)
+    expect(planOf(plan, spellbookId).legalCount).toBe(6)
+    expect(planOf(plan, spellbookId).satisfied).toBe(true)
+    expect(planOf(plan, spellId).legalCount).toBe(4)
+    expect(planOf(plan, spellId).satisfied).toBe(true)
+    expect(plan.complete).toBe(true)
+  })
 })
 
 describe('P3.2 planner -- class equivalence (tests 19-23), using REAL authored facets', () => {

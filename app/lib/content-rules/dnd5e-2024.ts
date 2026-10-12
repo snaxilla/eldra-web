@@ -144,6 +144,69 @@
 
 import type { RulesFacetCorpus } from './types'
 
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P8 -- STARTING EQUIPMENT CURRENCY AND CROSS-REFERENCES
+// ---------------------------------------------------------------------------
+// Every real XPHB `value` entry (barbarian.json's own `{ "value": 1500 }`) is already
+// expressed in the smallest base unit -- copper -- confirmed by cross-checking against the
+// corpus's own prose (`1500` alongside "15 GP" throughout every class/background's `entries`
+// text, consistently a 100:1 ratio). One flat denomination is therefore the entire currency
+// model P8 needs: no gp/sp/cp breakdown, no conversion table, nothing D&D-specific baked into
+// app/lib/characters/currency.ts (which only ever sees this as an opaque string it sums).
+// `'xphb'` is the PACKAGE/content-source token, never the player-facing label "Copper Pieces" --
+// exactly how every other denominationless identity in this corpus is tokenized.
+export const DND5E_2024_CURRENCY_DENOMINATION = 'currency:xphb.copper'
+
+// The D&D-specific half of EquipmentGrant's `crossReference` resolution (see
+// app/lib/characters/equipment-bundle.ts's own header for why this mapping is injected by the
+// caller rather than imported by the generic resolver). Maps every real corpus `from` entry a
+// `crossReference` grant can point at -- the SAME 17 artisan-tool, 10 instrument, and 4
+// gaming-set proficiency Value ids already authored above -- to the real Solaris-catalogue item
+// slug it corresponds to physically. Server-utils-side (character-equipment-bundle.ts) reads the
+// character's own stored answer for the referenced ChoiceSet, looks the selected Value id up
+// here, and resolves the resulting slug against the World's current catalogue exactly like any
+// other item grant. Verified against the real bound Content Pack (217 curated items) before this
+// table was written -- every one of these 31 slugs resolves; none is a guess.
+export const DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS: Record<string, string> = {
+  // Artisan's tools (17) -- Monk's choice:proficiency.artisan-or-instrument.class,
+  // Artisan background's choice:proficiency.artisan-tool.background.
+  'value:tool.alchemists_supplies.proficient': 'alchemists-supplies-xphb',
+  'value:tool.brewers_supplies.proficient': 'brewers-supplies-xphb',
+  'value:tool.calligraphers_supplies.proficient': 'calligraphers-supplies-xphb',
+  'value:tool.carpenters_tools.proficient': 'carpenters-tools-xphb',
+  'value:tool.cartographers_tools.proficient': 'cartographers-tools-xphb',
+  'value:tool.cobblers_tools.proficient': 'cobblers-tools-xphb',
+  'value:tool.cooks_utensils.proficient': 'cooks-utensils-xphb',
+  'value:tool.glassblowers_tools.proficient': 'glassblowers-tools-xphb',
+  'value:tool.jewelers_tools.proficient': 'jewelers-tools-xphb',
+  'value:tool.leatherworkers_tools.proficient': 'leatherworkers-tools-xphb',
+  'value:tool.masons_tools.proficient': 'masons-tools-xphb',
+  'value:tool.painters_supplies.proficient': 'painters-supplies-xphb',
+  'value:tool.potters_tools.proficient': 'potters-tools-xphb',
+  'value:tool.smiths_tools.proficient': 'smiths-tools-xphb',
+  'value:tool.tinkers_tools.proficient': 'tinkers-tools-xphb',
+  'value:tool.weavers_tools.proficient': 'weavers-tools-xphb',
+  'value:tool.woodcarvers_tools.proficient': 'woodcarvers-tools-xphb',
+  // Musical instruments (10) -- Monk's artisan-or-instrument choice, Entertainer
+  // background's choice:proficiency.instrument.background.
+  'value:tool.bagpipes.proficient': 'bagpipes-xphb',
+  'value:tool.drum.proficient': 'drum-xphb',
+  'value:tool.dulcimer.proficient': 'dulcimer-xphb',
+  'value:tool.flute.proficient': 'flute-xphb',
+  'value:tool.horn.proficient': 'horn-xphb',
+  'value:tool.lute.proficient': 'lute-xphb',
+  'value:tool.lyre.proficient': 'lyre-xphb',
+  'value:tool.pan_flute.proficient': 'pan-flute-xphb',
+  'value:tool.shawm.proficient': 'shawm-xphb',
+  'value:tool.viol.proficient': 'viol-xphb',
+  // Gaming sets (4) -- Guard/Noble/Soldier backgrounds' shared
+  // choice:proficiency.gaming-set.background.
+  'value:tool.dice_set.proficient': 'dice-set-xphb',
+  'value:tool.dragonchess_set.proficient': 'dragonchess-set-xphb',
+  'value:tool.playing_cards.proficient': 'playing-cards-xphb',
+  'value:tool.three_dragon_ante_set.proficient': 'three-dragon-ante-set-xphb'
+}
+
 // Keyed by the `entityType` the importer writes, then by `slug`
 // (`slugify(name-source)`), which is what a Character's stored choice
 // records and what Character Assembly re-resolves on.
@@ -213,7 +276,29 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // of the 48 native-XPHB subclasses (4 per class) is already present
       // in Solaris's bound Content Pack with the correct `parentClassSlug`
       // -- this was a Rules-authoring gap, never a Content gap.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.barbarian-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Greataxe, 4 Handaxes, Explorer's Pack, 15 GP",
+            grants: [
+              { kind: 'item', slug: 'greataxe-xphb' },
+              { kind: 'item', slug: 'handaxe-xphb', quantity: 4 },
+              { kind: 'item', slug: 'explorers-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1500 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 75 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 7500 }
+            ]
+          }
+        ]
+      }
     },
     'bard-xphb': {
       spellRequirements: [
@@ -310,7 +395,45 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // actually proficient in by this phase's own new `requiresActive`
       // eligibility field -- no Bard-specific skill list authored, no
       // special-cased Expertise validator.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.skill-expertise-choose-two-at-2-and-9', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.skill-expertise-choose-two-at-2-and-9', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.bard-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Leather Armor, 2 Daggers, Musical Instrument of your choice, Entertainer's Pack, 19 GP",
+            grants: [
+              { kind: 'item', slug: 'leather-armor-xphb' },
+              { kind: 'item', slug: 'dagger-xphb', quantity: 2 },
+              // D&D 2024 Character Rules P8 -- real XPHB text ("Musical Instrument of your
+              // choice") is independent of WHICH three instruments this Bard is proficient in
+              // (unlike Monk's identical-looking line, which explicitly says "chosen for the
+              // tool proficiency above") -- the 3-pick proficiency choice has no single
+              // deterministic answer a `crossReference` grant could point at, and the engine's
+              // ChoiceSet mechanism has no "answer this without writing a Value" mode (every
+              // `fromContentFacet`/`explicit` ChoiceSet's default `effect: 'set-value'` always
+              // sets `values[selected] = true` -- see ChoiceSetDefinition's own header,
+              // app/lib/rules/types.ts): a second 1-of-10 pick sharing the SAME 10 instrument
+              // Value ids would risk granting a 4th, unintended instrument proficiency the
+              // moment a player picked a carried instrument different from their 3 chosen ones.
+              // Building a non-mechanical "informational choice" primitive to avoid that is a
+              // real engine change, out of this phase's scope -- so this resolves as `custom`,
+              // the same escape Wizard's Spellbook already uses, trading "a specific catalogue
+              // item" for "correct, with no invented engine primitive."
+              { kind: 'custom', name: 'Musical Instrument' },
+              { kind: 'item', slug: 'entertainers-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1900 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 90 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 9000 }
+            ]
+          }
+        ]
+      }
     },
     'cleric-xphb': {
       spellRequirements: [
@@ -360,7 +483,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // `resource:channel_divinity.standard`'s own definitions.json comment
       // for its max expression.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.cleric-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Chain Shirt, Shield, Mace, Holy Symbol, Priest's Pack, 7 GP",
+            grants: [
+              { kind: 'item', slug: 'chain-shirt-xphb' },
+              { kind: 'item', slug: 'shield-xphb' },
+              { kind: 'item', slug: 'mace-xphb' },
+              { kind: 'custom', name: 'Holy Symbol' },
+              { kind: 'item', slug: 'priests-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 700 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 110 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 11000 }
+            ]
+          }
+        ]
+      }
     },
     'druid-xphb': {
       spellRequirements: [
@@ -409,7 +556,32 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // `classFeatures` level 2, level-gated, same reasoning as Cleric's
       // Channel Divinity immediately above).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-wild-shape', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-wild-shape', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.druid-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Leather Armor, Shield, Sickle, Druidic Focus, Explorer's Pack, Herbalism Kit, 9 GP",
+            grants: [
+              { kind: 'item', slug: 'leather-armor-xphb' },
+              { kind: 'item', slug: 'shield-xphb' },
+              { kind: 'item', slug: 'sickle-xphb' },
+              { kind: 'custom', name: 'Druidic Focus' },
+              { kind: 'item', slug: 'explorers-pack-xphb' },
+              { kind: 'item', slug: 'herbalism-kit-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 900 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'fighter-xphb': {
       grants: [
@@ -463,7 +635,45 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // (class-fighter.json's own `classFeatures` references, verified this
       // phase) -- authored here exactly as measured, never assumed.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.fighter-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Chain Mail, Greatsword, Flail, 8 Javelins, Dungeoneer's Pack, 4 GP",
+            grants: [
+              { kind: 'item', slug: 'chain-mail-xphb' },
+              { kind: 'item', slug: 'greatsword-xphb' },
+              { kind: 'item', slug: 'flail-xphb' },
+              { kind: 'item', slug: 'javelin-xphb', quantity: 8 },
+              { kind: 'item', slug: 'dungeoneers-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 400 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) Studded Leather Armor, Scimitar, Shortsword, Longbow, 20 Arrows, Quiver, Dungeoneer's Pack, 11 GP",
+            grants: [
+              { kind: 'item', slug: 'studded-leather-armor-xphb' },
+              { kind: 'item', slug: 'scimitar-xphb' },
+              { kind: 'item', slug: 'shortsword-xphb' },
+              { kind: 'item', slug: 'longbow-xphb' },
+              { kind: 'item', slug: 'arrows-20-xphb' },
+              { kind: 'item', slug: 'quiver-xphb' },
+              { kind: 'item', slug: 'dungeoneers-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1100 }
+            ]
+          },
+          {
+            id: 'C',
+            label: "(C) 155 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 15500 }
+            ]
+          }
+        ]
+      }
     },
     'monk-xphb': {
       grants: [
@@ -529,7 +739,30 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // definitions.json comment -- "prefer references to existing
       // derived Values" applied literally).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-focus-points', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-focus-points', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.monk-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Spear, 5 Daggers, Artisan's Tools or Musical Instrument chosen for the tool proficiency above, Explorer's Pack, 11 GP",
+            grants: [
+              { kind: 'item', slug: 'spear-xphb' },
+              { kind: 'item', slug: 'dagger-xphb', quantity: 5 },
+              { kind: 'crossReference', choiceSetId: 'choice:proficiency.artisan-or-instrument.class' },
+              { kind: 'item', slug: 'explorers-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1100 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'paladin-xphb': {
       spellRequirements: [
@@ -589,7 +822,32 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // genuinely differ -- see `resource:channel_divinity.extended`'s own
       // comment).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-p']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-extended', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-p'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.paladin-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Chain Mail, Shield, Longsword, 6 Javelins, Holy Symbol, Priest's Pack, 9 GP",
+            grants: [
+              { kind: 'item', slug: 'chain-mail-xphb' },
+              { kind: 'item', slug: 'shield-xphb' },
+              { kind: 'item', slug: 'longsword-xphb' },
+              { kind: 'item', slug: 'javelin-xphb', quantity: 6 },
+              { kind: 'custom', name: 'Holy Symbol' },
+              { kind: 'item', slug: 'priests-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 900 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 150 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 15000 }
+            ]
+          }
+        ]
+      }
     },
     'ranger-xphb': {
       spellRequirements: [
@@ -647,7 +905,34 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // you lack Expertise" at Level 9 only -- see bard-xphb's own note
       // immediately above for why no Ranger-specific skill list is
       // authored here either.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-r']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-r'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.ranger-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Studded Leather Armor, Scimitar, Shortsword, Longbow, 20 Arrows, Quiver, Druidic Focus (sprig of mistletoe), Explorer's Pack, 7 GP",
+            grants: [
+              { kind: 'item', slug: 'studded-leather-armor-xphb' },
+              { kind: 'item', slug: 'scimitar-xphb' },
+              { kind: 'item', slug: 'shortsword-xphb' },
+              { kind: 'item', slug: 'longbow-xphb' },
+              { kind: 'item', slug: 'arrows-20-xphb' },
+              { kind: 'item', slug: 'quiver-xphb' },
+              { kind: 'item', slug: 'sprig-of-mistletoe-xphb' },
+              { kind: 'item', slug: 'explorers-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 700 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 150 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 15000 }
+            ]
+          }
+        ]
+      }
     },
     'rogue-xphb': {
       grants: [
@@ -694,7 +979,34 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // wired into Level-Up progression; the Level-1 half remains a
       // documented Builder/creation gap, never silently merged into this
       // one Progression as if it were a single Level-6 grant of four.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent', 'progression:class.skill-expertise-choose-two-at-6', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent', 'progression:class.skill-expertise-choose-two-at-6', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.rogue-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Leather Armor, 2 Daggers, Shortsword, Shortbow, 20 Arrows, Quiver, Thieves' Tools, Burglar's Pack, 8 GP",
+            grants: [
+              { kind: 'item', slug: 'leather-armor-xphb' },
+              { kind: 'item', slug: 'dagger-xphb', quantity: 2 },
+              { kind: 'item', slug: 'shortsword-xphb' },
+              { kind: 'item', slug: 'shortbow-xphb' },
+              { kind: 'item', slug: 'arrows-20-xphb' },
+              { kind: 'item', slug: 'quiver-xphb' },
+              { kind: 'item', slug: 'thieves-tools-xphb' },
+              { kind: 'item', slug: 'burglars-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 800 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 100 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 10000 }
+            ]
+          }
+        ]
+      }
     },
     'sorcerer-xphb': {
       spellRequirements: [
@@ -746,7 +1058,30 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // pool (this phase's own category E) -- not modeled; Long Rest's
       // full recovery is correct at every level regardless.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.sorcerer-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Spear, 2 Daggers, Arcane Focus (crystal), Dungeoneer's Pack, 28 GP",
+            grants: [
+              { kind: 'item', slug: 'spear-xphb' },
+              { kind: 'item', slug: 'dagger-xphb', quantity: 2 },
+              { kind: 'item', slug: 'crystal-xphb' },
+              { kind: 'item', slug: 'dungeoneers-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 2800 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'warlock-xphb': {
       spellRequirements: [
@@ -814,7 +1149,32 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon']
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon'],
+      startingEquipment: {
+        id: 'choice:equipment.starting.warlock-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Leather Armor, Sickle, 2 Daggers, Arcane Focus (orb), Book (occult lore), Scholar's Pack, 15 GP",
+            grants: [
+              { kind: 'item', slug: 'leather-armor-xphb' },
+              { kind: 'item', slug: 'sickle-xphb' },
+              { kind: 'item', slug: 'dagger-xphb', quantity: 2 },
+              { kind: 'item', slug: 'orb-xphb' },
+              { kind: 'item', slug: 'book-xphb' },
+              { kind: 'item', slug: 'scholars-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1500 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 100 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 10000 }
+            ]
+          }
+        ]
+      }
     },
     'wizard-xphb': {
       spellRequirements: [
@@ -904,7 +1264,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         'progression:class.subclass-selection',
         'progression:class.asi-standard',
         'progression:class.epic-boon'
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.wizard-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) 2 Daggers, Arcane Focus (Quarterstaff), Robe, Spellbook, Scholar's Pack, 5 GP",
+            grants: [
+              { kind: 'item', slug: 'dagger-xphb', quantity: 2 },
+              { kind: 'item', slug: 'quarterstaff-xphb' },
+              { kind: 'item', slug: 'robe-xphb' },
+              { kind: 'custom', name: 'Spellbook' },
+              { kind: 'item', slug: 'scholars-pack-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 500 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 55 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5500 }
+            ]
+          }
+        ]
+      }
     }
   },
 
@@ -1590,7 +1974,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.insight.proficient', to: true },
         { set: 'value:skill.religion.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.acolyte-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Book (Prayers), Calligrapher's Supplies, Holy Symbol, 10 Parchment, Robe, 8 GP",
+            grants: [
+              { kind: 'item', slug: 'book-xphb' },
+              { kind: 'item', slug: 'calligraphers-supplies-xphb' },
+              { kind: 'custom', name: 'Holy Symbol' },
+              { kind: 'item', slug: 'parchment-xphb', quantity: 10 },
+              { kind: 'item', slug: 'robe-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 800 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'artisan-xphb': {
       choices: [
@@ -1645,7 +2053,29 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:skill.investigation.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.artisan-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Artisan's Tools chosen for the tool proficiency above, 2 Pouches, Traveler's Clothes, 32 GP",
+            grants: [
+              { kind: 'crossReference', choiceSetId: 'choice:proficiency.artisan-tool.background' },
+              { kind: 'item', slug: 'pouch-xphb', quantity: 2 },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 3200 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'charlatan-xphb': {
       choices: [
@@ -1725,7 +2155,29 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.forgery_kit.proficient', to: true },
         { set: 'value:skill.deception.proficient', to: true },
         { set: 'value:skill.sleight_of_hand.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.charlatan-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Forgery Kit, Costume, Fine Clothes, 15 GP",
+            grants: [
+              { kind: 'item', slug: 'forgery-kit-xphb' },
+              { kind: 'item', slug: 'costume-xphb' },
+              { kind: 'item', slug: 'fine-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1500 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'criminal-xphb': {
       choices: [
@@ -1744,7 +2196,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.thieves_tools.proficient', to: true },
         { set: 'value:skill.sleight_of_hand.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.criminal-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) 2 Daggers, Thieves' Tools, Crowbar, 2 Pouches, Traveler's Clothes, 16 GP",
+            grants: [
+              { kind: 'item', slug: 'dagger-xphb', quantity: 2 },
+              { kind: 'item', slug: 'thieves-tools-xphb' },
+              { kind: 'item', slug: 'crowbar-xphb' },
+              { kind: 'item', slug: 'pouch-xphb', quantity: 2 },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1600 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'entertainer-xphb': {
       choices: [
@@ -1794,7 +2270,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:skill.acrobatics.proficient', to: true },
         { set: 'value:skill.performance.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.entertainer-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Musical Instrument chosen for the tool proficiency above, 2 Costumes, Mirror, Perfume, Traveler's Clothes, 11 GP",
+            grants: [
+              { kind: 'crossReference', choiceSetId: 'choice:proficiency.instrument.background' },
+              { kind: 'item', slug: 'costume-xphb', quantity: 2 },
+              { kind: 'item', slug: 'mirror-xphb' },
+              { kind: 'item', slug: 'perfume-xphb' },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1100 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'farmer-xphb': {
       choices: [
@@ -1813,7 +2313,32 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.carpenters_tools.proficient', to: true },
         { set: 'value:skill.animal_handling.proficient', to: true },
         { set: 'value:skill.nature.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.farmer-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Sickle, Carpenter's Tools, Healer's Kit, Iron Pot, Shovel, Traveler's Clothes, 30 GP",
+            grants: [
+              { kind: 'item', slug: 'sickle-xphb' },
+              { kind: 'item', slug: 'carpenters-tools-xphb' },
+              { kind: 'item', slug: 'healers-kit-xphb' },
+              { kind: 'item', slug: 'iron-pot-xphb' },
+              { kind: 'item', slug: 'shovel-xphb' },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 3000 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'guard-xphb': {
       choices: [
@@ -1841,7 +2366,34 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:skill.athletics.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.guard-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Spear, Light Crossbow, 20 Bolts, Gaming Set chosen for the tool proficiency above, Hooded Lantern, Manacles, Quiver, Traveler's Clothes, 12 GP",
+            grants: [
+              { kind: 'item', slug: 'spear-xphb' },
+              { kind: 'item', slug: 'light-crossbow-xphb' },
+              { kind: 'item', slug: 'bolts-20-xphb' },
+              { kind: 'crossReference', choiceSetId: 'choice:proficiency.gaming-set.background' },
+              { kind: 'item', slug: 'hooded-lantern-xphb' },
+              { kind: 'item', slug: 'manacles-xphb' },
+              { kind: 'item', slug: 'quiver-xphb' },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1200 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'guide-xphb': {
       choices: [
@@ -1860,7 +2412,33 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.cartographers_tools.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true },
         { set: 'value:skill.survival.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.guide-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Shortbow, 20 Arrows, Cartographer's Tools, Bedroll, Quiver, Tent, Traveler's Clothes, 3 GP",
+            grants: [
+              { kind: 'item', slug: 'shortbow-xphb' },
+              { kind: 'item', slug: 'arrows-20-xphb' },
+              { kind: 'item', slug: 'cartographers-tools-xphb' },
+              { kind: 'item', slug: 'bedroll-xphb' },
+              { kind: 'item', slug: 'quiver-xphb' },
+              { kind: 'item', slug: 'tent-xphb' },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 300 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'hermit-xphb': {
       choices: [
@@ -1879,7 +2457,33 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.herbalism_kit.proficient', to: true },
         { set: 'value:skill.medicine.proficient', to: true },
         { set: 'value:skill.religion.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.hermit-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Quarterstaff, Herbalism Kit, Bedroll, Book, Lamp, 3 Oil, Traveler's Clothes, 16 GP",
+            grants: [
+              { kind: 'item', slug: 'quarterstaff-xphb' },
+              { kind: 'item', slug: 'herbalism-kit-xphb' },
+              { kind: 'item', slug: 'bedroll-xphb' },
+              { kind: 'item', slug: 'book-xphb' },
+              { kind: 'item', slug: 'lamp-xphb' },
+              { kind: 'item', slug: 'oil-xphb', quantity: 3 },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1600 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'merchant-xphb': {
       choices: [
@@ -1898,7 +2502,29 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.navigators_tools.proficient', to: true },
         { set: 'value:skill.animal_handling.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.merchant-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Navigator's Tools, 2 Pouches, Traveler's Clothes, 22 GP",
+            grants: [
+              { kind: 'item', slug: 'navigators-tools-xphb' },
+              { kind: 'item', slug: 'pouch-xphb', quantity: 2 },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 2200 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'noble-xphb': {
       choices: [
@@ -1987,7 +2613,29 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:skill.history.proficient', to: true },
         { set: 'value:skill.persuasion.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.noble-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Gaming Set chosen for the tool proficiency above, Fine Clothes, Perfume, 29 GP",
+            grants: [
+              { kind: 'crossReference', choiceSetId: 'choice:proficiency.gaming-set.background' },
+              { kind: 'item', slug: 'fine-clothes-xphb' },
+              { kind: 'item', slug: 'perfume-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 2900 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'sage-xphb': {
       choices: [
@@ -2006,7 +2654,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.arcana.proficient', to: true },
         { set: 'value:skill.history.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.sage-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Quarterstaff, Calligrapher's Supplies, Book, 8 Parchment, Robe, 8 GP",
+            grants: [
+              { kind: 'item', slug: 'quarterstaff-xphb' },
+              { kind: 'item', slug: 'calligraphers-supplies-xphb' },
+              { kind: 'item', slug: 'book-xphb' },
+              { kind: 'item', slug: 'parchment-xphb', quantity: 8 },
+              { kind: 'item', slug: 'robe-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 800 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'sailor-xphb': {
       choices: [
@@ -2025,7 +2697,30 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.navigators_tools.proficient', to: true },
         { set: 'value:skill.acrobatics.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.sailor-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Dagger, Navigator's Tools, Rope, Traveler's Clothes, 20 GP",
+            grants: [
+              { kind: 'item', slug: 'dagger-xphb' },
+              { kind: 'item', slug: 'navigators-tools-xphb' },
+              { kind: 'item', slug: 'rope-xphb' },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 2000 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'scribe-xphb': {
       choices: [
@@ -2105,7 +2800,31 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.investigation.proficient', to: true },
         { set: 'value:skill.perception.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.scribe-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Calligrapher's Supplies, Fine Clothes, Lamp, Oil, Parchment, 23 GP",
+            grants: [
+              { kind: 'item', slug: 'calligraphers-supplies-xphb' },
+              { kind: 'item', slug: 'fine-clothes-xphb' },
+              { kind: 'item', slug: 'lamp-xphb' },
+              { kind: 'item', slug: 'oil-xphb' },
+              { kind: 'item', slug: 'parchment-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 2300 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'soldier-xphb': {
       choices: [
@@ -2133,7 +2852,33 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:skill.athletics.proficient', to: true },
         { set: 'value:skill.intimidation.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.soldier-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) Spear, Shortbow, 20 Arrows, Gaming Set chosen for the tool proficiency above, Healer's Kit, Quiver, Traveler's Clothes, 14 GP",
+            grants: [
+              { kind: 'item', slug: 'spear-xphb' },
+              { kind: 'item', slug: 'shortbow-xphb' },
+              { kind: 'item', slug: 'arrows-20-xphb' },
+              { kind: 'crossReference', choiceSetId: 'choice:proficiency.gaming-set.background' },
+              { kind: 'item', slug: 'healers-kit-xphb' },
+              { kind: 'item', slug: 'quiver-xphb' },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1400 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     },
     'wayfarer-xphb': {
       choices: [
@@ -2152,7 +2897,32 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.thieves_tools.proficient', to: true },
         { set: 'value:skill.insight.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true }
-      ]
+      ],
+      startingEquipment: {
+        id: 'choice:equipment.starting.wayfarer-xphb',
+        bundles: [
+          {
+            id: 'A',
+            label: "(A) 2 Daggers, Thieves' Tools, Gaming Set, Bedroll, 2 Pouches, Traveler's Clothes, 16 GP",
+            grants: [
+              { kind: 'item', slug: 'dagger-xphb', quantity: 2 },
+              { kind: 'item', slug: 'thieves-tools-xphb' },
+              { kind: 'custom', name: 'Gaming Set' },
+              { kind: 'item', slug: 'bedroll-xphb' },
+              { kind: 'item', slug: 'pouch-xphb', quantity: 2 },
+              { kind: 'item', slug: 'travelers-clothes-xphb' },
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 1600 }
+            ]
+          },
+          {
+            id: 'B',
+            label: "(B) 50 GP",
+            grants: [
+              { kind: 'currency', denominationId: DND5E_2024_CURRENCY_DENOMINATION, amount: 5000 }
+            ]
+          }
+        ]
+      }
     }
   },
 

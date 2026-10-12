@@ -64,15 +64,20 @@ describe('P2 spell corpus authority', () => {
   // .github/docs/architecture/dnd5e-2024-character-rules-completeness-audit.md §25.35 for the full
   // per-decision proof. This is the CURRENT census, not P2's own (that invariant is preserved
   // historically by this phase's own audit, not re-asserted here now that it is stale).
-  it('the Phase-0 decision census after P3.5: 647 total, 363 implemented, 249 blocked, 35 optional', () => {
+  // D&D 2024 Character Rules P8 -- STARTING EQUIPMENT reclassified exactly the 28 class/background-
+  // owned `equipment-package` decisions from blocked to implemented (app/lib/characters/
+  // equipment-bundle.ts + server/utils/character-equipment-bundle.ts), moving the census from
+  // 363/249 to 391/221. Total and optional are unchanged -- P8 added no new decision family and
+  // touched no replacement/re-answer clause.
+  it('the Phase-0 decision census after P8: 647 total, 391 implemented, 221 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(647)
-    expect(counts.implemented).toBe(363)
-    expect(counts.blocked).toBe(249)
+    expect(counts.implemented).toBe(391)
+    expect(counts.blocked).toBe(221)
     expect(counts.optional).toBe(35)
   })
 

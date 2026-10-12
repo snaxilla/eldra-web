@@ -25,7 +25,16 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 }).length === 0
 
 // The Phase-0 baseline (accepted as a temporary infrastructure state). Counts only, never names.
-const BASELINE = { species: 3, classes: 0, backgrounds: 0, combinations: 0 }
+//
+// D&D 2024 Character Rules P8 -- STOP, explained: starting equipment (the one decision every
+// class and every background owned) is now implemented (app/lib/characters/equipment-bundle.ts +
+// server/utils/character-equipment-bundle.ts), reclassifying all 28 class/background-owned
+// `equipment-package` decisions from blocked to implemented. That is why `classes`/`backgrounds`/
+// `combinations` jump from 0 here -- the four classes with NO other blocker (Bard, Monk, Sorcerer,
+// Wizard) and the 13 backgrounds with no other blocker (every one but Acolyte/Guide/Sage, whose
+// own Magic Initiate Origin feat remains unsupported) are now genuinely individually creation-
+// complete. `species` is unchanged -- P8 touches no species decision.
+const BASELINE = { species: 3, classes: 4, backgrounds: 13, combinations: 156 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

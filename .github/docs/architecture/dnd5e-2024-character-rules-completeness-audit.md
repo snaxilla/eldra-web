@@ -5154,3 +5154,433 @@ full suite, no exclusions.
 baseline, zero new. `pnpm run build`: succeeds. `git diff --check`: clean. `pnpm packages:sync
 --world Solaris` (dry run): Rules CURRENT at 0.21.0, Content CURRENT, Actions None -- zero writes.
 No commit made. No `packages:sync --apply` run.
+
+### 25.36 P8 -- STARTING EQUIPMENT + GENERIC BUNDLED CREATION GRANTS + CURRENCY STORAGE (2026-10-12)
+
+#### Scope
+
+A FULL implementation phase, unlike P3.5/the census before it: implements the ONE missing creation
+primitive the census identified as highest-leverage -- "choose ONE bundle from N package-authored
+bundles, each with heterogeneous grants" -- generically (no D&D-specific or owner-name routing),
+plus the smallest possible currency storage primitive, and wires both end to end through the real
+V2 create-v2 route. Reclassifies exactly the 28 real class/background `equipment-package` decisions
+the census counted. Primary acceptance target, PROVEN (not claimed): **Dwarf + Bard + Criminal is
+creation-complete through the real production authority, the real create-v2 route, with zero
+completeness stub.**
+
+#### CORPUS RE-DERIVATION -- no discrepancy from the prior census
+
+Re-extracted directly from `/opt/eldra/datasets/5etools-src/data/class/class-*.json`
+(`cls.startingEquipment.defaultData`) and `backgrounds.json` (`bg.startingEquipment`) for all 12
+classes and 16 backgrounds -- confirmed, not assumed, exactly **28 decisions** (12 class + 16
+background), each an A/B choice except Fighter's own A/B/C. Every entry is one of 7 shapes:
+`item`, `item+quantity`, `value` (gold, in COPPER base units -- confirmed by cross-referencing the
+corpus's own prose, e.g. `1500` alongside "15 GP" everywhere, a consistent 100:1 ratio),
+`equipmentType` (singular cross-reference), `equipmentTypes` (OR-shape, Monk only),
+`displayName+item` (Acolyte's "Book (Prayers)"), and one `special` (Wizard's "Spellbook," no
+catalogue item). Zero discrepancy from the prior census's own count.
+
+#### THE GENERIC PRIMITIVE -- `EquipmentChoice`/`EquipmentBundle`/`EquipmentGrant`
+
+Added to `app/lib/content-rules/types.ts`, beside `SpellRequirement` (same "a published fact about
+content" rationale):
+
+```ts
+export type EquipmentChoice = { id: DefinitionId; bundles: EquipmentBundle[] }
+export type EquipmentBundle = { id: string; label: string; grants: EquipmentGrant[] }
+export type EquipmentGrant =
+  | { kind: 'item'; slug: string; quantity?: number }
+  | { kind: 'crossReference'; choiceSetId: DefinitionId }
+  | { kind: 'currency'; denominationId: string; amount: number }
+  | { kind: 'custom'; name: string; quantity?: number }
+```
+
+Deliberately NOT named `ClassStartingEquipment`/`BackgroundStartingEquipment`/`DndEquipmentChoice`:
+a future species/feat/homebrew/non-D&D decision uses the identical shape with zero new application
+code -- `RulesFacet.startingEquipment` names no owner kind. Proven the smallest shape that covers
+all 28 decisions: every decision is "pick exactly one of several flat bundles," never a bundle
+containing its own nested sub-choice (the one apparent exception, `equipmentType`/`equipmentTypes`,
+is always a DETERMINISTIC reference to an ALREADY-answered proficiency choice elsewhere -- see CROSS-
+REFERENCE SEMANTICS below for the one place this needed a real decision, not an assumption).
+
+`item`'s own `slug` carries **no `packageId`**, by design: this file binds to no one World's
+Content Pack (`item:` facets are themselves keyed by `slug` alone, for the identical reason --
+5etools slugs are `slugify(name-source)`, stable across any republish of the same source content).
+Authoring a specific packageId here would hardcode one World's catalogue identity into Rules
+content meant to bind to any Content Pack declaring `vocabulary: 'dnd5e.2024'`. Resolution supplies
+the packageId by matching the slug against whichever catalogue is actually live --
+`resolveItemSlugAgainstCatalogue` in `server/utils/character-equipment-bundle.ts`.
+
+#### THE PURE RESOLVER -- `app/lib/characters/equipment-bundle.ts`
+
+`resolveEquipmentBundle(bundle, { resolveItemSlug, resolveCrossReference })` walks one bundle's
+grants to `ResolvedEquipmentGrant[]`, failing the WHOLE bundle closed on the first unresolved
+`item` or `crossReference` grant -- never a partial result. `mergeResolvedGrants` combines the
+grants from MULTIPLE resolved bundles (class AND background, always granted together) into one
+merged addition list + a currency delta map, merging two grants sharing the identical catalogue
+ref (or the identical custom name, case/whitespace-insensitive) into ONE addition with summed
+quantity. Both resolvers are INJECTED, never imported -- this module names no class, no background,
+no World. Shared VERBATIM by the server authority; no Builder-side duplicate exists (see BUILDER
+STATUS below for why the Builder itself is not yet wired to call it).
+
+#### CURRENCY -- the one genuinely new storage primitive
+
+`app/lib/characters/currency.ts` (`StoredCharacterCurrency = { amounts: Record<string, number> }`)
++ `server/utils/character-currency.ts` (persistence, mirroring `character-inventory.ts`'s exact
+find-then-PATCH-or-POST `block_instances` shape, new `currency` block_key, sort 50). Confirmed via
+`inventory.ts`'s own header that currency storage was previously ZERO -- V1's own "currency stored
+as inventory rows named `currency:gold`, folded 10:1" hack was explicitly never ported. `amounts`
+values are a plain opaque `Record<denominationId, number>`, mirroring `expendedSlots`'s own
+established shape in `spellcasting.ts`. `denominationId` is package-owned and opaque everywhere
+except `dnd5e-2024.ts`'s own `DND5E_2024_CURRENCY_DENOMINATION = 'currency:xphb.copper'` constant
+-- **no GP/SP/CP/gold/D&D denomination is hardcoded anywhere else**. The real corpus's own numeric
+`value` fields are ALREADY expressed in copper base units, so the mapping from corpus value to
+stored amount is the identity function -- no conversion table, no package Definition, no Rule
+Category 16 (`currency`) Definition kind needed. `addCurrencyAmounts` found and fixed a real bug
+during testing: an early version clamped a DELTA to non-negative before adding, silently turning
+every debit into a no-op; fixed to clamp only the RESULT.
+
+#### CROSS-REFERENCE SEMANTICS -- traced precisely, one genuine new decision found and escalated
+
+`equipmentType`/`equipmentTypes` appear in exactly 8 of the 28 decisions: Bard and Monk (class),
+Artisan/Entertainer/Guard/Noble/Soldier/Wayfarer (background). For 6 of the 8, the referenced
+proficiency ChoiceSet has `count: 1` -- a genuinely deterministic single answer to point at
+(Monk's `choice:proficiency.artisan-or-instrument.class`, Artisan's `choice:proficiency.artisan-
+tool.background`, Entertainer's `choice:proficiency.instrument.background`, Guard's/Noble's/
+Soldier's shared `choice:proficiency.gaming-set.background`) -- resolved via `EquipmentGrant`'s
+`crossReference` kind, reading the character's own real `rules_choices` answer, mapped to an item
+slug through `DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS` (31 entries: 17 artisan tools + 10
+instruments + 4 gaming sets, every slug verified against the real bound Solaris catalogue before
+being written).
+
+**Bard and Wayfarer are the 2 genuine exceptions, surfaced to the user per this task's own explicit
+"STOP and report before inventing semantics" instruction, each resolved differently:**
+
+- **Bard**: the real equipment line ("Musical Instrument of your choice") is independent of WHICH
+  THREE instruments Bard is separately proficient in (`choice:proficiency.instrument.class`,
+  `count: 3` -- unlike Monk's identical-looking line, which explicitly says "chosen for the tool
+  proficiency above"). The user's own direction (asked and answered) was to author a genuinely new,
+  independent 1-of-10 pick rather than invent an arbitrary tie-break. A first attempt did exactly
+  that -- a new package ChoiceSet Definition, `choice:equipment.instrument.class` -- but this was
+  then REVERTED after discovering a real engine constraint: `ChoiceSetDefinition`'s default
+  `effect: 'set-value'` means ANY answered ChoiceSet sharing the same 10 instrument Value ids
+  would also set `values[selected] = true`, risking an UNINTENDED 4th instrument proficiency the
+  moment a player picked a carried instrument different from their chosen three -- a real
+  mechanical bug, not a cosmetic one. No "answer without a Value side-effect" ChoiceSet mode exists
+  in the engine, and building one is an engine change explicitly out of this phase's scope. Final
+  resolution: Bard's instrument grant resolves as `{ kind: 'custom', name: 'Musical Instrument' }`
+  -- the same escape Wizard's Spellbook already uses, trading "a specific catalogue item" for
+  "correct, with zero new engine primitive and zero package change."
+- **Wayfarer**: its own real `toolProficiencies` is fixed (Thieves' Tools only, confirmed against
+  the raw 5etools background JSON) -- Wayfarer grants NO gaming-set proficiency at all, yet its
+  equipment line still includes `equipmentType: 'setGaming'`. Reusing Guard's/Noble's/Soldier's
+  `choice:proficiency.gaming-set.background` would incorrectly grant gaming-set proficiency as a
+  side effect (the identical mechanism risk as Bard's case). Resolved as `{ kind: 'custom', name:
+  'Gaming Set' }` -- no new choice, no proficiency side effect, package footprint unchanged.
+
+**Net package impact of both resolutions: ZERO.** `packages/eldra-dnd5e-2024/definitions.json` and
+`manifest.json` have no diff from before this phase (confirmed via `git diff --stat`) -- the one
+Definition added mid-phase was fully reverted once its side-effect risk was found.
+
+#### CONTENT AUDIT -- exactly 2 items missing, resolved as custom grants (not expanded)
+
+Every concrete item slug the 28 decisions reference (62 distinct items, computed via the real
+importer's own `slugify(name-source)` convention, never guessed) was checked against the real
+bound Solaris catalogue (217 curated items) through the real `getWorldContentCatalogue` runtime
+path (`scripts/directus/lib/runtime-shim.mjs`, the same pattern `packages-sync.mjs` already
+establishes). **60 of 62 resolve; exactly 2 do not**: `holy-symbol-xphb` (Cleric, Paladin, Acolyte)
+and `druidic-focus-xphb` (Druid). Per this task's own explicit allowance ("do NOT silently expand
+Solaris selection"), both resolve as `{ kind: 'custom', name: 'Holy Symbol' | 'Druidic Focus' }`
+rather than stopping the phase or expanding the curated catalogue -- the identical pattern Wizard's
+Spellbook (the one real `special` shape) already establishes. All 27 tool/instrument item slugs and
+4 gaming-set item slugs the cross-reference table needs were independently verified present the
+same way.
+
+#### SERVER AUTHORITY + PERSISTENCE -- `server/utils/character-equipment-bundle.ts`
+
+`resolveStartingEquipment(owners, rulesChoices, items)` is the single creation-time authority:
+validates each owner's submitted bundle id against its OWN real `EquipmentChoice`, resolves through
+the shared pure resolver, and merges. Fails closed on the FIRST problem -- missing bundle id, unknown
+bundle id, unresolved cross-reference, unresolved item -- never a partial write. `create-v2.post.ts`
+wires it exactly like Level-1 spell acquisition: validated BEFORE any entity write (new
+`startingEquipment: { [choiceId]: bundleId }` request field, one entry per owning slot that
+declares a choice), the resolved bundle ids merged into `rulesChoices.selections` as provenance
+(`choiceKey(slot, choice.id) -> [bundleId]`, reusing the EXISTING `rules_choices` persistence
+mechanism verbatim -- no second store), then written AFTER `rules_choices` and BEFORE Health, FAIL
+LOUDLY (no `.catch`), the same posture P3.3's spellcasting write already takes and for the
+identical reason: a completed-looking character silently missing its starting gear would be the
+exact bug this phase exists to prevent. `applyStartingEquipmentAdditions` ADDS/MERGES into a fresh
+inventory (never replaces); duplicate-grant identity (same ref, or same custom name case/
+whitespace-insensitive) merges quantity into one row, proven directly in
+`tests/server/utils/character-equipment-bundle.test.ts` and in the first-real-character proof below
+(Bard's 2 daggers + Criminal's 2 daggers merge into one row of 4).
+
+#### FIRST REAL CHARACTER -- PROVEN, not claimed
+
+`tests/server/api/worlds/[id]/characters/create-v2-starting-equipment.test.ts` (new, UNSTUBBED --
+classified nowhere in `completeness-stub-policy.test.ts` because it never mocks
+`creation-completeness`): 7 tests, all passing, proving in order: (1)
+`creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'bard-xphb', background:
+'criminal-xphb' })` is `[]` through the real authority; (2) the real `create-v2.post` route accepts
+a full real answer set (standard-array abilities, Bard's real skill + instrument proficiency
+choices, Criminal's real ability-distribution choice, the real fixed Origin feat routing, Bard's
+real Level-1 spell acquisition, and both starting-equipment bundles) and succeeds; (3)-(4) the
+written currency/inventory are exactly the real authored grants, resolved against the catalogue,
+never the client's own submission; (5) the chosen bundle ids persist as `rules_choices` provenance;
+(6) the persisted currency/inventory round-trip cleanly through the SAME normalization functions
+`character-assembly.ts` applies on every real read (the chosen proxy for "fresh reload" -- see
+HISTORICAL COMPATIBILITY below for why this file does not also re-mock the full assembly Directus
+boundary a second time). Bundle B (pure currency, both class and background) is exercised as its
+own dedicated proof too: zero items written, currency exactly `9000 + 5000 = 14000` copper, and the
+raw persisted JSON contains no "GP"/"gold" substring anywhere -- the required "no D&D denomination
+hardcode, no package-A physical items" case.
+
+#### AVAILABILITY -- moved exactly as the census predicted, confirmed through the real authority
+
+Recomputed via `creationUnresolvedDecisions`, never hardcoded: **Species 3/10 (unchanged) · Classes
+4/12 (Bard, Monk, Sorcerer, Wizard) · Backgrounds 13/16 (every one but Acolyte/Guide/Sage, whose own
+Magic Initiate Origin feat remains unsupported) · Combinations 156/1,920** (verified by full
+enumeration, `tests/lib/content-rules/creation-availability.test.ts`'s own baseline updated from
+0/0/0 with an explanatory comment, per that file's own "STOP, explain before updating" policy).
+Exactly matches the census's own prediction.
+
+#### PHASE-0 RECLASSIFICATION
+
+`mandatory-decision-coverage.ts`: `blk:class-equipment`/`blk:background-equipment` replaced by
+`impl:class-equipment`/`impl:background-equipment`, each backed by a real verification function
+(`classEquipmentCovered`/`backgroundEquipmentCovered`) that checks the owning facet's own
+`startingEquipment` is well-formed (>=2 bundles, every bundle >=1 grant) -- never a bare name match.
+**All 28 decisions move blocked -> implemented.** New census: **647 total / 391 implemented / 221
+blocked / 35 optional** (363+28=391, 249-28=221), exactly the arithmetic the census predicted.
+`tests/rules/mandatory-decision-coverage.test.ts` gained a new P8 describe block (10 tests:
+population, reclassification, by-class x12, by-background x16, coverage, 2 bite tests, availability,
+first-real-character) and the bidirectional contract (A/B) holds with zero violations.
+
+#### P3 BROWSER SURFACES NEWLY REACHABLE
+
+Bard, Monk, Sorcerer, and Wizard creation (P3.3's own spell-selection UI for the three casters among
+them) are now reachable end to end through the real Phase-0 gate for the FIRST time -- none of the
+four had any OTHER blocked decision. 13 backgrounds' own Origin-feat acquisition and ability-score
+distribution UI (already built in P7/Phase 2C.3A) become reachable in combination with these four
+classes for the first time, since starting equipment was their shared remaining blocker. Monk's
+creation choices (its own artisan-or-instrument cross-reference) are exercised live for the first
+time. Fighter remains explicitly NOT claimed as live-browser-ready: Weapon Mastery is its own
+unrelated remaining blocker, confirmed in `create-v2-fail-closed.test.ts`'s own updated assertion.
+
+#### HISTORICAL COMPATIBILITY
+
+Every historical character (created before this phase, with no `inventory`/`currency` block at
+all) continues to load unchanged: `loadCharacterInventory`/`loadCharacterCurrency` both return
+`null` for "nothing ever recorded" (a first-class, pre-existing state), and
+`character-assembly.ts`'s own blueprint carries `currency: StoredCharacterCurrency | null` exactly
+like `resources`/`health` already do -- `null` is legal, never defaulted to an empty/zeroed object.
+No migration, no retroactive grant, no read-time mutation. `character-assembly.ts`'s own 10-block
+`block_instances` read (previously 9; `currency` added, `limit` bumped 9 -> 10) is covered by its
+own pre-existing test, updated in place (`tests/server/utils/character-assembly.test.ts`).
+
+#### RIPPLE-EFFECT TEST UPDATES (the expected cost of a real reclassification, not new breakage)
+
+Exactly as P3.5's own precedent established, a reclassification that actually changes which
+decisions block creation breaks tests whose premise depended on the OLD blocked state. Found and
+fixed, each with an explanatory comment naming P8 as the cause: `create-v2-fail-closed.test.ts`
+(Dwarf+Fighter+Criminal's remaining real blocker is now named -- Weapon Mastery, not starting
+equipment), `create-v2.post.test.ts`/`create-v2-spell-acquisition.test.ts`/
+`create-v2-fighter-mechanics.test.ts` (every pre-existing create-v2 success-path test now supplies
+a real `startingEquipment` answer -- the pure-currency 'B' bundle wherever no catalogue item was
+already stocked, 'C' for Fighter specifically since its own 'B' is physical gear), one Fighter
+mechanics test whose assertion that `rules_choices` stays `null` is now `rules_choices` carries
+ONLY the new equipment provenance keys, `creationBlockerPresentation.test.ts` (Criminal and Artisan
+are no longer blocked at all -- their own tests repurposed to prove exactly that, and the "no
+internal identifier" sweep's background example swapped from Criminal to Sage, which remains
+genuinely blocked), `creation-availability.test.ts`/`spell-corpus-authority.test.ts` (baseline
+numbers updated with an explanatory comment, per each file's own "STOP, explain before updating"
+policy), and `mandatory-decision-coverage.test.ts`'s own P3.5 AVAILABILITY test (narrowed from "every
+caster has a remaining blocker" to "every caster P8 did not fully unblock" -- Bard/Sorcerer/Wizard
+are the correct, stronger exception, not a weakening).
+
+#### BUILDER UI -- IMPLEMENTED (P8B, 2026-10-12; corrects the prior "not implemented" statement above)
+
+**The statement immediately above, written at P8's own completion, is now superseded and
+corrected rather than left standing beside a contradictory current-state claim.** P8B closed this
+exact gap: the real V2 Builder now answers every package-authored `RulesFacet.startingEquipment`
+choice generically, through the SAME pure `resolveEquipmentBundle` authority P8's server already
+uses -- no second interpretation of bundle semantics, no class/background/item/bundle-id branch
+anywhere in the new code.
+
+**Draft state.** `CharacterBuilderDraft.equipmentSelections: Record<string, string>` -- selection
+identity ONLY (`EquipmentChoice.id` -> selected `EquipmentBundle.id`), mirroring P3.3B's own
+`spellSelections` domain exactly (a sibling choice kind, never a ChoiceSet, never a content
+choice). No resolved item ref, quantity, currency amount, or cross-reference result is ever stored
+in the draft -- the selected class/background facet remains the sole source of bundle contents, by
+construction (every presentation/completeness function re-reads `draft[slot]?.rulesFacet
+?.startingEquipment` fresh on every call, never a cached copy).
+
+**Ownership, generic over slot.** `equipmentChoiceOwners(draft)` iterates `CHOICE_KEYS` (species,
+class, background) and collects whichever slots' CURRENTLY selected facet declares a
+`startingEquipment` choice -- today exactly class and background, but the function itself names
+neither; a future species/feat facet needs zero Builder code change. Multiple simultaneous
+equipment choices (today: two) are rendered, completed, and submitted independently, with no
+"exactly two owners" assumption anywhere.
+
+**Presentation.** `equipmentChoiceSections(draft, context)` returns one section per live choice,
+each bundle described by `summarizeEquipmentGrant` -- a small pure adapter that walks a bundle's
+real `EquipmentGrant[]` and describes each grant (catalogue item title via the newly-threaded
+`context.items`, quantity, currency amount + its own opaque `denominationId` -- never a hardcoded
+"GP"/"gold", a custom grant's name, or a `crossReference`'s real resolved item) in one line,
+degrading gracefully, GRANT BY GRANT, when a cross-reference has no answer yet rather than
+refusing to describe the rest of the bundle. This is presentation only and is never the
+completeness authority -- `equipmentChoiceSatisfied` calls the REAL `resolveEquipmentBundle`
+(whole-bundle, fail-closed) for that. `context.items` is NOT a new fetch: `GET /api/worlds/:id/
+catalogue` already returns `items` in its `WorldGameplayCatalogue` response (confirmed by reading
+`world-content-catalogue.ts` and the thin `catalogue.get.ts` route that relays it verbatim) --
+`create-v2.vue`'s own local `WorldCatalogue` type simply had not declared the field yet, exactly
+the same "already there, now threaded through" shape `spells` was in P2/P3.3B.
+
+**Cross-reference grants read, never write, proficiency state.** `builderCrossReferenceResolver`
+reads the character's own in-progress `draft.choices.selections` (via `selectionsFor`/`choiceKey`,
+scoped to the owning slot) the IDENTICAL way the server's own `crossReferenceResolverFor`
+(`server/utils/character-equipment-bundle.ts`) reads the persisted `rules_choices` -- resolution
+is a pure read, and a new regression test
+(`tests/components/characters/builder/characterBuilderSelection.test.ts`'s own P8B test 11) proves
+`draft.choices.selections` is byte-identical before and after rendering, both unanswered and
+answered. `DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS` is imported directly rather than
+injected because it is already a transitive client dependency of this exact file (`creation
+UnresolvedDecisions`, already imported and called by `ownCreationBlocker`, pulls the entire
+`dnd5e-2024.ts` facet corpus in through `mandatory-decision-coverage.ts`'s own `findRulesFacet`) --
+confirmed by inspection, not assumed, so this adds zero new client bundle weight.
+
+**Switching / staleness.** Neither `equipmentSelections` nor `spellSelections` is pruned on a
+species/class/background change (confirmed: `pruneChoices` touches only `contentChoices` and
+`choices.selections`). A stale answer for a slot no longer selected is simply never LIVE
+(`equipmentChoiceOwners` only returns owners from CURRENTLY selected facets), so it can never
+satisfy completeness and can never reach `effectiveStartingEquipment`'s own liveness-filtered
+output -- but it is never deleted either, so switching back later re-validates the SAME stored
+bundle id against the CURRENT facet's real bundles, fresh, rather than trusting a cached verdict.
+Proven directly, both at the pure Builder level (tests 4-6: switching Bard away makes its
+selection ineffective immediately; switching back revalidates it; the identical proof for
+Criminal/Background) and through the real server round trip (the new P8B describe block in
+`create-v2-starting-equipment.test.ts`).
+
+**Completeness.** `isEquipmentStepComplete`/`isDraftComplete` never bypass, stub, or special-case
+`creationUnresolvedDecisions` -- Phase-0 structural authority and "did the player submit a legal
+answer for this already-representable decision" remain the SAME two-layer split P3.3B already
+established for spells. A live choice with no selected-and-resolvable bundle keeps the draft
+incomplete; `missingRequirements` names it in plain words
+(`"<Slot>: choose a starting-equipment option."`).
+
+**Payload.** `effectiveStartingEquipment(draft)` -> `CharacterCreatePayload.startingEquipment:
+Record<string, string>` -- exactly the `{ [choiceId]: bundleId }` shape `create-v2.post.ts` already
+reads. The client submits ONLY this selection identity; a dedicated test
+(`characterBuilderSelection.test.ts`'s P8B test 3, and the new `create-v2-starting-equipment.test.ts`
+Builder-shaped test) asserts every submitted value is a plain string bundle id, never an object, an
+item ref, a quantity, or a currency amount.
+
+**Invalid/stale bundle id.** Cannot satisfy `isEquipmentStepComplete` (an id absent from the real
+choice's own `bundles` fails `findEquipmentBundle`), and therefore `toCreatePayload` returns `null`
+-- `isDraftComplete` gates the whole payload, so an invalid id for a LIVE choice never reaches a
+built request at all. Proven at both layers (pure Builder test 12; the server-round-trip test
+asserting `toCreatePayload` is `null`).
+
+**ACCEPTANCE -- every scenario the brief named, proven:** Dwarf + Bard + Criminal exposes both
+equipment choices (test 1); selecting both completes the equipment portion (test 2); the payload
+carries both selections with no resolved grant data (test 3); changing Bard away/back
+revalidates correctly (tests 4-5); the identical proof for Criminal/Background (test 6); Fighter's
+real A/B/C renders all three (test 7); a pure-currency bundle (test 8), a catalogue-item bundle
+(test 9), a custom-grant bundle (test 10), and a `crossReference` bundle with no proficiency
+mutation (test 11) each render intelligibly; an invalid/stale bundle id cannot complete the Builder
+or reach the payload (test 12) -- all twelve in
+`tests/components/characters/builder/characterBuilderSelection.test.ts`'s own new P8B describe
+block (13 tests; a 13th proves a slot with no `startingEquipment` facet contributes no section at
+all, vacuously complete). The REAL-AUTHORITY extension (five new tests in
+`tests/server/api/worlds/[id]/characters/create-v2-starting-equipment.test.ts`'s own new P8B
+describe block) builds the request body through the REAL Builder functions
+(`emptyDraft`/`setChoiceSelections`/`setSpellSelections`/`setEquipmentSelection`/`toCreatePayload`
+-- never a hand-written body object) and posts it through the real route: the Builder reports the
+draft complete once every real choice is answered; an unanswered equipment choice alone keeps it
+incomplete; a stale bundle id cannot complete it or reach the payload; the bundle-B (pure currency)
+and bundle-A (catalogue items, custom grant, merged duplicate quantity) payloads each succeed
+through the real `create-v2.post` route and persist exactly what P8's own hand-written-body tests
+already proved -- directly confirming the CLIENT shape and the SERVER authority agree, not merely
+that each was separately tested.
+
+**DOM limitation, stated honestly.** This repository's Vitest environment is Node-only
+(`environment: 'node'`, confirmed in `vitest.config.ts`) -- no component actually mounts or
+renders in either this phase's tests or P3.3B's. Every proof above exercises the pure Builder
+presentation/state boundary (`characterBuilderSelection.ts`'s own exported functions) against the
+SAME normalized draft/context shapes the real `create-v2.vue` page constructs and reads, including
+the exact Vue computed properties (`equipmentSections`, `chooseEquipmentBundle`) added to that page
+-- but the actual rendered DOM (the new `<fieldset>`/radio markup in both the compact and roomy
+templates) is NOT exercised by any automated test in this repository. Live browser acceptance of
+the rendered equipment step is still required after deployment and is not claimed here, matching
+P3.3B's own identical, already-accepted limitation.
+
+**Files.** Modified: `app/components/characters/builder/characterBuilderSelection.ts` (+
+`equipmentSelections` draft field, +`'equipment'` step, +`BuilderCreationContext.items`, +11
+exported functions/types for ownership/resolution/presentation/completeness/payload),
+`app/pages/worlds/[id]/characters/create-v2.vue` (+`items` threaded into `WorldCatalogue`/
+`creationContext`, +`equipmentSections`/`chooseEquipmentBundle`, +an Equipment step/section in both
+the compact and roomy layouts), `tests/components/characters/builder/characterBuilderSelection.test.ts`
+(+13 tests, one new P8B describe block; 3 pre-existing tests updated for the new `'equipment'` step
+-- `STEP_KEYS`, `nextStep`, and the `toCreatePayload` payload-shape equality test),
+`tests/components/characters/builder/creationChoiceEligibility.test.ts` (one pre-existing test given
+a real equipment answer for the exact reason P1/P7/P8 ripple-effect fixes already established: Wizard
+and Sage now each declare a real starting-equipment choice this test's own narrow "nothing else
+mentions Class" assertion did not anticipate), `tests/server/api/worlds/[id]/characters/
+create-v2-starting-equipment.test.ts` (+5 tests, one new P8B describe block). No production
+(non-test) file outside the two listed above was touched. No Rules/Content package file touched.
+
+**Verification.** `pnpm run test`: **203 files / 4311 tests -- all passing** (4293 pre-existing +
+18 new: 13 from the Builder's own P8B describe block, 5 from the server-side Builder-shaped
+acceptance block; zero regressions after the 3 ripple-effect fixes above). `pnpm run typecheck`:
+the SAME pre-existing `@types/node`-absent environment gap P8 already reported, unrelated to this
+pass -- directly confirmed zero new diagnostics in either file this phase touched (grepped the
+full output for both paths; zero hits). `pnpm run build`: succeeds. `git diff --check`: clean.
+`pnpm run lint`: the SAME pre-existing `.nuxt/eslint.config.mjs`-absent gap P8 already reported
+(`@nuxt/eslint` is still not registered in `nuxt.config.ts`), unrelated to this pass. `pnpm
+packages:sync --world Solaris` (dry run): **Rules CURRENT at 0.21.0, Content REFRESH_REQUIRED,
+Actions REFRESH_CONTENT + BIND_CONTENT** -- byte-identical to P8's own reported state; this pass
+introduced zero additional package drift, confirming P8B was application/UI-only as expected. No
+commit made. No `packages:sync --apply` run.
+
+#### Package impact
+
+Zero version impact. `pnpm packages:sync --world Solaris` (dry run): **Rules CURRENT at 0.21.0**
+(no Definition/manifest diff -- confirmed by `git diff --stat` on both package files showing no
+changes), **Content REFRESH_REQUIRED** (expected and correct: the authored `dnd5e-2024.ts`
+RulesFacet corpus changed substantially -- 28 new `startingEquipment` facets, the cross-reference
+table, the currency constant -- so recompiling today's candidate content produces different output
+than the currently-published `eldra.solaris.xphb` version), **Actions: REFRESH_CONTENT +
+BIND_CONTENT**. No `SOURCE_VERSION_COLLISION` (Rules Definitions did not change). No apply run.
+
+#### Files
+
+- New: `app/lib/characters/equipment-bundle.ts`, `app/lib/characters/currency.ts`,
+  `server/utils/character-equipment-bundle.ts`, `server/utils/character-currency.ts`,
+  `tests/lib/characters/equipment-bundle.test.ts`, `tests/lib/characters/currency.test.ts`,
+  `tests/server/utils/character-equipment-bundle.test.ts`,
+  `tests/server/api/worlds/[id]/characters/create-v2-starting-equipment.test.ts`.
+- Modified: `app/lib/content-rules/types.ts` (+`EquipmentChoice`/`EquipmentBundle`/`EquipmentGrant`,
+  +`RulesFacet.startingEquipment`), `app/lib/content-rules/dnd5e-2024.ts` (+28 `startingEquipment`
+  facets, +`DND5E_2024_CURRENCY_DENOMINATION`, +`DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS`),
+  `app/lib/content-rules/mandatory-decision-coverage.ts` (equipment reclassification, as above),
+  `server/utils/character-assembly.ts` (+`currency` block read/field),
+  `server/api/worlds/[id]/characters/create-v2.post.ts` (+startingEquipment validation/write), and
+  the 8 ripple-effect test files named above.
+- `packages/eldra-dnd5e-2024/definitions.json`/`manifest.json`: untouched (net zero diff after the
+  Bard Definition add-then-revert).
+
+#### Verification
+
+`pnpm run test`: **203 files / 4293 tests -- all passing** (4237 pre-existing + 56 new: 30 from
+`currency.test.ts`/`equipment-bundle.test.ts`, 19 from `character-equipment-bundle.test.ts`, 7 from
+the first-real-character acceptance file; 0 regressions after the ripple-effect fixes above).
+`pnpm run typecheck`: this environment is currently missing the `@types/node` dependency entirely
+(confirmed absent from `node_modules`, confirmed not declared in `package.json`, confirmed
+pre-existing and unrelated to this phase -- `pnpm install` reports the lockfile already up to date)
+-- this makes the previously-recorded "243 unique pairs" baseline unreproducible here, through no
+action of this phase. Directly confirmed instead: zero typecheck errors originate from any file this
+phase created or modified (checked by grepping the full typecheck output for each P8 file path;
+zero hits). `pnpm run build`: succeeds (exit 0). `git diff --check`: clean. `pnpm run lint`: this
+environment's `.nuxt/eslint.config.mjs` does not exist (the `@nuxt/eslint` module is not registered
+in `nuxt.config.ts`) -- also pre-existing and unrelated to this phase. `pnpm packages:sync --world
+Solaris` (dry run): as reported above. No commit made. No `packages:sync --apply` run.

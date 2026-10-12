@@ -35,6 +35,7 @@ import {
   pruneChoices,
   NO_CREATION_CONTENT,
   setChoiceSelections,
+  setEquipmentSelection,
   type BuilderCatalogueEntry,
   type BuilderCreationContext,
   type CharacterBuilderDraft
@@ -265,6 +266,12 @@ describe('the Builder draft -- interactive, never silently illegal', () => {
     setChoiceSelections(draft, CLASS_KEY, [INSIGHT, NATURE])
     // Sage also asks its P7 ability distribution (the proficiency step includes every creation choice).
     setChoiceSelections(draft, SAGE_ABILITY_KEY, [INT_SOURCE, INT_SOURCE, WIS_SOURCE], PACKAGE_CONTEXT)
+    // D&D 2024 Character Rules P8B -- Wizard and Sage now each declare a real starting-equipment
+    // choice; this test is about PROFICIENCY completeness specifically, so the pure-currency 'B'
+    // bundle (no item/cross-reference dependency) is supplied for both, matching this file's own
+    // narrow intent rather than widening the assertion to ignore an unrelated outstanding choice.
+    setEquipmentSelection(draft, 'choice:equipment.starting.wizard-xphb', 'B')
+    setEquipmentSelection(draft, 'choice:equipment.starting.sage-xphb', 'B')
 
     expect(isProficiencyStepComplete(draft, PACKAGE_CONTEXT)).toBe(true)
     expect(missingRequirements(draft, PACKAGE_CONTEXT).some((line) => line.includes('Class'))).toBe(false)

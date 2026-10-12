@@ -214,6 +214,9 @@ function fakeEvent(body: unknown): H3Event {
 
 const STANDARD_ARRAY = { method: 'standard-array', scores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 } }
 
+// D&D 2024 Character Rules P8 -- Fighter's own pure-currency bundle is 'C' (its 'A'/'B' are both
+// physical gear, see dnd5e-2024.ts's own Fighter facet); Criminal's is 'B'. Neither needs any
+// catalogue item to resolve, matching this file's own items-less synthetic catalogue.
 function fighterBody(overrides: Record<string, unknown> = {}) {
   return {
     title: 'Brenna',
@@ -222,6 +225,7 @@ function fighterBody(overrides: Record<string, unknown> = {}) {
     background: ref(CONTENT_PACKAGE, 'criminal-xphb'),
     abilities: STANDARD_ARRAY,
     contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(archery)] },
+    startingEquipment: { 'choice:equipment.starting.fighter-xphb': 'C', 'choice:equipment.starting.criminal-xphb': 'B' },
     ...overrides
   }
 }
@@ -369,7 +373,10 @@ describe('Fighter Level-1 Fighting Style routing (mechanics; completeness author
       { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: 'background:progression:1:grant:origin' }
     ]))
     expect(FS_ONLY_KEY).toBe('class:progression:1:choice:feat.fighting-style.fs-only')
-    expect(store.rules).toBeNull()
+    // D&D 2024 Character Rules P8 -- rules_choices is no longer null: it now carries the
+    // starting-equipment bundle provenance this request's own fighterBody() submits. The
+    // assertion this test exists for still holds -- Fighting Style is NOT one of its keys.
+    expect(Object.keys((store.rules as any).selections)).not.toContain(FS_ONLY_KEY)
   })
 
   it('a FRESH persisted read (no Builder draft, no tentative argument) resolves Level 1, the owned style, and the feature Value', async () => {
@@ -563,6 +570,10 @@ function bodyWith(backgroundName: string, overrides: Record<string, unknown> = {
     // keeps asserting exactly what it always asserted (rules_choices/Origin-feat mechanics), not
     // spell completeness. A test that needs to prove something ABOUT spells overrides this key.
     spellSelections: wizardSpellSelections(),
+    // D&D 2024 Character Rules P8 -- same "supply the pure-currency default" posture as this
+    // file's own spellSelections default immediately above: Wizard's and every one of the 16
+    // backgrounds' own 'B' bundle is pure currency, needing no catalogue item.
+    startingEquipment: { 'choice:equipment.starting.wizard-xphb': 'B', [`choice:equipment.starting.${slugOf(backgroundName)}`]: 'B' },
     ...overrides
   }
 }

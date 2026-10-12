@@ -136,12 +136,14 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
     expectNoWrites()
   })
 
-  // P7: Criminal's ability bonus is now representable; starting equipment (P8, out of scope) is
-  // its remaining blocker, and the refusal names it in plain words.
-  it('a background whose starting equipment cannot be recorded is refused, and the reason names the decision in plain words', async () => {
+  // P8: starting equipment is now representable for every class and background (Criminal's own
+  // equipment decision included) -- Fighter's remaining real Level-1 blocker is Weapon Mastery,
+  // explicitly out of P8's scope, and the refusal still names the real blocking decision in plain
+  // words, never an internal identifier.
+  it('a Fighter still blocked by Weapon Mastery is refused, and the reason names the decision in plain words', async () => {
     const rejected = await handler(fakeEvent(bodyWith('dwarf-xphb', 'fighter-xphb', 'criminal-xphb')) as any).catch((error: any) => error)
     expect(rejected.statusCode).toBe(400)
-    expect(rejected.message).toMatch(/starting equipment/)
+    expect(rejected.message).toMatch(/Weapon Mastery/)
     expectNoWrites()
   })
 

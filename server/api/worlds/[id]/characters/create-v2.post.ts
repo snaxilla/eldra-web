@@ -97,6 +97,15 @@ import {
   slotTableRows
 } from '../../../../utils/character-spell-acquisition'
 import { saveCharacterSpellcasting } from '../../../../utils/character-spellcasting'
+import {
+  applyStartingEquipmentAdditions,
+  resolveStartingEquipment,
+  type StartingEquipmentOwnerInput
+} from '../../../../utils/character-equipment-bundle'
+import { saveCharacterInventory } from '../../../../utils/character-inventory'
+import { saveCharacterCurrency } from '../../../../utils/character-currency'
+import { emptyInventory } from '../../../../../app/lib/characters/inventory'
+import { addCurrencyAmounts, emptyCurrency } from '../../../../../app/lib/characters/currency'
 
 // Character Sheet Caster Pass 0 -- restated, not shared, from
 // server/utils/character-recovery.ts's own identically-shaped, module-private
@@ -469,6 +478,51 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  // D&D 2024 Character Rules P8 -- STARTING EQUIPMENT. CLIENT AUTHORITY BOUNDARY, same posture as
+  // spell selections immediately above: the client submits ONLY a bundle id per owning slot
+  // (`startingEquipment: { [choiceKey]: bundleId }`), never an item ref, quantity, currency amount,
+  // or custom name -- every grant is independently re-derived here from the SAME package facet and
+  // catalogue already resolved above, through the one shared canonical resolver
+  // (resolveStartingEquipment, server/utils/character-equipment-bundle.ts, itself built on
+  // app/lib/characters/equipment-bundle.ts's pure authority; nothing here re-implements any of it).
+  // Content declaring no startingEquipment (no real XPHB facet today, but a future species/feat
+  // might) is skipped entirely -- no plan built, no write, no payload required. Validated and
+  // refused BEFORE any entity is written, same as every check above.
+  const rawStartingEquipment = body?.startingEquipment
+  if (rawStartingEquipment != null && (typeof rawStartingEquipment !== 'object' || Array.isArray(rawStartingEquipment))) {
+    throw createError({ statusCode: 400, statusMessage: '`startingEquipment` must be an object of choice ids to bundle ids' })
+  }
+  const submittedBundleIds = (rawStartingEquipment ?? {}) as Record<string, unknown>
+  for (const [key, value] of Object.entries(submittedBundleIds)) {
+    if (typeof value !== 'string' || !value) {
+      throw createError({ statusCode: 400, statusMessage: `${key}: a starting-equipment answer must be a bundle id string` })
+    }
+  }
+
+  const equipmentOwners: StartingEquipmentOwnerInput[] = [
+    { slot: 'class', choice: characterClass.rulesFacet?.startingEquipment, bundleId: undefined },
+    { slot: 'background', choice: background.rulesFacet?.startingEquipment, bundleId: undefined }
+  ]
+  for (const owner of equipmentOwners) {
+    if (!owner.choice) continue
+    const submitted = submittedBundleIds[owner.choice.id]
+    owner.bundleId = typeof submitted === 'string' ? submitted : undefined
+  }
+
+  const equipmentResolution = resolveStartingEquipment(equipmentOwners, rulesChoices, catalogue.items)
+  if (!equipmentResolution.ok) {
+    throw createError({ statusCode: 400, statusMessage: equipmentResolution.reason })
+  }
+
+  // Which bundle was chosen is PROVENANCE, not a new store: it joins `rulesChoices.selections`
+  // through the exact same mechanism a Subclass/Feat ContentRef-encoded answer already reuses that
+  // map for (see EquipmentChoice's own header, app/lib/content-rules/types.ts) -- a single-element
+  // list under `choiceKey(slot, choice.id)`, persisted by the SAME `saveCharacterRulesChoices` call
+  // below as every other creation-time answer.
+  for (const [key, bundleId] of Object.entries(equipmentResolution.result.provenance)) {
+    rulesChoices.selections[key] = [bundleId]
+  }
+
   const created = await createEntityRecord({
     worldId,
     title,
@@ -529,6 +583,22 @@ export default defineEventHandler(async (event) => {
     // entity and earlier blocks may already exist, the same as the writes above.
     if (Object.keys(rulesChoices.selections).length > 0) {
       await saveCharacterRulesChoices(created.id, rulesChoices)
+    }
+
+    // D&D 2024 Character Rules P8 -- CANONICAL STARTING EQUIPMENT WRITE-THROUGH. FAIL LOUDLY (no
+    // `.catch`), same posture as spellcasting above and for the identical reason: a completed-
+    // looking character silently missing the gear/currency its class and background grant would be
+    // the exact bug this phase exists to prevent. ADDS into a fresh, empty inventory/currency --
+    // never replaces -- which is what makes this safe to run unconditionally even though every
+    // class/background declares starting equipment today (a character with none declared would
+    // simply resolve zero additions and zero currency, writing nothing).
+    if (equipmentResolution.result.additions.length > 0) {
+      const inventory = applyStartingEquipmentAdditions(emptyInventory().items, equipmentResolution.result.additions)
+      await saveCharacterInventory(created.id, { items: inventory })
+    }
+    if (Object.keys(equipmentResolution.result.currency).length > 0) {
+      const currency = addCurrencyAmounts(emptyCurrency(), equipmentResolution.result.currency)
+      await saveCharacterCurrency(created.id, currency)
     }
 
     // Character Sheet Caster Pass 0 -- INITIAL HEALTH. A newly-created

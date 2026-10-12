@@ -451,7 +451,7 @@ describe('assembleCharacter -- ability scores', () => {
     expect(result.blueprint.species.status).toBe('resolved')
   })
 
-  it('reads all nine blocks in ONE Directus round trip', async () => {
+  it('reads all ten blocks in ONE Directus round trip', async () => {
     const catalogue = fullCatalogue()
     getWorldContentCatalogueMock.mockResolvedValue(catalogue)
     mockEntityAndBlock(
@@ -469,7 +469,7 @@ describe('assembleCharacter -- ability scores', () => {
     const blockCalls = directusServiceRequestMock.mock.calls.filter(([path]) => path === '/items/block_instances')
     expect(blockCalls).toHaveLength(1)
     expect(blockCalls[0][1].query.filter._and[1].block_key._in).toEqual([
-      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'notes', 'health', 'spellcasting', 'progression', 'resources'
+      'catalogue_selection', 'ability_scores', 'rules_choices', 'inventory', 'currency', 'notes', 'health', 'spellcasting', 'progression', 'resources'
     ])
   })
 })

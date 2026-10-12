@@ -36,11 +36,12 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
     expect(dwarf!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
-  // P7: the ability score bonus is now representable; starting equipment (P8, out of scope) is
-  // Criminal's remaining blocker.
-  it('a background\'s remaining blocker (starting equipment) is named in plain words', () => {
+  // D&D 2024 Character Rules P8 -- starting equipment (Criminal's own remaining blocker as of P7)
+  // is now implemented (app/lib/characters/equipment-bundle.ts), and Criminal owns no other
+  // decision Eldra cannot record -- it is genuinely unavailable no longer.
+  it('a background whose only remaining blocker was starting equipment is unavailable no longer', () => {
     const [criminal] = withCreationBlockers([entry('criminal-xphb', 'Criminal')], 'background')
-    expect(criminal!.rulesFacet?.creationUnavailable).toBe('Requires starting equipment.')
+    expect(criminal!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
   it('a package-authored Origin reason is kept as written (it already names the feat)', () => {
@@ -48,15 +49,15 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
     expect(acolyte!.rulesFacet?.creationUnavailable).toMatch(/Origin Feat \(Magic Initiate\)/)
   })
 
-  // P7: Artisan's ability bonus is now representable too, same as Crafter's tool choice (P1).
-  // Starting equipment is its remaining blocker.
-  it('Artisan is blocked by starting equipment, not by its Origin feat or ability bonus', () => {
+  // P7 made Artisan's ability bonus representable, same as Crafter's tool choice (P1); P8 makes
+  // its starting equipment representable too. Nothing else blocks it.
+  it('Artisan is no longer blocked: starting equipment was its last remaining decision', () => {
     const [artisan] = withCreationBlockers([entry('artisan-xphb', 'Artisan')], 'background')
-    expect(artisan!.rulesFacet?.creationUnavailable).toBe('Requires starting equipment.')
+    expect(artisan!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
   it('no reason ever exposes an internal identifier', () => {
-    for (const [slug, kind] of [['elf-xphb', 'species'], ['aasimar-xphb', 'species'], ['criminal-xphb', 'background'], ['acolyte-xphb', 'background']] as const) {
+    for (const [slug, kind] of [['elf-xphb', 'species'], ['aasimar-xphb', 'species'], ['sage-xphb', 'background'], ['acolyte-xphb', 'background']] as const) {
       const blocker = ownCreationBlocker(kind, slug)
       expect(blocker, slug).not.toBeNull()
       expect(blockerReason(blocker!)).not.toMatch(INTERNAL)

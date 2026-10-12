@@ -11,7 +11,11 @@
 import { describe, expect, it } from 'vitest'
 import { DND5E_2024_PROGRESSION_COVERAGE } from '../../app/lib/content-rules/dnd5e-2024-progression-coverage'
 import { COVERAGE_RULES, classifyDecision, matchingRules, type CoverageRule } from '../../app/lib/content-rules/mandatory-decision-coverage'
-import { DND5E_2024_MANDATORY_DECISIONS } from '../../app/lib/content-rules/creation-completeness'
+import {
+  DND5E_2024_MANDATORY_DECISIONS,
+  DND5E_2024_POPULATION,
+  creationUnresolvedDecisions
+} from '../../app/lib/content-rules/creation-completeness'
 import type { DecisionRecord } from '../../app/lib/content-rules/mandatory-decisions'
 
 const DECISIONS = DND5E_2024_MANDATORY_DECISIONS
@@ -212,13 +216,122 @@ describe('P3.5 -- spell decision reconciliation', () => {
   })
 
   it('AVAILABILITY -- the Phase-0 scoreboard is not weakened by this reclassification (other real blockers still exist per class)', () => {
-    // Every real caster class still has at least one non-spell blocked decision (starting
-    // equipment, at minimum) -- P3.5 narrows WHICH decisions block a caster, it does not make any
-    // caster individually creation-complete on its own.
-    for (const slug of CASTER_SLUGS) {
+    // D&D 2024 Character Rules P8 superseded this assertion's own original premise: starting
+    // equipment WAS every caster's "at minimum" remaining non-spell blocker at P3.5 time, and P8
+    // has since reclassified it. Bard/Sorcerer/Wizard have no OTHER class-owned blocker and are now
+    // genuinely creation-complete (see the P8 describe block below) -- this is the correct,
+    // stronger outcome, not a weakening, so this test is narrowed to the casters P8 did NOT fully
+    // unblock, rather than asserting a universal "something always remains" that is no longer true.
+    const stillPartiallyBlockedCasters = CASTER_SLUGS.filter((slug) => !['bard-xphb', 'sorcerer-xphb', 'wizard-xphb'].includes(slug))
+    for (const slug of stillPartiallyBlockedCasters) {
       const ownDecisions = DECISIONS.filter((d) => d.owner.kind === 'class' && d.owner.slug === slug)
       const nonSpellBlocked = ownDecisions.filter((d) => !['spell-choice', 'spell-grant', 'spell-count'].includes(d.family) && classifyDecision(d).status === 'blocked')
       expect(nonSpellBlocked.length, `${slug}: expected at least one real, non-spell blocker to remain`).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('P8 -- starting equipment reconciliation', () => {
+  const equipmentDecisions = DECISIONS.filter((d) => d.family === 'equipment-package')
+  const CLASS_SLUGS = [
+    'barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb', 'monk-xphb',
+    'paladin-xphb', 'ranger-xphb', 'rogue-xphb', 'sorcerer-xphb', 'warlock-xphb', 'wizard-xphb'
+  ]
+  const BACKGROUND_SLUGS = [
+    'acolyte-xphb', 'artisan-xphb', 'charlatan-xphb', 'criminal-xphb', 'entertainer-xphb',
+    'farmer-xphb', 'guard-xphb', 'guide-xphb', 'hermit-xphb', 'merchant-xphb', 'noble-xphb',
+    'sage-xphb', 'sailor-xphb', 'scribe-xphb', 'soldier-xphb', 'wayfarer-xphb'
+  ]
+
+  it('POPULATION -- exactly 28 class/background-owned equipment-package decisions exist (12 classes + 16 backgrounds), matching the census exactly', () => {
+    expect(equipmentDecisions.length).toBe(28)
+    expect(equipmentDecisions.filter((d) => d.owner.kind === 'class').length).toBe(12)
+    expect(equipmentDecisions.filter((d) => d.owner.kind === 'background').length).toBe(16)
+  })
+
+  it('RECLASSIFICATION -- all 28 are now implemented, none left behind', () => {
+    const implemented = equipmentDecisions.filter((d) => classifyDecision(d).status === 'implemented')
+    expect(implemented.length).toBe(28)
+  })
+
+  it('BY CLASS -- every one of the 12 real XPHB classes owns exactly one reclassified equipment decision', () => {
+    for (const slug of CLASS_SLUGS) {
+      const own = equipmentDecisions.filter((d) => d.owner.kind === 'class' && d.owner.slug === slug)
+      expect(own.length, slug).toBe(1)
+      expect(classifyDecision(own[0]).status, slug).toBe('implemented')
+    }
+  })
+
+  it('BY BACKGROUND -- every one of the 16 real XPHB backgrounds owns exactly one reclassified equipment decision', () => {
+    for (const slug of BACKGROUND_SLUGS) {
+      const own = equipmentDecisions.filter((d) => d.owner.kind === 'background' && d.owner.slug === slug)
+      expect(own.length, slug).toBe(1)
+      expect(classifyDecision(own[0]).status, slug).toBe('implemented')
+    }
+  })
+
+  it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
+    expect(contractViolations(DECISIONS)).toEqual([])
+  })
+
+  it('BITE -- deleting equipment coverage (impl:class-equipment, impl:background-equipment) leaves all 28 decisions uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:class-equipment' && rule.id !== 'impl:background-equipment')
+    expect(equipmentDecisions.every((d) => without.filter((rule) => rule.matches(d)).length === 0)).toBe(true)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- falsely marking an unsupported equipment structure (a synthetic species-owned equipment decision) implemented is rejected: the real rules never match a species owner', () => {
+    const synthetic: DecisionRecord = {
+      ...equipmentDecisions[0],
+      id: 'synthetic:species-equipment',
+      owner: { kind: 'species', slug: 'does-not-exist-xphb' }
+    }
+    // None of the REAL rules match a species-owned equipment decision at all (both `impl:*`
+    // equipment rules require `owner.kind` to be 'class' or 'background').
+    expect(matchingRules(synthetic)).toEqual([])
+
+    const falselyImplemented: CoverageRule = {
+      id: 'impl:false-species-equipment',
+      status: 'implemented',
+      reason: 'synthetic, for the bite proof only',
+      ledgerIds: [],
+      matches: (d) => d.id === synthetic.id
+    }
+    // Adding a synthetic "this is actually fine" rule is the only way to make it match anything --
+    // proving the real contract never silently covers an owner shape it was not built for.
+    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic))).toEqual([])
+    expect([...COVERAGE_RULES, falselyImplemented].filter((rule) => rule.matches(synthetic)).map((r) => r.id)).toEqual(['impl:false-species-equipment'])
+  })
+
+  it('AVAILABILITY -- real creationUnresolvedDecisions authority now reports the expected post-P8 scoreboard', () => {
+    const { species, classes, backgrounds } = DND5E_2024_POPULATION
+
+    const availableSpecies = species.filter((s) =>
+      creationUnresolvedDecisions({ species: s, class: classes[0], background: backgrounds[0], feats: [] })
+        .filter((d) => d.owner.kind === 'species').length === 0)
+    const availableClasses = classes.filter((c) =>
+      creationUnresolvedDecisions({ species: species[0], class: c, background: backgrounds[0], feats: [] })
+        .filter((d) => d.owner.kind === 'class').length === 0)
+    const availableBackgrounds = backgrounds.filter((b) =>
+      creationUnresolvedDecisions({ species: species[0], class: classes[0], background: b, feats: [] })
+        .filter((d) => d.owner.kind === 'background').length === 0)
+
+    expect(availableSpecies.length).toBe(3)
+    expect(availableClasses.sort()).toEqual(['bard-xphb', 'monk-xphb', 'sorcerer-xphb', 'wizard-xphb'])
+    expect(availableBackgrounds.length).toBe(13)
+
+    let combinations = 0
+    for (const s of species) {
+      for (const c of classes) {
+        for (const b of backgrounds) {
+          if (creationUnresolvedDecisions({ species: s, class: c, background: b, feats: [] }).length === 0) combinations++
+        }
+      }
+    }
+    expect(combinations).toBe(156)
+  })
+
+  it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
+    expect(creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'bard-xphb', background: 'criminal-xphb', feats: [] })).toEqual([])
   })
 })

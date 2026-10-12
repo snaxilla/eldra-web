@@ -668,7 +668,8 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry()),
       choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.nature.proficient'] } },
-      spellSelections: wizardSpellSelections()
+      spellSelections: wizardSpellSelections(),
+      startingEquipment: { 'choice:equipment.starting.wizard-xphb': 'B', 'choice:equipment.starting.sage-xphb': 'B' }
     }))
 
     expect(result.rulesChoices.selections[CLASS_SKILL_KEY]).toEqual(['value:skill.insight.proficient', 'value:skill.nature.proficient'])
@@ -685,7 +686,8 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry()),
       choices: { selections: { [CLASS_SKILL_KEY]: ['value:skill.insight.proficient', 'value:skill.investigation.proficient'] } },
-      spellSelections: wizardSpellSelections()
+      spellSelections: wizardSpellSelections(),
+      startingEquipment: { 'choice:equipment.starting.wizard-xphb': 'B', 'choice:equipment.starting.sage-xphb': 'B' }
     }))
 
     expect(result.rulesChoices.selections[CLASS_SKILL_KEY]).toEqual(['value:skill.insight.proficient', 'value:skill.investigation.proficient'])
@@ -706,10 +708,16 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
       species: selectionOf(gnomeEntry()),
       class: selectionOf(wizardEntry()),
       background: selectionOf(sageEntry()),
-      spellSelections: wizardSpellSelections()
+      spellSelections: wizardSpellSelections(),
+      startingEquipment: { 'choice:equipment.starting.wizard-xphb': 'B', 'choice:equipment.starting.sage-xphb': 'B' }
     }))
 
-    expect(result.rulesChoices.selections).toEqual({})
+    // The Class's own proficiency choice is left outstanding, same as before P8 -- only the P8
+    // starting-equipment answers (a different ChoiceSet family entirely) are now present.
+    expect(result.rulesChoices.selections).toEqual({
+      'class:choice:equipment.starting.wizard-xphb': ['B'],
+      'background:choice:equipment.starting.sage-xphb': ['B']
+    })
     expect(createEntityRecordMock).toHaveBeenCalled()
   })
 })

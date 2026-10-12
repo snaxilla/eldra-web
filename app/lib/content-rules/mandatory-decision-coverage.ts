@@ -27,7 +27,7 @@
 import { findRulesFacet } from './index'
 import { slugOf, type DecisionRecord } from './mandatory-decisions'
 import { valueIdsOfDetail } from './proficiency-vocabulary'
-import type { RulesFacet } from './types'
+import type { EquipmentChoice, RulesFacet } from './types'
 
 export type CoverageStatus = 'implemented' | 'blocked' | 'optional' | 'false-positive' | 'runtime-effect'
 
@@ -82,6 +82,36 @@ function classProgression(slug: string): readonly string[] {
 
 function classSpellRequirements(slug: string) {
   return findRulesFacet('dnd5e.2024', 'class', slug)?.spellRequirements ?? []
+}
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P8 -- STARTING EQUIPMENT COVERAGE.
+// ---------------------------------------------------------------------------
+// Covered only when the owning facet's own `startingEquipment` is REAL and well-formed -- at least
+// two bundles (every real XPHB decision is an A/B, or Fighter's own A/B/C choice; a single-bundle
+// "choice" is not a choice), and every bundle carries at least one grant (an empty bundle grants
+// nothing, which is never what the real corpus declares). This checks SHAPE only, deliberately:
+// whether a specific grant actually resolves against a live World's catalogue is a runtime fact
+// (server/utils/character-equipment-bundle.ts's own job), not a static corpus-authoring fact this
+// ledger can verify without a Directus connection -- matching this ledger's own existing posture for
+// every other family (e.g. `spellCountCovered` checks the facet's table has a value, never that a
+// specific spell ContentRef resolves).
+function classStartingEquipment(slug: string): EquipmentChoice | undefined {
+  return findRulesFacet('dnd5e.2024', 'class', slug)?.startingEquipment
+}
+function backgroundStartingEquipment(slug: string): EquipmentChoice | undefined {
+  return findRulesFacet('dnd5e.2024', 'background', slug)?.startingEquipment
+}
+function equipmentChoiceWellFormed(choice: EquipmentChoice | undefined): boolean {
+  return !!choice && choice.bundles.length >= 2 && choice.bundles.every((bundle) => bundle.grants.length > 0)
+}
+function classEquipmentCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'class', 'equipment-package')) return false
+  return equipmentChoiceWellFormed(classStartingEquipment(d.owner.slug))
+}
+function backgroundEquipmentCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'background', 'equipment-package')) return false
+  return equipmentChoiceWellFormed(backgroundStartingEquipment(d.owner.slug))
 }
 
 // `spell-count` family (table-column deltas: "Cantrips" / "Prepared Spells"). Covered when the
@@ -380,11 +410,11 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => d.family === 'language-choice'
   },
   {
-    id: 'blk:class-equipment',
-    status: 'blocked',
-    reason: 'Starting equipment (A/B packages): no creation grant shape exists.',
+    id: 'impl:class-equipment',
+    status: 'implemented',
+    reason: 'Starting equipment (A/B[/C] bundles): app/lib/characters/equipment-bundle.ts resolves the real authored bundle, server/utils/character-equipment-bundle.ts validates and persists it (P8).',
     ledgerIds: [],
-    matches: (d) => is(d, 'class', 'equipment-package')
+    matches: classEquipmentCovered
   },
   {
     id: 'blk:subclass-spells',
@@ -436,11 +466,11 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => is(d, 'species', 'damage-type-choice')
   },
   {
-    id: 'blk:background-equipment',
-    status: 'blocked',
-    reason: 'Background starting equipment (A/B or gold): no creation grant shape exists.',
+    id: 'impl:background-equipment',
+    status: 'implemented',
+    reason: 'Background starting equipment (A/B bundles, or pure gold): the SAME P8 resolver/authority as class equipment, scoped to the background owner.',
     ledgerIds: ['background:starting-equipment'],
-    matches: (d) => is(d, 'background', 'equipment-package')
+    matches: backgroundEquipmentCovered
   },
   {
     id: 'blk:origin-feat-unsupported',

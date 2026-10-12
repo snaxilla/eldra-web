@@ -71,6 +71,7 @@ import { getWorldContentCatalogue, type ContentCatalogueEntry } from './world-co
 import { ABILITY_SCORES_BLOCK_KEY } from './character-ability-scores'
 import { RULES_CHOICES_BLOCK_KEY } from './character-rules-choices'
 import { INVENTORY_BLOCK_KEY } from './character-inventory'
+import { CURRENCY_BLOCK_KEY } from './character-currency'
 import { CHARACTER_NOTES_BLOCK_KEY } from './character-notes'
 import { CHARACTER_HEALTH_BLOCK_KEY } from './character-health'
 import { CHARACTER_SPELLCASTING_BLOCK_KEY } from './character-spellcasting'
@@ -96,6 +97,10 @@ import {
   type AssembledInventoryItem,
   type StoredInventoryItem
 } from '../../app/lib/characters/inventory'
+import {
+  normalizeStoredCurrency,
+  type StoredCharacterCurrency
+} from '../../app/lib/characters/currency'
 import { normalizeStoredRulesChoices, type StoredRulesChoices } from '../../app/lib/characters/rules-choices'
 import { normalizeStoredAbilityScores, type StoredAbilityScores } from '../../app/lib/characters/ability-scores'
 import { normalizeStoredProgression, type StoredCharacterProgression } from '../../app/lib/characters/progression'
@@ -255,6 +260,14 @@ export type CharacterAssemblyBlueprint = {
   // is character-actor-bridge.ts's `acquiredResourceIds`, built from this
   // same blueprint's own facets/progression one layer later.
   resources: StoredCharacterResources | null
+  // D&D 2024 Character Rules P8 -- what this character has, by opaque
+  // package-owned denomination id. Relayed verbatim, exactly as `health`'s
+  // numbers are: a currency amount resolves against nothing, so there is no
+  // catalogue join for it to go through (see currency.ts's own header for
+  // why `denominationId` is never interpreted here). `null` when nothing
+  // was ever recorded -- true of every character created before this
+  // phase, and a first-class state, never zeroed or defaulted.
+  currency: StoredCharacterCurrency | null
   packs: WorldContentPackResolution[]
 }
 
@@ -478,6 +491,7 @@ export async function assembleCharacter(
                 ABILITY_SCORES_BLOCK_KEY,
                 RULES_CHOICES_BLOCK_KEY,
                 INVENTORY_BLOCK_KEY,
+                CURRENCY_BLOCK_KEY,
                 CHARACTER_NOTES_BLOCK_KEY,
                 CHARACTER_HEALTH_BLOCK_KEY,
                 CHARACTER_SPELLCASTING_BLOCK_KEY,
@@ -488,7 +502,7 @@ export async function assembleCharacter(
           }
         ]
       },
-      limit: 9,
+      limit: 10,
       fields: 'block_key,data'
     }
   })
@@ -506,6 +520,7 @@ export async function assembleCharacter(
   const abilityScores = normalizeStoredAbilityScores(findBlock(ABILITY_SCORES_BLOCK_KEY)?.data ?? null)
   const rulesChoices = normalizeStoredRulesChoices(findBlock(RULES_CHOICES_BLOCK_KEY)?.data ?? null)
   const storedInventory = normalizeStoredInventory(findBlock(INVENTORY_BLOCK_KEY)?.data ?? null)
+  const currency = normalizeStoredCurrency(findBlock(CURRENCY_BLOCK_KEY)?.data ?? null)
   const notes = normalizeStoredCharacterNotes(findBlock(CHARACTER_NOTES_BLOCK_KEY)?.data ?? null)
   const health = normalizeStoredCharacterHealth(findBlock(CHARACTER_HEALTH_BLOCK_KEY)?.data ?? null)
   const spellcasting = normalizeStoredSpellcasting(findBlock(CHARACTER_SPELLCASTING_BLOCK_KEY)?.data ?? null)
@@ -587,6 +602,7 @@ export async function assembleCharacter(
     progression,
     feats: resolveFeats([...acquiredFeatsByKey.values()], catalogue.feats, catalogue.packs),
     resources,
+    currency,
     packs: catalogue.packs
   }
 

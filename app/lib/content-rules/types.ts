@@ -165,6 +165,96 @@ export type RulesFacet = {
   // other RulesFacet field, because a requirement is a published fact about content, exactly like
   // `grants`/`choices`). Lives only on class facets today; nothing here names a class.
   spellRequirements?: SpellRequirement[]
+  // D&D 2024 Character Rules P8 -- the creation-time "choose ONE bundle of starting gear" decision
+  // this content declares, if any. See EquipmentChoice's own header
+  // (app/lib/characters/equipment-bundle.ts owns the pure resolver; the TYPE lives here for the
+  // identical reason `spellRequirements` does -- a published fact about content). Lives on class
+  // and background facets in the real XPHB corpus; the shape itself names no owner kind.
+  startingEquipment?: EquipmentChoice
+}
+
+// D&D 2024 Character Rules P8 -- the generic shape for "choose ONE bundle from N package-authored
+// bundles, each a flat list of heterogeneous grants." This is the ENTIRE missing primitive the
+// post-P3 critical-path census found: every one of the real XPHB corpus's 28 class/background
+// starting-equipment decisions is exactly this shape (an A/B, or Fighter's own A/B/C, choice), never
+// a nested picker, never nothing. Deliberately NOT named `ClassStartingEquipment`/
+// `BackgroundStartingEquipment`/`DndEquipmentChoice` -- a future species, feat, or homebrew content
+// (or a non-D&D rules package's own "pick a loadout" decision) uses the IDENTICAL shape with zero
+// new application code, the same "no owner-name routing" discipline every other generic primitive
+// in this family (SpellRequirement, ResolvableChoice) already follows.
+//
+// WHY THIS IS THE SMALLEST SHAPE THAT COVERS ALL 28 DECISIONS (P8's own audit, re-verified directly
+// against the real corpus before this type was written): every decision is "pick exactly one of
+// several bundles," and every bundle is a FLAT list of grants -- never a bundle containing a nested
+// sub-choice of its own (the one apparent exception, `equipmentType`/`equipmentTypes`, is a
+// DETERMINISTIC reference to an ALREADY-answered proficiency choice elsewhere, never a second
+// pick -- see `EquipmentGrant`'s own `crossReference` case). A smaller shape (e.g. a bare list of
+// items with no bundle grouping) could not express "A or B"; a larger one (e.g. nested choice trees)
+// is not needed by any real decision in the corpus and was not built on spec.
+export type EquipmentBundle = {
+  // Stable identity within this choice -- the corpus's own A/B/C label (never re-derived from the
+  // label text, which is free-form and could change).
+  id: string
+  // Human-readable, package-authored. Never computed by stitching grant summaries together here --
+  // that is a PRESENTATION concern (app/components/characters/builder's own summary renderer), not
+  // an authoring fact.
+  label: string
+  grants: EquipmentGrant[]
+}
+
+// One heterogeneous grant inside a bundle. Four kinds, exactly covering what the real corpus's own
+// `item` / `item+quantity` / `value` / `equipmentType(s)` / `displayName+item` / `special` shapes
+// resolve to:
+//   'item'            -- a catalogue item, named by `slug` ALONE, with an optional quantity (default
+//                        1). Covers `item`, `item+quantity`, and `displayName+item` (the display
+//                        label is a Builder/Sheet presentation concern, read from the catalogue entry
+//                        itself -- the grant names no override field, matching every other
+//                        catalogue-backed reference in this codebase).
+//
+//                        NO `packageId` HERE, DELIBERATELY: this file is bound to no one World's
+//                        Content Pack (`item:` facets immediately below are keyed by `slug` alone for
+//                        the identical reason -- a 5etools-sourced slug is `slugify(name-source)`,
+//                        stable across every republish of the same source content, by the
+//                        importer's own convention). Authoring a specific `packageId` here would
+//                        hardcode one World's catalogue identity (e.g. a Solaris-specific published
+//                        pack id) into Rules content meant to bind to ANY Content Pack declaring
+//                        `vocabulary: 'dnd5e.2024'`. Resolution supplies the packageId, by matching
+//                        this slug against whichever catalogue is actually live -- the same split
+//                        `resolveSlot`'s own stored-choice resolution already keeps, one layer
+//                        earlier (there the STORED answer pins a packageId at pick time and
+//                        re-resolves it; here the AUTHORED fact never pins one at all).
+//   'crossReference'  -- a DETERMINISTIC reference to whichever tool/instrument/gaming-set identity
+//                        an ALREADY-DECLARED proficiency ChoiceSet on the SAME facet resolves to (the
+//                        corpus's own `equipmentType`/`equipmentTypes` -- NOT only "tool or
+//                        instrument": Guard/Noble/Soldier's own `equipmentType: 'setGaming'` resolves
+//                        against their own already-authored `choice:proficiency.gaming-set.background`
+//                        exactly the same way Monk's resolves against
+//                        `choice:proficiency.artisan-or-instrument.class`, which is why this kind is
+//                        named by WHAT it does (reference an existing answer), never by WHICH
+//                        proficiency family happens to use it). `choiceSetId` names that ChoiceSet;
+//                        resolution reads the character's own real answer to it, never a second
+//                        player-facing pick. See EquipmentChoice's own CROSS-REFERENCE header.
+//   'currency'        -- a numeric amount of one package-owned denomination. `denominationId` is an
+//                        opaque, package-authored string (never hardcoded in application code,
+//                        never "GP"/"gold") -- see app/lib/characters/currency.ts's own header.
+//   'custom'          -- a non-catalogue grant, named directly (Wizard's own "Spellbook," or any
+//                        item this World's Content Pack has not (yet) curated) -- resolves straight
+//                        to StoredInventoryItem's own existing custom-name capability, never a fake
+//                        catalogue entity invented to avoid this case.
+export type EquipmentGrant =
+  | { kind: 'item'; slug: string; quantity?: number }
+  | { kind: 'crossReference'; choiceSetId: DefinitionId }
+  | { kind: 'currency'; denominationId: string; amount: number }
+  | { kind: 'custom'; name: string; quantity?: number }
+
+// One creation-time "choose a bundle" decision. `id` is the stable, opaque key this choice's own
+// answer is persisted under (app/lib/characters/rules-choices.ts's existing `choiceKey(slot, id)` --
+// P8 invents no second persistence mechanism, the identical reuse SpellRequirement's own `id` field
+// already established for the SAME reason). `bundles.length` is 2 for every real XPHB decision but
+// Fighter's own 3 -- never hardcoded as "2 options" anywhere that reads this.
+export type EquipmentChoice = {
+  id: DefinitionId
+  bundles: EquipmentBundle[]
 }
 
 // D&D 2024 Character Rules P3.1 -- the generic shape for "this content requires the player to own

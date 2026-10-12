@@ -73,6 +73,7 @@ import {
   type CreationSpellEntry
 } from '~/lib/characters/creation-content-choices'
 import {
+  choiceKey,
   emptyStoredRulesChoices,
   selectionsFor,
   validateChoiceSelection,
@@ -88,7 +89,13 @@ import {
   type SpellAcquisitionPlan,
   type TentativeSpellSelection
 } from '~/lib/characters/spell-acquisition-plan'
-import type { SpellRequirementPoolKind } from '~/lib/content-rules/types'
+import type { EquipmentChoice, EquipmentGrant, SpellRequirementPoolKind } from '~/lib/content-rules/types'
+import {
+  findEquipmentBundle,
+  resolveEquipmentBundle,
+  type EquipmentBundleResolvers
+} from '~/lib/characters/equipment-bundle'
+import { DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS } from '~/lib/content-rules/dnd5e-2024'
 
 // D&D 2024 Character Rules P3.4 -- re-exported, not redefined: the Level Manager
 // (CharacterProgressionPanel.vue) now needs the identical pool-kind label mapping, so it was
@@ -175,6 +182,18 @@ export type CharacterBuilderDraft = {
   // requirement is not a ChoiceSet and is never judged by that path -- it is judged entirely by
   // `planSpellAcquisition`, the ONE shared authority this module and the server both call.
   spellSelections: Record<string, string[]>
+  // D&D 2024 Character Rules P8B -- starting-equipment bundle answers, keyed by the package-
+  // authored EquipmentChoice.id (never a slot name, never a class/background name -- the id
+  // already encodes its own owner, see dnd5e-2024.ts's own `choice:equipment.starting.<slug>`
+  // convention), each value the single selected EquipmentBundle.id ('A'/'B'/'C'). A SEPARATE
+  // domain from every other choice kind here: an EquipmentChoice is not a ChoiceSet (no Definition
+  // answer) and not a content choice (no ContentRef) -- it is judged entirely by
+  // `resolveEquipmentBundle`, the SAME shared pure resolver the server authority already calls
+  // (server/utils/character-equipment-bundle.ts). Not pruned on switch, deliberately, mirroring
+  // `spellSelections`' own posture exactly: a stale answer for a slot no longer selected is simply
+  // never LIVE (see `equipmentChoiceOwners`), so switching back to that slot later re-validates the
+  // old answer rather than losing it, and a stale answer is never submitted either way.
+  equipmentSelections: Record<string, string>
 }
 
 // What the Builder knows about this package's content choices. Supplied by the
@@ -193,6 +212,21 @@ export type BuilderCreationContext = {
   // P7 -- the package's distinctness and per-option ceiling per ChoiceSet, echoed by the
   // choice-options endpoint. Absent means every choice is distinct (the pre-P7 rule).
   choiceSetRule?: (choiceSetId: string) => ChoiceSetRule
+  // D&D 2024 Character Rules P8B -- the catalogue's own items, for resolving an `item` or
+  // `crossReference` EquipmentGrant's real title (the World's bound catalogue is already fetched
+  // for GET /api/worlds/:id/catalogue, which already includes `items` -- this only threads it
+  // through, exactly like `spells` was threaded through for P2 before any real 'spells' choice
+  // existed yet). Defaults to none so every existing caller is unchanged.
+  items?: readonly BuilderEquipmentCatalogueEntry[]
+}
+
+// The entry shape this module needs from the World Content Catalogue for equipment presentation
+// -- structural, so both the server catalogue and the Builder's copy satisfy it, mirroring
+// CreationSpellEntry's own minimal envelope.
+export type BuilderEquipmentCatalogueEntry = {
+  packageId: string
+  slug: string
+  title: string
 }
 
 export const NO_CREATION_CONTENT: BuilderCreationContext = {
@@ -200,7 +234,7 @@ export const NO_CREATION_CONTENT: BuilderCreationContext = {
   feats: []
 }
 
-export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'proficiencies' | 'spells' | 'abilities' | 'review'
+export type BuilderStepKey = 'identity' | BuilderChoiceKey | 'proficiencies' | 'spells' | 'equipment' | 'abilities' | 'review'
 
 export const CHOICE_KEYS: readonly BuilderChoiceKey[] = ['species', 'class', 'background']
 
@@ -214,7 +248,14 @@ export const CHOICE_KEYS: readonly BuilderChoiceKey[] = ['species', 'class', 'ba
 // reason: its questions are declared by the chosen Class's own facet, so there is nothing to ask
 // until a Class is picked, and it is a real, always-present step (empty for a non-caster) for the
 // same "the rail must not jump under a player's thumb" reasoning.
-export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'abilities', 'review']
+//
+// D&D 2024 Character Rules P8B -- 'equipment' sits right after 'spells', for the same reasoning
+// again: its questions are declared by whichever selected slots' own facets carry a
+// `startingEquipment` choice (today: class and background, generically -- see
+// `equipmentChoiceOwners`), so there is nothing to ask until at least one is picked, and it is a
+// real, always-present step (empty only if nothing selected yet) for the identical "rail must not
+// jump" reasoning.
+export const STEP_KEYS: readonly BuilderStepKey[] = ['identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'equipment', 'abilities', 'review']
 
 export const STEP_LABELS: Record<BuilderStepKey, string> = {
   identity: 'Name',
@@ -223,6 +264,7 @@ export const STEP_LABELS: Record<BuilderStepKey, string> = {
   background: 'Background',
   proficiencies: 'Proficiencies',
   spells: 'Spells',
+  equipment: 'Equipment',
   abilities: 'Ability Scores',
   review: 'Review'
 }
@@ -250,7 +292,8 @@ export function emptyDraft(): CharacterBuilderDraft {
     abilities: emptyAbilityDraft(),
     choices: emptyStoredRulesChoices(),
     contentChoices: {},
-    spellSelections: {}
+    spellSelections: {},
+    equipmentSelections: {}
   }
 }
 
@@ -524,6 +567,185 @@ export function spellRequirementSections(
     })
 }
 
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P8B -- starting equipment.
+// ---------------------------------------------------------------------------
+// ONE shared pure resolver, `resolveEquipmentBundle` (app/lib/characters/equipment-bundle.ts, P8),
+// consumed identically here and by the server authority (server/utils/character-equipment-
+// bundle.ts) -- this module never re-implements what a bundle grant MEANS or whether a selected
+// bundle is legal. The only things specific to the BUILDER are: which slots currently carry a
+// live `startingEquipment` choice (generic over slot, never a hardcoded "class and background"
+// pair -- a future species/feat facet needs zero change here), and how to describe a resolved
+// grant in one line for a player who has not yet created the character.
+//
+// `DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS` is imported directly (not injected) because it
+// is already a transitive dependency of this very file: `creationUnresolvedDecisions`
+// (imported above, already called by `ownCreationBlocker`) pulls in the entire
+// `dnd5e-2024.ts` facet corpus through `mandatory-decision-coverage.ts`'s own `findRulesFacet`
+// import, so this adds no new client bundle weight -- it only makes an existing transitive
+// dependency explicit, exactly the posture the server's OWN `character-equipment-bundle.ts`
+// already takes with the identical constant.
+
+// Every live startingEquipment choice the CURRENTLY selected slots declare, in slot order.
+// Generic: a slot with no EquipmentChoice on its facet simply contributes nothing -- no owner-kind
+// branch anywhere in this function.
+export type EquipmentChoiceOwner = { slot: BuilderChoiceKey; choice: EquipmentChoice }
+
+export function equipmentChoiceOwners(draft: CharacterBuilderDraft): EquipmentChoiceOwner[] {
+  const owners: EquipmentChoiceOwner[] = []
+  for (const slot of CHOICE_KEYS) {
+    const choice = draft[slot]?.rulesFacet?.startingEquipment
+    if (choice) owners.push({ slot, choice })
+  }
+  return owners
+}
+
+export function setEquipmentSelection(draft: CharacterBuilderDraft, choiceId: string, bundleId: string): void {
+  draft.equipmentSelections[choiceId] = bundleId
+}
+
+function builderItemResolver(context: BuilderCreationContext) {
+  const items = context.items ?? []
+  return (slug: string) => {
+    const found = items.find((entry) => entry.slug === slug)
+    return found ? { packageId: found.packageId, slug: found.slug } : null
+  }
+}
+
+// The D&D-specific half of a `crossReference` grant's resolution -- reads the character's OWN
+// already-in-progress `rules_choices` answer for the named ChoiceSet (scoped to `slot`, exactly as
+// every other creation-time choice already is), looks the selected Value id up in the package's
+// own tool/instrument/gaming-set -> item-slug table, then resolves that slug the identical way an
+// `item` grant does. Mirrors server/utils/character-equipment-bundle.ts's own
+// `crossReferenceResolverFor` exactly, one layer earlier (draft state instead of persisted
+// `rules_choices`).
+function builderCrossReferenceResolver(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext,
+  slot: BuilderChoiceKey
+) {
+  const resolveItem = builderItemResolver(context)
+  return (choiceSetId: string) => {
+    const selected = selectionsFor(draft.choices, choiceKey(slot, choiceSetId))[0]
+    if (!selected) return null
+    const slug = DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS[selected]
+    if (!slug) return null
+    return resolveItem(slug)
+  }
+}
+
+function builderEquipmentResolvers(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext,
+  slot: BuilderChoiceKey
+): EquipmentBundleResolvers {
+  return {
+    resolveItemSlug: builderItemResolver(context),
+    resolveCrossReference: builderCrossReferenceResolver(draft, context, slot)
+  }
+}
+
+// Real legality, never presentation-only: a choice is satisfied only when a selected bundle id
+// actually exists on this choice AND `resolveEquipmentBundle` resolves it in full (every item
+// slug found, every cross-reference answered) -- the SAME fail-closed authority the server
+// applies, never weakened here to make the step look complete sooner.
+export function equipmentChoiceSatisfied(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext,
+  owner: EquipmentChoiceOwner
+): boolean {
+  const bundleId = draft.equipmentSelections[owner.choice.id]
+  if (!bundleId) return false
+  const bundle = findEquipmentBundle(owner.choice, bundleId)
+  if (!bundle) return false
+  return resolveEquipmentBundle(bundle, builderEquipmentResolvers(draft, context, owner.slot)).ok
+}
+
+export function isEquipmentStepComplete(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): boolean {
+  return equipmentChoiceOwners(draft).every((owner) => equipmentChoiceSatisfied(draft, context, owner))
+}
+
+function titleForItemSlug(context: BuilderCreationContext, slug: string): string {
+  return context.items?.find((entry) => entry.slug === slug)?.title ?? `${slug} (unavailable)`
+}
+
+// One grant, described in one line. Deliberately NEVER the authority on legality (that is
+// `equipmentChoiceSatisfied`'s job, via the real `resolveEquipmentBundle`) -- this degrades
+// gracefully, grant by grant, so a bundle with one still-unanswered cross-reference still shows
+// every OTHER grant it carries, rather than refusing to describe the whole bundle at all.
+function summarizeEquipmentGrant(
+  grant: EquipmentGrant,
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext,
+  slot: BuilderChoiceKey
+): string {
+  if (grant.kind === 'item') {
+    const title = titleForItemSlug(context, grant.slug)
+    return grant.quantity && grant.quantity > 1 ? `${grant.quantity}× ${title}` : title
+  }
+  if (grant.kind === 'custom') {
+    return grant.quantity && grant.quantity > 1 ? `${grant.quantity}× ${grant.name}` : grant.name
+  }
+  if (grant.kind === 'currency') {
+    // `denominationId` is opaque and package-owned (see app/lib/characters/currency.ts's own
+    // header) -- this deliberately never hardcodes "GP"/"gold" or a conversion rate. Infrastructure-
+    // grade only: the amount and the denomination's own identity, nothing invented.
+    return `${grant.amount} (currency: ${grant.denominationId})`
+  }
+  // grant.kind === 'crossReference'
+  const ref = builderCrossReferenceResolver(draft, context, slot)(grant.choiceSetId)
+  if (!ref) return 'an item determined by a proficiency choice you have not made yet'
+  return titleForItemSlug(context, ref.slug)
+}
+
+export type EquipmentBundleSummary = {
+  id: string
+  label: string
+  summary: string
+}
+
+export type EquipmentChoiceSection = {
+  slot: BuilderChoiceKey
+  choiceId: string
+  bundles: EquipmentBundleSummary[]
+  selectedBundleId: string | null
+  satisfied: boolean
+}
+
+export function equipmentChoiceSections(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): EquipmentChoiceSection[] {
+  return equipmentChoiceOwners(draft).map((owner) => ({
+    slot: owner.slot,
+    choiceId: owner.choice.id,
+    bundles: owner.choice.bundles.map((bundle) => ({
+      id: bundle.id,
+      label: bundle.label,
+      summary: bundle.grants.map((grant) => summarizeEquipmentGrant(grant, draft, context, owner.slot)).join(', ')
+    })),
+    selectedBundleId: draft.equipmentSelections[owner.choice.id] ?? null,
+    satisfied: equipmentChoiceSatisfied(draft, context, owner)
+  }))
+}
+
+// The answers that count for the CURRENTLY live choices, in P8's own server wire shape
+// (`{ [choiceId]: bundleId }`). A prior slot's stale answer is not deleted from the draft
+// (switching back re-validates it against the current owners rather than losing it), but it is
+// never live here and is therefore never submitted -- the identical posture
+// `effectiveSpellSelections` already established one domain over.
+export function effectiveStartingEquipment(draft: CharacterBuilderDraft): Record<string, string> {
+  const liveIds = new Set(equipmentChoiceOwners(draft).map((owner) => owner.choice.id))
+  const effective: Record<string, string> = {}
+  for (const [choiceId, bundleId] of Object.entries(draft.equipmentSelections)) {
+    if (liveIds.has(choiceId) && bundleId) effective[choiceId] = bundleId
+  }
+  return effective
+}
+
 // The question as the rest of the Builder reads it: options are only the
 // ELIGIBLE ones, and the selection is the effective one. Callers that need to
 // SHOW unavailable options read creationChoicePresentation instead.
@@ -666,6 +888,7 @@ export function isStepComplete(
   if (step === 'identity') return isNameComplete(draft)
   if (step === 'proficiencies') return isProficiencyStepComplete(draft, context) && isCreationContentComplete(draft, context)
   if (step === 'spells') return isSpellStepComplete(draft, context)
+  if (step === 'equipment') return isEquipmentStepComplete(draft, context)
   if (step === 'abilities') return isAbilityStepComplete(draft)
   if (step === 'review') return isDraftComplete(draft, context)
   return isChoiceComplete(draft, step)
@@ -680,6 +903,7 @@ export function isDraftComplete(
     && isProficiencyStepComplete(draft, context)
     && isCreationContentComplete(draft, context)
     && isSpellStepComplete(draft, context)
+    && isEquipmentStepComplete(draft, context)
     && isAbilityStepComplete(draft)
     // PHASE 0 -- an entity with a mandatory decision Eldra cannot record cannot be created.
     && creationBlockerMessages(draft).length === 0
@@ -718,6 +942,10 @@ export function missingRequirements(
     const chosen = (draft.spellSelections[section.requirementId] ?? []).length
     missing.push(`${section.label}: choose ${chosen} of ${section.choice.count}.`)
   }
+  for (const section of equipmentChoiceSections(draft, context)) {
+    if (section.satisfied) continue
+    missing.push(`${STEP_LABELS[section.slot]}: choose a starting-equipment option.`)
+  }
   if (!isAbilityStepComplete(draft)) missing.push('Finish assigning ability scores.')
   missing.push(...creationBlockerMessages(draft))
   return missing
@@ -750,6 +978,13 @@ export type CharacterCreatePayload = {
   // re-derives every one of those from the selected Class's own package facet and rebuilds the
   // SAME plan before trusting any of it (see server/utils/character-spell-acquisition.ts).
   spellSelections: TentativeSpellSelection[]
+  // D&D 2024 Character Rules P8B -- the selected bundle id per live starting-equipment choice,
+  // keyed by EquipmentChoice.id. The client submits ONLY this selection identity -- never an item
+  // slug, quantity, currency amount, resolved cross-reference item, or custom grant name. The
+  // server independently re-derives every grant from the selected class/background's own package
+  // facet and the World's real catalogue before trusting any of it (see server/utils/
+  // character-equipment-bundle.ts's own `resolveStartingEquipment`).
+  startingEquipment: Record<string, string>
 }
 
 // See design decision 3 -- only the two fields the save route actually reads.
@@ -776,7 +1011,10 @@ export function toCreatePayload(
     contentChoices: effectiveContentChoices(draft, context),
     // D&D 2024 Character Rules P3.3 -- only the answers the CURRENTLY selected Class's own
     // requirements declare; a prior Class's stale answers are never live and are never submitted.
-    spellSelections: effectiveSpellSelections(draft)
+    spellSelections: effectiveSpellSelections(draft),
+    // D&D 2024 Character Rules P8B -- only the bundle ids the CURRENTLY live choices declare; a
+    // prior class/background's stale answer is never live and is never submitted.
+    startingEquipment: effectiveStartingEquipment(draft)
   }
 }
 

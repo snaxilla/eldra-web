@@ -175,6 +175,12 @@ function fakeEvent(body: unknown): H3Event {
   } as unknown as H3Event
 }
 
+// D&D 2024 Character Rules P8 -- every class/background now declares starting equipment, so a
+// creation request this file's own assertions did not mean to exercise must still submit a valid
+// one. The pure-currency alternative every real XPHB decision offers needs no item/cross-
+// reference resolution against this file's own (items-less) synthetic catalogue -- 'B' for every
+// class but Fighter, whose own 'B' is a second physical-gear option (its pure-currency bundle is
+// 'C'; see dnd5e-2024.ts's own Fighter facet).
 function bodyWith(classSlug: string, spellSelections: unknown, overrides: Record<string, unknown> = {}) {
   return {
     title: 'Elowen',
@@ -183,6 +189,10 @@ function bodyWith(classSlug: string, spellSelections: unknown, overrides: Record
     background: ref('soldier-xphb'),
     abilities: STANDARD_ARRAY,
     spellSelections,
+    startingEquipment: {
+      [`choice:equipment.starting.${classSlug}`]: classSlug === 'fighter-xphb' ? 'C' : 'B',
+      'choice:equipment.starting.soldier-xphb': 'B'
+    },
     ...overrides
   }
 }

@@ -111,7 +111,9 @@ import {
   activeAssignment,
   creationChoicePresentation,
   creationContentPresentation,
+  equipmentChoiceSections,
   setContentChoiceSelections,
+  setEquipmentSelection,
   type BuilderCreationContext,
   declaredChoices,
   draftAbilityScores,
@@ -155,6 +157,10 @@ type WorldCatalogue = {
   feats: BuilderCatalogueEntry[]
   // D&D 2024 Character Rules P2 -- for a 'spells' category content choice (mirrors `feats`).
   spells: BuilderCatalogueEntry[]
+  // D&D 2024 Character Rules P8B -- for resolving an `item`/`crossReference` EquipmentGrant's real
+  // title. Already part of GET /api/worlds/:id/catalogue's own response (server/utils/
+  // world-content-catalogue.ts's `WorldGameplayCatalogue.items`); only newly typed/threaded here.
+  items: BuilderCatalogueEntry[]
 }
 
 const { data: catalogue, pending: catalogueLoading, error: catalogueError } = await useFetch<WorldCatalogue>(
@@ -275,7 +281,10 @@ const creationContext = computed<BuilderCreationContext>(() => {
     feats: catalogue.value?.feats ?? [],
     // D&D 2024 Character Rules P2 -- already fetched (the same /catalogue response), just threaded
     // through now so a future real 'spells' choice needs no new wiring here.
-    spells: catalogue.value?.spells ?? []
+    spells: catalogue.value?.spells ?? [],
+    // D&D 2024 Character Rules P8B -- already fetched (the same /catalogue response); threaded
+    // through for equipment-grant title resolution.
+    items: catalogue.value?.items ?? []
   }
 })
 
@@ -348,6 +357,19 @@ function spellSelectionsFor(requirementId: string): string[] {
 
 function chooseSpellSelections(requirementId: string, selected: string[]) {
   setSpellSelections(draft, requirementId, selected)
+}
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P8B -- starting equipment. One generic section per live
+// startingEquipment choice the selected slots declare (today: class and background) -- no
+// class/background-name branch, no bundle-id branch. Recomputes from `draft`/`creationContext`
+// exactly like every other step, including cross-reference grants (Monk's artisan-or-instrument,
+// the gaming-set backgrounds), which read the SAME `draft.choices.selections` the Proficiencies
+// step already answers -- no save/reload round trip needed to see a resolved cross-reference item.
+const equipmentSections = computed(() => equipmentChoiceSections(draft, creationContext.value))
+
+function chooseEquipmentBundle(choiceId: string, bundleId: string) {
+  setEquipmentSelection(draft, choiceId, bundleId)
 }
 
 // Changing Species/Class/Background changes which questions are asked, so
@@ -626,6 +648,73 @@ async function createCharacter() {
             </div>
           </div>
 
+          <div v-if="activeStep === 'equipment'">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+              {{ STEP_LABELS.equipment }}
+            </h2>
+            <p
+              v-if="!equipmentSections.length"
+              class="text-sm leading-6 text-[#9f9278]"
+            >
+              The Species, Class, and Background you chose declare no starting-equipment choice,
+              so there is nothing to answer here.
+            </p>
+
+            <div
+              v-else
+              class="grid gap-6"
+            >
+              <fieldset
+                v-for="section in equipmentSections"
+                :key="section.choiceId"
+                class="min-w-0 border-0 p-0"
+              >
+                <legend class="mb-2 text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                  {{ STEP_LABELS[section.slot] }} starting equipment
+                </legend>
+                <div class="grid gap-2">
+                  <label
+                    v-for="bundle in section.bundles"
+                    :key="bundle.id"
+                    class="group relative flex min-h-14 items-start gap-3 rounded-none border px-4 py-3 transition cursor-pointer"
+                    :class="section.selectedBundleId === bundle.id
+                      ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
+                      : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)]'"
+                  >
+                    <input
+                      :name="`equipment-${section.choiceId}`"
+                      type="radio"
+                      class="peer sr-only"
+                      :value="bundle.id"
+                      :checked="section.selectedBundleId === bundle.id"
+                      @change="chooseEquipmentBundle(section.choiceId, bundle.id)"
+                    >
+                    <span
+                      aria-hidden="true"
+                      class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
+                      :class="section.selectedBundleId === bundle.id
+                        ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.85)]'
+                        : 'border-[rgba(201,164,90,0.35)]'"
+                    >
+                      <span
+                        v-if="section.selectedBundleId === bundle.id"
+                        class="h-2 w-2 rounded-full bg-[#12100b]"
+                      />
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-base font-semibold text-[#fff7df]">{{ bundle.label }}</span>
+                      <span class="mt-0.5 block text-xs text-[#9f9278]">{{ bundle.summary }}</span>
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-[rgba(201,164,90,0.65)]"
+                    />
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+          </div>
+
           <div v-if="activeStep === 'abilities'">
             <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
               {{ STEP_LABELS.abilities }}
@@ -889,6 +978,72 @@ async function createCharacter() {
                   :slot-label="STEP_LABELS.class"
                   @update:selected="(value: string[]) => chooseSpellSelections(section.requirementId, value)"
                 />
+              </div>
+            </section>
+
+            <section>
+              <h2 class="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#f5e7bd]">
+                {{ STEP_LABELS.equipment }}
+              </h2>
+              <p
+                v-if="!equipmentSections.length"
+                class="text-sm leading-6 text-[#9f9278]"
+              >
+                The Species, Class, and Background you chose declare no starting-equipment choice,
+                so there is nothing to answer here.
+              </p>
+              <div
+                v-else
+                class="grid gap-6"
+              >
+                <fieldset
+                  v-for="section in equipmentSections"
+                  :key="section.choiceId"
+                  class="min-w-0 border-0 p-0"
+                >
+                  <legend class="mb-2 text-xs uppercase tracking-[0.2em] text-[#9f9278]">
+                    {{ STEP_LABELS[section.slot] }} starting equipment
+                  </legend>
+                  <div class="grid gap-2">
+                    <label
+                      v-for="bundle in section.bundles"
+                      :key="bundle.id"
+                      class="group relative flex min-h-14 items-start gap-3 rounded-none border px-4 py-3 transition cursor-pointer"
+                      :class="section.selectedBundleId === bundle.id
+                        ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)]'
+                        : 'border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)] hover:border-[rgba(201,164,90,0.42)] hover:bg-[rgba(201,164,90,0.08)]'"
+                    >
+                      <input
+                        :name="`equipment-${section.choiceId}`"
+                        type="radio"
+                        class="peer sr-only"
+                        :value="bundle.id"
+                        :checked="section.selectedBundleId === bundle.id"
+                        @change="chooseEquipmentBundle(section.choiceId, bundle.id)"
+                      >
+                      <span
+                        aria-hidden="true"
+                        class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition"
+                        :class="section.selectedBundleId === bundle.id
+                          ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.85)]'
+                          : 'border-[rgba(201,164,90,0.35)]'"
+                      >
+                        <span
+                          v-if="section.selectedBundleId === bundle.id"
+                          class="h-2 w-2 rounded-full bg-[#12100b]"
+                        />
+                      </span>
+                      <span class="min-w-0 flex-1">
+                        <span class="block text-base font-semibold text-[#fff7df]">{{ bundle.label }}</span>
+                        <span class="mt-0.5 block text-xs text-[#9f9278]">{{ bundle.summary }}</span>
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        class="pointer-events-none absolute inset-0 ring-2 ring-transparent peer-focus-visible:ring-[rgba(201,164,90,0.65)]"
+                      />
+                    </label>
+                  </div>
+                </fieldset>
               </div>
             </section>
 

@@ -23,18 +23,22 @@ import {
   choiceSelections,
   declaredChoices,
   effectiveSpellSelections,
+  effectiveStartingEquipment,
   emptyDraft,
+  equipmentChoiceSections,
   filterOptions,
   findOptionByKey,
   hasAmbiguousTitles,
   isSelectionHidden,
   isDraftComplete,
+  isEquipmentStepComplete,
   isProficiencyStepComplete,
   isSpellStepComplete,
   isStepComplete,
   missingRequirements,
   pruneChoices,
   setChoiceSelections,
+  setEquipmentSelection,
   setSpellSelections,
   spellAcquisitionPresentation,
   spellRequirementSections,
@@ -270,7 +274,10 @@ describe('toCreatePayload', () => {
       // PHASE 2C.2B -- no content-backed declaration in this draft, so no content answers.
       contentChoices: {},
       // D&D 2024 Character Rules P3.3 -- Fighter declares no spellRequirements, so no spell answers.
-      spellSelections: []
+      spellSelections: [],
+      // D&D 2024 Character Rules P8B -- the fixture's entries carry no Rules Facet, so no
+      // startingEquipment choice is live and there is nothing to submit.
+      startingEquipment: {}
     })
   })
 
@@ -360,14 +367,16 @@ describe('step navigation', () => {
     // Proficiencies sits after the three content choices, because the
     // questions it asks are declared BY those choices.
     expect(STEP_KEYS).toEqual([
-      'identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'abilities', 'review'
+      'identity', 'species', 'class', 'background', 'proficiencies', 'spells', 'equipment', 'abilities', 'review'
     ])
     expect(nextStep('identity')).toBe('species')
     expect(nextStep('background')).toBe('proficiencies')
     // D&D 2024 Character Rules P3.3 -- 'spells' sits right after 'proficiencies', for the same
     // "its questions are declared by the chosen Class" reason.
     expect(nextStep('proficiencies')).toBe('spells')
-    expect(nextStep('spells')).toBe('abilities')
+    // D&D 2024 Character Rules P8B -- 'equipment' sits right after 'spells', for the same reason.
+    expect(nextStep('spells')).toBe('equipment')
+    expect(nextStep('equipment')).toBe('abilities')
     expect(nextStep('abilities')).toBe('review')
     expect(previousStep('species')).toBe('identity')
   })
@@ -875,5 +884,198 @@ describe('D&D 2024 Character Rules P3.3B -- Builder browser-shape matrix (every 
       expect(Object.keys(selection).sort()).toEqual(['ref', 'requirementId']) // transport shape only
       expect(Object.keys(selection.ref).sort()).toEqual(['packageId', 'slug'])
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules P8B -- Builder starting equipment.
+// ---------------------------------------------------------------------------
+// Real facets via findRulesFacet (the SAME real P8-authored `startingEquipment` the server
+// authority reads), a synthetic but real-slug-shaped items catalogue (no live Directus needed --
+// this file is about Builder presentation/state logic, not I/O).
+describe('D&D 2024 Character Rules P8B -- Builder starting equipment', () => {
+  function classEntry(slug: string, title: string): BuilderCatalogueEntry {
+    return entry({ title, slug, rulesFacet: findRulesFacet('dnd5e.2024', 'class', slug) })
+  }
+  function backgroundEntry(slug: string, title: string): BuilderCatalogueEntry {
+    return entry({ title, slug, rulesFacet: findRulesFacet('dnd5e.2024', 'background', slug) })
+  }
+
+  const BARD = classEntry('bard-xphb', 'Bard')
+  const CRIMINAL = backgroundEntry('criminal-xphb', 'Criminal')
+  const MONK = classEntry('monk-xphb', 'Monk')
+  const FIGHTER = classEntry('fighter-xphb', 'Fighter')
+  const GUARD = backgroundEntry('guard-xphb', 'Guard')
+
+  const ITEM_SLUGS = [
+    'leather-armor-xphb', 'dagger-xphb', 'entertainers-pack-xphb', 'thieves-tools-xphb',
+    'crowbar-xphb', 'pouch-xphb', 'travelers-clothes-xphb', 'lute-xphb', 'dice-set-xphb',
+    'chain-mail-xphb', 'greatsword-xphb', 'flail-xphb', 'javelin-xphb',
+    'studded-leather-armor-xphb', 'scimitar-xphb', 'shortsword-xphb', 'longbow-xphb',
+    'arrows-20-xphb', 'quiver-xphb', 'spear-xphb', 'explorers-pack-xphb',
+    'light-crossbow-xphb', 'bolts-20-xphb', 'hooded-lantern-xphb', 'manacles-xphb'
+  ]
+
+  function contextWith(overrides: Partial<BuilderCreationContext> = {}): BuilderCreationContext {
+    return {
+      contentSelectorOf: () => null,
+      feats: [],
+      items: ITEM_SLUGS.map((slug) => ({ packageId: 'eldra.solaris.xphb', slug, title: slug })),
+      ...overrides
+    }
+  }
+
+  function draftFor(overrides: Partial<CharacterBuilderDraft> = {}): CharacterBuilderDraft {
+    const draft = emptyDraft()
+    draft.name = 'Borin'
+    Object.assign(draft, overrides)
+    return draft
+  }
+
+  it('1. Dwarf + Bard + Criminal exposes both the Bard and Criminal equipment choices', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    const sections = equipmentChoiceSections(draft, contextWith())
+    expect(sections.map((s) => s.choiceId).sort()).toEqual([
+      'choice:equipment.starting.bard-xphb',
+      'choice:equipment.starting.criminal-xphb'
+    ])
+    expect(sections.find((s) => s.choiceId.includes('bard'))!.slot).toBe('class')
+    expect(sections.find((s) => s.choiceId.includes('criminal'))!.slot).toBe('background')
+  })
+
+  it('2. selecting a legal bundle for both choices makes the equipment portion complete', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    const context = contextWith()
+    expect(isEquipmentStepComplete(draft, context)).toBe(false)
+    setEquipmentSelection(draft, 'choice:equipment.starting.bard-xphb', 'B')
+    setEquipmentSelection(draft, 'choice:equipment.starting.criminal-xphb', 'B')
+    expect(isEquipmentStepComplete(draft, context)).toBe(true)
+  })
+
+  it('3. the effective payload carries both selections and nothing else -- selection identity only, no resolved grant data', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    setEquipmentSelection(draft, 'choice:equipment.starting.bard-xphb', 'B')
+    setEquipmentSelection(draft, 'choice:equipment.starting.criminal-xphb', 'B')
+    const submitted = effectiveStartingEquipment(draft)
+    expect(submitted).toEqual({
+      'choice:equipment.starting.bard-xphb': 'B',
+      'choice:equipment.starting.criminal-xphb': 'B'
+    })
+    for (const value of Object.values(submitted)) expect(typeof value).toBe('string')
+  })
+
+  it('4. changing Bard to another class makes the Bard selection ineffective immediately', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    setEquipmentSelection(draft, 'choice:equipment.starting.bard-xphb', 'B')
+    setEquipmentSelection(draft, 'choice:equipment.starting.criminal-xphb', 'B')
+    expect(effectiveStartingEquipment(draft)).toHaveProperty('choice:equipment.starting.bard-xphb')
+
+    draft.class = MONK
+    const afterSwitch = effectiveStartingEquipment(draft)
+    expect(afterSwitch).not.toHaveProperty('choice:equipment.starting.bard-xphb')
+    // The draft itself still holds the stale answer internally (not deleted) -- only the
+    // EFFECTIVE set excludes it. Monk's own equipment choice is now outstanding instead.
+    expect(draft.equipmentSelections['choice:equipment.starting.bard-xphb']).toBe('B')
+    expect(isEquipmentStepComplete(draft, contextWith())).toBe(false)
+  })
+
+  it('5. switching back to Bard revalidates the prior selection correctly', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    setEquipmentSelection(draft, 'choice:equipment.starting.bard-xphb', 'B')
+    setEquipmentSelection(draft, 'choice:equipment.starting.criminal-xphb', 'B')
+
+    draft.class = MONK
+    expect(effectiveStartingEquipment(draft)).not.toHaveProperty('choice:equipment.starting.bard-xphb')
+
+    draft.class = BARD
+    const context = contextWith()
+    expect(effectiveStartingEquipment(draft)).toEqual({
+      'choice:equipment.starting.bard-xphb': 'B',
+      'choice:equipment.starting.criminal-xphb': 'B'
+    })
+    expect(isEquipmentStepComplete(draft, context)).toBe(true)
+  })
+
+  it('6. changing Criminal to another background does the equivalent', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    setEquipmentSelection(draft, 'choice:equipment.starting.bard-xphb', 'B')
+    setEquipmentSelection(draft, 'choice:equipment.starting.criminal-xphb', 'B')
+
+    draft.background = GUARD
+    expect(effectiveStartingEquipment(draft)).not.toHaveProperty('choice:equipment.starting.criminal-xphb')
+    expect(draft.equipmentSelections['choice:equipment.starting.criminal-xphb']).toBe('B')
+
+    draft.background = CRIMINAL
+    expect(effectiveStartingEquipment(draft)).toHaveProperty('choice:equipment.starting.criminal-xphb', 'B')
+  })
+
+  it('7. Fighter\'s real three-way A/B/C choice renders all three bundles', () => {
+    const draft = draftFor({ class: FIGHTER })
+    const sections = equipmentChoiceSections(draft, contextWith())
+    const fighterSection = sections.find((s) => s.choiceId.includes('fighter'))!
+    expect(fighterSection.bundles.map((b) => b.id)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('8. a pure-currency bundle renders intelligibly (Bard bundle B)', () => {
+    const draft = draftFor({ class: BARD })
+    const sections = equipmentChoiceSections(draft, contextWith())
+    const bundleB = sections.find((s) => s.choiceId.includes('bard'))!.bundles.find((b) => b.id === 'B')!
+    expect(bundleB.summary).toMatch(/9000/)
+    expect(bundleB.summary).toMatch(/currency/)
+  })
+
+  it('9. a bundle containing real catalogue items renders intelligibly (Criminal bundle A)', () => {
+    const draft = draftFor({ background: CRIMINAL })
+    const sections = equipmentChoiceSections(draft, contextWith())
+    const bundleA = sections.find((s) => s.choiceId.includes('criminal'))!.bundles.find((b) => b.id === 'A')!
+    expect(bundleA.summary).toMatch(/dagger-xphb/)
+    expect(bundleA.summary).toMatch(/thieves-tools-xphb/)
+    expect(bundleA.summary).not.toMatch(/unavailable/)
+  })
+
+  it('10. a bundle containing a custom grant renders intelligibly (Bard\'s Musical Instrument)', () => {
+    const draft = draftFor({ class: BARD })
+    const sections = equipmentChoiceSections(draft, contextWith())
+    const bundleA = sections.find((s) => s.choiceId.includes('bard'))!.bundles.find((b) => b.id === 'A')!
+    expect(bundleA.summary).toMatch(/Musical Instrument/)
+  })
+
+  it('11. a bundle containing a crossReference grant renders intelligibly, without creating or changing proficiency state', () => {
+    const draft = draftFor({ class: MONK })
+    const before = JSON.stringify(draft.choices.selections)
+
+    // Unanswered: degrades gracefully, never throws, never fabricates an item.
+    const unanswered = equipmentChoiceSections(draft, contextWith())
+    const unansweredBundleA = unanswered.find((s) => s.choiceId.includes('monk'))!.bundles.find((b) => b.id === 'A')!
+    expect(unansweredBundleA.summary).toMatch(/proficiency choice you have not made yet/)
+    expect(JSON.stringify(draft.choices.selections)).toBe(before)
+
+    // Answered (via the SAME rules_choices the Proficiencies step already writes to): resolves to
+    // the real chosen instrument, and this rendering pass still never mutates `draft.choices`.
+    setChoiceSelections(draft, 'class:choice:proficiency.artisan-or-instrument.class', ['value:tool.lute.proficient'], contextWith())
+    const afterAnswer = JSON.stringify(draft.choices.selections)
+    const answered = equipmentChoiceSections(draft, contextWith())
+    const answeredBundleA = answered.find((s) => s.choiceId.includes('monk'))!.bundles.find((b) => b.id === 'A')!
+    expect(answeredBundleA.summary).toMatch(/lute-xphb/)
+    expect(JSON.stringify(draft.choices.selections)).toBe(afterAnswer) // unchanged by rendering
+  })
+
+  it('12. an invalid/stale bundle id cannot make the Builder equipment step complete and cannot reach the effective payload', () => {
+    const draft = draftFor({ class: BARD, background: CRIMINAL })
+    setEquipmentSelection(draft, 'choice:equipment.starting.bard-xphb', 'Z')
+    setEquipmentSelection(draft, 'choice:equipment.starting.criminal-xphb', 'B')
+    const context = contextWith()
+    expect(isEquipmentStepComplete(draft, context)).toBe(false)
+    // An invalid id for a LIVE choice still reaches `effectiveStartingEquipment` (liveness-only
+    // filtering, mirroring `effectiveSpellSelections`'s own posture -- legality is the server's
+    // job), but it can never make the draft COMPLETE, so `toCreatePayload` never builds a payload
+    // around it in the first place.
+    expect(toCreatePayload(draft, context)).toBeNull()
+  })
+
+  it('a slot with no startingEquipment facet contributes no section at all', () => {
+    const draft = draftFor({ class: entry({ title: 'Synthetic', slug: 'synthetic', rulesFacet: undefined }) })
+    expect(equipmentChoiceSections(draft, contextWith())).toEqual([])
+    expect(isEquipmentStepComplete(draft, contextWith())).toBe(true) // vacuously -- nothing to answer
   })
 })

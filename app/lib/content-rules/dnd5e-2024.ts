@@ -207,6 +207,45 @@ export const DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS: Record<string, str
   'value:tool.three_dragon_ante_set.proficient': 'three-dragon-ante-set-xphb'
 }
 
+// ---------------------------------------------------------------------------
+// D&D 2024 Character Rules -- CLASS FEATURE-OPTION DECISIONS: KNOWN DEFERRED EFFECTS
+// ---------------------------------------------------------------------------
+// Divine Order (Cleric, L1), Primal Order (Druid, L1), Blessed Strikes (Cleric, L7), and
+// Elemental Fury (Druid, L7) are each a real XPHB "choose exactly 1 of 2 named options"
+// decision, all four permanent (no replacement clause anywhere in the real corpus text) and all
+// four authored through the SAME generic `choice:class.feature-option` ChoiceSet
+// (packages/eldra-dnd5e-2024/definitions.json) -- never a class-specific picker, never a
+// class-name branch in application code. This is build-decision completeness (Milestone A): the
+// CHOICE itself is fully represented, persisted, validated server-side, and reachable through
+// both creation and the Level Manager, exactly like Background ability distribution or ASI.
+//
+// Deliberately NOT the same claim as "every mechanical effect of the chosen option is
+// automated" (Milestone B), which is a separate, later concern this phase does not claim:
+//   - Protector (Cleric) / Warden (Druid): FULLY representable and authored now -- a fixed
+//     martial-weapon + heavy/medium-armor training grant, through the identical Value/Modifier
+//     mechanism every class's own `grants` array already uses, just reached via `activate-source`
+//     instead of an always-on facet grant.
+//   - Thaumaturge (Cleric) / Magician (Druid): the real corpus grants a bonus Cleric/Druid
+//     cantrip ("you know one extra cantrip from the [class] spell list") -- a genuine SPELL PICK,
+//     but one conditioned on THIS SPECIFIC Source being active. `RulesFacet.spellRequirements` is
+//     a flat, unconditional array today (nothing ties a requirement's activation to a Source), so
+//     this is NOT yet representable without a new, small primitive (a Source-gated
+//     SpellRequirement) -- explicitly out of this phase's scope per its own approval. The
+//     Source itself (`source:divine-order.thaumaturge` / `source:primal-order.magician`)
+//     activates correctly on selection; it simply carries no modifiers yet. Tracked
+//     here, not silently dropped, so a future Source-gated-acquisition phase has a named target.
+//   - Divine Strike (Cleric) / Primal Strike (Druid): a per-ATTACK damage-type choice made at
+//     the moment of a hit ("your choice" happens in combat, not at acquisition) -- Milestone B
+//     combat automation, deferred the same way every other per-use runtime effect in this corpus
+//     already is (e.g. the Progression Coverage Ledger's own runtime-effect rows).
+//   - Potent Spellcasting (Cleric and Druid, two separate Sources: cantrip-damage already scales
+//     with a derived Wisdom-modifier bonus): a damage-ROLL modifier, which depends on the Actions
+//     system's own damage-resolution path -- Milestone B, deferred, same reasoning.
+//
+// No fixed, currently-representable grant was left as prose: Protector/Warden are fully authored.
+// Every deferred item above requires either a new acquisition primitive (Thaumaturge/Magician) or
+// Milestone B combat/damage automation (the other four) -- never an oversight.
+
 // Keyed by the `entityType` the importer writes, then by `slug`
 // (`slugify(name-source)`), which is what a Character's stored choice
 // records and what Character Assembly re-resolves on.
@@ -472,6 +511,23 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.persuasion.proficient',
             'value:skill.religion.proficient'
           ]
+        },
+        // D&D 2024 Character Rules -- Divine Order (XPHB `classFeature` "Divine Order", level 1):
+        // "You have dedicated yourself to one of the following sacred roles of your choice,"
+        // exactly 1 of Protector/Thaumaturge, real corpus text confirmed permanent (no replacement
+        // clause anywhere in the feature's own entries). The GENERIC `choice:class.feature-option`
+        // ChoiceSet (packages/eldra-dnd5e-2024/definitions.json) -- reused verbatim by Druid's own
+        // Primal Order below, and by any future class/homebrew needing the identical "choose 1 of
+        // N named feature options" shape -- resolves this through `effect: 'activate-source'`:
+        // selecting an option activates that Source directly, no `writesTo` template needed since
+        // each option id IS the Source id. Protector's own grant (martial weapon + heavy armor
+        // training) is fully representable and authored on `source:divine-order.protector`;
+        // Thaumaturge's own extra-cantrip grant is NOT (see that Source's own empty `modifiers`
+        // and this file's own "KNOWN DEFERRED EFFECTS" note at the end of this corpus for why).
+        {
+          choiceSet: 'choice:class.feature-option',
+          count: 1,
+          from: ['source:divine-order.protector', 'source:divine-order.thaumaturge']
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
@@ -483,7 +539,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // `resource:channel_divinity.standard`'s own definitions.json comment
       // for its max expression.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard', 'progression:class.epic-boon'],
+      // Blessed Strikes (XPHB `classFeature` "Blessed Strikes", level 7): "You gain one of the
+      // following options of your choice," exactly 1 of Divine Strike/Potent Spellcasting,
+      // permanent (no replacement clause in the real text). The SAME generic ChoiceSet, referenced
+      // from a dedicated `progression:class.feature-option.blessed-strikes` row -- named by the
+      // feature it represents, never by "cleric", matching this package's own existing
+      // `resources-action-surge-indomitable`-style naming convention. Both options' real combat
+      // effects (a per-hit damage choice; a cantrip-damage bonus) are Milestone B -- deferred, see
+      // this file's own "KNOWN DEFERRED EFFECTS" note.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-channel-divinity-standard', 'progression:class.feature-option.blessed-strikes', 'progression:class.epic-boon'],
       startingEquipment: {
         id: 'choice:equipment.starting.cleric-xphb',
         bundles: [
@@ -549,6 +613,19 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.religion.proficient',
             'value:skill.survival.proficient'
           ]
+        },
+        // D&D 2024 Character Rules -- Primal Order (XPHB `classFeature` "Primal Order", level 1):
+        // "You have dedicated yourself to one of the following sacred roles of your choice,"
+        // exactly 1 of Magician/Warden, permanent (no replacement clause). The SAME generic
+        // `choice:class.feature-option` ChoiceSet Cleric's own Divine Order above reuses verbatim
+        // -- see that facet's own comment for the full mechanism explanation. Warden's grant
+        // (martial weapon + medium armor training) is fully representable and authored on
+        // `source:primal-order.warden`; Magician's own extra-cantrip grant is deferred, same
+        // reason as Thaumaturge's (see this file's own "KNOWN DEFERRED EFFECTS" note).
+        {
+          choiceSet: 'choice:class.feature-option',
+          count: 1,
+          from: ['source:primal-order.magician', 'source:primal-order.warden']
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
@@ -556,7 +633,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // `classFeatures` level 2, level-gated, same reasoning as Cleric's
       // Channel Divinity immediately above).
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-wild-shape', 'progression:class.epic-boon'],
+      // Elemental Fury (XPHB `classFeature` "Elemental Fury", level 7): "You gain one of the
+      // following options of your choice," exactly 1 of Potent Spellcasting/Primal Strike,
+      // permanent. The SAME generic ChoiceSet, via a dedicated
+      // `progression:class.feature-option.elemental-fury` row. Both options' real combat effects
+      // (a cantrip-damage bonus; a per-hit damage-type choice made at the moment of the attack,
+      // never at acquisition) are Milestone B -- deferred, see this file's own "KNOWN DEFERRED
+      // EFFECTS" note.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-wild-shape', 'progression:class.feature-option.elemental-fury', 'progression:class.epic-boon'],
       startingEquipment: {
         id: 'choice:equipment.starting.druid-xphb',
         bundles: [

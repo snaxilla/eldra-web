@@ -201,8 +201,10 @@ describe('the hand-authored XPHB Rules Facets', () => {
       // CONTENT-backed choice (a ContentRef, judged by the creation content
       // authority, not a Definition question). Every other class declares one.
       // P1 -- Bard (instruments) and Monk (artisan's tools or an instrument) also
-      // declare a tool choice over Definition ids.
-      expect(facet!.choices).toHaveLength(name === 'fighter' || name === 'bard' || name === 'monk' ? 2 : 1)
+      // declare a tool choice over Definition ids. Feature-option phase -- Cleric
+      // (Divine Order) and Druid (Primal Order) also declare the generic
+      // `choice:class.feature-option` ChoiceSet at Level 1.
+      expect(facet!.choices).toHaveLength(['fighter', 'bard', 'monk', 'cleric', 'druid'].includes(name) ? 2 : 1)
     }
 
     const backgrounds = ['acolyte', 'artisan', 'charlatan', 'criminal', 'entertainer',

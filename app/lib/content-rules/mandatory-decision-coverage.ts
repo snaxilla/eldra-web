@@ -64,6 +64,26 @@ function speciesFacetHasSkillChoice(slug: string): boolean {
 function classProgression(slug: string): readonly string[] {
   return findRulesFacet('dnd5e.2024', 'class', slug)?.progression ?? []
 }
+function classFacetHasChoice(slug: string, choiceSet: string): boolean {
+  return (findRulesFacet('dnd5e.2024', 'class', slug)?.choices ?? []).some((c) => c.choiceSet === choiceSet)
+}
+
+// FEATURE-OPTION PHASE -- the real build decision is IMPLEMENTED once the owning facet genuinely
+// references the generic primitive: a creation-time decision (Divine Order/Primal Order, Level 1)
+// through the facet's own `choices` array; a level-up decision (Blessed Strikes/Elemental Fury,
+// Level 7) through the facet's own `progression` array, at the dedicated Level-7 Progression this
+// phase authored. Never a name check against "Divine Order" itself -- a future homebrew class
+// authoring the identical shape is covered the same way, with no class/option name in this check.
+const CLASS_FEATURE_OPTION_PROGRESSION: Record<string, string> = {
+  'cleric-xphb': 'progression:class.feature-option.blessed-strikes',
+  'druid-xphb': 'progression:class.feature-option.elemental-fury'
+}
+function classFeatureOptionCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'class', 'feature-option')) return false
+  if (d.level === 1) return classFacetHasChoice(d.owner.slug, 'choice:class.feature-option')
+  const ref = CLASS_FEATURE_OPTION_PROGRESSION[d.owner.slug]
+  return ref !== undefined && classProgression(d.owner.slug).includes(ref)
+}
 
 // ---------------------------------------------------------------------------
 // D&D 2024 Character Rules P3.5 -- SPELL ACQUISITION COVERAGE.
@@ -298,6 +318,13 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: (d) => proficiencyCovered(d)
   },
+  {
+    id: 'impl:class-feature-option',
+    status: 'implemented',
+    reason: 'Class feature option (Divine Order, Primal Order creation; Blessed Strikes, Elemental Fury Level 7) via the generic choice:class.feature-option ChoiceSet (effect: activate-source). Runtime effects of the chosen option are a separate accountability row; see runtime:class-feature-option-effects.',
+    ledgerIds: ['cleric-xphb:divine-order', 'druid-xphb:primal-order', 'cleric-xphb:blessed-strikes', 'druid-xphb:elemental-fury'],
+    matches: (d) => classFeatureOptionCovered(d)
+  },
 
   // ------------------------------------------------------------------ blocked
   {
@@ -373,13 +400,6 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
       && !(d.level === 1 && (d.source === 'Spellcasting' || d.source === 'Pact Magic'))
       && d.source !== 'Mystic Arcanum'
       && !(d.source === 'Spellcasting' && d.detail === 'spellbook-growth')
-  },
-  {
-    id: 'blk:class-feature-option',
-    status: 'blocked',
-    reason: 'Feature option choice at a class level (Divine Order, Primal Order, Blessed Strikes, Elemental Fury): no option-choice primitive.',
-    ledgerIds: [],
-    matches: (d) => is(d, 'class', 'feature-option')
   },
   {
     id: 'blk:class-expertise-creation',
@@ -584,6 +604,17 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
       'barbarian-xphb:epic-boon-effects', 'bard-xphb:epic-boon-effects', 'cleric-xphb:epic-boon-effects', 'druid-xphb:epic-boon-effects',
       'fighter-xphb:epic-boon-effects', 'monk-xphb:epic-boon-effects', 'paladin-xphb:epic-boon-effects', 'ranger-xphb:epic-boon-effects',
       'rogue-xphb:epic-boon-effects', 'sorcerer-xphb:epic-boon-effects', 'warlock-xphb:epic-boon-effects', 'wizard-xphb:epic-boon-effects'
+    ],
+    allowZero: true,
+    matches: () => false
+  },
+  {
+    id: 'runtime:class-feature-option-effects',
+    status: 'runtime-effect',
+    reason: 'Class feature option downstream effects (Milestone B): Thaumaturge/Magician\'s Source-gated bonus cantrip (needs a new primitive), and Divine Strike/Primal Strike/Potent Spellcasting\'s per-attack/per-cast combat text. The acquisition/activation decision is the implemented row; these effects are runtime.',
+    ledgerIds: [
+      'cleric-xphb:divine-order-thaumaturge-cantrip', 'druid-xphb:primal-order-magician-cantrip',
+      'cleric-xphb:blessed-strikes-effects', 'druid-xphb:elemental-fury-effects'
     ],
     allowZero: true,
     matches: () => false

@@ -68,3 +68,44 @@ describe('PHASE 0 -- a historical character with an unrecorded mandatory decisio
     expect(writes).toHaveLength(0)
   })
 })
+
+// FEATURE-OPTION PHASE -- a Cleric created before Divine Order was authored (no
+// `class:choice:class.feature-option` answer in its rules_choices record) must still load exactly
+// the same way: no migration, no retroactive grant, no read-time mutation. It may honestly lack
+// the newly-authored decision.
+describe('PHASE 0 -- a historical Cleric predating Divine Order still loads, with no retroactive grant', () => {
+  const CLERIC_CATALOGUE = {
+    ...CATALOGUE,
+    classes: [entry('Cleric', 'cleric-xphb', { rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'cleric-xphb') ?? undefined })]
+  }
+  const CLERIC_CATALOGUE_SELECTION = { ...CATALOGUE_SELECTION, class: { packageId: PKG, slug: 'cleric-xphb' } }
+
+  beforeEach(() => {
+    mocks.getWorldContentCatalogue.mockResolvedValue(CLERIC_CATALOGUE)
+    mocks.directusServiceRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/items/entities')) {
+        return { data: { id: Number(CHARACTER_ID), world_id: Number(WORLD_ID), entity_type: 'pc', title: 'Historic Cleric' } }
+      }
+      if (path.startsWith('/items/block_instances')) {
+        // No 'rules_choices' row at all -- predates this phase's own authoring.
+        return { data: [{ block_key: 'catalogue_selection', data: CLERIC_CATALOGUE_SELECTION }] }
+      }
+      return { data: null }
+    })
+  })
+
+  it('assembles for read and display, even though Divine Order was never recorded', async () => {
+    const result = await assembleCharacter(WORLD_ID, CHARACTER_ID)
+    expect(result.available).toBe(true)
+  })
+
+  it('the read path performs no write and invents no Divine Order answer', async () => {
+    const result: any = await assembleCharacter(WORLD_ID, CHARACTER_ID)
+    expect(result.blueprint?.rulesChoices?.selections?.['class:choice:class.feature-option']).toBeUndefined()
+    const writes = mocks.directusServiceRequest.mock.calls.filter((call) => {
+      const options = call[1] as { method?: string } | undefined
+      return options?.method && options.method !== 'GET'
+    })
+    expect(writes).toHaveLength(0)
+  })
+})

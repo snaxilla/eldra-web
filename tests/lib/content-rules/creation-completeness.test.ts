@@ -35,9 +35,13 @@ describe('the refusal wording is plain and names the owner (production impact co
 })
 
 describe('the fail-closed reasons are specific to the decision that blocks', () => {
-  it('a Cleric owns the Divine Order feature option (Level 1)', () => {
-    const cleric = ownOf('class', 'cleric-xphb')
-    expect(cleric.some((u) => u.source === 'Divine Order' && u.level === 1 && u.family === 'feature-option')).toBe(true)
+  // FEATURE-OPTION PHASE: Divine Order is representable (the generic choice:class.feature-option
+  // ChoiceSet, effect: activate-source), so it is classified implemented and no longer unresolved.
+  it('a Cleric\'s Divine Order feature option (Level 1) is representable, now implemented', () => {
+    const divineOrder = DND5E_2024_MANDATORY_DECISIONS.find((d) => d.owner.slug === 'cleric-xphb' && d.source === 'Divine Order' && d.family === 'feature-option')
+    expect(divineOrder).toBeDefined()
+    expect(classifyDecision(divineOrder!).status).toBe('implemented')
+    expect(ownOf('class', 'cleric-xphb').some((u) => u.source === 'Divine Order' && u.family === 'feature-option')).toBe(false)
   })
   // P7: the Background ability distribution is representable (one bounded choice, activating
   // Background Sources), so it is classified implemented and no longer unresolved.

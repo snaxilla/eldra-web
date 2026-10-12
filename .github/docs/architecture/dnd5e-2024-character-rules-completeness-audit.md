@@ -5584,3 +5584,266 @@ zero hits). `pnpm run build`: succeeds (exit 0). `git diff --check`: clean. `pnp
 environment's `.nuxt/eslint.config.mjs` does not exist (the `@nuxt/eslint` module is not registered
 in `nuxt.config.ts`) -- also pre-existing and unrelated to this phase. `pnpm packages:sync --world
 Solaris` (dry run): as reported above. No commit made. No `packages:sync --apply` run.
+
+### 25.37 FEATURE-OPTION AUTHORING + CLASS CREATION UNLOCK (2026-10-12)
+
+#### Scope
+
+A full implementation phase, scoped to exactly four decisions: Cleric Divine Order (Level 1,
+creation) and Blessed Strikes (Level 7, level-up); Druid Primal Order (Level 1, creation) and
+Elemental Fury (Level 7, level-up). Hypothesis going in: the existing ChoiceSet + Source +
+`activate-source` architecture is sufficient, with no new engine primitive -- verified, not
+assumed, before authoring (see CORPUS RE-DERIVATION and FEASIBILITY below). Primary acceptance
+target, PROVEN (not claimed): **Dwarf + Cleric + Criminal and Dwarf + Druid + Criminal are both
+creation-complete through the real production authority, the real create-v2 route, with zero
+completeness stub.**
+
+#### CORPUS RE-DERIVATION -- exact level, option count, and shape confirmed
+
+Re-extracted directly from `/opt/eldra/datasets/5etools-src/data/class/class-cleric.json` and
+`class-druid.json`'s own `classFeature` entries (`classSource`/`source` both `'XPHB'`):
+
+| Decision | Level | Real text shape | Options |
+|---|---|---|---|
+| Divine Order | 1 | "...one of the following sacred roles **of your choice**." + a structural `{"type":"options","count":1,...}` block of two `refClassFeature` entries | Protector, Thaumaturge |
+| Primal Order | 1 | Identical shape | Magician, Warden |
+| Blessed Strikes | 7 | Same `{"type":"options","count":1,...}` shape | Divine Strike, Potent Spellcasting |
+| Elemental Fury | 7 | Same shape | Primal Strike, Potent Spellcasting |
+
+All four: exactly 2 mutually-exclusive, **permanent** options (no "replace on level up" clause, no
+nested sub-choice inside either option's own single-sentence text) -- confirmed by direct read of
+every option's `entries`, not inferred. This matters because the task's own explicit STOP condition
+("if a nested damage-type selection or another mandatory sub-choice exists, do not silently flatten
+it") never fires: Divine Strike/Primal Strike's own damage-type pick is made **per attack, at the
+moment of a hit** ("your choice" is combat-moment text, not an acquisition-time sub-choice), so it
+is a runtime-effect question, not a second persistent decision.
+
+Per-option mechanical grant, checked against existing vocabulary:
+
+| Option | Real grant | Representable now? |
+|---|---|---|
+| Protector | Martial weapon + Heavy armor proficiency | Yes -- `value:weapon.martial.proficient`/`value:armor.heavy.proficient`, the same Value/Modifier mechanism every class's own `grants` already uses |
+| Warden | Martial weapon + Medium armor proficiency | Yes -- same mechanism |
+| Thaumaturge | One extra Cleric cantrip | No -- a Source-gated spell pick, see FEASIBILITY |
+| Magician | One extra Druid cantrip | No -- same gap |
+| Divine Strike | Per-attack damage-type choice + bonus damage | Acquisition yes; the per-attack choice/damage itself is Milestone B |
+| Primal Strike | Per-attack damage-type choice + bonus damage | Same |
+| Potent Spellcasting (both) | Cantrip damage += spellcasting modifier | Acquisition yes; the damage-roll modifier itself is Milestone B |
+
+The heuristic census (`tests/rules/dnd5e-2024-progression-coverage.test.ts`'s `discoverClassLevelFeatures`)
+did not flag any of the four by its existing text signals (`STRONG_CHOICE_PHRASING` matches literal
+"choose", not "...of your choice" following "one of the following") -- a real heuristic gap, fixed
+by adding all four names to the curated `KNOWN_CLASS_FEATURE_NAMES` set (a stable, well-understood
+mechanic identity, the same treatment "Fighting Style"/"Expertise" already get), never by loosening
+the regex.
+
+#### FEASIBILITY -- verified empirically before authoring, not assumed
+
+Traced the real type definitions first: `ProgressionRow.choices[].from` (a per-row option list,
+confirmed to already support a shared ChoiceSet Definition referenced by multiple different rows),
+`SourceDefinition.modifiers` (a required array, but `[]` is legal), `ChoiceSetDefinition.effect:
+'activate-source'` (instantiates each resolved option as its own SourceInstance). The one previously
+unexercised combination -- a boolean `storage: 'stored'` Value (`value:armor.heavy.proficient`,
+default `false`) receiving a `phase: 'set', value: true` Modifier from an activated Source -- was
+proven end to end with a disposable script against the real engine (`createWorldRuntime` ->
+`DependencyGraph.build` -> `EvaluationSession`/`evaluate`) before a single line was written into
+`definitions.json`, then re-proven against the real edited package. Conclusion: **no new engine
+primitive was needed for the build decision itself.** The one genuinely missing primitive (a
+Source-gated `SpellRequirement`, for Thaumaturge/Magician's conditional bonus cantrip) was
+identified and explicitly deferred by direct approval -- see KNOWN DEFERRED EFFECTS below.
+
+#### THE GENERIC PRIMITIVE -- one ChoiceSet, reused verbatim, no class or option named
+
+One new ChoiceSet Definition, `choice:class.feature-option` (`packages/eldra-dnd5e-2024/definitions.json`):
+`category: 'character.creation'`, `from: { kind: 'fromContentFacet' }`, `distinct: true`, `effect:
+'activate-source'`. Its own id, label, and prompt name no class and no official option -- verified
+by a permanent test (`tests/rules/dnd5e-2024-feature-option.test.ts`'s FACET AUTHORING block) that
+none of the other 10 classes reference it. The REAL per-class option list lives entirely in the
+authoring class facet's own `choices`/`progression` entries (`app/lib/content-rules/dnd5e-2024.ts`),
+never in the primitive itself -- the identical shape a homebrew class would use.
+
+Eight Source Definitions were authored, named by FEATURE (never by literally naming the owning
+class -- `tests/rules/dnd5e-2024-package.test.ts`'s own "names no species, class, background..."
+boundary test enforces this at the WORD-BOUNDARY level for `cleric`; confirmed empirically when a
+first draft using `source:cleric.divine-order.protector` failed exactly that test and was renamed
+to `source:divine-order.protector`): `divine-order.protector`, `divine-order.thaumaturge`,
+`primal-order.magician`, `primal-order.warden`, `blessed-strikes.divine-strike`, `blessed-
+strikes.potent-spellcasting`, `elemental-fury.potent-spellcasting`, `elemental-fury.primal-strike`.
+Two new ProgressionDefinitions carry the Level-7 decisions into the existing Level Manager
+machinery: `progression:class.feature-option.blessed-strikes` and
+`progression:class.feature-option.elemental-fury`, each a single row (`at: 7`) referencing the SAME
+shared ChoiceSet with its own `from` list -- the exact "one shared Definition, many rows" pattern
+`ProgressionRow.choices[].from` already supported, now actually exercised.
+
+Facet authoring: Cleric's and Druid's `choices` arrays each gained one entry (`count: 1`, `from`:
+their own two Sources); each class's `progression` array gained its own new ProgressionDefinition
+id. No other class's facet references the primitive (verified).
+
+#### KNOWN DEFERRED EFFECTS -- tracked explicitly, never silently dropped
+
+Per the user's own classification requirement (STOP-and-report exchange, mid-phase): the persistent
+BUILD DECISION (which option was selected) is distinguished from each option's own downstream
+EFFECT. A header comment in `dnd5e-2024.ts` and two Progression Coverage Ledger rows per decision
+(`app/lib/content-rules/dnd5e-2024-progression-coverage.ts`) record this split, mirroring Epic
+Boon's own acquisition/effects pair exactly:
+
+- **Protector / Warden**: fully representable and active now (fixed proficiency grants).
+- **Thaumaturge / Magician**: the decision persists and the Source activates; the bonus-cantrip
+  CONSEQUENCE is `ENGINE_BLOCKED` (`cleric-xphb:divine-order-thaumaturge-cantrip`,
+  `druid-xphb:primal-order-magician-cantrip`) -- needs a new, small primitive (a Source-gated
+  `SpellRequirement`), explicitly out of this phase's scope.
+- **Divine Strike / Primal Strike / Potent Spellcasting**: the decision persists and the Source
+  activates; the per-attack/per-cast runtime text is `ENGINE_BLOCKED`
+  (`cleric-xphb:blessed-strikes-effects`, `druid-xphb:elemental-fury-effects`) -- Milestone B
+  combat automation, the same boundary every other per-use runtime effect in this ledger already
+  waits on. No persistent nested choice was invented for this per-use text.
+
+No fixed, currently-representable grant was left as prose: Protector and Warden are authored and
+activate through the real engine.
+
+#### BUILDER + LEVEL MANAGER -- zero new UI code, proven not assumed
+
+Both surfaces already render ANY `RulesFacet.choices`/`ProgressionRow.choices` entry generically
+(`creationChoicePresentation`/`declaredChoices` in the Builder, the identical presentation primitive
+in the Level Manager plan) -- confirmed by writing acceptance tests that exercise Divine Order/
+Blessed Strikes through these REAL functions with no new component, no new picker, and no
+class/option branch anywhere in `characterBuilderSelection.ts` or `character-progression-plan.ts`.
+
+#### CREATION-TIME CLASS SWITCHING -- revalidated correctly, no leak across classes
+
+Three cases proved (`create-v2-feature-option.test.ts`'s CLASS SWITCHING block), using the real
+`pruneChoices` machinery with no code change required:
+
+1. Cleric -> Bard (Bard declares no `choice:class.feature-option` at all): the key is deleted
+   entirely from the draft; switching back to Cleric re-asks the question from empty.
+2. Cleric -> Druid: the **identical key** stays live (Druid also declares the same generic
+   ChoiceSet), but Druid's own `from` list is **disjoint** from Cleric's. The stale Cleric Source
+   (`source:divine-order.protector`) is pruned to `[]` rather than silently satisfying the Druid
+   character -- proven by asserting the post-switch presentation's `offered` list is exactly
+   Druid's two Sources and `selected` is empty.
+3. The Builder's own `isDraftComplete` correctly reads `false` until the (re-asked) choice is
+   answered again.
+
+#### SERVER AUTHORITY -- independently validated, one pre-existing nuance surfaced honestly
+
+`create-v2.post.ts` independently re-derives the legal option set from the selected class's own live
+facet (never trusts the Builder's labels) and rejects an illegal option or a crafted/undeclared
+choice key with zero writes (proven). One pre-existing, intentional architectural fact surfaced
+while writing this acceptance: **a missing answer to a Definition-keyed ChoiceSet (Divine Order
+included) does not itself refuse creation at POST time** -- it succeeds with the choice left
+outstanding, identical to the already-established treatment of the ordinary Class skill-proficiency
+choice (`create-v2.post.test.ts`'s own pre-existing "Sage's own direct grants never themselves need
+answering" test proves this for skill proficiency). This is not a gap this phase introduced or
+needs to close: `isDraftComplete` (the Builder's own pre-submit gate) DOES require the answer before
+allowing Create, so no live UI path produces an incomplete character; the server's own tolerance is
+a deliberate, pre-existing allowance for a later "standalone proficiencies"-style surface to resolve
+outstanding Definition choices after creation, not a hole in this phase's validation.
+
+Progression authority (`character-progression-plan.ts`'s `planProgression`/`confirmProgression`):
+Preview exposes Blessed Strikes/Elemental Fury only at/after Level 7 (not before); Confirm rejects a
+missing, illegal, or crafted answer (zero writes in every case); a valid answer persists, activates
+the real Source (proven by direct engine evaluation afterward), and survives a fresh Preview at an
+already-crossed level without being re-requested; a direct Level 1 -> 8 jump requests the decision
+exactly once, with no sequential leveling required.
+
+#### FIRST NEW CLASSES -- proven through the real route, hand-written AND Builder-shaped payloads
+
+`creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'cleric-xphb', background:
+'criminal-xphb', feats: [] })` and the Druid equivalent both return `[]` through the real authority.
+Both combinations then complete successfully through the real, unstubbed `create-v2.post` route:
+currency/equipment persists exactly as the real authored bundle facets declare (Cleric B = 110 GP,
+Druid B = 50 GP, Criminal B = 50 GP, in the package's own opaque copper denomination), the selected
+feature-option Source persists as provenance in `rules_choices` AND independently resolves through
+the real engine (never merely a stored label), and a parallel Builder-shaped payload -- built
+through the real `emptyDraft`/`setChoiceSelections`/`toCreatePayload`, never a hand-written body --
+meets the identical server authority and persists identically.
+
+#### AVAILABILITY -- moved exactly as predicted, confirmed through the real authority
+
+Enumerated through `creationUnresolvedDecisions`, never computed as a hardcoded product:
+
+- Species: 3/10 (unchanged).
+- Classes: **6/12** -- Bard, Cleric, Druid, Monk, Sorcerer, Wizard (Cleric and Druid newly joined).
+- Backgrounds: 13/16 (unchanged).
+- Combinations: **234** (3 x 6 x 13, enumerated over the real 10 x 12 x 16 population -- up from
+  156), confirmed by direct enumeration, not arithmetic.
+
+#### PHASE-0 RECLASSIFICATION -- exactly the 4 class-owned decisions, ownership boundary preserved
+
+`app/lib/content-rules/mandatory-decision-coverage.ts`: the old `blk:class-feature-option` rule
+(`ledgerIds: []`, matched all 4 decisions as blocked) is replaced by `impl:class-feature-option`,
+backed by a real verification function (`classFeatureOptionCovered`) that checks the OWNING facet's
+`choices` array (Level 1) or `progression` array (Level 7) genuinely references the primitive --
+never a name check against "Divine Order" itself. A new `runtime:class-feature-option-effects` rule
+(`allowZero: true`, matches zero decisions by design) claims the four downstream-effect ledger rows.
+`blk:subclass-feature-option` (Hunter's Defensive Tactics, Path of the Wild Heart's Aspect of the
+Wilds, and the other two subclass-owned feature-option decisions) is untouched -- still blocked
+behind subclass-internal feature-level gating, confirmed by a dedicated test iterating all 10 other
+classes to prove none of them reference the new primitive.
+
+Census: **647 total, 395 implemented (+4), 217 blocked (-4), 35 optional** -- exactly the arithmetic
+predicted before implementation, confirmed by direct re-count through the real `classifyDecision`
+authority, not asserted.
+
+#### HISTORICAL COMPATIBILITY
+
+A dedicated test (`character-assembly-historical-fail-closed.test.ts`'s new Cleric describe block)
+proves a Cleric character record with no `class:choice:class.feature-option` answer at all (predating
+this phase) still assembles for read, performs zero writes, and invents no retroactive answer --
+mirroring the file's own pre-existing, fully generic Elf/Wizard proof, which (being general over any
+missing decision, and statically proven never to import the completeness authority on the read path)
+already covered this case architecturally; the new test makes the proof concrete for this specific
+decision.
+
+#### RULES-AGNOSTIC / HOMEBREW TEST
+
+No class or official option name appears in `choice:class.feature-option` itself, in
+`character-progression-plan.ts`, or in `characterBuilderSelection.ts`. A hypothetical homebrew class
+authors its own Level-1 "choose one specialization" and Level-7 "choose one advanced specialization"
+by: declaring its own Sources (named by feature, not by class), referencing the shared
+`choice:class.feature-option` ChoiceSet from its own facet `choices` array (Level 1) and its own new
+ProgressionDefinition row (Level 7, `from` naming its own Sources), with zero application-code
+changes anywhere in the Rules Engine, Builder, Level Manager, or server route.
+
+#### Package impact
+
+`packages/eldra-dnd5e-2024` Definitions changed under the already-published `0.21.0`. `pnpm
+packages:sync --world Solaris` (dry run): `SOURCE_VERSION_COLLISION` for Rules (as expected --
+0.21.0 is already published with different content; recommend bumping to **0.21.1**, a pure
+addition with no existing Definition removed, renamed, or changed, never applied by this phase) and
+`REFRESH_REQUIRED` for Content (`eldra.solaris.xphb`, since the authoring facet corpus also
+changed) with `REFRESH_CONTENT`/`BIND_CONTENT` as the resulting actions. No mutation performed. No
+version bump made.
+
+#### Files
+
+New: `tests/rules/dnd5e-2024-feature-option.test.ts`,
+`tests/server/utils/character-progression-plan-feature-option.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2-feature-option.test.ts`.
+
+Modified: `packages/eldra-dnd5e-2024/definitions.json` (1 ChoiceSet, 8 Sources, 2
+ProgressionDefinitions), `app/lib/content-rules/dnd5e-2024.ts` (header comment + Cleric/Druid facet
+`choices`/`progression`), `app/lib/content-rules/dnd5e-2024-progression-coverage.ts` (8 new ledger
+rows), `app/lib/content-rules/mandatory-decision-coverage.ts` (1 rule replaced, 1 rule added),
+`tests/rules/dnd5e-2024-progression-coverage.test.ts` (4 names added to `KNOWN_CLASS_FEATURE_NAMES`),
+`tests/rules/mandatory-decision-coverage.test.ts` (2 stale scoreboard assertions updated),
+`tests/lib/content-rules/creation-availability.test.ts` (`BASELINE` updated),
+`tests/lib/content-rules/creation-completeness.test.ts` (1 stale assertion flipped to "now
+implemented"), `tests/lib/content-rules/spell-corpus-authority.test.ts` (census numbers updated),
+`tests/server/utils/character-actor-bridge.test.ts` (expected `choices` length for Cleric/Druid),
+`tests/server/utils/character-progression-level-1-to-20.test.ts` (generic answer builder taught the
+new ChoiceSet), `tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts` (the Divine
+Order refusal example retargeted to Warlock's Invocations, since Divine Order itself no longer
+refuses), `tests/server/utils/character-assembly-historical-fail-closed.test.ts` (new Cleric
+historical case), `tests/rules/completeness-stub-policy.test.ts` (2 new file entries classified).
+
+#### Verification
+
+`pnpm run test`: **206 files / 4363 tests -- all passing** (4311 pre-existing baseline + 52 net new:
+18 corpus/model/engine tests, 11 progression round-trip tests, 17 creation acceptance tests, 2
+historical compatibility tests, plus ripple-effect fixes to pre-existing assertions this
+reclassification correctly moved -- zero regressions). `pnpm run typecheck`: the pre-existing
+`@types/node`-absent environment gap remains (confirmed unrelated -- grepped the full output for
+every file this phase touched; zero hits). `pnpm run build`: succeeds (exit 0). `git diff --check`:
+clean. `pnpm packages:sync --world Solaris` (dry run): `SOURCE_VERSION_COLLISION` (Rules) +
+`REFRESH_REQUIRED` (Content), as reported above. No commit made. No `packages:sync --apply` run.

@@ -222,7 +222,9 @@ describe('P3.5 -- spell decision reconciliation', () => {
     // genuinely creation-complete (see the P8 describe block below) -- this is the correct,
     // stronger outcome, not a weakening, so this test is narrowed to the casters P8 did NOT fully
     // unblock, rather than asserting a universal "something always remains" that is no longer true.
-    const stillPartiallyBlockedCasters = CASTER_SLUGS.filter((slug) => !['bard-xphb', 'sorcerer-xphb', 'wizard-xphb'].includes(slug))
+    // FEATURE-OPTION PHASE -- Cleric/Druid's own remaining non-spell blocker (Divine Order/Primal
+    // Order) is now also implemented, so they join Bard/Sorcerer/Wizard as fully creation-complete.
+    const stillPartiallyBlockedCasters = CASTER_SLUGS.filter((slug) => !['bard-xphb', 'cleric-xphb', 'druid-xphb', 'sorcerer-xphb', 'wizard-xphb'].includes(slug))
     for (const slug of stillPartiallyBlockedCasters) {
       const ownDecisions = DECISIONS.filter((d) => d.owner.kind === 'class' && d.owner.slug === slug)
       const nonSpellBlocked = ownDecisions.filter((d) => !['spell-choice', 'spell-grant', 'spell-count'].includes(d.family) && classifyDecision(d).status === 'blocked')
@@ -317,7 +319,8 @@ describe('P8 -- starting equipment reconciliation', () => {
         .filter((d) => d.owner.kind === 'background').length === 0)
 
     expect(availableSpecies.length).toBe(3)
-    expect(availableClasses.sort()).toEqual(['bard-xphb', 'monk-xphb', 'sorcerer-xphb', 'wizard-xphb'])
+    // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the roster.
+    expect(availableClasses.sort()).toEqual(['bard-xphb', 'cleric-xphb', 'druid-xphb', 'monk-xphb', 'sorcerer-xphb', 'wizard-xphb'])
     expect(availableBackgrounds.length).toBe(13)
 
     let combinations = 0
@@ -328,7 +331,9 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    expect(combinations).toBe(156)
+    // FEATURE-OPTION PHASE -- 3 species * 6 available classes * 13 available backgrounds = 234,
+    // enumerated through the real authority above (never computed as a hardcoded product).
+    expect(combinations).toBe(234)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {

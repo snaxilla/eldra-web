@@ -752,5 +752,114 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     surface: 'creation',
     status: 'ENGINE_BLOCKED',
     blockerReason: 'No facet shape exists for a creation-time equipment GRANT (distinct from the already-A.COMPLETE ongoing inventory system) -- original completeness audit §11/§14 #4, requires a design decision (package-vs-package choice, gold alternative) before authoring.'
+  },
+
+  // -------------------------------------------------------------------
+  // CLASS FEATURE OPTION -- Cleric Divine Order (Level 1, creation) /
+  // Druid Primal Order (Level 1, creation) / Cleric Blessed Strikes
+  // (Level 7, level-up) / Druid Elemental Fury (Level 7, level-up).
+  // Real XPHB structure: exactly 2 mutually-exclusive permanent options
+  // each, no nested sub-choice in either option's own text. Authored
+  // through ONE generic, package-owned primitive (`choice:class.feature-
+  // option`, a ChoiceSet with `effect: 'activate-source'`) that names no
+  // class and no official option -- any future class/homebrew authors
+  // the identical shape with its own Source `from` list.
+  //
+  // Each decision is split, same as Epic Boon/Origin Feat above, into
+  // the real BUILD DECISION (IMPLEMENTED: selection persists, the chosen
+  // Source activates, every currently-representable fixed grant --
+  // Protector's/Warden's weapon+armor proficiency -- resolves through the
+  // real engine) and the one option-specific downstream EFFECT this
+  // phase does not reach (ENGINE_BLOCKED, named precisely, never silently
+  // dropped):
+  //   - Thaumaturge/Magician's "one extra cantrip" is a genuine spell
+  //     PICK conditioned on a specific Source being active.
+  //     `RulesFacet.spellRequirements` is a flat, unconditional array
+  //     today -- nothing ties a requirement's activation to a Source --
+  //     so this needs a new, small primitive (Source-gated
+  //     SpellRequirement), explicitly deferred.
+  //   - Divine Strike/Primal Strike's damage-type choice and Potent
+  //     Spellcasting's cantrip-damage addition are PER-ATTACK/per-cast
+  //     runtime combat text, not a persistent build decision -- deferred
+  //     to the same Milestone B combat-automation boundary every other
+  //     per-use runtime effect in this ledger already waits on (Savage
+  //     Attacker's reroll, Lucky's reroll, etc.). No nested persistent
+  //     choice was invented for this per-use text.
+  // -------------------------------------------------------------------
+  {
+    id: 'cleric-xphb:divine-order',
+    classSlug: 'cleric-xphb',
+    featureName: 'Divine Order',
+    levels: [1],
+    surface: 'creation',
+    status: 'IMPLEMENTED',
+    implementationRef: 'choice:class.feature-option',
+    notes: 'One of two permanent options at creation, via the generic choice:class.feature-option ChoiceSet (effect: activate-source), authored into the Cleric facet\'s own choices array with from: [source:divine-order.protector, source:divine-order.thaumaturge]. Protector\'s martial-weapon + heavy-armor proficiency grant resolves through the real engine on selection. Thaumaturge\'s own bonus-cantrip consequence is a separate row (see cleric-xphb:divine-order-thaumaturge-cantrip) -- selecting it persists and activates the Source, but grants no cantrip yet.'
+  },
+  {
+    id: 'cleric-xphb:divine-order-thaumaturge-cantrip',
+    classSlug: 'cleric-xphb',
+    featureName: 'Divine Order',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Thaumaturge grants one extra cantrip from the Cleric spell list, conditioned on this specific Source being active. RulesFacet.spellRequirements is a flat, unconditional array -- no mechanism ties a requirement\'s activation to a Source. Needs a new, small primitive (a Source-gated SpellRequirement). Explicitly deferred out of this phase\'s scope, by direct approval, rather than implemented or faked.'
+  },
+  {
+    id: 'druid-xphb:primal-order',
+    classSlug: 'druid-xphb',
+    featureName: 'Primal Order',
+    levels: [1],
+    surface: 'creation',
+    status: 'IMPLEMENTED',
+    implementationRef: 'choice:class.feature-option',
+    notes: 'One of two permanent options at creation, via the generic choice:class.feature-option ChoiceSet (effect: activate-source), authored into the Druid facet\'s own choices array with from: [source:primal-order.magician, source:primal-order.warden]. Warden\'s martial-weapon + medium-armor proficiency grant resolves through the real engine on selection. Magician\'s own bonus-cantrip consequence is a separate row (see druid-xphb:primal-order-magician-cantrip) -- selecting it persists and activates the Source, but grants no cantrip yet.'
+  },
+  {
+    id: 'druid-xphb:primal-order-magician-cantrip',
+    classSlug: 'druid-xphb',
+    featureName: 'Primal Order',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Magician grants one extra cantrip from the Druid spell list, conditioned on this specific Source being active. RulesFacet.spellRequirements is a flat, unconditional array -- no mechanism ties a requirement\'s activation to a Source. Needs the same Source-gated SpellRequirement primitive as cleric-xphb:divine-order-thaumaturge-cantrip. Explicitly deferred out of this phase\'s scope, by direct approval, rather than implemented or faked.'
+  },
+  {
+    id: 'cleric-xphb:blessed-strikes',
+    classSlug: 'cleric-xphb',
+    featureName: 'Blessed Strikes',
+    levels: [7],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.feature-option.blessed-strikes',
+    notes: 'One of two permanent options at Level 7, via the SAME generic choice:class.feature-option ChoiceSet, reached through a dedicated Level-7 ProgressionRow (progression:class.feature-option.blessed-strikes, from: [source:blessed-strikes.divine-strike, source:blessed-strikes.potent-spellcasting]). Participates in Level Manager Preview/Confirm exactly like Subclass Selection/ASI: Preview exposes it only at/after Level 7, Confirm rejects a missing/illegal/crafted answer, persists the valid answer, and activates the selected Source; a fresh reload shows it still active; a direct Level 1 -> 8+ jump requests it exactly once. Runtime effects of the chosen option are a separate row (see cleric-xphb:blessed-strikes-effects) -- the persistent BUILD decision is complete; its per-attack/per-cast consequence is not.'
+  },
+  {
+    id: 'cleric-xphb:blessed-strikes-effects',
+    classSlug: 'cleric-xphb',
+    featureName: 'Blessed Strikes',
+    levels: [7],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Divine Strike adds a per-ATTACK damage-type choice made at the moment of a hit ("your choice", not at acquisition); Potent Spellcasting adds spellcasting-ability-modifier damage to a cantrip\'s own damage roll. Both are per-use runtime combat text, the same Milestone B combat-automation boundary every other per-use runtime effect in this ledger already waits on (Savage Attacker\'s reroll, Lucky\'s reroll). No persistent nested choice was invented for this per-use text -- the option a character selected is tracked (see cleric-xphb:blessed-strikes); its in-combat application is not.'
+  },
+  {
+    id: 'druid-xphb:elemental-fury',
+    classSlug: 'druid-xphb',
+    featureName: 'Elemental Fury',
+    levels: [7],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.feature-option.elemental-fury',
+    notes: 'One of two permanent options at Level 7, via the SAME generic choice:class.feature-option ChoiceSet, reached through a dedicated Level-7 ProgressionRow (progression:class.feature-option.elemental-fury, from: [source:elemental-fury.potent-spellcasting, source:elemental-fury.primal-strike]). Participates in Level Manager Preview/Confirm exactly like Subclass Selection/ASI: Preview exposes it only at/after Level 7, Confirm rejects a missing/illegal/crafted answer, persists the valid answer, and activates the selected Source; a fresh reload shows it still active; a direct Level 1 -> 8+ jump requests it exactly once. Runtime effects of the chosen option are a separate row (see druid-xphb:elemental-fury-effects) -- the persistent BUILD decision is complete; its per-attack/per-cast consequence is not.'
+  },
+  {
+    id: 'druid-xphb:elemental-fury-effects',
+    classSlug: 'druid-xphb',
+    featureName: 'Elemental Fury',
+    levels: [7],
+    surface: 'level-up',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'Primal Strike adds a per-ATTACK damage-type choice made at the moment of a hit ("your choice", not at acquisition); Potent Spellcasting adds spellcasting-ability-modifier damage to a cantrip\'s own damage roll. Both are per-use runtime combat text, the same Milestone B combat-automation boundary every other per-use runtime effect in this ledger already waits on. No persistent nested choice was invented for this per-use text -- the option a character selected is tracked (see druid-xphb:elemental-fury); its in-combat application is not.'
   }
 ]

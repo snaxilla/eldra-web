@@ -34,7 +34,10 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // Wizard) and the 13 backgrounds with no other blocker (every one but Acolyte/Guide/Sage, whose
 // own Magic Initiate Origin feat remains unsupported) are now genuinely individually creation-
 // complete. `species` is unchanged -- P8 touches no species decision.
-const BASELINE = { species: 3, classes: 4, backgrounds: 13, combinations: 156 }
+// FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the creation-complete
+// roster (4 -> 6 classes), lifting the complete 3 species x 6 classes x 13 backgrounds combinations
+// from 156 to 234.
+const BASELINE = { species: 3, classes: 6, backgrounds: 13, combinations: 234 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

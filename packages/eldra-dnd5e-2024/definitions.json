@@ -3091,6 +3091,84 @@
     ]
   },
   {
+    "id": "source:divine-order.protector",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Divine Order: Protector",
+    "modifiers": [
+      {
+        "target": "value:weapon.martial.proficient",
+        "phase": "set",
+        "value": true
+      },
+      {
+        "target": "value:armor.heavy.proficient",
+        "phase": "set",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "source:divine-order.thaumaturge",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Divine Order: Thaumaturge",
+    "modifiers": []
+  },
+  {
+    "id": "source:primal-order.magician",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Primal Order: Magician",
+    "modifiers": []
+  },
+  {
+    "id": "source:primal-order.warden",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Primal Order: Warden",
+    "modifiers": [
+      {
+        "target": "value:weapon.martial.proficient",
+        "phase": "set",
+        "value": true
+      },
+      {
+        "target": "value:armor.medium.proficient",
+        "phase": "set",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "source:blessed-strikes.divine-strike",
+    "kind": "source",
+    "category": "combat",
+    "label": "Blessed Strikes: Divine Strike",
+    "modifiers": []
+  },
+  {
+    "id": "source:blessed-strikes.potent-spellcasting",
+    "kind": "source",
+    "category": "combat",
+    "label": "Blessed Strikes: Potent Spellcasting",
+    "modifiers": []
+  },
+  {
+    "id": "source:elemental-fury.potent-spellcasting",
+    "kind": "source",
+    "category": "combat",
+    "label": "Elemental Fury: Potent Spellcasting",
+    "modifiers": []
+  },
+  {
+    "id": "source:elemental-fury.primal-strike",
+    "kind": "source",
+    "category": "combat",
+    "label": "Elemental Fury: Primal Strike",
+    "modifiers": []
+  },
+  {
     "id": "source:background.increase.str",
     "kind": "source",
     "category": "core.abilities",
@@ -3195,6 +3273,19 @@
     },
     "distinct": false,
     "maxPerOption": 2,
+    "effect": "activate-source"
+  },
+  {
+    "id": "choice:class.feature-option",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Class Feature Option",
+    "prompt": "Choose one of the following options.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
     "effect": "activate-source"
   },
   {
@@ -3806,6 +3897,50 @@
         "at": 2,
         "resources": [
           "resource:channel_divinity.standard"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.feature-option.blessed-strikes",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Blessed Strikes",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 7,
+        "choices": [
+          {
+            "choiceSet": "choice:class.feature-option",
+            "count": 1,
+            "from": [
+              "source:blessed-strikes.divine-strike",
+              "source:blessed-strikes.potent-spellcasting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.feature-option.elemental-fury",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Elemental Fury",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 7,
+        "choices": [
+          {
+            "choiceSet": "choice:class.feature-option",
+            "count": 1,
+            "from": [
+              "source:elemental-fury.potent-spellcasting",
+              "source:elemental-fury.primal-strike"
+            ]
+          }
         ]
       }
     ]

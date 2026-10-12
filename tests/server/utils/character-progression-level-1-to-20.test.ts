@@ -417,11 +417,12 @@ function blockedLedgerEntries(classSlug: string) {
 // ${nestedChoiceSetId}` for a feat's own nested choice --
 // server/utils/character-progression-plan.ts's own FEAT ACQUISITIONS block,
 // confirmed this phase by direct read, never guessed). Answers ONLY the
-// three ChoiceSets currently classified IMPLEMENTED anywhere in the real
+// ChoiceSets currently classified IMPLEMENTED anywhere in the real
 // corpus (choice:class.subclass, choice:feat.selection, choice:skill.
-// expertise, plus feat.selection's own nested choice:feat.asi-ability-
-// increase) -- anything else is deliberately left unanswered, never faked,
-// per this task's own "do not fake answers for unsupported mechanics."
+// expertise, choice:class.feature-option, plus feat.selection's own nested
+// choice:feat.asi-ability-increase) -- anything else is deliberately left
+// unanswered, never faked, per this task's own "do not fake answers for
+// unsupported mechanics."
 // ---------------------------------------------------------------------------
 
 function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, classSlug: string): Record<string, string[]> {
@@ -483,6 +484,11 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
       const picked = legalForThisRow.slice(0, count)
       answers[key] = picked
       for (const id of picked) usedSkills.add(id)
+    } else if (choiceSetId === 'choice:class.feature-option') {
+      // Generic class feature option (Cleric Divine Order / Blessed Strikes,
+      // Druid Primal Order / Elemental Fury) -- no class-specific branching,
+      // just the first legal Source this row's own real `from` list declares.
+      answers[key] = [from[0]!]
     }
     // Anything else: left unanswered on purpose -- see this function's
     // own header.

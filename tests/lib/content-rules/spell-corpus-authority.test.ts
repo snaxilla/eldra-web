@@ -69,15 +69,20 @@ describe('P2 spell corpus authority', () => {
   // equipment-bundle.ts + server/utils/character-equipment-bundle.ts), moving the census from
   // 363/249 to 391/221. Total and optional are unchanged -- P8 added no new decision family and
   // touched no replacement/re-answer clause.
-  it('the Phase-0 decision census after P8: 647 total, 391 implemented, 221 blocked, 35 optional', () => {
+  // FEATURE-OPTION PHASE reclassified exactly the 4 CLASS-owned feature-option decisions (Cleric
+  // Divine Order/Blessed Strikes, Druid Primal Order/Elemental Fury) from blocked to implemented
+  // (choice:class.feature-option), moving the census from 391/221 to 395/217. The 4 SUBCLASS-owned
+  // feature-option decisions (Hunter's Defensive Tactics, Path of the Wild Heart's Aspect of the
+  // Wilds, etc.) remain blocked behind subclass-internal feature-level gating, untouched.
+  it('the Phase-0 decision census after the Feature-Option phase: 647 total, 395 implemented, 217 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(647)
-    expect(counts.implemented).toBe(391)
-    expect(counts.blocked).toBe(221)
+    expect(counts.implemented).toBe(395)
+    expect(counts.blocked).toBe(217)
     expect(counts.optional).toBe(35)
   })
 

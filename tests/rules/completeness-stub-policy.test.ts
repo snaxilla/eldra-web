@@ -41,6 +41,7 @@ const UNIT_STUBBING = [
   'tests/server/api/worlds/[id]/characters/create-v2.post.test.ts',
   'tests/server/utils/character-progression-all-class-subclass.test.ts',
   'tests/server/utils/character-progression-level-1-to-20.test.ts',
+  'tests/server/utils/character-progression-plan-feature-option.test.ts',
   'tests/server/utils/character-progression-plan-spell-acquisition.test.ts',
   'tests/server/utils/character-progression-plan.test.ts',
   'tests/server/utils/character-progression-published-package.test.ts'
@@ -49,6 +50,7 @@ const UNIT_STUBBING = [
 // ACCEPTANCE and AUTHORITY: production-path or authority tests. They must use the REAL authority.
 const ACCEPTANCE_REAL = [
   'tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts',
+  'tests/server/api/worlds/[id]/characters/create-v2-feature-option.test.ts',
   'tests/server/utils/character-progression-fail-closed.test.ts',
   'tests/server/utils/character-assembly-historical-fail-closed.test.ts',
   'tests/lib/content-rules/creation-availability.test.ts',

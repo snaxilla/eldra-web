@@ -57,7 +57,8 @@ const SPECIES = {
 const CLASSES = {
   fighter: entry('Fighter', 'fighter-xphb', findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb')),
   cleric: entry('Cleric', 'cleric-xphb', findRulesFacet('dnd5e.2024', 'class', 'cleric-xphb')),
-  wizard: entry('Wizard', 'wizard-xphb', findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb'))
+  wizard: entry('Wizard', 'wizard-xphb', findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')),
+  warlock: entry('Warlock', 'warlock-xphb', findRulesFacet('dnd5e.2024', 'class', 'warlock-xphb'))
 }
 const BACKGROUNDS = {
   criminal: entry('Criminal', 'criminal-xphb', findRulesFacet('dnd5e.2024', 'background', 'criminal-xphb')),
@@ -130,9 +131,14 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
     expectNoWrites()
   })
 
-  it('a Cleric whose Level-1 Divine Order cannot be recorded is refused, and the reason names the feature', async () => {
-    await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'cleric-xphb', 'criminal-xphb')) as any))
-      .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('Divine Order') })
+  // FEATURE-OPTION PHASE -- Cleric's own Level-1 Divine Order is now representable (the generic
+  // choice:class.feature-option ChoiceSet); Dwarf + Cleric + Criminal is creation-complete through
+  // the real authority (see create-v2-feature-option.test.ts). Warlock's Invocations remains a real,
+  // differently-named Level-1 blocker, proving this refusal path still works for a class this phase
+  // did not touch.
+  it('a Warlock whose Level-1 Invocations cannot be recorded is refused, and the reason names the feature', async () => {
+    await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'warlock-xphb', 'criminal-xphb')) as any))
+      .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('Invocations') })
     expectNoWrites()
   })
 

@@ -77,7 +77,14 @@ const STRONG_CHOICE_PHRASING = /you (can )?choose (one|two|three|a|an)\b|choose 
 // real player decision.
 const KNOWN_CLASS_FEATURE_NAMES = new Set([
   'Ability Score Improvement', 'Epic Boon', 'Weapon Mastery', 'Fighting Style',
-  'Expertise', 'Metamagic', 'Eldritch Invocations', 'Mystic Arcanum', 'Spellcasting'
+  'Expertise', 'Metamagic', 'Eldritch Invocations', 'Mystic Arcanum', 'Spellcasting',
+  // FEATURE-OPTION PHASE -- Cleric Divine Order / Blessed Strikes, Druid Primal
+  // Order / Elemental Fury: each a real, structural `{"type":"options","count":1,
+  // "entries":[{refClassFeature...},{refClassFeature...}]}` choice (Cleric/Druid
+  // class-*.json), but phrased "...of your choice" / "...your choice" rather than
+  // matching STRONG_CHOICE_PHRASING's literal "choose" wording -- added here, not
+  // to the regex, since each is a stable, well-understood mechanic identity.
+  'Divine Order', 'Primal Order', 'Blessed Strikes', 'Elemental Fury'
 ])
 
 function isKnownSubclassSelectionFeature(name: string, className: string): boolean {

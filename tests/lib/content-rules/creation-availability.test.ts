@@ -37,7 +37,10 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the creation-complete
 // roster (4 -> 6 classes), lifting the complete 3 species x 6 classes x 13 backgrounds combinations
 // from 156 to 234.
-const BASELINE = { species: 3, classes: 6, backgrounds: 13, combinations: 234 }
+// WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, and Ranger join too (6 -> 10 classes;
+// Rogue remains creation-blocked by Expertise and Thieves' Cant/language policy), lifting the
+// complete combinations from 234 to 390.
+const BASELINE = { species: 3, classes: 10, backgrounds: 13, combinations: 390 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

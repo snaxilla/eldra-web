@@ -284,6 +284,16 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.perception.proficient',
             'value:skill.survival.proficient'
           ]
+        },
+        // Weapon Mastery phase -- real corpus wording -- "two kinds of Simple or Martial MELEE weapons
+        // of your choice" (class-barbarian.json's own Weapon Mastery feature, verified this
+        // phase) -- Barbarian's own real restriction to melee weapons, not shared by every other
+        // Weapon Mastery class, hence the dedicated `.melee-only` ChoiceSet variant (never a class
+        // branch in application code -- the restriction lives in the package, like Fighting
+        // Style's own `fs-only`/`fs-and-fs-p`/`fs-and-fs-r` variants).
+        {
+          choiceSet: 'choice:class.weapon-mastery.melee-only',
+          count: 2
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- real XPHB ASI levels for
@@ -315,7 +325,12 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // of the 48 native-XPHB subclasses (4 per class) is already present
       // in Solaris's bound Content Pack with the correct `parentClassSlug`
       // -- this was a Rules-authoring gap, never a Content gap.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon'],
+      // Weapon Mastery phase -- real corpus: Barbarian's own Weapon Mastery column on the
+      // Barbarian Features table (class-barbarian.json's own `classTableGroups`, verified this
+      // phase) reads 2 at Level 1, 3 at Level 4, 4 at Level 10, unchanged through Level 20 -- the
+      // SAME `-4-10` cadence Fighter does not share (Fighter grows at 4/10/16 instead), hence the
+      // separate cadence id, named by SHAPE, never by class.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon', 'progression:class.weapon-mastery-growth-4-10'],
       startingEquipment: {
         id: 'choice:equipment.starting.barbarian-xphb',
         bundles: [
@@ -711,6 +726,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.perception.proficient',
             'value:skill.survival.proficient'
           ]
+        },
+        // Weapon Mastery phase -- real corpus wording -- "three kinds of Simple or Martial weapons of
+        // your choice" (class-fighter.json's own Weapon Mastery feature, verified this phase) --
+        // no melee restriction (unlike Barbarian), so the unrestricted `choice:class.weapon-
+        // mastery` ChoiceSet, never the `.melee-only` variant.
+        {
+          choiceSet: 'choice:class.weapon-mastery',
+          count: 3
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- Fighter is a real, verified
@@ -719,7 +742,12 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // (class-fighter.json's own `classFeatures` references, verified this
       // phase) -- authored here exactly as measured, never assumed.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable', 'progression:class.epic-boon'],
+      // Weapon Mastery phase -- real corpus: Fighter's own Weapon Mastery column on the Fighter
+      // Features table (class-fighter.json's own `classTableGroups`, verified this phase) reads 3
+      // at Level 1, 4 at Level 4, 5 at Level 10, 6 at Level 16, unchanged through Level 20 -- its
+      // own distinct cadence (no other Weapon Mastery class shares 4/10/16), hence the separate
+      // cadence id, named by SHAPE, never by class.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-extended', 'progression:class.resources-action-surge-indomitable', 'progression:class.epic-boon', 'progression:class.weapon-mastery-growth-4-10-16'],
       startingEquipment: {
         id: 'choice:equipment.starting.fighter-xphb',
         bundles: [
@@ -895,6 +923,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.persuasion.proficient',
             'value:skill.religion.proficient'
           ]
+        },
+        // Weapon Mastery phase -- real corpus wording -- "two kinds of weapons of your choice with
+        // which you have proficiency" (class-paladin.json's own Weapon Mastery feature, verified
+        // this phase) -- no melee restriction, and no later growth column on the Paladin Features
+        // table (verified this phase: fixed at 2 through Level 20).
+        {
+          choiceSet: 'choice:class.weapon-mastery',
+          count: 2
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
@@ -978,6 +1014,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.stealth.proficient',
             'value:skill.survival.proficient'
           ]
+        },
+        // Weapon Mastery phase -- real corpus wording -- "two kinds of weapons of your choice with
+        // which you have proficiency" (class-ranger.json's own Weapon Mastery feature, verified
+        // this phase) -- no melee restriction, and no later growth column on the Ranger Features
+        // table (verified this phase: fixed at 2 through Level 20).
+        {
+          choiceSet: 'choice:class.weapon-mastery',
+          count: 2
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
@@ -1044,6 +1088,21 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.sleight_of_hand.proficient',
             'value:skill.stealth.proficient'
           ]
+        },
+        // Weapon Mastery phase -- real corpus wording -- "two kinds of weapons of your choice with
+        // which you have proficiency" (class-rogue.json's own Weapon Mastery feature, verified
+        // this phase) -- no melee restriction, and no later growth column on the Rogue Features
+        // table (verified this phase: fixed at 2 through Level 20). Rogue's own restricted
+        // martial proficiency (`value:weapon.martial_finesse_light.proficient`, not the full
+        // `value:weapon.martial.proficient` every other Weapon Mastery class grants) needs no
+        // separate filter variant here: the unrestricted ChoiceSet's own proficiency check
+        // (item-mechanics/eligibility.ts) already reads whichever of the item's own
+        // `proficiencyGroups` this character's real derived Values satisfy, so a Greatsword
+        // (martial, no Finesse/Light) is correctly ineligible and a Rapier (martial, Finesse) is
+        // correctly eligible -- generic Value composition, never a Rogue-specific branch.
+        {
+          choiceSet: 'choice:class.weapon-mastery',
+          count: 2
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- Rogue is a real, verified

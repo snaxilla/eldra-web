@@ -74,10 +74,15 @@ describe('the positive path -- a combination whose decisions are all represented
     })
     expect(creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'fighter-xphb', background: 'criminal-xphb', feats: [] }, represented)).toEqual([])
   })
-  it('a Fighter with the Level-1 Fighting Style and the Criminal Origin feat is fully represented except the Weapon Mastery and background choices', () => {
+  // WEAPON MASTERY PHASE -- Weapon Mastery is representable (the generic choice:class.weapon-
+  // mastery ChoiceSet, category: items), so a Fighter's own class-owned decisions are now all
+  // implemented or optional, and this test's prior "except Weapon Mastery" premise is obsolete.
+  it('a Fighter\'s own class-owned decisions (Fighting Style, skill choice, Weapon Mastery) are all representable, now implemented', () => {
     const fighter = ownOf('class', 'fighter-xphb')
-    expect(fighter.map((u) => u.rule)).toContain('blk:weapon-mastery')
-    expect(fighter.some((u) => u.rule === 'impl:fighting-style' || u.rule === 'impl:class-skill-choice')).toBe(false)
+    expect(fighter).toEqual([])
+    const weaponMastery = DND5E_2024_MANDATORY_DECISIONS.find((d) => d.owner.slug === 'fighter-xphb' && d.family === 'weapon-mastery')
+    expect(weaponMastery).toBeDefined()
+    expect(classifyDecision(weaponMastery!).status).toBe('implemented')
   })
 })
 

@@ -34,6 +34,10 @@ const PACKAGE_DIR = 'packages/eldra-dnd5e-2024'
 const CONTENT_PACKAGE = 'eldra.solaris.xphb'
 const FS_ONLY_CHOICE = 'choice:feat.fighting-style.fs-only'
 const FS_ONLY_KEY = 'class:progression:1:choice:feat.fighting-style.fs-only'
+// Weapon Mastery phase -- Fighter's own Level-1 Weapon Mastery choice is declared alongside
+// Fighting Style; unanswered here (this file's own fixture declares no catalogue items), so it
+// always reads as the empty-selection key, never omitted.
+const WEAPON_MASTERY_KEY = 'class:progression:1:choice:class.weapon-mastery'
 
 function hydrate(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(hydrate)
@@ -163,7 +167,7 @@ describe('class switching -- the Fighter requirement and its answer never leak',
   it('switching away from Fighter removes the requirement from the effective submission', () => {
     const draft = fighterDraft()
     setContentChoiceSelections(draft, FS_ONLY_KEY, [archery], CONTEXT)
-    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({ [FS_ONLY_KEY]: [archery] })
+    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({ [FS_ONLY_KEY]: [archery], [WEAPON_MASTERY_KEY]: [] })
 
     draft.class = WIZARD
     pruneChoices(draft, CONTEXT)

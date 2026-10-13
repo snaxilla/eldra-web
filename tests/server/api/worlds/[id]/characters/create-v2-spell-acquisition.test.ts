@@ -58,6 +58,7 @@ import { findRulesFacet } from '../../../../../../app/lib/content-rules'
 import { normalizeStoredSpellcasting } from '../../../../../../app/lib/characters/spellcasting'
 import { validateSpellRequirements, spellIdentityOf } from '../../../../../../app/lib/characters/spell-requirements'
 import { resolveDnd5eFeatMechanics } from '../../../../../../app/lib/feat-mechanics/dnd5e'
+import { resolveDnd5eItemMechanics } from '../../../../../../app/lib/item-mechanics/dnd5e'
 import { progressionChoiceKey } from '../../../../../../app/lib/characters/rules-choices'
 import { serializeContentRef } from '../../../../../../app/lib/characters/progression-plan'
 import handler from '../../../../../../server/api/worlds/[id]/characters/create-v2.post'
@@ -147,13 +148,30 @@ const SPELLS = [
   spellEntry('too-high', 3, ['Bard']) // for the wrong-level rejection case
 ]
 
+// Weapon Mastery phase -- Paladin's own real Level-1 Weapon Mastery choice (2 distinct weapon
+// kinds) and Fighter's (3) are both MANDATORY content choices at creation; this file's own
+// mechanics otherwise have nothing to do with Weapon Mastery, so three arbitrary, real-shaped
+// weapons suffice (resolved through the real resolver, never hand-typed CanonicalItemMechanics).
+function weaponEntry(title: string, slug: string, raw: Record<string, unknown>) {
+  return { ...entry({ title, slug }), itemMechanics: resolveDnd5eItemMechanics(raw) }
+}
+const WEAPONS = [
+  weaponEntry('Dagger', 'dagger-xphb', { weaponCategory: 'simple', type: 'M|XPHB', property: ['F|XPHB', 'L|XPHB', 'T|XPHB'], mastery: ['Nick|XPHB'] }),
+  weaponEntry('Longsword', 'longsword-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Sap|XPHB'] }),
+  weaponEntry('Warhammer', 'warhammer-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Push|XPHB'] })
+]
+const WEAPON_MASTERY_KEY = progressionChoiceKey('class', 1, 'choice:class.weapon-mastery')
+function weaponSelections(count: number) {
+  return WEAPONS.slice(0, count).map((w) => serializeContentRef({ packageId: w.packageId, slug: w.slug }))
+}
+
 function catalogueWith(classSlugs: readonly (keyof typeof CLASSES)[]) {
   return {
     worldId: WORLD_ID, packs: [],
     species: [HUMAN],
     classes: classSlugs.map((slug) => CLASSES[slug]),
     backgrounds: [ACOLYTE_UNBLOCKED],
-    feats: FEATS, subclasses: [], items: [], monsters: [],
+    feats: FEATS, subclasses: [], items: WEAPONS, monsters: [],
     spells: SPELLS
   }
 }
@@ -304,7 +322,7 @@ describe('P3.3 SUCCESS MATRIX -- real facets, real planner, real write-through',
     expect(spellTarget).toBeGreaterThan(0) // 2024 RAW: Paladin prepares spells starting at Level 1
 
     const spellSelections = [...'ab'].slice(0, spellTarget).map((s) => ({ requirementId: spellId, ref: ref(`pal-${s}`) }))
-    const result = await postCreate(bodyWith('paladin-xphb', spellSelections))
+    const result = await postCreate(bodyWith('paladin-xphb', spellSelections, { contentChoices: { [WEAPON_MASTERY_KEY]: weaponSelections(2) } }))
     expect(result.id).toBe(store.createdEntityId)
     expect((store.spellcasting as any).spells).toHaveLength(spellTarget)
   })
@@ -469,7 +487,7 @@ describe('P3.3 SERVER REJECTION MATRIX -- zero writes on any rejection', () => {
 
   it('a non-caster class (no spellRequirements) requires no spellSelections and writes no spellcasting block at all', async () => {
     mocks.getWorldContentCatalogue.mockResolvedValue({ ...catalogueWith(['wizard']), classes: [classEntry('fighter-xphb', 'Fighter')] })
-    const result = await postCreate(bodyWith('fighter-xphb', undefined, { contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(ARCHERY)] } }))
+    const result = await postCreate(bodyWith('fighter-xphb', undefined, { contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(ARCHERY)], [WEAPON_MASTERY_KEY]: weaponSelections(3) } }))
     expect(result.id).toBe(store.createdEntityId)
     expect(store.spellcasting).toBeNull() // no unnecessary write
   })

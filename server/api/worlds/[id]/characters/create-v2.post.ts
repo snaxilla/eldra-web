@@ -367,9 +367,18 @@ export default defineEventHandler(async (event) => {
     // No real facet declares a 'spells' choice yet (P3 owns acquisition counts), so this is
     // currently always judged against zero declared choices -- wired now so the transport is not
     // tied to one surface, per this phase's own scope.
-    catalogue.spells
+    catalogue.spells,
+    // Weapon Mastery phase -- items, mirroring `catalogue.feats`/`catalogue.spells` above exactly.
+    // Every item's own `itemMechanics` and the World's own derived proficiency facts (never the
+    // client's) decide eligibility; the Builder's offered list is presentation only.
+    catalogue.items
   )
   const contentAcquisitions: { featRef: { packageId: string, slug: string }, choiceKey: string }[] = []
+  // Weapon Mastery phase -- items-category offers are kept SEPARATE from `contentAcquisitions`
+  // (which feeds progression.feats[]): an item is not a feat, and `itemRef` would be a lie if
+  // stored under `featRef`. Routed by `presentation.category`, the same package-declared
+  // destination every other content choice is already routed by -- no choice-id branch.
+  const itemAcquisitions: { itemRef: { packageId: string, slug: string }, choiceKey: string }[] = []
   for (const presentation of contentPresentations) {
     const submitted = (submittedContent[presentation.key] as string[] | undefined) ?? []
     if (submitted.length > presentation.count) {
@@ -388,7 +397,11 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: `${presentation.key}: choose ${presentation.count} option${presentation.count === 1 ? '' : 's'}` })
     }
     for (const offer of presentation.offered.filter((candidate) => presentation.selected.includes(candidate.ref))) {
-      contentAcquisitions.push({ featRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
+      if (presentation.category === 'items') {
+        itemAcquisitions.push({ itemRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
+      } else {
+        contentAcquisitions.push({ featRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
+      }
     }
   }
 
@@ -555,7 +568,8 @@ export default defineEventHandler(async (event) => {
     const classRef = { packageId: characterClass.packageId, slug: characterClass.slug }
     await saveCharacterProgression(created.id, {
       classes: [{ classRef, level: 1, subclassRef: null }],
-      feats: acquisitions
+      feats: acquisitions,
+      items: itemAcquisitions
     })
 
     // D&D 2024 Character Rules P3.3 -- CANONICAL SPELLCASTING WRITE-THROUGH. FAIL LOUDLY (no

@@ -224,7 +224,9 @@ describe('P3.5 -- spell decision reconciliation', () => {
     // unblock, rather than asserting a universal "something always remains" that is no longer true.
     // FEATURE-OPTION PHASE -- Cleric/Druid's own remaining non-spell blocker (Divine Order/Primal
     // Order) is now also implemented, so they join Bard/Sorcerer/Wizard as fully creation-complete.
-    const stillPartiallyBlockedCasters = CASTER_SLUGS.filter((slug) => !['bard-xphb', 'cleric-xphb', 'druid-xphb', 'sorcerer-xphb', 'wizard-xphb'].includes(slug))
+    // WEAPON MASTERY PHASE -- Paladin/Ranger's own remaining non-spell blocker (Weapon Mastery) is
+    // now also implemented, so they join the same fully-creation-complete group.
+    const stillPartiallyBlockedCasters = CASTER_SLUGS.filter((slug) => !['bard-xphb', 'cleric-xphb', 'druid-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'wizard-xphb'].includes(slug))
     for (const slug of stillPartiallyBlockedCasters) {
       const ownDecisions = DECISIONS.filter((d) => d.owner.kind === 'class' && d.owner.slug === slug)
       const nonSpellBlocked = ownDecisions.filter((d) => !['spell-choice', 'spell-grant', 'spell-count'].includes(d.family) && classifyDecision(d).status === 'blocked')
@@ -320,7 +322,9 @@ describe('P8 -- starting equipment reconciliation', () => {
 
     expect(availableSpecies.length).toBe(3)
     // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the roster.
-    expect(availableClasses.sort()).toEqual(['bard-xphb', 'cleric-xphb', 'druid-xphb', 'monk-xphb', 'sorcerer-xphb', 'wizard-xphb'])
+    // WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, Ranger join too (Rogue remains
+    // creation-blocked by Expertise and Thieves' Cant/language policy, untouched by this phase).
+    expect(availableClasses.sort()).toEqual(['barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb', 'monk-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'wizard-xphb'])
     expect(availableBackgrounds.length).toBe(13)
 
     let combinations = 0
@@ -331,12 +335,69 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // FEATURE-OPTION PHASE -- 3 species * 6 available classes * 13 available backgrounds = 234,
+    // WEAPON MASTERY PHASE -- 3 species * 10 available classes * 13 available backgrounds = 390,
     // enumerated through the real authority above (never computed as a hardcoded product).
-    expect(combinations).toBe(234)
+    expect(combinations).toBe(390)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
     expect(creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'bard-xphb', background: 'criminal-xphb', feats: [] })).toEqual([])
+  })
+})
+
+describe('WEAPON MASTERY PHASE -- reconciliation', () => {
+  const weaponMasteryDecisions = DECISIONS.filter((d) => d.owner.kind === 'class' && d.family === 'weapon-mastery')
+
+  it('RECLASSIFICATION -- all 10 real decisions (Barbarian 3, Fighter 4, Paladin/Ranger/Rogue 1 each) are now implemented', () => {
+    expect(weaponMasteryDecisions.length).toBe(10)
+    expect(weaponMasteryDecisions.every((d) => classifyDecision(d).status === 'implemented')).toBe(true)
+    const byClass: Record<string, number> = {}
+    for (const d of weaponMasteryDecisions) byClass[d.owner.slug] = (byClass[d.owner.slug] ?? 0) + 1
+    expect(byClass).toEqual({ 'barbarian-xphb': 3, 'fighter-xphb': 4, 'paladin-xphb': 1, 'ranger-xphb': 1, 'rogue-xphb': 1 })
+  })
+
+  it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
+    expect(contractViolations(DECISIONS)).toEqual([])
+  })
+
+  it('BITE -- deleting impl:weapon-mastery leaves all 10 real decisions uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:weapon-mastery')
+    expect(weaponMasteryDecisions.every((d) => without.filter((rule) => rule.matches(d)).length === 0)).toBe(true)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- the optional Long-Rest replacement clause and the mastery-property runtime effect never masquerade as the mandatory acquisition decision', () => {
+    for (const d of weaponMasteryDecisions) {
+      // `opt:replacement` and `runtime:weapon-mastery-effects` both carry `matches: () => false` --
+      // neither can ever claim a real weapon-mastery ACQUISITION decision, so each real decision
+      // is classified by `impl:weapon-mastery` alone (the bidirectional contract's own "exactly
+      // one rule" check, re-asserted here for this specific decision family).
+      expect(matchingRules(d).map((r) => r.id)).toEqual(['impl:weapon-mastery'])
+    }
+    // A synthetic rule falsely claiming the optional replacement/runtime-effect ledger rows as
+    // mandatory acquisition coverage creates a genuine double-match violation against whichever
+    // real decision it targets -- proving the contract would catch exactly this mistake.
+    const falselyImplemented: CoverageRule = {
+      id: 'impl:false-weapon-mastery-replacement',
+      status: 'implemented',
+      reason: 'synthetic, for the bite proof only',
+      ledgerIds: [],
+      matches: (d) => d.id === weaponMasteryDecisions[0]!.id
+    }
+    const violations = contractViolations(DECISIONS, [...COVERAGE_RULES, falselyImplemented])
+    expect(violations.some((v) => v.includes(weaponMasteryDecisions[0]!.id))).toBe(true)
+  })
+
+  it('AVAILABILITY -- Rogue remains creation-blocked by its own untouched real blockers (Expertise, Thieves\' Cant)', () => {
+    const rogueUnresolved = creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'rogue-xphb', background: 'criminal-xphb', feats: [] })
+    expect(rogueUnresolved.some((u) => u.family === 'weapon-mastery')).toBe(false)
+    expect(rogueUnresolved.some((u) => u.family === 'expertise-choice')).toBe(true)
+    expect(rogueUnresolved.some((u) => u.family === 'language-choice')).toBe(true)
+  })
+
+  it('FIRST REAL CHARACTERS -- Dwarf + Barbarian/Fighter/Paladin/Ranger + Criminal are all creation-complete through the real authority', () => {
+    for (const classSlug of ['barbarian-xphb', 'fighter-xphb', 'paladin-xphb', 'ranger-xphb']) {
+      expect(creationUnresolvedDecisions({ species: 'dwarf-xphb', class: classSlug, background: 'criminal-xphb', feats: [] }), classSlug).toEqual([])
+    }
   })
 })

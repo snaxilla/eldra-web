@@ -555,8 +555,8 @@ export async function assembleCharacter(
   // correct, unforced result.
   const progression = storedProgression ?? (
     classPackageId && classSlug
-      ? { classes: [{ classRef: { packageId: classPackageId, slug: classSlug }, level: 1 }], feats: [] }
-      : { classes: [], feats: [] }
+      ? { classes: [{ classRef: { packageId: classPackageId, slug: classSlug }, level: 1 }], feats: [], items: [] }
+      : { classes: [], feats: [], items: [] }
   )
 
   // Character Progression Phase 1C -- see the blueprint's own `subclass`

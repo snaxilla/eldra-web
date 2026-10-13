@@ -203,6 +203,7 @@ import {
   isValidClassLevel,
   totalCharacterLevel,
   type StoredAcquiredFeat,
+  type StoredAcquiredItem,
   type StoredCharacterProgression
 } from '../../app/lib/characters/progression'
 import type {
@@ -226,7 +227,9 @@ import {
 } from './character-rules-choices'
 import { emptyStoredRulesChoices, resolveChoiceTarget } from '../../app/lib/characters/rules-choices'
 import { featFilterVerdict, featOptionVerdict, type FeatPrerequisite, type FeatUnavailableReason } from '../../app/lib/feat-mechanics'
-import type { ContentCatalogueFilter, SpellCatalogueFilter } from '../../app/lib/rules/types'
+import { itemOptionVerdict } from '../../app/lib/item-mechanics'
+import { weaponValueId } from '../../app/lib/content-rules/proficiency-vocabulary'
+import type { ContentCatalogueFilter, ItemCatalogueFilter, SpellCatalogueFilter } from '../../app/lib/rules/types'
 import { progressionUnresolvedDecisions, describeUnresolved } from '../../app/lib/content-rules/creation-completeness'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import type { AssembledSpellEntry } from '../../app/lib/characters/spellcasting'
@@ -251,7 +254,7 @@ import { saveCharacterSpellcasting } from './character-spellcasting'
 // `filter`'s real shape depends on `category` (P2: 'spells' carries a SpellCatalogueFilter, never
 // a feat's ContentCatalogueFilter) -- this file's own routing below reads `category` only; a
 // filter's fields are read by featFilterVerdict/spellOptionVerdict, never here.
-type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter }
+type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter | ItemCatalogueFilter }
 type ContentChoiceLookup = (choiceSetId: string) => ContentChoiceSelector | null
 
 async function loadContentChoiceLookup(worldId: string | number): Promise<ContentChoiceLookup> {
@@ -357,6 +360,11 @@ export type ProgressionFailureReason =
   // it," the same distinction `stale-plan` already draws against
   // `invalid-target-level`.
   | 'illegal-feat-selection'
+  // Weapon Mastery phase -- the item counterpart of `illegal-feat-selection`: a submitted item
+  // answer no longer resolves against the current catalogue, is not a weapon the choice's own
+  // filter accepts, this character is not proficient with it, or it duplicates another selection
+  // (this level's own, or an earlier level's).
+  | 'illegal-item-selection'
   // PHASE 0 -- the levels crossed (or a feat acquired in this transition) include a mandatory
   // decision Eldra cannot record yet. Refused at Confirm regardless of what the client shows.
   | 'unsupported-decision'
@@ -380,6 +388,7 @@ export function statusForProgressionFailure(reason: ProgressionFailureReason): n
     case 'stale-plan': return 409
     case 'unresolved-choices': return 409
     case 'illegal-feat-selection': return 400
+    case 'illegal-item-selection': return 400
     case 'unsupported-decision': return 409
     case 'unresolved-spell-selection': return 409
     default: {
@@ -583,16 +592,33 @@ function diffRequiredChoices(previous: DerivedCharacter, next: DerivedCharacter)
 // Definition answers (no content selector) and unknown categories are ignored
 // here -- they are never applied as a feat or a subclass.
 type TentativeFeatAcquisition = { choiceKey: string; choiceSetId: string; ref: ContentRef }
+// Weapon Mastery phase -- the item counterpart of TentativeFeatAcquisition. UNLIKE subclass/feat
+// answers (always exactly one ContentRef), an items-category answer legally carries MULTIPLE
+// distinct ContentRefs at once (a single Weapon Mastery choice selects several weapons) -- each
+// becomes its OWN entry here, sharing the one `choiceKey` all of them were answered under.
+type TentativeItemAcquisition = { choiceKey: string; choiceSetId: string; ref: ContentRef }
 
 function extractTentativeContentAnswers(
   tentativeAnswers: Record<string, string[]>,
   lookup: ContentChoiceLookup
-): { subclassRef: ContentRef | null; feats: TentativeFeatAcquisition[] } {
+): { subclassRef: ContentRef | null; feats: TentativeFeatAcquisition[]; items: TentativeItemAcquisition[] } {
   let subclassRef: ContentRef | null = null
   const feats: TentativeFeatAcquisition[] = []
+  const items: TentativeItemAcquisition[] = []
   for (const [key, selected] of Object.entries(tentativeAnswers)) {
     const selector = contentSelectorOfKey(key, lookup)
-    if (!selector || selected.length !== 1) continue
+    if (!selector) continue
+
+    if (selector.category === 'items') {
+      const choiceSetId = choiceSetIdOfKey(key)!
+      for (const raw of selected) {
+        const ref = parseContentRef(raw)
+        if (ref) items.push({ choiceKey: key, choiceSetId, ref })
+      }
+      continue
+    }
+
+    if (selected.length !== 1) continue
     const ref = parseContentRef(selected[0]!)
     if (!ref) continue
     if (selector.category === 'feats') {
@@ -601,7 +627,7 @@ function extractTentativeContentAnswers(
       subclassRef = ref
     }
   }
-  return { subclassRef, feats }
+  return { subclassRef, feats, items }
 }
 
 // ---------------------------------------------------------------------------
@@ -709,6 +735,8 @@ type PlanContext = {
   lookup: ContentChoiceLookup
   persistedFeats: readonly StoredAcquiredFeat[]
   persistedSubclassRef: ContentRef | null
+  // Weapon Mastery phase -- mirrors `persistedFeats` exactly.
+  persistedItems: readonly StoredAcquiredItem[]
 }
 
 async function buildLevelStep(
@@ -777,7 +805,7 @@ async function buildLevelStep(
   // a documented content gap, not a bug.
   const legal = await legalizeFeatChoices(
     worldId, characterId, level, diffRequiredChoices(previousResult.derived, currentResult.derived),
-    ctx, tentativeAnswers, tentativeSubclassRef, tentative.feats
+    ctx, tentativeAnswers, tentativeSubclassRef, tentative.feats, tentative.items
   )
   if (!legal.ok) return legal
 
@@ -808,7 +836,9 @@ async function legalizeFeatChoices(
   ctx: PlanContext,
   tentativeAnswers: Record<string, string[]>,
   tentativeSubclassRef: ContentRef | null,
-  tentativeFeats: readonly TentativeFeatAcquisition[]
+  tentativeFeats: readonly TentativeFeatAcquisition[],
+  // Weapon Mastery phase -- mirrors `tentativeFeats` exactly.
+  tentativeItems: readonly TentativeItemAcquisition[] = []
 ): Promise<{ ok: true; choices: ProgressionChoice[]; rejections: FeatRejections } | ProgressionFailure> {
   if (!choices.some((choice) => choice.kind === 'content')) return { ok: true, choices, rejections: {} }
   const rejections: FeatRejections = {}
@@ -822,9 +852,20 @@ async function legalizeFeatChoices(
     serializeContentRef({ packageId: entry.packageId, slug: entry.slug }),
     entry
   ]))
+  const itemEntriesByKey = new Map(catalogue.items.map((entry) => [
+    serializeContentRef({ packageId: entry.packageId, slug: entry.slug }),
+    entry
+  ]))
   const known = [
     ...ctx.persistedFeats.map((feat) => ({ choiceKey: feat.choiceKey, ref: feat.featRef })),
     ...tentativeFeats.map((feat) => ({ choiceKey: feat.choiceKey, ref: feat.ref }))
+  ]
+  // Weapon Mastery phase -- the item counterpart of `known`. MULTIPLE entries may legally share
+  // one choiceKey (one multi-weapon choice), unlike `known` above -- `ownedElsewhere` below judges
+  // by (choiceKey, ref) identity, never by choiceKey alone.
+  const knownItems = [
+    ...ctx.persistedItems.map((item) => ({ choiceKey: item.choiceKey, ref: item.itemRef })),
+    ...tentativeItems.map((item) => ({ choiceKey: item.choiceKey, ref: item.ref }))
   ]
 
   const out: ProgressionChoice[] = []
@@ -839,8 +880,47 @@ async function legalizeFeatChoices(
       out.push(choice)
       continue
     }
-    if (selector?.category !== 'feats') {
+    if (selector?.category !== 'feats' && selector?.category !== 'items') {
       out.push({ ...choice, options: [], answered: false })
+      continue
+    }
+
+    if (selector.category === 'items') {
+      // Weapon Mastery phase -- proficiency is the same direct-grant Value check creation uses
+      // (findBooleanIn over derived state, which includes every direct class `grants` entry),
+      // never re-derived by class name. No prerequisite/repeatable concept, so no per-option
+      // derived-state evaluation is needed -- proficiency does not change mid-plan.
+      const priorDerivedForItems = await getDerivedCharacterAtLevel(
+        worldId, characterId, level, tentativeAnswers, tentativeSubclassRef ?? ctx.persistedSubclassRef, []
+      )
+      if (!priorDerivedForItems.available) {
+        return {
+          ok: false,
+          reason: priorDerivedForItems.reason === 'character-not-found' ? 'character-not-found' : 'rules-unavailable',
+          message: priorDerivedForItems.reason === 'character-not-found' ? 'Character not found in this world' : priorDerivedForItems.message
+        }
+      }
+
+      const legalItemIds = new Set<string>()
+      for (const option of choice.options) {
+        const entry = itemEntriesByKey.get(option.id)
+        if (!entry) continue
+        const verdict = itemOptionVerdict({
+          mechanics: entry.itemMechanics,
+          filter: selector.filter as ItemCatalogueFilter | undefined,
+          proficient: () => (entry.itemMechanics?.proficiencyGroups ?? []).some((group) => findBooleanIn(priorDerivedForItems.derived, weaponValueId(group))),
+          ownedElsewhere: knownItems.some((other) =>
+            !(other.choiceKey === choice.id) && other.ref.packageId === entry.packageId && other.ref.slug === entry.slug
+          )
+        })
+        if (verdict.eligible) legalItemIds.add(option.id)
+      }
+
+      out.push({
+        ...choice,
+        options: choice.options.filter((option) => legalItemIds.has(option.id)),
+        answered: choice.selected.length === choice.count && choice.selected.every((id) => legalItemIds.has(id))
+      })
       continue
     }
 
@@ -931,7 +1011,8 @@ export async function planProgression(
   const ctx: PlanContext = {
     lookup: await loadContentChoiceLookup(worldId),
     persistedFeats: current.state.progression.feats ?? [],
-    persistedSubclassRef: current.state.progression.classes[0]?.subclassRef ?? null
+    persistedSubclassRef: current.state.progression.classes[0]?.subclassRef ?? null,
+    persistedItems: current.state.progression.items ?? []
   }
 
   const steps: ProgressionLevelStep[] = []
@@ -1161,6 +1242,10 @@ export async function confirmProgression(
   // `resolvedSubclassRef`, generalized to a list for the same MULTIPLE ASI
   // LEVELS reason `tentativeFeatAcquisitions` already is in `buildLevelStep`.
   const resolvedFeatAcquisitions: { choiceKey: string; choiceSetId: string; ref: ContentRef }[] = []
+  // Weapon Mastery phase -- the item counterpart of `resolvedFeatAcquisitions`. UNLIKE every other
+  // content choice this phase authors (always count === 1), an items-category answer legally
+  // carries MULTIPLE distinct ContentRefs -- every one of `choice.selected` becomes its own entry.
+  const resolvedItemAcquisitions: { choiceKey: string; choiceSetId: string; ref: ContentRef }[] = []
   // D&D 2024 Character Rules Phase 2A.1 -- every DEFINITION-kind answer
   // alongside its own choiceSetId, kept separately from `resolvedAnswers`
   // (which only needs the flat key->selections shape for persistence) so
@@ -1173,19 +1258,26 @@ export async function confirmProgression(
     for (const choice of step.requiredChoices) {
       if (!choice.answered) continue
       if (choice.kind === 'content') {
-        // count === 1 for every content choice this phase authors
-        // (`choice:class.subclass`'s own progression-row `count: 1`,
-        // `choice:feat.selection`'s own, identical `count: 1`) --
-        // `selected[0]` is therefore always the whole answer. A future
-        // multi-select content choice would need this generalized; not
-        // needed by the real authored corpus today.
-        const ref = choice.selected[0] ? parseContentRef(choice.selected[0]) : null
-        if (!ref) continue
         // D&D 2024 Character Rules Phase 2A.1 -- routed by the SAME
         // selector-based routing in `extractTentativeContentAnswers`
         // already uses, for the identical reason (shape alone cannot tell
         // a feat pick from a subclass pick once both exist).
         const selector = lookupContent(choice.choiceSetId)
+
+        if (selector?.category === 'items') {
+          for (const raw of choice.selected) {
+            const itemRef = parseContentRef(raw)
+            if (itemRef) resolvedItemAcquisitions.push({ choiceKey: choice.id, choiceSetId: choice.choiceSetId, ref: itemRef })
+          }
+          continue
+        }
+
+        // count === 1 for every OTHER content choice this phase authors
+        // (`choice:class.subclass`'s own progression-row `count: 1`,
+        // `choice:feat.selection`'s own, identical `count: 1`) --
+        // `selected[0]` is therefore always the whole answer.
+        const ref = choice.selected[0] ? parseContentRef(choice.selected[0]) : null
+        if (!ref) continue
         if (selector?.category === 'feats') {
           resolvedFeatAcquisitions.push({ choiceKey: choice.id, choiceSetId: choice.choiceSetId, ref })
         } else if (selector?.category === 'subclasses') {
@@ -1403,6 +1495,75 @@ export async function confirmProgression(
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Weapon Mastery phase -- ITEM ACQUISITIONS
+  // ---------------------------------------------------------------------
+  // Mirrors the FEAT ACQUISITIONS block above: independently re-derived, never trusting the
+  // client's plan-time resolution. (1) the submitted ContentRef still resolves to a REAL item in
+  // the CURRENT catalogue the choice's own filter accepts; (2) the character is proficient with
+  // this exact weapon on derived state the moment BEFORE this acquisition; (3) distinctness --
+  // the identical weapon cannot be acquired twice, whether the conflict is against an
+  // already-confirmed item or another item resolved in this SAME confirm call (this level's own
+  // sibling selection, or an earlier level's).
+  if (resolvedItemAcquisitions.length) {
+    const catalogue = await getWorldContentCatalogue(worldId)
+    const itemEntriesByKey = new Map(catalogue.items.map((entry) => [
+      serializeContentRef({ packageId: entry.packageId, slug: entry.slug }),
+      entry
+    ]))
+
+    const allItemAcquisitions: { choiceKey: string; ref: ContentRef }[] = [
+      ...(base.items ?? []).map((i) => ({ choiceKey: i.choiceKey, ref: i.itemRef })),
+      ...resolvedItemAcquisitions
+    ]
+
+    for (const acquisition of resolvedItemAcquisitions) {
+      const catalogueEntry = itemEntriesByKey.get(serializeContentRef(acquisition.ref))
+      if (!catalogueEntry) {
+        return {
+          ok: false,
+          reason: 'illegal-item-selection',
+          message: `'${acquisition.ref.slug}' no longer exists in this World's current Content Catalogue`
+        }
+      }
+
+      // A given ContentRef may appear only ONCE across every acquisition this character has ever
+      // made through ANY choiceKey -- distinct from the feat check above, which allows a
+      // repeatable feat to appear under multiple choiceKeys. No weapon is ever repeatable.
+      const duplicate = allItemAcquisitions.filter((other) =>
+        other.ref.packageId === acquisition.ref.packageId && other.ref.slug === acquisition.ref.slug
+      ).length > 1
+      if (duplicate) {
+        return {
+          ok: false,
+          reason: 'illegal-item-selection',
+          message: `'${catalogueEntry.title}' would be selected twice and cannot be chosen`
+        }
+      }
+
+      const thisLevel = parseProgressionChoiceLevel(acquisition.choiceKey)
+      const priorDerived = await getDerivedCharacterAtLevel(
+        worldId, characterId, thisLevel ?? targetLevel, answers, subclassRefForFeatChecks, []
+      )
+      if (!priorDerived.available) {
+        return { ok: false, reason: 'rules-unavailable', message: priorDerived.reason === 'character-not-found' ? 'Character not found in this world' : priorDerived.message }
+      }
+
+      const filter = lookupContent(acquisition.choiceSetId)?.filter as ItemCatalogueFilter | undefined
+      const verdict = itemOptionVerdict({
+        mechanics: catalogueEntry.itemMechanics,
+        filter,
+        proficient: () => (catalogueEntry.itemMechanics?.proficiencyGroups ?? []).some((group) => findBooleanIn(priorDerived.derived, weaponValueId(group))),
+        // Distinctness is already fully checked above (across every acquisition, every
+        // choiceKey) -- never re-derived here.
+        ownedElsewhere: false
+      })
+      if (!verdict.eligible) {
+        return { ok: false, reason: 'illegal-item-selection', message: `'${catalogueEntry.title}' is not a legal option for this choice` }
+      }
+    }
+  }
+
   if (Object.keys(resolvedAnswers).length) {
     const existingChoices = (await loadCharacterRulesChoices(characterId)) ?? emptyStoredRulesChoices()
     const mergedChoices = {
@@ -1422,6 +1583,12 @@ export async function confirmProgression(
     ...(base.feats ?? []),
     ...resolvedFeatAcquisitions.map((acquisition) => ({ featRef: acquisition.ref, choiceKey: acquisition.choiceKey }))
   ]
+  // Weapon Mastery phase -- mirrors `nextFeats` exactly: every previously-confirmed item
+  // acquisition survives this REPLACE write, plus every item newly resolved by THIS confirm.
+  const nextItems: StoredAcquiredItem[] = [
+    ...(base.items ?? []),
+    ...resolvedItemAcquisitions.map((acquisition) => ({ itemRef: acquisition.ref, choiceKey: acquisition.choiceKey }))
+  ]
 
   const nextProgression: StoredCharacterProgression = {
     classes: [{
@@ -1433,7 +1600,8 @@ export async function confirmProgression(
       // already confirmed on a prior transition).
       subclassRef: resolvedSubclassRef ?? onlyClassEntry.subclassRef ?? null
     }],
-    feats: nextFeats
+    feats: nextFeats,
+    items: nextItems
   }
 
   const saved = await saveCharacterProgression(characterId, nextProgression)

@@ -105,6 +105,19 @@ export type StoredAcquiredFeat = {
   choiceKey: string
 }
 
+// Weapon Mastery phase -- the item counterpart of StoredAcquiredFeat, deliberately a SEPARATE type
+// (never folded into `feats`): an item acquisition is a Content Catalogue `items`-category
+// reference, not a feat, and `itemRef` would be a lie if stored under `featRef`. Unlike
+// StoredAcquiredFeat, MULTIPLE entries MAY legally share one `choiceKey` -- a single Weapon
+// Mastery choice at one level selects several distinct weapons at once (Fighter's Level-1 choice:
+// three entries, one choiceKey). No two entries may share the SAME (itemRef, choiceKey) pair
+// (the real "distinct weapons" rule), enforced at Confirm/creation, never by this stored shape
+// alone.
+export type StoredAcquiredItem = {
+  itemRef: ClassRef
+  choiceKey: string
+}
+
 export type StoredCharacterProgression = {
   classes: StoredClassLevel[]
   // Always present (never omitted), the same "always-present, sometimes-
@@ -112,10 +125,13 @@ export type StoredCharacterProgression = {
   // character created before this phase -- a legal, common state, not a
   // migration target.
   feats: StoredAcquiredFeat[]
+  // Weapon Mastery phase. Same "always present, `[]` for every character predating this phase"
+  // rule as `feats`.
+  items: StoredAcquiredItem[]
 }
 
 export function emptyCharacterProgression(): StoredCharacterProgression {
-  return { classes: [], feats: [] }
+  return { classes: [], feats: [], items: [] }
 }
 
 // A valid class level is 1-20, matching `value:level`'s own declared
@@ -182,7 +198,22 @@ export function normalizeStoredProgression(value: unknown): StoredCharacterProgr
     }
   }
 
-  return { classes, feats }
+  // Weapon Mastery phase -- re-validated on read, same posture as `feats` immediately above.
+  // `input.items` absent (every record predating this phase) normalizes to `[]`, never `null`.
+  const items: StoredAcquiredItem[] = []
+  if (Array.isArray(input.items)) {
+    for (const raw of input.items) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+      const record = raw as Record<string, unknown>
+      const itemRef = readClassRef(record.itemRef)
+      if (!itemRef) continue
+      const choiceKey = trimmed(record.choiceKey)
+      if (!choiceKey) continue
+      items.push({ itemRef, choiceKey })
+    }
+  }
+
+  return { classes, feats, items }
 }
 
 // Sum across every class entry -- see this file's own header on why this,
@@ -196,4 +227,17 @@ export function normalizeStoredProgression(value: unknown): StoredCharacterProgr
 export function totalCharacterLevel(progression: StoredCharacterProgression | null | undefined): number {
   if (!progression || !progression.classes.length) return 1
   return progression.classes.reduce((sum, entry) => sum + entry.level, 0)
+}
+
+// Weapon Mastery phase -- the one canonical reader of "every item this character has ever
+// acquired through a given content choice set, across every level it was offered at" (Weapon
+// Mastery's own real shape: one choice at creation, more at later class levels, all cumulative).
+// Generic over the choice set id -- not scoped to weapons, reusable by any future "choose N items,
+// growing by level" decision. Intended to be usable later by Sheet presentation, a future runtime
+// mastery-effect resolver, and the optional replacement workflow this phase defers, all without
+// touching persistence: the shape read here never changes, only who reads it.
+export function acquiredItemsFor(progression: StoredCharacterProgression | null | undefined, choiceSetId: string): ClassRef[] {
+  if (!progression) return []
+  const suffix = `:${choiceSetId}`
+  return progression.items.filter((entry) => entry.choiceKey.endsWith(suffix)).map((entry) => entry.itemRef)
 }

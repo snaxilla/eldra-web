@@ -100,6 +100,7 @@ import {
   resolveCurrentProgression
 } from '../../../server/utils/character-progression-plan'
 import { progressionChoiceKey } from '../../../app/lib/characters/rules-choices'
+import { resolveDnd5eItemMechanics } from '../../../app/lib/item-mechanics/dnd5e'
 import { serializeContentRef } from '../../../app/lib/characters/progression-plan'
 import { fullySatisfyingSpellState } from '../../helpers/satisfying-spell-fixture'
 
@@ -153,6 +154,10 @@ const FIGHTER_SUBCLASS_OPTION = serializeContentRef({ packageId: 'eldra.content.
 // not themselves testing it) focused on the mechanism they already cover.
 const FEAT_CHOICE_KEY = progressionChoiceKey('class', 4, 'choice:feat.selection')
 const FEAT_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'actor-xphb' })
+// Weapon Mastery phase -- Fighter's own Level-4 growth row, the SAME real choiceSetId shape every
+// other Fighter 1->5 walk below now crosses.
+const FIGHTER_WEAPON_MASTERY_KEY = progressionChoiceKey('class', 4, 'choice:class.weapon-mastery')
+const WEAPON_MASTERY_OPTION = serializeContentRef({ packageId: 'eldra.content.xphb', slug: 'longsword-xphb' })
 // D&D 2024 Character Rules Phase 2A.1 -- the real, package-declared
 // Ability Score Improvement feat itself, for the tests below that exercise
 // its own nested ability-distribution choice/cap/repeatability behavior
@@ -213,7 +218,20 @@ function catalogueWithSubclass() {
         }
       }
     ],
-    items: [], spells: [], monsters: [],
+    // Weapon Mastery phase -- Fighter's own real Level-4 growth row (progression:class.weapon-
+    // mastery-growth-4-10-16) is crossed by every 1->5 walk this file's own Fighter tests exercise
+    // below -- a real, arbitrary, legal weapon identity so that row's own answer can resolve.
+    items: [{
+      packageId: 'eldra.content.xphb',
+      packageVersion: '1.0.0',
+      systemKey: 'dnd5e',
+      title: 'Longsword',
+      slug: 'longsword-xphb',
+      externalId: 'Longsword__XPHB',
+      provider: '5etools-json',
+      itemMechanics: resolveDnd5eItemMechanics({ weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Sap|XPHB'] })
+    }],
+    spells: [], monsters: [],
     subclasses: [
       {
         packageId: 'eldra.content.xphb',
@@ -644,7 +662,8 @@ describe('confirmProgression -- persistence, ordering, and idempotency', () => {
 
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
       classes: [{ classRef: CLASS_REF, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'school-of-evocation-phb' } }],
-      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }],
+      items: []
     })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
     // Only the Definition-kind answer reaches rules_choices -- see
@@ -865,7 +884,7 @@ describe('confirmProgression -- exactly one write when no real progression choic
     // kind answer is still never persisted to rules_choices (it resolves
     // to `progression.classes[].subclassRef` instead), so "exactly one
     // write" remains true.
-    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION], [SUBCLASS_CHOICE_KEY]: [FIGHTER_SUBCLASS_OPTION] }
+    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION], [SUBCLASS_CHOICE_KEY]: [FIGHTER_SUBCLASS_OPTION], [FIGHTER_WEAPON_MASTERY_KEY]: [WEAPON_MASTERY_OPTION] }
     const planResult = await planProgression('5', '42', 5, answers)
     expect(planResult.ok).toBe(true)
     if (!planResult.ok) return
@@ -876,7 +895,8 @@ describe('confirmProgression -- exactly one write when no real progression choic
     if (!confirmResult.ok) return
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
       classes: [{ classRef: fighterRef, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'battle-master-xphb' } }],
-      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }],
+      items: [{ itemRef: { packageId: 'eldra.content.xphb', slug: 'longsword-xphb' }, choiceKey: FIGHTER_WEAPON_MASTERY_KEY }]
     })
     expect(saveCharacterProgressionMock).toHaveBeenCalledTimes(1)
     expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
@@ -930,7 +950,7 @@ describe('no class-name special cases', () => {
 
     // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see the
     // identical note on the sibling test immediately above.
-    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION], [SUBCLASS_CHOICE_KEY]: [FIGHTER_SUBCLASS_OPTION] }
+    const answers = { [FEAT_CHOICE_KEY]: [FEAT_OPTION], [SUBCLASS_CHOICE_KEY]: [FIGHTER_SUBCLASS_OPTION], [FIGHTER_WEAPON_MASTERY_KEY]: [WEAPON_MASTERY_OPTION] }
     const planResult = await planProgression('5', '42', 5, answers)
     expect(planResult.ok).toBe(true)
     if (!planResult.ok) return
@@ -940,7 +960,8 @@ describe('no class-name special cases', () => {
     if (!confirmResult.ok) return
     expect(saveCharacterProgressionMock).toHaveBeenCalledWith('42', {
       classes: [{ classRef: fighterRef, level: 5, subclassRef: { packageId: 'eldra.content.xphb', slug: 'battle-master-xphb' } }],
-      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+      feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }],
+      items: [{ itemRef: { packageId: 'eldra.content.xphb', slug: 'longsword-xphb' }, choiceKey: FIGHTER_WEAPON_MASTERY_KEY }]
     })
   })
 })

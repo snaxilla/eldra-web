@@ -5847,3 +5847,305 @@ reclassification correctly moved -- zero regressions). `pnpm run typecheck`: the
 every file this phase touched; zero hits). `pnpm run build`: succeeds (exit 0). `git diff --check`:
 clean. `pnpm packages:sync --world Solaris` (dry run): `SOURCE_VERSION_COLLISION` (Rules) +
 `REFRESH_REQUIRED` (Content), as reported above. No commit made. No `packages:sync --apply` run.
+
+### 25.38 WEAPON MASTERY + GENERIC ITEM CONTENT-CHOICE ELIGIBILITY (2026-10-13)
+
+#### Scope
+
+A full implementation phase, scoped to the real Weapon Mastery decisions for Barbarian, Fighter,
+Paladin, Ranger, and Rogue: the Level-1 initial choice plus Barbarian's and Fighter's own real
+later count growth. Extends the generic content-choice architecture (previously `feats`/`spells`
+only) with a THIRD category, `items`, through a new sibling module
+(`app/lib/item-mechanics`) mirroring `app/lib/feat-mechanics`/`app/lib/spell-mechanics` exactly.
+Primary acceptance target, PROVEN (not claimed): **Dwarf + Barbarian/Fighter/Paladin/Ranger +
+Criminal are all creation-complete through the real production authority, the real create-v2
+route, with zero completeness stub.** Explicitly out of scope: the optional Long-Rest re-selection
+clause, the mastery property's own combat effect, Invocations, Rogue Expertise, language policy,
+Magic Initiate, and subclass gating.
+
+#### CORPUS RE-DERIVATION -- exact counts, melee restriction, and population confirmed
+
+Re-extracted directly from `/opt/eldra/datasets/5etools-src/data/class/class-*.json`'s own
+`classTableGroups` (a "Weapon Mastery" table column, delta-per-level) and `classFeature` text:
+
+| Class | Level 1 | Growth | Level 20 total | Real text restriction |
+|---|---|---|---|---|
+| Barbarian | 2 | +1 at L4, +1 at L10 | 4 | Simple OR Martial **melee** only |
+| Fighter | 3 | +1 at L4, +1 at L10, +1 at L16 | 6 | Simple or Martial, no restriction |
+| Paladin | 2 | none | 2 | weapons "with which you have proficiency" |
+| Ranger | 2 | none | 2 | same |
+| Rogue | 2 | none | 2 | same |
+
+Mandatory decision population (one decision per positive table delta, or one at Level 1 when no
+table exists -- `mandatory-decisions.ts`'s own `tableCountDecisions`/the Level-1 `feature-text`
+fallback, unchanged by this phase): **Barbarian 3, Fighter 4, Paladin/Ranger/Rogue 1 each = 10
+total**, confirmed by direct re-derivation, not assumed -- matches the pre-phase prediction
+exactly. The real Long-Rest "change one weapon kind" clause is confirmed optional flexibility
+(the original answer stays legal) on all five classes, never a Milestone-A blocker.
+
+#### CONTENT -- 40/40 title proof confirmed; final legal universe is all 40
+
+Re-queried the current bound Solaris catalogue directly: all 40 real XPHB base weapon titles
+(`items-base.json`, `weaponCategory` present, source XPHB) already exist (`missing: []`) -- the
+historical Content-selection STOP is cleared, no selection expansion performed.
+
+**Staff / Wooden Staff, re-traced and corrected**: a first pass excluded these 2 of the 40 because
+their own `type` field reads `'SCF|XPHB'` (Spellcasting Focus), never `'M|XPHB'`/`'R|XPHB'`.
+Independently re-traced per explicit instruction, not assumed: BOTH entries carry a full, real
+weapon stat block -- `weaponCategory: 'simple'`, `mastery: ['Topple|XPHB']`, `property: ['V']`,
+and damage dice (`dmg1: '1d6'`, `dmg2: '1d8'`, `dmgType: 'B'`) IDENTICAL to the ordinary
+Quarterstaff entry (`type: 'M|XPHB'`). Checked all 12 real SCF-typed items in the dataset to
+confirm this is the real, structural signal, never a name check: the other 10 (Crystal, Orb, Rod,
+Wand, each PHB/XPHB) carry NO `weaponCategory` at all -- `weaponCategory` presence is what
+actually distinguishes "this focus also has weapon stats," independent of `type`. Conclusion: a
+Staff/Wooden Staff IS a Quarterstaff-shaped weapon published under its Arcane/Druidic Focus
+identity (its primary equipment-list role), not an independent weapon kind and not a non-weapon --
+RAW's real intent, not a dataset inconsistency. **Normalization corrected, not a title exception**:
+`resolveDnd5eItemMechanics`'s melee/ranged derivation now reads `type` only when it names 'M' or
+'R' explicitly; an item carrying `weaponCategory` whose own `type` names neither (the only two
+real entries this is ever true for) resolves to melee -- the sole shape this combination has ever
+taken in the corpus. No `name === 'Staff'`/`slug === ...` check exists anywhere. Both now resolve
+to the IDENTICAL `CanonicalItemMechanics` as Quarterstaff (proven by direct equality in
+`tests/rules/dnd5e-2024-weapon-mastery.test.ts`). **Final legal Weapon Mastery universe: all 40**
+real XPHB base weapons resolve successfully; the 10 pure-focus SCF items (no `weaponCategory`)
+correctly fail closed, proven by a dedicated regression.
+
+#### MODEL
+
+**Item filter** (`app/lib/rules/types.ts`'s new `ItemCatalogueFilter`, a sibling of
+`ContentCatalogueFilter`/`SpellCatalogueFilter`, never bolted onto either): `{ itemKind: 'weapon',
+meleeOnly?: boolean }`. `itemKind` is a discriminant (not a bare literal type) so a future item
+kind (e.g. `'armor'`) can be added as a sibling value without reshaping the type.
+
+**Item mechanics** (`app/lib/item-mechanics/{types,dnd5e,eligibility,index}.ts`, the generic
+`itemOptionVerdict`/`itemFilterVerdict` mirroring `featOptionVerdict`/`spellOptionVerdict` exactly):
+`CanonicalItemMechanics` resolves a weapon's `weaponCategory`/`range`/`properties`/
+`masteryProperty`, plus a GENERIC `proficiencyGroups: string[]` -- the real `value:weapon.<group>.
+proficient` group suffixes (P1's own vocabulary) this exact weapon satisfies, derived purely from
+its own category/properties (never a class name): `simple` weapons satisfy `simple`; `martial`
+weapons satisfy `martial`, plus `martial_light` (Light property) and `martial_finesse_light`
+(Finesse OR Light) -- the real Monk/Rogue filtered-proficiency taxonomy, confirmed against
+class-monk.json's/class-rogue.json's own `startingProficiencies.weapons` text.
+
+**Proficiency composition**: `itemOptionVerdict`'s `proficient()` callback is CALLER-evaluated
+against derived state (never looked up by this module itself), exactly mirroring
+`featOptionVerdict`'s `featureActive`/`prerequisitesMet` split. At creation, the caller is
+`directlyGrantedValues(slots)` (already-proven infrastructure, zero new plumbing); in progression,
+`findBooleanIn(priorDerived.derived, weaponValueId(group))` (the same derived-state lookup
+`featOptionVerdict`'s own `featureActive` callback already uses). Proven: a synthetic simple-only
+fixture can select a legal simple weapon but not a martial one; a synthetic martial-capable
+fixture can select the appropriate martial weapon; Rogue's own real restricted proficiency
+(`martial_finesse_light`, never the full `martial`) correctly excludes a Greatsword and includes a
+Rapier, with zero class-name branching anywhere in the check.
+
+**Choice keying and persistence**: the player's answer is a weapon ContentRef, transported through
+the EXISTING `contentChoices` architecture (never a new Weapon Mastery block), keyed by the
+canonical `progressionChoiceKey(slot, at, choiceSetId)`. A new, separate stored array,
+`StoredAcquiredItem[]` (`app/lib/characters/progression.ts`'s `StoredCharacterProgression.items`),
+mirrors `StoredAcquiredFeat`'s own `{ref, choiceKey}` shape -- deliberately NOT folded into
+`feats[]` (an item is not a feat, and `itemRef` would be a lie under `featRef`) and deliberately
+NOT constrained to one entry per `choiceKey` (a single multi-weapon choice legally produces
+MULTIPLE entries sharing one key, unlike every feat choice this phase found, which are always
+count-1). The one genuinely new general-purpose transport widening this phase required: the
+pre-existing content-choice plumbing (`extractTentativeContentAnswers`,
+`resolvedFeatAcquisitions`-building in Confirm) assumed every content answer was exactly one
+ContentRef (`selected[0]`) -- now explicitly branches `category === 'items'` to collect EVERY
+submitted ref as its own acquisition, the one real structural change this phase made to
+previously-shared code.
+
+**Growth model -- additive per-row, not a new target-state planner**: each real growth level
+(Barbarian L4/L10; Fighter L4/L10/L16) is authored as its own `ProgressionRow` on a SHARED
+`progression:class.weapon-mastery-growth-4-10`/`-4-10-16` Definition, each row's own `count: 1` --
+the IDENTICAL "one shared Definition, many rows, each with its own small count" shape ASI/Epic
+Boon/Blessed Strikes already proved, reused verbatim rather than inventing a second planner.
+Distinctness across EVERY level (creation and every growth row) is enforced by the existing
+`ownedElsewhere` composition (`knownItems` = persisted + tentative, judged by `(choiceKey, ref)`
+pair, never by choiceKey alone) -- previously-mastered weapons are correctly excluded from a
+later row's own offered options, so a direct multi-level jump requests only the real deficit with
+no duplicates, proven for both classes through Level 20.
+
+**Canonical current-mastery helper**: `acquiredItemsFor(progression, choiceSetId)`
+(`app/lib/characters/progression.ts`) -- generic over the choice set id, reads `progression.items`
+directly (no catalogue join, no inventory, no mastery-property or class-name heuristic), reusable
+later by Sheet presentation, a runtime mastery-effect resolver, and the deferred optional
+replacement workflow, all without touching persistence.
+
+#### BUILDER
+
+Zero new UI code. `character-derived.ts`'s existing content-choice resolution loop (previously
+`feats`/`subclasses` only) gained one `category === 'items'` branch computing legal options via
+`itemFilterVerdict` -- the SAME generic presentation primitive the Builder and Level Manager
+already render for every other content choice. The one Builder-side widening: `currentRef`
+(single-ContentRef) gained an item-specific sibling, `currentItemRefs` (a LIST), reading
+`assembly.blueprint.progression.items` directly (the raw stored array is already carried
+verbatim on the blueprint; no new resolved field was needed).
+
+#### SERVER AUTHORITY
+
+**Creation** (`create-v2.post.ts`): items-category offers are routed into a dedicated
+`itemAcquisitions` array (never conflated with `contentAcquisitions`/`progression.feats[]`),
+written to `progression.items`. Independently rejects: missing/too-few/too-many selections
+(content choices are STRICTLY mandatory at creation, unlike a Definition choice -- confirmed
+against the pre-existing Sage/Wizard precedent, not a new rule this phase introduced), a
+duplicate weapon within one answer, an unresolvable ContentRef, a non-weapon item, a crafted
+undeclared key, and a stale OTHER-class key (proven for Barbarian's own distinct `.melee-only`
+key submitted to a Fighter). Zero writes on every rejection.
+
+**Progression** (`character-progression-plan.ts`): a parallel "ITEM ACQUISITIONS" validation
+block mirrors "FEAT ACQUISITIONS" exactly -- re-resolves the submitted ContentRef against the
+CURRENT catalogue, re-checks distinctness across every acquisition (not just this row), and
+re-derives proficiency, independently of the client's own plan-time resolution. One honest,
+reported nuance: an illegal duplicate is normally caught EARLIER, at Preview's own eligibility
+filtering (excluded from `legalItemIds`, so the answer never reads as "answered" and Confirm's
+ordinary `unresolved-choices` gate refuses it) -- the dedicated Confirm-time duplicate check is a
+defense-in-depth backstop for a stale/bypassed plan, not the path an ordinary resubmission takes;
+both paths are fail-closed with zero writes.
+
+#### PERSISTENCE
+
+Proven end to end (`tests/server/utils/character-progression-plan-weapon-mastery.test.ts`):
+Preview exposes each growth choice only at its real level; Confirm rejects missing/duplicate/
+unresolvable answers; a valid answer persists through `progression.items[]`; a direct Level
+1 -> 20 jump ends with the exact real cumulative total (Barbarian 4, Fighter 6) with no
+duplicates; a repeated Preview at an already-crossed level does not re-request it; a second jump
+(L4 -> L10) requests only the newly-required deficit, never re-asking the already-confirmed L4
+choice.
+
+#### MASTERY PROPERTY
+
+The selected weapon's own authored mastery property (Cleave, Graze, Nick, Push, Sap, Slow,
+Topple, Vex) is derivable content data (`CanonicalItemMechanics.masteryProperty`), never
+persisted as player-owned choice state -- proven by resolving every selected weapon's property
+against the real catalogue after a fresh creation write. Its COMBAT application (e.g. Topple's
+Strength save) is Milestone B runtime automation, explicitly deferred and tracked as its own
+ledger/coverage row (`*-weapon-mastery-effects`), never implemented here.
+
+#### FIRST NEW CLASSES
+
+`creationUnresolvedDecisions` returns `[]` for Dwarf + Barbarian/Fighter/Paladin/Ranger +
+Criminal, through the real authority. All four succeed through the real, unstubbed `create-v2.post`
+route with both a hand-written and a Builder-shaped payload (built via the real
+`emptyDraft`/`setContentChoiceSelections`/`toCreatePayload`). Coexistence proven, not hand-waved:
+Fighter's own Fighting Style content choice persists independently alongside Weapon Mastery;
+Paladin's and Ranger's own Level-1 spell acquisition persists independently alongside Weapon
+Mastery.
+
+#### ROGUE -- honest boundary
+
+Weapon Mastery is implemented for Rogue too (the unrestricted ChoiceSet, Rogue's own real
+restricted martial proficiency correctly narrowing its legal set generically, never by a
+Rogue-specific branch). Rogue remains creation-blocked by its own untouched real decisions:
+Expertise (Level-1 skill-expertise choice) and Thieves' Cant (language-choice policy) --
+confirmed directly, not claimed, and never silently implied unlocked.
+
+#### CLASS SWITCHING
+
+Proven (`create-v2-weapon-mastery.test.ts`'s own CLASS SWITCHING block): Fighter selected makes
+its own Weapon Mastery key live; switching to Bard (no such choice) makes the answer non-live,
+never submitted. Fighter's own key (`choice:class.weapon-mastery`) and Barbarian's own
+(`choice:class.weapon-mastery.melee-only`) are DIFFERENT ChoiceSet ids entirely -- switching
+between them proves ownership is explicit through key identity itself (a stronger guarantee than
+Divine Order/Primal Order's own shared-key case the Feature-Option phase proved): Fighter's stale
+answer never satisfies Barbarian's own, separately-keyed, genuinely-unanswered requirement.
+Switching back re-asks the question; no stale hidden answer survives.
+
+#### AVAILABILITY -- moved exactly as predicted, confirmed through the real authority
+
+- Species: 3/10 (unchanged).
+- Classes: **10/12** -- Barbarian, Bard, Cleric, Druid, Fighter, Monk, Paladin, Ranger, Sorcerer,
+  Wizard newly/already available. Rogue and Warlock remain unavailable.
+- Backgrounds: 13/16 (unchanged).
+- Combinations: **390** (3 x 10 x 13, enumerated over the real 10 x 12 x 16 population -- up from
+  234), confirmed by direct enumeration, not arithmetic.
+
+#### PHASE-0 RECLASSIFICATION
+
+`mandatory-decision-coverage.ts`: the old `blk:weapon-mastery` rule is replaced by
+`impl:weapon-mastery`, backed by a real verification function (`weaponMasteryCovered`) that
+checks the OWNING facet's `choices` array (Level 1) or `progression` array (growth) genuinely
+references the primitive -- never a name check against "Weapon Mastery" itself. A new
+`runtime:weapon-mastery-effects` rule (`allowZero: true`, matches zero decisions by design) claims
+the five mastery-property-effect ledger rows; `opt:replacement`'s own ledgerIds were repointed to
+five new, dedicated `*-weapon-mastery-replacement` rows (previously sharing the single
+pre-split acquisition row). Bidirectional coverage re-confirmed; a bite test proves deleting
+`impl:weapon-mastery` exposes all 10 real decisions, and a second proves the optional-replacement/
+runtime-effect rules can never masquerade as the mandatory acquisition decision.
+
+Census: **647 total, 405 implemented (+10), 207 blocked (-10), 35 optional** -- exactly the
+arithmetic predicted before implementation, confirmed by direct re-count through the real
+`classifyDecision` authority.
+
+#### HISTORICAL COMPATIBILITY
+
+A dedicated test (`character-assembly-historical-fail-closed.test.ts`'s new Fighter describe
+block) proves a Fighter character record with no `progression` block at all (predating even
+`progression.items`'s own existence) still assembles for read, performs zero writes, and invents
+no retroactive Weapon Mastery selection.
+
+#### PACKAGE IMPACT
+
+`packages/eldra-dnd5e-2024` Definitions changed under the already-published `0.21.1` (two new
+ChoiceSets, two new ProgressionDefinitions -- no existing Definition removed, renamed, or
+changed). The subsequent Staff/Wooden-Staff normalization fix is a resolver-only correction in
+`app/lib/item-mechanics/dnd5e.ts` (application code) and does not touch `definitions.json` at
+all -- it does not materially change the package compatibility conclusion already reached.
+Manifest `version` bumped **0.21.1 -> 0.21.2** (only the version field changed), consistent with
+the prior phase's own approved patch-bump rationale -- a pure addition, no existing Definition
+removed/renamed/changed. `pnpm packages:sync --world Solaris` (dry run, re-run after the bump):
+`PUBLISH_REQUIRED` for Rules (`eldra.rules.dnd5e-2024@0.21.2` authored but not yet published) and
+`REFRESH_REQUIRED` for Content (`eldra.solaris.xphb`, since the authoring facet corpus also
+changed), with `PUBLISH_RULES` / `REFRESH_CONTENT` / `ACTIVATE_RULES` / `BIND_CONTENT` as the
+resulting actions. No mutation performed -- dry run only, `--apply` never invoked.
+
+#### Files
+
+New: `app/lib/item-mechanics/{types,dnd5e,eligibility,index}.ts`,
+`tests/rules/dnd5e-2024-weapon-mastery.test.ts`,
+`tests/server/utils/character-progression-plan-weapon-mastery.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2-weapon-mastery.test.ts`.
+
+Modified: `app/lib/rules/types.ts` (`ItemCatalogueFilter`), `server/utils/world-content-catalogue.ts`
+(`itemMechanics` field + resolver call), `app/lib/characters/progression.ts`
+(`StoredAcquiredItem`/`items` field + `acquiredItemsFor`), `app/lib/characters/creation-content-
+choices.ts` (`items` branch), `app/components/characters/builder/characterBuilderSelection.ts`
+(`itemMechanics` threaded through the existing `items` field), `server/api/worlds/[id]/characters/
+create-v2.post.ts` (item acquisitions routing + write), `server/utils/character-progression-plan.ts`
+(tentative/resolved item acquisitions, the new ITEM ACQUISITIONS Confirm block,
+`illegal-item-selection` failure reason), `server/utils/character-derived.ts` (`items` content-
+choice branch), `packages/eldra-dnd5e-2024/definitions.json` (2 ChoiceSets, 2 ProgressionDefinitions),
+`app/lib/content-rules/dnd5e-2024.ts` (5 class facets' `choices`/`progression`),
+`app/lib/content-rules/dnd5e-2024-progression-coverage.ts` (12 new ledger rows),
+`app/lib/content-rules/mandatory-decision-coverage.ts` (1 rule replaced, 2 rules repointed/added),
+`tests/rules/dnd5e-2024-progression-coverage.test.ts` (no change needed -- "Weapon Mastery" was
+already a known feature name), `tests/rules/mandatory-decision-coverage.test.ts` (2 stale
+scoreboard assertions updated, new WEAPON MASTERY PHASE describe block), `tests/lib/content-rules/
+creation-availability.test.ts` (`BASELINE` updated), `tests/lib/content-rules/creation-
+completeness.test.ts` (1 stale assertion flipped to "now implemented"), `tests/lib/content-rules/
+spell-corpus-authority.test.ts` (census numbers updated), `tests/server/utils/character-actor-
+bridge.test.ts` (expected `choices` length per class), `tests/server/utils/character-progression-
+level-1-to-20.test.ts` (generic answer builder taught the new ChoiceSets; BOB SEQUENCE updated),
+`tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts` (the Fighter/Weapon
+Mastery refusal examples retargeted to Rogue, since Fighter no longer refuses),
+`tests/server/api/worlds/[id]/characters/create-v2-fighter-mechanics.test.ts` and
+`create-v2-spell-acquisition.test.ts` (weapon catalogue + Weapon Mastery answers added to
+existing fixtures), `tests/server/utils/character-progression-plan.test.ts` (Fighter fixtures
+answer the new Level-4 growth row), `tests/lib/characters/progression.test.ts` and
+`tests/server/utils/character-assembly.test.ts` (`items: []` added to literal progression
+objects), `tests/server/utils/character-assembly-historical-fail-closed.test.ts` (new Fighter
+historical case), `tests/components/characters/builder/creationContentChoiceBrowserShape.test.ts`
+(Fighter's own effective-submission expectation gained the new key), `tests/rules/completeness-
+stub-policy.test.ts` (3 new file entries classified).
+
+#### Verification
+
+`pnpm run test`: **209 files / 4454 tests -- all passing** (4363 pre-existing baseline + 91 net
+new: 34 corpus/model tests -- the Staff/Wooden Staff re-trace replaced 2 tests with 3 -- 21
+progression round-trip tests, 28 creation acceptance tests, 2 historical compatibility tests, 6
+coverage reconciliation/bite tests, plus ripple-effect fixes to pre-existing assertions this
+reclassification correctly moved -- zero regressions). `pnpm run typecheck`: the pre-existing
+`@types/node`-absent environment gap remains (1177 errors; grepped the full output for every file
+this phase touched -- zero hits). `pnpm run build`: succeeds (exit 0). `git diff --cached --check`:
+clean. `pnpm packages:sync --world Solaris` (dry run, re-run after the version bump below):
+`PUBLISH_REQUIRED` (Rules, `eldra.rules.dnd5e-2024@0.21.2` not yet published) + `REFRESH_REQUIRED`
+(Content, `eldra.solaris.xphb`), actions `PUBLISH_RULES` / `REFRESH_CONTENT` / `ACTIVATE_RULES` /
+`BIND_CONTENT`. No `packages:sync --apply` run.

@@ -19,7 +19,7 @@ const REF = { packageId: 'eldra.content.xphb', slug: 'wizard-xphb' }
 
 describe('emptyCharacterProgression', () => {
   it('starts with no class entries', () => {
-    expect(emptyCharacterProgression()).toEqual({ classes: [], feats: [] })
+    expect(emptyCharacterProgression()).toEqual({ classes: [], feats: [], items: [] })
   })
 })
 
@@ -45,11 +45,11 @@ describe('normalizeStoredProgression', () => {
   })
 
   it('reads back a well-formed record unchanged', () => {
-    const stored: StoredCharacterProgression = { classes: [{ classRef: REF, level: 5 }], feats: [] }
+    const stored: StoredCharacterProgression = { classes: [{ classRef: REF, level: 5 }], feats: [], items: [] }
     // Character Progression Phase 1C -- normalizeStoredProgression always
     // fills in `subclassRef` (null when the stored record has none), so
     // the "unchanged" shape now includes it explicitly.
-    expect(normalizeStoredProgression(stored)).toEqual({ classes: [{ classRef: REF, level: 5, subclassRef: null }], feats: [] })
+    expect(normalizeStoredProgression(stored)).toEqual({ classes: [{ classRef: REF, level: 5, subclassRef: null }], feats: [], items: [] })
   })
 
   it('drops one malformed entry without failing the whole record', () => {
@@ -85,7 +85,8 @@ describe('normalizeStoredProgression', () => {
         { classRef: REF, level: 3, subclassRef: null },
         { classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 2, subclassRef: null }
       ],
-      feats: []
+      feats: [],
+      items: []
     })
   })
 })
@@ -97,7 +98,7 @@ describe('totalCharacterLevel', () => {
   })
 
   it('defaults to 1 for an empty classes array', () => {
-    expect(totalCharacterLevel({ classes: [], feats: [] })).toBe(1)
+    expect(totalCharacterLevel({ classes: [], feats: [], items: [] })).toBe(1)
   })
 
   it('is the class level for a single-class character', () => {

@@ -58,7 +58,8 @@ const CLASSES = {
   fighter: entry('Fighter', 'fighter-xphb', findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb')),
   cleric: entry('Cleric', 'cleric-xphb', findRulesFacet('dnd5e.2024', 'class', 'cleric-xphb')),
   wizard: entry('Wizard', 'wizard-xphb', findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')),
-  warlock: entry('Warlock', 'warlock-xphb', findRulesFacet('dnd5e.2024', 'class', 'warlock-xphb'))
+  warlock: entry('Warlock', 'warlock-xphb', findRulesFacet('dnd5e.2024', 'class', 'warlock-xphb')),
+  rogue: entry('Rogue', 'rogue-xphb', findRulesFacet('dnd5e.2024', 'class', 'rogue-xphb'))
 }
 const BACKGROUNDS = {
   criminal: entry('Criminal', 'criminal-xphb', findRulesFacet('dnd5e.2024', 'background', 'criminal-xphb')),
@@ -125,8 +126,12 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
     expectNoWrites()
   })
 
-  it('a Fighter (Weapon Mastery and proficiencies) on a Dwarf with a Criminal background is refused with zero writes', async () => {
-    await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'fighter-xphb', 'criminal-xphb')) as any))
+  // WEAPON MASTERY PHASE -- Dwarf + Fighter + Criminal is now creation-complete through the real
+  // authority (see create-v2-weapon-mastery.test.ts). Rogue's own remaining real blockers
+  // (Expertise, Thieves' Cant/language policy -- untouched by this phase) now prove this refusal
+  // path still works for a class this phase did not unlock.
+  it('a Rogue (Expertise and Thieves\' Cant) on a Dwarf with a Criminal background is refused with zero writes', async () => {
+    await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'rogue-xphb', 'criminal-xphb')) as any))
       .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('cannot be completed yet') })
     expectNoWrites()
   })
@@ -142,14 +147,13 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
     expectNoWrites()
   })
 
-  // P8: starting equipment is now representable for every class and background (Criminal's own
-  // equipment decision included) -- Fighter's remaining real Level-1 blocker is Weapon Mastery,
-  // explicitly out of P8's scope, and the refusal still names the real blocking decision in plain
-  // words, never an internal identifier.
-  it('a Fighter still blocked by Weapon Mastery is refused, and the reason names the decision in plain words', async () => {
-    const rejected = await handler(fakeEvent(bodyWith('dwarf-xphb', 'fighter-xphb', 'criminal-xphb')) as any).catch((error: any) => error)
+  // WEAPON MASTERY PHASE -- Fighter's own former Level-1 blocker (Weapon Mastery) is now
+  // representable; Rogue's own distinct, untouched real blocker (Expertise) proves the refusal
+  // still names the real blocking decision in plain words, never an internal identifier.
+  it('a Rogue still blocked by Expertise is refused, and the reason names the decision in plain words', async () => {
+    const rejected = await handler(fakeEvent(bodyWith('dwarf-xphb', 'rogue-xphb', 'criminal-xphb')) as any).catch((error: any) => error)
     expect(rejected.statusCode).toBe(400)
-    expect(rejected.message).toMatch(/Weapon Mastery/)
+    expect(rejected.message).toMatch(/Expertise/)
     expectNoWrites()
   })
 

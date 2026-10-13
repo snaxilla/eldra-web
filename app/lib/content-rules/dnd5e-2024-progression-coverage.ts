@@ -433,16 +433,87 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // access, like the Equipment primitive gap) AND needs this new
   // mutable-choice primitive -- genuinely two gaps, not one.
   // -------------------------------------------------------------------
+  // Weapon Mastery phase -- RECLASSIFIED. The real initial acquisition (choose N distinct weapon
+  // kinds at Level 1) is now representable: Items-catalogue-backed option resolution (the second,
+  // independent blocker the prior pass named) is built (app/lib/item-mechanics, the generic
+  // `choice:class.weapon-mastery`/`.melee-only` ChoiceSets, `category: 'items'`). Split into three
+  // honest rows per class, never one broad green row, mirroring Epic Boon/Divine Order's own
+  // acquisition/effects split:
+  //   - ACQUISITION (IMPLEMENTED): the Level-1 choice, PLUS Barbarian's/Fighter's own real count
+  //     GROWTH at later levels (not a separately-named corpus feature -- the SAME "Weapon
+  //     Mastery" classFeature's own table column, authored as additional ProgressionRows on the
+  //     SAME real ChoiceSet).
+  //   - REPLACEMENT (ENGINE_BLOCKED, unchanged, still the FIRST blocker the prior pass named): the
+  //     real XPHB Long-Rest "change one weapon kind" rule remains a genuinely mutable-reanswerable
+  //     choice no primitive supports -- explicitly OPTIONAL per this phase's own scope (the
+  //     original legal answer stays legal), never Milestone A, not implemented here.
+  //   - EFFECTS (ENGINE_BLOCKED): the selected weapon's own mastery property (Cleave, Graze,
+  //     Nick, Push, Sap, Slow, Topple, Vex) is derivable content data, but its COMBAT application
+  //     is Milestone B runtime automation, out of this phase's scope.
   ...([
-    'barbarian-xphb', 'fighter-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb'
-  ] as const).map((classSlug): ProgressionCoverageEntry => ({
+    ['barbarian-xphb', 'choice:class.weapon-mastery.melee-only', [4, 10]],
+    ['fighter-xphb', 'choice:class.weapon-mastery', [4, 10, 16]],
+    ['paladin-xphb', 'choice:class.weapon-mastery', []],
+    ['ranger-xphb', 'choice:class.weapon-mastery', []],
+    ['rogue-xphb', 'choice:class.weapon-mastery', []]
+  ] as const).map(([classSlug, choiceSetId, growthLevels]): ProgressionCoverageEntry => ({
     id: `${classSlug}:weapon-mastery`,
     classSlug,
     featureName: 'Weapon Mastery',
     levels: [1],
     surface: 'creation',
+    status: 'IMPLEMENTED',
+    implementationRef: choiceSetId,
+    notes: growthLevels.length
+      ? `Creation acquisition via the generic ${choiceSetId} ChoiceSet (effect over the Content Catalogue's 'items' category, filter itemKind: 'weapon'${choiceSetId.endsWith('melee-only') ? ' + meleeOnly: true' : ''}), proficiency judged against this character's own real derived weapon-proficiency Values. Count GROWS at Levels ${growthLevels.join('/')} (the SAME real "Weapon Mastery" classFeature's own Features-table column, verified this phase against class-${classSlug.replace('-xphb', '')}.json's own classTableGroups) via additional ProgressionRows on the identical ChoiceSet (progression:class.weapon-mastery-growth-${growthLevels.join('-')}) -- additive per-level acquisition, previously-selected weapons remain owned, never a second persistence model. Persisted through progression.items[] (StoredAcquiredItem), never a new Weapon Mastery block, never inventory, never the mastery property name.`
+      : `Creation acquisition via the generic ${choiceSetId} ChoiceSet (effect over the Content Catalogue's 'items' category, filter itemKind: 'weapon'), proficiency judged against this character's own real derived weapon-proficiency Values. No later mandatory count increase (verified this phase: no Weapon Mastery column on this class's own Features table). Persisted through progression.items[] (StoredAcquiredItem), never a new Weapon Mastery block, never inventory, never the mastery property name.`
+  })),
+  // GROWTH -- Barbarian's and Fighter's own real count increase, a SEPARATE row (never folded
+  // into the creation row above) because it is wired through its own `kind: 'progression'`
+  // Definition, referenced by the facet's own `progression` array -- the identical split Fighting
+  // Style draws between a creation-only class (Fighter: one row) and a level-up class (Paladin/
+  // Ranger: implementationRef names the PROGRESSION id, not the ChoiceSet id).
+  {
+    id: 'barbarian-xphb:weapon-mastery-growth',
+    classSlug: 'barbarian-xphb',
+    featureName: 'Weapon Mastery',
+    levels: [4, 10],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.weapon-mastery-growth-4-10',
+    notes: 'Count grows from 2 to 3 at Level 4, 3 to 4 at Level 10 (verified this phase against class-barbarian.json\'s own classTableGroups). Additive ProgressionRows on the SAME melee-only ChoiceSet the creation row above uses -- previously-selected weapons remain owned (ownedElsewhere check spans every acquisition, every level), a direct level jump requests only the real deficit, never a second persistence model.'
+  },
+  {
+    id: 'fighter-xphb:weapon-mastery-growth',
+    classSlug: 'fighter-xphb',
+    featureName: 'Weapon Mastery',
+    levels: [4, 10, 16],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.weapon-mastery-growth-4-10-16',
+    notes: 'Count grows from 3 to 4 at Level 4, 4 to 5 at Level 10, 5 to 6 at Level 16 (verified this phase against class-fighter.json\'s own classTableGroups). Additive ProgressionRows on the SAME unrestricted ChoiceSet the creation row above uses -- previously-selected weapons remain owned, a direct level jump requests only the real deficit, never a second persistence model.'
+  },
+  ...([
+    'barbarian-xphb', 'fighter-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb'
+  ] as const).map((classSlug): ProgressionCoverageEntry => ({
+    id: `${classSlug}:weapon-mastery-replacement`,
+    classSlug,
+    featureName: 'Weapon Mastery',
+    levels: [1],
+    surface: 'creation',
     status: 'ENGINE_BLOCKED',
-    blockerReason: 'mutable-reanswerable-choice: Weapon Mastery\'s real XPHB rule lets the player CHANGE one mastered weapon choice on every Long Rest -- no primitive exists for a Content-Catalogue-backed choice that can be legally re-answered after its first answer (every existing choice is answer-once-forever). Also needs Items-catalogue-backed option resolution (kin to the Equipment primitive gap, §11/§14 #4), a second, independent blocker.'
+    blockerReason: 'mutable-reanswerable-choice: Weapon Mastery\'s real XPHB rule lets the player CHANGE one mastered weapon choice on every Long Rest -- no primitive exists for a Content-Catalogue-backed choice that can be legally re-answered after its first answer (every existing choice is answer-once-forever). Explicitly OPTIONAL (the original legal answer stays legal) -- never Milestone A, not implemented here.'
+  })),
+  ...([
+    'barbarian-xphb', 'fighter-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb'
+  ] as const).map((classSlug): ProgressionCoverageEntry => ({
+    id: `${classSlug}:weapon-mastery-effects`,
+    classSlug,
+    featureName: 'Weapon Mastery',
+    levels: [1],
+    surface: 'creation',
+    status: 'ENGINE_BLOCKED',
+    blockerReason: 'The selected weapon\'s own mastery property (Cleave, Graze, Nick, Push, Sap, Slow, Topple, Vex) is derivable content data (item-mechanics/dnd5e.ts\'s own masteryProperty field) but its combat application (e.g. Topple\'s Strength save, Vex\'s advantage-on-next-attack) is Milestone B runtime automation, not authored here.'
   })),
 
   // -------------------------------------------------------------------

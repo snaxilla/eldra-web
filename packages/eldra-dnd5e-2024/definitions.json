@@ -3410,6 +3410,87 @@
     "distinct": true
   },
   {
+    "id": "choice:class.weapon-mastery",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Weapon Mastery",
+    "prompt": "Choose weapon kinds to master.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "items",
+      "filter": {
+        "itemKind": "weapon"
+      }
+    },
+    "distinct": true
+  },
+  {
+    "id": "choice:class.weapon-mastery.melee-only",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Weapon Mastery",
+    "prompt": "Choose weapon kinds to master.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "items",
+      "filter": {
+        "itemKind": "weapon",
+        "meleeOnly": true
+      }
+    },
+    "distinct": true
+  },
+  {
+    "id": "progression:class.weapon-mastery-growth-4-10",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Weapon Mastery Growth",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 4,
+        "choices": [
+          { "choiceSet": "choice:class.weapon-mastery.melee-only", "count": 1 }
+        ]
+      },
+      {
+        "at": 10,
+        "choices": [
+          { "choiceSet": "choice:class.weapon-mastery.melee-only", "count": 1 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.weapon-mastery-growth-4-10-16",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Weapon Mastery Growth",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 4,
+        "choices": [
+          { "choiceSet": "choice:class.weapon-mastery", "count": 1 }
+        ]
+      },
+      {
+        "at": 10,
+        "choices": [
+          { "choiceSet": "choice:class.weapon-mastery", "count": 1 }
+        ]
+      },
+      {
+        "at": 16,
+        "choices": [
+          { "choiceSet": "choice:class.weapon-mastery", "count": 1 }
+        ]
+      }
+    ]
+  },
+  {
     "id": "progression:class.asi-standard",
     "kind": "progression",
     "category": "progression",

@@ -17,15 +17,19 @@ import { featFilterVerdict, featOptionVerdict, type FeatOptionVerdict } from '..
 import type { CanonicalFeatMechanics } from '../feat-mechanics/types'
 import { spellOptionVerdict } from '../spell-mechanics/spell-option-eligibility'
 import type { CanonicalSpellMechanics } from '../spell-mechanics/types'
-import type { ContentCatalogueFilter, SpellCatalogueFilter } from '../rules/types'
+import { itemOptionVerdict } from '../item-mechanics/eligibility'
+import type { CanonicalItemMechanics } from '../item-mechanics/types'
+import type { ContentCatalogueFilter, ItemCatalogueFilter, SpellCatalogueFilter } from '../rules/types'
+import { weaponValueId } from '../content-rules/proficiency-vocabulary'
 import { progressionChoiceKey } from './rules-choices'
 import { serializeContentRef } from './progression-plan'
 import { directlyGrantedValues, type CreationSlotInput } from './creation-choice-eligibility'
 
 // A content choice set's selector, as the package declares it. `filter`'s real shape depends on
-// `category` ('feats' -> ContentCatalogueFilter, 'spells' -> SpellCatalogueFilter, P2); this module
-// itself never reads filter fields (that is featFilterVerdict's/spellOptionVerdict's job).
-export type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter }
+// `category` ('feats' -> ContentCatalogueFilter, 'spells' -> SpellCatalogueFilter, 'items' ->
+// ItemCatalogueFilter); this module itself never reads filter fields (that is
+// featFilterVerdict's/spellOptionVerdict's/itemOptionVerdict's job).
+export type ContentChoiceSelector = { category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter | ItemCatalogueFilter }
 
 // The entry shape this module needs from the World Content Catalogue. Structural,
 // so both the server catalogue and the Builder's copy satisfy it.
@@ -44,6 +48,15 @@ export type CreationSpellEntry = {
   slug: string
   title: string
   spellMechanics?: CanonicalSpellMechanics | null
+}
+
+// Weapon Mastery phase -- the entry shape an 'items' category choice judges against, mirroring
+// CreationFeatEntry/CreationSpellEntry exactly (same envelope, one mechanics field).
+export type CreationItemEntry = {
+  packageId: string
+  slug: string
+  title: string
+  itemMechanics?: CanonicalItemMechanics | null
 }
 
 // One declared content choice, keyed by the SAME progression key convention used
@@ -75,7 +88,7 @@ export type CreationContentPresentation = {
   // The package's own restriction on the destination (e.g. feat category
   // `fighting-style`, variants `['FS']`; P2: a spell's classList/level/school). Presentation and
   // authority read the same.
-  filter?: ContentCatalogueFilter | SpellCatalogueFilter
+  filter?: ContentCatalogueFilter | SpellCatalogueFilter | ItemCatalogueFilter
   offered: CreationContentOffer[]
   selected: string[]
   valid: boolean
@@ -110,8 +123,8 @@ export function declaredCreationContentChoices(
 // Judges every declared content choice against the same creation state. Sibling
 // choices are judged in declaration order, so a ref already taken by an earlier
 // choice is "owned" for a later one -- the same ordering rule Phase 2C.1 uses for
-// progression. A choice whose category is neither `feats` nor `spells` is never
-// valid (fail closed) -- no magic choice-id branch, only these two named destinations.
+// progression. A choice whose category is none of `feats`/`spells`/`items` is never
+// valid (fail closed) -- no magic choice-id branch, only these named destinations.
 //
 // D&D 2024 Character Rules P2 -- `spells` is a SECOND recognized category, added
 // alongside `feats` with the same shape (offer every candidate, judge it, collect
@@ -126,7 +139,10 @@ export function resolveCreationContentChoices(
   slots: readonly (CreationSlotInput & { slot: string })[],
   selections: Readonly<Record<string, readonly string[]>>,
   feats: readonly CreationFeatEntry[],
-  spells: readonly CreationSpellEntry[] = []
+  spells: readonly CreationSpellEntry[] = [],
+  // Weapon Mastery phase -- mirrors `spells` exactly (an additive, defaulted parameter so every
+  // existing caller is unchanged).
+  items: readonly CreationItemEntry[] = []
 ): CreationContentPresentation[] {
   const featureActive = directlyGrantedValues(slots)
   const takenByEarlier = new Set<string>()
@@ -134,7 +150,7 @@ export function resolveCreationContentChoices(
 
   for (const declaration of declarations) {
     const { key, slot, choiceSetId, count, selector } = declaration
-    if (selector.category !== 'feats' && selector.category !== 'spells') {
+    if (selector.category !== 'feats' && selector.category !== 'spells' && selector.category !== 'items') {
       out.push({ key, slot, choiceSetId, count, category: selector.category, filter: selector.filter, offered: [], selected: [], valid: false })
       continue
     }
@@ -165,7 +181,7 @@ export function resolveCreationContentChoices(
           ...(verdict.eligible ? {} : { reason: verdict.reason })
         })
       }
-    } else {
+    } else if (selector.category === 'spells') {
       for (const entry of spells) {
         const ref = serializeContentRef({ packageId: entry.packageId, slug: entry.slug })
         const verdict = spellOptionVerdict({ mechanics: entry.spellMechanics, filter: selector.filter as SpellCatalogueFilter })
@@ -176,6 +192,31 @@ export function resolveCreationContentChoices(
           offered.push({ ref, packageId: entry.packageId, slug: entry.slug, title: entry.title, eligible: false, reason: 'already-owned' })
           continue
         }
+        offered.push({
+          ref,
+          packageId: entry.packageId,
+          slug: entry.slug,
+          title: entry.title,
+          eligible: verdict.eligible,
+          ...(verdict.eligible ? {} : { reason: verdict.reason })
+        })
+      }
+    } else {
+      // Weapon Mastery phase -- items. Proficiency is CHARACTER-dependent (the same split
+      // featOptionVerdict's own `featureActive` already draws): `featureActive` is already the
+      // creation state's directly-granted Values (weapon proficiency is always a direct class
+      // `grants` entry, never a choice, for every real Weapon Mastery class) -- `weaponValueId`
+      // (P1's own vocabulary) turns each of the item's own generic `proficiencyGroups` into the
+      // exact Value id to check, never inferred from class name.
+      for (const entry of items) {
+        const ref = serializeContentRef({ packageId: entry.packageId, slug: entry.slug })
+        const mechanics = entry.itemMechanics
+        const verdict = itemOptionVerdict({
+          mechanics,
+          filter: selector.filter as ItemCatalogueFilter,
+          proficient: () => (mechanics?.proficiencyGroups ?? []).some((group) => featureActive.has(weaponValueId(group))),
+          ownedElsewhere: takenByEarlier.has(ref)
+        })
         offered.push({
           ref,
           packageId: entry.packageId,

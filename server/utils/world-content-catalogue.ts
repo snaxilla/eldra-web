@@ -83,6 +83,7 @@ import { resolveContentPresentation, type PresentationEntry, type PresentationKi
 import { resolveContentActions, type ContentAction, type ContentSourceCategory } from '../../app/lib/content-actions'
 import { resolveSpellMechanics, type CanonicalSpellMechanics } from '../../app/lib/spell-mechanics'
 import { resolveFeatMechanics, type CanonicalFeatMechanics } from '../../app/lib/feat-mechanics'
+import { resolveItemMechanics, type CanonicalItemMechanics } from '../../app/lib/item-mechanics'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import { resolveWorldContent, type WorldContentEntry, type WorldContentPackResolution } from './world-content-runtime'
 
@@ -155,6 +156,12 @@ export type ContentCatalogueEntry = {
   // (an unreadable payload, or a system with no feat-mechanics resolver) --
   // absent entirely means this entry is not a feat at all.
   featMechanics?: CanonicalFeatMechanics | null
+  // Weapon Mastery phase. Present only for `items` entries -- computed at READ TIME from `data`,
+  // mirroring `featMechanics`'s own posture exactly. `null` means the category IS item-mechanics-
+  // eligible but this entry's `data` could not be resolved to a weapon (every non-weapon item,
+  // today: Milestone A resolves weapons only) -- absent entirely means this entry is not an item
+  // at all.
+  itemMechanics?: CanonicalItemMechanics | null
 }
 
 // Named aliases per category -- distinct types (not just one shared type
@@ -322,6 +329,17 @@ function toCatalogueEntry(entry: WorldContentEntry, category: CatalogueCategory)
       base.featMechanics = resolveFeatMechanics(entry.systemKey, entry.data)
     } catch {
       base.featMechanics = null
+    }
+  }
+
+  // Weapon Mastery phase -- items only, mirroring `featMechanics` immediately above exactly:
+  // `data` read only here, a throwing resolver degrades this ONE entry to `itemMechanics: null`
+  // rather than breaking the catalogue.
+  if (category === 'items') {
+    try {
+      base.itemMechanics = resolveItemMechanics(entry.systemKey, entry.data)
+    } catch {
+      base.itemMechanics = null
     }
   }
 

@@ -74,15 +74,20 @@ describe('P2 spell corpus authority', () => {
   // (choice:class.feature-option), moving the census from 391/221 to 395/217. The 4 SUBCLASS-owned
   // feature-option decisions (Hunter's Defensive Tactics, Path of the Wild Heart's Aspect of the
   // Wilds, etc.) remain blocked behind subclass-internal feature-level gating, untouched.
-  it('the Phase-0 decision census after the Feature-Option phase: 647 total, 395 implemented, 217 blocked, 35 optional', () => {
+  // WEAPON MASTERY PHASE reclassified exactly the 10 real Weapon Mastery decisions (Barbarian 3,
+  // Fighter 4, Paladin/Ranger/Rogue 1 each) from blocked to implemented (choice:class.weapon-
+  // mastery/.melee-only), moving the census from 395/217 to 405/207. The optional Long-Rest
+  // replacement clause and the mastery property's own runtime effects remain separate,
+  // unreclassified accountability rows.
+  it('the Phase-0 decision census after the Weapon Mastery phase: 647 total, 405 implemented, 207 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(647)
-    expect(counts.implemented).toBe(395)
-    expect(counts.blocked).toBe(217)
+    expect(counts.implemented).toBe(405)
+    expect(counts.blocked).toBe(207)
     expect(counts.optional).toBe(35)
   })
 

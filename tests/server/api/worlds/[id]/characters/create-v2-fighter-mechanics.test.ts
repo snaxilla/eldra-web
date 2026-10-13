@@ -83,6 +83,7 @@ import { normalizeStoredProgression } from '../../../../../../app/lib/characters
 import { normalizeStoredRulesChoices, progressionChoiceKey } from '../../../../../../app/lib/characters/rules-choices'
 import { parseContentRef, serializeContentRef, type ContentRef } from '../../../../../../app/lib/characters/progression-plan'
 import { resolveDnd5eFeatMechanics } from '../../../../../../app/lib/feat-mechanics/dnd5e'
+import { resolveDnd5eItemMechanics } from '../../../../../../app/lib/item-mechanics/dnd5e'
 import { getDerivedCharacterAtLevel, type DerivedCharacter } from '../../../../../../server/utils/character-derived'
 import { planProgression } from '../../../../../../server/utils/character-progression-plan'
 import handler from '../../../../../../server/api/worlds/[id]/characters/create-v2.post'
@@ -181,6 +182,19 @@ function wizardSpellSelections() {
   ]
 }
 
+// Weapon Mastery phase -- Fighter's own Level-1 Weapon Mastery choice (3 distinct weapon kinds,
+// Simple or Martial, melee or ranged) needs real weapon-shaped catalogue entries; this file's
+// mechanics otherwise have nothing to do with Weapon Mastery, so three arbitrary, clearly
+// legal-for-a-Fighter weapons suffice (real 5etools shape, resolved through the real resolver,
+// never hand-typed CanonicalItemMechanics).
+function weaponEntry(title: string, slug: string, raw: Record<string, unknown>) {
+  return { ...entry({ title, slug }), itemMechanics: resolveDnd5eItemMechanics(raw) }
+}
+const DAGGER = weaponEntry('Dagger', 'dagger-xphb', { weaponCategory: 'simple', type: 'M|XPHB', property: ['F|XPHB', 'L|XPHB', 'T|XPHB'], mastery: ['Nick|XPHB'] })
+const LONGSWORD = weaponEntry('Longsword', 'longsword-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Sap|XPHB'] })
+const WARHAMMER = weaponEntry('Warhammer', 'warhammer-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Push|XPHB'] })
+const WEAPONS = [DAGGER, LONGSWORD, WARHAMMER]
+
 const CATALOGUE = {
   worldId: WORLD_ID,
   packs: [],
@@ -188,11 +202,13 @@ const CATALOGUE = {
   classes: [FIGHTER, WIZARD],
   backgrounds: [CRIMINAL, ARTISAN],
   feats: FEATS,
-  subclasses: [], items: [], spells: WIZARD_SPELLS, monsters: []
+  subclasses: [], items: WEAPONS, spells: WIZARD_SPELLS, monsters: []
 }
 
 const ref = (packageId: string, slug: string) => ({ packageId, slug })
 const archery = ref(CONTENT_PACKAGE, 'archery-xphb')
+const WEAPON_MASTERY_KEY = progressionChoiceKey('class', 1, 'choice:class.weapon-mastery')
+const fighterWeaponSelections = () => WEAPONS.map((w) => serializeContentRef({ packageId: w.packageId, slug: w.slug }))
 
 // ---- request + store plumbing ----------------------------------------------
 
@@ -224,7 +240,11 @@ function fighterBody(overrides: Record<string, unknown> = {}) {
     class: ref(CONTENT_PACKAGE, 'fighter-xphb'),
     background: ref(CONTENT_PACKAGE, 'criminal-xphb'),
     abilities: STANDARD_ARRAY,
-    contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(archery)] },
+    // Weapon Mastery phase -- Fighter's own real Level-1 choice (3 distinct weapon kinds) is
+    // MANDATORY at creation (a content choice, not a Definition choice) -- every one of this
+    // file's own mechanics tests needs a legal answer or the request is refused before it ever
+    // reaches the Fighting Style/Origin Feat mechanics these tests exist to prove.
+    contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(archery)], [WEAPON_MASTERY_KEY]: fighterWeaponSelections() },
     startingEquipment: { 'choice:equipment.starting.fighter-xphb': 'C', 'choice:equipment.starting.criminal-xphb': 'B' },
     ...overrides
   }

@@ -109,3 +109,44 @@ describe('PHASE 0 -- a historical Cleric predating Divine Order still loads, wit
     expect(writes).toHaveLength(0)
   })
 })
+
+// WEAPON MASTERY PHASE -- a Fighter created before Weapon Mastery was authored (no `progression`
+// block at all -- predates even `progression.feats`/`.items` existing) must still load exactly
+// the same way: no migration, no retroactive grant, no read-time mutation. It may honestly lack
+// the newly-authored Weapon Mastery selections.
+describe('PHASE 0 -- a historical Fighter predating Weapon Mastery still loads, with no retroactive grant', () => {
+  const FIGHTER_CATALOGUE = {
+    ...CATALOGUE,
+    classes: [entry('Fighter', 'fighter-xphb', { rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb') ?? undefined })]
+  }
+  const FIGHTER_CATALOGUE_SELECTION = { ...CATALOGUE_SELECTION, class: { packageId: PKG, slug: 'fighter-xphb' } }
+
+  beforeEach(() => {
+    mocks.getWorldContentCatalogue.mockResolvedValue(FIGHTER_CATALOGUE)
+    mocks.directusServiceRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/items/entities')) {
+        return { data: { id: Number(CHARACTER_ID), world_id: Number(WORLD_ID), entity_type: 'pc', title: 'Historic Fighter' } }
+      }
+      if (path.startsWith('/items/block_instances')) {
+        // No 'progression' row at all -- predates this phase's own `progression.items` field.
+        return { data: [{ block_key: 'catalogue_selection', data: FIGHTER_CATALOGUE_SELECTION }] }
+      }
+      return { data: null }
+    })
+  })
+
+  it('assembles for read and display, even though Weapon Mastery was never recorded', async () => {
+    const result = await assembleCharacter(WORLD_ID, CHARACTER_ID)
+    expect(result.available).toBe(true)
+  })
+
+  it('the read path performs no write and invents no Weapon Mastery selections', async () => {
+    const result: any = await assembleCharacter(WORLD_ID, CHARACTER_ID)
+    expect(result.blueprint?.progression?.items ?? []).toEqual([])
+    const writes = mocks.directusServiceRequest.mock.calls.filter((call) => {
+      const options = call[1] as { method?: string } | undefined
+      return options?.method && options.method !== 'GET'
+    })
+    expect(writes).toHaveLength(0)
+  })
+})

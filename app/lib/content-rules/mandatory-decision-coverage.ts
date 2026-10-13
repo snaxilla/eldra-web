@@ -85,6 +85,35 @@ function classFeatureOptionCovered(d: DecisionRecord): boolean {
   return ref !== undefined && classProgression(d.owner.slug).includes(ref)
 }
 
+// Weapon Mastery phase -- the real build decision is IMPLEMENTED once the owning facet genuinely
+// references the generic primitive: the Level-1 creation decision through the facet's own
+// `choices` array (the exact ChoiceSet id this class's own real corpus text restricts to --
+// `.melee-only` for Barbarian, unrestricted for the other four); a later GROWTH decision
+// (Barbarian L4/L10, Fighter L4/L10/L16) through the facet's own `progression` array, at the
+// dedicated growth ProgressionDefinition this phase authored. Never a name check against
+// "Weapon Mastery" itself or a class name -- a future homebrew class authoring the identical
+// "choose N eligible items, growing by level" shape is covered the same way.
+const CLASS_WEAPON_MASTERY_CHOICE_SET: Record<string, string> = {
+  'barbarian-xphb': 'choice:class.weapon-mastery.melee-only',
+  'fighter-xphb': 'choice:class.weapon-mastery',
+  'paladin-xphb': 'choice:class.weapon-mastery',
+  'ranger-xphb': 'choice:class.weapon-mastery',
+  'rogue-xphb': 'choice:class.weapon-mastery'
+}
+const CLASS_WEAPON_MASTERY_GROWTH_PROGRESSION: Record<string, string> = {
+  'barbarian-xphb': 'progression:class.weapon-mastery-growth-4-10',
+  'fighter-xphb': 'progression:class.weapon-mastery-growth-4-10-16'
+}
+function weaponMasteryCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'class', 'weapon-mastery')) return false
+  if (d.level === 1) {
+    const choiceSet = CLASS_WEAPON_MASTERY_CHOICE_SET[d.owner.slug]
+    return choiceSet !== undefined && classFacetHasChoice(d.owner.slug, choiceSet)
+  }
+  const ref = CLASS_WEAPON_MASTERY_GROWTH_PROGRESSION[d.owner.slug]
+  return ref !== undefined && classProgression(d.owner.slug).includes(ref)
+}
+
 // ---------------------------------------------------------------------------
 // D&D 2024 Character Rules P3.5 -- SPELL ACQUISITION COVERAGE.
 // ---------------------------------------------------------------------------
@@ -325,15 +354,29 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: ['cleric-xphb:divine-order', 'druid-xphb:primal-order', 'cleric-xphb:blessed-strikes', 'druid-xphb:elemental-fury'],
     matches: (d) => classFeatureOptionCovered(d)
   },
+  // Weapon Mastery phase -- the item-eligibility primitive (app/lib/item-mechanics, the generic
+  // choice:class.weapon-mastery/.melee-only ChoiceSets, category: 'items') and the facet/
+  // progression authoring are proven through the real generic Level 1->20 walk
+  // (dnd5e-2024-progression-coverage.ts's own IMPLEMENTED rows) and the corpus/model/facet tests
+  // (tests/rules/dnd5e-2024-weapon-mastery.test.ts). Reclassified BLOCKED -> IMPLEMENTED for
+  // exactly the 10 real decisions this rule matches (Barbarian 3, Fighter 4, Paladin/Ranger/Rogue
+  // 1 each) -- the real First New Class acceptance (Dwarf + Barbarian/Fighter/Paladin/Ranger +
+  // Criminal through the unstubbed create-v2 route) is proven separately, in
+  // create-v2-weapon-mastery.test.ts, and does not itself gate this edit (it depends on it).
+  // Rogue's OWN remaining real blockers (Expertise, Thieves' Cant/language policy) are untouched
+  // -- Weapon Mastery alone does not unlock Rogue.
+  {
+    id: 'impl:weapon-mastery',
+    status: 'implemented',
+    reason: 'Weapon Mastery (the Level-1 choice, plus Barbarian/Fighter own real count growth) via the generic choice:class.weapon-mastery/.melee-only ChoiceSets (category: items). Runtime effects of the mastered weapon\'s own property, and the optional Long-Rest replacement clause, are separate accountability rows (runtime:weapon-mastery-effects, opt:replacement) -- never conflated with this acquisition decision.',
+    ledgerIds: [
+      'barbarian-xphb:weapon-mastery', 'fighter-xphb:weapon-mastery', 'paladin-xphb:weapon-mastery', 'ranger-xphb:weapon-mastery', 'rogue-xphb:weapon-mastery',
+      'barbarian-xphb:weapon-mastery-growth', 'fighter-xphb:weapon-mastery-growth'
+    ],
+    matches: (d) => weaponMasteryCovered(d)
+  },
 
   // ------------------------------------------------------------------ blocked
-  {
-    id: 'blk:weapon-mastery',
-    status: 'blocked',
-    reason: 'Weapon Mastery kinds: no weapon vocabulary; initial choice and count increases. Replacement is optional (separate rule).',
-    ledgerIds: ['barbarian-xphb:weapon-mastery', 'fighter-xphb:weapon-mastery', 'paladin-xphb:weapon-mastery', 'ranger-xphb:weapon-mastery', 'rogue-xphb:weapon-mastery'],
-    matches: (d) => is(d, 'class', 'weapon-mastery')
-  },
   {
     id: 'blk:invocations',
     status: 'blocked',
@@ -533,7 +576,14 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     id: 'opt:replacement',
     status: 'optional',
     reason: 'A "can replace / change" clause over an answer already given. The original answer stays legal, so this never blocks.',
-    ledgerIds: ['fighter-xphb:fighting-style-replacement', 'barbarian-xphb:weapon-mastery', 'paladin-xphb:weapon-mastery', 'ranger-xphb:weapon-mastery', 'rogue-xphb:weapon-mastery'],
+    // Weapon Mastery phase -- the four *-weapon-mastery-replacement rows (one per class with its
+    // own Long-Rest "change one weapon kind" clause) now have their own dedicated ledger rows,
+    // never the shared acquisition row.
+    ledgerIds: [
+      'fighter-xphb:fighting-style-replacement',
+      'barbarian-xphb:weapon-mastery-replacement', 'fighter-xphb:weapon-mastery-replacement',
+      'paladin-xphb:weapon-mastery-replacement', 'ranger-xphb:weapon-mastery-replacement', 'rogue-xphb:weapon-mastery-replacement'
+    ],
     matches: (d) => d.family === 'replacement'
   },
 
@@ -596,6 +646,17 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   },
 
   // ------------------------------------------------------------------ runtime-effect (Milestone B accountability)
+  {
+    id: 'runtime:weapon-mastery-effects',
+    status: 'runtime-effect',
+    reason: 'The selected weapon\'s own mastery property (Cleave, Graze, Nick, Push, Sap, Slow, Topple, Vex) is derivable content data; its combat application is Milestone B. The acquisition (which weapon kinds are mastered) is the implemented decision; the mastery property\'s own effect is runtime.',
+    ledgerIds: [
+      'barbarian-xphb:weapon-mastery-effects', 'fighter-xphb:weapon-mastery-effects',
+      'paladin-xphb:weapon-mastery-effects', 'ranger-xphb:weapon-mastery-effects', 'rogue-xphb:weapon-mastery-effects'
+    ],
+    allowZero: true,
+    matches: () => false
+  },
   {
     id: 'runtime:epic-boon-effects',
     status: 'runtime-effect',

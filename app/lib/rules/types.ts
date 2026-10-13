@@ -1223,11 +1223,30 @@ export type SpellCatalogueFilter = {
   school?: string
 }
 
+// Weapon Mastery phase -- the smallest typed filter a package-authored item-selection choice
+// needs, fit to this file's own existing shape rather than widened into it (mirrors
+// SpellCatalogueFilter's own header exactly): `ContentCatalogueFilter` is FEAT vocabulary;
+// `SpellCatalogueFilter` is SPELL vocabulary; this is ITEM vocabulary, for the same
+// `fromContentCatalogue` selector's `filter` slot, chosen by the selector's own `category: 'items'`.
+// `itemKind` is a discriminant on purpose (not a bare `category: 'weapon'` literal type), so a
+// future item kind (e.g. 'armor', for an armor-category choice) can be added as a sibling value
+// without reshaping this type. Package-declared, like every filter here -- the engine never
+// evaluates it; resolving it against a live item's own normalized mechanics is application-layer
+// work (app/lib/item-mechanics/eligibility.ts), exactly mirroring featFilterVerdict/spellOptionVerdict.
+export type ItemCatalogueFilter = {
+  itemKind: 'weapon'
+  // Excludes ranged weapons. The real corpus's own Barbarian-specific Weapon Mastery restriction
+  // ("Simple or Martial MELEE weapons") -- every other Weapon Mastery class's own real text allows
+  // any weapon the character has proficiency with, melee or ranged. Omitted/false means no
+  // restriction beyond proficiency.
+  meleeOnly?: boolean
+}
+
 export type ChoiceSetSelector =
   | { kind: 'explicit'; ids: DefinitionId[] }
   | { kind: 'definitionsInCategory'; category: RuleCategory }
   | { kind: 'fromContentFacet' }
-  | { kind: 'fromContentCatalogue'; category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter }
+  | { kind: 'fromContentCatalogue'; category: string; filter?: ContentCatalogueFilter | SpellCatalogueFilter | ItemCatalogueFilter }
 
 export type ChoiceSetDefinition = DefinitionCategorization & {
   id: DefinitionId

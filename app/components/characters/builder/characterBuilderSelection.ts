@@ -70,6 +70,7 @@ import {
   type ContentChoiceSelector,
   type CreationContentPresentation,
   type CreationFeatEntry,
+  type CreationItemEntry,
   type CreationSpellEntry
 } from '~/lib/characters/creation-content-choices'
 import {
@@ -227,6 +228,12 @@ export type BuilderEquipmentCatalogueEntry = {
   packageId: string
   slug: string
   title: string
+  // Weapon Mastery phase -- mirrors `spells`'s own "one array, two callers" posture exactly: the
+  // SAME `items` array already threaded through for equipment-bundle title resolution (P8B) now
+  // also carries each entry's own item mechanics, for the 'items' content-choice path
+  // (resolveCreationContentChoices). Optional/absent means "not resolved to a weapon," the same
+  // "absent entirely" reading `itemMechanics` already has on the server catalogue entry.
+  itemMechanics?: CreationItemEntry['itemMechanics']
 }
 
 export const NO_CREATION_CONTENT: BuilderCreationContext = {
@@ -436,7 +443,7 @@ export function creationContentPresentation(
 ): CreationContentPresentation[] {
   const slots = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
   const declarations = declaredCreationContentChoices(slots, context.contentSelectorOf)
-  return resolveCreationContentChoices(declarations, slots, draft.contentChoices, context.feats, context.spells ?? [])
+  return resolveCreationContentChoices(declarations, slots, draft.contentChoices, context.feats, context.spells ?? [], context.items ?? [])
 }
 
 // The ContentRef answers that count for the CURRENT selection, keyed by the

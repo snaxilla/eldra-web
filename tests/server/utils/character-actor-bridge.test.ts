@@ -203,8 +203,15 @@ describe('the hand-authored XPHB Rules Facets', () => {
       // P1 -- Bard (instruments) and Monk (artisan's tools or an instrument) also
       // declare a tool choice over Definition ids. Feature-option phase -- Cleric
       // (Divine Order) and Druid (Primal Order) also declare the generic
-      // `choice:class.feature-option` ChoiceSet at Level 1.
-      expect(facet!.choices).toHaveLength(['fighter', 'bard', 'monk', 'cleric', 'druid'].includes(name) ? 2 : 1)
+      // `choice:class.feature-option` ChoiceSet at Level 1. Weapon Mastery phase --
+      // Barbarian/Paladin/Ranger/Rogue also declare `choice:class.weapon-mastery`
+      // (Barbarian's own `.melee-only` variant) at Level 1; Fighter declares it
+      // ALONGSIDE its own pre-existing Fighting Style choice, for 3 total.
+      const EXTRA_CHOICE_COUNT: Record<string, number> = {
+        fighter: 2, bard: 1, monk: 1, cleric: 1, druid: 1,
+        barbarian: 1, paladin: 1, ranger: 1, rogue: 1
+      }
+      expect(facet!.choices).toHaveLength(1 + (EXTRA_CHOICE_COUNT[name] ?? 0))
     }
 
     const backgrounds = ['acolyte', 'artisan', 'charlatan', 'criminal', 'entertainer',

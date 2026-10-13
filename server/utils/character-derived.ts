@@ -43,7 +43,7 @@
 
 import { evaluate, evaluateStandaloneExpression } from '../../app/lib/rules/evaluator'
 import { EvaluationSession } from '../../app/lib/rules/evaluation-session'
-import type { ContentCatalogueFilter } from '../../app/lib/rules/types'
+import type { ContentCatalogueFilter, ItemCatalogueFilter } from '../../app/lib/rules/types'
 import type {
   CollectionSlotDefinition,
   DefinitionId,
@@ -64,6 +64,7 @@ import { getWorldRuntime } from './world-runtime-service'
 import { getWorldContentCatalogue } from './world-content-catalogue'
 import { serializeContentRef } from '../../app/lib/characters/progression-plan'
 import { featFilterVerdict } from '../../app/lib/feat-mechanics'
+import { itemFilterVerdict } from '../../app/lib/item-mechanics'
 
 // Mirrors evaluator.ts's and modifier-pipeline.ts's own `isRulesError`
 // exactly. Duplicated rather than imported for the reason those two already
@@ -469,6 +470,14 @@ async function getDerivedCharacterInternal(
         // always feat-shaped here, never a spell's -- see app/lib/rules/types.ts's own
         // SpellCatalogueFilter header for why the two are never interchangeable.
         legalOptions = catalogue.feats.filter((entry) => featFilterVerdict(entry.featMechanics, filter as ContentCatalogueFilter | undefined).eligible)
+      } else if (category === 'items') {
+        // Weapon Mastery phase -- mirrors the `feats` branch exactly, one category over. The
+        // package-owned filter (item kind, melee-only) is the only thing this builder applies;
+        // proficiency is a character-state fact the progression plan evaluates (the single
+        // preview/Confirm authority, app/lib/item-mechanics/eligibility.ts). A choice with no
+        // filter offers nothing (fail closed).
+        const filter = choiceSet && choiceSet.from.kind === 'fromContentCatalogue' ? choiceSet.from.filter : undefined
+        legalOptions = catalogue.items.filter((entry) => itemFilterVerdict(entry.itemMechanics, filter as ItemCatalogueFilter | undefined).eligible)
       }
 
       const options = legalOptions.map((entry) => serializeContentRef({ packageId: entry.packageId, slug: entry.slug }))
@@ -488,9 +497,20 @@ async function getDerivedCharacterInternal(
 
       const currentRef = category === 'subclasses' ? currentSubclassRef : currentFeatRef
 
-      const selected = currentRef
-        ? [serializeContentRef(currentRef)]
-        : (Array.isArray(tentative) ? tentative : [])
+      // Weapon Mastery phase -- the item counterpart of `currentRef`, generalized to a LIST: a
+      // single items-category answer legally carries MULTIPLE distinct ContentRefs at once,
+      // unlike every other content choice here. Read straight off the raw persisted
+      // `progression.items` (never re-derived, never resolved against the catalogue for display --
+      // this is identity only, exactly what `options`/`optionLabels` above already resolve for).
+      const currentItemRefs = category === 'items'
+        ? (assembly.blueprint.progression.items ?? [])
+          .filter((entry) => entry.choiceKey === stub.key)
+          .map((entry) => serializeContentRef(entry.itemRef))
+        : []
+
+      const selected = category === 'items'
+        ? (currentItemRefs.length ? currentItemRefs : (Array.isArray(tentative) ? tentative : []))
+        : (currentRef ? [serializeContentRef(currentRef)] : (Array.isArray(tentative) ? tentative : []))
 
       choices.push({
         key: stub.key,

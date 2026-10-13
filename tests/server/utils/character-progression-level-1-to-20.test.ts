@@ -80,6 +80,7 @@ import { normalizeStoredProgression } from '../../../app/lib/characters/progress
 import { featOptionVerdict } from '../../../app/lib/feat-mechanics/eligibility'
 import { normalizeStoredRulesChoices } from '../../../app/lib/characters/rules-choices'
 import { resolveDnd5eFeatMechanics } from '../../../app/lib/feat-mechanics/dnd5e'
+import { resolveDnd5eItemMechanics } from '../../../app/lib/item-mechanics/dnd5e'
 import xphbFeats from '../../lib/feat-mechanics/fixtures/xphb-feats.json'
 import { DND5E_2024_PROGRESSION_COVERAGE } from '../../../app/lib/content-rules/dnd5e-2024-progression-coverage'
 import { fullySatisfyingSpellState } from '../../helpers/satisfying-spell-fixture'
@@ -220,6 +221,22 @@ FEAT_CATALOGUE_ENTRIES.push(...FIGHTING_STYLE_CATALOGUE)
 const FS_ARCHERY_REF = { packageId: FEAT_PACKAGE_ID, slug: 'archery-xphb' }
 const CASTER_CLASS_SLUGS = new Set(['bard-xphb', 'cleric-xphb', 'druid-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'warlock-xphb', 'wizard-xphb'])
 
+// Weapon Mastery phase -- six distinct, real-shaped, all-MELEE weapons (satisfying both Fighter's
+// unrestricted choice and Barbarian's own melee-only restriction with the SAME shared catalogue),
+// enough for Fighter's own Level 1->16 cumulative total of 6 and Barbarian's own cumulative total
+// of 4. Resolved through the real resolver, never hand-typed CanonicalItemMechanics.
+function weaponEntry(title: string, slug: string, raw: Record<string, unknown>) {
+  return { ...baseEntry({ title, slug }), itemMechanics: resolveDnd5eItemMechanics(raw) }
+}
+const WEAPON_CATALOGUE_ENTRIES = [
+  weaponEntry('Dagger', 'dagger-xphb', { weaponCategory: 'simple', type: 'M|XPHB', property: ['F|XPHB', 'L|XPHB', 'T|XPHB'], mastery: ['Nick|XPHB'] }),
+  weaponEntry('Club', 'club-xphb', { weaponCategory: 'simple', type: 'M|XPHB', property: ['L|XPHB'], mastery: ['Slow|XPHB'] }),
+  weaponEntry('Longsword', 'longsword-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Sap|XPHB'] }),
+  weaponEntry('Warhammer', 'warhammer-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Push|XPHB'] }),
+  weaponEntry('Battleaxe', 'battleaxe-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['V|XPHB'], mastery: ['Topple|XPHB'] }),
+  weaponEntry('Greataxe', 'greataxe-xphb', { weaponCategory: 'martial', type: 'M|XPHB', property: ['H|XPHB', '2H|XPHB'], mastery: ['Cleave|XPHB'] })
+]
+
 function catalogueForClass(classSlug: string) {
   const subclasses = (REAL_SUBCLASSES_BY_CLASS[classSlug] ?? []).map((slug) =>
     baseEntry({ title: slug, slug, parentClassSlug: classSlug })
@@ -227,7 +244,7 @@ function catalogueForClass(classSlug: string) {
   return {
     worldId: WORLD_ID, packs: [], species: [], classes: [], backgrounds: [],
     feats: FEAT_CATALOGUE_ENTRIES,
-    items: [], spells: [], monsters: [],
+    items: WEAPON_CATALOGUE_ENTRIES, spells: [], monsters: [],
     subclasses
   }
 }
@@ -419,7 +436,8 @@ function blockedLedgerEntries(classSlug: string) {
 // confirmed this phase by direct read, never guessed). Answers ONLY the
 // ChoiceSets currently classified IMPLEMENTED anywhere in the real
 // corpus (choice:class.subclass, choice:feat.selection, choice:skill.
-// expertise, choice:class.feature-option, plus feat.selection's own nested
+// expertise, choice:class.feature-option, choice:class.weapon-mastery and its
+// `.melee-only` variant, plus feat.selection's own nested
 // choice:feat.asi-ability-increase) -- anything else is deliberately left
 // unanswered, never faked, per this task's own "do not fake answers for
 // unsupported mechanics."
@@ -444,6 +462,12 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
     'value:skill.arcana.expertise', 'value:skill.history.expertise'
   ])]
   const usedSkills = new Set<string>()
+  // Weapon Mastery phase -- additive per-level growth: each row (creation L1, then whatever
+  // growth levels this class's own real table has) must pick NEW, not-yet-selected weapons, so
+  // the cumulative total across every row is always `count` distinct identities. Both the
+  // unrestricted and `.melee-only` ChoiceSets draw from the SAME shared catalogue (every entry is
+  // melee), so one tracking set serves both.
+  const usedWeapons = new Set<string>()
   for (const { level, choiceSetId, count, from } of expected) {
     const key = progressionChoiceKey('class', level, choiceSetId)
     if (choiceSetId === 'choice:class.subclass') {
@@ -489,6 +513,13 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
       // Druid Primal Order / Elemental Fury) -- no class-specific branching,
       // just the first legal Source this row's own real `from` list declares.
       answers[key] = [from[0]!]
+    } else if (choiceSetId === 'choice:class.weapon-mastery' || choiceSetId === 'choice:class.weapon-mastery.melee-only') {
+      // Weapon Mastery (Barbarian/Fighter/Paladin/Ranger/Rogue) -- a content-catalogue-backed
+      // choice, never a package `from` list (real option universe is the live catalogue, judged
+      // by proficiency, never a Definition id). `count` NEW weapons from the shared catalogue.
+      const picked = WEAPON_CATALOGUE_ENTRIES.filter((w) => !usedWeapons.has(w.slug)).slice(0, count)
+      answers[key] = picked.map((w) => serializeContentRef({ packageId: w.packageId, slug: w.slug }))
+      for (const w of picked) usedWeapons.add(w.slug)
     }
     // Anything else: left unanswered on purpose -- see this function's
     // own header.
@@ -883,12 +914,17 @@ describe('FEAT MECHANICS -- prerequisite filtering and repeatability (synthetic 
   it('the SAME repeatable feat (Ability Score Improvement) CAN be legally selected at two different ASI thresholds', async () => {
     const firstKey = progressionChoiceKey('class', 4, 'choice:feat.selection')
     const secondKey = progressionChoiceKey('class', 6, 'choice:feat.selection')
+    // Weapon Mastery phase -- Fighter's own real Level-4 growth row is a SEPARATE, unrelated
+    // IMPLEMENTED choice this same walk also crosses (mirrors the Level-3 subclass answer's own
+    // header comment immediately above).
+    const weaponMasteryKey = progressionChoiceKey('class', 4, 'choice:class.weapon-mastery')
     const answers = {
       ...subclassAnswer,
       [firstKey]: [serializeContentRef(ASI_FEAT_REF)],
       [secondKey]: [serializeContentRef(ASI_FEAT_REF)],
       [`feat:${firstKey}:choice:feat.asi-ability-increase`]: ['source:asi.increase.str', 'source:asi.increase.dex'],
-      [`feat:${secondKey}:choice:feat.asi-ability-increase`]: ['source:asi.increase.con', 'source:asi.increase.wis']
+      [`feat:${secondKey}:choice:feat.asi-ability-increase`]: ['source:asi.increase.con', 'source:asi.increase.wis'],
+      [weaponMasteryKey]: [serializeContentRef({ packageId: WEAPON_CATALOGUE_ENTRIES[0]!.packageId, slug: WEAPON_CATALOGUE_ENTRIES[0]!.slug })]
     }
 
     const planResult = await planProgression(WORLD_ID, CHARACTER_ID, 6, answers)
@@ -911,19 +947,20 @@ describe('FEAT MECHANICS -- prerequisite filtering and repeatability (synthetic 
 describe('BOB SEQUENCE -- Barbarian, Level 1 -> 20 browser-visible plan shape (mechanics; completeness stubbed)', () => {
   beforeEach(() => useClass('barbarian-xphb'))
 
-  it('produces the real SHOULD-APPEAR sequence: Subclass at L3, Ability Score Improvement at L4/8/12/16, Epic Boon at L19, nothing else', async () => {
+  it('produces the real SHOULD-APPEAR sequence: Subclass at L3, Ability Score Improvement at L4/8/12/16, Weapon Mastery growth at L4/L10, Epic Boon at L19, nothing else', async () => {
     const result = await planProgression(WORLD_ID, CHARACTER_ID, 20)
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
     const sequence = result.plan.steps
       .filter((step) => step.requiredChoices.length > 0)
-      .map((step) => ({ level: step.level, choiceSetIds: step.requiredChoices.map((c) => c.choiceSetId) }))
+      .map((step) => ({ level: step.level, choiceSetIds: step.requiredChoices.map((c) => c.choiceSetId).sort() }))
 
     expect(sequence).toEqual([
       { level: 3, choiceSetIds: ['choice:class.subclass'] },
-      { level: 4, choiceSetIds: ['choice:feat.selection'] },
+      { level: 4, choiceSetIds: ['choice:class.weapon-mastery.melee-only', 'choice:feat.selection'] },
       { level: 8, choiceSetIds: ['choice:feat.selection'] },
+      { level: 10, choiceSetIds: ['choice:class.weapon-mastery.melee-only'] },
       { level: 12, choiceSetIds: ['choice:feat.selection'] },
       { level: 16, choiceSetIds: ['choice:feat.selection'] },
       { level: 19, choiceSetIds: ['choice:feat.epic-boon'] }

@@ -56,6 +56,12 @@ export type WorldRulesChoiceOptions =
       // the `fromContentFacet` selector does not know its own options --
       // only the content does.
       optionLabels: Record<string, string>
+      // LANGUAGE CORPUS + POLICY PHASE -- the active package's own package-
+      // wide creation facts/choices (RulesPackageManifest.universalCreation),
+      // relayed verbatim so the Builder can build the identical 'universal'
+      // slot the real server (create-v2.post.ts) already builds from the
+      // same manifest field. Absent means the active package declares none.
+      universalCreation?: { grants?: { set: string, to: boolean | number | string }[], choices?: { choiceSet: string, count: number, from?: string[], requiresActive?: (string | null)[] }[] }
     }
   // Unconfigured or broken. Both collapse to "no choices to render" HERE,
   // deliberately: this endpoint feeds a Builder that must stay usable for a
@@ -105,5 +111,5 @@ export async function getWorldRulesChoiceOptions(
     }
   }
 
-  return { available: true, packageId, packageVersion, choiceSets, optionLabels }
+  return { available: true, packageId, packageVersion, choiceSets, optionLabels, universalCreation: runtime.runtime.manifest.universalCreation }
 }

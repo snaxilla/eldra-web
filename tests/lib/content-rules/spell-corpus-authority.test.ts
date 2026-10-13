@@ -84,15 +84,21 @@ describe('P2 spell corpus authority', () => {
   // blocked to implemented, moving the census from 405/207 to 407/205. Rogue's own remaining real
   // blocker (Thieves' Cant / language policy) is untouched -- this phase alone does not unlock
   // Rogue creation.
-  it('the Phase-0 decision census after the Rogue Expertise phase: 647 total, 407 implemented, 205 blocked, 35 optional', () => {
+  // LANGUAGE CORPUS + POLICY PHASE discovered and implemented ONE newly-discovered decision (the
+  // universal "Choose Languages" creation rule, package-owned, never duplicated per class) and
+  // reclassified exactly 2 more (Rogue Level 1 "Thieves' Cant" language, a creation-time
+  // facet.choices entry; Ranger Level 2 "Deft Explorer" language, a dedicated Progression row)
+  // from blocked to implemented -- moving the census from 647/407/205 to 648/410/203. Rogue's
+  // Thieves' Cant/language blocker is now fully resolved; Rogue becomes creation-available.
+  it('the Phase-0 decision census after the Language Corpus phase: 648 total, 410 implemented, 203 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
-    expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(647)
-    expect(counts.implemented).toBe(407)
-    expect(counts.blocked).toBe(205)
+    expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(648)
+    expect(counts.implemented).toBe(410)
+    expect(counts.blocked).toBe(203)
     expect(counts.optional).toBe(35)
   })
 

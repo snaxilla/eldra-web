@@ -178,11 +178,21 @@ beforeEach(() => {
   saveCharacterSpellcastingMock.mockImplementation(async (_id: unknown, stored: unknown) => stored)
 })
 
-// Every OTHER real mandatory Level-2 choice this walk also crosses (Fighting Style) -- answered
-// purely so Confirm's "the WHOLE plan must be valid" gate is satisfied, letting these tests
-// isolate Deft Explorer's own Expertise mechanics specifically.
+// LANGUAGE CORPUS + POLICY PHASE -- Deft Explorer's own "Languages" half (progression:class.
+// language-deft-explorer, count 2, Standard+Rare) is a SIBLING Level-2 row to the Expertise one
+// under test, answered here too for the identical reason Fighting Style is: so Confirm's "the
+// WHOLE plan must be valid" gate is satisfied while isolating Expertise mechanics specifically.
+const DEFT_EXPLORER_LANGUAGE_KEY = progressionChoiceKey('class', 2, 'choice:language.known')
+
+// Every OTHER real mandatory Level-2 choice this walk also crosses (Fighting Style, Deft
+// Explorer's own Languages half) -- answered purely so Confirm's "the WHOLE plan must be valid"
+// gate is satisfied, letting these tests isolate Deft Explorer's own Expertise mechanics
+// specifically.
 function fightingStyleAnswer(): Record<string, string[]> {
-  return { [FS_KEY]: [serializeContentRef(ARCHERY_REF)] }
+  return {
+    [FS_KEY]: [serializeContentRef(ARCHERY_REF)],
+    [DEFT_EXPLORER_LANGUAGE_KEY]: ['value:language.draconic.known', 'value:language.dwarvish.known']
+  }
 }
 
 describe('RANGER DEFT EXPLORER -- Level-2 Expertise (progression:class.skill-expertise-deft-explorer)', () => {

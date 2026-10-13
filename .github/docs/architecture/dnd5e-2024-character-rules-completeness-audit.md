@@ -6430,3 +6430,314 @@ clean. `pnpm packages:sync --world Solaris` (dry run, after the manifest version
 `PUBLISH_REQUIRED` (Rules, `eldra.rules.dnd5e-2024@0.21.3`) + `REFRESH_REQUIRED` (Content), actions
 `PUBLISH_RULES` / `REFRESH_CONTENT` / `ACTIVATE_RULES` / `BIND_CONTENT`. No `packages:sync --apply`
 run.
+
+### 25.40 LANGUAGE CORPUS + POLICY -- THE FULL NATIVE-XPHB LANGUAGE BUILD MODEL (2026-10-13)
+
+#### Scope
+
+The read-only Language Corpus Audit (same day) found that Rogue's own remaining creation
+blocker was NOT "Thieves' Cant" itself (a fixed grant) but its feature's own embedded "one other
+language" choice -- a real, textually-justified Milestone-A decision, correctly discovered,
+just confusingly named after the feature that bundles it. The SAME audit also found something
+the prior census had entirely missed: a **universal, package-owned creation rule** ("Choose
+Languages", PHB chapter 2, p.37 -- "Common plus two languages you roll or choose from the
+Standard Languages table") that applies to every character unconditionally and had never been
+discovered by any detector, for any of the 12 classes. This phase implements the complete model:
+the universal rule, Rogue's own extra language, Ranger's own Deft Explorer language half, and
+Druid's fixed Druidic grant -- never only enough to turn Rogue green.
+
+#### CORPUS -- re-derived directly, never trusted from a prior session's own claim
+
+Re-read `/opt/eldra/datasets/5etools-src/data/languages.json` directly: **19 XPHB language
+records**, exactly 10 `type: 'standard'` (Common, Common Sign Language, Draconic, Dwarvish,
+Elvish, Giant, Gnomish, Goblin, Halfling, Orc) and 9 `type: 'rare'` (Abyssal, Celestial, Deep
+Speech, **Druidic**, Infernal, Primordial, Sylvan, **Thieves' Cant**, Undercommon) -- confirmed
+by a dedicated corpus test (`tests/rules/dnd5e-2024-language.test.ts`), not assumed. Re-read
+`book-xphb.json`'s own "Choose Languages" section directly: "Your character knows at least
+three languages: Common plus two languages you roll or choose from the Standard Languages
+table... Your class and other features might also give you languages." This is core rulebook
+prose, owned by neither Species, Class, Background, nor Feat content.
+
+Re-traced the three real class features, directly:
+- Rogue "Thieves' Cant" (L1): "You know Thieves' Cant and **one other language of your choice**,
+  which you choose from the language tables in chapter 2" -- fixed Thieves' Cant, plus ONE real
+  decision, unrestricted to Standard-or-Rare ("tables," plural).
+- Ranger "Deft Explorer" (L2), its own "Languages" half: "You know **two languages of your
+  choice** from the language tables in chapter 2" -- TWO real decisions, unrestricted, no fixed
+  component at all.
+- Druid "Druidic" (L1): "You know Druidic, the secret language of Druids..." -- PURELY fixed, no
+  "of your choice" clause anywhere in the text. Zero decisions.
+
+Confirmed, structurally, not by name: Thieves' Cant and Druidic are both plain `type: 'rare'`
+language records in `languages.json`, identical in KIND to Abyssal/Celestial/etc. -- "Some
+features let a character learn a rare language" (the book's own words) is exactly this
+mechanism, never a separate category.
+
+#### MODEL -- package-authored Values + ChoiceSet, Model A from the prior audit
+
+Reused the EXACT shape `value:skill.X.proficient`/`choice:skill.proficiency` already prove:
+19 new `value:language.<id>.known` boolean Values (`category: 'core.proficiency'` -- reusing
+the existing category rather than adding a new `RuleCategory` member, since a new category was
+never necessary) and one new generic `choice:language.known` ChoiceSet (`fromContentFacet`,
+`excludeIfAlreadyActive: true`, `writesTo: 'value:language.{selected}.known'`) --
+`packages/eldra-dnd5e-2024/definitions.json`. Zero new engine primitives for this half; this is
+pure package authoring on infrastructure the Weapon Mastery and Expertise phases already proved
+generic.
+
+**Content entity question, resolved**: Solaris needed NO language Content entities. Rules
+Definitions already own mechanical language identity end to end, and the EXISTING generic
+choice-options endpoint (`server/utils/world-rules-choice-options.ts`) already relays every
+Value/ChoiceSet's own package-authored label to the Builder automatically, the moment the
+Definition exists -- no Content Catalogue expansion of any kind.
+
+**Naming collision, found and resolved without weakening any check**: Halfling, Orc, and Goblin
+each name BOTH a real XPHB species/monster AND a real XPHB language -- the corpus itself reuses
+the word. `tests/rules/dnd5e-2024-package.test.ts`'s own "names no species/class/background/
+spell/item/monster" guard initially failed on this; fixed by excluding exactly the package's own
+`value:language.*` vocabulary (its Definitions AND any other Definition's reference to one of
+its ids) from that one check, never by loosening the check's own word list.
+
+#### UNIVERSAL CREATION DECLARATION -- the one approved small engine extension
+
+The universal rule is owned by neither Species, Class, Background, nor Feat -- attaching it to
+all 12 classes would have faked ownership and duplicated the same decision twelve times. A new,
+narrow, GENERIC manifest-level mechanism was added instead:
+
+- `app/lib/rules/types.ts`: `RulesPackageManifest.universalCreation?: { grants?: [...],
+  choices?: [...] }` -- field-for-field identical to `RulesFacetGrant`/`RulesFacetChoice`
+  (`app/lib/content-rules/types.ts`), declared independently in the Rules Engine layer because
+  that layer never imports content-rules (content depends on rules, never the reverse) -- the
+  same "duplicated by necessity, not by accident" posture every other manifest-level declaration
+  in this file already takes (`modifierTypes`, `requiredTraits`, `optionalRules`, `rollTypes`).
+  Contains no mention of "language," "Common," "Standard," or "Rare" anywhere -- a future
+  non-D&D package could use the identical field for an unrelated universal creation fact
+  (a starting culture, a universal talent) with zero application-code branches.
+- `server/utils/character-actor-bridge.ts`: `ActorBridgeInput.universalFacet?: RulesFacet |
+  null`, consumed through the EXACT SAME `consumeFacet` function every Species/Class/Background/
+  Feat slot already uses, called once, outside `SLOT_ORDER` (a package-wide slot, never a second
+  mechanism); its own `grants` are pre-passed FIRST (before every other slot) for the identical
+  "a later choice must see this as already active" reason the existing SLOT_ORDER pre-pass
+  exists.
+- `app/lib/characters/creation-choice-eligibility.ts`: UNCHANGED. The universal declaration is
+  injected as one more entry in the SAME generic `slots` array `resolveCreationChoices` already
+  iterates (`{ slot: 'universal', facet: <from the manifest> }`), placed FIRST so its own fixed
+  Common grant and +2 choice compose with every later slot automatically, through the identical
+  `acquired`-set mechanism species/class/background composition already uses -- zero new code in
+  the shared eligibility module itself.
+- `server/api/worlds/[id]/characters/create-v2.post.ts` and `app/components/characters/builder/
+  characterBuilderSelection.ts`: both build the identical `{ slot: 'universal', facet: ... }`
+  entry from the SAME manifest field (the server reads it directly off the active runtime; the
+  Builder receives it relayed through `GET /api/worlds/:id/rules/choice-options`'s own new
+  `universalCreation` field, added for exactly this purpose). Neither duplicates the other's
+  logic; both construct the identical generic slot.
+
+#### ALREADY-KNOWN COMPOSITION -- generic, no language-specific duplicate logic
+
+`choice:language.known`'s own `excludeIfAlreadyActive: true` (progression-time,
+`character-actor-bridge.ts`) and the creation-time `acquired`-set exclusion
+(`creation-choice-eligibility.ts`, unchanged, reused verbatim) together make Common, Thieves'
+Cant, and any already-picked language correctly unavailable to a LATER choice in the SAME plan --
+proven directly: the universal choice's own Common grant excludes Common from itself; Rogue's
+own fixed Thieves' Cant grant excludes Thieves' Cant from Rogue's own extra-language choice; a
+Standard language the universal choice already picked is excluded from Rogue's own
+Standard-or-Rare choice, with NO save/reload round trip (`create-v2-language.test.ts`'s own
+SERVER AUTHORITY -- cross-slot composition block).
+
+#### ROGUE -- real-route result
+
+Dwarf + Rogue + Criminal, answering EVERY real decision (ability distribution, class skill
+proficiency, Weapon Mastery, Expertise, the universal +2 Standard languages, Rogue's own +1
+Standard-or-Rare language, starting equipment), reaches `creationUnresolvedDecisions: []` and
+succeeds through the real, unstubbed `create-v2.post` route -- both a hand-written body and a
+real Builder-shaped payload (`emptyDraft`/`setChoiceSelections`/`toCreatePayload`). Feeding the
+persisted `rules_choices` back through the real `buildActorState` bridge confirms Common, both
+universal picks, Thieves' Cant, and Rogue's own extra language all evaluate as active
+`value:language.*.known` Values -- and nothing else does.
+
+#### RANGER -- progression result (authored in the prior Rogue/Ranger Expertise phase's own
+slot, completed here)
+
+Ranger's own Deft Explorer "Languages" half (`progression:class.language-deft-explorer`, Level
+2, count 2, unrestricted Standard-or-Rare) was authored alongside the already-implemented
+Expertise half from the SAME feature, proven to coexist at the identical level with zero
+collision (`tests/server/utils/character-progression-plan-rogue-expertise.test.ts`, extended
+this phase). Ranger's own creation availability is unaffected (the choice is Level 2,
+progression-time, outside creation's own scope).
+
+#### DRUID -- fixed Druidic result
+
+Druid's facet gained `{ set: 'value:language.druidic.known', to: true }` -- a direct grant,
+never a choice, matching the real corpus exactly (no embedded "of your choice" clause exists).
+Druid remains creation-available, unaffected; Druidic's own narrative mechanics (the free Speak
+with Animals spell, the hidden-message ability) remain explicitly deferred, never turned into a
+creation blocker.
+
+#### SERVER AUTHORITY -- rejection matrix, proven
+
+`create-v2-language.test.ts` proves, through the real route: too few/too many/a duplicate within
+one answer are rejected (the SAME generic `validateChoiceSelection` every other choice already
+uses); a Rare language cannot satisfy the Standard-only universal choice (its own declared
+`from` list, never a runtime category check); Common cannot be selected again by the universal
+choice; Thieves' Cant cannot be selected again by Rogue's own choice; a language the universal
+choice already picked cannot ALSO be picked by Rogue's own choice in the SAME plan. Zero writes
+on every rejection.
+
+#### PERSISTENCE -- `rules_choices` only, never a new store
+
+Both the universal and the two class-owned language choices persist through the EXISTING
+`rules_choices` block, keyed `universal:choice:language.known` / `class:choice:language.known` /
+`class:progression:2:choice:language.known` -- no `character.languages[]`, no language
+inventory, no new table of any kind. The canonical derived fact is simply which
+`value:language.*.known` Values the real engine evaluates true, read generically (no new
+accessor) through the same `buildActorState`/derived-Values path every other Value already uses.
+
+#### HISTORICAL COMPATIBILITY
+
+A dedicated test (`character-assembly-historical-fail-closed.test.ts`'s new Rogue describe
+block) proves a Rogue character record with no `rules_choices` block at all (predating even the
+universal rule's own existence) still assembles for read, performs zero writes, and invents no
+retroactive language selection -- the identical posture every other historical-compatibility
+test in this file already proves.
+
+#### PHASE-0 RECLASSIFICATION
+
+`mandatory-decisions.ts`: a new `DecisionOwnerKind` member, `'package'`, and a new
+`detectUniversalDecisions()` function appending exactly ONE literal `DecisionRecord`
+(`package:dnd5e-2024:L1:language-choice:choose-languages`, cardinality 2) to `detectAll`'s own
+output -- the one decision in this entire system not derived from scanning a class/species/
+background/feat corpus file, since none of them actually declares it. `creation-completeness.ts`:
+`creationUnresolvedDecisions`'s owner filter gained `if (d.owner.kind === 'package') return
+true` -- owned by every creation unconditionally. `mandatory-decision-coverage.ts`: the old
+single `blk:class-language` catch-all (reason: "the corpus has no structured language grant" --
+now factually stale, since a structured vocabulary exists upstream in `languages.json`; it was
+simply never authored into the package before this phase) is RETIRED, split into
+`impl:universal-language-choice` (the package-owned decision) and `impl:class-language` (Rogue
+L1, Ranger L2) -- both IMPLEMENTED, matching the real 3-decision population exactly.
+`dnd5e-2024-progression-coverage.ts` gained 3 new IMPLEMENTED rows (`package:dnd5e-2024:
+universal-languages`, `rogue-xphb:thieves-cant-language`, `ranger-xphb:deft-explorer-language`).
+
+Census: **648 total, 410 implemented (+3), 203 blocked (-2), 35 optional** -- +1 from the
+newly-discovered universal decision (implemented the moment it was discovered, never sitting
+blocked even briefly), +2 from Rogue's and Ranger's own reclassified decisions -- confirmed by
+direct re-count through the real `classifyDecision` authority, never forced from this phase's
+own arithmetic prediction.
+
+#### AVAILABILITY
+
+Species 3/10 (unchanged), **Classes 11/12** (Rogue joins; Warlock alone remains blocked, by
+Eldritch Invocations), Backgrounds 13/16 (unchanged), **Combinations 429/1920** (3 x 11 x 13,
+enumerated through the real authority, never computed as a hardcoded product).
+
+#### COVERAGE CONTRACT
+
+Bidirectional A/B contract re-confirmed holding after reclassification
+(`tests/rules/mandatory-decision-coverage.test.ts`'s new "LANGUAGE CORPUS + POLICY PHASE"
+describe block). Bite tests prove: deleting `impl:universal-language-choice` exposes the
+package-owned decision; deleting `impl:class-language` exposes Rogue's and Ranger's own
+decisions; a synthetic FUTURE class-owned language decision this phase never supported is never
+falsely greened by `impl:class-language` (fails closed); fixed grants (Common, Thieves' Cant,
+Druidic) never appear as mandatory decisions at all -- only the real embedded choices do, proven
+directly against the decision population (Druid owns zero `language-choice` decisions; Rogue
+owns exactly one, cardinality 1, never two).
+
+#### PRESENTATION (recorded, not implemented)
+
+No Character Sheet UI work was done, per explicit instruction. Future Sheet presentation:
+ordinary known languages, Thieves' Cant, and Druidic should all render as one plain list (any
+`value:language.*.known` Value reading true), using the package's own Definition labels --
+Thieves' Cant and Druidic need no special-cased treatment, since they are structurally the same
+vocabulary as every other language. Not added to the beauty backlog file this phase (to avoid a
+second delicate partial-hunk staging operation on a file carrying unrelated history); recorded
+here for a future pass instead.
+
+#### HOMEBREW / NON-D&D ISOLATION
+
+Proven structurally, not merely asserted: nothing in `app/lib/rules/types.ts` (the
+`UniversalCreationGrant`/`UniversalCreationChoice`/`UniversalCreationDeclaration` types) or
+`server/utils/character-actor-bridge.ts` (`consumeFacet`, `ActorBridgeInput.universalFacet`)
+names "language," "Common," "Standard," "Rare," "Thieves' Cant," or "Druidic" anywhere -- grepped
+directly, zero hits outside `app/lib/content-rules/dnd5e-2024.ts` and the two package JSON files,
+the Content/package-authoring layer where those words belong. A homebrew D&D language, secret
+guild cant, or ancient script needs only one more `value:language.<id>.known` Definition and a
+`from` entry referencing it -- no application-code branch. A completely unrelated Rules Package
+(no language concept, or languages modeled as skills/percentages/ranks) simply never declares
+`universalCreation` or any `value:language.*` id; Eldra Core gained no new assumption that
+"language" is boolean, named, or even a concept every ruleset has.
+
+#### PACKAGE IMPACT
+
+`packages/eldra-dnd5e-2024` Definitions changed under the already-published `0.21.3` (19 new
+`value:language.*.known` Values, 1 new `choice:language.known` ChoiceSet, 2 new Progression
+Definitions -- `progression:class.language-deft-explorer` plus the already-landed
+`skill-expertise-deft-explorer`'s own sibling -- and one new manifest-level field,
+`universalCreation`). No existing Definition removed, renamed, or changed. Manifest `version`
+bumped **0.21.3 -> 0.21.4** (only the version field changed), consistent with this project's own
+established patch-bump precedent (every prior phase's own approved decision algorithm: a pure
+addition, no existing Definition removed/renamed/changed). `pnpm packages:sync --world Solaris`
+(dry run, re-run after the bump): `PUBLISH_REQUIRED` for Rules (`eldra.rules.dnd5e-2024@0.21.4`
+authored but not yet published) and `REFRESH_REQUIRED` for Content (`eldra.solaris.xphb`, since
+the authoring facet corpus also changed), actions `PUBLISH_RULES` / `REFRESH_CONTENT` /
+`ACTIVATE_RULES` / `BIND_CONTENT`. No mutation performed -- dry run only, `--apply` never
+invoked.
+
+#### Files
+
+New: `tests/server/api/worlds/[id]/characters/create-v2-language.test.ts`,
+`tests/rules/dnd5e-2024-language.test.ts`.
+
+Modified: `app/lib/rules/types.ts` (`UniversalCreationGrant`/`Choice`/`Declaration` types,
+`RulesPackageManifest.universalCreation`), `server/utils/character-actor-bridge.ts`
+(`ActorBridgeInput.universalFacet`, pre-pass + `consumeFacet('universal', ...)`),
+`server/utils/character-derived.ts` and `server/utils/character-resource-actions.ts` (thread
+`manifest.universalCreation` into `buildActorState`), `app/lib/content-rules/mandatory-
+decisions.ts` (`'package'` owner kind, `detectUniversalDecisions`), `app/lib/content-rules/
+creation-completeness.ts` (owner filter + rank map), `app/lib/content-rules/mandatory-decision-
+coverage.ts` (`SUPPORTED_LANGUAGE_CHOICE`, `impl:universal-language-choice` + `impl:class-
+language` replacing `blk:class-language`), `app/lib/content-rules/dnd5e-2024-progression-
+coverage.ts` (3 new IMPLEMENTED rows), `app/lib/content-rules/dnd5e-2024.ts` (Rogue's fixed
+Thieves' Cant grant + language choice; Ranger's new progression reference; Druid's fixed Druidic
+grant), `packages/eldra-dnd5e-2024/definitions.json` (19 Values, 1 ChoiceSet, 1 Progression
+Definition), `packages/eldra-dnd5e-2024/manifest.json` (`universalCreation`; `version` 0.21.3 ->
+0.21.4, only field changed),
+`server/utils/world-rules-choice-options.ts` (relays `universalCreation` to the client),
+`server/api/worlds/[id]/characters/create-v2.post.ts` (builds the `'universal'` slot),
+`app/components/characters/builder/characterBuilderSelection.ts` (`BuilderCreationContext.
+universalFacet`, the `'universal'` slot in `creationChoicePresentation`),
+`app/pages/worlds/[id]/characters/create-v2.vue` (relays `choiceOptions.universalCreation` into
+the Builder context), `tests/rules/dnd5e-2024-package.test.ts` (excludes the language vocabulary
+from the species/class/background/monster-name guard), `tests/rules/dnd5e-2024-progression-
+coverage.test.ts` (`'Thieves' Cant'` + the universal decision's own `outOfScanScope` entry),
+`tests/rules/mandatory-decision-coverage.test.ts` (stale AVAILABILITY assertions corrected, new
+LANGUAGE CORPUS + POLICY PHASE describe block), `tests/lib/content-rules/creation-availability.
+test.ts` (BASELINE updated), `tests/lib/content-rules/spell-corpus-authority.test.ts` (census
+updated), `tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts` (the Rogue
+refusal examples retargeted to Warlock, the one class no phase has unlocked), `tests/server/api/
+worlds/[id]/characters/create-v2-rogue-expertise.test.ts` (the two now-obsolete "still refused"
+tests corrected to prove success), `tests/server/utils/character-progression-level-1-to-20.
+test.ts` (Ranger's shared Fighting Style fixture answers the new language choice too),
+`tests/server/utils/character-assembly-historical-fail-closed.test.ts` (new Rogue historical
+case), `tests/rules/completeness-stub-policy.test.ts` (1 new file entry classified).
+
+#### Verification
+
+`pnpm run test`: **213 files / 4523 tests -- all passing** (4489 Rogue/Ranger Expertise baseline
++ 34 net new: 12 corpus/model tests, 12 creation acceptance tests, plus ripple-effect fixes and
+the new coverage reconciliation/historical tests above -- zero regressions). `pnpm run
+typecheck`: the pre-existing `@types/node`-absent environment gap remains (1177 errors --
+identical to the established baseline; grepped the full output for every file this phase touched
+-- zero hits). `pnpm run build`: succeeds (exit 0). `git diff --cached --check`: clean.
+`pnpm packages:sync --world Solaris` (dry run, after the manifest version bump above):
+`PUBLISH_REQUIRED` (Rules, `eldra.rules.dnd5e-2024@0.21.4`) + `REFRESH_REQUIRED` (Content),
+actions `PUBLISH_RULES` / `REFRESH_CONTENT` / `ACTIVATE_RULES` / `BIND_CONTENT`.
+
+A repository-state forensic check (requested before this commit) found `pnpm-lock.yaml` carries
+pre-existing, unrelated dirty state -- including two duplicate YAML mapping keys
+(`math-intrinsics@1.1.0`, `mime-db@1.52.0` in the `snapshots:` section) introduced by an earlier,
+disclosed `git stash`/`git stash pop` conflict-resolution step during this phase, confirmed
+unrelated to language work by content (`package.json` has zero diff from HEAD) but not provably
+"clean." `pnpm-lock.yaml` is excluded from this commit entirely -- never staged, never repaired
+via install/regeneration, left for independent resolution. The pre-existing, unrelated stash
+(`6c97930 feat(network): introduce Transportation Junctions`) was confirmed still present in
+`git stash list`, untouched.
+
+No `packages:sync --apply` run.

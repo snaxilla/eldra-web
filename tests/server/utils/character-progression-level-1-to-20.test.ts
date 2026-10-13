@@ -468,6 +468,13 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
   // unrestricted and `.melee-only` ChoiceSets draw from the SAME shared catalogue (every entry is
   // melee), so one tracking set serves both.
   const usedWeapons = new Set<string>()
+  // LANGUAGE CORPUS + POLICY PHASE -- additive, non-repeating picks across every row this class
+  // declares (today: only Ranger's own Deft Explorer `progression:class.language-deft-explorer`
+  // row) -- no `requiresActive` prerequisite exists for a language choice, but
+  // `excludeIfAlreadyActive` does: Common is ALWAYS already known (the universal creation rule's
+  // own fixed grant, active unconditionally regardless of this fixture's own rulesChoices), so it
+  // is pre-seeded as "used" here -- picking it would be a real, offer-rejected illegal answer.
+  const usedLanguages = new Set<string>(['value:language.common.known'])
   for (const { level, choiceSetId, count, from } of expected) {
     const key = progressionChoiceKey('class', level, choiceSetId)
     if (choiceSetId === 'choice:class.subclass') {
@@ -520,6 +527,10 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
       const picked = WEAPON_CATALOGUE_ENTRIES.filter((w) => !usedWeapons.has(w.slug)).slice(0, count)
       answers[key] = picked.map((w) => serializeContentRef({ packageId: w.packageId, slug: w.slug }))
       for (const w of picked) usedWeapons.add(w.slug)
+    } else if (choiceSetId === 'choice:language.known') {
+      const picked = from.filter((id) => !usedLanguages.has(id)).slice(0, count)
+      answers[key] = picked
+      for (const id of picked) usedLanguages.add(id)
     }
     // Anything else: left unanswered on purpose -- see this function's
     // own header.
@@ -1304,7 +1315,13 @@ const DRUIDIC_REF = { packageId: FEAT_PACKAGE_ID, slug: 'druidic-warrior-xphb' }
 function deftExplorerAnswerFor(classSlug: string): Record<string, string[]> {
   const proficient = realSkillProficiencyAnswer(classSlug)[0]
   if (!proficient) return {}
-  return { [progressionChoiceKey('class', 2, 'choice:skill.expertise')]: [proficient.replace('.proficient', '.expertise')] }
+  return {
+    [progressionChoiceKey('class', 2, 'choice:skill.expertise')]: [proficient.replace('.proficient', '.expertise')],
+    // LANGUAGE CORPUS + POLICY PHASE -- the SAME Deft Explorer feature's own "Languages" half
+    // (progression:class.language-deft-explorer, count 2, Standard+Rare) is a SIBLING Level-2
+    // row, answered here for the identical reason the Expertise half is above.
+    [progressionChoiceKey('class', 2, 'choice:language.known')]: ['value:language.draconic.known', 'value:language.dwarvish.known']
+  }
 }
 
 const STYLE_CASES = [

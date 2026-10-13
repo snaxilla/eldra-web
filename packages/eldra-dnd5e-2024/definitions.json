@@ -1338,6 +1338,229 @@
     }
   },
   {
+    "id": "value:language.common.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Common",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.common_sign_language.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Common Sign Language",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.draconic.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Draconic",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.dwarvish.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Dwarvish",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.elvish.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elvish",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.giant.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Giant",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.gnomish.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Gnomish",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.goblin.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Goblin",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.halfling.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Halfling",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.orc.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Orc",
+    "tags": ["language", "language-standard"]
+  },
+  {
+    "id": "value:language.abyssal.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Abyssal",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.celestial.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Celestial",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.deep_speech.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Deep Speech",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.druidic.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Druidic",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.infernal.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Infernal",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.primordial.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Primordial",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.sylvan.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Sylvan",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.thieves_cant.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Thieves' Cant",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "value:language.undercommon.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Undercommon",
+    "tags": ["language", "language-rare"]
+  },
+  {
+    "id": "choice:language.known",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Languages",
+    "prompt": "Choose your languages.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true,
+    "writesTo": "value:language.{selected}.known"
+  },
+  {
     "id": "value:hit_points.current",
     "kind": "value",
     "category": "core.health",
@@ -1682,6 +1905,45 @@
               "value:skill.sleight_of_hand.proficient",
               "value:skill.stealth.proficient",
               "value:skill.survival.proficient"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.language-deft-explorer",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Languages (Deft Explorer, Lvl 2)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "choices": [
+          {
+            "choiceSet": "choice:language.known",
+            "count": 2,
+            "from": [
+              "value:language.common.known",
+              "value:language.common_sign_language.known",
+              "value:language.draconic.known",
+              "value:language.dwarvish.known",
+              "value:language.elvish.known",
+              "value:language.giant.known",
+              "value:language.gnomish.known",
+              "value:language.goblin.known",
+              "value:language.halfling.known",
+              "value:language.orc.known",
+              "value:language.abyssal.known",
+              "value:language.celestial.known",
+              "value:language.deep_speech.known",
+              "value:language.druidic.known",
+              "value:language.infernal.known",
+              "value:language.primordial.known",
+              "value:language.sylvan.known",
+              "value:language.thieves_cant.known",
+              "value:language.undercommon.known"
             ]
           }
         ]

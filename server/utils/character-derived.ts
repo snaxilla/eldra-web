@@ -396,7 +396,13 @@ async function getDerivedCharacterInternal(
     // is then `undefined`, which `buildActorState` already treats as a
     // no-op (see that function's own doc comment on this field).
     levelDefinitionId: registry.getBySemanticRole('level')?.id,
-    levelOverride
+    levelOverride,
+    // LANGUAGE CORPUS + POLICY PHASE -- the active package's own
+    // package-wide creation facts/choices (app/lib/rules/types.ts's
+    // `RulesPackageManifest.universalCreation`), consumed through the SAME
+    // `consumeFacet` path as every other slot. Absent for every package
+    // that declares none, byte-identical to before this phase.
+    universalFacet: runtime.runtime.manifest.universalCreation ?? null
   })
 
   // Labels are looked up ONCE per definition here rather than per consumer.

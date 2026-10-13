@@ -40,7 +40,12 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, and Ranger join too (6 -> 10 classes;
 // Rogue remains creation-blocked by Expertise and Thieves' Cant/language policy), lifting the
 // complete combinations from 234 to 390.
-const BASELINE = { species: 3, classes: 10, backgrounds: 13, combinations: 390 }
+// LANGUAGE CORPUS + POLICY PHASE -- Rogue's real remaining blocker was its own Thieves' Cant
+// feature's embedded "one other language" choice, now authored (alongside the newly-discovered
+// universal "Choose Languages" creation rule and Ranger's own Deft Explorer language half).
+// Rogue joins the creation-complete roster (10 -> 11 classes; Warlock remains blocked by
+// Eldritch Invocations alone), lifting the complete combinations from 390 to 429 (3 x 11 x 13).
+const BASELINE = { species: 3, classes: 11, backgrounds: 13, combinations: 429 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

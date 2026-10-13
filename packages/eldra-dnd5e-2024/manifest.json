@@ -1,6 +1,6 @@
 {
   "packageId": "eldra.rules.dnd5e-2024",
-  "version": "0.21.3",
+  "version": "0.21.4",
   "status": "draft",
   "engineApiVersion": "^1.0.0",
   "stateSchemaVersion": 1,
@@ -32,5 +32,28 @@
     "level": "value:level",
     "proficiency": "value:proficiency_bonus",
     "vitality": "value:hit_points.current"
+  },
+  "universalCreation": {
+    "grants": [
+      { "set": "value:language.common.known", "to": true }
+    ],
+    "choices": [
+      {
+        "choiceSet": "choice:language.known",
+        "count": 2,
+        "from": [
+          "value:language.common.known",
+          "value:language.common_sign_language.known",
+          "value:language.draconic.known",
+          "value:language.dwarvish.known",
+          "value:language.elvish.known",
+          "value:language.giant.known",
+          "value:language.gnomish.known",
+          "value:language.goblin.known",
+          "value:language.halfling.known",
+          "value:language.orc.known"
+        ]
+      }
+    ]
   }
 }

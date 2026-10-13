@@ -394,6 +394,16 @@ export type ActorBridgeInput = {
   // 'fromContentCatalogue'`) -- unset (every caller predating this phase)
   // skips nothing, byte-identical old behavior.
   isContentChoiceSet?: (choiceSetId: string) => boolean
+  // LANGUAGE CORPUS + POLICY PHASE -- the active package's own
+  // `RulesPackageManifest.universalCreation` (app/lib/rules/types.ts),
+  // already structurally a `RulesFacet` subset (grants/choices only), so it
+  // is consumed through the EXACT SAME `consumeFacet` path as any
+  // Species/Class/Background/Feat facet below -- a package-wide slot, never
+  // a second mechanism. Supplied by character-derived.ts from the active
+  // manifest; absent/null (every package before this phase declares no
+  // `universalCreation`) is a no-op, byte-identical to not having this
+  // field at all.
+  universalFacet?: RulesFacet | null
 }
 
 // Character Progression Phase 1C -- `slot` accepts `undefined` defensively:
@@ -839,6 +849,16 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
   // own `applyChoice`, the non-`activate-source` branch) -- already
   // visible to any LATER-in-SLOT_ORDER choice without needing this
   // pre-pass at all, since the main loop processes slots in order.
+  // LANGUAGE CORPUS + POLICY PHASE -- the package-wide universal facet's own
+  // direct grants (e.g. the fixed "every character knows Common") are
+  // pre-passed FIRST, before every SLOT_ORDER slot, for the identical reason
+  // the pre-pass immediately below exists: a later choice (Rogue's own
+  // Thieves'-Cant-feature language pick, Ranger's Deft Explorer languages)
+  // must see Common as already active regardless of processing order.
+  for (const grant of input.universalFacet?.grants ?? []) {
+    if (input.knownDefinition && !input.knownDefinition(grant.set)) continue
+    values[grant.set] = grant.to
+  }
   for (const slotKey of SLOT_ORDER) {
     for (const grant of facetFor(blueprint[slotKey])?.grants ?? []) {
       if (input.knownDefinition && !input.knownDefinition(grant.set)) continue
@@ -852,6 +872,7 @@ export function buildActorState(input: ActorBridgeInput): ActorBridgeResult {
     }
   }
 
+  consumeFacet('universal', input.universalFacet ?? null)
   for (const slotKey of SLOT_ORDER) {
     consumeFacet(slotKey, facetFor(blueprint[slotKey]))
   }

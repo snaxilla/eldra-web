@@ -6996,6 +6996,20 @@
       "source": "feat.additionalSpells.innate"
     },
     {
+      "id": "package:dnd5e-2024:L1:language-choice:choose-languages",
+      "owner": {
+        "kind": "package",
+        "slug": "dnd5e-2024",
+        "name": "D&D 2024 Core Rules"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "language-choice",
+      "mandatory": true,
+      "cardinality": 2,
+      "source": "Choose Languages"
+    },
+    {
       "id": "species:aasimar-xphb:L1:spell-grant:species-additionalspells-known",
       "owner": {
         "kind": "species",

@@ -20,14 +20,16 @@
 //      re-asks the question.
 //   5. SERVER AUTHORITY: the real route independently re-validates the submitted answer
 //      (too few/too many/duplicate/non-proficient/crafted key), zero writes on every rejection.
-//      Rogue, as a WHOLE, remains creation-blocked by its own untouched real blocker (Thieves'
-//      Cant / language policy) -- a full, otherwise-legal Expertise answer passes its OWN
-//      validation and the route proceeds to refuse for that unrelated, honest reason alone,
-//      never for Expertise.
+//      Missing OR a full legal Expertise answer both now let Rogue creation SUCCEED -- as of the
+//      LANGUAGE CORPUS + POLICY PHASE, Rogue's own former remaining blocker (Thieves' Cant /
+//      language policy) is also implemented, so this file's own fixture reaches real success.
 //
 // Ranger's Level-2 "Deft Explorer" half of the identical real "Expertise" feature, and the
 // derived skill-bonus doubling proof, are covered separately in
 // character-progression-plan-rogue-expertise.test.ts (a progression-time choice, not creation).
+// The FULL end-to-end Rogue acceptance (every real decision answered, including the universal
+// and Rogue-owned language choices, through creationUnresolvedDecisions: [] and a fresh reload)
+// is proven in create-v2-language.test.ts.
 
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -396,23 +398,21 @@ describe('SERVER AUTHORITY -- the Expertise answer is independently validated, n
     expect(mocks.createEntityRecord).not.toHaveBeenCalled()
   })
 
-  it('missing the Expertise answer entirely is TOLERATED by the server\'s own choices.selections validation (Definition-keyed, not strictly mandatory) -- Rogue is still refused, but only by its real remaining blocker', async () => {
+  // LANGUAGE CORPUS + POLICY PHASE -- Rogue's own real remaining blocker (Thieves' Cant's
+  // embedded language choice) is now ALSO implemented, so Rogue is fully creation-available:
+  // these two cases now prove SUCCESS, never refusal. Full end-to-end acceptance (every real
+  // Rogue decision answered, including the universal + Rogue-owned language choices, through
+  // creationUnresolvedDecisions: []) is proven separately, in create-v2-language.test.ts.
+  it('missing the Expertise answer entirely is TOLERATED by the server\'s own choices.selections validation (Definition-keyed, not strictly mandatory) -- Rogue creation now succeeds', async () => {
     const { [EXPERTISE_KEY]: _omit, ...rest } = rogueBody().choices.selections
     const body = rogueBody({ choices: { selections: rest } })
-    const rejected = await handler(fakeEvent(body) as any).catch((error: any) => error)
-    expect(rejected.statusCode).toBe(400)
-    // Refused by Thieves' Cant (the real remaining blocker), never by a missing-Expertise message --
-    // proving the choices.selections validation block itself never rejected the omission.
-    expect(rejected.message).toMatch(/Thieves. Cant/)
-    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+    const result = await handler(fakeEvent(body) as any) as any
+    expect(result.id).toBe(store.createdEntityId)
   })
 
-  it('a FULL, otherwise-legal Expertise answer passes its OWN validation -- Rogue is refused only by Thieves\' Cant, never by Expertise', async () => {
-    const rejected = await handler(fakeEvent(rogueBody()) as any).catch((error: any) => error)
-    expect(rejected.statusCode).toBe(400)
-    expect(rejected.message).toMatch(/Thieves. Cant/)
-    expect(rejected.message).not.toMatch(/Expertise/)
-    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+  it('a FULL, otherwise-legal Expertise answer passes its OWN validation -- Rogue creation succeeds', async () => {
+    const result = await handler(fakeEvent(rogueBody()) as any) as any
+    expect(result.id).toBe(store.createdEntityId)
   })
 })
 

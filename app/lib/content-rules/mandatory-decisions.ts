@@ -27,7 +27,12 @@
 // It never blocks legality. Per-use triggers ("Whenever you activate...") are runtime
 // effects: a feature that opens with one produces no decision.
 
-export type DecisionOwnerKind = 'class' | 'subclass' | 'species' | 'background' | 'feat'
+// LANGUAGE CORPUS + POLICY PHASE -- 'package' names a decision owned by the active Rules
+// Package ITSELF (RulesPackageManifest.universalCreation, app/lib/rules/types.ts), never by
+// any one piece of content -- the real XPHB "Choose Languages" universal creation rule (PHB
+// chapter 2, p.37) is not a species/class/background/feat fact, and attaching it to all 12
+// classes would fake ownership and duplicate the same decision twelve times.
+export type DecisionOwnerKind = 'class' | 'subclass' | 'species' | 'background' | 'feat' | 'package'
 
 export type DecisionFamily =
   | 'feature-option'
@@ -665,9 +670,24 @@ function anyToolFamily(key: string): string {
 // Corpus-wide discovery. Stable order; identity collisions get an ordinal suffix.
 // ---------------------------------------------------------------------------
 
+// LANGUAGE CORPUS + POLICY PHASE -- the one real decision owned by neither a species, class,
+// background, nor feat corpus entry: core character-creation rules themselves (book-xphb.json,
+// "Choose Languages", PHB p.37): "Your character knows at least three languages: Common plus
+// two languages you roll or choose from the Standard Languages table." This applies to EVERY
+// character unconditionally. Discovered exactly ONCE here -- never duplicated per class, species,
+// or background corpus entry, since none of them actually declares it -- and owned by the
+// package itself (`kind: 'package'`), never any one piece of content. Fixed Common itself is
+// NOT a decision (no choice); only the "+2 Standard" half is.
+function detectUniversalDecisions(): DecisionRecord[] {
+  return [
+    make({ kind: 'package', slug: 'dnd5e-2024', name: 'D&D 2024 Core Rules' }, 1, 'language-choice', 'Choose Languages', 2)
+  ]
+}
+
 export function detectAll(corpus: RawCorpus): DecisionRecord[] {
   const featsByName = new Map(corpus.feats.map((f) => [f.name.toLowerCase(), f]))
   const out: DecisionRecord[] = []
+  out.push(...detectUniversalDecisions())
   for (const entry of corpus.classes) out.push(...detectClassDecisions(entry.cls, entry.features, entry.subclasses, entry.subclassFeatures))
   for (const race of corpus.races) out.push(...detectSpeciesDecisions(race))
   for (const bg of corpus.backgrounds) out.push(...detectBackgroundDecisions(bg, featsByName))

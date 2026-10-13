@@ -120,7 +120,10 @@ async function buildEvaluationSession(worldId: string | number, characterId: str
     stateSchemaVersion: runtime.runtime.manifest.stateSchemaVersion,
     knownDefinition: (id) => registry.has(id),
     rulesChoices: assembly.blueprint.rulesChoices,
-    levelDefinitionId: registry.getBySemanticRole('level')?.id
+    levelDefinitionId: registry.getBySemanticRole('level')?.id,
+    // LANGUAGE CORPUS + POLICY PHASE -- see character-derived.ts's own
+    // identical threading for why this exists.
+    universalFacet: runtime.runtime.manifest.universalCreation ?? null
   })
 
   return {

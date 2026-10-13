@@ -258,6 +258,9 @@ const { data: choiceOptions } = await useFetch<{
   available: boolean
   choiceSets?: Record<string, { prompt: string; label?: string; distinct?: boolean; maxPerOption?: number; contentCategory?: string; contentFilter?: { category: string; variants?: readonly string[] } }>
   optionLabels?: Record<string, string>
+  // LANGUAGE CORPUS + POLICY PHASE -- the active package's own package-wide creation facts/
+  // choices, relayed verbatim (see server/utils/world-rules-choice-options.ts).
+  universalCreation?: { grants?: { set: string; to: boolean | number | string }[]; choices?: { choiceSet: string; count: number; from?: string[]; requiresActive?: (string | null)[] }[] }
 }>(() => `/api/worlds/${worldId.value}/rules/choice-options`)
 
 const optionLabels = computed(() => choiceOptions.value?.optionLabels ?? {})
@@ -284,7 +287,11 @@ const creationContext = computed<BuilderCreationContext>(() => {
     spells: catalogue.value?.spells ?? [],
     // D&D 2024 Character Rules P8B -- already fetched (the same /catalogue response); threaded
     // through for equipment-grant title resolution.
-    items: catalogue.value?.items ?? []
+    items: catalogue.value?.items ?? [],
+    // LANGUAGE CORPUS + POLICY PHASE -- relayed verbatim from the SAME choice-options response,
+    // so the Builder's own 'universal' slot (characterBuilderSelection.ts's own
+    // creationChoicePresentation) matches the real server's identical construction.
+    universalFacet: choiceOptions.value?.universalCreation ?? null
   }
 })
 

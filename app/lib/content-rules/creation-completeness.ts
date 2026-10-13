@@ -63,6 +63,10 @@ export function creationUnresolvedDecisions(
 ): UnresolvedDecision[] {
   const feats = selection.feats ?? []
   const owned = decisions.filter((d) => {
+    // LANGUAGE CORPUS + POLICY PHASE -- a `package`-owned decision (the universal "Choose
+    // Languages" creation rule) is owned by EVERY creation unconditionally -- it belongs to no
+    // Species/Class/Background slot, so there is no selection field to match against.
+    if (d.owner.kind === 'package') return true
     if (d.owner.kind === 'species') return d.owner.slug === selection.species
     if (d.owner.kind === 'class') return d.owner.slug === selection.class && d.level <= 1
     if (d.owner.kind === 'background') return d.owner.slug === selection.background
@@ -135,8 +139,9 @@ export function blockerPhrase(unresolved: Pick<UnresolvedDecision, 'family' | 's
 // The summary every refusal shows. Grouped by the entity that owns each decision, so every
 // blocking species, class, background, or feat is named (never truncated away), capped in total.
 export function describeUnresolved(unresolved: readonly UnresolvedDecision[], cap = 8): string {
-  // Owners in the order a character is built: species, class, background, then feats.
-  const rank: Record<DecisionRecord['owner']['kind'], number> = { species: 0, class: 1, subclass: 2, background: 3, feat: 4 }
+  // Owners in the order a character is built: the universal package-owned rule first (it
+  // precedes even Species), then species, class, background, then feats.
+  const rank: Record<DecisionRecord['owner']['kind'], number> = { package: -1, species: 0, class: 1, subclass: 2, background: 3, feat: 4 }
   const ordered = [...unresolved].sort((x, y) => rank[x.owner.kind] - rank[y.owner.kind])
   const byOwner = new Map<string, string[]>()
   for (const u of ordered) {

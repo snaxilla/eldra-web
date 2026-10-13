@@ -245,15 +245,26 @@ export default defineEventHandler(async (event) => {
   // choices still outstanding, and the standalone proficiencies page exists
   // precisely so they can be answered later. Absent means outstanding, which
   // is a legal state the Sheet already reports.
-  const slots = [
-    { slot: 'species', facet: species.rulesFacet },
-    { slot: 'class', facet: characterClass.rulesFacet },
-    { slot: 'background', facet: background.rulesFacet }
-  ]
   // PHASE 2C.2B -- a ChoiceSet is content-backed only by the PACKAGE's own
   // declaration (`from.kind === 'fromContentCatalogue'`), read from the World's
   // active registry. Never inferred from an id, a label, or the answer's shape.
   const runtime = await getWorldRuntime(worldId)
+  // LANGUAGE CORPUS + POLICY PHASE -- the active package's own package-wide
+  // creation facts/choices (RulesPackageManifest.universalCreation), added as
+  // one more slot -- never a second mechanism. `resolveCreationChoices`
+  // (app/lib/characters/creation-choice-eligibility.ts) is already fully
+  // generic over this array; placed FIRST so its own fixed grants (Common)
+  // and choice (the universal +2 Standard languages) are visible to every
+  // later slot's own eligibility within this SAME call, exactly like
+  // Species/Class/Background composition already works. Absent/unconfigured
+  // package means `null`, a no-op, byte-identical to before this phase.
+  const universalFacet = runtime.configured && runtime.ok ? (runtime.runtime.manifest.universalCreation ?? null) : null
+  const slots = [
+    { slot: 'universal', facet: universalFacet },
+    { slot: 'species', facet: species.rulesFacet },
+    { slot: 'class', facet: characterClass.rulesFacet },
+    { slot: 'background', facet: background.rulesFacet }
+  ]
   const contentSelectorOf = (choiceSetId: string): ContentChoiceSelector | null => {
     if (!(runtime.configured && runtime.ok)) return null
     const definition = runtime.runtime.registry.getById(choiceSetId)

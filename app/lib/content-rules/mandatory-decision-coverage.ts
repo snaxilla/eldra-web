@@ -58,6 +58,14 @@ const SUPPORTED_EXPERTISE: Record<string, readonly number[]> = {
   'wizard-xphb': [2]
 }
 const FIGHTING_STYLE_LEVEL: Record<string, number> = { 'fighter-xphb': 1, 'paladin-xphb': 2, 'ranger-xphb': 2 }
+// LANGUAGE CORPUS + POLICY PHASE -- Rogue's own Thieves' Cant feature's embedded "one other
+// language" (Level 1, creation-time facet.choices) and Ranger's own Deft Explorer "Languages"
+// half (Level 2, progression:class.language-deft-explorer) -- the only two class-owned
+// language-choice decisions the real corpus has.
+const SUPPORTED_LANGUAGE_CHOICE: Record<string, readonly number[]> = {
+  'rogue-xphb': [1],
+  'ranger-xphb': [2]
+}
 
 // Facet presence, read from the package facet corpus (no name branching).
 function classFacetHasSkillChoice(slug: string): boolean {
@@ -461,12 +469,24 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: (d) => is(d, 'class', 'skill-choice') && !(d.level === 1 && d.source.startsWith('startingProficiencies.skills'))
   },
+  // LANGUAGE CORPUS + POLICY PHASE -- `blk:class-language` (previously the single catch-all for
+  // every `language-choice` decision) is RETIRED: all 3 real decisions (1 package-owned
+  // universal rule, Rogue L1, Ranger L2) are now authored. Split into two rules below so a
+  // FUTURE unsupported language decision (a new class, or any owner.kind/level this file does
+  // not yet name) still fails closed rather than being silently absorbed by either.
   {
-    id: 'blk:class-language',
-    status: 'blocked',
-    reason: 'Language choice: the corpus has no structured language grant (policy decision).',
-    ledgerIds: [],
-    matches: (d) => d.family === 'language-choice'
+    id: 'impl:universal-language-choice',
+    status: 'implemented',
+    reason: 'The universal "Choose Languages" creation rule (PHB chapter 2, p.37 -- Common plus two Standard languages) via RulesPackageManifest.universalCreation (app/lib/rules/types.ts), consumed through the SAME facet-shaped grants/choices pipeline every Species/Class/Background slot already uses (character-actor-bridge.ts\'s own `consumeFacet`; creation-choice-eligibility.ts\'s own generic slots array) -- a package-owned decision, never duplicated per class.',
+    ledgerIds: ['package:dnd5e-2024:universal-languages'],
+    matches: (d) => is(d, 'package', 'language-choice')
+  },
+  {
+    id: 'impl:class-language',
+    status: 'implemented',
+    reason: 'Rogue\'s own Thieves\' Cant feature\'s embedded "one other language" (Level 1, creation-time facet.choices) and Ranger\'s own Deft Explorer "Languages" half (Level 2, progression:class.language-deft-explorer) -- both real, textually-distinct decisions, each reusing the SAME generic `choice:language.known` primitive the universal rule above also uses.',
+    ledgerIds: ['rogue-xphb:thieves-cant-language', 'ranger-xphb:deft-explorer-language'],
+    matches: (d) => is(d, 'class', 'language-choice') && (SUPPORTED_LANGUAGE_CHOICE[d.owner.slug] ?? []).includes(d.level)
   },
   {
     id: 'impl:class-equipment',

@@ -612,7 +612,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:save.wis.proficient', to: true },
         { set: 'value:hit_points.hit_die_size', to: 8 },
         { set: 'value:spellcasting.ability.wis', to: true },
-        { set: 'value:spellcasting.caster_type.full', to: true }
+        { set: 'value:spellcasting.caster_type.full', to: true },
+        // LANGUAGE CORPUS + POLICY PHASE -- real corpus wording (class-druid.json's own
+        // "Druidic" classFeature, Level 1, source XPHB): "You know Druidic, the secret language
+        // of Druids...". Purely fixed -- no "and one other language of your choice" clause
+        // anywhere in the text, unlike Rogue's Thieves' Cant. A direct grant only, never a
+        // player decision; Druid's own always-prepared Speak with Animals and hidden-message
+        // mechanic are a separate, deferred runtime concern (see the audit's own Files note),
+        // not authored here.
+        { set: 'value:language.druidic.known', to: true }
       ],
       choices: [
         {
@@ -1037,15 +1045,20 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // feature (class-ranger.json's own `classFeature`, source XPHB)
       // nests a SECOND, independent Expertise grant inside its own prose
       // ("Choose one of your skill proficiencies with which you lack
-      // Expertise. You gain Expertise in that skill.") plus two languages
-      // (language policy, out of scope here -- never conflated with this
-      // Expertise grant). Real shape: one skill, genuinely unrestricted,
-      // same requiresActive eligibility as the Level-9 row above -- a
-      // separate Progression Definition (`progression:class.skill-
-      // expertise-deft-explorer`, named for the real feature, never for
-      // Ranger) because its level/count differ from every other Expertise
-      // row.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-deft-explorer', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-r'],
+      // Expertise. You gain Expertise in that skill."). Real shape: one
+      // skill, genuinely unrestricted, same requiresActive eligibility as
+      // the Level-9 row above -- a separate Progression Definition
+      // (`progression:class.skill-expertise-deft-explorer`, named for the
+      // real feature, never for Ranger) because its level/count differ
+      // from every other Expertise row.
+      // LANGUAGE CORPUS + POLICY PHASE -- the SAME Deft Explorer feature's
+      // own "Languages" half ("You know two languages of your choice from
+      // the language tables in chapter 2" -- Standard + Rare, genuinely
+      // unrestricted, no fixed component): `progression:class.language-
+      // deft-explorer`, a SIBLING Progression Definition at the identical
+      // Level 2, proven to coexist with the Expertise row above (same
+      // level, two independent decisions, never merged into one).
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-deft-explorer', 'progression:class.language-deft-explorer', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-r'],
       startingEquipment: {
         id: 'choice:equipment.starting.ranger-xphb',
         bundles: [
@@ -1082,7 +1095,13 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { set: 'value:tool.thieves_tools.proficient', to: true },
         { set: 'value:save.dex.proficient', to: true },
         { set: 'value:save.int.proficient', to: true },
-        { set: 'value:hit_points.hit_die_size', to: 8 }
+        { set: 'value:hit_points.hit_die_size', to: 8 },
+        // LANGUAGE CORPUS + POLICY PHASE -- real corpus wording (class-rogue.json's own
+        // "Thieves' Cant" classFeature, Level 1, source XPHB): "You know Thieves' Cant and one
+        // other language of your choice...". Thieves' Cant itself is FIXED, automatic, no
+        // alternative -- a direct grant, never a player decision. The embedded "one other
+        // language" half is authored separately below as a real choice.
+        { set: 'value:language.thieves_cant.known', to: true }
       ],
       choices: [
         {
@@ -1144,6 +1163,27 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.medicine.proficient', 'value:skill.nature.proficient', 'value:skill.perception.proficient',
             'value:skill.performance.proficient', 'value:skill.persuasion.proficient', 'value:skill.religion.proficient',
             'value:skill.sleight_of_hand.proficient', 'value:skill.stealth.proficient', 'value:skill.survival.proficient'
+          ]
+        },
+        // LANGUAGE CORPUS + POLICY PHASE -- Thieves' Cant's own embedded "one other language of
+        // your choice, which you choose from the language tables in chapter 2" (both Standard
+        // AND Rare -- "tables," plural). A genuine creation-time decision, bundled in the SAME
+        // real feature as the fixed Thieves' Cant grant above but authored as its own choice
+        // (never conflated with the fixed fact it sits beside). `excludeIfAlreadyActive`
+        // (choice:language.known's own declaration) already keeps Common, Thieves' Cant, and
+        // whatever the universal creation choice picked out of this list generically -- no
+        // Rogue-specific duplicate check.
+        {
+          choiceSet: 'choice:language.known',
+          count: 1,
+          from: [
+            'value:language.common.known', 'value:language.common_sign_language.known', 'value:language.draconic.known',
+            'value:language.dwarvish.known', 'value:language.elvish.known', 'value:language.giant.known',
+            'value:language.gnomish.known', 'value:language.goblin.known', 'value:language.halfling.known',
+            'value:language.orc.known', 'value:language.abyssal.known', 'value:language.celestial.known',
+            'value:language.deep_speech.known', 'value:language.druidic.known', 'value:language.infernal.known',
+            'value:language.primordial.known', 'value:language.sylvan.known', 'value:language.thieves_cant.known',
+            'value:language.undercommon.known'
           ]
         }
       ],

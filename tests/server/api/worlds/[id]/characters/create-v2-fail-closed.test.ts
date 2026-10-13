@@ -128,11 +128,15 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
 
   // WEAPON MASTERY PHASE -- Dwarf + Fighter + Criminal is now creation-complete through the real
   // authority (see create-v2-weapon-mastery.test.ts). ROGUE EXPERTISE PHASE -- Rogue's Expertise
-  // is now implemented too; its own remaining real blocker (Thieves' Cant / language policy,
-  // untouched by this phase) now proves this refusal path still works for a class this phase did
-  // not fully unlock.
-  it('a Rogue (Thieves\' Cant) on a Dwarf with a Criminal background is refused with zero writes', async () => {
-    await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'rogue-xphb', 'criminal-xphb')) as any))
+  // was then implemented too, but its own remaining real blocker (Thieves' Cant / language
+  // policy) was still untouched. LANGUAGE CORPUS + POLICY PHASE -- that blocker is now ALSO
+  // implemented (the real decision was Thieves' Cant's own embedded "one other language", not
+  // Thieves' Cant itself, which is a fixed grant). Dwarf + Rogue + Criminal is now creation-
+  // complete through the real authority (see create-v2-rogue-expertise.test.ts's own FIRST REAL
+  // LANGUAGE ACCEPTANCE block) -- Warlock's own untouched Eldritch Invocations blocker now proves
+  // this refusal path still works for the one class no phase has unlocked.
+  it('a Warlock still blocked by Eldritch Invocations is refused with zero writes', async () => {
+    await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'warlock-xphb', 'criminal-xphb')) as any))
       .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('cannot be completed yet') })
     expectNoWrites()
   })
@@ -145,18 +149,6 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
   it('a Warlock whose Level-1 Invocations cannot be recorded is refused, and the reason names the feature', async () => {
     await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'warlock-xphb', 'criminal-xphb')) as any))
       .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('Invocations') })
-    expectNoWrites()
-  })
-
-  // WEAPON MASTERY PHASE -- Fighter's own former Level-1 blocker (Weapon Mastery) is now
-  // representable. ROGUE EXPERTISE PHASE -- Rogue's own former Level-1 Expertise blocker is now
-  // ALSO representable; its remaining distinct, untouched real blocker (Thieves' Cant / language
-  // policy) proves the refusal still names the real blocking decision in plain words, never an
-  // internal identifier.
-  it('a Rogue still blocked by Thieves\' Cant is refused, and the reason names the decision in plain words', async () => {
-    const rejected = await handler(fakeEvent(bodyWith('dwarf-xphb', 'rogue-xphb', 'criminal-xphb')) as any).catch((error: any) => error)
-    expect(rejected.statusCode).toBe(400)
-    expect(rejected.message).toMatch(/Thieves. Cant/)
     expectNoWrites()
   })
 

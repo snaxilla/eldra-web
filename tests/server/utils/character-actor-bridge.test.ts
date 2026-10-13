@@ -210,14 +210,19 @@ describe('the hand-authored XPHB Rules Facets', () => {
       // (Barbarian's own `.melee-only` variant) at Level 1; Fighter declares it
       // ALONGSIDE its own pre-existing Fighting Style choice, for 3 total.
       // ROGUE EXPERTISE PHASE -- Rogue ALSO declares its own real Level-1
-      // `choice:skill.expertise` (facet.choices, never a Progression row), for
-      // 3 total: skill proficiency, weapon mastery, expertise. Ranger's own new
-      // Level-2 Deft Explorer Expertise is a PROGRESSION addition (see Ranger's
-      // facet `progression` array), not a facet.choices entry, so Ranger's own
-      // choices count here is unchanged.
+      // `choice:skill.expertise` (facet.choices, never a Progression row).
+      // Ranger's own new Level-2 Deft Explorer Expertise is a PROGRESSION
+      // addition (see Ranger's facet `progression` array), not a
+      // facet.choices entry, so Ranger's own choices count here is
+      // unchanged. LANGUAGE CORPUS + POLICY PHASE -- Rogue's own Thieves'
+      // Cant feature ALSO declares a real Level-1 `choice:language.known`
+      // (facet.choices), for 4 total: skill proficiency, weapon mastery,
+      // expertise, language. Ranger's own new Level-2 Deft Explorer
+      // language choice is likewise a PROGRESSION addition, not a
+      // facet.choices entry.
       const EXTRA_CHOICE_COUNT: Record<string, number> = {
         fighter: 2, bard: 1, monk: 1, cleric: 1, druid: 1,
-        barbarian: 1, paladin: 1, ranger: 1, rogue: 2
+        barbarian: 1, paladin: 1, ranger: 1, rogue: 3
       }
       expect(facet!.choices).toHaveLength(1 + (EXTRA_CHOICE_COUNT[name] ?? 0))
     }

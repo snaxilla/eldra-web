@@ -62,6 +62,7 @@ import {
   resolveCreationChoices,
   type ChoiceSetRule,
   type CreationChoicePresentation,
+  type CreationFacetInput,
   type CreationSlotInput
 } from '~/lib/characters/creation-choice-eligibility'
 import {
@@ -219,6 +220,13 @@ export type BuilderCreationContext = {
   // through, exactly like `spells` was threaded through for P2 before any real 'spells' choice
   // existed yet). Defaults to none so every existing caller is unchanged.
   items?: readonly BuilderEquipmentCatalogueEntry[]
+  // LANGUAGE CORPUS + POLICY PHASE -- the active Rules Package's own package-wide creation
+  // facts/choices (RulesPackageManifest.universalCreation, mirrored to the client by GET
+  // /api/worlds/:id/rules/choice-options). Structurally identical to a Species/Class/Background
+  // facet's own `grants`/`choices`, consumed as one more slot by `creationChoicePresentation`
+  // below -- never a second mechanism. Absent/null means no package-wide declaration (every
+  // package before this phase), a no-op.
+  universalFacet?: CreationFacetInput | null
 }
 
 // The entry shape this module needs from the World Content Catalogue for equipment presentation
@@ -425,7 +433,13 @@ export function creationChoicePresentation(
   draft: CharacterBuilderDraft,
   context: BuilderCreationContext = NO_CREATION_CONTENT
 ): CreationChoicePresentation[] {
-  const slots: CreationSlotInput[] = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
+  // LANGUAGE CORPUS + POLICY PHASE -- the universal package-wide slot, placed FIRST so its own
+  // fixed grants (Common) and choice are visible to every later slot's own eligibility within
+  // this SAME call -- the real server (create-v2.post.ts) builds the identical slots array.
+  const slots: CreationSlotInput[] = [
+    { slot: 'universal', facet: context.universalFacet ?? null },
+    ...CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
+  ]
   return resolveCreationChoices(
     slots,
     draft.choices.selections,

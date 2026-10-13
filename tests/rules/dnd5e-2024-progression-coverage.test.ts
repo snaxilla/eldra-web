@@ -84,6 +84,11 @@ const KNOWN_CLASS_FEATURE_NAMES = new Set([
   // "you choose"/"choose one of the following" literal) -- added by stable feature
   // identity, exactly like every other KNOWN name here.
   'Deft Explorer',
+  // LANGUAGE CORPUS + POLICY PHASE -- Rogue's own Level-1 "Thieves' Cant" nests a real
+  // embedded language decision ("...and one other language of your choice...") in prose that
+  // does not match STRONG_CHOICE_PHRASING either (no "you choose"/"choose one of the
+  // following" literal) -- added by stable feature identity, exactly like Deft Explorer above.
+  "Thieves' Cant",
   // FEATURE-OPTION PHASE -- Cleric Divine Order / Blessed Strikes, Druid Primal
   // Order / Elemental Fury: each a real, structural `{"type":"options","count":1,
   // "entries":[{refClassFeature...},{refClassFeature...}]}` choice (Cleric/Druid
@@ -221,7 +226,13 @@ describe('PROGRESSION COVERAGE LEDGER -- cross-checked against the real corpus',
     // membership check.
     const outOfScanScope = new Set([
       'background::Origin Feat',
-      'background::Starting Equipment / Gold'
+      'background::Starting Equipment / Gold',
+      // LANGUAGE CORPUS + POLICY PHASE -- the universal "Choose Languages" creation rule is core
+      // character-creation rulebook text (book-xphb.json, p.37), not a class/subclassFeature
+      // corpus entry -- the scan above only reads class files, so it never discovers this real
+      // decision and never will. Verified by construction (mandatory-decisions.ts's own
+      // `detectUniversalDecisions`), not by this membership check.
+      'package::Choose Languages'
     ])
     for (const entry of DND5E_2024_PROGRESSION_COVERAGE) {
       const key = `${entry.classSlug}::${entry.featureName}`

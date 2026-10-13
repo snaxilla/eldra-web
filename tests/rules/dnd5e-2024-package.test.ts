@@ -441,7 +441,24 @@ describe('the Rules / Content boundary', () => {
     // where "armor" and "class" happen to join, with no relation to the Orc
     // monster. A bare `.toContain('orc')` cannot tell that apart from an
     // actual `"label": "Orc"`; `\borc\b` can.
-    const serialized = JSON.stringify(loadPackage().definitions).toLowerCase()
+    //
+    // LANGUAGE CORPUS + POLICY PHASE -- the package's own `value:language.*`
+    // Definitions (id + label + tags together) are excluded from this blob
+    // first, and every remaining `value:language.<id>.known` REFERENCE
+    // (e.g. inside the Deft Explorer language Progression's own `from`
+    // array, or `choice:language.known`'s `writesTo` template) is stripped
+    // too: Halfling/Orc/Goblin each name BOTH a real XPHB species/monster
+    // AND a real XPHB LANGUAGE (languages.json, type: standard) -- the
+    // corpus itself reuses the word, and a language identity is genuinely
+    // mechanics (a Value the engine evaluates), never Content. Removing
+    // exactly that one vocabulary, never loosening the check itself, keeps
+    // the real guarantee: no species/class/background/spell/item/monster
+    // name may appear ANYWHERE ELSE.
+    const definitions = loadPackage().definitions as Array<{ id?: string }>
+    const nonLanguage = definitions.filter((d) => !String(d.id ?? '').startsWith('value:language.'))
+    const serialized = JSON.stringify(nonLanguage)
+      .replace(/value:language\.[a-z_]+\.known/gi, '')
+      .toLowerCase()
 
     for (const forbidden of [
       'fighter', 'wizard', 'rogue', 'cleric', 'barbarian', 'paladin',

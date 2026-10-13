@@ -1454,6 +1454,48 @@ export type RulesPackageManifest = {
   // declared category contains Definitions, or that a Definition's category
   // appears here.
   categories?: readonly RuleCategory[]
+  // LANGUAGE CORPUS + POLICY PHASE -- package-wide creation facts/choices
+  // that apply to EVERY character, independent of any Species/Class/
+  // Background/Feat content. The real-world need: D&D 2024's own universal
+  // "Choose Languages" rule (PHB chapter 2, p.37 -- "Your character knows at
+  // least three languages: Common plus two languages you roll or choose
+  // from the Standard Languages table") is not owned by any one piece of
+  // content, and attaching it to all 12 classes would fake ownership and
+  // duplicate the same decision twelve times. This field is the generic
+  // escape hatch: it is read ONLY by `consumeFacet`'s own facet-shaped
+  // grants/choices consumption (server/utils/character-actor-bridge.ts) and
+  // by the SAME creation-time eligibility every Species/Class/Background
+  // slot already uses (app/lib/characters/creation-choice-eligibility.ts),
+  // as one more slot -- never a second mechanism. A future non-D&D package
+  // could use it for an unrelated universal creation fact (a starting
+  // culture, a universal talent) without any application code naming
+  // languages; this file contains no such word anywhere.
+  //
+  // Mirrors `RulesFacetGrant`/`RulesFacetChoice` (app/lib/content-rules/
+  // types.ts) field-for-field, declared independently HERE because this is
+  // the Rules Engine layer, which never imports content-rules (content
+  // depends on rules, never the reverse, rules-package-architecture.md
+  // §8.3) -- the same "duplicated by necessity, not by accident" posture
+  // every other manifest-level declaration in this file already takes
+  // (`modifierTypes`, `requiredTraits`, `optionalRules`, `rollTypes`).
+  universalCreation?: UniversalCreationDeclaration
+}
+
+export type UniversalCreationGrant = {
+  set: DefinitionId
+  to: boolean | number | string
+}
+
+export type UniversalCreationChoice = {
+  choiceSet: DefinitionId
+  count: number
+  from?: DefinitionId[]
+  requiresActive?: (DefinitionId | null)[]
+}
+
+export type UniversalCreationDeclaration = {
+  grants?: UniversalCreationGrant[]
+  choices?: UniversalCreationChoice[]
 }
 
 // NOTE ON VALIDATION, for all of the above.

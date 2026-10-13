@@ -607,8 +607,8 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // unrestricted) distinct from the base-class Level-9 "Expertise" row
   // above -- real corpus text verified this phase (class-ranger.json's own
   // `classFeature`, source XPHB). Deft Explorer's OTHER half (two
-  // languages) is language policy, explicitly out of scope and never
-  // conflated with this row.
+  // languages) was language policy, deferred then -- now authored below
+  // (LANGUAGE CORPUS + POLICY PHASE), never conflated with this row.
   {
     id: 'ranger-xphb:expertise-deft-explorer',
     classSlug: 'ranger-xphb',
@@ -618,6 +618,49 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     status: 'IMPLEMENTED',
     implementationRef: 'progression:class.skill-expertise-deft-explorer',
     notes: 'A dedicated Progression Definition (count 1, same unrestricted 18-skill list + requiresActive shape as every other base-class Expertise row), referenced alongside (never merged with) `progression:class.skill-expertise-choose-two-at-9` on Ranger\'s own facet -- proven through Preview at Level 1 (no offer), crossing Level 2 (offer appears), Confirm, fresh reload, and a direct jump.'
+  },
+
+  // -------------------------------------------------------------------
+  // LANGUAGE CORPUS + POLICY PHASE -- the real XPHB language-build model.
+  // The universal "Choose Languages" creation rule (PHB chapter 2, p.37)
+  // is owned by the PACKAGE itself (`classSlug: 'package'`, mirroring the
+  // precedent `classSlug: 'background'` already sets for a Background-
+  // owned feature with no class slug of its own -- see `background:
+  // origin-feat:fixed-acquisition` above), never duplicated per class.
+  // Rogue's Thieves' Cant (Level 1) and Ranger's Deft Explorer (Level 2)
+  // each bundle a FIXED language grant (Thieves' Cant itself; nothing
+  // fixed on Ranger's own half) with a genuine embedded choice -- only the
+  // choice is a mandatory decision; the fixed grant is not.
+  // -------------------------------------------------------------------
+  {
+    id: 'package:dnd5e-2024:universal-languages',
+    classSlug: 'package',
+    featureName: 'Choose Languages',
+    levels: [1],
+    surface: 'creation',
+    status: 'IMPLEMENTED',
+    implementationRef: 'choice:language.known',
+    notes: 'The real core creation rule (not owned by any Species/Class/Background/Feat content): "Common plus two languages you roll or choose from the Standard Languages table." Authored as `RulesPackageManifest.universalCreation` (app/lib/rules/types.ts) -- a fixed grant (`value:language.common.known`) plus one real choice (`choice:language.known`, count 2, the 10 Standard languages) -- consumed through the SAME `consumeFacet` path as any Species/Class/Background facet (character-actor-bridge.ts) and the SAME creation-time eligibility (app/lib/characters/creation-choice-eligibility.ts), as one more slot in both pipelines. Proven for Dwarf+Fighter+Criminal and Dwarf+Rogue+Criminal through the real, unstubbed create-v2 route.'
+  },
+  {
+    id: 'rogue-xphb:thieves-cant-language',
+    classSlug: 'rogue-xphb',
+    featureName: "Thieves' Cant",
+    levels: [1],
+    surface: 'creation',
+    status: 'IMPLEMENTED',
+    implementationRef: 'choice:language.known',
+    notes: 'Real corpus wording: "You know Thieves\' Cant and one other language of your choice, which you choose from the language tables in chapter 2" (Standard + Rare, 19 total). Thieves\' Cant itself is a fixed grant (`value:language.thieves_cant.known`), authored on Rogue\'s own facet `grants`, never a decision; the embedded "one other language" half is the real decision, authored as a creation-time `facet.choices` entry (count 1, from all 19) reusing the SAME `choice:language.known` ChoiceSet the universal rule above declares.'
+  },
+  {
+    id: 'ranger-xphb:deft-explorer-language',
+    classSlug: 'ranger-xphb',
+    featureName: 'Deft Explorer',
+    levels: [2],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.language-deft-explorer',
+    notes: 'Real corpus wording: "You know two languages of your choice from the language tables in chapter 2" (Standard + Rare, 19 total, no fixed component). A dedicated Progression Definition at the identical Level 2 as the Expertise half above, proven to coexist with it (two independent decisions, never merged) through Preview/Confirm/fresh reload/a direct jump.'
   },
 
   // -------------------------------------------------------------------

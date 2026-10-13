@@ -323,8 +323,11 @@ describe('P8 -- starting equipment reconciliation', () => {
     expect(availableSpecies.length).toBe(3)
     // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the roster.
     // WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, Ranger join too (Rogue remains
-    // creation-blocked by Expertise and Thieves' Cant/language policy, untouched by this phase).
-    expect(availableClasses.sort()).toEqual(['barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb', 'monk-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'wizard-xphb'])
+    // creation-blocked by Expertise and Thieves' Cant/language policy at the time).
+    // LANGUAGE CORPUS + POLICY PHASE -- Rogue's own Thieves' Cant language choice is now
+    // authored too; Rogue joins the roster (Warlock remains blocked by Eldritch Invocations
+    // alone).
+    expect(availableClasses.sort()).toEqual(['barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb', 'monk-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb', 'sorcerer-xphb', 'wizard-xphb'])
     expect(availableBackgrounds.length).toBe(13)
 
     let combinations = 0
@@ -335,9 +338,10 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // WEAPON MASTERY PHASE -- 3 species * 10 available classes * 13 available backgrounds = 390,
-    // enumerated through the real authority above (never computed as a hardcoded product).
-    expect(combinations).toBe(390)
+    // LANGUAGE CORPUS + POLICY PHASE -- 3 species * 11 available classes * 13 available
+    // backgrounds = 429, enumerated through the real authority above (never computed as a
+    // hardcoded product).
+    expect(combinations).toBe(429)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
@@ -389,12 +393,15 @@ describe('WEAPON MASTERY PHASE -- reconciliation', () => {
   })
 
   // ROGUE EXPERTISE PHASE -- Expertise is now implemented (see below); Rogue's own remaining
-  // real blocker is Thieves' Cant / language policy alone.
-  it('AVAILABILITY -- Rogue remains creation-blocked by its own untouched real blocker (Thieves\' Cant)', () => {
+  // real blocker WAS Thieves' Cant / language policy alone. LANGUAGE CORPUS + POLICY PHASE --
+  // that blocker is now ALSO implemented (the real decision was Thieves' Cant's own embedded
+  // "one other language", not Thieves' Cant itself, a fixed grant); Rogue is fully unresolved.
+  it('AVAILABILITY -- Rogue is now fully creation-complete (Weapon Mastery, Expertise, and language all implemented)', () => {
     const rogueUnresolved = creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'rogue-xphb', background: 'criminal-xphb', feats: [] })
     expect(rogueUnresolved.some((u) => u.family === 'weapon-mastery')).toBe(false)
     expect(rogueUnresolved.some((u) => u.family === 'expertise-choice')).toBe(false)
-    expect(rogueUnresolved.some((u) => u.family === 'language-choice')).toBe(true)
+    expect(rogueUnresolved.some((u) => u.family === 'language-choice')).toBe(false)
+    expect(rogueUnresolved).toEqual([])
   })
 
   it('FIRST REAL CHARACTERS -- Dwarf + Barbarian/Fighter/Paladin/Ranger + Criminal are all creation-complete through the real authority', () => {
@@ -441,16 +448,87 @@ describe('ROGUE EXPERTISE + RANGER DEFT EXPLORER PHASE -- reconciliation', () =>
     expect(deftExplorer?.level).toBe(2)
   })
 
-  it('AVAILABILITY -- Classes/Combinations are unchanged by this phase (10/12, 390) -- Expertise alone does not move either boundary', () => {
+  // LANGUAGE CORPUS + POLICY PHASE -- Rogue's own real remaining blocker (its Thieves' Cant
+  // feature's embedded language choice) is now ALSO implemented; Rogue joins the roster (11/12,
+  // Warlock alone remains blocked by Eldritch Invocations).
+  it('AVAILABILITY -- Classes/Combinations after this phase (11/12, 429) -- Rogue joins, Warlock alone remains blocked', () => {
     const CLASSES: ReadonlyArray<readonly [string, boolean]> = [
       ['barbarian-xphb', true], ['bard-xphb', true], ['cleric-xphb', true], ['druid-xphb', true],
       ['fighter-xphb', true], ['monk-xphb', true], ['paladin-xphb', true], ['ranger-xphb', true],
-      ['rogue-xphb', false], ['sorcerer-xphb', true], ['warlock-xphb', false], ['wizard-xphb', true]
+      ['rogue-xphb', true], ['sorcerer-xphb', true], ['warlock-xphb', false], ['wizard-xphb', true]
     ]
     const available = CLASSES.filter(([classSlug]) =>
       creationUnresolvedDecisions({ species: 'dwarf-xphb', class: classSlug, background: 'criminal-xphb', feats: [] }).length === 0
     ).map(([classSlug]) => classSlug)
     expect(available.sort()).toEqual(CLASSES.filter(([, expected]) => expected).map(([classSlug]) => classSlug).sort())
-    expect(available).toHaveLength(10)
+    expect(available).toHaveLength(11)
+  })
+})
+
+describe('LANGUAGE CORPUS + POLICY PHASE -- reconciliation', () => {
+  const languageDecisions = DECISIONS.filter((d) => d.family === 'language-choice')
+
+  it('RECLASSIFICATION -- all 3 real language-choice decisions (1 package-owned universal rule, Rogue L1, Ranger L2) are now implemented', () => {
+    expect(languageDecisions.length).toBe(3)
+    expect(languageDecisions.every((d) => classifyDecision(d).status === 'implemented')).toBe(true)
+    const byOwner = languageDecisions.map((d) => `${d.owner.kind}:${d.owner.slug}:L${d.level}`).sort()
+    expect(byOwner).toEqual(['class:ranger-xphb:L2', 'class:rogue-xphb:L1', 'package:dnd5e-2024:L1'])
+  })
+
+  it('the package-owned universal decision is owned by neither Species, Class, nor Background content', () => {
+    const universal = languageDecisions.find((d) => d.owner.kind === 'package')!
+    expect(universal.owner.slug).toBe('dnd5e-2024')
+    expect(universal.source).toBe('Choose Languages')
+    expect(universal.cardinality).toBe(2)
+  })
+
+  it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
+    expect(contractViolations(DECISIONS)).toEqual([])
+  })
+
+  it('BITE -- deleting impl:universal-language-choice leaves the package-owned decision uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:universal-language-choice')
+    const universal = languageDecisions.find((d) => d.owner.kind === 'package')!
+    expect(without.filter((rule) => rule.matches(universal)).length).toBe(0)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- deleting impl:class-language leaves Rogue\'s and Ranger\'s own decisions uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:class-language')
+    const classOwned = languageDecisions.filter((d) => d.owner.kind === 'class')
+    expect(classOwned).toHaveLength(2)
+    expect(classOwned.every((d) => without.filter((rule) => rule.matches(d)).length === 0)).toBe(true)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('a FUTURE, unsupported class-owned language decision is never falsely greened by impl:class-language (fails closed)', () => {
+    const synthetic: DecisionRecord = {
+      id: 'class:future-xphb:L1:language-choice:synthetic',
+      owner: { kind: 'class', slug: 'future-xphb', name: 'Future' },
+      level: 1,
+      timing: 'creation',
+      family: 'language-choice',
+      mandatory: true,
+      cardinality: 1,
+      source: 'Synthetic'
+    }
+    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic))).toEqual([])
+  })
+
+  it('every real language-choice decision is classified by exactly one rule (impl:universal-language-choice or impl:class-language, never both)', () => {
+    for (const d of languageDecisions) {
+      expect(matchingRules(d).length, d.id).toBe(1)
+    }
+  })
+
+  it('fixed language grants (Common, Thieves\' Cant, Druidic) never appear as mandatory decisions -- only the embedded choice does', () => {
+    // Rogue's own Thieves' Cant feature grants TWO facts (the fixed Cant itself, and one
+    // decision); exactly one language-choice decision is attributed to it, never two.
+    const rogueLanguage = languageDecisions.filter((d) => d.owner.slug === 'rogue-xphb')
+    expect(rogueLanguage).toHaveLength(1)
+    expect(rogueLanguage[0]!.cardinality).toBe(1)
+    // Druid's own Druidic feature is PURELY fixed (no embedded choice) -- zero language-choice
+    // decisions attributed to Druid at all, proven directly against the real decision population.
+    expect(languageDecisions.some((d) => d.owner.slug === 'druid-xphb')).toBe(false)
   })
 })

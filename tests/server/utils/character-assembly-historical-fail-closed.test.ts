@@ -150,3 +150,46 @@ describe('PHASE 0 -- a historical Fighter predating Weapon Mastery still loads, 
     expect(writes).toHaveLength(0)
   })
 })
+
+// LANGUAGE CORPUS + POLICY PHASE -- a Rogue character record with no `rules_choices` block at
+// all (predating even the universal "Choose Languages" creation rule and Rogue's own Thieves'
+// Cant language choice) must still load exactly the same way: no migration, no retroactive
+// grant, no read-time mutation. It may honestly lack the newly-authored language selections --
+// the fixed Common/Thieves' Cant grants are not stored answers at all, so they are unaffected.
+describe('PHASE 0 -- a historical Rogue predating the language build model still loads, with no retroactive grant', () => {
+  const ROGUE_CATALOGUE = {
+    ...CATALOGUE,
+    classes: [entry('Rogue', 'rogue-xphb', { rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'rogue-xphb') ?? undefined })]
+  }
+  const ROGUE_CATALOGUE_SELECTION = { ...CATALOGUE_SELECTION, class: { packageId: PKG, slug: 'rogue-xphb' } }
+
+  beforeEach(() => {
+    mocks.getWorldContentCatalogue.mockResolvedValue(ROGUE_CATALOGUE)
+    mocks.directusServiceRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/items/entities')) {
+        return { data: { id: Number(CHARACTER_ID), world_id: Number(WORLD_ID), entity_type: 'pc', title: 'Historic Rogue' } }
+      }
+      if (path.startsWith('/items/block_instances')) {
+        // No 'rules_choices' row at all -- predates this phase's own language authoring.
+        return { data: [{ block_key: 'catalogue_selection', data: ROGUE_CATALOGUE_SELECTION }] }
+      }
+      return { data: null }
+    })
+  })
+
+  it('assembles for read and display, even though no language choice was ever recorded', async () => {
+    const result = await assembleCharacter(WORLD_ID, CHARACTER_ID)
+    expect(result.available).toBe(true)
+  })
+
+  it('the read path performs no write and invents no language selection', async () => {
+    const result: any = await assembleCharacter(WORLD_ID, CHARACTER_ID)
+    expect(result.blueprint?.rulesChoices?.selections?.['class:choice:language.known']).toBeUndefined()
+    expect(result.blueprint?.rulesChoices?.selections?.['universal:choice:language.known']).toBeUndefined()
+    const writes = mocks.directusServiceRequest.mock.calls.filter((call) => {
+      const options = call[1] as { method?: string } | undefined
+      return options?.method && options.method !== 'GET'
+    })
+    expect(writes).toHaveLength(0)
+  })
+})

@@ -79,15 +79,20 @@ describe('P2 spell corpus authority', () => {
   // mastery/.melee-only), moving the census from 395/217 to 405/207. The optional Long-Rest
   // replacement clause and the mastery property's own runtime effects remain separate,
   // unreclassified accountability rows.
-  it('the Phase-0 decision census after the Weapon Mastery phase: 647 total, 405 implemented, 207 blocked, 35 optional', () => {
+  // ROGUE EXPERTISE PHASE reclassified exactly 2 decisions (Rogue Level 1 "Expertise", a creation-
+  // time facet.choices entry; Ranger Level 2 "Deft Explorer", a dedicated Progression row) from
+  // blocked to implemented, moving the census from 405/207 to 407/205. Rogue's own remaining real
+  // blocker (Thieves' Cant / language policy) is untouched -- this phase alone does not unlock
+  // Rogue creation.
+  it('the Phase-0 decision census after the Rogue Expertise phase: 647 total, 407 implemented, 205 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(647)
-    expect(counts.implemented).toBe(405)
-    expect(counts.blocked).toBe(207)
+    expect(counts.implemented).toBe(407)
+    expect(counts.blocked).toBe(205)
     expect(counts.optional).toBe(35)
   })
 

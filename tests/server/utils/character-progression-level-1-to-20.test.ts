@@ -1294,9 +1294,22 @@ const RAW_CATEGORY_BY_SLUG = new Map(xphbFeats.feats.map((raw) => [`${raw.name.t
 const BLESSED_REF = { packageId: FEAT_PACKAGE_ID, slug: 'blessed-warrior-xphb' }
 const DRUIDIC_REF = { packageId: FEAT_PACKAGE_ID, slug: 'druidic-warrior-xphb' }
 
+// ROGUE EXPERTISE PHASE -- Ranger's own Level-2 "Deft Explorer" also grants
+// Expertise (progression:class.skill-expertise-deft-explorer), a SECOND
+// mandatory Level-2 progression choice alongside Fighting Style. A real,
+// legal answer for it (one of this fixture's own real proficient skills,
+// via `realSkillProficiencyAnswer`) so `plan.valid`/Confirm below are judged
+// against a fully-answered Level 2, exactly as the real engine requires.
+// Paladin has no such second choice, so its own case supplies none.
+function deftExplorerAnswerFor(classSlug: string): Record<string, string[]> {
+  const proficient = realSkillProficiencyAnswer(classSlug)[0]
+  if (!proficient) return {}
+  return { [progressionChoiceKey('class', 2, 'choice:skill.expertise')]: [proficient.replace('.proficient', '.expertise')] }
+}
+
 const STYLE_CASES = [
-  { classSlug: 'paladin-xphb', choiceSetId: 'choice:feat.fighting-style.fs-and-fs-p', own: BLESSED_REF, foreign: DRUIDIC_REF, ownLabel: 'Blessed Warrior', foreignLabel: 'Druidic Warrior' },
-  { classSlug: 'ranger-xphb', choiceSetId: 'choice:feat.fighting-style.fs-and-fs-r', own: DRUIDIC_REF, foreign: BLESSED_REF, ownLabel: 'Druidic Warrior', foreignLabel: 'Blessed Warrior' }
+  { classSlug: 'paladin-xphb', choiceSetId: 'choice:feat.fighting-style.fs-and-fs-p', own: BLESSED_REF, foreign: DRUIDIC_REF, ownLabel: 'Blessed Warrior', foreignLabel: 'Druidic Warrior', extraAnswers: {} as Record<string, string[]> },
+  { classSlug: 'ranger-xphb', choiceSetId: 'choice:feat.fighting-style.fs-and-fs-r', own: DRUIDIC_REF, foreign: BLESSED_REF, ownLabel: 'Druidic Warrior', foreignLabel: 'Blessed Warrior', extraAnswers: deftExplorerAnswerFor('ranger-xphb') }
 ] as const
 
 describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug Level 1 -> 2 (whole real feat corpus)', (style) => {
@@ -1383,7 +1396,7 @@ describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug Level 1 -> 2 (who
   })
 
   it('a legal ordinary style confirms, persists through progression.feats[] under a stable key, and the feature Value is in the persisted-read path', async () => {
-    const answers = { [styleKey]: [serializeContentRef(archery)] }
+    const answers = { [styleKey]: [serializeContentRef(archery)], ...style.extraAnswers }
     const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
     if (!plan.ok) throw new Error('plan failed')
     expect(plan.plan.valid).toBe(true)
@@ -1422,7 +1435,7 @@ describe.each(STYLE_CASES)('FIGHTING STYLE 2C.2A -- $classSlug persist -> fresh 
   })
 
   it('Confirm -> JSON persistence -> normalizeStoredProgression -> fresh derive (no tentative state): the style is still owned and its choice resolves', async () => {
-    const answers = { [styleKey]: [serializeContentRef(archery)] }
+    const answers = { [styleKey]: [serializeContentRef(archery)], ...style.extraAnswers }
     const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
     if (!plan.ok) throw new Error('plan failed')
     const result = await confirmProgression(WORLD_ID, CHARACTER_ID, 2, plan.plan.fingerprint, answers)

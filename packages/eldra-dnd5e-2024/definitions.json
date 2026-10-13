@@ -1631,6 +1631,64 @@
     ]
   },
   {
+    "id": "progression:class.skill-expertise-deft-explorer",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Skill Expertise (Deft Explorer, Lvl 2)",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "choices": [
+          {
+            "choiceSet": "choice:skill.expertise",
+            "count": 1,
+            "from": [
+              "value:skill.acrobatics.expertise",
+              "value:skill.animal_handling.expertise",
+              "value:skill.arcana.expertise",
+              "value:skill.athletics.expertise",
+              "value:skill.deception.expertise",
+              "value:skill.history.expertise",
+              "value:skill.insight.expertise",
+              "value:skill.intimidation.expertise",
+              "value:skill.investigation.expertise",
+              "value:skill.medicine.expertise",
+              "value:skill.nature.expertise",
+              "value:skill.perception.expertise",
+              "value:skill.performance.expertise",
+              "value:skill.persuasion.expertise",
+              "value:skill.religion.expertise",
+              "value:skill.sleight_of_hand.expertise",
+              "value:skill.stealth.expertise",
+              "value:skill.survival.expertise"
+            ],
+            "requiresActive": [
+              "value:skill.acrobatics.proficient",
+              "value:skill.animal_handling.proficient",
+              "value:skill.arcana.proficient",
+              "value:skill.athletics.proficient",
+              "value:skill.deception.proficient",
+              "value:skill.history.proficient",
+              "value:skill.insight.proficient",
+              "value:skill.intimidation.proficient",
+              "value:skill.investigation.proficient",
+              "value:skill.medicine.proficient",
+              "value:skill.nature.proficient",
+              "value:skill.perception.proficient",
+              "value:skill.performance.proficient",
+              "value:skill.persuasion.proficient",
+              "value:skill.religion.proficient",
+              "value:skill.sleight_of_hand.proficient",
+              "value:skill.stealth.proficient",
+              "value:skill.survival.proficient"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
     "id": "progression:class.skill-expertise-choose-two-at-2-and-9",
     "kind": "progression",
     "category": "progression",

@@ -388,10 +388,12 @@ describe('WEAPON MASTERY PHASE -- reconciliation', () => {
     expect(violations.some((v) => v.includes(weaponMasteryDecisions[0]!.id))).toBe(true)
   })
 
-  it('AVAILABILITY -- Rogue remains creation-blocked by its own untouched real blockers (Expertise, Thieves\' Cant)', () => {
+  // ROGUE EXPERTISE PHASE -- Expertise is now implemented (see below); Rogue's own remaining
+  // real blocker is Thieves' Cant / language policy alone.
+  it('AVAILABILITY -- Rogue remains creation-blocked by its own untouched real blocker (Thieves\' Cant)', () => {
     const rogueUnresolved = creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'rogue-xphb', background: 'criminal-xphb', feats: [] })
     expect(rogueUnresolved.some((u) => u.family === 'weapon-mastery')).toBe(false)
-    expect(rogueUnresolved.some((u) => u.family === 'expertise-choice')).toBe(true)
+    expect(rogueUnresolved.some((u) => u.family === 'expertise-choice')).toBe(false)
     expect(rogueUnresolved.some((u) => u.family === 'language-choice')).toBe(true)
   })
 
@@ -399,5 +401,56 @@ describe('WEAPON MASTERY PHASE -- reconciliation', () => {
     for (const classSlug of ['barbarian-xphb', 'fighter-xphb', 'paladin-xphb', 'ranger-xphb']) {
       expect(creationUnresolvedDecisions({ species: 'dwarf-xphb', class: classSlug, background: 'criminal-xphb', feats: [] }), classSlug).toEqual([])
     }
+  })
+})
+
+describe('ROGUE EXPERTISE + RANGER DEFT EXPLORER PHASE -- reconciliation', () => {
+  const expertiseDecisions = DECISIONS.filter((d) => d.owner.kind === 'class' && d.family === 'expertise-choice')
+
+  it('RECLASSIFICATION -- all 7 real Expertise decisions (Bard L2/L9, Ranger L2/L9, Rogue L1/L6, Wizard L2) are now implemented', () => {
+    expect(expertiseDecisions.length).toBe(7)
+    expect(expertiseDecisions.every((d) => classifyDecision(d).status === 'implemented')).toBe(true)
+    const byClassLevel = expertiseDecisions.map((d) => `${d.owner.slug}:L${d.level}`).sort()
+    expect(byClassLevel).toEqual([
+      'bard-xphb:L2', 'bard-xphb:L9',
+      'ranger-xphb:L2', 'ranger-xphb:L9',
+      'rogue-xphb:L1', 'rogue-xphb:L6',
+      'wizard-xphb:L2'
+    ])
+  })
+
+  it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
+    expect(contractViolations(DECISIONS)).toEqual([])
+  })
+
+  it('BITE -- deleting impl:expertise leaves all 7 real decisions uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:expertise')
+    expect(expertiseDecisions.every((d) => without.filter((rule) => rule.matches(d)).length === 0)).toBe(true)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('every real Expertise decision is classified by impl:expertise alone (exactly one rule)', () => {
+    for (const d of expertiseDecisions) {
+      expect(matchingRules(d).map((r) => r.id), d.id).toEqual(['impl:expertise'])
+    }
+  })
+
+  it('AVAILABILITY -- Ranger remains creation-available; Deft Explorer\'s Expertise is a real Level-2 decision, outside creation\'s own Level-1 scope', () => {
+    expect(creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'ranger-xphb', background: 'criminal-xphb', feats: [] })).toEqual([])
+    const deftExplorer = expertiseDecisions.find((d) => d.owner.slug === 'ranger-xphb' && d.source === 'Deft Explorer')
+    expect(deftExplorer?.level).toBe(2)
+  })
+
+  it('AVAILABILITY -- Classes/Combinations are unchanged by this phase (10/12, 390) -- Expertise alone does not move either boundary', () => {
+    const CLASSES: ReadonlyArray<readonly [string, boolean]> = [
+      ['barbarian-xphb', true], ['bard-xphb', true], ['cleric-xphb', true], ['druid-xphb', true],
+      ['fighter-xphb', true], ['monk-xphb', true], ['paladin-xphb', true], ['ranger-xphb', true],
+      ['rogue-xphb', false], ['sorcerer-xphb', true], ['warlock-xphb', false], ['wizard-xphb', true]
+    ]
+    const available = CLASSES.filter(([classSlug]) =>
+      creationUnresolvedDecisions({ species: 'dwarf-xphb', class: classSlug, background: 'criminal-xphb', feats: [] }).length === 0
+    ).map(([classSlug]) => classSlug)
+    expect(available.sort()).toEqual(CLASSES.filter(([, expected]) => expected).map(([classSlug]) => classSlug).sort())
+    expect(available).toHaveLength(10)
   })
 })

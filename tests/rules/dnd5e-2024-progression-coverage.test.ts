@@ -78,6 +78,12 @@ const STRONG_CHOICE_PHRASING = /you (can )?choose (one|two|three|a|an)\b|choose 
 const KNOWN_CLASS_FEATURE_NAMES = new Set([
   'Ability Score Improvement', 'Epic Boon', 'Weapon Mastery', 'Fighting Style',
   'Expertise', 'Metamagic', 'Eldritch Invocations', 'Mystic Arcanum', 'Spellcasting',
+  // ROGUE EXPERTISE PHASE -- Ranger's own Level-2 "Deft Explorer" nests a second,
+  // independent Expertise grant in prose that does not match STRONG_CHOICE_PHRASING
+  // ("Choose one of your skill proficiencies with which you lack Expertise" has no
+  // "you choose"/"choose one of the following" literal) -- added by stable feature
+  // identity, exactly like every other KNOWN name here.
+  'Deft Explorer',
   // FEATURE-OPTION PHASE -- Cleric Divine Order / Blessed Strikes, Druid Primal
   // Order / Elemental Fury: each a real, structural `{"type":"options","count":1,
   // "entries":[{refClassFeature...},{refClassFeature...}]}` choice (Cleric/Druid

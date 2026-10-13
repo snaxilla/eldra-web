@@ -173,7 +173,9 @@ describe('the hand-authored XPHB Rules Facets', () => {
     for (const ability of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
       expect(unique).toContain(`value:save.${ability}.proficient`)
     }
-    expect(unique.filter((id) => id.startsWith('value:skill.'))).toHaveLength(18)
+    // ROGUE EXPERTISE PHASE -- 18 `.proficient` + 18 `.expertise`, now that Rogue's own
+    // Level-1 creation-time Expertise choice (facet.choices) references the latter.
+    expect(unique.filter((id) => id.startsWith('value:skill.'))).toHaveLength(36)
     expect(unique).toContain('choice:skill.proficiency')
   })
 
@@ -207,9 +209,15 @@ describe('the hand-authored XPHB Rules Facets', () => {
       // Barbarian/Paladin/Ranger/Rogue also declare `choice:class.weapon-mastery`
       // (Barbarian's own `.melee-only` variant) at Level 1; Fighter declares it
       // ALONGSIDE its own pre-existing Fighting Style choice, for 3 total.
+      // ROGUE EXPERTISE PHASE -- Rogue ALSO declares its own real Level-1
+      // `choice:skill.expertise` (facet.choices, never a Progression row), for
+      // 3 total: skill proficiency, weapon mastery, expertise. Ranger's own new
+      // Level-2 Deft Explorer Expertise is a PROGRESSION addition (see Ranger's
+      // facet `progression` array), not a facet.choices entry, so Ranger's own
+      // choices count here is unchanged.
       const EXTRA_CHOICE_COUNT: Record<string, number> = {
         fighter: 2, bard: 1, monk: 1, cleric: 1, druid: 1,
-        barbarian: 1, paladin: 1, ranger: 1, rogue: 1
+        barbarian: 1, paladin: 1, ranger: 1, rogue: 2
       }
       expect(facet!.choices).toHaveLength(1 + (EXTRA_CHOICE_COUNT[name] ?? 0))
     }

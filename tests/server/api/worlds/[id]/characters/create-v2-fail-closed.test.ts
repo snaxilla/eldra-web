@@ -127,10 +127,11 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
   })
 
   // WEAPON MASTERY PHASE -- Dwarf + Fighter + Criminal is now creation-complete through the real
-  // authority (see create-v2-weapon-mastery.test.ts). Rogue's own remaining real blockers
-  // (Expertise, Thieves' Cant/language policy -- untouched by this phase) now prove this refusal
-  // path still works for a class this phase did not unlock.
-  it('a Rogue (Expertise and Thieves\' Cant) on a Dwarf with a Criminal background is refused with zero writes', async () => {
+  // authority (see create-v2-weapon-mastery.test.ts). ROGUE EXPERTISE PHASE -- Rogue's Expertise
+  // is now implemented too; its own remaining real blocker (Thieves' Cant / language policy,
+  // untouched by this phase) now proves this refusal path still works for a class this phase did
+  // not fully unlock.
+  it('a Rogue (Thieves\' Cant) on a Dwarf with a Criminal background is refused with zero writes', async () => {
     await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'rogue-xphb', 'criminal-xphb')) as any))
       .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('cannot be completed yet') })
     expectNoWrites()
@@ -148,12 +149,14 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
   })
 
   // WEAPON MASTERY PHASE -- Fighter's own former Level-1 blocker (Weapon Mastery) is now
-  // representable; Rogue's own distinct, untouched real blocker (Expertise) proves the refusal
-  // still names the real blocking decision in plain words, never an internal identifier.
-  it('a Rogue still blocked by Expertise is refused, and the reason names the decision in plain words', async () => {
+  // representable. ROGUE EXPERTISE PHASE -- Rogue's own former Level-1 Expertise blocker is now
+  // ALSO representable; its remaining distinct, untouched real blocker (Thieves' Cant / language
+  // policy) proves the refusal still names the real blocking decision in plain words, never an
+  // internal identifier.
+  it('a Rogue still blocked by Thieves\' Cant is refused, and the reason names the decision in plain words', async () => {
     const rejected = await handler(fakeEvent(bodyWith('dwarf-xphb', 'rogue-xphb', 'criminal-xphb')) as any).catch((error: any) => error)
     expect(rejected.statusCode).toBe(400)
-    expect(rejected.message).toMatch(/Expertise/)
+    expect(rejected.message).toMatch(/Thieves. Cant/)
     expectNoWrites()
   })
 

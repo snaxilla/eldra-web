@@ -27,6 +27,19 @@
 // caller's declared slot order, then facet order -- deterministic, never map
 // iteration order. Only an answer that is itself still eligible counts, so a
 // stale illegal answer never blocks another choice.
+//
+// ROGUE EXPERTISE PHASE -- a second, independent rule reuses the SAME
+// `acquired` set the rule above builds: an option whose facet-declared
+// `requiresActive[i]` names another Value is unavailable until THAT Value is
+// already acquired (a real prerequisite, e.g. Expertise's own XPHB rule
+// "a skill in which you have proficiency" -- `from[i]` is
+// `value:skill.X.expertise`, `requiresActive[i]` is `value:skill.X.proficient`).
+// Because it reads the identical `acquired` set in the identical slot/facet
+// order, a skill made proficient by an EARLIER slot or an earlier sibling
+// choice in the SAME creation plan is already visible -- no save/reload
+// round trip, and no second eligibility pass. Omitted entirely (every choice
+// authored before this phase) means no option has a prerequisite, byte-
+// identical old behavior.
 
 import type { DefinitionId } from '../rules/types'
 import {
@@ -35,10 +48,24 @@ import {
 } from './rules-choices'
 
 export const ALREADY_ACQUIRED_REASON = 'Already acquired'
+// ROGUE EXPERTISE PHASE -- the creation-time counterpart of
+// `requiresActive` (app/lib/content-rules/types.ts's own
+// `RulesFacetChoice.requiresActive`, already read at progression time by
+// character-actor-bridge.ts). Reused verbatim, never a second eligibility
+// vocabulary: `from[i]` is unavailable unless `requiresActive[i]` (when
+// declared) is already acquired -- the generic "choose from options
+// conditional on another Value already being active" shape, not an
+// Expertise-specific rule.
+export const PREREQUISITE_NOT_MET_REASON = 'Prerequisite not met'
 
 export type CreationFacetInput = {
   grants?: readonly { set: DefinitionId; to: unknown }[]
-  choices?: readonly { choiceSet: DefinitionId; count: number; from?: readonly DefinitionId[] }[]
+  choices?: readonly {
+    choiceSet: DefinitionId
+    count: number
+    from?: readonly DefinitionId[]
+    requiresActive?: readonly (DefinitionId | null)[]
+  }[]
 } | null | undefined
 
 export type CreationSlotInput = {
@@ -111,11 +138,13 @@ export function resolveCreationChoices(
       const maxPerOption = rule?.maxPerOption
       const offeredValues = choice.from ?? []
 
-      const offered: OfferedOption[] = offeredValues.map((value) => {
-        const unavailable = acquired.has(value)
-        return unavailable
-          ? { value, eligible: false, reason: ALREADY_ACQUIRED_REASON }
-          : { value, eligible: true }
+      const offered: OfferedOption[] = offeredValues.map((value, index) => {
+        if (acquired.has(value)) return { value, eligible: false, reason: ALREADY_ACQUIRED_REASON }
+        const prerequisite = choice.requiresActive?.[index]
+        if (prerequisite && !acquired.has(prerequisite)) {
+          return { value, eligible: false, reason: PREREQUISITE_NOT_MET_REASON }
+        }
+        return { value, eligible: true }
       })
 
       const eligibleOptions = offered.filter((option) => option.eligible).map((option) => option.value)

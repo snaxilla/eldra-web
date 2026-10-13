@@ -46,10 +46,15 @@ const is = (d: DecisionRecord, kind: DecisionRecord['owner']['kind'], family: De
   d.owner.kind === kind && d.family === family
 
 // Owner slugs for the classes that have a specific, verified implementation.
+// ROGUE EXPERTISE PHASE -- Rogue's own Level 1 ("two of your skill
+// proficiencies of your choice", a creation-time facet.choices entry) and
+// Ranger's own Level 2 Deft Explorer (one skill, a dedicated Progression
+// row) are now authored; both reclassified onto this map rather than kept
+// in a separate blocked rule.
 const SUPPORTED_EXPERTISE: Record<string, readonly number[]> = {
   'bard-xphb': [2, 9],
-  'ranger-xphb': [9],
-  'rogue-xphb': [6],
+  'ranger-xphb': [2, 9],
+  'rogue-xphb': [1, 6],
   'wizard-xphb': [2]
 }
 const FIGHTING_STYLE_LEVEL: Record<string, number> = { 'fighter-xphb': 1, 'paladin-xphb': 2, 'ranger-xphb': 2 }
@@ -322,9 +327,9 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'impl:expertise',
     status: 'implemented',
-    reason: 'Skill Expertise at the levels its facet progression supports.',
-    ledgerIds: ['bard-xphb:expertise', 'ranger-xphb:expertise', 'rogue-xphb:expertise', 'wizard-xphb:scholar'],
-    matches: (d) => is(d, 'class', 'expertise-choice') && (SUPPORTED_EXPERTISE[d.owner.slug] ?? []).includes(d.level) && d.source !== 'Deft Explorer'
+    reason: 'Skill Expertise at the levels its facet choices/progression supports -- Rogue Level 1 (creation-time facet.choices, this phase\'s own new requiresActive eligibility) and Ranger Level 2 Deft Explorer (progression:class.skill-expertise-deft-explorer) reclassified here alongside the already-implemented Bard/Ranger/Rogue/Wizard rows.',
+    ledgerIds: ['bard-xphb:expertise', 'ranger-xphb:expertise', 'ranger-xphb:expertise-deft-explorer', 'rogue-xphb:expertise', 'rogue-xphb:expertise-creation', 'wizard-xphb:scholar'],
+    matches: (d) => is(d, 'class', 'expertise-choice') && (SUPPORTED_EXPERTISE[d.owner.slug] ?? []).includes(d.level)
   },
   {
     id: 'impl:origin-fixed-feat',
@@ -444,20 +449,11 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
       && d.source !== 'Mystic Arcanum'
       && !(d.source === 'Spellcasting' && d.detail === 'spellbook-growth')
   },
-  {
-    id: 'blk:class-expertise-creation',
-    status: 'blocked',
-    reason: 'Rogue Level 1 Expertise: the Builder has no class skill-expertise picker.',
-    ledgerIds: ['rogue-xphb:expertise-creation'],
-    matches: (d) => is(d, 'class', 'expertise-choice') && d.owner.slug === 'rogue-xphb' && d.level === 1
-  },
-  {
-    id: 'blk:class-expertise-other',
-    status: 'blocked',
-    reason: 'Expertise choices not supported at this level (Ranger Level 2 Deft Explorer).',
-    ledgerIds: [],
-    matches: (d) => is(d, 'class', 'expertise-choice') && !(SUPPORTED_EXPERTISE[d.owner.slug] ?? []).includes(d.level) && !(d.owner.slug === 'rogue-xphb' && d.level === 1)
-  },
+  // ROGUE EXPERTISE PHASE -- the two blocked rules that used to own Rogue
+  // Level 1 and Ranger Level 2 Deft Explorer are RETIRED: both decisions are
+  // now authored and reclassified onto `impl:expertise` above. Every real
+  // `expertise-choice` decision (7 total -- Bard L2/L9, Ranger L2/L9, Rogue
+  // L1/L6, Wizard L2) now matches `impl:expertise` and nothing else.
   {
     id: 'blk:class-skill-extra',
     status: 'blocked',

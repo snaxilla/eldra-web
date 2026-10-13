@@ -42,6 +42,7 @@ const UNIT_STUBBING = [
   'tests/server/utils/character-progression-all-class-subclass.test.ts',
   'tests/server/utils/character-progression-level-1-to-20.test.ts',
   'tests/server/utils/character-progression-plan-feature-option.test.ts',
+  'tests/server/utils/character-progression-plan-rogue-expertise.test.ts',
   'tests/server/utils/character-progression-plan-weapon-mastery.test.ts',
   'tests/server/utils/character-progression-plan-spell-acquisition.test.ts',
   'tests/server/utils/character-progression-plan.test.ts',
@@ -52,6 +53,7 @@ const UNIT_STUBBING = [
 const ACCEPTANCE_REAL = [
   'tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts',
   'tests/server/api/worlds/[id]/characters/create-v2-feature-option.test.ts',
+  'tests/server/api/worlds/[id]/characters/create-v2-rogue-expertise.test.ts',
   'tests/server/api/worlds/[id]/characters/create-v2-weapon-mastery.test.ts',
   'tests/server/utils/character-progression-fail-closed.test.ts',
   'tests/server/utils/character-assembly-historical-fail-closed.test.ts',

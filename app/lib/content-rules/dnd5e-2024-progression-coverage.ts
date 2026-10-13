@@ -553,8 +553,13 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // level/count/skill-list genuinely differ):
   //   Bard: two rows (L2 count 2, L9 "two MORE" count 2) --
   //     `progression:class.skill-expertise-choose-two-at-2-and-9`.
-  //   Ranger: one row (L9 count 2) --
-  //     `progression:class.skill-expertise-choose-two-at-9`.
+  //   Ranger: this base-class row is L9 count 2 --
+  //     `progression:class.skill-expertise-choose-two-at-9`. ROGUE
+  //     EXPERTISE PHASE -- Ranger ALSO grants a second, independent
+  //     Expertise via its own Level-2 "Deft Explorer" feature (count 1,
+  //     see the separate ranger-xphb:expertise-deft-explorer entry below
+  //     -- never merged with this base-class row, since the two features
+  //     are named and leveled differently in the real corpus).
   //   Rogue: real XPHB grants this TWICE -- L1 (count 2, a CREATION-time
   //     grant, out of Level-Up progression's own scope entirely -- see
   //     the separate rogue-xphb:expertise-creation entry below) and L6
@@ -574,22 +579,45 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     implementationRef: ref
   })),
 
-  // Rogue's OWN Level-1 half of the identical real "Expertise" feature --
-  // a genuine creation-time grant (count 2, same unrestricted skill
-  // shape), never wired into Level-Up progression (Level 1 has no
-  // "previous level" to diff against, and the create-v2 Builder has no
-  // generic skill-expertise picker surface at all today, for any class).
-  // Tracked with its own stable identity so it is never silently merged
-  // into the L6 "two more" row above as if it were one combined grant of
-  // four.
+  // ROGUE EXPERTISE PHASE -- Rogue's OWN Level-1 half of the identical real
+  // "Expertise" feature (count 2, same unrestricted skill shape as the L6
+  // row above) is now authored as a creation-time `facet.choices` entry
+  // (never a Progression row, since Level 1 has no prior level to diff
+  // against), using this phase's own new creation-time `requiresActive`
+  // eligibility (app/lib/characters/creation-choice-eligibility.ts) -- the
+  // SAME generic mechanism `character-actor-bridge.ts` already used for
+  // every post-creation Expertise row, now reused rather than duplicated
+  // for the one creation-time case. Reclassified CONTENT_BLOCKED ->
+  // IMPLEMENTED. Tracked with its own stable identity so it is never
+  // silently merged into the L6 "two more" row above as if it were one
+  // combined grant of four.
   {
     id: 'rogue-xphb:expertise-creation',
     classSlug: 'rogue-xphb',
     featureName: 'Expertise',
     levels: [1],
     surface: 'creation',
-    status: 'CONTENT_BLOCKED',
-    blockerReason: 'The engine mechanism (`choice:skill.expertise` + this phase\'s own Choice Eligibility) already supports this shape -- the real gap is surface-only: this would need authoring as a creation-time `facet.choices` entry (never a Progression row, since Level 1 has no prior level to diff against) AND the create-v2 Builder has no rendering surface for ANY class-specific skill-expertise picker today. Owned by a future Creation/Builder phase, not this one.'
+    status: 'IMPLEMENTED',
+    implementationRef: 'choice:skill.expertise',
+    notes: 'Creation acquisition: the Rogue facet declares a `choice:skill.expertise` entry (count 2, all 18 skills, requiresActive the corresponding proficient Value) via the generic Builder picker (CharacterChoiceSetPicker) and the SAME shared authority (app/lib/characters/creation-choice-eligibility.ts) the save route judges. Proven by the real creation acceptance (fresh persisted read) and the Builder browser-shape regression; composition with species/background-granted skill proficiency in the SAME creation plan is proven directly (no save/reload round trip).'
+  },
+
+  // ROGUE EXPERTISE PHASE -- Ranger's OWN Level-2 "Deft Explorer" feature
+  // nests a SECOND, independent Expertise grant (one skill, genuinely
+  // unrestricted) distinct from the base-class Level-9 "Expertise" row
+  // above -- real corpus text verified this phase (class-ranger.json's own
+  // `classFeature`, source XPHB). Deft Explorer's OTHER half (two
+  // languages) is language policy, explicitly out of scope and never
+  // conflated with this row.
+  {
+    id: 'ranger-xphb:expertise-deft-explorer',
+    classSlug: 'ranger-xphb',
+    featureName: 'Deft Explorer',
+    levels: [2],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.skill-expertise-deft-explorer',
+    notes: 'A dedicated Progression Definition (count 1, same unrestricted 18-skill list + requiresActive shape as every other base-class Expertise row), referenced alongside (never merged with) `progression:class.skill-expertise-choose-two-at-9` on Ranger\'s own facet -- proven through Preview at Level 1 (no offer), crossing Level 2 (offer appears), Confirm, fresh reload, and a direct jump.'
   },
 
   // -------------------------------------------------------------------

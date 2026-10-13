@@ -6149,3 +6149,284 @@ clean. `pnpm packages:sync --world Solaris` (dry run, re-run after the version b
 `PUBLISH_REQUIRED` (Rules, `eldra.rules.dnd5e-2024@0.21.2` not yet published) + `REFRESH_REQUIRED`
 (Content, `eldra.solaris.xphb`), actions `PUBLISH_RULES` / `REFRESH_CONTENT` / `ACTIVATE_RULES` /
 `BIND_CONTENT`. No `packages:sync --apply` run.
+
+### 25.39 ROGUE EXPERTISE + RANGER DEFT EXPLORER (2026-10-13)
+
+#### Scope
+
+A small, bounded phase: Rogue's own Level-1 creation-time half of "Expertise" (previously the
+one documented, surface-only creation gap -- see 25.38's own Progression Coverage Ledger entry,
+`rogue-xphb:expertise-creation`), and Ranger's own Level-2 "Deft Explorer" Expertise grant
+(previously unclassified -- not even a known corpus feature name to the ledger's own scan). Base-
+class Expertise (Bard L2/L9, Ranger L9, Rogue L6, Wizard's own "Scholar" at L2) was ALREADY
+implemented before this phase -- a prior Choice Eligibility phase had already authored the
+generic `requiresActive` primitive and the `value:skill.X.expertise`/`value:skill.X.bonus`
+Definitions. This phase's own real work was therefore narrow: (a) extend the EXISTING
+`requiresActive` eligibility to the CREATION-time path (`app/lib/characters/creation-choice-
+eligibility.ts`), which never read it before; (b) author Rogue's own Level-1 `choices` entry; (c)
+author one new Progression Definition for Ranger's Deft Explorer. No new engine subsystem, no new
+persistence family, no new ChoiceSet shape -- confirmed by inspection before implementing, per
+this phase's own explicit STOP condition.
+
+#### CORPUS -- exact population, re-derived, not assumed
+
+Re-extracted directly from `/opt/eldra/datasets/5etools-src/data/class/class-{bard,ranger,rogue,
+wizard}.json`'s own `classFeature` entries (source XPHB): exactly **7** real `expertise-choice`
+decisions exist in the whole corpus.
+
+| Class | Level | Feature name | Count | Skill universe | Real text |
+|---|---|---|---|---|---|
+| Bard | 2, 9 | Expertise | 2, 2 | unrestricted (18) | "two of your skill proficiencies of your choice" |
+| Ranger | 9 | Expertise | 2 | unrestricted (18) | same |
+| Ranger | **2** | **Deft Explorer** | **1** | unrestricted (18) | "Choose one of your skill proficiencies with which you lack Expertise" (nested inside Deft Explorer's own prose, alongside an unrelated two-language grant -- language policy, out of scope, never conflated with this row) |
+| Rogue | **1**, 6 | Expertise | 2, 2 | unrestricted (18) | "two of your skill proficiencies of your choice" / L6 "two MORE... of your choice" |
+| Wizard | 2 | Scholar | 1 | restricted (6: Arcana/History/Investigation/Medicine/Nature/Religion) | "Choose one of [...] in which you have proficiency" |
+
+Before this phase: 5 of 7 implemented (bold rows blocked). After: **7 of 7 implemented** -- Rogue
+L1 (a creation-time grant) and Ranger L2 Deft Explorer (a Level-2 progression grant) are the two
+decisions this phase moves.
+
+#### EXISTING MODEL -- audited before writing anything, confirmed sufficient, never duplicated
+
+Confirmed, before any code was written, that canonical skill Expertise state ALREADY exists in
+full: `value:skill.{skill}.expertise` (boolean, stored, one per real skill) and
+`value:skill.{skill}.bonus` (derived) -- the latter's own real formula
+(`packages/eldra-dnd5e-2024/definitions.json`) already computes
+`@value:ability.X.mod + if(@value:skill.X.expertise, @value:proficiency_bonus * 2,
+if(@value:skill.X.proficient, @value:proficiency_bonus, 0))` for all 18 skills, unconditionally --
+Expertise's "double proficiency bonus" semantics were already correct engine behavior, proven
+directly against the real formula (see DERIVED below), never duplicated. `choice:skill.expertise`
+(a `fromContentFacet` ChoiceSet, `excludeIfAlreadyActive: true`, `writesTo: 'value:skill.
+{selected}.expertise'`) and three Progression Definitions referencing it
+(`progression:class.skill-expertise[-choose-two-at-9][-choose-two-at-2-and-9][-choose-two-at-6]`)
+already existed and were already proven working for the 5 already-implemented decisions. This
+phase authored ONE new Progression Definition (`progression:class.skill-expertise-deft-
+explorer`, Level 2, count 1, the identical unrestricted 18-skill `from`/`requiresActive` shape) --
+reusing the existing `choice:skill.expertise` ChoiceSet verbatim, never a second expertise model.
+
+#### MODEL -- the ONE real gap, closed narrowly
+
+`character-actor-bridge.ts` (progression-time) already read a facet/row's own `requiresActive`
+field to filter ChoiceSet options by "is the named prerequisite Value currently active" -- but
+`app/lib/characters/creation-choice-eligibility.ts` (the Builder/save-route-shared CREATION-time
+eligibility authority) never did; it only implemented the inverse rule ("already acquired makes
+an option unavailable"). This was the literal, narrow, surface-only gap the 25.38-era ledger
+entry already named exactly ("the engine mechanism already supports this shape -- the real gap is
+surface-only"). Closed by extending `resolveCreationChoices`'s `offered` computation with a
+second, independent check: `requiresActive[index]` (when the facet declares it) must already be
+in the SAME `acquired` set the existing exclusion rule already builds -- added verbatim as a
+sibling rule, not a rewrite. `CreationFacetInput`'s `choices[]` element type gained the matching
+optional `requiresActive` field (mirrors `RulesFacetChoice.requiresActive`, already real). A new
+exported reason constant, `PREREQUISITE_NOT_MET_REASON`, is returned instead of
+`ALREADY_ACQUIRED_REASON` so the Builder can show the right reason -- never a third Expertise-
+specific reason string.
+
+**Genericity, verified**: no skill name, no class name, and no mention of "proficiency" or
+"Expertise" exists in `creation-choice-eligibility.ts` itself -- `requiresActive` names an
+arbitrary Value, and the module's own header already documents this as "choose from options
+conditional on another actor Value being active," reused from the progression-side primitive
+verbatim. A future homebrew class authoring "choose N already-proficient skills and upgrade
+them" needs zero application-code branches.
+
+#### SAME-PLAN COMPOSITION -- proven directly, not assumed
+
+`resolveCreationChoices`'s own `acquired` set is seeded, BEFORE any choice is judged, from every
+selected slot's UNCONDITIONAL grants (`directlyGrantedValues`, order-independent -- a Background's
+own fixed skill grant, e.g. Criminal's Sleight of Hand/Stealth, is visible to Rogue's Expertise
+choice regardless of slot order), then accumulates each EARLIER choice's own valid answer in
+declared slot order (species -> class -> background) and facet-array order within a slot -- so
+Rogue's OWN earlier class skill-proficiency answer (processed first in Rogue's own `choices`
+array) is visible to its OWN Expertise choice (processed after it), entirely within one
+`resolveCreationChoices` call, with no save/reload round trip. Proven directly
+(`create-v2-rogue-expertise.test.ts`'s own COMPOSITION test): a skill chosen via Rogue's class
+list becomes Expertise-eligible in the same call; a skill ONLY a Background's fixed grant
+supplies (Acolyte's own Religion, never on Rogue's own class skill list at all) is Expertise-
+eligible purely through the Background slot.
+
+#### CREATION -- Rogue Level 1
+
+Rogue's facet (`app/lib/content-rules/dnd5e-2024.ts`) gained one new `choices` entry:
+`{ choiceSet: 'choice:skill.expertise', count: 2, from: [...all 18 skills...], requiresActive:
+[...the 18 corresponding `.proficient` ids, same index...] }`, appended after the existing skill-
+proficiency and Weapon Mastery entries (count: 3 total, up from 2). Zero new Vue/UI code: the
+EXISTING generic `CharacterChoiceSetPicker` + `creationChoicePresentation` (already rendering
+every other Definition-keyed creation choice, e.g. `choice:skill.proficiency`) renders it
+unchanged. Proven: count 2; only an already-proficient skill (by any source -- class list,
+Background fixed grant) is eligible; a crafted non-proficient skill is refused by the real route
+(`"<id>" is prerequisite not met`); too few/too many/duplicate are refused by the pre-existing
+generic `validateChoiceSelection`; a crafted undeclared key, and a stale OTHER-class key (a
+Fighter-only key submitted for a Rogue, which does not even declare it), are refused as
+undeclared.
+
+**Server authority, explicit**: Expertise is a Definition-keyed choice (like `choice:skill.
+proficiency`), so it is TOLERANT of being left entirely unanswered at creation (the repository's
+own established missing-Definition-choice posture, preserved unchanged, never redesigned here) --
+proven directly: a body omitting the Expertise answer entirely is refused only by Rogue's own
+real remaining blocker (Thieves' Cant), never by a missing-Expertise message. A FULL, otherwise-
+legal Expertise answer passes its own validation and the route proceeds to the SAME Thieves' Cant
+refusal -- proving Expertise's own gate genuinely passed, rather than merely not being reached.
+
+**Switching/stale state**: Rogue's key (`class:choice:skill.expertise`) does not exist at all for
+a class with no such creation-time choice (Fighter) -- switching away deletes it; switching back
+re-asks the question, no stale hidden answer survives. **Background switching, specifically**: a
+previously-selected Expertise skill that is no longer proficient under the NEW Background (and
+was never separately chosen via the class list) is pruned by the existing live-recomputation
+behavior (`resolveCreationChoices` recomputes `offered`/`effective` from the CURRENT draft on
+every call) -- proven directly (Criminal -> Acolyte: Sleight of Hand/Stealth become ineligible
+and the stale answer is dropped; Religion, Acolyte-only, becomes newly eligible).
+
+#### PROGRESSION -- Ranger Level 2 "Deft Explorer"
+
+A new, dedicated Progression Definition (`progression:class.skill-expertise-deft-explorer`,
+Level 2, count 1, the identical unrestricted 18-skill `from`/`requiresActive` shape every other
+base-class Expertise row already uses), referenced on Ranger's facet ALONGSIDE (never merged
+with) the pre-existing `progression:class.skill-expertise-choose-two-at-9` -- the two rows have
+different real feature names, levels, and counts in the corpus, so they stay two real decisions,
+never collapsed into one. Zero new code in `character-progression-plan.ts`/`character-actor-
+bridge.ts`: the identical generic progression-time `requiresActive` mechanism those modules
+already used for the 5 pre-existing Expertise rows now also serves this sixth one. Proven, through
+the REAL `planProgression`/`confirmProgression`: the choice does not exist before Level 2 (Ranger
+has no level between 1 and 2, so there is no intermediate "too early" level to preview against,
+unlike Barbarian/Fighter's own multi-level Weapon Mastery growth gap); it appears exactly at Level
+2 with only proficient skills offered; missing/non-proficient answers are refused with zero
+writes; a valid answer confirms and persists through `rules_choices` (never `progression.items`/
+`.feats` -- Expertise is a Definition-keyed choice, never a content acquisition, proven alongside
+the sibling Fighting Style answer that DOES land in `progression.feats`, showing the two
+mechanisms coexist without leaking into each other); a fresh reload (real persisted `rules_
+choices`, no tentative state) keeps it active; a direct Level 1 -> 9 jump answers BOTH Deft
+Explorer (L2) and the pre-existing base-class row (L9) with zero collision (two distinct skills,
+one shared ChoiceSet, two independently-keyed rows).
+
+#### DERIVED SKILL BONUS -- proven against the real formula, never duplicated
+
+Proven directly (`character-progression-plan-rogue-expertise.test.ts`'s own DERIVED SKILL BONUS
+block): for the SAME skill, same ability score, the real `value:skill.X.bonus` formula reads
+`ability-mod + proficiency_bonus` ordinarily and `ability-mod + 2 x proficiency_bonus` once
+Expertise is selected -- the measured delta between two otherwise-identical derives is exactly
+one more proficiency bonus, computed by the real engine's own expression evaluator, never
+re-implemented. A fresh reload (two successive derives from the same persisted answer) reproduces
+the identical bonus.
+
+#### ROGUE -- exact remaining boundary, confirmed through the real authority
+
+`creationUnresolvedDecisions({species:'dwarf-xphb', class:'rogue-xphb', background:'criminal-
+xphb'})` returns exactly one family: `language-choice` (Thieves' Cant). Expertise is confirmed
+absent from Rogue's own unresolved set. Thieves' Cant / language policy is untouched, never
+weakened, never implemented here.
+
+#### RANGER -- regression check
+
+`creationUnresolvedDecisions` for Ranger + Dwarf + Criminal remains `[]` -- creation availability
+is unchanged. Weapon Mastery, Level-1 spell acquisition, and every other existing Ranger creation
+fact are untouched; only Level-2 progression depth improved.
+
+#### AVAILABILITY -- unchanged, confirmed by direct enumeration
+
+Species 3/10, Classes **10/12** (identical set: Barbarian, Bard, Cleric, Druid, Fighter, Monk,
+Paladin, Ranger, Sorcerer, Wizard; Rogue and Warlock still unavailable, for their own real,
+untouched blockers -- Thieves' Cant and Eldritch Invocations respectively), Backgrounds 13/16,
+Combinations 390/1920 -- Expertise alone moves no availability boundary, confirmed by direct
+re-enumeration, not assumed from the Weapon Mastery phase's own prior count.
+
+#### PHASE-0 RECLASSIFICATION
+
+`mandatory-decision-coverage.ts`: `SUPPORTED_EXPERTISE` gained `rogue-xphb: [1, 6]` (was `[6]`)
+and `ranger-xphb: [2, 9]` (was `[9]`); the `impl:expertise` rule's own matcher no longer excludes
+`d.source === 'Deft Explorer'` (the exclusion existed only to keep Ranger L2 OUT until it was
+ready) and its `ledgerIds` gained `rogue-xphb:expertise-creation` and `ranger-xphb:expertise-
+deft-explorer`. The two rules that previously owned these two decisions (`blk:class-expertise-
+creation`, `blk:class-expertise-other`) are RETIRED -- both would otherwise match zero decisions
+post-reclassification, which the bidirectional contract correctly refuses to tolerate for a
+non-`allowZero` rule. `dnd5e-2024-progression-coverage.ts`: `rogue-xphb:expertise-creation`
+reclassified CONTENT_BLOCKED -> IMPLEMENTED (`implementationRef: 'choice:skill.expertise'`); a new
+IMPLEMENTED row, `ranger-xphb:expertise-deft-explorer`, added (`implementationRef:
+'progression:class.skill-expertise-deft-explorer'`). `tests/rules/dnd5e-2024-progression-
+coverage.test.ts`'s own corpus-discovery scan needed `'Deft Explorer'` added to
+`KNOWN_CLASS_FEATURE_NAMES` (its real XPHB prose -- "Choose one of your skill proficiencies with
+which you lack Expertise" -- does not match the scan's own `STRONG_CHOICE_PHRASING` regex, the
+identical "known-name, not text-pattern" treatment already given to Fighting Style/Expertise/
+Divine Order/etc.).
+
+Census: **647 total, 407 implemented (+2), 205 blocked (-2), 35 optional** -- exactly Rogue L1 and
+Ranger L2 Deft Explorer moving, confirmed by direct re-count through the real `classifyDecision`
+authority (not arithmetic).
+
+#### COVERAGE CONTRACT
+
+Bidirectional A/B contract re-confirmed holding after reclassification
+(`tests/rules/mandatory-decision-coverage.test.ts`'s new "ROGUE EXPERTISE + RANGER DEFT EXPLORER
+PHASE" describe block). New bite test: deleting `impl:expertise` leaves all 7 real
+`expertise-choice` decisions uncovered and the contract fails. Every real decision is classified
+by `impl:expertise` alone (exactly one rule) -- re-asserted directly for this specific family, the
+same style the Weapon Mastery phase's own bite test already established.
+
+#### HISTORICAL COMPATIBILITY
+
+Unchanged by this phase: Expertise answers live in `rules_choices` (the SAME store Divine Order/
+Fighting Style/every other Definition-keyed choice already uses), already covered by the
+pre-existing historical-compatibility posture -- a Rogue/Ranger record predating this phase's own
+authoring simply has no answer for the new key, reads as "outstanding" (never fabricated), and the
+read path performs no write. No new historical test was needed; no new persistence shape was
+introduced that the existing posture did not already cover.
+
+#### BEAUTY BACKLOG (recorded, not implemented)
+
+Two Player UX findings recorded in `.github/docs/architecture/character-decisions-presentation-
+backlog.md` during this phase's own live-browser review, per explicit instruction: (1) the
+Weapon Mastery/generic content-picker should OMIT structurally-irrelevant options (outside the
+choice's own declared filter universe) rather than show them disabled, while an in-universe,
+actor-ineligible option should remain visible and disabled with a reason; (2) canonical currency
+state should be visible in the Character Sheet's always-visible header, package-owned denomination
+identity/label/ordering, never hardcoded. Neither is implemented here.
+
+#### PACKAGE IMPACT
+
+`packages/eldra-dnd5e-2024` Definitions changed under the already-published `0.21.2` (one new
+Progression Definition, `progression:class.skill-expertise-deft-explorer`; Rogue's facet gained a
+new `choices` entry in `app/lib/content-rules/dnd5e-2024.ts`, which is Content, not a package
+Definition -- only the new Progression Definition itself is a Rules Package change). No existing
+Definition removed, renamed, or changed. Manifest `version` bumped **0.21.2 -> 0.21.3** (only the
+version field changed), consistent with this project's own established patch-bump precedent
+(prior phases' own approved decision algorithm: a pure addition, no existing Definition removed/
+renamed/changed). `pnpm packages:sync --world Solaris` (dry run, re-run after the bump):
+`PUBLISH_REQUIRED` for Rules (`eldra.rules.dnd5e-2024@0.21.3` authored but not yet published) and
+`REFRESH_REQUIRED` for Content (`eldra.solaris.xphb`, since the authoring facet corpus also
+changed), actions `PUBLISH_RULES` / `REFRESH_CONTENT` / `ACTIVATE_RULES` / `BIND_CONTENT`. No
+mutation performed -- dry run only, `--apply` never invoked.
+
+#### Files
+
+New: `tests/server/api/worlds/[id]/characters/create-v2-rogue-expertise.test.ts`,
+`tests/server/utils/character-progression-plan-rogue-expertise.test.ts`.
+
+Modified: `app/lib/characters/creation-choice-eligibility.ts` (`requiresActive` creation-time
+eligibility, `PREREQUISITE_NOT_MET_REASON`), `app/lib/content-rules/dnd5e-2024.ts` (Rogue's new
+Level-1 `choices` entry; Ranger's `progression` array gained the new Deft Explorer reference),
+`packages/eldra-dnd5e-2024/definitions.json` (1 new Progression Definition),
+`packages/eldra-dnd5e-2024/manifest.json` (`version` 0.21.2 -> 0.21.3, only field changed),
+`app/lib/content-rules/mandatory-decision-coverage.ts` (`SUPPORTED_EXPERTISE` extended, 2 rules
+retired, `impl:expertise` ledgerIds/matcher updated), `app/lib/content-rules/dnd5e-2024-
+progression-coverage.ts` (1 row reclassified, 1 new row), `tests/rules/dnd5e-2024-progression-
+coverage.test.ts` (`'Deft Explorer'` added to `KNOWN_CLASS_FEATURE_NAMES`), `tests/rules/
+mandatory-decision-coverage.test.ts` (1 stale AVAILABILITY assertion corrected, new RECONCILIATION
+describe block), `tests/lib/content-rules/spell-corpus-authority.test.ts` (census numbers
+updated), `tests/server/utils/character-actor-bridge.test.ts` (skill-id count 18 -> 36, Rogue's
+own `EXTRA_CHOICE_COUNT` 1 -> 2), `tests/server/utils/character-progression-level-1-to-20.test.ts`
+(Ranger's shared Fighting Style describe.each fixture answers the new Deft Explorer choice too),
+`tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts` (the Rogue refusal
+examples retargeted from "Expertise and Thieves' Cant" to "Thieves' Cant" alone, since Expertise
+no longer refuses), `tests/rules/completeness-stub-policy.test.ts` (2 new file entries
+classified).
+
+#### Verification
+
+`pnpm run test`: **211 files / 4489 tests -- all passing** (4454 Weapon Mastery baseline + 35 net
+new: 9 Ranger Deft Explorer progression/derived-bonus tests, 19 Rogue Level-1 creation
+presentation/switching/server-authority tests, plus ripple-effect fixes and the new coverage
+reconciliation tests above -- zero regressions). `pnpm run typecheck`: the pre-existing
+`@types/node`-absent environment gap remains (1177 errors; grepped the full output for every file
+this phase touched -- zero hits). `pnpm run build`: succeeds (exit 0). `git diff --cached --check`:
+clean. `pnpm packages:sync --world Solaris` (dry run, after the manifest version bump below):
+`PUBLISH_REQUIRED` (Rules, `eldra.rules.dnd5e-2024@0.21.3`) + `REFRESH_REQUIRED` (Content), actions
+`PUBLISH_RULES` / `REFRESH_CONTENT` / `ACTIVATE_RULES` / `BIND_CONTENT`. No `packages:sync --apply`
+run.

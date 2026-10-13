@@ -1033,7 +1033,19 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // you lack Expertise" at Level 9 only -- see bard-xphb's own note
       // immediately above for why no Ranger-specific skill list is
       // authored here either.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-r'],
+      // ROGUE EXPERTISE PHASE -- Ranger's own Level-2 "Deft Explorer"
+      // feature (class-ranger.json's own `classFeature`, source XPHB)
+      // nests a SECOND, independent Expertise grant inside its own prose
+      // ("Choose one of your skill proficiencies with which you lack
+      // Expertise. You gain Expertise in that skill.") plus two languages
+      // (language policy, out of scope here -- never conflated with this
+      // Expertise grant). Real shape: one skill, genuinely unrestricted,
+      // same requiresActive eligibility as the Level-9 row above -- a
+      // separate Progression Definition (`progression:class.skill-
+      // expertise-deft-explorer`, named for the real feature, never for
+      // Ranger) because its level/count differ from every other Expertise
+      // row.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-tireless', 'progression:class.skill-expertise-deft-explorer', 'progression:class.skill-expertise-choose-two-at-9', 'progression:class.epic-boon', 'progression:class.fighting-style-fs-and-fs-r'],
       startingEquipment: {
         id: 'choice:equipment.starting.ranger-xphb',
         bundles: [
@@ -1103,6 +1115,36 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         {
           choiceSet: 'choice:class.weapon-mastery',
           count: 2
+        },
+        // ROGUE EXPERTISE PHASE -- real corpus wording (class-rogue.json's own "Expertise"
+        // classFeature, Level 1, source XPHB) -- "two of your skill proficiencies of your
+        // choice", genuinely unrestricted to any named subset, same shape as the already-
+        // implemented Level-6 "two MORE" progression row (`progression:class.skill-expertise-
+        // choose-two-at-6`) and Bard/Ranger's own base-class Expertise. Authored here as a
+        // creation-time `facet.choices` entry (never a Progression row -- Level 1 has no prior
+        // level to diff against), using this phase's own new creation-time `requiresActive`
+        // eligibility (app/lib/characters/creation-choice-eligibility.ts) so a skill is offered
+        // for Expertise only once it is ALREADY proficient -- composed generically across
+        // species/class/background within the SAME creation plan, never a class-name branch.
+        {
+          choiceSet: 'choice:skill.expertise',
+          count: 2,
+          from: [
+            'value:skill.acrobatics.expertise', 'value:skill.animal_handling.expertise', 'value:skill.arcana.expertise',
+            'value:skill.athletics.expertise', 'value:skill.deception.expertise', 'value:skill.history.expertise',
+            'value:skill.insight.expertise', 'value:skill.intimidation.expertise', 'value:skill.investigation.expertise',
+            'value:skill.medicine.expertise', 'value:skill.nature.expertise', 'value:skill.perception.expertise',
+            'value:skill.performance.expertise', 'value:skill.persuasion.expertise', 'value:skill.religion.expertise',
+            'value:skill.sleight_of_hand.expertise', 'value:skill.stealth.expertise', 'value:skill.survival.expertise'
+          ],
+          requiresActive: [
+            'value:skill.acrobatics.proficient', 'value:skill.animal_handling.proficient', 'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient', 'value:skill.deception.proficient', 'value:skill.history.proficient',
+            'value:skill.insight.proficient', 'value:skill.intimidation.proficient', 'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient', 'value:skill.nature.proficient', 'value:skill.perception.proficient',
+            'value:skill.performance.proficient', 'value:skill.persuasion.proficient', 'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient', 'value:skill.stealth.proficient', 'value:skill.survival.proficient'
+          ]
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- Rogue is a real, verified
@@ -1115,13 +1157,12 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // Expertise (class-rogue.json's own `classFeature` "Expertise",
       // source XPHB) is genuinely TWO separate grants: Level 1 ("two of
       // your skill proficiencies of your choice" -- a CREATION-time
-      // choice, out of this Level-Up progression's own scope, same bucket
-      // as Origin Feat/Fighting-Style-at-creation, see the Progression
-      // Coverage Ledger) and Level 6 ("two MORE... of your choice" --
-      // post-creation, authored here). Only the real Level-6 grant is
-      // wired into Level-Up progression; the Level-1 half remains a
-      // documented Builder/creation gap, never silently merged into this
-      // one Progression as if it were a single Level-6 grant of four.
+      // choice, same bucket as Origin Feat/Fighting-Style-at-creation, see
+      // the Progression Coverage Ledger) and Level 6 ("two MORE... of your
+      // choice" -- post-creation, authored here). ROGUE EXPERTISE PHASE --
+      // the Level-1 half is now authored above as a facet.choices entry;
+      // never merged into this one Progression as if it were a single
+      // Level-6 grant of four.
       progression: ['progression:class.subclass-selection', 'progression:class.asi-frequent', 'progression:class.skill-expertise-choose-two-at-6', 'progression:class.epic-boon'],
       startingEquipment: {
         id: 'choice:equipment.starting.rogue-xphb',

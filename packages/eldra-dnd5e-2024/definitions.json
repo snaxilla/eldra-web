@@ -5198,5 +5198,569 @@
     },
     "distinct": true,
     "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "value:invocation.armor_of_shadows.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Armor of Shadows",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.eldritch_mind.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Eldritch Mind",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.pact_of_the_blade.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Pact of the Blade",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.pact_of_the_chain.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Pact of the Chain",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.pact_of_the_tome.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Pact of the Tome",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.devils_sight.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Devil's Sight",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.fiendish_vigor.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Fiendish Vigor",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.mask_of_many_faces.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Mask of Many Faces",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.misty_visions.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Misty Visions",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.otherworldly_leap.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Otherworldly Leap",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.ascendant_step.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Ascendant Step",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.gaze_of_two_minds.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Gaze of Two Minds",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.gift_of_the_depths.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Gift of the Depths",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.master_of_myriad_forms.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Master of Myriad Forms",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.one_with_shadows.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "One with Shadows",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.eldritch_smite.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Eldritch Smite",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.investment_of_the_chain_master.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Investment of the Chain Master",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.thirsting_blade.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Thirsting Blade",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.whispers_of_the_grave.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Whispers of the Grave",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.gift_of_the_protectors.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Gift of the Protectors",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.lifedrinker.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Lifedrinker",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.visions_of_distant_realms.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Visions of Distant Realms",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.devouring_blade.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Devouring Blade",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "value:invocation.witch_sight.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Witch Sight",
+    "tags": ["invocation"]
+  },
+  {
+    "id": "choice:class.accumulating-option",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Class Option",
+    "prompt": "Choose an option.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true
+  },
+  {
+    "id": "progression:class.accumulating-option-growth-2-5-7-9-12-15-18",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Class Option Growth",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 2,
+            "from": [
+              "value:invocation.armor_of_shadows.known",
+              "value:invocation.eldritch_mind.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.devils_sight.known",
+              "value:invocation.fiendish_vigor.known",
+              "value:invocation.mask_of_many_faces.known",
+              "value:invocation.misty_visions.known",
+              "value:invocation.otherworldly_leap.known"
+            ],
+            "requiresActive": [null, null, null, null, null, null, null, null, null, null]
+          }
+        ]
+      },
+      {
+        "at": 5,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 2,
+            "from": [
+              "value:invocation.armor_of_shadows.known",
+              "value:invocation.eldritch_mind.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.devils_sight.known",
+              "value:invocation.fiendish_vigor.known",
+              "value:invocation.mask_of_many_faces.known",
+              "value:invocation.misty_visions.known",
+              "value:invocation.otherworldly_leap.known",
+              "value:invocation.ascendant_step.known",
+              "value:invocation.gaze_of_two_minds.known",
+              "value:invocation.gift_of_the_depths.known",
+              "value:invocation.master_of_myriad_forms.known",
+              "value:invocation.one_with_shadows.known",
+              "value:invocation.eldritch_smite.known",
+              "value:invocation.investment_of_the_chain_master.known",
+              "value:invocation.thirsting_blade.known"
+            ],
+            "requiresActive": [
+              null, null, null, null, null, null, null, null, null, null,
+              null, null, null, null, null,
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_blade.known"
+            ]
+          }
+        ]
+      },
+      {
+        "at": 7,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 1,
+            "from": [
+              "value:invocation.armor_of_shadows.known",
+              "value:invocation.eldritch_mind.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.devils_sight.known",
+              "value:invocation.fiendish_vigor.known",
+              "value:invocation.mask_of_many_faces.known",
+              "value:invocation.misty_visions.known",
+              "value:invocation.otherworldly_leap.known",
+              "value:invocation.ascendant_step.known",
+              "value:invocation.gaze_of_two_minds.known",
+              "value:invocation.gift_of_the_depths.known",
+              "value:invocation.master_of_myriad_forms.known",
+              "value:invocation.one_with_shadows.known",
+              "value:invocation.eldritch_smite.known",
+              "value:invocation.investment_of_the_chain_master.known",
+              "value:invocation.thirsting_blade.known",
+              "value:invocation.whispers_of_the_grave.known"
+            ],
+            "requiresActive": [
+              null, null, null, null, null, null, null, null, null, null,
+              null, null, null, null, null,
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_blade.known",
+              null
+            ]
+          }
+        ]
+      },
+      {
+        "at": 9,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 1,
+            "from": [
+              "value:invocation.armor_of_shadows.known",
+              "value:invocation.eldritch_mind.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.devils_sight.known",
+              "value:invocation.fiendish_vigor.known",
+              "value:invocation.mask_of_many_faces.known",
+              "value:invocation.misty_visions.known",
+              "value:invocation.otherworldly_leap.known",
+              "value:invocation.ascendant_step.known",
+              "value:invocation.gaze_of_two_minds.known",
+              "value:invocation.gift_of_the_depths.known",
+              "value:invocation.master_of_myriad_forms.known",
+              "value:invocation.one_with_shadows.known",
+              "value:invocation.eldritch_smite.known",
+              "value:invocation.investment_of_the_chain_master.known",
+              "value:invocation.thirsting_blade.known",
+              "value:invocation.whispers_of_the_grave.known",
+              "value:invocation.visions_of_distant_realms.known",
+              "value:invocation.gift_of_the_protectors.known",
+              "value:invocation.lifedrinker.known"
+            ],
+            "requiresActive": [
+              null, null, null, null, null, null, null, null, null, null,
+              null, null, null, null, null,
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_blade.known",
+              null, null,
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.pact_of_the_blade.known"
+            ]
+          }
+        ]
+      },
+      {
+        "at": 12,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 1,
+            "from": [
+              "value:invocation.armor_of_shadows.known",
+              "value:invocation.eldritch_mind.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.devils_sight.known",
+              "value:invocation.fiendish_vigor.known",
+              "value:invocation.mask_of_many_faces.known",
+              "value:invocation.misty_visions.known",
+              "value:invocation.otherworldly_leap.known",
+              "value:invocation.ascendant_step.known",
+              "value:invocation.gaze_of_two_minds.known",
+              "value:invocation.gift_of_the_depths.known",
+              "value:invocation.master_of_myriad_forms.known",
+              "value:invocation.one_with_shadows.known",
+              "value:invocation.eldritch_smite.known",
+              "value:invocation.investment_of_the_chain_master.known",
+              "value:invocation.thirsting_blade.known",
+              "value:invocation.whispers_of_the_grave.known",
+              "value:invocation.visions_of_distant_realms.known",
+              "value:invocation.gift_of_the_protectors.known",
+              "value:invocation.lifedrinker.known",
+              "value:invocation.devouring_blade.known"
+            ],
+            "requiresActive": [
+              null, null, null, null, null, null, null, null, null, null,
+              null, null, null, null, null,
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_blade.known",
+              null, null,
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.thirsting_blade.known"
+            ]
+          }
+        ]
+      },
+      {
+        "at": 15,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 1,
+            "from": [
+              "value:invocation.armor_of_shadows.known",
+              "value:invocation.eldritch_mind.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.devils_sight.known",
+              "value:invocation.fiendish_vigor.known",
+              "value:invocation.mask_of_many_faces.known",
+              "value:invocation.misty_visions.known",
+              "value:invocation.otherworldly_leap.known",
+              "value:invocation.ascendant_step.known",
+              "value:invocation.gaze_of_two_minds.known",
+              "value:invocation.gift_of_the_depths.known",
+              "value:invocation.master_of_myriad_forms.known",
+              "value:invocation.one_with_shadows.known",
+              "value:invocation.eldritch_smite.known",
+              "value:invocation.investment_of_the_chain_master.known",
+              "value:invocation.thirsting_blade.known",
+              "value:invocation.whispers_of_the_grave.known",
+              "value:invocation.visions_of_distant_realms.known",
+              "value:invocation.gift_of_the_protectors.known",
+              "value:invocation.lifedrinker.known",
+              "value:invocation.devouring_blade.known",
+              "value:invocation.witch_sight.known"
+            ],
+            "requiresActive": [
+              null, null, null, null, null, null, null, null, null, null,
+              null, null, null, null, null,
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_blade.known",
+              null, null,
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.thirsting_blade.known",
+              null
+            ]
+          }
+        ]
+      },
+      {
+        "at": 18,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 1,
+            "from": [
+              "value:invocation.armor_of_shadows.known",
+              "value:invocation.eldritch_mind.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.devils_sight.known",
+              "value:invocation.fiendish_vigor.known",
+              "value:invocation.mask_of_many_faces.known",
+              "value:invocation.misty_visions.known",
+              "value:invocation.otherworldly_leap.known",
+              "value:invocation.ascendant_step.known",
+              "value:invocation.gaze_of_two_minds.known",
+              "value:invocation.gift_of_the_depths.known",
+              "value:invocation.master_of_myriad_forms.known",
+              "value:invocation.one_with_shadows.known",
+              "value:invocation.eldritch_smite.known",
+              "value:invocation.investment_of_the_chain_master.known",
+              "value:invocation.thirsting_blade.known",
+              "value:invocation.whispers_of_the_grave.known",
+              "value:invocation.visions_of_distant_realms.known",
+              "value:invocation.gift_of_the_protectors.known",
+              "value:invocation.lifedrinker.known",
+              "value:invocation.devouring_blade.known",
+              "value:invocation.witch_sight.known"
+            ],
+            "requiresActive": [
+              null, null, null, null, null, null, null, null, null, null,
+              null, null, null, null, null,
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.pact_of_the_chain.known",
+              "value:invocation.pact_of_the_blade.known",
+              null, null,
+              "value:invocation.pact_of_the_tome.known",
+              "value:invocation.pact_of_the_blade.known",
+              "value:invocation.thirsting_blade.known",
+              null
+            ]
+          }
+        ]
+      }
+    ]
   }
 ]

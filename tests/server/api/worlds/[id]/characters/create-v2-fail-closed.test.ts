@@ -133,22 +133,27 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
   // implemented (the real decision was Thieves' Cant's own embedded "one other language", not
   // Thieves' Cant itself, which is a fixed grant). Dwarf + Rogue + Criminal is now creation-
   // complete through the real authority (see create-v2-rogue-expertise.test.ts's own FIRST REAL
-  // LANGUAGE ACCEPTANCE block) -- Warlock's own untouched Eldritch Invocations blocker now proves
-  // this refusal path still works for the one class no phase has unlocked.
-  it('a Warlock still blocked by Eldritch Invocations is refused with zero writes', async () => {
+  // LANGUAGE ACCEPTANCE block). ELDRITCH INVOCATIONS PHASE -- Warlock's own remaining Eldritch
+  // Invocations blocker is now ALSO implemented (see create-v2-invocations.test.ts for the full
+  // acceptance walk) -- Dwarf + Warlock + Criminal is now creation-complete too. This file's own
+  // remaining real refusal case for Warlock is therefore no longer "the whole class is blocked"
+  // (nothing is, anymore) but "a genuinely mandatory creation-time choice was left unanswered" --
+  // proven here exactly as every other creation-time ChoiceSet's own missing-answer case is.
+  it('a Warlock whose Level-1 Eldritch Invocation choice is left unanswered is refused with zero writes', async () => {
     await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'warlock-xphb', 'criminal-xphb')) as any))
-      .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('cannot be completed yet') })
+      .rejects.toMatchObject({ statusCode: 400 })
     expectNoWrites()
   })
 
-  // FEATURE-OPTION PHASE -- Cleric's own Level-1 Divine Order is now representable (the generic
-  // choice:class.feature-option ChoiceSet); Dwarf + Cleric + Criminal is creation-complete through
-  // the real authority (see create-v2-feature-option.test.ts). Warlock's Invocations remains a real,
-  // differently-named Level-1 blocker, proving this refusal path still works for a class this phase
-  // did not touch.
-  it('a Warlock whose Level-1 Invocations cannot be recorded is refused, and the reason names the feature', async () => {
-    await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'warlock-xphb', 'criminal-xphb')) as any))
-      .rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('Invocations') })
+  // The generic choice:class.accumulating-option ChoiceSet is deliberately feature/class-name-
+  // agnostic (per this phase's own homebrew-reuse requirement), so an unknown/outside-the-family
+  // option id is rejected the same way any other illegal ChoiceSet answer is -- never by matching
+  // on the word "Invocation".
+  it('a Warlock request naming an unknown Invocation identity is refused with zero writes', async () => {
+    const crafted = bodyWith('dwarf-xphb', 'warlock-xphb', 'criminal-xphb', {
+      choices: { selections: { 'class:choice:class.accumulating-option': ['value:invocation.does_not_exist.known'] } }
+    })
+    await expect(handler(fakeEvent(crafted) as any)).rejects.toMatchObject({ statusCode: 400 })
     expectNoWrites()
   })
 

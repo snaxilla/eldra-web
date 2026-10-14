@@ -1368,12 +1368,51 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.nature.proficient',
             'value:skill.religion.proficient'
           ]
+        },
+        // ELDRITCH INVOCATIONS PHASE -- real XPHB "Eldritch Invocation Options"
+        // (optionalfeatures.json, featureType 'EI', source XPHB): Level 1 grants
+        // exactly one invocation, legal from the 5 real options with no
+        // prerequisite at all (the other 23 all carry a Warlock-level gate).
+        // Modeled through the same domain-agnostic choice:class.accumulating-option
+        // ChoiceSet the Level 2+ growth rows use (see
+        // progression:class.accumulating-option-growth-2-5-7-9-12-15-18 below) --
+        // never a bespoke "invocation" choice shape, so a homebrew class can reuse
+        // the identical mechanism for its own accumulating option family.
+        {
+          choiceSet: 'choice:class.accumulating-option',
+          count: 1,
+          from: [
+            'value:invocation.armor_of_shadows.known',
+            'value:invocation.eldritch_mind.known',
+            'value:invocation.pact_of_the_blade.known',
+            'value:invocation.pact_of_the_chain.known',
+            'value:invocation.pact_of_the_tome.known'
+          ]
         }
       ],
       // D&D 2024 Character Rules Phase 2A.1 -- see barbarian's own identical
       // note above.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon'],
+      // ELDRITCH INVOCATIONS PHASE -- the real XPHB Invocations-known-by-level
+      // table (class-warlock.json classTableGroups) is [1,3,3,3,5,5,6,6,7,7,7,
+      // 8,8,8,9,9,9,10,10,10] for levels 1-20: growth at L2/L5/L7/L9/L12/L15/L18
+      // (L1's own single invocation is the facet choice above, not a row here).
+      // Replacement/retraining ("Replacing and Gaining Invocations") is real but
+      // explicitly optional corpus text ("you CAN replace") -- intentionally not
+      // modeled; a stale/removed selection is never implied by this progression.
+      // 4 of the real 28 options are excluded from the authored pool, honestly,
+      // not silently: Agonizing Blast, Eldritch Spear, and Repelling Blast are
+      // each independently repeatable AND require "a Warlock cantrip that deals
+      // damage" -- no generic spell-filter prerequisite primitive exists yet
+      // (app/lib/feat-mechanics/dnd5e.ts's own SUPPORTED_PREREQUISITE_KEYS has no
+      // 'spell' key); Lessons of the First Ones is repeatable with its own nested
+      // Origin-feat sub-choice. All four are structurally repeatable-with-a-
+      // nested-choice, a materially different shape from the other 24 (pick-once,
+      // flat), so none is authored here. The remaining 24 have ample headroom at
+      // every real acquisition point (10 legal at L2's own target of 3, up to 24
+      // legal by L15/L18 against a final target of 10), so this exclusion never
+      // blocks reaching the real L20 total.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon', 'progression:class.accumulating-option-growth-2-5-7-9-12-15-18'],
       startingEquipment: {
         id: 'choice:equipment.starting.warlock-xphb',
         bundles: [

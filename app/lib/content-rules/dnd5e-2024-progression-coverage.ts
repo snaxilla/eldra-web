@@ -679,17 +679,41 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     status: 'ENGINE_BLOCKED',
     blockerReason: ACCUMULATING_OPTIONAL_FEATURE_BLOCKER
   },
+  // ELDRITCH INVOCATIONS PHASE -- RECLASSIFIED IMPLEMENTED (was ENGINE_BLOCKED): the generic
+  // accumulating-option primitive this entry's own history named as missing now exists
+  // (choice:class.accumulating-option, a domain/class-name-agnostic ChoiceSet with no
+  // writesTo -- the chosen option's own id IS the boolean Value it sets, exactly the shape
+  // "another invocation" prerequisites need via the pre-existing `requiresActive` array, with
+  // zero new engine code). Split into two entries, matching how Rogue's Thieves' Cant
+  // (creation) and Ranger's Deft Explorer (level-up) are kept separate above, rather than one
+  // entry straddling two surfaces. 24 of the real 28 XPHB options are authored (Agonizing
+  // Blast, Eldritch Spear, Repelling Blast, Lessons of the First Ones excluded -- each is
+  // independently repeatable with its own nested sub-choice, a materially different shape;
+  // the first three also need a spell-filter prerequisite primitive that does not exist yet).
+  // Replacement/retraining ("Replacing and Gaining Invocations") is real but optional corpus
+  // text ("you CAN replace") and remains unimplemented by design, tracked separately.
   {
     id: 'warlock-xphb:eldritch-invocations',
     classSlug: 'warlock-xphb',
     featureName: 'Eldritch Invocations',
-    // Corrected in Phase 0 from the corpus Invocations column: the increases are
-    // 1, 2, 5, 7, 9, 12, 15, 18 (10 picks total). The earlier list was wrong.
-    levels: [1, 2, 5, 7, 9, 12, 15, 18],
+    levels: [1],
+    surface: 'creation',
+    status: 'IMPLEMENTED',
+    implementationRef: 'choice:class.accumulating-option',
+    notes: 'Real corpus wording: "You gain one invocation of your choice" (5 of the 28 real options have no prerequisite at all; the other 23 all carry a Warlock-level gate, so exactly these 5 are legal at Level 1).'
+  },
+  {
+    id: 'warlock-xphb:eldritch-invocations-growth',
+    classSlug: 'warlock-xphb',
+    featureName: 'Eldritch Invocations',
+    // Every row the real optionalfeatureProgression array's own count increases at, not every
+    // level (a flat count between increases is not a new choice): 1, 2, 5, 7, 9, 12, 15, 18
+    // (10 picks total) -- Level 1 is the creation-time entry above, not a row here.
+    levels: [2, 5, 7, 9, 12, 15, 18],
     surface: 'level-up',
-    status: 'ENGINE_BLOCKED',
-    blockerReason: ACCUMULATING_OPTIONAL_FEATURE_BLOCKER,
-    notes: 'Levels listed are every row the real optionalfeatureProgression array\'s own count increases at, not every level (a flat count between increases is not a new choice).'
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.accumulating-option-growth-2-5-7-9-12-15-18',
+    notes: 'Counts by row: L2 +2, L5 +2, L7 +1, L9 +1, L12 +1, L15 +1, L18 +1 (10 total by Level 20, matching the corpus Invocations column [1,3,3,3,5,5,6,6,7,7,7,8,8,8,9,9,9,10,10,10]). The 6 "requires another invocation" options (Eldritch Smite/Investment of the Chain Master/Thirsting Blade at L5, Gift of the Protectors/Lifedrinker at L9, Devouring Blade at L12) use the pre-existing `requiresActive` array against the chosen Pact/Thirsting-Blade Value -- proven to compose across rows within one direct multi-level jump, since an earlier row\'s own choice-write is visible to a later row\'s own eligibility check in the same pass.'
   },
 
   // -------------------------------------------------------------------

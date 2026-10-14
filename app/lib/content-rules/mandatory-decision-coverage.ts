@@ -127,6 +127,30 @@ function weaponMasteryCovered(d: DecisionRecord): boolean {
   return ref !== undefined && classProgression(d.owner.slug).includes(ref)
 }
 
+// ELDRITCH INVOCATIONS PHASE -- the real build decision is IMPLEMENTED once the owning facet
+// genuinely references the generic accumulating-option primitive: the Level 1 decision (the real
+// XPHB "you gain one invocation of your choice", a creation-time facet.choices entry) through the
+// facet's own `choices` array; the Level 2/5/7/9/12/15/18 growth decisions (the real XPHB
+// Invocations-known-by-level table) through the facet's own `progression` array, at the dedicated
+// growth Progression this phase authored. Never a name check against "Eldritch Invocation" or
+// "Warlock" itself -- a future homebrew class authoring the identical accumulating-option shape is
+// covered the same way, with no class/option name in this check.
+const CLASS_ACCUMULATING_OPTION_CHOICE_SET: Record<string, string> = {
+  'warlock-xphb': 'choice:class.accumulating-option'
+}
+const CLASS_ACCUMULATING_OPTION_GROWTH_PROGRESSION: Record<string, string> = {
+  'warlock-xphb': 'progression:class.accumulating-option-growth-2-5-7-9-12-15-18'
+}
+function accumulatingOptionCovered(d: DecisionRecord): boolean {
+  if (!is(d, 'class', 'accumulating-option')) return false
+  if (d.level === 1) {
+    const choiceSet = CLASS_ACCUMULATING_OPTION_CHOICE_SET[d.owner.slug]
+    return choiceSet !== undefined && classFacetHasChoice(d.owner.slug, choiceSet)
+  }
+  const ref = CLASS_ACCUMULATING_OPTION_GROWTH_PROGRESSION[d.owner.slug]
+  return ref !== undefined && classProgression(d.owner.slug).includes(ref)
+}
+
 // ---------------------------------------------------------------------------
 // D&D 2024 Character Rules P3.5 -- SPELL ACQUISITION COVERAGE.
 // ---------------------------------------------------------------------------
@@ -388,15 +412,24 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ],
     matches: (d) => weaponMasteryCovered(d)
   },
+  // ELDRITCH INVOCATIONS PHASE -- the real build decision is IMPLEMENTED once the owning facet
+  // genuinely references the generic accumulating-option primitive (see accumulatingOptionCovered
+  // above for the full reasoning). Reclassified BLOCKED -> IMPLEMENTED for exactly the 8 real
+  // Warlock decisions this rule matches (L1 count 1, L2/L5 count 2 each, L7/L9/L12/L15/L18 count 1
+  // each -- the real XPHB Invocations-known-by-level table). Replacement/retraining
+  // ("Replacing and Gaining Invocations") remains its own separate, optional accountability row
+  // (opt:replacement) -- never conflated with this acquisition decision. Metamagic and Battle
+  // Master maneuvers are each a DIFFERENT real decision family/source and remain their own
+  // separately-tracked blocked rows below, untouched by this reclassification.
+  {
+    id: 'impl:invocations',
+    status: 'implemented',
+    reason: 'Eldritch Invocations (the Level-1 choice, plus the real Level 2/5/7/9/12/15/18 count growth) via the generic, class/feature-name-agnostic choice:class.accumulating-option ChoiceSet and progression:class.accumulating-option-growth-2-5-7-9-12-15-18. Runtime effects of an acquired invocation are a separate accountability row, never conflated with this acquisition decision.',
+    ledgerIds: ['warlock-xphb:eldritch-invocations', 'warlock-xphb:eldritch-invocations-growth'],
+    matches: (d) => accumulatingOptionCovered(d)
+  },
 
   // ------------------------------------------------------------------ blocked
-  {
-    id: 'blk:invocations',
-    status: 'blocked',
-    reason: 'Eldritch Invocations: accumulating options with prerequisites; no accumulating shape exists.',
-    ledgerIds: ['warlock-xphb:eldritch-invocations'],
-    matches: (d) => is(d, 'class', 'accumulating-option') && d.source === 'Invocations'
-  },
   {
     id: 'blk:metamagic',
     status: 'blocked',

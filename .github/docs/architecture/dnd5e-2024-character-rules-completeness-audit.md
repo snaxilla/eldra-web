@@ -6741,3 +6741,376 @@ via install/regeneration, left for independent resolution. The pre-existing, unr
 `git stash list`, untouched.
 
 No `packages:sync --apply` run.
+
+### 25.41 ELDRITCH INVOCATIONS + GENERIC ACCUMULATING PERSISTENT OPTIONS (2026-10-14)
+
+#### Scope
+
+Primary gate: Warlock becomes creation-available (Classes 12/12, the full named roster). Everything
+below was independently re-derived from the real XPHB corpus first -- never trusted from this
+document's own prior "10 total by Level 20" claim or the earlier-corrected Warlock level list in
+§23/the Progression Coverage Ledger -- then checked against it. Out of scope, by explicit
+instruction: Metamagic itself, Battle Master maneuvers themselves, subclass gating, Magic Initiate,
+species work, invocation runtime effects beyond fixed representable state, and optional
+replacement/retraining.
+
+#### CORPUS -- re-derived directly, never trusted from a prior session's own claim
+
+Re-read `class-warlock.json`'s own `classTableGroups` Invocations column directly: **`[1,3,3,3,5,5,
+6,6,7,7,7,8,8,8,9,9,9,10,10,10]`** for levels 1-20 -- growth at L2 (+2), L5 (+2), L7 (+1), L9 (+1),
+L12 (+1), L15 (+1), L18 (+1), final total **10 at Level 20**. This matches the number this document
+previously stated, now independently re-confirmed rather than assumed. Re-read the "Eldritch
+Invocations" feature's own prose directly: "**Whenever you gain a Warlock level, you CAN replace**
+one of your invocations with another one for which you qualify" -- replacement is real but
+explicitly optional corpus text, correctly out of Milestone-A scope, not implemented here.
+
+#### OPTIONS -- the real XPHB option universe, re-derived
+
+`optionalfeatures.json`, filtered to `source: 'XPHB'` and `featureType` containing `'EI'`: **exactly
+28 real options**, each a `prerequisite` array of `{level, optionalfeature?, spell?}` shapes --
+never a separate `feat`/`class-feature` record, and never Content-entity-shaped. **No Content
+entities needed**: Rules Definitions already own mechanical option identity end to end (the same
+conclusion the Language phase reached for languages), and the existing generic choice-options relay
+(`server/utils/world-rules-choice-options.ts`) already surfaces every package-authored Value/
+ChoiceSet label to the Builder the moment the Definition exists. Solaris's bound Content selection
+needed no expansion.
+
+4 of the 28 are excluded, honestly, not silently -- **all four are independently REPEATABLE with
+their own nested sub-choice** (a materially different shape from the other 24's pick-once, flat
+shape): Agonizing Blast/Eldritch Spear/Repelling Blast ("choose a different eligible cantrip" each
+time) and Lessons of the First Ones ("choose a different Origin feat" each time). The first three
+also require "a Warlock cantrip that deals damage" -- confirmed via direct read of
+`app/lib/feat-mechanics/dnd5e.ts`'s own `SUPPORTED_PREREQUISITE_KEYS` (`level`, `ability`,
+`proficiency`, `spellcasting2020`) that **no generic spell-filter prerequisite primitive exists**,
+a genuine missing seam, reported here rather than invented around. This is a narrow, reported
+exclusion, not a silent gap: the remaining 24 supported options give ample headroom at every real
+acquisition level (10 legal at Level 2's own target of 3, rising to all 24 legal by Level 15/18
+against a final target of only 10), so the exclusion never blocks the primary gate.
+
+**Complete 28-option table** (name, real level gate, status; the 4 deferred rows carry their own
+exact, individual reason -- never a blanket "not yet done"):
+
+| Invocation | Level | Status | Reason if deferred |
+|---|---|---|---|
+| Armor of Shadows | -- | supported | |
+| Eldritch Mind | -- | supported | |
+| Pact of the Blade | -- | supported | |
+| Pact of the Chain | -- | supported | |
+| Pact of the Tome | -- | supported | |
+| Devil's Sight | 2 | supported | |
+| Fiendish Vigor | 2 | supported | |
+| Mask of Many Faces | 2 | supported | |
+| Misty Visions | 2 | supported | |
+| Otherworldly Leap | 2 | supported | |
+| **Agonizing Blast** | 2 | **DEFERRED** | Repeatable ("gain this invocation more than once, choose a different eligible cantrip each time") AND requires "a Warlock cantrip that deals damage" -- no generic spell-filter prerequisite primitive exists |
+| **Eldritch Spear** | 2 | **DEFERRED** | Same two reasons as Agonizing Blast |
+| **Repelling Blast** | 2 | **DEFERRED** | Same two reasons as Agonizing Blast |
+| **Lessons of the First Ones** | 2 | **DEFERRED** | Repeatable ("choose a different Origin feat each time") -- a nested content-catalogue sub-choice, no spell-filter involved |
+| Ascendant Step | 5 | supported | |
+| Gaze of Two Minds | 5 | supported | |
+| Gift of the Depths | 5 | supported | |
+| Master of Myriad Forms | 5 | supported | |
+| One with Shadows | 5 | supported | |
+| Eldritch Smite | 5 | supported | requires Pact of the Blade (`requiresActive`) |
+| Investment of the Chain Master | 5 | supported | requires Pact of the Chain (`requiresActive`) |
+| Thirsting Blade | 5 | supported | requires Pact of the Blade (`requiresActive`) |
+| Whispers of the Grave | 7 | supported | |
+| Visions of Distant Realms | 9 | supported | |
+| Gift of the Protectors | 9 | supported | requires Pact of the Tome (`requiresActive`) |
+| Lifedrinker | 9 | supported | requires Pact of the Blade (`requiresActive`) |
+| Devouring Blade | 12 | supported | requires Thirsting Blade (`requiresActive`) -- the 2-hop chain |
+| Witch Sight | 15 | supported | |
+
+24 supported, 4 deferred -- counts match the OPTIONS prose above exactly, and these four rows are
+the ONLY ones excluded from every `from`/`requiresActive` array this phase authored
+(`packages/eldra-dnd5e-2024/definitions.json`) and from Warlock's own facet
+(`app/lib/content-rules/dnd5e-2024.ts`). **These four are not fully-supported option semantics
+merely because the 8 acquisition-COUNT decisions classify as implemented** -- the 8 reclassified
+decisions (`impl:invocations`, PHASE 0 below) are exclusively "did the real target count get
+offered and persisted legally," never "is every one of the 28 real option identities offered or
+automated." No completeness rule in this codebase claims per-option completeness at all: Phase 0
+decision discovery (`app/lib/content-rules/mandatory-decisions.ts`) only ever discovers ONE decision
+per real COUNT-INCREASE row (8 total for Warlock), never one decision per option identity -- so
+there is no mechanism by which these four deferred identities could be silently marked
+"implemented." They remain absent from every authored `from` list, visibly and permanently, until a
+future phase explicitly adds spell-filter prerequisite support and/or a repeatable-nested-choice
+primitive.
+
+#### PREREQUISITES -- exact census by family, re-derived, no remembered-rules shortcuts
+
+| Family | Count | Examples |
+|---|---|---|
+| No prerequisite | 5 | Armor of Shadows, Eldritch Mind, Pact of the Blade, Pact of the Chain, Pact of the Tome |
+| Warlock level only | 13 | Ascendant Step (5), Devil's Sight (2), Whispers of the Grave (7), Witch Sight (15), ... |
+| Level + another invocation | 6 | Eldritch Smite/Lifedrinker/Thirsting Blade (needs Pact of the Blade), Investment of the Chain Master (needs Pact of the Chain), Gift of the Protectors (needs Pact of the Tome), Devouring Blade (needs Thirsting Blade -- a 2-hop chain) |
+| Level + specific cantrip filter | 3 | Agonizing Blast/Eldritch Spear/Repelling Blast (excluded above, repeatable + spell-filter) |
+| Repeatable + nested sub-choice | 1 | Lessons of the First Ones (excluded above) |
+| Subclass / ability-score / compound AND / alternative OR | 0 | none exist in the real 28 |
+
+**STOP condition check, resolved without a new engine**: the real census needs only (a) a level
+gate, expressible by simply omitting an option from a row's `from` list until its level, exactly
+the authoring convention Weapon Mastery/Expertise growth rows already use, and (b) an "another
+invocation" gate, which is FIELD-FOR-FIELD the same shape Skill Expertise's own real prerequisite
+("a skill in which you have proficiency") already proved generic via the existing
+`requiresActive: (DefinitionId | null)[]` array on a `RulesFacetChoice`/Progression-row-choice,
+checked by `filterEligibleOptions` (`app/lib/characters/rules-choices.ts`). **No new prerequisite
+primitive, no boolean-expression engine, zero engine code changed.** This is pure package
+authoring on infrastructure the Rogue/Ranger Expertise phase already proved generic.
+
+#### MODEL -- the smallest generic accumulating-option primitive, reused verbatim
+
+Modeled each supported option as a plain boolean `value:invocation.<slug>.known` Value
+(`category: 'core.proficiency'`, reusing the existing category), **not** an `effect:
+'activate-source'` ChoiceSet target -- confirmed by direct read of `character-actor-bridge.ts`'s
+`applyChoice` that `activate-source` pushes to `ActorState.sources[]`, which `requiresActive`/
+`isActive` does **not** read (it reads `values[]` only). A plain boolean Value makes the "another
+invocation" prerequisite family directly expressible via the pre-existing `requiresActive` array
+with zero new eligibility code.
+
+One new, deliberately **class/feature-name-agnostic** ChoiceSet, `choice:class.accumulating-option`
+(`fromContentFacet`, `distinct: true`, `excludeIfAlreadyActive: true`, **no `writesTo`** -- an
+option's own id IS the Value it sets, confirmed via `applyChoice`'s own default branch,
+`target = writesTo ? resolveChoiceTarget(...) : selected`). Zero mention of "invocation" or
+"Warlock" anywhere in this Definition's own fields -- the only domain vocabulary lives in the 24
+authored Values and in Warlock's own facet, exactly mirroring how `choice:language.known` stays
+generic while `value:language.*` carries the domain name.
+
+One new Progression Definition, `progression:class.accumulating-option-growth-2-5-7-9-12-15-18`,
+with 7 rows (L2 count 2, L5 count 2, L7/L9/L12/L15/L18 count 1 each), each row's own `from` the
+FULL CUMULATIVE legal pool at that level (matching the Expertise/Language growth-row convention
+exactly -- `excludeIfAlreadyActive` removes already-picked ones dynamically) and a parallel
+`requiresActive` array naming the Pact/Thirsting-Blade prerequisite Value where real. Warlock's own
+Level 1 pick (the facet's own `choices` entry, count 1, from exactly the 5 no-prerequisite options)
+reuses the identical ChoiceSet, mirroring Rogue/Ranger's own creation-time-choice-vs-progression-row
+split precedent exactly.
+
+**Same-plan composition, proven, not invented**: `character-actor-bridge.ts`'s own progression-row
+loop processes rows in array order, and `applyChoice`'s default branch writes `values[target] =
+true` synchronously -- confirmed by direct code read (the bridge's own in-code comment: a choice's
+value-write is "already visible to any LATER-in-SLOT_ORDER choice... since the main loop processes
+slots in order"). This means an EARLIER row's own pick (Pact of the Blade, Level 1) is visible to a
+LATER row's own `requiresActive` check (Thirsting Blade, Level 5) within one direct multi-level
+jump, with zero new code -- proven end to end by the real 2-hop chain (Pact of the Blade -> Thirsting
+Blade -> Devouring Blade) in `character-progression-plan-invocations.test.ts`'s own DIRECT JUMP
+test. Two options offered within the SAME single multi-select answer (e.g. a hypothetical
+simultaneous pick) are filtered against PRE-row state only -- the real corpus never requires
+same-row mutual composition (no two no-prerequisite-at-the-same-level options depend on each
+other), so no sequencing semantics were invented to handle a case the corpus does not contain.
+
+#### BUILDER / SERVER -- the same creation-choice pipeline every prior phase already proved
+
+No new component (**no `EldritchInvocationPicker.vue`**). Warlock's Level 1 choice is exposed by the
+existing `creationChoicePresentation` exactly like Rogue's Expertise/Language choices; eligibility
+is computed from the same tentative actor state as every other creation choice (proven in
+`create-v2-invocations.test.ts`'s own LEVEL-1 WARLOCK describe block: the offered set is exactly the
+5 real no-prerequisite options). Switching Warlock to another class drops the key entirely (the
+generic `creationChoicePresentation` only emits keys for the current class's own facet.choices),
+and switching back re-presents it fresh -- the identical mechanism Rogue's own Expertise test already
+proved, not re-derived per class.
+
+Server authority (`create-v2.post.ts`) independently re-validates the Level 1 answer through the
+SAME generic choice-validation path every other ChoiceSet already uses (no Invocation-specific
+code): too few, too many, duplicate, unknown identity, an option outside the Level-1 family (one
+carrying a real unmet prerequisite, e.g. Devil's Sight at Level 2), and a crafted key for a class
+that never declared the choice are all refused with zero writes --
+`create-v2-invocations.test.ts`'s own SERVER AUTHORITY describe block proves every one of these
+directly against the real route. The selected option is persisted as canonical selection identity
+ONLY, through `rules_choices` (the same store every other creation choice already uses) -- no
+`warlockInvocations[]`, no rendered label, no prerequisite result, no runtime-effect snapshot ever
+stored.
+
+#### PROGRESSION -- Preview/Confirm/persistence, proven for every real growth row
+
+`character-progression-plan-invocations.test.ts` proves, through the real
+`planProgression`/`confirmProgression`: the growth choice appears exactly at Level 2 with the
+correct 9-option legal pool (10 minus the already-selected creation pick, `excludeIfAlreadyActive`);
+a missing answer refuses Confirm with zero writes; an option whose "another invocation" prerequisite
+is not yet met (Eldritch Smite without Pact of the Blade) is refused; a valid answer persists
+alongside every earlier selection, untouched; a direct Level 1 -> 20 jump resolves the real 2-hop
+chain in one transition and ends at exactly 10 total, no duplicates; a repeated Preview past an
+already-answered level does not re-request it; and a second jump (Level 5 -> 9) requests only the
+real Level 7 (+1) and Level 9 (+1) deficits, never re-asking Level 2/5. `character-progression-
+level-1-to-20.test.ts`'s own generic all-class walk was extended with an Invocation-aware answer
+branch (skips any `requiresActive`-gated option, since the generic walk never answers the
+creation-time Level 1 facet choice) and now resolves Warlock's own 7 growth rows to a legal answer
+at every level, alongside every other class.
+
+#### EFFECTS -- acquisition proven; runtime effects explicitly deferred, tracked
+
+Every one of the 24 supported Invocations is classified: most (Armor of Shadows, Devil's Sight,
+Mask of Many Faces, etc.) are passive rule modifiers or runtime actions with no fixed representable
+state yet (deferred, same posture Weapon Mastery's own mastery-property effects and Class Feature
+Option's own Divine-Order-text already carry -- a separate `runtime:*` accountability row, never
+conflated with acquisition). None of the 24 grants a TRIVIAL fixed state already representable by
+existing Sources/Values/spell infrastructure (unlike, say, a flat ability-score grant), so none was
+authored beyond the acquisition Value itself -- there is no "left as prose when it could have been
+one line" case here. Milestone A's own requirement ("every mandatory Invocation selection can be
+made and persisted legally") is met; runtime effect automation is tracked as future work, not this
+phase's own gate.
+
+#### PACT -- 2024 corpus truth, not 2014 assumptions
+
+Confirmed directly: **Pact of the Blade/Chain/Tome are three of the 28 ordinary Invocation options**
+in 2024 XPHB -- there is no separate "Pact Boon" class feature at all (`class-warlock.json`'s own
+`classFeature` array has no such entry; only "Pact Magic" exists, and its own text never mentions a
+boon choice). This is a genuine 2024 structural change from 2014, modeled directly: no special
+"Pact Boon" mechanic, no class-name branching -- a Pact is acquired exactly like any other
+Invocation, and later Invocations reference it via the SAME generic `requiresActive` "another
+invocation" mechanism as any other inter-option dependency (Thirsting Blade/Eldritch Smite/
+Lifedrinker -> Pact of the Blade; Investment of the Chain Master -> Pact of the Chain; Gift of the
+Protectors -> Pact of the Tome). Re-read the real corpus text directly and found **no stated
+mutual-exclusion** between the three Pacts (unlike 2014's single Pact Boon choice) -- none was
+invented; the generic distinct-selection model allows a character to hold more than one Pact option
+across levels if the real headroom permits it, exactly as the corpus itself allows.
+
+#### FIRST WARLOCK -- the primary gate, proven through REAL authority, no stub
+
+`creationUnresolvedDecisions({ species: 'dwarf-xphb', class: 'warlock-xphb', background:
+'criminal-xphb' })` is `[]` through the real, unstubbed authority. `create-v2-invocations.test.ts`
+drives Dwarf + Warlock + Criminal through the real, unstubbed `create-v2.post` route -- both a
+hand-written body and a Builder-shaped payload (`emptyDraft`/`setChoiceSelections`/
+`setSpellSelections`/`setEquipmentSelection`/`toCreatePayload`, never a hand-typed shortcut) --
+supplying every real mandatory answer (universal languages via the fixed grant, ability scores,
+skill proficiency, the Level 1 Invocation pick, background ability distribution, the fixed Origin
+feat, Warlock's own real Level 1 spell/cantrip acquisition, both starting-equipment bundles). Both
+succeed; the selected Invocation round-trips through the persisted `rules_choices` exactly as
+submitted. Warlock was never blocked after Invocation acquisition landed -- no further STOP was hit.
+
+#### AVAILABILITY -- recomputed through real authority, not assumed
+
+`tests/lib/content-rules/creation-availability.test.ts` (real authority, enumerated, never
+hardcoded): **Species 3/10, Classes 12/12** (every named class, up from 11/12), **Backgrounds
+13/16**, **Combinations 468/1920** (3 x 12 x 13 -- enumerated through the real
+`creationUnresolvedDecisions` triple loop, matching the arithmetic exactly; no discrepancy to
+explain).
+
+#### PHASE 0 -- reclassification, derived from the real decision artifact
+
+`DND5E_2024_MANDATORY_DECISIONS` already discovered Warlock's own 8 real decisions before this
+phase touched anything (`class:warlock-xphb:L{1,2,5,7,9,12,15,18}:accumulating-option:invocations`,
+cardinalities `1,2,2,1,1,1,1,1` -- matching the re-derived corpus table exactly). `blk:invocations`
+(matched `family: 'accumulating-option', source: 'Invocations'`) is replaced by `impl:invocations`,
+backed by a name-agnostic `accumulatingOptionCovered` check (mirrors `weaponMasteryCovered` exactly:
+Level 1 via `classFacetHasChoice`, Level 2+ via `classProgression(...).includes(...)`) --
+reclassifying exactly these 8 real decisions, zero others. `dnd5e-2024-progression-coverage.ts`'s
+own ledger rows (`warlock-xphb:eldritch-invocations` split into a creation-surface L1 row and a
+level-up-surface L2-18 row, mirroring how Thieves' Cant/Deft Explorer are already split) move
+ENGINE_BLOCKED -> IMPLEMENTED. The Phase-0 decision census moves from 648/410/203/35 to
+**648/418/195/35** (8 blocked -> implemented, total unchanged). Optional replacement, runtime
+effects, and the unrelated Metamagic/Battle-Master-maneuver rows are untouched.
+
+#### COVERAGE -- bidirectional contract + bite tests
+
+`removing the rule that covers a real decision leaves it uncovered, and the contract fails`
+(retargeted from `blk:invocations` to `impl:invocations`) and the generic
+`contractViolations`/`matchingRules` machinery continue to pass. A prerequisite-blocked option
+(Eldritch Smite without Pact of the Blade) is proven rejected, never falsely greened, in both the
+progression test (REJECTION) and the creation test (an option outside the Level-1 family). Optional
+replacement (`opt:replacement`, `matches: () => false` for this family) and runtime-effect rows
+remain structurally unable to claim an acquisition decision, exactly like Weapon Mastery's own
+bite-tested boundary.
+
+#### HISTORICAL -- existing Warlock characters, unaffected
+
+No migration, no retroactive selection, no read-time mutation was added. A pre-existing Warlock
+character with no `class:choice:class.accumulating-option` answer in its `rules_choices` record
+continues to assemble for read/display exactly as every other historical-decision case already
+proven in `character-assembly-historical-fail-closed.test.ts` does (the read path never imports the
+completeness authority at all, asserted statically). Historical progression to a level requiring a
+NEW Invocation answer is, honestly, the same "it may honestly lack the newly-authored selection"
+posture every other historical case already carries -- not a new boundary this phase introduces.
+
+#### REUSE -- Metamagic / Battle Master Maneuver fit check (read-only, no implementation)
+
+Re-read `optionalfeatures.json` directly for both:
+- **Metamagic** (Sorcerer, `featureType: ['MM']`): **10 options, ALL with `prerequisite: null`** --
+  a pure flat pick-N pool, structurally SIMPLER than Invocations (no `requiresActive` gating needed
+  at all). **Verdict: can reuse exactly** -- the identical `choice:class.accumulating-option` +
+  Progression Definition recipe, with every `requiresActive` entry simply absent/null.
+- **Battle Master Maneuvers** (Fighter subclass, `featureType: ['MV:B']`): **20 options, ALL with
+  `prerequisite: null`** -- same flat shape. **Verdict: can reuse exactly** for the acquisition
+  decision itself. (Superiority Dice, the associated resource pool, is a SEPARATE, already-existing
+  `resources` facet mechanic, orthogonal to this fit check.)
+
+Neither needs a small extension or is materially different -- both are flat pools, actually simpler
+than the real Invocation corpus this phase authored for. This is direct evidence the primitive
+earned its generic name: it was designed against the HARDEST real case (Invocations' 6 cross-option
+prerequisites and 2-hop chain) and the two simpler real cases both fit without modification.
+
+#### HOMEBREW -- rules-agnostic, by construction
+
+`choice:class.accumulating-option` and `progression:class.accumulating-option-growth-2-5-7-9-12-15-
+18` contain zero "Eldritch Invocation"/"Warlock" naming anywhere in their own Definitions -- the
+only domain vocabulary lives in Warlock's own facet (`app/lib/content-rules/dnd5e-2024.ts`) and the
+24 `value:invocation.*` Values, exactly mirroring how `choice:language.known` stays generic while
+`value:language.*` carries the domain name. A future homebrew class ("Jeff's Questionable Lightning
+Mage") declaring Level 1 choose 2 Tricks / Level 5 total becomes 3 / Level 10 total becomes 5, with
+prerequisites expressed as minimum level (via row `from`-list timing) and another selected Trick or
+an active actor Value (via `requiresActive`), reuses the SAME ChoiceSet id and the SAME Progression
+Definition shape -- no official option/class identity anywhere in application code.
+
+#### PACKAGE IMPACT
+
+`packages/eldra-dnd5e-2024` Definitions changed under the already-published `0.21.4` (24 new
+`value:invocation.*.known` Values, 1 new `choice:class.accumulating-option` ChoiceSet, 1 new
+Progression Definition). No existing Definition removed, renamed, or changed. The first dry run
+(before the bump) reported `SOURCE_VERSION_COLLISION` for Rules (`eldra.rules.dnd5e-2024@0.21.4` was
+already published with different content) and `REFRESH_REQUIRED` for Content. Per this project's
+own established patch-bump precedent (a pure addition, no existing Definition removed/renamed/
+changed), manifest `version` was bumped **0.21.4 -> 0.21.5** (only the version field changed). A
+second dry run after the bump reports `PUBLISH_REQUIRED` for Rules
+(`eldra.rules.dnd5e-2024@0.21.5` authored but not yet published) and `REFRESH_REQUIRED` for Content
+(`eldra.solaris.xphb`, since the authoring facet corpus also changed), actions `PUBLISH_RULES` /
+`REFRESH_CONTENT` / `ACTIVATE_RULES` / `BIND_CONTENT`. No mutation performed -- dry run only,
+`--apply` never invoked.
+
+#### Files
+
+New: `tests/server/api/worlds/[id]/characters/create-v2-invocations.test.ts`, `tests/server/utils/
+character-progression-plan-invocations.test.ts`.
+
+Modified: `packages/eldra-dnd5e-2024/definitions.json` (24 Values, 1 ChoiceSet, 1 Progression
+Definition), `packages/eldra-dnd5e-2024/manifest.json` (`version` 0.21.4 -> 0.21.5, only the
+version field changed), `app/lib/content-rules/dnd5e-2024.ts` (Warlock's Level 1 facet.choices entry +
+progression reference), `app/lib/content-rules/mandatory-decision-coverage.ts`
+(`accumulatingOptionCovered`, `impl:invocations` replacing `blk:invocations`), `app/lib/content-
+rules/dnd5e-2024-progression-coverage.ts` (the Warlock ledger row split into 2 IMPLEMENTED rows),
+`tests/rules/mandatory-decision-coverage.test.ts` (bite test retargeted, 2 stale AVAILABILITY
+assertions corrected), `tests/lib/content-rules/creation-availability.test.ts` (BASELINE updated to
+12/468), `tests/lib/content-rules/spell-corpus-authority.test.ts` (census updated to 418/195),
+`tests/server/utils/character-actor-bridge.test.ts` (Warlock's own extra creation-time choice
+counted), `tests/server/utils/character-progression-level-1-to-20.test.ts` (Invocation-aware answer
+branch, skips `requiresActive`-gated options), `tests/server/utils/character-progression-plan-
+spell-acquisition.test.ts` (the new Level 12 growth row answered so the unrelated Arcanum-7 test
+stays isolated to its own subject), `tests/server/api/worlds/[id]/characters/create-v2-fail-
+closed.test.ts` (the two now-obsolete "Warlock still blocked" tests replaced with a genuine missing-
+answer case and an unknown-identity case), `tests/rules/completeness-stub-policy.test.ts` (2 new
+file entries classified).
+
+#### Verification
+
+`pnpm run test`: **215 files / 4544 tests -- all passing** (4523 baseline + 21 net new: 14 creation
+acceptance/server-authority tests, 7 progression tests -- zero regressions). `pnpm run typecheck`:
+the pre-existing `@types/node`-absent environment gap remains (1177 errors -- identical to the
+established baseline; grepped the full output for every file this phase touched -- zero hits).
+`pnpm run build`: succeeds (exit 0). `git diff --cached --check`: clean. `pnpm packages:sync
+--world Solaris` (dry run, after the `0.21.4 -> 0.21.5` bump): `PUBLISH_REQUIRED` (Rules,
+`eldra.rules.dnd5e-2024@0.21.5`) + `REFRESH_REQUIRED` (Content), actions `PUBLISH_RULES` /
+`REFRESH_CONTENT` / `ACTIVATE_RULES` / `BIND_CONTENT`. No mutation performed.
+
+`pnpm run lint` could not run in this environment: `.nuxt/eslint.config.mjs` is missing even after a
+full `pnpm run build`/`nuxi prepare` (an `@nuxt/eslint`-generated file this environment does not
+produce) -- confirmed pre-existing and unrelated to this phase's own diff (`nuxi prepare` on a clean
+tree hits the identical error). Not a regression this phase introduced; reported honestly rather
+than worked around.
+
+`pnpm-lock.yaml`/`package.json` confirmed byte-identical to HEAD (zero diff) -- excluded from this
+commit entirely, exactly like every prior phase. The pre-existing, unrelated stash (`6c97930
+feat(network): introduce Transportation Junctions`) remains present in `git stash list`, untouched.
+Other pre-existing unrelated dirty worktree state (scene-graph/world-map docs, the dice renderer
+rework, CSS/character-component edits, `nuxt.config.ts`) is excluded from this commit too -- staged
+only the files this phase itself touched.
+
+Committed as ONE local commit, `feat(rules): add eldritch invocation acquisition`. Not pushed. No
+`packages:sync --apply`. Next phase (Metamagic, Battle Master maneuvers, subclasses, species, Magic
+Initiate) not begun.

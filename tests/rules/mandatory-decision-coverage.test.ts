@@ -100,7 +100,7 @@ describe('BITE -- the contract fails when it should', () => {
   })
 
   it('removing the rule that covers a real decision leaves it uncovered, and the contract fails', () => {
-    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'blk:invocations')
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:invocations')
     const covered = DECISIONS.filter((d) => d.source === 'Invocations')
     expect(covered.length).toBeGreaterThan(0)
     expect(covered.every((d) => without.filter((rule) => rule.matches(d)).length === 0)).toBe(true)
@@ -226,7 +226,9 @@ describe('P3.5 -- spell decision reconciliation', () => {
     // Order) is now also implemented, so they join Bard/Sorcerer/Wizard as fully creation-complete.
     // WEAPON MASTERY PHASE -- Paladin/Ranger's own remaining non-spell blocker (Weapon Mastery) is
     // now also implemented, so they join the same fully-creation-complete group.
-    const stillPartiallyBlockedCasters = CASTER_SLUGS.filter((slug) => !['bard-xphb', 'cleric-xphb', 'druid-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'wizard-xphb'].includes(slug))
+    // ELDRITCH INVOCATIONS PHASE -- Warlock's own remaining non-spell blocker (Eldritch
+    // Invocations) is now also implemented, so it joins the same fully-creation-complete group.
+    const stillPartiallyBlockedCasters = CASTER_SLUGS.filter((slug) => !['bard-xphb', 'cleric-xphb', 'druid-xphb', 'paladin-xphb', 'ranger-xphb', 'sorcerer-xphb', 'warlock-xphb', 'wizard-xphb'].includes(slug))
     for (const slug of stillPartiallyBlockedCasters) {
       const ownDecisions = DECISIONS.filter((d) => d.owner.kind === 'class' && d.owner.slug === slug)
       const nonSpellBlocked = ownDecisions.filter((d) => !['spell-choice', 'spell-grant', 'spell-count'].includes(d.family) && classifyDecision(d).status === 'blocked')
@@ -327,7 +329,9 @@ describe('P8 -- starting equipment reconciliation', () => {
     // LANGUAGE CORPUS + POLICY PHASE -- Rogue's own Thieves' Cant language choice is now
     // authored too; Rogue joins the roster (Warlock remains blocked by Eldritch Invocations
     // alone).
-    expect(availableClasses.sort()).toEqual(['barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb', 'monk-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb', 'sorcerer-xphb', 'wizard-xphb'])
+    // ELDRITCH INVOCATIONS PHASE -- Warlock's own remaining blocker (Eldritch Invocations) is
+    // now authored too; Warlock joins the roster (the full named 12-class roster).
+    expect(availableClasses.sort()).toEqual(['barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb', 'monk-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb', 'sorcerer-xphb', 'warlock-xphb', 'wizard-xphb'])
     expect(availableBackgrounds.length).toBe(13)
 
     let combinations = 0
@@ -338,10 +342,10 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // LANGUAGE CORPUS + POLICY PHASE -- 3 species * 11 available classes * 13 available
-    // backgrounds = 429, enumerated through the real authority above (never computed as a
+    // ELDRITCH INVOCATIONS PHASE -- 3 species * 12 available classes * 13 available
+    // backgrounds = 468, enumerated through the real authority above (never computed as a
     // hardcoded product).
-    expect(combinations).toBe(429)
+    expect(combinations).toBe(468)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
@@ -450,18 +454,20 @@ describe('ROGUE EXPERTISE + RANGER DEFT EXPLORER PHASE -- reconciliation', () =>
 
   // LANGUAGE CORPUS + POLICY PHASE -- Rogue's own real remaining blocker (its Thieves' Cant
   // feature's embedded language choice) is now ALSO implemented; Rogue joins the roster (11/12,
-  // Warlock alone remains blocked by Eldritch Invocations).
-  it('AVAILABILITY -- Classes/Combinations after this phase (11/12, 429) -- Rogue joins, Warlock alone remains blocked', () => {
+  // Warlock alone remains blocked by Eldritch Invocations at this point in the history).
+  // ELDRITCH INVOCATIONS PHASE -- Warlock's own real remaining blocker (Eldritch Invocations) is
+  // now ALSO implemented; Warlock joins the roster too (12/12, the full named roster).
+  it('AVAILABILITY -- Classes/Combinations after this phase (12/12, 468) -- Rogue and Warlock both join', () => {
     const CLASSES: ReadonlyArray<readonly [string, boolean]> = [
       ['barbarian-xphb', true], ['bard-xphb', true], ['cleric-xphb', true], ['druid-xphb', true],
       ['fighter-xphb', true], ['monk-xphb', true], ['paladin-xphb', true], ['ranger-xphb', true],
-      ['rogue-xphb', true], ['sorcerer-xphb', true], ['warlock-xphb', false], ['wizard-xphb', true]
+      ['rogue-xphb', true], ['sorcerer-xphb', true], ['warlock-xphb', true], ['wizard-xphb', true]
     ]
     const available = CLASSES.filter(([classSlug]) =>
       creationUnresolvedDecisions({ species: 'dwarf-xphb', class: classSlug, background: 'criminal-xphb', feats: [] }).length === 0
     ).map(([classSlug]) => classSlug)
     expect(available.sort()).toEqual(CLASSES.filter(([, expected]) => expected).map(([classSlug]) => classSlug).sort())
-    expect(available).toHaveLength(11)
+    expect(available).toHaveLength(12)
   })
 })
 

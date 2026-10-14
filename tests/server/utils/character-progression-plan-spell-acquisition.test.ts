@@ -367,9 +367,15 @@ describe('SECOND LEVEL-UP -- only the additional target-state deficit is request
     // non-repeatable, no-prerequisite Actor feat the other tests already use, so this test's own
     // subject (Arcanum-7, never Arcanum-6 again) stays the only thing actually under assertion.
     const feat12Key = progressionChoiceKey('class', 12, 'choice:feat.selection')
+    // Level 11 -> 13 also crosses the real Level-12 Eldritch Invocations growth row (this phase's
+    // own `progression:class.accumulating-option-growth-2-5-7-9-12-15-18`) -- answered with one
+    // never-gated option so this test's own subject (Arcanum-7) stays the only thing under
+    // assertion.
+    const invocation12Key = progressionChoiceKey('class', 12, 'choice:class.accumulating-option')
     const answers = {
       [spellAnswerKey(requirements.find((r) => r.id === tier7Id)!, 13)]: [`${PKG}::arcanum-7`],
-      [feat12Key]: [serializeContentRef({ packageId: PKG, slug: 'actor-xphb' })]
+      [feat12Key]: [serializeContentRef({ packageId: PKG, slug: 'actor-xphb' })],
+      [invocation12Key]: ['value:invocation.whispers_of_the_grave.known']
     }
     const result = await confirmProgression(
       WORLD_ID, CHARACTER_ID, 13,

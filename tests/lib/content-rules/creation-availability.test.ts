@@ -45,7 +45,12 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // universal "Choose Languages" creation rule and Ranger's own Deft Explorer language half).
 // Rogue joins the creation-complete roster (10 -> 11 classes; Warlock remains blocked by
 // Eldritch Invocations alone), lifting the complete combinations from 390 to 429 (3 x 11 x 13).
-const BASELINE = { species: 3, classes: 11, backgrounds: 13, combinations: 429 }
+// ELDRITCH INVOCATIONS PHASE -- Warlock's own real remaining blocker (Eldritch Invocations: the
+// Level-1 choice plus the real Level 2/5/7/9/12/15/18 count growth) is now authored via the
+// generic choice:class.accumulating-option ChoiceSet/progression. Warlock joins the
+// creation-complete roster (11 -> 12 classes, the full named roster), lifting the complete
+// combinations from 429 to 468 (3 x 12 x 13).
+const BASELINE = { species: 3, classes: 12, backgrounds: 13, combinations: 468 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

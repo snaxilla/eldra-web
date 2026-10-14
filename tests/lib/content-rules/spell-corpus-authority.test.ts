@@ -90,15 +90,19 @@ describe('P2 spell corpus authority', () => {
   // facet.choices entry; Ranger Level 2 "Deft Explorer" language, a dedicated Progression row)
   // from blocked to implemented -- moving the census from 647/407/205 to 648/410/203. Rogue's
   // Thieves' Cant/language blocker is now fully resolved; Rogue becomes creation-available.
-  it('the Phase-0 decision census after the Language Corpus phase: 648 total, 410 implemented, 203 blocked, 35 optional', () => {
+  // ELDRITCH INVOCATIONS PHASE reclassified exactly 8 more (Warlock's own real Level 1/2/5/7/9/
+  // 12/15/18 accumulating-option decisions, the real XPHB Invocations-known-by-level table) from
+  // blocked to implemented -- moving the census from 648/410/203 to 648/418/195. Warlock's
+  // Eldritch Invocations blocker is now fully resolved; Warlock becomes creation-available.
+  it('the Phase-0 decision census after the Eldritch Invocations phase: 648 total, 418 implemented, 195 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(648)
-    expect(counts.implemented).toBe(410)
-    expect(counts.blocked).toBe(203)
+    expect(counts.implemented).toBe(418)
+    expect(counts.blocked).toBe(195)
     expect(counts.optional).toBe(35)
   })
 

@@ -219,10 +219,14 @@ describe('the hand-authored XPHB Rules Facets', () => {
       // (facet.choices), for 4 total: skill proficiency, weapon mastery,
       // expertise, language. Ranger's own new Level-2 Deft Explorer
       // language choice is likewise a PROGRESSION addition, not a
+      // facet.choices entry. ELDRITCH INVOCATIONS PHASE -- Warlock ALSO
+      // declares its own real Level-1 `choice:class.accumulating-option`
+      // (facet.choices, one invocation from the 5 with no prerequisite);
+      // its own Level 2+ growth is a PROGRESSION addition, not a
       // facet.choices entry.
       const EXTRA_CHOICE_COUNT: Record<string, number> = {
         fighter: 2, bard: 1, monk: 1, cleric: 1, druid: 1,
-        barbarian: 1, paladin: 1, ranger: 1, rogue: 3
+        barbarian: 1, paladin: 1, ranger: 1, rogue: 3, warlock: 1
       }
       expect(facet!.choices).toHaveLength(1 + (EXTRA_CHOICE_COUNT[name] ?? 0))
     }

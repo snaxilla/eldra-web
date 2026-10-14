@@ -394,7 +394,7 @@ function useClass(classSlug: string, targetLevel = 20) {
 // from the real package + the real ledger, never asserted from memory.
 // ---------------------------------------------------------------------------
 
-type ExpectedChoice = { level: number, choiceSetId: string, count: number, from: string[] }
+type ExpectedChoice = { level: number, choiceSetId: string, count: number, from: string[], requiresActive?: (string | null)[] }
 
 function expectedImplementedChoices(classSlug: string, definitions: Definition[]): ExpectedChoice[] {
   const facet = findRulesFacet('dnd5e.2024', 'class', classSlug)
@@ -412,7 +412,7 @@ function expectedImplementedChoices(classSlug: string, definitions: Definition[]
     if (!implementedRefs.has(definition.id)) continue
     for (const row of definition.rows ?? []) {
       for (const choice of row.choices ?? []) {
-        expected.push({ level: row.at as number, choiceSetId: choice.choiceSet, count: choice.count, from: choice.from ?? [] })
+        expected.push({ level: row.at as number, choiceSetId: choice.choiceSet, count: choice.count, from: choice.from ?? [], requiresActive: choice.requiresActive })
       }
     }
   }
@@ -475,7 +475,15 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
   // own fixed grant, active unconditionally regardless of this fixture's own rulesChoices), so it
   // is pre-seeded as "used" here -- picking it would be a real, offer-rejected illegal answer.
   const usedLanguages = new Set<string>(['value:language.common.known'])
-  for (const { level, choiceSetId, count, from } of expected) {
+  // ELDRITCH INVOCATIONS PHASE -- additive, non-repeating picks across every growth row
+  // (Warlock's own `progression:class.accumulating-option-growth-2-5-7-9-12-15-18`). Picks ONLY
+  // options with no `requiresActive` gate -- this fixture never answers the creation-time Level-1
+  // facet.choices entry (outside this function's own `expected`, which covers progression rows
+  // only), so no Pact is ever guaranteed active here; the real corpus always has enough
+  // never-gated options (18 of the 24 authored) to reach the real cumulative target of 10 by
+  // Level 20 without ever needing a gated one.
+  const usedInvocations = new Set<string>()
+  for (const { level, choiceSetId, count, from, requiresActive } of expected) {
     const key = progressionChoiceKey('class', level, choiceSetId)
     if (choiceSetId === 'choice:class.subclass') {
       answers[key] = [serializeContentRef({ packageId: FEAT_PACKAGE_ID, slug: subclassSlug })]
@@ -531,6 +539,12 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
       const picked = from.filter((id) => !usedLanguages.has(id)).slice(0, count)
       answers[key] = picked
       for (const id of picked) usedLanguages.add(id)
+    } else if (choiceSetId === 'choice:class.accumulating-option') {
+      const picked = from
+        .filter((id, index) => !usedInvocations.has(id) && !(requiresActive?.[index]))
+        .slice(0, count)
+      answers[key] = picked
+      for (const id of picked) usedInvocations.add(id)
     }
     // Anything else: left unanswered on purpose -- see this function's
     // own header.

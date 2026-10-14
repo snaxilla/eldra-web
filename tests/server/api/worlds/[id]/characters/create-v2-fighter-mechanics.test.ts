@@ -149,8 +149,9 @@ const FEATS = xphbFeats.feats.map((raw) => {
 const FIGHTER = entry({ title: 'Fighter', slug: 'fighter-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb') ?? undefined })
 const WIZARD = entry({ title: 'Wizard', slug: 'wizard-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb') ?? undefined })
 const HUMAN = entry({ title: 'Human', slug: 'human-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'species', 'human-xphb') ?? undefined })
-// PHASE 2C.3A -- Criminal, not Sage: Sage is creation-blocked (Magic Initiate). Criminal is a supported
-// Background whose grants (Sleight of Hand, Stealth) do not touch a Fighter's own skill choice.
+// PHASE 2C.3A -- Criminal: a supported Background whose grants (Sleight of Hand, Stealth) do not
+// touch a Fighter's own skill choice. (Sage is ALSO supported now -- FEAT-OWNED SPELL ACQUISITION
+// PHASE -- but is not used here since this describe's own concern is unrelated to spells.)
 const CRIMINAL = entry({ title: 'Criminal', slug: 'criminal-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'criminal-xphb') ?? undefined })
 // P1 -- Artisan: its Origin feat (Crafter) has a representable tool choice, so it is the Background that
 // exercises a rules_choices answer at creation.
@@ -167,6 +168,29 @@ const WIZARD_SPELLS = [
   ...WIZARD_SPELL_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `wiz-${s}`, title: `Wizard Spell ${s.toUpperCase()}`, spellMechanics: { level: 1, concentration: false, ritual: false, resolution: null, classLists: ['Wizard'] } })),
   ...WIZARD_CANTRIP_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `wiz-cantrip-${s}`, title: `Wizard Cantrip ${s.toUpperCase()}`, spellMechanics: { level: 0, concentration: false, ritual: false, resolution: null, classLists: ['Wizard'] } }))
 ]
+
+// FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte's own Origin Feat (Magic Initiate) is fixed to
+// the Cleric list, needing its own Cleric-tagged cantrips/Level-1 spell -- the Wizard-only
+// catalogue above has none. A small, fixed, always-legal Cleric spell set, mirroring
+// WIZARD_SPELLS's own posture exactly.
+const CLERIC_SPELL_SLUGS = [...'gh']
+const CLERIC_CANTRIP_SLUGS = [...'uv']
+const CLERIC_SPELLS = [
+  ...CLERIC_SPELL_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `cleric-${s}`, title: `Cleric Spell ${s.toUpperCase()}`, spellMechanics: { level: 1, concentration: false, ritual: false, resolution: null, classLists: ['Cleric'] } })),
+  ...CLERIC_CANTRIP_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `cleric-cantrip-${s}`, title: `Cleric Cantrip ${s.toUpperCase()}`, spellMechanics: { level: 0, concentration: false, ritual: false, resolution: null, classLists: ['Cleric'] } }))
+]
+
+function magicInitiateClericSpellSelections() {
+  const requirements = findRulesFacet('dnd5e.2024', 'feat', 'magic-initiate-xphb')!.spellRequirements!
+  const cantripId = requirements.find((r) => r.pool === 'cantrip' && r.filter.classList?.includes('Cleric'))!.id
+  const spellId = requirements.find((r) => r.pool === 'fixed' && r.filter.classList?.includes('Cleric'))!.id
+  const cantripRefs = CLERIC_CANTRIP_SLUGS.map((s) => ({ packageId: CONTENT_PACKAGE, slug: `cleric-cantrip-${s}` }))
+  const spellRef = { packageId: CONTENT_PACKAGE, slug: `cleric-${CLERIC_SPELL_SLUGS[0]}` }
+  return [
+    ...cantripRefs.map((ref) => ({ requirementId: cantripId, ref })),
+    { requirementId: spellId, ref: spellRef }
+  ]
+}
 
 function wizardSpellSelections() {
   const requirements = findRulesFacet('dnd5e.2024', 'class', 'wizard-xphb')!.spellRequirements!
@@ -202,7 +226,7 @@ const CATALOGUE = {
   classes: [FIGHTER, WIZARD],
   backgrounds: [CRIMINAL, ARTISAN],
   feats: FEATS,
-  subclasses: [], items: WEAPONS, spells: WIZARD_SPELLS, monsters: []
+  subclasses: [], items: WEAPONS, spells: [...WIZARD_SPELLS, ...CLERIC_SPELLS], monsters: []
 }
 
 const ref = (packageId: string, slug: string) => ({ packageId, slug })
@@ -576,8 +600,6 @@ const SUPPORTED_ORIGIN: [string, string][] = [
   ['Criminal', 'alert-xphb'], ['Guard', 'alert-xphb'], ['Farmer', 'tough-xphb'], ['Hermit', 'healer-xphb'],
   ['Merchant', 'lucky-xphb'], ['Wayfarer', 'lucky-xphb'], ['Sailor', 'tavern-brawler-xphb'], ['Soldier', 'savage-attacker-xphb']
 ]
-const BLOCKED_BACKGROUNDS = ['Acolyte', 'Artisan', 'Charlatan', 'Entertainer', 'Guide', 'Noble', 'Sage', 'Scribe']
-
 function bodyWith(backgroundName: string, overrides: Record<string, unknown> = {}) {
   return {
     title: 'Brenna',
@@ -657,9 +679,15 @@ describe('PHASE 2C.3A -- fixed Origin Feat routing (mechanics; completeness stub
   })
 
   it('the CURRENT Background\'s Origin feat is routed, with no stale Origin carried over (mechanics; stubbed)', async () => {
-    await expect(postCreate(bodyWith('Acolyte'))).rejects.toMatchObject({ statusCode: 400 })
-    expect(mocks.createEntityRecord).not.toHaveBeenCalled()
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte's own Origin Feat (Magic Initiate) is now
+    // fixed-supported too (no longer `creationUnavailable`); it routes exactly like every other
+    // Background's own fixed Origin Feat, proven here alongside Criminal/Farmer's own swap. Its
+    // own real spellRequirements (fixed to the Cleric list) need a real answer, same as this
+    // file's own default Wizard class spell answer.
+    await postCreate(bodyWith('Acolyte', { spellSelections: [...wizardSpellSelections(), ...magicInitiateClericSpellSelections()] }))
+    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['magic-initiate-xphb'])
 
+    resetStore()
     await postCreate(bodyWith('Criminal'))
     expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['alert-xphb'])
 

@@ -49,8 +49,8 @@ import {
 import {
   extractTentativeSpellSelections,
   planSpellAcquisition,
-  spellPoolLabel,
   spellRequirementAnswerKey,
+  spellRequirementLabel,
   type SpellAcquisitionPlan,
   type SpellCatalogueEntry,
   type TentativeSpellSelection
@@ -162,7 +162,7 @@ export function toProgressionSpellPlan(
     return {
       requirementId: requirementPlan.requirementId,
       pool: requirementPlan.pool,
-      label: spellPoolLabel(requirementPlan.pool),
+      label: spellRequirementLabel(requirement),
       answerKey: spellAnswerKey(requirement, targetLevel),
       target: requirementPlan.target,
       legalCount: requirementPlan.legalCount,

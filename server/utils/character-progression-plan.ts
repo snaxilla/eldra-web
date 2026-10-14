@@ -233,7 +233,7 @@ import type { ContentCatalogueFilter, ItemCatalogueFilter, SpellCatalogueFilter 
 import { progressionUnresolvedDecisions, describeUnresolved } from '../../app/lib/content-rules/creation-completeness'
 import type { RulesFacet } from '../../app/lib/content-rules'
 import type { AssembledSpellEntry } from '../../app/lib/characters/spellcasting'
-import { toStoredSpellEntry } from '../../app/lib/characters/spellcasting'
+import { toStoredSpellEntry, type StoredSpellEntry } from '../../app/lib/characters/spellcasting'
 import type { SpellAcquisitionPlan, TentativeSpellSelection } from '../../app/lib/characters/spell-acquisition-plan'
 import {
   buildProgressionAcceptedSpellEntries,
@@ -244,6 +244,7 @@ import {
 } from './character-progression-spell-acquisition'
 import { describeSpellPlanFailure } from './character-spell-acquisition'
 import { saveCharacterSpellcasting } from './character-spellcasting'
+import { gatherSpellRequirements, resolveFixedSpellGrants } from '../../app/lib/characters/spell-requirement-ownership'
 
 // Phase 2C.1 -- how a content-backed progression answer is ROUTED. The
 // ChoiceSet's own typed selector declares what it asks for (`from.category`:
@@ -418,6 +419,25 @@ export type CurrentProgressionState = {
   spells: readonly AssembledSpellEntry[]
   expendedSlots: Record<string, number>
   classFacet: RulesFacet | null
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- every PERSISTED feat acquisition's own already-resolved
+  // facet (`assembly.blueprint.feats`, the SAME resolution species/class/background already go
+  // through -- zero extra fetch). A feat's own `spellRequirements`/`fixedSpellGrants` flow through
+  // identically to the class's own, via `gatherSpellRequirements`
+  // (app/lib/characters/spell-requirement-ownership.ts) -- this field exists so that gathering can
+  // happen without re-deriving the resolved feat list a second time.
+  featFacets: readonly (RulesFacet | null)[]
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- the currently resolved species/background facets, for
+  // the identical reason `featFacets` exists: a requirement's own `requiresActive` gate may be
+  // GRANTED by a different facet than the one that OWNS the requirement (Magic Initiate's own
+  // requirement is owned by the feat; the fixed gate is granted by the Background that acquired
+  // it) -- see `gatherSpellRequirements`'s own header.
+  speciesFacet: RulesFacet | null
+  backgroundFacet: RulesFacet | null
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- the character's own PERSISTED choice answers
+  // (`rules_choices`), needed to decide whether a conditionally-gated `SpellRequirement`
+  // (`requiresActive`) is currently active -- see `gatherSpellRequirements`'s own header for why a
+  // plain selections scan, not the Rules Engine's `values[]`, is the correct check here.
+  rulesChoiceSelections: Readonly<Record<string, readonly string[]>>
 }
 
 export async function resolveCurrentProgression(
@@ -436,6 +456,9 @@ export async function resolveCurrentProgression(
   const classFacet = assembly.blueprint.class.status === 'resolved'
     ? (assembly.blueprint.class.entry.rulesFacet ?? null)
     : null
+  const featFacets = (assembly.blueprint.feats ?? []).map((slot) => (slot.status === 'resolved' ? (slot.entry.rulesFacet ?? null) : null))
+  const speciesFacet = assembly.blueprint.species?.status === 'resolved' ? (assembly.blueprint.species.entry.rulesFacet ?? null) : null
+  const backgroundFacet = assembly.blueprint.background?.status === 'resolved' ? (assembly.blueprint.background.entry.rulesFacet ?? null) : null
   return {
     ok: true,
     state: {
@@ -443,7 +466,11 @@ export async function resolveCurrentProgression(
       currentLevel: totalCharacterLevel(progression),
       spells: assembly.blueprint.spells ?? [],
       expendedSlots: assembly.blueprint.expendedSlots ?? {},
-      classFacet
+      classFacet,
+      featFacets,
+      speciesFacet,
+      backgroundFacet,
+      rulesChoiceSelections: assembly.blueprint.rulesChoices?.selections ?? {}
     }
   }
 }
@@ -1053,9 +1080,19 @@ export async function planProgression(
 
   // D&D 2024 Character Rules P3.4 -- TARGET-STATE spell acquisition, computed exactly ONCE against
   // `targetLevel` (never per crossed level -- see character-progression-spell-acquisition.ts's own
-  // header). `null` for a class with no `spellRequirements` at all -- no plan built, no gate added,
-  // mirroring create-v2.post.ts's own identical "a non-caster skips this entirely" rule.
-  const spellRequirements = current.state.classFacet?.spellRequirements ?? []
+  // header). `[]` for a class with no `spellRequirements` at all and no spell-granting feat
+  // acquired -- no plan built, no gate added, mirroring create-v2.post.ts's own identical
+  // "a non-caster skips this entirely" rule.
+  //
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- widened from "the class facet alone" to "the class facet
+  // plus every genuinely acquired feat's own facet" (`current.state.featFacets`), filtered by
+  // `requiresActive` against this character's PERSISTED choice answers merged with THIS transition's
+  // own tentative ones (tentative wins a same-key collision, matching every other tentative-over-
+  // persisted read in this file) -- see `gatherSpellRequirements`'s own header for the exact check.
+  const spellRequirements = gatherSpellRequirements(
+    [current.state.speciesFacet, current.state.classFacet, current.state.backgroundFacet, ...current.state.featFacets],
+    { ...current.state.rulesChoiceSelections, ...tentativeAnswers }
+  )
   let spellPlan: SpellAcquisitionPlan | null = null
   let progressionSpellPlan: ProgressionSpellPlan | null = null
   const spellTentative = spellTentativeSelectionsFromAnswers(tentativeAnswers, spellRequirements, targetLevel)
@@ -1124,7 +1161,13 @@ export async function confirmProgression(
   if (!current.ok) return current
 
   const { progression, currentLevel } = current.state
-  const spellRequirements = current.state.classFacet?.spellRequirements ?? []
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- see the identical widening in `planProgression` above for
+  // the full reasoning. `answers` (this call's own final parameter) plays the exact role
+  // `tentativeAnswers` plays there.
+  const spellRequirements = gatherSpellRequirements(
+    [current.state.speciesFacet, current.state.classFacet, current.state.backgroundFacet, ...current.state.featFacets],
+    { ...current.state.rulesChoiceSelections, ...answers }
+  )
   const [packageIntegrityHash, contentBindingFingerprint] = await Promise.all([
     resolvePackageIntegrityHash(worldId),
     resolveContentBindingFingerprint(worldId)
@@ -1622,9 +1665,40 @@ export async function confirmProgression(
   // FAIL LOUDLY (no `.catch`) -- a completed-looking level-up silently missing its spells is exactly
   // the bug this phase exists to prevent, the same posture create-v2.post.ts's own identical write
   // already takes.
-  if (planResult.spellPlan && spellRequirements.length > 0) {
-    const persistedStoredSpells = current.state.spells.map(toStoredSpellEntry)
-    const nextSpells = buildProgressionAcceptedSpellEntries(persistedStoredSpells, spellRequirements, planResult.spellPlan, planResult.spellTentative)
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- fixed spell grants (Telekinetic's Mage Hand, Telepathic's
+  // Detect Thoughts) resolved ONLY against `resolvedFeatAcquisitions` (feats NEWLY acquired by THIS
+  // confirm), never `base.feats` (already-persisted ones) -- a fixed grant is added exactly once,
+  // the moment its owning feat is first acquired; re-resolving it on every later confirm would
+  // duplicate the physical row. A slug missing from the Catalogue fails this confirm closed, same
+  // posture as every other feat-acquisition check above. Resolved against `nextAcquiredSpells` (not
+  // the bare persisted list) as its own `existing` baseline so its freshly-numbered `instanceId`s can
+  // never collide with the SAME confirm's own `buildProgressionAcceptedSpellEntries` output --
+  // already-stable, previously-persisted rows are never renumbered.
+  const persistedStoredSpells = current.state.spells.map(toStoredSpellEntry)
+  const nextAcquiredSpells = planResult.spellPlan && spellRequirements.length > 0
+    ? buildProgressionAcceptedSpellEntries(persistedStoredSpells, spellRequirements, planResult.spellPlan, planResult.spellTentative)
+    : persistedStoredSpells
+
+  let fixedSpellGrantEntries: StoredSpellEntry[] = []
+  if (resolvedFeatAcquisitions.length > 0) {
+    const catalogue = await getWorldContentCatalogue(worldId)
+    const fixedSpellGrantsResolution = resolveFixedSpellGrants(
+      resolvedFeatAcquisitions.map((acquisition) => ({
+        packageId: acquisition.ref.packageId,
+        facet: catalogue.feats.find((entry) => entry.packageId === acquisition.ref.packageId && entry.slug === acquisition.ref.slug)?.rulesFacet,
+        ownerKey: acquisition.ref.slug
+      })),
+      catalogue.spells,
+      nextAcquiredSpells
+    )
+    if (!fixedSpellGrantsResolution.ok) {
+      return { ok: false, reason: 'illegal-feat-selection', message: fixedSpellGrantsResolution.reason }
+    }
+    fixedSpellGrantEntries = fixedSpellGrantsResolution.entries
+  }
+
+  if (nextAcquiredSpells !== persistedStoredSpells || fixedSpellGrantEntries.length > 0) {
+    const nextSpells = [...nextAcquiredSpells, ...fixedSpellGrantEntries]
     await saveCharacterSpellcasting(characterId, { spells: nextSpells, expendedSlots: current.state.expendedSlots })
   }
 

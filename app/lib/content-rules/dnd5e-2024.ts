@@ -225,15 +225,18 @@ export const DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS: Record<string, str
 //     martial-weapon + heavy/medium-armor training grant, through the identical Value/Modifier
 //     mechanism every class's own `grants` array already uses, just reached via `activate-source`
 //     instead of an always-on facet grant.
-//   - Thaumaturge (Cleric) / Magician (Druid): the real corpus grants a bonus Cleric/Druid
-//     cantrip ("you know one extra cantrip from the [class] spell list") -- a genuine SPELL PICK,
-//     but one conditioned on THIS SPECIFIC Source being active. `RulesFacet.spellRequirements` is
-//     a flat, unconditional array today (nothing ties a requirement's activation to a Source), so
-//     this is NOT yet representable without a new, small primitive (a Source-gated
-//     SpellRequirement) -- explicitly out of this phase's scope per its own approval. The
-//     Source itself (`source:divine-order.thaumaturge` / `source:primal-order.magician`)
-//     activates correctly on selection; it simply carries no modifiers yet. Tracked
-//     here, not silently dropped, so a future Source-gated-acquisition phase has a named target.
+//   - Thaumaturge (Cleric) / Magician (Druid): FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- now
+//     FULLY representable and authored (cleric-xphb/druid-xphb facets above). The real corpus
+//     grants a bonus Cleric/Druid cantrip ("you know one extra cantrip from the [class] spell
+//     list"), a genuine SPELL PICK conditioned on THIS SPECIFIC Source being active -- exactly the
+//     gap `SpellRequirement.requiresActive` (added this phase) closes: `choice:class.feature-option`
+//     is authored with `effect: 'activate-source'` and no `writesTo`, so the selected answer IS the
+//     Source id itself, verbatim, in `StoredRulesChoices.selections` -- answerable by the SAME
+//     chosen-Source gate check `gatherSpellRequirements` already performs, no new primitive beyond
+//     what this phase already built for the Builder/server to reuse. Authored as a second,
+//     independently-tagged `pool: 'cantrip'` requirement on each class's own facet (one MORE
+//     cantrip pick, not a reclassification of the normal three) -- pure package authoring, the
+//     Source itself needed no change beyond already activating correctly.
 //   - Divine Strike (Cleric) / Primal Strike (Druid): a per-ATTACK damage-type choice made at
 //     the moment of a hit ("your choice" happens in combat, not at acquisition) -- Milestone B
 //     combat automation, deferred the same way every other per-use runtime effect in this corpus
@@ -242,9 +245,9 @@ export const DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS: Record<string, str
 //     with a derived Wisdom-modifier bonus): a damage-ROLL modifier, which depends on the Actions
 //     system's own damage-resolution path -- Milestone B, deferred, same reasoning.
 //
-// No fixed, currently-representable grant was left as prose: Protector/Warden are fully authored.
-// Every deferred item above requires either a new acquisition primitive (Thaumaturge/Magician) or
-// Milestone B combat/damage automation (the other four) -- never an oversight.
+// No fixed, currently-representable grant was left as prose: Protector/Warden/Thaumaturge/Magician
+// are all fully authored. Every remaining deferred item above is Milestone B combat/damage
+// automation -- never an oversight.
 
 // Keyed by the `entityType` the importer writes, then by `slug`
 // (`slugify(name-source)`), which is what a Character's stored choice
@@ -502,6 +505,26 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           pool: 'cantrip',
           filter: { classList: ['Cleric'], level: 0 },
           totalByLevel: [3,3,3,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5]
+        },
+        // FEAT-OWNED SPELL ACQUISITION PHASE -- Thaumaturge revisit. Source wording (class-cleric.json
+        // classFeature "Thaumaturge", level 1): "You know one extra cantrip from the Cleric spell
+        // list" -- a genuinely player-CHOSEN cantrip (never fixed), permanent (no stated growth), gated
+        // on having chosen Thaumaturge over Protector in Divine Order's own `choice:class.feature-option`
+        // below. `choice:class.feature-option` is authored with `effect: 'activate-source'` and no
+        // `writesTo` (packages/eldra-dnd5e-2024/definitions.json), so the selected answer IS the Source
+        // id `source:divine-order.thaumaturge` verbatim -- exactly the CHOSEN-Source gate shape
+        // `requiresActive`/`gatherSpellRequirements` added this phase to support (see that file's own
+        // header, app/lib/characters/spell-requirement-ownership.ts). Same `pool: 'cantrip'` kind as the
+        // class's own cantrip pool above, but its own distinct requirement id -- evaluated and tagged
+        // independently (P3.2.1 provenance), so this is one MORE cantrip pick, never a reclassification
+        // of one of the normal three. Pure package authoring: no new primitive needed.
+        {
+          id: 'spell-requirement.cleric-xphb.thaumaturge-cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Cleric'], level: 0 },
+          totalByLevel: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+          requiresActive: ['source:divine-order.thaumaturge'],
+          label: 'Thaumaturge Cantrip'
         }
       ],
       grants: [
@@ -536,9 +559,12 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         // N named feature options" shape -- resolves this through `effect: 'activate-source'`:
         // selecting an option activates that Source directly, no `writesTo` template needed since
         // each option id IS the Source id. Protector's own grant (martial weapon + heavy armor
-        // training) is fully representable and authored on `source:divine-order.protector`;
-        // Thaumaturge's own extra-cantrip grant is NOT (see that Source's own empty `modifiers`
-        // and this file's own "KNOWN DEFERRED EFFECTS" note at the end of this corpus for why).
+        // training) is fully representable and authored on `source:divine-order.protector`.
+        // FEAT-OWNED SPELL ACQUISITION PHASE -- Thaumaturge's own extra-cantrip grant is now ALSO
+        // fully authored, as a second `pool: 'cantrip'` spellRequirement on this facet (see this
+        // facet's own `spellRequirements` array above) gated via `requiresActive:
+        // ['source:divine-order.thaumaturge']` -- see this file's own "KNOWN DEFERRED EFFECTS" note
+        // at the end of this corpus for the full mechanism citation.
         {
           choiceSet: 'choice:class.feature-option',
           count: 1,
@@ -601,6 +627,20 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           pool: 'cantrip',
           filter: { classList: ['Druid'], level: 0 },
           totalByLevel: [2,2,2,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4]
+        },
+        // FEAT-OWNED SPELL ACQUISITION PHASE -- Magician revisit, the exact Druid mirror of
+        // Thaumaturge above (class-druid.json classFeature "Magician", level 1): "You know one
+        // extra cantrip from the Druid spell list," gated on choosing Magician over Warden in
+        // Primal Order's own `choice:class.feature-option` below. Same reasoning, same primitive,
+        // same pure-authoring conclusion -- see Thaumaturge's own comment (cleric-xphb facet above)
+        // for the full mechanism citation.
+        {
+          id: 'spell-requirement.druid-xphb.magician-cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Druid'], level: 0 },
+          totalByLevel: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+          requiresActive: ['source:primal-order.magician'],
+          label: 'Magician Cantrip'
         }
       ],
       grants: [
@@ -643,8 +683,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         // `choice:class.feature-option` ChoiceSet Cleric's own Divine Order above reuses verbatim
         // -- see that facet's own comment for the full mechanism explanation. Warden's grant
         // (martial weapon + medium armor training) is fully representable and authored on
-        // `source:primal-order.warden`; Magician's own extra-cantrip grant is deferred, same
-        // reason as Thaumaturge's (see this file's own "KNOWN DEFERRED EFFECTS" note).
+        // `source:primal-order.warden`. FEAT-OWNED SPELL ACQUISITION PHASE -- Magician's own
+        // extra-cantrip grant is now ALSO fully authored, the exact Druid mirror of Thaumaturge
+        // (see this facet's own `spellRequirements` array above; see this file's own "KNOWN
+        // DEFERRED EFFECTS" note for the full mechanism citation).
         {
           choiceSet: 'choice:class.feature-option',
           count: 1,
@@ -1690,9 +1732,19 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     // prerequisite `feature: ["Fighting Style"]` by pointing at the package's
     // feature Value. The mapping is per-feat authored data, matched on the raw
     // name verbatim -- never inferred. Blessed Warrior and Druidic Warrior (FS:P,
-    // FS:R) are deliberately NOT here: their `otherSummary` prerequisite stays
-    // unsupported, and their mandatory nested cantrip choices need Spell
-    // Acquisition, so they remain illegal (fail closed).
+    // FS:R) are deliberately NOT here, still: their own mandatory nested cantrip
+    // choice is now authored (FEAT-OWNED SPELL ACQUISITION PHASE -- see their own
+    // entries near the end of this object), but their raw prerequisite is
+    // `otherSummary` (prose: "When Gaining the Level 2 Paladin/Ranger 'Fighting
+    // Style' Feature"), not the clean `feature: [...]` key the other ten use --
+    // `coverUnsupportedPrerequisites` (app/lib/feat-mechanics/eligibility.ts) only
+    // ever covers the `feature` key, by construction, so no `featureRequirements`
+    // mapping can satisfy an `otherSummary` entry. Both feats therefore remain
+    // ILLEGAL overall (fail closed via `featOptionVerdict`) for this SEPARATE,
+    // pre-existing reason, unrelated to and not fixed by this phase's own spell
+    // acquisition work -- covering `otherSummary` prose generically would be a
+    // genuinely new capability (prose matching, not a Value mapping), out of
+    // scope here, not broadened into.
     'archery-xphb': { // Archery
       featureRequirements: [
         { feature: 'Fighting Style', requires: 'value:feature.fighting-style' }
@@ -1945,6 +1997,23 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           count: 1,
           from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
         }
+      ],
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- the source wording: "You always have that spell and the Misty
+      // Step spell prepared." Misty Step is a FIXED grant (no "of your choice" clause at all); the
+      // Divination/Enchantment pick is the real decision, modeled via the SAME `fixed` pool kind
+      // Magic Initiate's own Level-1 spell uses (ungated, flag 'prepared', exact level 1). No
+      // classList restriction -- the real text names only a school pair, never a class list.
+      fixedSpellGrants: [
+        { slug: 'misty-step-xphb', flag: 'prepared' }
+      ],
+      spellRequirements: [
+        {
+          id: 'spell-requirement.fey-touched-xphb.spell',
+          pool: 'fixed',
+          filter: { level: 1, school: ['Divination', 'Enchantment'] },
+          totalByLevel: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+          label: 'Fey-Touched Spell'
+        }
       ]
     },
     'grappler-xphb': { // Grappler
@@ -2129,6 +2198,21 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           count: 1,
           from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
         }
+      ],
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- the source wording: "You always have that spell and the
+      // Invisibility spell prepared." Mirrors Fey-Touched's own identical shape exactly (Invisibility
+      // fixed, the Illusion/Necromancy pick the real decision).
+      fixedSpellGrants: [
+        { slug: 'invisibility-xphb', flag: 'prepared' }
+      ],
+      spellRequirements: [
+        {
+          id: 'spell-requirement.shadow-touched-xphb.spell',
+          pool: 'fixed',
+          filter: { level: 1, school: ['Illusion', 'Necromancy'] },
+          totalByLevel: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+          label: 'Shadow-Touched Spell'
+        }
       ]
     },
     'sharpshooter-xphb': { // Sharpshooter
@@ -2183,6 +2267,12 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           count: 1,
           from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
         }
+      ],
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- the source wording: "You learn the Mage Hand spell" -- no
+      // "of your choice" clause at all, a FIXED grant, never a mandatory decision requiring a
+      // picker (see FixedSpellGrant's own header). `known`, matching the corpus's own "learn" verb.
+      fixedSpellGrants: [
+        { slug: 'mage-hand-xphb', flag: 'known' }
       ]
     },
     'telepathic-xphb': { // Telepathic
@@ -2192,6 +2282,11 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           count: 1,
           from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
         }
+      ],
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- the source wording: "You always have the Detect Thoughts
+      // spell prepared" -- FIXED, no choice. `prepared`, matching the corpus's own verb exactly.
+      fixedSpellGrants: [
+        { slug: 'detect-thoughts-xphb', flag: 'prepared' }
       ]
     },
     'war-caster-xphb': { // War Caster
@@ -2216,6 +2311,124 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       grants: [
         { set: 'value:weapon.improvised.proficient', to: true }
       ]
+    },
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- Magic Initiate (category 'O', Origin), the Background's
+    // own real fixed Origin Feat for Acolyte/Guide/Sage. The source wording: "You learn two cantrips of
+    // your choice from the Cleric, Druid, or Wizard spell list... Choose a level 1 spell from the
+    // SAME list you selected for this feat's cantrips. You always have that spell prepared."
+    //
+    // CORPUS CORRECTION, re-derived directly (never trusted from this phase's own first-draft
+    // assumption): the raw Background `feats` key is NOT a bare `"magic initiate|xphb"` -- it is
+    // `"magic initiate; cleric|xphb"` (Acolyte), `"...; druid|xphb"` (Guide), `"...; wizard|xphb"`
+    // (Sage). The GRANTING BACKGROUND fixes WHICH list, every time -- there is NO real creation
+    // path in this corpus where a player freely chooses among the three (Magic Initiate's own
+    // category is 'O'/Origin, so it is never offered through the ordinary General feat-selection
+    // pool either). A "choose a spell list" ChoiceSet would therefore ask a question the real
+    // corpus never asks -- removed from an earlier draft of this phase for exactly that reason
+    // ("do not invent choices that don't exist").
+    //
+    // Modeled instead as 6 `spellRequirements` (2 cantrip + 1 fixed-spell pool, times 3 lists),
+    // each gated via `requiresActive` against a plain boolean Value
+    // (`value:magic-initiate.list.1/2/3.active`) that the GRANTING BACKGROUND sets TRUE as an
+    // ordinary FIXED `grants` entry (see Acolyte/Guide/Sage's own facets below) -- the SAME
+    // `requiresActive`/conditional-SpellRequirement primitive this phase adds, just gated by a
+    // fixed grant rather than a player-chosen Source (see `gatherSpellRequirements`'s own header,
+    // app/lib/characters/spell-requirement-ownership.ts, for why checking grants is part of the
+    // SAME generic mechanism, not a second one). Only the granting background's own list's 2
+    // requirements ever participate -- `gatherSpellRequirements` drops the other 4 entirely.
+    // Casting-ability ("Intelligence, Wisdom, or Charisma... choose when you select this feat") and
+    // "Spell Change" (replace a spell on level-up) are real corpus text but NEITHER is a discovered
+    // Phase-0 decision today (`detectFeatDecisions` does not parse a feat's own `ability` field at
+    // all, a pre-existing, narrower gap this phase did not introduce or need to close) and
+    // replacement is explicitly optional corpus text either way -- both left as documented, deferred
+    // runtime/decision facts, never silently picked or faked.
+    //
+    // `value:magic-initiate.list.1/2/3.active` (Rules Package Definitions) are deliberately opaque
+    // -- the Rules/Content boundary test (`tests/rules/dnd5e-2024-package.test.ts`) forbids a real
+    // class name anywhere in the Rules Package itself. WHICH list is Cleric/Druid/Wizard is a
+    // CONTENT fact, authored only here (list.1 = Cleric, list.2 = Druid, list.3 = Wizard) -- the
+    // Value ids/labels in definitions.json name neither.
+    'magic-initiate-xphb': { // Magic Initiate
+      spellRequirements: [
+        {
+          id: 'spell-requirement.magic-initiate-xphb.cleric.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Cleric'], level: 0 },
+          totalByLevel: [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+          requiresActive: ['value:magic-initiate.list.1.active'],
+          label: 'Magic Initiate Cantrips (Cleric)'
+        },
+        {
+          id: 'spell-requirement.magic-initiate-xphb.cleric.spell',
+          pool: 'fixed',
+          filter: { classList: ['Cleric'], level: 1 },
+          totalByLevel: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+          requiresActive: ['value:magic-initiate.list.1.active'],
+          label: 'Magic Initiate Spell (Cleric)'
+        },
+        {
+          id: 'spell-requirement.magic-initiate-xphb.druid.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Druid'], level: 0 },
+          totalByLevel: [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+          requiresActive: ['value:magic-initiate.list.2.active'],
+          label: 'Magic Initiate Cantrips (Druid)'
+        },
+        {
+          id: 'spell-requirement.magic-initiate-xphb.druid.spell',
+          pool: 'fixed',
+          filter: { classList: ['Druid'], level: 1 },
+          totalByLevel: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+          requiresActive: ['value:magic-initiate.list.2.active'],
+          label: 'Magic Initiate Spell (Druid)'
+        },
+        {
+          id: 'spell-requirement.magic-initiate-xphb.wizard.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Wizard'], level: 0 },
+          totalByLevel: [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+          requiresActive: ['value:magic-initiate.list.3.active'],
+          label: 'Magic Initiate Cantrips (Wizard)'
+        },
+        {
+          id: 'spell-requirement.magic-initiate-xphb.wizard.spell',
+          pool: 'fixed',
+          filter: { classList: ['Wizard'], level: 1 },
+          totalByLevel: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+          requiresActive: ['value:magic-initiate.list.3.active'],
+          label: 'Magic Initiate Spell (Wizard)'
+        }
+      ]
+    },
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- Blessed Warrior/Druidic Warrior (FS:P/FS:R), named as
+    // "deliberately NOT here" by the Fighting Style comment above -- now authored, since their own
+    // mandatory nested cantrip choice is exactly the real gap this phase closes. The source wording: "You
+    // learn two Cleric/Druid cantrips of your choice... Charisma/Wisdom is your spellcasting
+    // ability for them" -- a plain, ungated `cantrip` pool (fixed classList, fixed casting ability
+    // stated directly in the text, never a player pick, so no nested ability choice is needed
+    // here). Their own raw `otherSummary` prerequisite stays unsupported and unrelated to this
+    // phase; acquisition through `choice:feat.fighting-style.*` is unaffected either way.
+    'blessed-warrior-xphb': { // Blessed Warrior
+      spellRequirements: [
+        {
+          id: 'spell-requirement.blessed-warrior-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Cleric'], level: 0 },
+          totalByLevel: [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+          label: 'Blessed Warrior Cantrips'
+        }
+      ]
+    },
+    'druidic-warrior-xphb': { // Druidic Warrior
+      spellRequirements: [
+        {
+          id: 'spell-requirement.druidic-warrior-xphb.cantrip',
+          pool: 'cantrip',
+          filter: { classList: ['Druid'], level: 0 },
+          totalByLevel: [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+          label: 'Druidic Warrior Cantrips'
+        }
+      ]
     }
   },
 
@@ -2232,11 +2445,18 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           ]
         }
       ],
-      creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- Magic Initiate's own spell decisions are now
+      // representable (see the feat's own facet entry above); `creationUnavailable` removed. The
+      // real corpus FIXES Acolyte's own Magic Initiate to the Cleric list (raw Background feats
+      // key: "magic initiate; cleric|xphb") -- `value:magic-initiate.list.1.active` (list.1 =
+      // Cleric) is granted here, fixed, exactly like every other Background fact, never a player
+      // choice.
+      originFeatSlug: 'magic-initiate-xphb',
       grants: [
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.insight.proficient', to: true },
-        { set: 'value:skill.religion.proficient', to: true }
+        { set: 'value:skill.religion.proficient', to: true },
+        { set: 'value:magic-initiate.list.1.active', to: true }
       ],
       startingEquipment: {
         id: 'choice:equipment.starting.acolyte-xphb',
@@ -2670,11 +2890,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           ]
         }
       ],
-      creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- see Acolyte's own identical note above. Guide's own
+      // Magic Initiate is fixed to the Druid list (raw key: "magic initiate; druid|xphb").
+      originFeatSlug: 'magic-initiate-xphb',
       grants: [
         { set: 'value:tool.cartographers_tools.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true },
-        { set: 'value:skill.survival.proficient', to: true }
+        { set: 'value:skill.survival.proficient', to: true },
+        { set: 'value:magic-initiate.list.2.active', to: true }
       ],
       startingEquipment: {
         id: 'choice:equipment.starting.guide-xphb',
@@ -2912,11 +3135,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           ]
         }
       ],
-      creationUnavailable: 'Its Origin Feat (Magic Initiate) needs a spell choice, which this rules package cannot record yet.',
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- see Acolyte's own identical note above. Sage's own
+      // Magic Initiate is fixed to the Wizard list (raw key: "magic initiate; wizard|xphb").
+      originFeatSlug: 'magic-initiate-xphb',
       grants: [
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.arcana.proficient', to: true },
-        { set: 'value:skill.history.proficient', to: true }
+        { set: 'value:skill.history.proficient', to: true },
+        { set: 'value:magic-initiate.list.3.active', to: true }
       ],
       startingEquipment: {
         id: 'choice:equipment.starting.sage-xphb',

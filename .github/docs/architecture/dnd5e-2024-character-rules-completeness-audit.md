@@ -7114,3 +7114,249 @@ only the files this phase itself touched.
 Committed as ONE local commit, `feat(rules): add eldritch invocation acquisition`. Not pushed. No
 `packages:sync --apply`. Next phase (Metamagic, Battle Master maneuvers, subclasses, species, Magic
 Initiate) not begun.
+
+### 25.42 FEAT-OWNED SPELL ACQUISITION + MAGIC INITIATE + BACKGROUND CREATION UNLOCK (2026-10-14)
+
+#### Scope
+
+Primary gate: Backgrounds 13/16 -> 16/16 (Acolyte/Guide/Sage unblocked, shared blocker Magic
+Initiate). Secondary: author every OTHER feat-owned spell acquisition fitting the exact same generic
+capability via package authoring alone (Fey-Touched, Shadow-Touched, Telekinetic, Telepathic,
+Blessed Warrior, Druidic Warrior; Thaumaturge/Magician on revisit). This session continued a prior
+session that hit its context limit mid-phase; recovery (re-reading `git status`/`git diff --stat`
+against the worktree, not memory) confirmed the implementation was already materially complete and
+every file in the original recovery brief's own watch list had already been correctly touched. The
+remaining work, finished this session, was: (1) a diagnosed-but-unapplied fix to
+`create-v2-fail-closed.test.ts` (Acolyte/Guide/Sage no longer belong in its
+`CREATION_UNAVAILABLE_BACKGROUNDS` list -- confirmed via a corrected standalone probe that the other
+5 names in that list remain blocked for a wholly separate, pre-existing reason, Crafter/Skilled/
+Musician's own ungated tool-proficiency decision, `blk:feat-nested-proficiency`, unrelated to this
+phase), (2) three stale pre-existing test assertions the new code made genuinely incorrect
+(`character-actor-bridge.test.ts`'s ADR-003 stored-value allowlist, `characterBuilderOriginAvailability
+.test.ts`'s BLOCKED list, `creationBlockerPresentation.test.ts`'s two Acolyte/Sage-specific cases),
+(3) a literal-substring self-inflicted false failure (my own comments contained the string `text:`,
+which `character-actor-bridge.test.ts`'s "no 5etools field names" structural check forbids), (4) the
+THAUMATURGE/MAGICIAN revisit (full package authoring, not previously done), and (5) the species
+reuse forecast (read-only, not previously done) and a dedicated Background-switching proof (not
+previously done). Out of scope, unchanged from the original brief: a second spell system, feat-
+specific spell storage, species spell acquisition, subclasses, Metamagic/maneuvers, beauty work.
+
+#### CORPUS -- re-verified directly against the real XPHB data files, not trusted from the recovery
+prompt's own examples
+
+Re-read `backgrounds.json`: Acolyte/Guide/Sage's raw `feats` key is `"magic initiate; cleric|xphb"`
+/ `"...; druid|xphb"` / `"...; wizard|xphb"` -- the Background FIXES the list; there is no free
+"choose a list" decision anywhere in the real corpus (confirmed again this session; this was the
+major design correction from the interrupted session, not re-opened). Re-read `feats.json` for Fey-
+Touched/Shadow-Touched (fixed Misty Step/Invisibility + a player-chosen school-restricted spell),
+Telekinetic/Telepathic (a single always-known/-prepared cantrip, zero player choice), Blessed
+Warrior/Druidic Warrior (a player-chosen cantrip from a fixed class list, with a separate,
+unfixable-this-phase `otherSummary` prerequisite gap). Re-read `class-cleric.json`/`class-druid.json`
+this session specifically for Thaumaturge/Magician: `"You know one extra cantrip from the [class]
+spell list"` -- genuinely player-chosen, permanent, gated on having chosen that option (not its
+sibling) in Divine Order/Primal Order's own `choice:class.feature-option`. Final corpus-driven census
+(re-confirmed, unchanged from the interrupted session): **648 total / 433 implemented / 180 blocked /
+35 optional**.
+
+#### MODEL -- unchanged from the interrupted session, verified correct by direct read
+
+`gatherSpellRequirements(facets, selections)` (`app/lib/characters/spell-requirement-ownership.ts`,
+new file) concatenates `spellRequirements` across every facet actually active on the character
+(species/class/background/acquired feats) and drops any requirement whose `requiresActive` gate is
+not currently satisfied. The gate check (`isGateActive`) covers both real corpus shapes found: a
+FIXED grant (any active facet's own `grants` array setting the named Value `true` -- Magic Initiate's
+real shape) and a CHOSEN Source (a scan of `selections` for the exact Source id -- answerable only
+because `choice:class.feature-option`/`choice:class.accumulating-option`-style ChoiceSets are
+authored with `effect: 'activate-source'` and no `writesTo`, so the selected answer IS the Source id
+verbatim). Neither reduces to the Rules Engine's own `values[]`-based `ChoiceSet.requiresActive`,
+confirmed by direct read of `character-actor-bridge.ts`'s `applyChoice`: an `activate-source` branch
+pushes onto `sources[]` and returns, never touching `values[]`. `resolveFixedSpellGrants` resolves
+true zero-choice fixed grants (`RulesFacet.fixedSpellGrants`, a new field) into ready
+`StoredSpellEntry` rows, fail-closed on a catalogue-missing slug, tagged with a synthetic non-
+requirement provenance id so a fixed-grant row can never be miscounted toward an unrelated pool via
+the pre-existing P3.2.1 untagged-row fallback. No code anywhere branches on a class, feat, species,
+or background NAME -- a homebrew feature contributes `spellRequirements`/`fixedSpellGrants` through
+the identical facet fields.
+
+#### MAGIC INITIATE -- unchanged from the interrupted session
+
+Acolyte/Guide/Sage each fix-grant one of three opaque Values (`value:magic-initiate.list.1/2/3
+.active`, Cleric/Druid/Wizard respectively -- never named in the Rules Package itself, per the
+Rules/Content boundary test) as an ordinary `grants` entry, never a player choice. The single shared
+`magic-initiate-xphb` feat facet owns two `requiresActive`-gated `SpellRequirement`s per list variant
+(2 cantrips pool `'cantrip'`, 1 Level-1 spell pool `'fixed'`, flag `'prepared'` -- the real "you
+always have that spell... prepared" wording, not "you know"). Casting ability is NOT represented
+(deferred, Milestone B/runtime concern, same posture as every other feat-owned spell this phase
+authors -- never silently invented).
+
+#### OTHER FEATS
+
+Fey-Touched, Shadow-Touched, Telekinetic, Telepathic, Blessed Warrior, Druidic Warrior: all six
+authored via the identical `spellRequirements`/`fixedSpellGrants` primitives, unchanged from the
+interrupted session (re-verified, not re-authored). Ritual Caster remains the one genuinely
+unsupported shape: its real level-gated growth (2@L1, +1 at proficiency-bonus thresholds 5/9/13/17)
+is mis-modeled by the pre-existing `spellGrantDecisions` discovery function, which forces every feat-
+sourced numeric table key to `level:1, timing:'creation'` -- a genuine discovery/model mismatch, left
+blocked with its exact reason, not fixed (out of scope per the exact-reuse rule). **THAUMATURGE/
+MAGICIAN REVISIT (new this session)**: both now fully authored. `choice:class.feature-option`'s own
+`effect: 'activate-source'`/no-`writesTo` shape means the chosen Source id lands in `selections`
+verbatim -- exactly the CHOSEN-Source gate this phase's own `requiresActive` mechanism was built to
+answer, confirmed by direct read before authoring (not assumed). Each class facet (`cleric-xphb`/
+`druid-xphb`) gained a SECOND, independently-tagged `pool: 'cantrip'` requirement (`totalByLevel`
+flat at 1, permanent, no stated growth), `requiresActive: ['source:divine-order.thaumaturge']` /
+`['source:primal-order.magician']`. This is one MORE cantrip pick, never a reclassification of the
+class's own three -- confirmed safe by reading `evaluate()`'s own per-requirement provenance
+filtering (P3.2.1): two requirements with the same filter but distinct ids are evaluated and tagged
+independently, so there is no accumulation-shape collision. Proven through the real server authority:
+`create-v2-feature-option.test.ts`'s existing Thaumaturge/Magician currency tests now correctly
+demand the extra cantrip (previously silently under-tested -- they used Thaumaturge/Magician's
+Source id only incidentally, never answered the pick). The two corresponding Progression Coverage
+Ledger rows (`cleric-xphb:divine-order-thaumaturge-cantrip`, `druid-xphb:primal-order-magician-
+cantrip`) are RECLASSIFIED `ENGINE_BLOCKED` -> `IMPLEMENTED`; the `runtime:class-feature-option-
+effects` coverage rule no longer claims them (only the genuinely-deferred per-attack/per-cast combat
+text -- Divine Strike/Primal Strike/Potent Spellcasting -- remains there); `impl:class-feature-
+option`'s own `ledgerIds` now claims both. Pure package + ledger authoring; no new primitive, exactly
+as the revisit instruction anticipated.
+
+#### BUILDER / SERVER
+
+Unchanged from the interrupted session (re-verified, not re-authored): `originFeatEntry` resolves the
+Background's fixed Origin Feat client-side via the same I/O-free `resolveCreationOriginFeat` the
+server uses; `spellRequirementsFor`/`spellAcquisitionPresentation`/`effectiveSpellSelections` widen
+to gather across species+class+background+origin-feat facets; `spellRequirementSections`' labels use
+`requirement.label ?? spellPoolLabel(...)` so Magic Initiate's/Fey-Touched's sections read "Magic
+Initiate Cantrips"-style rather than a generic pool name, distinguishing class-owned from feat-owned
+sections without exposing internal ids. `create-v2.post.ts` gathers `spellRequirements` across
+`[species, class, background, ...acquisitionFeatFacets]`, resolves `fixedSpellGrants` across the same
+set, fail-closed on a catalogue-missing fixed-grant slug, and renumbers merged entries to avoid
+`instanceId` collisions.
+
+**NEW THIS SESSION**: a dedicated Background-switching proof
+(`characterBuilderSelection.test.ts`, new describe block) using real Acolyte/Guide/Criminal facets
+and a real Magic Initiate feat entry, proving: Acolyte alone makes Magic Initiate's Cleric-list
+requirements live; switching to Criminal drops them entirely and the stale tentative answer is never
+submitted (`effectiveSpellSelections` returns `[]`) while the raw draft entry is preserved, never
+deleted; switching back to Acolyte makes the SAME requirement ids live again and the preserved answer
+revalidates; switching Acolyte -> Guide changes the underlying gate (Cleric list Value vs Druid list
+Value), producing a DIFFERENT requirement id, so a stale Cleric-list answer can never satisfy Guide's
+own Druid-list requirement. No new code was needed -- this is the exact same "recompute fresh from
+the current draft, never cache" mechanism the pre-existing Class-switch test already proved generically; this closes the one scenario (two Backgrounds sharing a feat IDENTITY under mutually
+exclusive gates) that proof did not specifically cover.
+
+#### PERSISTENCE
+
+Unchanged from the interrupted session: `spellcasting.spells[]` only, `known`/`prepared`/
+`requirementIds`, no `featSpells[]`/`magicInitiateSpells[]`. The "SAME SPELL, MULTIPLE OWNERS"
+guarantee (one physical row, `requirementIds` UNION via a Set, `known`/`prepared` OR'd) is NOT new
+authoring -- it is the pre-existing, independently-unit-tested `mergeSpellStateCandidate`
+(`spell-requirements.ts`, already covered by `spellcasting.test.ts`'s own Wizard spellbook+spell
+case). That function is identity-based on requirement-id STRINGS alone; it has no notion of "class"
+vs "feat" ownership, so the class-owned+feat-owned coexistence case is provably the SAME code path,
+not a parallel one -- re-confirmed by direct read this session, no new test needed to re-prove
+already-generic infrastructure. `create-v2.post.test.ts`'s Gnome+Wizard+Sage suite already exercises
+this for real (the same catalogue spell ref is supplied as both the Wizard class's own Level-1-spell
+answer and Magic Initiate's own Wizard-list fixed-spell answer), and passes.
+
+#### BACKGROUNDS
+
+16/16. Zero XPHB Backgrounds declare `creationUnavailable` any longer (confirmed by direct probe
+against all 16 real facets this session, not assumed from the interrupted session's own claim).
+
+#### THAUMATURGE/MAGICIAN
+
+Resolved this session (see OTHER FEATS above): ONLY package authoring was needed, exactly as the
+revisit instruction anticipated for this outcome -- the generic chosen-Source `requiresActive` gate
+this phase already built turned out to answer this exact shape with zero further primitive work.
+
+#### SPECIES FORECAST (read-only; nothing implemented)
+
+Re-read `races.json` directly for every XPHB species' own `additionalSpells` (the complete census --
+no other XPHB species declares this field): **Aasimar** -- a single fixed cantrip (Light), no sub-
+choice at all -- FITS EXACTLY, pure package authoring via the existing `fixedSpellGrants` primitive,
+zero new primitive needed (casting ability for it is the same already-deferred Milestone B concern
+as Magic Initiate's own). **Elf** (Drow/High Elf/Wood Elf) and **Tiefling** (Abyssal/Chthonic/
+Infernal) each require choosing exactly one of three named lineages first -- a genuinely missing
+primitive (a species-level "choose 1 of N named lineages" ChoiceSet/Source model, analogous to
+`choice:class.feature-option` but not yet built for species), independently confirmed still blocked
+this session (`blk:species-lineage`, `species:elf-xphb:L1:variant-choice:...` still the one real
+unresolved decision for a bare Elf). Once that primitive exists, Drow's/Wood Elf's own fixed cantrips
+and High Elf's own player-chosen Wizard cantrip would all be pure authoring reusing this phase's
+exact primitives (`fixedSpellGrants` / `SpellRequirement`+`requiresActive` respectively) -- but the
+lineage CHOICE itself, not spell acquisition, is the blocker. Tiefling additionally has Level 3/5
+innate 1/day spells (Ray of Sickness, Hold Person, etc.) -- a bespoke limited-use resource shape, not
+an acquisition shape at all, independently missing regardless of the lineage-choice gap (Milestone B).
+No species spell was implemented; this is a fit check only.
+
+#### PHASE 0
+
+Re-verified, unchanged from the interrupted session's own already-landed reclassification: 648 total
+/ 433 implemented / 180 blocked / 35 optional. `background:origin-feat:choice-acquisition` ledger row
+IMPLEMENTED (was `ENGINE_BLOCKED`). This session additionally reclassified
+`cleric-xphb:divine-order-thaumaturge-cantrip` / `druid-xphb:primal-order-magician-cantrip`
+`ENGINE_BLOCKED` -> `IMPLEMENTED` (see OTHER FEATS). No other Phase-0 row moved this session.
+
+#### COVERAGE
+
+Full bidirectional contract (`contractViolations`) holds with zero violations after this session's
+own additions (Thaumaturge/Magician's two reclassified ledger rows now claimed by `impl:class-
+feature-option`; the `runtime:class-feature-option-effects` placeholder narrowed to exclude them).
+Bite-test coverage for the core mechanism (inactive feat/owner cannot activate a requirement; wrong
+owner cannot satisfy another's requirement; Ritual Caster remains blocked) was already landed in the
+interrupted session's own test files and re-verified passing this session; this session's own net-
+new bite coverage is the Background-switching proof above (the one scenario -- two Backgrounds
+sharing a feat identity under mutually exclusive gates -- not previously covered).
+
+#### HISTORICAL
+
+Unchanged from the interrupted session: no migration, no retroactive selection, no read-time
+mutation. An existing character with a relevant Origin feat but no nested spell answers continues to
+load exactly as it was persisted.
+
+#### PACKAGE IMPACT
+
+`pnpm packages:sync --world Solaris` (dry run): `SOURCE_VERSION_COLLISION` (Rules
+`eldra.rules.dnd5e-2024@0.21.5` -- bump the authored manifest version; the content differs from what
+0.21.5 already published) + `REFRESH_REQUIRED` (Content `eldra.solaris.xphb`). Actions offered:
+`REFRESH_CONTENT` / `BIND_CONTENT`. **STOP: SOURCE_VERSION_COLLISION -- no mutation performed.**
+Recommended next version: **0.21.6** (patch -- additive facet/requirement/grant authoring and two
+ledger reclassifications, no breaking shape change to any existing consumer).
+
+#### Files
+
+New: `app/lib/characters/spell-requirement-ownership.ts`. Modified (interrupted-session authoring,
+re-verified, not re-touched beyond what's noted): `app/lib/content-rules/types.ts`,
+`app/lib/rules/types.ts`, `app/lib/spell-mechanics/spell-option-eligibility.ts`,
+`app/lib/characters/spell-requirements.ts`, `app/lib/characters/spell-acquisition-plan.ts`,
+`server/utils/character-progression-spell-acquisition.ts`, `app/lib/characters/creation-content-
+choices.ts`, `server/api/worlds/[id]/characters/create-v2.post.ts`,
+`server/utils/character-progression-plan.ts`, `app/components/characters/builder/
+characterBuilderSelection.ts`, `packages/eldra-dnd5e-2024/definitions.json`. Modified this session:
+`app/lib/content-rules/dnd5e-2024.ts` (Thaumaturge/Magician authoring + 6 comment corrections, one
+`text:`-literal rewording), `app/lib/content-rules/dnd5e-2024-progression-coverage.ts` (2 ledger
+reclassifications), `app/lib/content-rules/mandatory-decision-coverage.ts` (1 rule's `ledgerIds`
+narrowed, 1 rule's widened), `tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts`
+(the real fix), `tests/server/utils/character-actor-bridge.test.ts`,
+`tests/components/characters/builder/characterBuilderOriginAvailability.test.ts`,
+`tests/components/characters/builder/creationBlockerPresentation.test.ts`,
+`tests/components/characters/builder/characterBuilderSelection.test.ts` (new Background-switching
+describe block), `tests/server/api/worlds/[id]/characters/create-v2-feature-option.test.ts`
+(Thaumaturge/Magician's own extra-cantrip answer wired in).
+
+#### Verification
+
+`pnpm run test`: **215 files / 4551 tests -- all passing** (4544 baseline + 7 net new: 3 in the fixed
+fail-closed file, 4 Background-switching). `pnpm run typecheck`: the pre-existing `@types/node`-
+absent environment gap remains (1177 errors -- identical to the established baseline per the prior
+phase's own audit entry; grepped the full output for every file this phase touched, this session
+included -- zero hits). `pnpm run build`: succeeds (exit 0). `git diff --check`: clean.
+`pnpm-lock.yaml`/`package.json`: byte-identical to HEAD. `pnpm run lint`: could not run (the same
+pre-existing `.nuxt/eslint.config.mjs`-missing environment gap the prior phase's own audit entry
+already documented -- not a regression). `pnpm packages:sync --world Solaris` (dry run):
+`SOURCE_VERSION_COLLISION` + `REFRESH_REQUIRED`, no mutation performed (see PACKAGE IMPACT above).
+
+All pre-existing unrelated dirty worktree state (scene-graph/world-map/content-source-architecture/
+ownership docs, the dice renderer rework and its own new components/tests, CSS/character-component
+edits, `nuxt.config.ts`, `.github/copilot-instructions.md`) confirmed untouched by `git status
+--short` at the end of this session, byte-for-byte matching the recovery prompt's own description.
+
+No commit. No apply. Wait.

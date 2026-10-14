@@ -41,6 +41,7 @@ import {
   setEquipmentSelection,
   setSpellSelections,
   spellAcquisitionPresentation,
+  spellRequirementsFor,
   spellRequirementSections,
   nextStep,
   optionKey,
@@ -56,6 +57,8 @@ import {
 } from '../../../../app/components/characters/builder/characterBuilderSelection'
 import { findRulesFacet } from '../../../../app/lib/content-rules'
 import { resolveDnd5eSpellMechanics } from '../../../../app/lib/spell-mechanics/dnd5e'
+import { resolveDnd5eFeatMechanics } from '../../../../app/lib/feat-mechanics/dnd5e'
+import xphbFeats from '../../../lib/feat-mechanics/fixtures/xphb-feats.json'
 import { serializeContentRef } from '../../../../app/lib/characters/progression-plan'
 import type { CreationSpellEntry } from '../../../../app/lib/characters/creation-content-choices'
 import {
@@ -727,6 +730,104 @@ describe('D&D 2024 Character Rules P3.3 -- Builder spell acquisition (real facet
     const draft = fighterDraft()
     expect(spellRequirementSections(draft, contextWith([]))).toEqual([])
     expect(isSpellStepComplete(draft, contextWith([]))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FEAT-OWNED SPELL ACQUISITION PHASE -- BACKGROUND SWITCHING. Magic Initiate is the one real
+// feat-owned spell requirement shared by three Backgrounds (Acolyte/Guide/Sage), each fixing a
+// DIFFERENT spell list via a DIFFERENT `grants`-set Value -- the one scenario the Class-switch
+// proof above does not cover: two backgrounds that BOTH grant the "same" feat identity, but under
+// mutually exclusive gates. Reuses the IDENTICAL "recompute fresh from the current draft, never
+// cache" mechanism `effectiveSpellSelections` already proves for Class switching (see that test's
+// own header above) -- no new code path, just a new real-corpus scenario exercising it.
+// ---------------------------------------------------------------------------
+describe('FEAT-OWNED SPELL ACQUISITION PHASE -- Background switching revalidates Magic Initiate live-ness', () => {
+  const ACOLYTE_ENTRY = entry({ title: 'Acolyte', slug: 'acolyte-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'acolyte-xphb') })
+  const GUIDE_ENTRY = entry({ title: 'Guide', slug: 'guide-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'guide-xphb') })
+  const CRIMINAL_ENTRY = entry({ title: 'Criminal', slug: 'criminal-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'background', 'criminal-xphb') })
+  const FIGHTER_ENTRY = entry({ title: 'Fighter', slug: 'fighter-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'class', 'fighter-xphb') })
+
+  const MAGIC_INITIATE_FEAT = (() => {
+    const raw = (xphbFeats as any).feats.find((f: any) => f.name === 'Magic Initiate')
+    return {
+      packageId: 'eldra.content.xphb', slug: 'magic-initiate-xphb', title: 'Magic Initiate',
+      rulesFacet: findRulesFacet('dnd5e.2024', 'feat', 'magic-initiate-xphb') ?? undefined,
+      featMechanics: resolveDnd5eFeatMechanics(raw)
+    } as any
+  })()
+
+  function contextWithFeat(spells: CreationSpellEntry[]): BuilderCreationContext {
+    return { contentSelectorOf: () => null, feats: [MAGIC_INITIATE_FEAT], spells }
+  }
+
+  function draftWith(background: BuilderCatalogueEntry): CharacterBuilderDraft {
+    const draft = emptyDraft()
+    draft.name = 'Pip'
+    draft.class = FIGHTER_ENTRY
+    draft.background = background
+    return draft
+  }
+
+  function clericSpellEntry(slug: string, level: number, classLists: string[]): CreationSpellEntry {
+    return { packageId: 'eldra.solaris.xphb', slug, title: slug, spellMechanics: resolveDnd5eSpellMechanics({ name: slug, source: 'XPHB', level, school: 'V', classLists })! }
+  }
+
+  function clericListSpells() {
+    return [
+      ...[...'ab'].map((s) => clericSpellEntry(`cleric-cantrip-${s}`, 0, ['Cleric'])),
+      clericSpellEntry('cleric-spell-a', 1, ['Cleric'])
+    ]
+  }
+
+  it('Acolyte alone makes Magic Initiate\'s Cleric-list requirements live', () => {
+    const requirements = spellRequirementsFor(draftWith(ACOLYTE_ENTRY), contextWithFeat(clericListSpells()))
+    expect(requirements.length).toBeGreaterThan(0)
+    expect(requirements.every((r) => r.filter.classList?.includes('Cleric'))).toBe(true)
+  })
+
+  it('switching Acolyte -> Criminal (no Origin Feat spells) drops the requirements entirely, and the stale answer is never submitted', () => {
+    const draft = draftWith(ACOLYTE_ENTRY)
+    const acolyteRequirements = spellRequirementsFor(draft, contextWithFeat(clericListSpells()))
+    const cantripId = acolyteRequirements.find((r) => r.pool === 'cantrip')!.id
+    setSpellSelections(draft, cantripId, [serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'cleric-cantrip-a' })])
+
+    draft.background = CRIMINAL_ENTRY
+    const criminalRequirements = spellRequirementsFor(draft, contextWithFeat(clericListSpells()))
+    expect(criminalRequirements).toEqual([])
+    expect(effectiveSpellSelections(draft, contextWithFeat(clericListSpells()))).toEqual([])
+    // The stale draft entry is preserved, never deleted -- switching back re-validates it.
+    expect(draft.spellSelections[cantripId]).toEqual([serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'cleric-cantrip-a' })])
+  })
+
+  it('switching back Criminal -> Acolyte makes the SAME requirement id live again, and the preserved answer is valid once more', () => {
+    const draft = draftWith(ACOLYTE_ENTRY)
+    const firstPass = spellRequirementsFor(draft, contextWithFeat(clericListSpells()))
+    const cantripId = firstPass.find((r) => r.pool === 'cantrip')!.id
+    setSpellSelections(draft, cantripId, [serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'cleric-cantrip-a' })])
+
+    draft.background = CRIMINAL_ENTRY
+    expect(effectiveSpellSelections(draft, contextWithFeat(clericListSpells()))).toEqual([])
+
+    draft.background = ACOLYTE_ENTRY
+    const secondPass = spellRequirementsFor(draft, contextWithFeat(clericListSpells()))
+    expect(secondPass.map((r) => r.id)).toEqual(firstPass.map((r) => r.id))
+    expect(effectiveSpellSelections(draft, contextWithFeat(clericListSpells())).map((s) => s.requirementId)).toContain(cantripId)
+  })
+
+  it('switching Acolyte -> Guide changes the gate (Cleric list -> Druid list): the SAME feat identity, but a DIFFERENT requirement id, so the stale Acolyte answer can never satisfy Guide\'s own requirement', () => {
+    const draft = draftWith(ACOLYTE_ENTRY)
+    const acolyteRequirements = spellRequirementsFor(draft, contextWithFeat(clericListSpells()))
+    const acolyteCantripId = acolyteRequirements.find((r) => r.pool === 'cantrip')!.id
+    setSpellSelections(draft, acolyteCantripId, [serializeContentRef({ packageId: 'eldra.solaris.xphb', slug: 'cleric-cantrip-a' })])
+
+    draft.background = GUIDE_ENTRY
+    const guideRequirements = spellRequirementsFor(draft, contextWithFeat(clericListSpells()))
+    const guideCantripId = guideRequirements.find((r) => r.pool === 'cantrip')?.id
+    expect(guideCantripId).not.toBe(acolyteCantripId)
+    // Guide's own requirement is gated on the Druid list -- a Cleric-list answer never counts
+    // toward it, and the old requirement id is no longer live at all.
+    expect(effectiveSpellSelections(draft, contextWithFeat(clericListSpells())).some((s) => s.requirementId === acolyteCantripId)).toBe(false)
   })
 })
 

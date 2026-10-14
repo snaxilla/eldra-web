@@ -141,6 +141,11 @@ export type SpellAcquisitionIssue =
 export type SpellAcquisitionRequirementPlan = {
   requirementId: string
   pool: SpellRequirementPoolKind
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- the SAME `SpellRequirement.label` override, carried
+  // through so a presentation surface never needs the original `SpellRequirement[]` just to label
+  // its own plan. `undefined` means "use the generic per-pool default" (`spellPoolLabel`/
+  // `spellRequirementLabel`), byte-identical to every plan built before this phase.
+  label?: string
   // The corpus's own TOTAL at this character level (P3.1's "required", renamed for this surface's
   // own vocabulary -- never a delta; see this phase's own TOTAL TARGET header).
   target: number
@@ -277,6 +282,7 @@ export function planSpellAcquisition(input: {
     return {
       requirementId: requirement.id,
       pool: requirement.pool,
+      ...(requirement.label !== undefined ? { label: requirement.label } : {}),
       target,
       legalCount: stateResult.owned,
       missing,
@@ -308,11 +314,21 @@ const SPELL_POOL_LABELS: Record<SpellRequirementPoolKind, string> = {
   cantrip: 'Cantrips',
   spell: 'Prepared Spells',
   spellbook: 'Spellbook',
-  arcanum: 'Mystic Arcanum'
+  arcanum: 'Mystic Arcanum',
+  fixed: 'Spells'
 }
 
 export function spellPoolLabel(pool: SpellRequirementPoolKind): string {
   return SPELL_POOL_LABELS[pool] ?? pool
+}
+
+// FEAT-OWNED SPELL ACQUISITION PHASE -- the one call every presentation surface should make
+// instead of `spellPoolLabel(requirement.pool)` directly: prefers the requirement's own
+// package-authored `label` (SpellRequirement.label, app/lib/content-rules/types.ts's own header)
+// when present, falling back to the generic per-pool default otherwise. Centralized here so the
+// Builder and the Level Manager never independently decide the fallback order.
+export function spellRequirementLabel(requirement: Pick<SpellRequirement, 'pool' | 'label'>): string {
+  return requirement.label ?? spellPoolLabel(requirement.pool)
 }
 
 // D&D 2024 Character Rules P3.4 -- decodes the WIRE answers map (the same `Record<string,

@@ -96,6 +96,8 @@ import {
   describeSpellPlanFailure,
   slotTableRows
 } from '../../../../utils/character-spell-acquisition'
+import { gatherSpellRequirements, resolveFixedSpellGrants } from '../../../../../app/lib/characters/spell-requirement-ownership'
+import { nextInstanceId } from '../../../../../app/lib/characters/spellcasting'
 import { saveCharacterSpellcasting } from '../../../../utils/character-spellcasting'
 import {
   applyStartingEquipmentAdditions,
@@ -224,6 +226,22 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- resolved EARLY (before `slots`/`declaredKeys` below),
+  // not at its own prior position further down this handler, because the Background's fixed Origin
+  // Feat (Magic Initiate) may now declare its OWN Definition-ChoiceSet decisions (which of its
+  // three mutually-exclusive spell lists) that the SAME generic `resolveCreationChoices` pipeline
+  // every species/class/background choice already goes through must also validate. Everything
+  // about WHAT this resolves is unchanged from PHASE 2C.3A's own original call (illegal/unresolvable
+  // declarations still fail closed before any entity exists) -- only WHEN it runs moved.
+  const originResolution = resolveCreationOriginFeat({ background, feats: catalogue.feats })
+  if (originResolution.status === 'illegal') {
+    throw createError({ statusCode: 500, statusMessage: `${background.title}: ${originResolution.reason}` })
+  }
+  const originAcquisitions = originResolution.status === 'acquired' ? [originResolution.acquisition] : []
+  const originFeatCatalogueEntry = originResolution.status === 'acquired'
+    ? catalogue.feats.find((entry) => entry.packageId === originResolution.acquisition.featRef.packageId && entry.slug === originResolution.acquisition.featRef.slug) ?? null
+    : null
+
   // Validated BEFORE the entity is created, so a malformed payload cannot
   // leave a half-built character behind (Directus offers no cross-collection
   // transaction -- ordering is how consistency is expressed here).
@@ -263,7 +281,15 @@ export default defineEventHandler(async (event) => {
     { slot: 'universal', facet: universalFacet },
     { slot: 'species', facet: species.rulesFacet },
     { slot: 'class', facet: characterClass.rulesFacet },
-    { slot: 'background', facet: background.rulesFacet }
+    { slot: 'background', facet: background.rulesFacet },
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- the Background's own fixed Origin Feat (if any),
+    // keyed by its own real acquisition `choiceKey` exactly like a progression-acquired feat's
+    // own nested choices are keyed (`feat:${choiceKey}:...`, server/utils/character-progression-
+    // plan.ts's own established convention) -- so Magic Initiate's own "choose a spell list"
+    // Definition ChoiceSet is discoverable/validatable the SAME generic way every other slot's
+    // own choices already are. Absent when the background grants no Origin Feat, or when the
+    // real feat is illegal/unresolvable (already refused above).
+    ...(originResolution.status === 'acquired' ? [{ slot: `feat:${originResolution.acquisition.choiceKey}`, facet: originFeatCatalogueEntry?.rulesFacet ?? null }] : [])
   ]
   const contentSelectorOf = (choiceSetId: string): ContentChoiceSelector | null => {
     if (!(runtime.configured && runtime.ok)) return null
@@ -416,14 +442,9 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // PHASE 2C.3A -- the Background's FIXED Origin Feat, derived from its structured
-  // facet, joins the SAME progression.feats[] collection as the content choices.
-  // Illegal or unresolvable declarations fail closed before any entity exists.
-  const originResolution = resolveCreationOriginFeat({ background, feats: catalogue.feats })
-  if (originResolution.status === 'illegal') {
-    throw createError({ statusCode: 500, statusMessage: `${background.title}: ${originResolution.reason}` })
-  }
-  const originAcquisitions = originResolution.status === 'acquired' ? [originResolution.acquisition] : []
+  // PHASE 2C.3A -- the Background's FIXED Origin Feat (resolved earlier in this handler, see the
+  // FEAT-OWNED SPELL ACQUISITION PHASE note above), joins the SAME progression.feats[] collection
+  // as the content choices.
   const acquisitions = [...originAcquisitions, ...contentAcquisitions]
   const duplicateFeat = findDuplicateFeatAcquisition(acquisitions)
   if (duplicateFeat) {
@@ -458,7 +479,22 @@ export default defineEventHandler(async (event) => {
   // spellOptionVerdict; nothing here re-implements any of it). A class that declares no
   // spellRequirements (a non-caster) skips this entirely -- no plan built, no write, no payload
   // required. Validated and refused BEFORE any entity is written, same as every check above.
-  const spellRequirements = characterClass.rulesFacet?.spellRequirements ?? []
+  //
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- widened from "the class facet alone" to "species + class
+  // + background + every feat genuinely acquired at creation." `gatherSpellRequirements`
+  // (app/lib/characters/spell-requirement-ownership.ts) drops any requirement whose own
+  // `requiresActive` gate is not satisfied -- EITHER a resolved choice answer in
+  // `rulesChoices.selections` (a chosen Source, e.g. a future Thaumaturge-shaped case) OR a plain,
+  // fixed `grants` entry on any of these SAME facets (Magic Initiate's own real shape: the
+  // GRANTING BACKGROUND fixes which spell list, never a player choice -- see Acolyte/Guide/Sage's
+  // own facets, app/lib/content-rules/dnd5e-2024.ts). Nothing past this line knows Magic Initiate
+  // exists; it sees exactly the same flat `SpellRequirement[]` a pure single-class caster's own
+  // spellRequirements already were.
+  const acquisitionFeatFacets = acquisitions.map((acquisition) => catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet)
+  const spellRequirements = gatherSpellRequirements(
+    [species.rulesFacet, characterClass.rulesFacet, background.rulesFacet, ...acquisitionFeatFacets],
+    rulesChoices.selections
+  )
   let spellPlan: ReturnType<typeof buildCreationSpellPlan> | null = null
   const submittedSpellSelections: TentativeSpellSelection[] = []
 
@@ -500,6 +536,22 @@ export default defineEventHandler(async (event) => {
     if (!spellPlan.complete) {
       throw createError({ statusCode: 400, statusMessage: describeSpellPlanFailure(spellPlan) ?? 'Spell selections are incomplete.' })
     }
+  }
+
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- fixed spell grants (Telekinetic's Mage Hand, Telepathic's
+  // Detect Thoughts) carry no player choice at all, so they are resolved independently of the
+  // `spellRequirements`/`spellSelections` machinery above (see FixedSpellGrant's own header,
+  // app/lib/content-rules/types.ts) -- a slug missing from this World's own Content Catalogue fails
+  // closed, before any entity is written, same posture as every other check in this handler.
+  const fixedSpellGrantsResolution = resolveFixedSpellGrants(
+    [
+      { packageId: characterClass.packageId, facet: characterClass.rulesFacet, ownerKey: characterClass.slug },
+      ...acquisitions.map((acquisition) => ({ packageId: acquisition.featRef.packageId, facet: catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet, ownerKey: acquisition.featRef.slug }))
+    ],
+    catalogue.spells
+  )
+  if (!fixedSpellGrantsResolution.ok) {
+    throw createError({ statusCode: 400, statusMessage: fixedSpellGrantsResolution.reason })
   }
 
   // D&D 2024 Character Rules P8 -- STARTING EQUIPMENT. CLIENT AUTHORITY BOUNDARY, same posture as
@@ -593,9 +645,20 @@ export default defineEventHandler(async (event) => {
     // unprotected `spellcasting` PUT route -- this write does not change that route's own posture;
     // it remains technical debt for a future validated day-to-day preparation workflow (see this
     // phase's own report).
-    if (spellPlan && spellRequirements.length > 0) {
-      const spellEntries = buildAcceptedSpellEntries(spellRequirements, spellPlan, submittedSpellSelections)
-      await saveCharacterSpellcasting(created.id, { spells: spellEntries, expendedSlots: {} })
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- the fixed-grant rows (resolved above, already fail-
+    // closed-checked) merge into the SAME canonical write, never a second spellcasting write call.
+    // `instanceId`s are reassigned sequentially across the FULL merged list -- `buildAcceptedSpellEntries`
+    // and `resolveFixedSpellGrants` each number their own rows independently starting from `[]`, so
+    // concatenating their raw output could otherwise collide.
+    const acquiredSpellEntries = spellPlan && spellRequirements.length > 0
+      ? buildAcceptedSpellEntries(spellRequirements, spellPlan, submittedSpellSelections)
+      : []
+    const allSpellEntries = [...acquiredSpellEntries, ...fixedSpellGrantsResolution.entries].reduce<typeof acquiredSpellEntries>((renumbered, entry) => {
+      renumbered.push({ ...entry, instanceId: nextInstanceId(renumbered) })
+      return renumbered
+    }, [])
+    if (allSpellEntries.length > 0) {
+      await saveCharacterSpellcasting(created.id, { spells: allSpellEntries, expendedSlots: {} })
     }
 
     if (abilityScores) {

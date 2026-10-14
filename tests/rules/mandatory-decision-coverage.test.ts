@@ -171,10 +171,32 @@ describe('P3.5 -- spell decision reconciliation', () => {
     for (const d of subclassSpell) expect(classifyDecision(d).status, d.id).not.toBe('implemented')
   })
 
-  it('STILL BLOCKED -- feat-granted and species-granted spell decisions are untouched by P3.5 (Magic Initiate, Fey-Touched, lineage spells, etc. -- their own authoring/workflow does not exist today)', () => {
-    const featOrSpeciesSpell = DECISIONS.filter((d) => (d.owner.kind === 'feat' || d.owner.kind === 'species') && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family))
-    expect(featOrSpeciesSpell.length).toBeGreaterThan(0)
-    for (const d of featOrSpeciesSpell) expect(classifyDecision(d).status, d.id).not.toBe('implemented')
+  it('STILL BLOCKED -- species-granted spell decisions are untouched by P3.5 (lineage spells -- their own authoring/workflow does not exist today)', () => {
+    const speciesSpell = DECISIONS.filter((d) => d.owner.kind === 'species' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family))
+    expect(speciesSpell.length).toBeGreaterThan(0)
+    for (const d of speciesSpell) expect(classifyDecision(d).status, d.id).not.toBe('implemented')
+  })
+
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- feat-granted spell-choice/spell-grant decisions are no
+  // longer uniformly blocked: Magic Initiate (variant-choice, not this family, already excluded
+  // above), Fey-Touched, Shadow-Touched, Telekinetic, Telepathic, Blessed Warrior, and Druidic
+  // Warrior are now implemented (see `impl:feat-spell-*` in mandatory-decision-coverage.ts); Ritual
+  // Caster alone remains blocked, for a real, different reason (discovery forces its real
+  // level-gated growth table to 5 flat creation-time decisions -- see `blk:feat-nested-spells`'s
+  // own updated reason).
+  it('STILL BLOCKED -- Ritual Caster alone, among feat-granted spell-choice/spell-grant decisions', () => {
+    const featSpell = DECISIONS.filter((d) => d.owner.kind === 'feat' && ['spell-choice', 'spell-grant'].includes(d.family))
+    expect(featSpell.length).toBeGreaterThan(0)
+    const stillBlocked = featSpell.filter((d) => classifyDecision(d).status !== 'implemented')
+    expect(stillBlocked.every((d) => d.owner.slug === 'ritual-caster-xphb')).toBe(true)
+    expect(stillBlocked.length).toBeGreaterThan(0)
+  })
+
+  it('RECLASSIFIED -- Magic Initiate, Fey-Touched, Shadow-Touched, Telekinetic, Telepathic, Blessed Warrior, and Druidic Warrior are now implemented', () => {
+    const slugs = ['magic-initiate-xphb', 'fey-touched-xphb', 'shadow-touched-xphb', 'telekinetic-xphb', 'telepathic-xphb', 'blessed-warrior-xphb', 'druidic-warrior-xphb']
+    const decisions = DECISIONS.filter((d) => d.owner.kind === 'feat' && slugs.includes(d.owner.slug) && ['spell-choice', 'spell-grant', 'variant-choice'].includes(d.family))
+    expect(decisions.length).toBeGreaterThan(0)
+    for (const d of decisions) expect(classifyDecision(d).status, d.id).toBe('implemented')
   })
 
   it('OPTIONAL -- spell-adjacent replacement/re-answer clauses (level-up swap, Long-Rest preparation, Wizard Memorize Spell) remain optional, never promoted to a mandatory acquisition and never a blocker', () => {
@@ -332,7 +354,10 @@ describe('P8 -- starting equipment reconciliation', () => {
     // ELDRITCH INVOCATIONS PHASE -- Warlock's own remaining blocker (Eldritch Invocations) is
     // now authored too; Warlock joins the roster (the full named 12-class roster).
     expect(availableClasses.sort()).toEqual(['barbarian-xphb', 'bard-xphb', 'cleric-xphb', 'druid-xphb', 'fighter-xphb', 'monk-xphb', 'paladin-xphb', 'ranger-xphb', 'rogue-xphb', 'sorcerer-xphb', 'warlock-xphb', 'wizard-xphb'])
-    expect(availableBackgrounds.length).toBe(13)
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Guide/Sage's own real remaining blocker
+    // (Magic Initiate's spell-list variant choice) is now authored too; all three join the
+    // roster (the full named 16-background roster).
+    expect(availableBackgrounds.length).toBe(16)
 
     let combinations = 0
     for (const s of species) {
@@ -342,10 +367,10 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // ELDRITCH INVOCATIONS PHASE -- 3 species * 12 available classes * 13 available
-    // backgrounds = 468, enumerated through the real authority above (never computed as a
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- 3 species * 12 available classes * 16 available
+    // backgrounds = 576, enumerated through the real authority above (never computed as a
     // hardcoded product).
-    expect(combinations).toBe(468)
+    expect(combinations).toBe(576)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {

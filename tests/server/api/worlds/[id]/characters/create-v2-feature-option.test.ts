@@ -127,11 +127,14 @@ const FEATS = xphbFeats.feats.map((raw: { name: string }) => {
 function spellEntry(slug: string, level: number, classLists: string[]) {
   return { packageId: PKG, slug, title: slug, spellMechanics: resolveDnd5eSpellMechanics({ name: slug, source: 'XPHB', level, school: 'V', classLists })! }
 }
+// FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- Thaumaturge's/Magician's own newly-authored bonus
+// cantrip (a SECOND, independently-tagged pool:'cantrip' requirement, see dnd5e-2024.ts's own
+// cleric-xphb/druid-xphb facets) needs one more catalogue cantrip than the base pool alone did.
 const SPELLS = [
   ...[...'abcdefgh'].map((s) => spellEntry(`cleric-${s}`, 1, ['Cleric'])),
-  ...[...'xyz'].map((s) => spellEntry(`cleric-cantrip-${s}`, 0, ['Cleric'])),
+  ...[...'wxyz'].map((s) => spellEntry(`cleric-cantrip-${s}`, 0, ['Cleric'])),
   ...[...'abcdefgh'].map((s) => spellEntry(`druid-${s}`, 1, ['Druid'])),
-  ...[...'xyz'].map((s) => spellEntry(`druid-cantrip-${s}`, 0, ['Druid']))
+  ...[...'wxyz'].map((s) => spellEntry(`druid-cantrip-${s}`, 0, ['Druid']))
 ]
 
 const CATALOGUE = {
@@ -169,15 +172,27 @@ const ABILITY_KEY = choiceKey('background', 'choice:background.ability-distribut
 function requirementsFor(classSlug: string) {
   return findRulesFacet('dnd5e.2024', 'class', classSlug)!.spellRequirements!
 }
-function spellSelectionsFor(classSlug: string, letterPrefix: string) {
+// FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- a class facet may now own MORE than one
+// pool:'cantrip' requirement (the base class pool, plus Thaumaturge's/Magician's own
+// requiresActive-gated bonus pick). Every cantrip requirement whose own gate is satisfied by the
+// chosen featureOptionSource (or which is ungated) gets its own slice of fresh catalogue cantrips,
+// so no two requirements are ever answered with the same spell identity.
+function spellSelectionsFor(classSlug: string, letterPrefix: string, featureOptionSource?: string) {
   const reqs = requirementsFor(classSlug)
   const spellReq = reqs.find((r) => r.pool === 'spell')!
-  const cantripReq = reqs.find((r) => r.pool === 'cantrip')!
+  const cantripReqs = reqs.filter((r) => r.pool === 'cantrip' && (!r.requiresActive?.length || r.requiresActive.includes(featureOptionSource ?? '')))
   const spellCount = spellReq.totalByLevel[0]
-  const cantripCount = cantripReq.totalByLevel[0]
+  const letters = [...'wxyz']
+  let cursor = 0
+  const cantripSelections = cantripReqs.flatMap((req) => {
+    const count = req.totalByLevel[0]
+    const picks = letters.slice(cursor, cursor + count)
+    cursor += count
+    return picks.map((s) => ({ requirementId: req.id, ref: ref(`${letterPrefix}-cantrip-${s}`) }))
+  })
   return [
     ...[...'abcdefgh'].slice(0, spellCount).map((s) => ({ requirementId: spellReq.id, ref: ref(`${letterPrefix}-${s}`) })),
-    ...[...'xyz'].slice(0, cantripCount).map((s) => ({ requirementId: cantripReq.id, ref: ref(`${letterPrefix}-cantrip-${s}`) }))
+    ...cantripSelections
   ]
 }
 
@@ -195,7 +210,7 @@ function fullBody(classSlug: 'cleric-xphb' | 'druid-xphb', featureOptionSource: 
         [ABILITY_KEY]: ['source:background.increase.dex', 'source:background.increase.con', 'source:background.increase.int']
       }
     },
-    spellSelections: spellSelectionsFor(classSlug, classSlug === 'cleric-xphb' ? 'cleric' : 'druid'),
+    spellSelections: spellSelectionsFor(classSlug, classSlug === 'cleric-xphb' ? 'cleric' : 'druid', featureOptionSource),
     startingEquipment: {
       [`choice:equipment.starting.${classSlug}`]: 'B',
       'choice:equipment.starting.criminal-xphb': 'B'

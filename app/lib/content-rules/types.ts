@@ -165,6 +165,11 @@ export type RulesFacet = {
   // other RulesFacet field, because a requirement is a published fact about content, exactly like
   // `grants`/`choices`). Lives only on class facets today; nothing here names a class.
   spellRequirements?: SpellRequirement[]
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- see FixedSpellGrant's own header above. Lives beside
+  // `spellRequirements` for the identical reason: a published fact about content, never an
+  // application branch. Today authored only on feat facets (Telekinetic, Telepathic); the shape
+  // itself names no owner kind.
+  fixedSpellGrants?: readonly FixedSpellGrant[]
   // D&D 2024 Character Rules P8 -- the creation-time "choose ONE bundle of starting gear" decision
   // this content declares, if any. See EquipmentChoice's own header
   // (app/lib/characters/equipment-bundle.ts owns the pure resolver; the TYPE lives here for the
@@ -270,7 +275,23 @@ export type EquipmentChoice = {
 //                  as 'cantrip'/'spell' (count 1, exact), just with `filter.level` pinned to one
 //                  spell level and `totalByLevel` staying 0 until the tier's own acquisition level,
 //                  then 1 for every level after -- no special primitive, one requirement per tier.
-export type SpellRequirementPoolKind = 'cantrip' | 'spell' | 'spellbook' | 'arcanum'
+//   'fixed'     -- FEAT-OWNED SPELL ACQUISITION PHASE. Structurally IDENTICAL to 'arcanum' (ungated,
+//                  exact `filter.level`, flag 'known', permanent once learned) -- the real gap
+//                  'arcanum' already generalized by construction, just under a name specific to one
+//                  class's own flavor text. Named separately, never by reusing 'arcanum' literally,
+//                  because an unrelated feat's spell showing up tagged 'arcanum' (and labeled
+//                  "Mystic Arcanum" by the default `spellPoolLabel`) would be a real identity lie,
+//                  not a cosmetic one -- see `SpellRequirement.label` below for how the DISPLAY half
+//                  of that is fixed. Needed because 'spell'/'spellbook' are GATED by the character's
+//                  own derived max spell-slot level (see `isLevelGated`,
+//                  app/lib/characters/spell-requirements.ts) -- correct for a class's own leveled
+//                  casting, but WRONG for a feat like Magic Initiate, whose level-1 spell must
+//                  remain legal even for a non-caster with zero spell slots (casterType 'none' ->
+//                  maxSpellLevel 0 -> a gated pool would refuse it outright, defeating the feat's
+//                  entire point). 'fixed' needs zero code change to `isLevelGated`/`flagFor` (both
+//                  already default any kind outside 'spell'/'spellbook' to ungated/'known') -- only
+//                  `KNOWN_POOL_KINDS` and the display-label map gain the new tag.
+export type SpellRequirementPoolKind = 'cantrip' | 'spell' | 'spellbook' | 'arcanum' | 'fixed'
 
 export type SpellRequirement = {
   // Stable identity. Read by the application only to report which requirement an issue belongs to,
@@ -293,6 +314,48 @@ export type SpellRequirement = {
   // class whose 'spell' pool has no membership gate (every class but Wizard). Nothing here names
   // "Wizard" -- a future class with the same two-tier shape sets this identically.
   requiresMembershipPool?: DefinitionId
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- a package-authored, human-facing override for this
+  // requirement's own display grouping, read in PREFERENCE to the generic per-pool-kind default
+  // (`spellPoolLabel`, app/lib/characters/spell-acquisition-plan.ts) wherever one is shown. Needed
+  // because pool kind alone cannot distinguish "Magic Initiate's own Cleric cantrips" from a real
+  // Cleric's own class cantrips (both pool: 'cantrip'), or name which of Magic Initiate's three
+  // mutually-exclusive spell lists a given requirement belongs to -- "infrastructure-grade"
+  // provenance, never a class/feat name baked into application code (the STRING lives entirely in
+  // package data, authored per requirement, exactly like `EquipmentBundle.label`).
+  label?: string
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- the one new, small, generic conditional-activation gate
+  // this phase adds: this requirement participates in planning/validation/persistence ONLY while
+  // EVERY named Source is active on the character (AND semantics; absent/empty means always
+  // active, byte-identical to every requirement authored before this phase). "Active" means the id
+  // appears as a resolved selection for some `effect: 'activate-source'` ChoiceSet with no
+  // `writesTo` (the selected value IS the Source id directly -- see
+  // app/lib/characters/spell-requirement-ownership.ts's own header for the exact check and why it
+  // is NOT the same thing as a ChoiceSet's own `requiresActive`, which reads `values[]`, never
+  // `sources[]`). This is the exact missing primitive the Feature-Option phase identified and
+  // explicitly deferred for Thaumaturge/Magician's own conditional bonus cantrip (see
+  // dnd5e-2024-progression-coverage.ts's own blockerReason for both) -- filtering happens entirely
+  // OUTSIDE this file and outside the P3.1/P3.2 validator/planner (a filtered-out requirement is
+  // simply never included in the array those pure functions receive), so neither gains a single
+  // line of new conditional logic. Magic Initiate's own three spell-list variants are the first
+  // real authored use (each requirement active only while ITS OWN chosen-list Source is active).
+  requiresActive?: readonly DefinitionId[]
+}
+
+// FEAT-OWNED SPELL ACQUISITION PHASE -- the smallest shape for "this content ALWAYS grants this one
+// exact spell, with no player choice at all" (Telekinetic's Mage Hand, Telepathic's Detect
+// Thoughts): a FACT about content, never a decision needing a ChoiceSet/picker -- the real corpus
+// text has no "of your choice" clause for either. Deliberately NOT modeled as a one-option
+// SpellRequirement (which would still present as a pickable decision with exactly one legal
+// choice): per this phase's own instruction, "Fixed grants: do NOT become mandatory decisions" --
+// this is closer in kind to `originFeatSlug` (a bare slug, resolved against whichever packageId is
+// actually live, same package as the owning content) than to any choice-shaped primitive here.
+export type FixedSpellGrant = {
+  slug: string
+  // 'known' for a permanently-learned spell (Telekinetic's Mage Hand -- cast it like any other
+  // known spell); 'prepared' for a spell the character "always has prepared" independent of their
+  // normal preparation routine (Telepathic's Detect Thoughts). Mirrors `flagFor`'s own two values
+  // exactly (app/lib/characters/spell-requirements.ts) -- never a third flag invented here.
+  flag: 'known' | 'prepared'
 }
 
 export type RulesFacetFeatureRequirement = {

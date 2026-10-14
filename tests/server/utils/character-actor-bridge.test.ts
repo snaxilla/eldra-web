@@ -435,7 +435,12 @@ describe('Bobbert: Character -> Bridge -> Rules Engine', () => {
       // Fighting Style feature). Like the Hit Die grant above, it is a CONTENT
       // fact the package states, never something the engine computed.
       const isFeatureGrant = id === 'value:feature.fighting-style'
-      expect(isAbilityScore || isProficiencyFlag || isHitDieGrant || isLevel || isFeatureGrant, `unexpected stored value '${id}'`).toBe(true)
+      // FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Guide/Sage's own fixed `grants` entry
+      // (which spell list Magic Initiate draws from). Like the feature grant above, it is a
+      // CONTENT fact the package states (the Background fixes the list), never something the
+      // engine computed.
+      const isMagicInitiateListGrant = /^value:magic-initiate\.list\.[123]\.active$/.test(id)
+      expect(isAbilityScore || isProficiencyFlag || isHitDieGrant || isLevel || isFeatureGrant || isMagicInitiateListGrant, `unexpected stored value '${id}'`).toBe(true)
     }
 
     // ...and the derived values the sheet will show exist only in the

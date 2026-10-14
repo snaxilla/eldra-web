@@ -50,7 +50,12 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // generic choice:class.accumulating-option ChoiceSet/progression. Warlock joins the
 // creation-complete roster (11 -> 12 classes, the full named roster), lifting the complete
 // combinations from 429 to 468 (3 x 12 x 13).
-const BASELINE = { species: 3, classes: 12, backgrounds: 13, combinations: 468 }
+// FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Guide/Sage's own real remaining blocker (Magic
+// Initiate's "choose a spell list" variant decision) is now authored via the generic,
+// conditionally-activated (requiresActive) spellRequirements model. All three join the
+// creation-complete roster (13 -> 16 backgrounds, the full named roster), lifting the complete
+// combinations from 468 to 576 (3 x 12 x 16).
+const BASELINE = { species: 3, classes: 12, backgrounds: 16, combinations: 576 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

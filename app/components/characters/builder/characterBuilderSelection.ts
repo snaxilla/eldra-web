@@ -98,6 +98,8 @@ import {
   type EquipmentBundleResolvers
 } from '~/lib/characters/equipment-bundle'
 import { DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS } from '~/lib/content-rules/dnd5e-2024'
+import { resolveCreationOriginFeat } from '~/lib/characters/creation-origin-feat'
+import { gatherSpellRequirements } from '~/lib/characters/spell-requirement-ownership'
 
 // D&D 2024 Character Rules P3.4 -- re-exported, not redefined: the Level Manager
 // (CharacterProgressionPanel.vue) now needs the identical pool-kind label mapping, so it was
@@ -436,9 +438,19 @@ export function creationChoicePresentation(
   // LANGUAGE CORPUS + POLICY PHASE -- the universal package-wide slot, placed FIRST so its own
   // fixed grants (Common) and choice are visible to every later slot's own eligibility within
   // this SAME call -- the real server (create-v2.post.ts) builds the identical slots array.
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- the Background's own fixed Origin Feat (if any) gets its
+  // own slot, keyed by the SAME real acquisition `choiceKey` the server builds
+  // (`resolveCreationOriginFeat`'s own `ORIGIN_FEAT_SLOT`/`ORIGIN_FEAT_GRANT_SEGMENT` convention) --
+  // so Magic Initiate's own "choose a spell list" Definition ChoiceSet is discoverable/answerable
+  // here exactly like create-v2.post.ts's own identical slot.
+  const originFeat = draft.background ? resolveCreationOriginFeat({ background: draft.background, feats: context.feats }) : { status: 'none' as const }
+  const originFeatCatalogueEntry = originFeat.status === 'acquired'
+    ? context.feats.find((entry) => entry.packageId === originFeat.acquisition.featRef.packageId && entry.slug === originFeat.acquisition.featRef.slug) ?? null
+    : null
   const slots: CreationSlotInput[] = [
     { slot: 'universal', facet: context.universalFacet ?? null },
-    ...CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
+    ...CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet })),
+    ...(originFeat.status === 'acquired' ? [{ slot: `feat:${originFeat.acquisition.choiceKey}`, facet: originFeatCatalogueEntry?.rulesFacet }] : [])
   ]
   return resolveCreationChoices(
     slots,
@@ -478,8 +490,31 @@ export function effectiveContentChoices(
 // membership, or filtering legality. The only thing specific to CREATION is the inputs: no persisted
 // state yet (`candidates: []`), Level 1 always, and the fixed `CREATION_SPELL_SLOT_LEVELS` constant
 // above.
-export function spellRequirementsFor(draft: CharacterBuilderDraft) {
-  return draft.class?.rulesFacet?.spellRequirements ?? []
+// FEAT-OWNED SPELL ACQUISITION PHASE -- the Background's own fixed Origin Feat (Magic Initiate via
+// Acolyte/Guide/Sage), resolved through the IDENTICAL pure function the server uses
+// (`resolveCreationOriginFeat`, app/lib/characters/creation-origin-feat.ts -- no I/O, safe to call
+// client-side) so the Builder and the server authority can never silently disagree about which
+// feat, if any, this Background grants. `null` whenever no Origin Feat is granted, or the real feat
+// is illegal/missing from the catalogue (the SAME two non-'acquired' statuses the server itself
+// already fails closed on, via `creationUnresolvedDecisions`/this route's own later checks -- the
+// Builder simply has nothing to present rather than re-deriving the refusal reason here).
+export function originFeatEntry(draft: CharacterBuilderDraft, context: BuilderCreationContext): CreationFeatEntry | null {
+  if (!draft.background) return null
+  const resolution = resolveCreationOriginFeat({ background: draft.background, feats: context.feats })
+  if (resolution.status !== 'acquired') return null
+  return context.feats.find((entry) => entry.packageId === resolution.acquisition.featRef.packageId && entry.slug === resolution.acquisition.featRef.slug) ?? null
+}
+
+// FEAT-OWNED SPELL ACQUISITION PHASE -- widened from "the selected Class's own facet alone" to
+// "the Class facet plus the Background's own fixed Origin Feat facet, if any" -- see
+// `gatherSpellRequirements`'s own header (app/lib/characters/spell-requirement-ownership.ts) for
+// why a plain `requiresActive` scan against `draft.choices.selections` is the correct, generic
+// gate (Magic Initiate's own "choose a spell list" answer, when this draft has one).
+export function spellRequirementsFor(draft: CharacterBuilderDraft, context: BuilderCreationContext = NO_CREATION_CONTENT) {
+  return gatherSpellRequirements(
+    [draft.species?.rulesFacet, draft.class?.rulesFacet, draft.background?.rulesFacet, originFeatEntry(draft, context)?.rulesFacet],
+    draft.choices.selections
+  )
 }
 
 function tentativeSpellSelections(draft: CharacterBuilderDraft): TentativeSpellSelection[] {
@@ -498,7 +533,7 @@ export function spellAcquisitionPresentation(
   context: BuilderCreationContext = NO_CREATION_CONTENT
 ): SpellAcquisitionPlan {
   return planSpellAcquisition({
-    requirements: spellRequirementsFor(draft),
+    requirements: spellRequirementsFor(draft, context),
     characterLevel: 1,
     candidates: [],
     catalogue: context.spells ?? [],
@@ -522,8 +557,8 @@ export function isSpellStepComplete(
 // Class's answers are not deleted from the draft (switching back re-validates them against the
 // current plan rather than losing them), but they are never live here and are therefore never
 // submitted -- see this module's own header on why re-validating on read is enough.
-export function effectiveSpellSelections(draft: CharacterBuilderDraft): TentativeSpellSelection[] {
-  const liveIds = new Set(spellRequirementsFor(draft).map((r) => r.id))
+export function effectiveSpellSelections(draft: CharacterBuilderDraft, context: BuilderCreationContext = NO_CREATION_CONTENT): TentativeSpellSelection[] {
+  const liveIds = new Set(spellRequirementsFor(draft, context).map((r) => r.id))
   return tentativeSpellSelections(draft).filter((selection) => liveIds.has(selection.requirementId))
 }
 
@@ -572,7 +607,7 @@ export function spellRequirementSections(
       return {
         requirementId: requirement.requirementId,
         pool: requirement.pool,
-        label: spellPoolLabel(requirement.pool),
+        label: requirement.label ?? spellPoolLabel(requirement.pool),
         choice: {
           key: requirement.requirementId,
           slot: 'class',
@@ -1032,7 +1067,7 @@ export function toCreatePayload(
     contentChoices: effectiveContentChoices(draft, context),
     // D&D 2024 Character Rules P3.3 -- only the answers the CURRENTLY selected Class's own
     // requirements declare; a prior Class's stale answers are never live and are never submitted.
-    spellSelections: effectiveSpellSelections(draft),
+    spellSelections: effectiveSpellSelections(draft, context),
     // D&D 2024 Character Rules P8B -- only the bundle ids the CURRENTLY live choices declare; a
     // prior class/background's stale answer is never live and is never submitted.
     startingEquipment: effectiveStartingEquipment(draft)

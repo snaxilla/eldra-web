@@ -1217,10 +1217,14 @@ export type SpellCatalogueFilter = {
   // CanonicalSpellMechanics.level exactly -- no range, no "at most"/"at least", because no real
   // Milestone-A selection rule needs one (see this phase's own report).
   level?: number
-  // A real spell school label (e.g. "Evocation"), matched against CanonicalSpellMechanics.school
-  // exactly. Supported because the metadata is already canonical and the check is free, not
-  // because a current Milestone-A rule requires it (see this phase's own report).
-  school?: string
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- widened from a single string to an array, mirroring
+  // `classList`'s own OR-within-itself semantics exactly (any one named school is enough): the real
+  // corpus need (Fey-Touched/Shadow-Touched's own "a level 1 spell from the Divination OR
+  // Enchantment school") is genuinely two schools, never one. Matched against
+  // CanonicalSpellMechanics.school exactly, one real label per entry (e.g. "Evocation"). No
+  // authored facet used the single-string shape before this phase (confirmed by inspection), so
+  // this is a safe, backward-compatible widening, not a migration.
+  school?: readonly string[]
 }
 
 // Weapon Mastery phase -- the smallest typed filter a package-authored item-selection choice

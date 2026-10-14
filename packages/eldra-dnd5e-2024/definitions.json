@@ -5762,5 +5762,35 @@
         ]
       }
     ]
+  },
+  {
+    "id": "value:magic-initiate.list.1.active",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Magic Initiate: List 1 Active"
+  },
+  {
+    "id": "value:magic-initiate.list.2.active",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Magic Initiate: List 2 Active"
+  },
+  {
+    "id": "value:magic-initiate.list.3.active",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Magic Initiate: List 3 Active"
   }
 ]

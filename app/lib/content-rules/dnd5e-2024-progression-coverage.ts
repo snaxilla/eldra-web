@@ -847,14 +847,23 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     implementationRef: 'facet:background.originFeatSlug',
     notes: 'Criminal, Guard -> Alert; Farmer -> Tough; Hermit -> Healer; Merchant, Wayfarer -> Lucky; Sailor -> Tavern Brawler; Soldier -> Savage Attacker. Acquisition only (progression.feats[] at creation); no retroactive grant to existing characters.'
   },
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- RECLASSIFIED IMPLEMENTED (was ENGINE_BLOCKED): Magic
+  // Initiate (Acolyte/Guide/Sage) was the real, last choice-shaped Origin Feat still needing a
+  // primitive the Rules Package did not have (a conditional SpellRequirement, gated via
+  // `requiresActive` against a plain Value the GRANTING BACKGROUND fixes -- re-derived directly
+  // from the raw corpus, which FIXES the spell list per Background, never a player choice; no
+  // ChoiceSet needed at all). Crafter/Musician/Skilled's own tool/instrument/skill choices were
+  // ALREADY fixed by an earlier phase (this row's own `blockerReason` had simply gone stale,
+  // naming them as if still blocked).
   {
     id: 'background:origin-feat:choice-acquisition',
     classSlug: 'background',
     featureName: 'Origin Feat',
     levels: [1],
     surface: 'creation',
-    status: 'ENGINE_BLOCKED',
-    blockerReason: 'Origin feats that need a choice: Crafter (artisan tool choice), Musician (instrument choice), Skilled (skill-or-tool choice), Magic Initiate (spell/cantrip acquisition). Each needs a primitive the Rules Package does not have yet. Builder shows these Backgrounds disabled with the reason.'
+    status: 'IMPLEMENTED',
+    implementationRef: 'facet:spellRequirements',
+    notes: 'Crafter -> artisan tool choice; Musician -> instrument choice; Skilled -> skill-or-tool choice; Magic Initiate (Acolyte/Guide/Sage) -> 6 spellRequirements (cantrip + fixed-spell pool, times 3 lists), each requiresActive-gated against the granting Background\'s own fixed Value grant (Acolyte->Cleric, Guide->Druid, Sage->Wizard). Acquisition only; casting ability and optional Spell Change are separate, deferred facts.'
   },
   {
     id: 'background:origin-feat-effect:alert',
@@ -938,12 +947,13 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // real engine) and the one option-specific downstream EFFECT this
   // phase does not reach (ENGINE_BLOCKED, named precisely, never silently
   // dropped):
-  //   - Thaumaturge/Magician's "one extra cantrip" is a genuine spell
-  //     PICK conditioned on a specific Source being active.
-  //     `RulesFacet.spellRequirements` is a flat, unconditional array
-  //     today -- nothing ties a requirement's activation to a Source --
-  //     so this needs a new, small primitive (Source-gated
-  //     SpellRequirement), explicitly deferred.
+  //   - FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- Thaumaturge/Magician's "one extra cantrip"
+  //     is now IMPLEMENTED too: `SpellRequirement.requiresActive` (added this phase) is exactly
+  //     the Source-gated primitive this row used to wait on. `choice:class.feature-option` writes
+  //     the chosen Source id itself into `selections` (no `writesTo`), which
+  //     `gatherSpellRequirements`'s own chosen-Source gate check reads directly -- see that file's
+  //     own header (app/lib/characters/spell-requirement-ownership.ts). Authored as a second,
+  //     independently-tagged `pool: 'cantrip'` requirement on each class's own facet.
   //   - Divine Strike/Primal Strike's damage-type choice and Potent
   //     Spellcasting's cantrip-damage addition are PER-ATTACK/per-cast
   //     runtime combat text, not a persistent build decision -- deferred
@@ -960,7 +970,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     surface: 'creation',
     status: 'IMPLEMENTED',
     implementationRef: 'choice:class.feature-option',
-    notes: 'One of two permanent options at creation, via the generic choice:class.feature-option ChoiceSet (effect: activate-source), authored into the Cleric facet\'s own choices array with from: [source:divine-order.protector, source:divine-order.thaumaturge]. Protector\'s martial-weapon + heavy-armor proficiency grant resolves through the real engine on selection. Thaumaturge\'s own bonus-cantrip consequence is a separate row (see cleric-xphb:divine-order-thaumaturge-cantrip) -- selecting it persists and activates the Source, but grants no cantrip yet.'
+    notes: 'One of two permanent options at creation, via the generic choice:class.feature-option ChoiceSet (effect: activate-source), authored into the Cleric facet\'s own choices array with from: [source:divine-order.protector, source:divine-order.thaumaturge]. Protector\'s martial-weapon + heavy-armor proficiency grant resolves through the real engine on selection. Thaumaturge\'s own bonus-cantrip consequence is a separate row (see cleric-xphb:divine-order-thaumaturge-cantrip) -- selecting it persists, activates the Source, and (as of the FEAT-OWNED SPELL ACQUISITION PHASE) now grants the cantrip pick too.'
   },
   {
     id: 'cleric-xphb:divine-order-thaumaturge-cantrip',
@@ -968,8 +978,9 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Divine Order',
     levels: [1],
     surface: 'creation',
-    status: 'ENGINE_BLOCKED',
-    blockerReason: 'Thaumaturge grants one extra cantrip from the Cleric spell list, conditioned on this specific Source being active. RulesFacet.spellRequirements is a flat, unconditional array -- no mechanism ties a requirement\'s activation to a Source. Needs a new, small primitive (a Source-gated SpellRequirement). Explicitly deferred out of this phase\'s scope, by direct approval, rather than implemented or faked.'
+    status: 'IMPLEMENTED',
+    implementationRef: 'facet:spellRequirements (spell-requirement.cleric-xphb.thaumaturge-cantrip)',
+    notes: 'FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- RECLASSIFIED (was ENGINE_BLOCKED). Thaumaturge grants one extra cantrip from the Cleric spell list, conditioned on this specific Source being active. The new SpellRequirement.requiresActive gate (this phase) ties the requirement\'s activation to the chosen Source id, read directly from StoredRulesChoices.selections (choice:class.feature-option writes the Source id verbatim, no writesTo). Authored as a second, independently-tagged pool:\'cantrip\' requirement -- one MORE pick, not a reclassification of the normal three.'
   },
   {
     id: 'druid-xphb:primal-order',
@@ -979,7 +990,7 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     surface: 'creation',
     status: 'IMPLEMENTED',
     implementationRef: 'choice:class.feature-option',
-    notes: 'One of two permanent options at creation, via the generic choice:class.feature-option ChoiceSet (effect: activate-source), authored into the Druid facet\'s own choices array with from: [source:primal-order.magician, source:primal-order.warden]. Warden\'s martial-weapon + medium-armor proficiency grant resolves through the real engine on selection. Magician\'s own bonus-cantrip consequence is a separate row (see druid-xphb:primal-order-magician-cantrip) -- selecting it persists and activates the Source, but grants no cantrip yet.'
+    notes: 'One of two permanent options at creation, via the generic choice:class.feature-option ChoiceSet (effect: activate-source), authored into the Druid facet\'s own choices array with from: [source:primal-order.magician, source:primal-order.warden]. Warden\'s martial-weapon + medium-armor proficiency grant resolves through the real engine on selection. Magician\'s own bonus-cantrip consequence is a separate row (see druid-xphb:primal-order-magician-cantrip) -- selecting it persists, activates the Source, and (as of the FEAT-OWNED SPELL ACQUISITION PHASE) now grants the cantrip pick too.'
   },
   {
     id: 'druid-xphb:primal-order-magician-cantrip',
@@ -987,8 +998,9 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     featureName: 'Primal Order',
     levels: [1],
     surface: 'creation',
-    status: 'ENGINE_BLOCKED',
-    blockerReason: 'Magician grants one extra cantrip from the Druid spell list, conditioned on this specific Source being active. RulesFacet.spellRequirements is a flat, unconditional array -- no mechanism ties a requirement\'s activation to a Source. Needs the same Source-gated SpellRequirement primitive as cleric-xphb:divine-order-thaumaturge-cantrip. Explicitly deferred out of this phase\'s scope, by direct approval, rather than implemented or faked.'
+    status: 'IMPLEMENTED',
+    implementationRef: 'facet:spellRequirements (spell-requirement.druid-xphb.magician-cantrip)',
+    notes: 'FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- RECLASSIFIED (was ENGINE_BLOCKED). Magician grants one extra cantrip from the Druid spell list, conditioned on this specific Source being active. Same primitive and reasoning as cleric-xphb:divine-order-thaumaturge-cantrip.'
   },
   {
     id: 'cleric-xphb:blessed-strikes',

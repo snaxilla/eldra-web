@@ -67,7 +67,7 @@ export function spellOptionVerdict(input: {
     return { eligible: false, reason: 'wrong-level' }
   }
 
-  if (filter.school !== undefined && mechanics.school !== filter.school) {
+  if (filter.school && filter.school.length > 0 && !filter.school.includes(mechanics.school ?? '')) {
     return { eligible: false, reason: 'wrong-school' }
   }
 

@@ -44,10 +44,11 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
     expect(criminal!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
-  it('a package-authored Origin reason is kept as written (it already names the feat)', () => {
-    const [acolyte] = withCreationBlockers([entry('acolyte-xphb', 'Acolyte')], 'background')
-    expect(acolyte!.rulesFacet?.creationUnavailable).toMatch(/Origin Feat \(Magic Initiate\)/)
-  })
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte no longer carries a package-authored Origin
+  // reason: Magic Initiate's own spell decisions are representable now (facet:spellRequirements),
+  // so no XPHB Background carries a `creationUnavailable` reason at all anymore. This test's own
+  // premise is gone; the equivalent "reason is kept as written" guarantee is proven instead by the
+  // species lineage-choice case above (Elf), which still carries one.
 
   // P7 made Artisan's ability bonus representable, same as Crafter's tool choice (P1); P8 makes
   // its starting equipment representable too. Nothing else blocks it.
@@ -56,8 +57,12 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
     expect(artisan!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Sage are REMOVED from this list: a Background
+  // selected alone (no feats array) no longer owns any unresolved decision at all, since Magic
+  // Initiate's own decisions are implemented now, not blocked. Every XPHB Background now behaves
+  // this way, so only the species lineage/spell-grant cases remain as "alone" examples.
   it('no reason ever exposes an internal identifier', () => {
-    for (const [slug, kind] of [['elf-xphb', 'species'], ['aasimar-xphb', 'species'], ['sage-xphb', 'background'], ['acolyte-xphb', 'background']] as const) {
+    for (const [slug, kind] of [['elf-xphb', 'species'], ['aasimar-xphb', 'species']] as const) {
       const blocker = ownCreationBlocker(kind, slug)
       expect(blocker, slug).not.toBeNull()
       expect(blockerReason(blocker!)).not.toMatch(INTERNAL)

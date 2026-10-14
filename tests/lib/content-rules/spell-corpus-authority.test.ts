@@ -94,15 +94,23 @@ describe('P2 spell corpus authority', () => {
   // 12/15/18 accumulating-option decisions, the real XPHB Invocations-known-by-level table) from
   // blocked to implemented -- moving the census from 648/410/203 to 648/418/195. Warlock's
   // Eldritch Invocations blocker is now fully resolved; Warlock becomes creation-available.
-  it('the Phase-0 decision census after the Eldritch Invocations phase: 648 total, 418 implemented, 195 blocked, 35 optional', () => {
+  // FEAT-OWNED SPELL ACQUISITION PHASE reclassified exactly 15 more from blocked to implemented:
+  // Magic Initiate's own 4 variant-choice decisions (the ungated one, plus the 3 grantedBy
+  // Acolyte/Guide/Sage), Fey-Touched's 2 (spell-choice + spell-grant), Shadow-Touched's 2,
+  // Telekinetic's 1, Telepathic's 1, Blessed Warrior's 1, Druidic Warrior's 1 -- plus Acolyte/
+  // Guide/Sage's own 3 Background `feat-grant` decisions (now fixed-supported via
+  // `originFeatSlug`, the SAME `impl:background-origin-feat` rule every other Background's fixed
+  // Origin Feat already uses). Moving the census from 648/418/195 to 648/433/180. Acolyte, Guide,
+  // and Sage all become creation-available (Backgrounds 13/16 -> 16/16).
+  it('the Phase-0 decision census after the Feat-Owned Spell Acquisition phase: 648 total, 433 implemented, 180 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(648)
-    expect(counts.implemented).toBe(418)
-    expect(counts.blocked).toBe(195)
+    expect(counts.implemented).toBe(433)
+    expect(counts.blocked).toBe(180)
     expect(counts.optional).toBe(35)
   })
 
@@ -129,17 +137,31 @@ describe('P2 spell corpus authority', () => {
     ])
   })
 
-  // The P4/follow-on ownership boundary (subclass/species/feat-granted spells) is untouched by
-  // P3.5 -- none of those decisions is owned by a class, so none is reclassified by this phase's
-  // own class-scoped coverage rules, regardless of what the generic pipeline could theoretically
-  // reuse later.
-  it('subclass/species/feat-owned spell-family decisions remain NOT implemented -- P3.5 touches class ownership only', () => {
+  // The P4/follow-on ownership boundary (subclass/species-granted spells) is untouched by P3.5 or
+  // by the Feat-Owned Spell Acquisition phase -- none of those decisions is owned by a class or a
+  // feat, so none is reclassified by either phase's own scoped coverage rules.
+  it('subclass/species-owned spell-family decisions remain NOT implemented', () => {
     const nonClassSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
-      (d) => d.owner.kind !== 'class' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
+      (d) => (d.owner.kind === 'subclass' || d.owner.kind === 'species') && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
     )
     expect(nonClassSpellDecisions.length).toBeGreaterThan(0)
     for (const decision of nonClassSpellDecisions) {
       expect(classifyDecision(decision).status, decision.id).not.toBe('implemented')
     }
+  })
+
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- feat-owned spell-choice/spell-grant decisions are no
+  // longer uniformly blocked; Ritual Caster alone remains so, for a real, different reason (see
+  // `blk:feat-nested-spells`'s own updated reason, mandatory-decision-coverage.ts). Magic
+  // Initiate's own decisions are `variant-choice` family, not `spell-choice`/`spell-grant`/
+  // `spell-count`, so they are checked separately in mandatory-decision-coverage.test.ts.
+  it('feat-owned spell-choice/spell-grant decisions: Ritual Caster alone remains NOT implemented', () => {
+    const featSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
+      (d) => d.owner.kind === 'feat' && ['spell-choice', 'spell-grant'].includes(d.family)
+    )
+    expect(featSpellDecisions.length).toBeGreaterThan(0)
+    const stillBlocked = featSpellDecisions.filter((d) => classifyDecision(d).status !== 'implemented')
+    expect(stillBlocked.length).toBeGreaterThan(0)
+    expect(stillBlocked.every((d) => d.owner.slug === 'ritual-caster-xphb')).toBe(true)
   })
 })

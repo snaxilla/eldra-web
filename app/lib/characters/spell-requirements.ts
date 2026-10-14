@@ -207,15 +207,21 @@ export type SpellRequirementResult = {
 // Exported so P3.2's planner applies the IDENTICAL "unrecognized pool kind fails closed" rule when
 // deciding whether to compute catalogue OPTIONS for a requirement -- never a second, independently
 // maintained list of the same four strings.
-export const KNOWN_POOL_KINDS: readonly SpellRequirementPoolKind[] = ['cantrip', 'spell', 'spellbook', 'arcanum']
+export const KNOWN_POOL_KINDS: readonly SpellRequirementPoolKind[] = ['cantrip', 'spell', 'spellbook', 'arcanum', 'fixed']
 
 // The flag each pool kind reads. 'spell' (ordinary leveled casting, every one of the 8 classes'
 // unified "Prepared Spells of Level 1+") reads `prepared`; every other pool ('cantrip' -- the
 // corpus's own "you KNOW two cantrips" wording; 'spellbook' -- membership; 'arcanum' -- a fixed,
 // permanent pick, never daily-prepared) reads `known`. See SpellRequirementPoolKind's own header
 // (app/lib/content-rules/types.ts) for the corpus citations this mapping rests on.
+//
+// FEAT-OWNED SPELL ACQUISITION PHASE -- 'fixed' also reads `prepared`, matching 'spell' rather
+// than 'arcanum': every real corpus use of the new pool kind (Magic Initiate's own Level-1 spell,
+// Fey-Touched's/Shadow-Touched's own chosen spell) uses the corpus's own "you always have that
+// spell... prepared" wording verbatim, never "you know" -- a genuinely different real phrase from
+// 'arcanum's own "you know" text, not a cosmetic choice.
 export function flagFor(pool: SpellRequirementPoolKind): 'known' | 'prepared' {
-  return pool === 'spell' ? 'prepared' : 'known'
+  return pool === 'spell' || pool === 'fixed' ? 'prepared' : 'known'
 }
 
 // 'spell' and 'spellbook' are gated by the character's own castable spell level (never hardcoded,

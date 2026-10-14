@@ -105,17 +105,17 @@ describe('P2 level filter -- real entries', () => {
 describe('P2 school filter -- supported because the metadata is already canonical and the check is free; not required by a current Milestone-A rule (see this phase\'s own report)', () => {
   it('the correct school is accepted, using a real spell', async () => {
     const missile = await realMechanics('Magic Missile')
-    expect(spellOptionVerdict({ mechanics: missile, filter: { school: 'Evocation' } })).toEqual({ eligible: true })
+    expect(spellOptionVerdict({ mechanics: missile, filter: { school: ['Evocation'] } })).toEqual({ eligible: true })
   })
 
   it('the wrong school is rejected, using a real minimal pair (Magic Missile vs. Mage Armor: same class list, same level, different school)', async () => {
     const mageArmor = await realMechanics('Mage Armor')
-    expect(spellOptionVerdict({ mechanics: mageArmor, filter: { school: 'Evocation' } })).toEqual({ eligible: false, reason: 'wrong-school' })
+    expect(spellOptionVerdict({ mechanics: mageArmor, filter: { school: ['Evocation'] } })).toEqual({ eligible: false, reason: 'wrong-school' })
   })
 })
 
 describe('P2 combined filter -- every declared dimension must hold (AND across dimensions)', () => {
-  const filter: SpellCatalogueFilter = { classList: ['Wizard'], level: 1, school: 'Evocation' }
+  const filter: SpellCatalogueFilter = { classList: ['Wizard'], level: 1, school: ['Evocation'] }
 
   it('Magic Missile satisfies Wizard list AND level 1 AND Evocation', async () => {
     const missile = await realMechanics('Magic Missile')

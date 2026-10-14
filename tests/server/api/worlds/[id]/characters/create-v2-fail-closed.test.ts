@@ -66,7 +66,17 @@ const BACKGROUNDS = {
   artisan: entry('Artisan', 'artisan-xphb', findRulesFacet('dnd5e.2024', 'background', 'artisan-xphb'))
 }
 // Every XPHB background whose own Origin choice is unrecordable (its creation facet is unavailable).
-const CREATION_UNAVAILABLE_BACKGROUNDS = ['Acolyte', 'Artisan', 'Charlatan', 'Entertainer', 'Guide', 'Noble', 'Sage', 'Scribe']
+// FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Guide/Sage are REMOVED from this list: their shared
+// blocker (Magic Initiate's own spell decisions) is now representable (facet:spellRequirements), so
+// they are no longer creation-unavailable at Phase 0. With this fixture's bare catalogue (no spell
+// entries, no spell answers supplied) they still reject -- but for an entirely different, mechanics-
+// level reason (Wizard's own unanswered spellbook requirement), not an unrecordable decision, so they
+// no longer belong in a list asserting "cannot be chosen at creation yet". A real acceptance walk for
+// Acolyte/Guide/Sage lives in create-v2-fighter-mechanics.test.ts. The remaining 5 names are refused
+// for a wholly separate, pre-existing, out-of-scope reason: Crafter/Skilled/Musician's own ungated
+// "requires a tool, armor, or weapon proficiency" decision (blk:feat-nested-proficiency), which this
+// phase did not touch.
+const CREATION_UNAVAILABLE_BACKGROUNDS = ['Artisan', 'Charlatan', 'Entertainer', 'Noble', 'Scribe']
   .map((name) => entry(name, slugOf(name), findRulesFacet('dnd5e.2024', 'background', slugOf(name))))
 
 // The World catalogue carries the real feat mechanics (the Criminal Origin feat is resolved first).
@@ -176,6 +186,17 @@ describe('PHASE 0 -- creation is refused, with zero writes, when a selected enti
   it.each(CREATION_UNAVAILABLE_BACKGROUNDS.map((b) => b.title))('%s is refused by the real authority before any write', async (name) => {
     await expect(handler(fakeEvent(bodyWith('dwarf-xphb', 'wizard-xphb', slugOf(name))) as any))
       .rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/cannot be chosen at creation yet|cannot be completed yet/) })
+    expectNoWrites()
+  })
+
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Guide/Sage no longer carry an unrecordable
+  // decision at all; this fixture's bare catalogue still refuses them, but only because Wizard's
+  // own spellbook requirement is left unanswered here, never because of their shared Magic
+  // Initiate blocker (which is implemented). Proves the two rejections are not the same one.
+  it.each(['Acolyte', 'Guide', 'Sage'])('%s is refused here for an unrelated, unanswered spell choice, not an unrecordable decision', async (name) => {
+    const rejected = await handler(fakeEvent(bodyWith('dwarf-xphb', 'wizard-xphb', slugOf(name))) as any).catch((error: any) => error)
+    expect(rejected.statusCode).toBe(400)
+    expect(rejected.message).not.toMatch(/cannot be chosen at creation yet|cannot be completed yet/)
     expectNoWrites()
   })
 })

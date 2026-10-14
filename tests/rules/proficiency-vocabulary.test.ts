@@ -166,14 +166,19 @@ describe('P1 discovery -- the real corpus transitions, and what stays blocked', 
     for (const d of proficiency) expect(classifyDecision(d).status, d.id).toBe('implemented')
   })
 
-  it('Crafter, Musician, and Skilled are implemented through their Background; Magic Initiate is unchanged', () => {
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- Magic Initiate's own decision is now ALSO implemented
+  // (6 spellRequirements, each requiresActive-gated against a plain Value the granting Background
+  // fixes -- Acolyte->Cleric, never a player choice) -- see mandatory-decision-coverage.test.ts's
+  // own RECLASSIFIED assertion for the full proof.
+  it('Crafter, Musician, Skilled, and Magic Initiate are all implemented through their Background', () => {
     const crafter = byOwner('crafter-xphb').filter((d) => d.grantedBy === 'artisan-xphb')
     const musician = byOwner('musician-xphb').filter((d) => d.grantedBy === 'entertainer-xphb')
     const skilled = byOwner('skilled-xphb').filter((d) => d.grantedBy !== undefined)
     expect(crafter.length + musician.length + skilled.length).toBeGreaterThan(0)
     for (const d of [...crafter, ...musician, ...skilled]) expect(classifyDecision(d).status, d.id).toBe('implemented')
     const initiate = DND5E_2024_MANDATORY_DECISIONS.filter((d) => d.owner.slug === 'magic-initiate-xphb' && d.grantedBy === 'acolyte-xphb')
-    for (const d of initiate) expect(classifyDecision(d).status, d.id).toBe('blocked')
+    expect(initiate.length).toBeGreaterThan(0)
+    for (const d of initiate) expect(classifyDecision(d).status, d.id).toBe('implemented')
   })
 
   it('the Skilled choice is 3 picks over skills or tools (the corpus count), not 1', () => {

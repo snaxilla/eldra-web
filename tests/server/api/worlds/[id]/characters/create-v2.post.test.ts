@@ -71,6 +71,8 @@ import { readFileSync } from 'node:fs'
 import handler from '../../../../../../server/api/worlds/[id]/characters/create-v2.post'
 import type { Principal } from '../../../../../../server/utils/authorization'
 import { findRulesFacet } from '../../../../../../app/lib/content-rules'
+import { resolveDnd5eFeatMechanics } from '../../../../../../app/lib/feat-mechanics/dnd5e'
+import xphbFeats from '../../../../../lib/feat-mechanics/fixtures/xphb-feats.json'
 import { createWorldRuntime } from '../../../../../../app/lib/rules/world-runtime'
 import { parseExpression } from '../../../../../../app/lib/rules/parser'
 import type { Definition, RulesPackageManifest } from '../../../../../../app/lib/rules/types'
@@ -577,6 +579,19 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
     return catalogueEntry({ title: 'Gnome', slug: 'gnome-xphb' })
   }
 
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- Sage's Origin Feat is Magic Initiate, resolved against
+  // this World's own Content Catalogue by `resolveCreationOriginFeat`, exactly like every other
+  // Background's own fixed Origin Feat -- this describe's own fixture must carry it, same as
+  // `wizardEntry`/`gnomeEntry` carry their own real facets.
+  function magicInitiateEntry() {
+    const raw = (xphbFeats as any).feats.find((f: any) => f.name === 'Magic Initiate')
+    return catalogueEntry({
+      title: 'Magic Initiate', slug: 'magic-initiate-xphb',
+      rulesFacet: findRulesFacet('dnd5e.2024', 'feat', 'magic-initiate-xphb') ?? undefined,
+      featMechanics: resolveDnd5eFeatMechanics(raw)
+    } as any)
+  }
+
   // D&D 2024 Character Rules P3.3 -- the real Wizard facet used above now carries real
   // spellRequirements, so a Wizard creation request is only VALID once they are satisfied. This
   // describe owns an unrelated concern (skill-choice eligibility), so a small, fixed, always-legal
@@ -606,10 +621,20 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
     const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
     const refs = [...'abcdef'].map((slug) => ({ packageId: 'eldra.content.xphb', slug: `wiz-${slug}` }))
     const cantripRefs = [...'xyz'].map((slug) => ({ packageId: 'eldra.content.xphb', slug: `wiz-cantrip-${slug}` }))
+    // FEAT-OWNED SPELL ACQUISITION PHASE -- Sage's own Magic Initiate (fixed to the Wizard list)
+    // now also contributes 2 cantrip + 1 Level-1-spell requirements, with the IDENTICAL filter
+    // dimensions as the class's own pools -- the SAME catalogue identities legally satisfy both
+    // (P3.1's own "the same spell ContentRef satisfying two pools at once is not duplicate
+    // corruption"), so no new catalogue entries are needed, only additional answers.
+    const magicInitiate = findRulesFacet('dnd5e.2024', 'feat', 'magic-initiate-xphb')!.spellRequirements!
+    const miCantripId = magicInitiate.find((r) => r.pool === 'cantrip' && r.filter.classList?.includes('Wizard'))!.id
+    const miSpellId = magicInitiate.find((r) => r.pool === 'fixed' && r.filter.classList?.includes('Wizard'))!.id
     return [
       ...refs.map((ref) => ({ requirementId: spellbookId, ref })),
       ...refs.slice(0, 4).map((ref) => ({ requirementId: spellId, ref })),
-      ...cantripRefs.map((ref) => ({ requirementId: cantripId, ref }))
+      ...cantripRefs.map((ref) => ({ requirementId: cantripId, ref })),
+      ...cantripRefs.slice(0, 2).map((ref) => ({ requirementId: miCantripId, ref })),
+      { requirementId: miSpellId, ref: refs[0]! }
     ]
   }
 
@@ -618,8 +643,9 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
       species: [gnomeEntry()],
       classes: [wizardEntry()],
       backgrounds: [sageEntry()],
-      spells: wizardSpellEntries()
-    })
+      spells: wizardSpellEntries(),
+      feats: [magicInitiateEntry()]
+    } as any)
   }
 
   const CLASS_SKILL_KEY = 'class:choice:skill.proficiency'

@@ -16,19 +16,14 @@ const entryOf = (name: string) => ({
 // P1: Artisan, Entertainer, Charlatan, Noble, and Scribe have a representable Origin feat, so the
 // package no longer authors an Origin-feat reason for them. Their remaining blockers (ability bonus,
 // equipment, Weapon Mastery) come from the completeness authority, not from this facet field.
-const SUPPORTED = ['Criminal', 'Guard', 'Farmer', 'Hermit', 'Merchant', 'Wayfarer', 'Sailor', 'Soldier', 'Artisan', 'Entertainer', 'Charlatan', 'Noble', 'Scribe']
-const BLOCKED = ['Acolyte', 'Guide', 'Sage']
+// FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Guide/Sage move here too: Magic Initiate's own spell
+// decisions are now representable (facet:spellRequirements), so the package no longer authors an
+// Origin-feat reason for them either. Zero Backgrounds remain BLOCKED by this facet field.
+const SUPPORTED = ['Criminal', 'Guard', 'Farmer', 'Hermit', 'Merchant', 'Wayfarer', 'Sailor', 'Soldier', 'Artisan', 'Entertainer', 'Charlatan', 'Noble', 'Scribe', 'Acolyte', 'Guide', 'Sage']
 
 describe('Builder availability -- visible, disabled, with a reason', () => {
   it.each(SUPPORTED)('%s is selectable (no unavailable reason)', (name) => {
     expect(creationUnavailableReason(entryOf(name))).toBeNull()
-  })
-
-  it.each(BLOCKED)('%s is unavailable with a concise, user-facing reason', (name) => {
-    const reason = creationUnavailableReason(entryOf(name))
-    expect(reason).toBeTruthy()
-    expect(reason).toMatch(/^Its Origin Feat \(/)
-    expect(reason).not.toMatch(/ENGINE_BLOCKED|CONTENT_BLOCKED|:\w+\.\w+/)
   })
 
   it('an entry with no facet at all is available, never blocked by absence', () => {

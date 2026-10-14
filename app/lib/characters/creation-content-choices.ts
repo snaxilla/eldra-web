@@ -24,6 +24,7 @@ import { weaponValueId } from '../content-rules/proficiency-vocabulary'
 import { progressionChoiceKey } from './rules-choices'
 import { serializeContentRef } from './progression-plan'
 import { directlyGrantedValues, type CreationSlotInput } from './creation-choice-eligibility'
+import type { RulesFacet } from '../content-rules/types'
 
 // A content choice set's selector, as the package declares it. `filter`'s real shape depends on
 // `category` ('feats' -> ContentCatalogueFilter, 'spells' -> SpellCatalogueFilter, 'items' ->
@@ -38,7 +39,12 @@ export type CreationFeatEntry = {
   slug: string
   title: string
   featMechanics?: CanonicalFeatMechanics | null
-  rulesFacet?: { featureRequirements?: readonly { feature: string; requires: string }[] } | null
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- widened with `spellRequirements`/`fixedSpellGrants`/
+  // `choices`, picked DIRECTLY off the canonical `RulesFacet` type (never a hand-rolled parallel
+  // shape) so a feat's own catalogue entry is structurally assignable anywhere the real `RulesFacet`
+  // type is expected (e.g. a creation `slot`'s own facet, `gatherSpellRequirements`'s own facet
+  // list) with zero casting.
+  rulesFacet?: Pick<RulesFacet, 'featureRequirements' | 'choices' | 'spellRequirements' | 'fixedSpellGrants'> | null
 }
 
 // D&D 2024 Character Rules P2 -- the entry shape a 'spells' category choice judges against,

@@ -98,6 +98,48 @@ function classFeatureOptionCovered(d: DecisionRecord): boolean {
   return ref !== undefined && classProgression(d.owner.slug).includes(ref)
 }
 
+// FEAT-OWNED SPELL ACQUISITION PHASE -- verification functions for the `impl:feat-spell-*` rules
+// above. Each checks the REAL authored feat facet, never a bare owner-name match -- the same
+// discipline every other `impl:` rule in this file already follows.
+// FEAT-OWNED SPELL ACQUISITION PHASE -- the real corpus FIXES which spell list each Background's
+// own Magic Initiate grant uses (Acolyte always Cleric, Guide always Druid, Sage always Wizard --
+// re-derived directly from the raw Background `feats` key, e.g. "magic initiate; cleric|xphb"),
+// never a player choice. `grantedBy` is `undefined` for the one real "ungated" decision copy
+// discovery also produces (never reachable through any real acquisition path, since Magic
+// Initiate's own category is Origin, never offered through the general feat pool) -- covered by
+// the facet's own shape alone, with no specific background to verify a grant against.
+const MAGIC_INITIATE_LIST_BY_BACKGROUND: Record<string, string> = {
+  'acolyte-xphb': 'value:magic-initiate.list.1.active',
+  'guide-xphb': 'value:magic-initiate.list.2.active',
+  'sage-xphb': 'value:magic-initiate.list.3.active'
+}
+function magicInitiateSpellCovered(grantedBy?: string): boolean {
+  const facet = findRulesFacet('dnd5e.2024', 'feat', 'magic-initiate-xphb')
+  const requirements = facet?.spellRequirements ?? []
+  const everyRequirementGated = requirements.length === 6 && requirements.every((r) => (r.requiresActive?.length ?? 0) > 0)
+  if (!everyRequirementGated) return false
+  if (grantedBy === undefined) return true
+  const expectedGate = MAGIC_INITIATE_LIST_BY_BACKGROUND[grantedBy]
+  if (!expectedGate) return false
+  const backgroundFacet = findRulesFacet('dnd5e.2024', 'background', grantedBy)
+  return (backgroundFacet?.grants ?? []).some((grant) => grant.set === expectedGate && grant.to === true)
+}
+function feyShadowTouchedSpellCovered(slug: string): boolean {
+  const facet = findRulesFacet('dnd5e.2024', 'feat', slug)
+  const hasFixedGrant = (facet?.fixedSpellGrants ?? []).length === 1
+  const hasChoice = (facet?.spellRequirements ?? []).some((r) => r.pool === 'fixed')
+  return hasFixedGrant && hasChoice
+}
+function telekineticTelepathicSpellCovered(slug: string): boolean {
+  const facet = findRulesFacet('dnd5e.2024', 'feat', slug)
+  return (facet?.fixedSpellGrants ?? []).length === 1
+}
+function blessedDruidicWarriorSpellCovered(slug: string): boolean {
+  const facet = findRulesFacet('dnd5e.2024', 'feat', slug)
+  const requirement = (facet?.spellRequirements ?? []).find((r) => r.pool === 'cantrip')
+  return requirement !== undefined && (requirement.totalByLevel[0] ?? 0) === 2
+}
+
 // Weapon Mastery phase -- the real build decision is IMPLEMENTED once the owning facet genuinely
 // references the generic primitive: the Level-1 creation decision through the facet's own
 // `choices` array (the exact ChoiceSet id this class's own real corpus text restricts to --
@@ -387,8 +429,11 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'impl:class-feature-option',
     status: 'implemented',
-    reason: 'Class feature option (Divine Order, Primal Order creation; Blessed Strikes, Elemental Fury Level 7) via the generic choice:class.feature-option ChoiceSet (effect: activate-source). Runtime effects of the chosen option are a separate accountability row; see runtime:class-feature-option-effects.',
-    ledgerIds: ['cleric-xphb:divine-order', 'druid-xphb:primal-order', 'cleric-xphb:blessed-strikes', 'druid-xphb:elemental-fury'],
+    reason: 'Class feature option (Divine Order, Primal Order creation; Blessed Strikes, Elemental Fury Level 7) via the generic choice:class.feature-option ChoiceSet (effect: activate-source). Runtime effects of the chosen option are a separate accountability row; see runtime:class-feature-option-effects. FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- Thaumaturge and Magician\'s own bonus-cantrip rows are claimed here too: the SAME discovered Divine-Order/Primal-Order decision this rule already matches, now ALSO satisfied for its spell-pick consequence via SpellRequirement.requiresActive (no separate decision is independently discovered for the cantrip text itself -- it is a Progression Coverage Ledger bookkeeping row, not a distinct mandatory-decision id).',
+    ledgerIds: [
+      'cleric-xphb:divine-order', 'druid-xphb:primal-order', 'cleric-xphb:blessed-strikes', 'druid-xphb:elemental-fury',
+      'cleric-xphb:divine-order-thaumaturge-cantrip', 'druid-xphb:primal-order-magician-cantrip'
+    ],
     matches: (d) => classFeatureOptionCovered(d)
   },
   // Weapon Mastery phase -- the item-eligibility primitive (app/lib/item-mechanics, the generic
@@ -584,26 +629,63 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: ['background:starting-equipment'],
     matches: backgroundEquipmentCovered
   },
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- the prior `blk:origin-feat-unsupported` rule (Background
+  // Origin Feat that is not fixed-supported) is REMOVED, not merely narrowed: Magic Initiate
+  // (Acolyte/Guide/Sage) was the real, last choice-shaped Origin Feat it covered, and it is now
+  // fixed-supported (see `originFeatSlug` on those three backgrounds) -- every real XPHB Background
+  // now has a fixed-supported Origin Feat, so the rule would match zero decisions permanently, and
+  // the bidirectional contract (B) does not allow a `blocked`-status rule to match zero (only
+  // `false-positive`/`runtime-effect` may, by design -- a permanently-empty blocked rule is dead
+  // code, not a real fail-closed guard, so it is deleted rather than kept with `allowZero`).
+  // `impl:feat-spell-*` below cover the real, newly-representable feat-owned spell decisions this
+  // phase adds, replacing the two prior blocked rules for every feat whose real spell shape now
+  // fits the generic, class/feat-name-agnostic `spellRequirements`/`fixedSpellGrants` model exactly
+  // (see those fields' own headers,
+  // app/lib/content-rules/types.ts). Each checks the REAL authored facet, never a bare name match.
+  // Ritual Caster alone remains blocked, under its own narrower rule below, for a real, different
+  // reason: `detectFeatDecisions` (mandatory-decisions.ts) forces EVERY feat-sourced numeric table
+  // key to `level: 1, timing: 'creation'` (`context !== 'feat'` in `spellGrantDecisions`), so its 5
+  // real tiers (2 at Level 1, +1 at the real Proficiency-Bonus thresholds 5/9/13/17) are discovered
+  // as 5 creation-time decisions -- a genuine mismatch with the real level-gated growth shape, not
+  // a storage/model gap this phase's own primitive can close without also changing discovery.
   {
-    id: 'blk:origin-feat-unsupported',
-    status: 'blocked',
-    reason: 'Background Origin feat that is not fixed-supported: its own choice is blocked (Crafter, Musician, Skilled, Magic Initiate).',
+    id: 'impl:feat-spell-magic-initiate',
+    status: 'implemented',
+    reason: 'Magic Initiate: 6 spellRequirements (cantrip + fixed-spell pool, times 3 lists), each gated via requiresActive against a plain boolean Value the GRANTING BACKGROUND fixes (Acolyte->Cleric, Guide->Druid, Sage->Wizard -- the real corpus text, never a player choice; re-derived from the raw Background feats key). Casting ability and optional Spell Change are separate, deferred facts -- never conflated with this acquisition decision.',
     ledgerIds: ['background:origin-feat:choice-acquisition'],
-    matches: (d) => is(d, 'background', 'feat-grant') && findRulesFacet('dnd5e.2024', 'background', d.owner.slug)?.originFeatSlug !== `${slugOf(d.source)}-xphb`
+    matches: (d) => d.owner.kind === 'feat' && d.owner.slug === 'magic-initiate-xphb' && d.family === 'variant-choice' && magicInitiateSpellCovered(d.grantedBy)
   },
   {
-    id: 'blk:feat-nested-blessed-druidic',
-    status: 'blocked',
-    reason: 'Blessed Warrior / Druidic Warrior variant: two cantrip choices on acquisition (only this variant option is blocked).',
+    id: 'impl:feat-spell-fey-shadow-touched',
+    status: 'implemented',
+    reason: 'Fey-Touched / Shadow-Touched: the fixed companion spell (Misty Step / Invisibility) via FixedSpellGrant, and the real school-filtered spell choice via a plain, ungated spellRequirements entry (pool: fixed). Casting ability ("the ability increased by this feat") is a separate, already-representable decision this phase did not need to touch.',
+    ledgerIds: [],
+    matches: (d) => d.owner.kind === 'feat' && (d.owner.slug === 'fey-touched-xphb' || d.owner.slug === 'shadow-touched-xphb') && (d.family === 'spell-choice' || d.family === 'spell-grant') && feyShadowTouchedSpellCovered(d.owner.slug)
+  },
+  {
+    id: 'impl:feat-spell-telekinetic-telepathic',
+    status: 'implemented',
+    reason: 'Telekinetic (Mage Hand) / Telepathic (Detect Thoughts): both FIXED grants with no "of your choice" clause at all, via FixedSpellGrant -- never a mandatory decision requiring a picker, per this phase\'s own instruction ("fixed grants do NOT become mandatory decisions"); reclassified here anyway because `detectFeatDecisions` still tracks the underlying representability fact and this rule proves exactly that fact now holds.',
+    ledgerIds: [],
+    matches: (d) => d.owner.kind === 'feat' && (d.owner.slug === 'telekinetic-xphb' || d.owner.slug === 'telepathic-xphb') && d.family === 'spell-grant' && telekineticTelepathicSpellCovered(d.owner.slug)
+  },
+  {
+    id: 'impl:feat-spell-blessed-druidic-warrior',
+    status: 'implemented',
+    reason: 'Blessed Warrior / Druidic Warrior: the real "two Cleric/Druid cantrips of your choice" decision, via a plain, ungated spellRequirements entry (fixed classList, fixed casting ability stated directly in the corpus text, no nested ability choice needed). This covers ONLY the spell-acquisition decision -- both feats remain structurally ILLEGAL overall via featOptionVerdict, for the SEPARATE, pre-existing reason their own raw prerequisite is `otherSummary` prose (not the `feature` key coverUnsupportedPrerequisites can map), which this phase does not fix (see the Fighting Style comment block in dnd5e-2024.ts for the full reasoning).',
     ledgerIds: ['paladin-xphb:fighting-style-variant-blessed-warrior', 'ranger-xphb:fighting-style-variant-druidic-warrior'],
-    matches: (d) => d.owner.kind === 'feat' && (d.owner.slug === 'blessed-warrior-xphb' || d.owner.slug === 'druidic-warrior-xphb') && d.family === 'spell-choice'
+    matches: (d) => d.owner.kind === 'feat' && (d.owner.slug === 'blessed-warrior-xphb' || d.owner.slug === 'druidic-warrior-xphb') && d.family === 'spell-choice' && blessedDruidicWarriorSpellCovered(d.owner.slug)
   },
   {
     id: 'blk:feat-nested-spells',
     status: 'blocked',
-    reason: 'Feat-granted spell choices and fixed spells (Magic Initiate, Ritual Caster, Fey-Touched, Telekinetic, Telepathic, and others): spell acquisition.',
+    reason: 'Ritual Caster: a real level-gated GROWING spell pool (2 at Level 1, +1 at Proficiency-Bonus thresholds 5/9/13/17), but discovery (`detectFeatDecisions`) forces every feat-sourced numeric table key to level 1/creation -- a genuine discovery/model mismatch, not fixed by this phase (see this rule\'s own header above for the full reasoning). Any other feat-owned spell-choice/spell-grant/variant-choice decision not claimed by an `impl:feat-spell-*` rule above also falls here, fail-closed.',
     ledgerIds: [],
-    matches: (d) => d.owner.kind === 'feat' && (d.family === 'spell-choice' || d.family === 'spell-grant' || d.family === 'variant-choice') && !(d.owner.slug === 'blessed-warrior-xphb' || d.owner.slug === 'druidic-warrior-xphb')
+    matches: (d) => d.owner.kind === 'feat' && (d.family === 'spell-choice' || d.family === 'spell-grant' || d.family === 'variant-choice')
+      && !(d.owner.slug === 'magic-initiate-xphb' && magicInitiateSpellCovered(d.grantedBy))
+      && !((d.owner.slug === 'fey-touched-xphb' || d.owner.slug === 'shadow-touched-xphb') && feyShadowTouchedSpellCovered(d.owner.slug))
+      && !((d.owner.slug === 'telekinetic-xphb' || d.owner.slug === 'telepathic-xphb') && telekineticTelepathicSpellCovered(d.owner.slug))
+      && !((d.owner.slug === 'blessed-warrior-xphb' || d.owner.slug === 'druidic-warrior-xphb') && blessedDruidicWarriorSpellCovered(d.owner.slug))
   },
   {
     id: 'blk:feat-nested-proficiency',
@@ -721,9 +803,13 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'runtime:class-feature-option-effects',
     status: 'runtime-effect',
-    reason: 'Class feature option downstream effects (Milestone B): Thaumaturge/Magician\'s Source-gated bonus cantrip (needs a new primitive), and Divine Strike/Primal Strike/Potent Spellcasting\'s per-attack/per-cast combat text. The acquisition/activation decision is the implemented row; these effects are runtime.',
+    // FEAT-OWNED SPELL ACQUISITION PHASE REVISIT -- Thaumaturge/Magician's own bonus cantrip is
+    // IMPLEMENTED now (see cleric-xphb:divine-order-thaumaturge-cantrip /
+    // druid-xphb:primal-order-magician-cantrip in the Progression Coverage Ledger), so those two
+    // ledger ids are REMOVED from this placeholder -- only genuine per-attack/per-cast combat text
+    // remains deferred here.
+    reason: 'Class feature option downstream effects (Milestone B): Divine Strike/Primal Strike/Potent Spellcasting\'s per-attack/per-cast combat text. The acquisition/activation decision is the implemented row; these effects are runtime.',
     ledgerIds: [
-      'cleric-xphb:divine-order-thaumaturge-cantrip', 'druid-xphb:primal-order-magician-cantrip',
       'cleric-xphb:blessed-strikes-effects', 'druid-xphb:elemental-fury-effects'
     ],
     allowZero: true,

@@ -108,8 +108,19 @@ describe('progression -- the levels crossed decide what must be recorded', () =>
   it('a Cleric crossing Level 2 owns nothing unrecordable at the Phase-0 layer (the prepared-spell increase is now implemented)', () => {
     expect(prog('cleric-xphb', 1, 2)).toEqual([])
   })
-  it('a feat acquired in the transition brings its own nested decisions (Fey-Touched)', () => {
-    expect(prog('fighter-xphb', 3, 4, null, ['fey-touched-xphb']).some((u) => u.owner.slug === 'fey-touched-xphb')).toBe(true)
+  // FEAT-OWNED SPELL ACQUISITION PHASE -- Fey-Touched's own nested spell decisions are now
+  // implemented (fixedSpellGrants + a plain, ungated spellRequirements entry), so acquiring it no
+  // longer brings an UNRESOLVABLE decision at this structural layer -- the real spell answer is
+  // still required, just by the MECHANICAL authority (planSpellAcquisition), not by Phase 0. Ritual
+  // Caster remains genuinely blocked (a real level-gated growth table discovery still mis-models
+  // as 5 flat creation-time decisions -- see `blk:feat-nested-spells`'s own updated reason), so it
+  // proves the SAME "a feat acquired in the transition brings its own nested decisions" mechanism
+  // this test originally existed to prove.
+  it('a feat acquired in the transition brings its own nested decisions (Ritual Caster)', () => {
+    expect(prog('fighter-xphb', 3, 4, null, ['ritual-caster-xphb']).some((u) => u.owner.slug === 'ritual-caster-xphb')).toBe(true)
+  })
+  it('a feat whose own nested spell decisions are now implemented owns nothing unrecordable (Fey-Touched)', () => {
+    expect(prog('fighter-xphb', 3, 4, null, ['fey-touched-xphb']).some((u) => u.owner.slug === 'fey-touched-xphb')).toBe(false)
   })
   it('a subclass chosen in this transition is the one whose decisions apply', () => {
     expect(prog('fighter-xphb', 2, 3, null)).toEqual([])

@@ -549,6 +549,10 @@ export default defineEventHandler(async (event) => {
   // shape Telekinetic's/Telepathic's own feat-owned fixed grants already use. Omitting species here
   // was a real gap this phase closes, not a new primitive -- `resolveFixedSpellGrants` itself
   // already accepts an arbitrary owner list.
+  // PURE-AUTHORING SPECIES SWEEP -- `rulesChoices.selections` now passed through too: Elf's/
+  // Gnome's own lineage-gated fixed cantrips (Drow's Dancing Lights, Forest Gnome's Minor
+  // Illusion, etc.) need `FixedSpellGrant.requiresActive` resolved against the chosen lineage
+  // Source, the same chosen-Source gate check Thaumaturge's/Magician's own spellRequirements use.
   const fixedSpellGrantsResolution = resolveFixedSpellGrants(
     [
       { packageId: species.packageId, facet: species.rulesFacet, ownerKey: species.slug },
@@ -556,7 +560,9 @@ export default defineEventHandler(async (event) => {
       { packageId: background.packageId, facet: background.rulesFacet, ownerKey: background.slug },
       ...acquisitions.map((acquisition) => ({ packageId: acquisition.featRef.packageId, facet: catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet, ownerKey: acquisition.featRef.slug }))
     ],
-    catalogue.spells
+    catalogue.spells,
+    [],
+    rulesChoices.selections
   )
   if (!fixedSpellGrantsResolution.ok) {
     throw createError({ statusCode: 400, statusMessage: fixedSpellGrantsResolution.reason })

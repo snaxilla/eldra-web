@@ -30,9 +30,12 @@ const entry = (slug: string, title: string): BuilderCatalogueEntry => ({
 const INTERNAL = /ENGINE_BLOCKED|CONTENT_BLOCKED|MILESTONE|primitive|blk:|unclassified|startingEquipment|feats\.|anyFromCategory|\(ability\)|toolProficiencies/
 
 describe('fail-closed presentation -- which entries are unavailable and why', () => {
-  it('a species whose lineage choice Eldra cannot record is unavailable; Dwarf (no decisions) is not', () => {
-    const [elf, dwarf] = withCreationBlockers([entry('elf-xphb', 'Elf'), entry('dwarf-xphb', 'Dwarf')], 'species')
-    expect(elf!.rulesFacet?.creationUnavailable).toMatch(/^Requires a lineage or ancestry choice/)
+  // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable; Tiefling
+  // replaces it as the one species still genuinely unavailable (its own FIRST unresolved
+  // decision is the damage-type choice tied to its own unauthored Fiendish Legacy pick).
+  it('a species whose lineage/legacy-tied choice Eldra cannot record is unavailable; Dwarf (no decisions) is not', () => {
+    const [tiefling, dwarf] = withCreationBlockers([entry('tiefling-xphb', 'Tiefling'), entry('dwarf-xphb', 'Dwarf')], 'species')
+    expect(tiefling!.rulesFacet?.creationUnavailable).toMatch(/^Requires a damage type choice/)
     expect(dwarf!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
@@ -64,9 +67,11 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
   // AASIMAR CREATION COMPLETION PHASE -- Aasimar is REMOVED from this list too: it is now
   // creation-complete alone (size-choice + spell-grant both implemented, 0 unresolved). Tiefling
   // replaces it (still genuinely blocked: species-lineage + species-damage + species-size, all
-  // untouched this phase).
+  // untouched this phase). PURE-AUTHORING SPECIES SWEEP -- Elf is REMOVED too (its own lineage
+  // choice is now representable); Human replaces it (still blocked: its own free Origin-feat
+  // choice + its own new size-choice, neither touched this phase).
   it('no reason ever exposes an internal identifier', () => {
-    for (const [slug, kind] of [['elf-xphb', 'species'], ['tiefling-xphb', 'species']] as const) {
+    for (const [slug, kind] of [['human-xphb', 'species'], ['tiefling-xphb', 'species']] as const) {
       const blocker = ownCreationBlocker(kind, slug)
       expect(blocker, slug).not.toBeNull()
       expect(blockerReason(blocker!)).not.toMatch(INTERNAL)
@@ -75,10 +80,12 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
 })
 
 describe('fail-closed presentation -- the Create gate names the same blockers', () => {
+  // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable; Human replaces
+  // it (still blocked, its own FIRST unresolved decision being the free Origin-feat choice).
   it('a selected species that owns an unrecordable decision is named, and nothing else is', () => {
-    const draft = { ...emptyDraft(), species: entry('elf-xphb', 'Elf') }
+    const draft = { ...emptyDraft(), species: entry('human-xphb', 'Human') }
     const messages = creationBlockerMessages(draft)
-    expect(messages).toEqual([expect.stringMatching(/^Species cannot be completed yet\. Requires a lineage or ancestry choice\.$/)])
+    expect(messages).toEqual([expect.stringMatching(/^Species cannot be completed yet\. Requires a feat choice\.$/)])
   })
 
   it('an empty draft has no blocker messages (blockers are about chosen content only)', () => {

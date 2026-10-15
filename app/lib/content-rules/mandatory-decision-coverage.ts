@@ -83,10 +83,20 @@ function speciesFacetHasChoice(slug: string, choiceSetId: string): boolean {
 }
 // AASIMAR CREATION COMPLETION PHASE -- the species counterpart of
 // `telekineticTelepathicSpellCovered`: a species-owned `spell-grant` decision is covered once its
-// own facet declares exactly one FixedSpellGrant (Aasimar's Light Bearer today; any future
-// species with the identical "a single named, no-choice spell" shape is covered the same way).
+// own facet declares at least one FixedSpellGrant (Aasimar's own single Light Bearer grant;
+// PURE-AUTHORING SPECIES SWEEP -- widened from `=== 1` to `>= 1`: Elf's own facet now declares
+// THREE, one gated per lineage -- any future species with the identical "one or more named,
+// no-choice spells" shape is covered the same way).
 function speciesFixedSpellGrantCovered(slug: string): boolean {
-  return (findRulesFacet('dnd5e.2024', 'species', slug)?.fixedSpellGrants ?? []).length === 1
+  return (findRulesFacet('dnd5e.2024', 'species', slug)?.fixedSpellGrants ?? []).length >= 1
+}
+// PURE-AUTHORING SPECIES SWEEP -- generic, name-agnostic: true whenever the owning species' own
+// facet declares the shared `choice:species.feature-option` ChoiceSet (Dragonborn's Draconic
+// Ancestry, Elf's Elven Lineage, Goliath's Giant Ancestry, Gnome's Gnomish Lineage today -- any
+// future species/homebrew with the identical "choose 1 of N named options" shape is covered the
+// same way, with no species name in this check).
+function speciesFeatureOptionCovered(slug: string): boolean {
+  return speciesFacetHasChoice(slug, 'choice:species.feature-option')
 }
 function classProgression(slug: string): readonly string[] {
   return findRulesFacet('dnd5e.2024', 'class', slug)?.progression ?? []
@@ -385,6 +395,13 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => is(d, 'species', 'skill-choice') && speciesFacetHasSkillChoice(d.owner.slug)
   },
   {
+    id: 'impl:species-feature-option',
+    status: 'implemented',
+    reason: 'Species lineage/ancestry choice ("choose 1 of N named options"): Dragonborn\'s Draconic Ancestry, Elf\'s Elven Lineage, Goliath\'s Giant Ancestry, Gnome\'s Gnomish Lineage. All four are structurally identical to Divine Order\'s/Primal Order\'s own choice:class.feature-option -- reused under a second, owner-agnostic Definition (choice:species.feature-option), never a species name check. Linked consequences (Dragonborn\'s own resistance-by-ancestry) resolve through the chosen option\'s own Source modifiers, never a second mandatory decision.',
+    ledgerIds: [],
+    matches: (d) => (is(d, 'species', 'variant-choice') || is(d, 'species', 'damage-type-choice')) && speciesFeatureOptionCovered(d.owner.slug)
+  },
+  {
     id: 'impl:species-size-choice',
     status: 'implemented',
     reason: 'Species size choice (Aasimar: Small or Medium, "chosen when you select this species"), via the generic, reusable choice:species.size ChoiceSet (the exact choice:skill.proficiency mechanism: a literal Value id per option, no activate-source needed) -- never a species name check.',
@@ -648,25 +665,25 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'blk:species-lineage',
     status: 'blocked',
-    // AASIMAR CREATION COMPLETION PHASE -- excludes Aasimar's own spell-grant (now covered by
-    // impl:species-spell-fixed-grant above): Aasimar owns no lineage/legacy/variant choice at all
-    // (its additionalSpells block has no `.name`, so detectSpeciesDecisions never takes the
-    // variant-choice branch for it), so only the spell-GRANT decision needed excluding here.
-    reason: 'Species lineage, ancestry, or legacy choice: the lineage/legacy CHOICE itself (Elf/Gnome/Goliath/Dragonborn/Tiefling) is now representable in principle via the generic choice:class.feature-option mechanism (re-verified this phase -- the prior "species-lineage-choice primitive" label was wrong), but none of the five is authored; their own variant spells and spellcasting-ability sub-choice remain unauthored too. Not fixed in this phase (Aasimar only).',
+    // PURE-AUTHORING SPECIES SWEEP -- excludes Elf's/Gnome's/Goliath's own variant-choice (now
+    // covered by impl:species-feature-option above) and Aasimar's own spell-grant (covered by
+    // impl:species-spell-fixed-grant). Tiefling alone remains: its own lineage CHOICE is now
+    // representable in principle (the SAME choice:species.feature-option reuse that unblocked
+    // Elf/Gnome/Goliath would work identically for Tiefling), but it is not authored this phase.
+    reason: 'Species lineage, ancestry, or legacy choice: Tiefling\'s own Fiendish Legacy choice is now representable in principle via the generic choice:species.feature-option mechanism (the same reuse Elf/Gnome/Goliath now use), but it is not authored this phase (explicitly out of scope).',
     ledgerIds: [],
-    matches: (d) => (is(d, 'species', 'variant-choice') || is(d, 'species', 'spell-grant')) && !speciesFixedSpellGrantCovered(d.owner.slug)
+    matches: (d) => (is(d, 'species', 'variant-choice') && !speciesFeatureOptionCovered(d.owner.slug)) || (is(d, 'species', 'spell-grant') && !speciesFixedSpellGrantCovered(d.owner.slug))
   },
   {
     id: 'blk:species-damage',
     status: 'blocked',
-    // AASIMAR CREATION COMPLETION PHASE -- reason refined: `value:resistance.necrotic.granted`/
-    // `.radiant.granted` now exist (authored for Aasimar's own FIXED, non-choice resistance), but
-    // a damage-type CHOICE (Dragonborn: acid/lightning/fire/poison/cold; Tiefling: poison/
-    // necrotic/fire) still needs the remaining types' own Values plus a reusable "choose 1 of N"
-    // ChoiceSet -- not authored, Dragonborn/Tiefling untouched this phase.
-    reason: 'Species damage-type CHOICE (Dragonborn\'s/Tiefling\'s own ancestry/legacy resistance): most needed damage types still have no Value vocabulary, and no reusable choice ChoiceSet names them yet. Aasimar\'s own resistance is a FIXED grant (never a choice), so it never reaches this family at all.',
+    // PURE-AUTHORING SPECIES SWEEP -- excludes Dragonborn's own damage-type-choice (now covered by
+    // impl:species-feature-option: the ancestry pick itself is the decision, and each option's own
+    // Source modifiers resolve the linked resistance consequence). Tiefling alone remains -- its
+    // own resistance is tied to the SAME Fiendish Legacy pick that remains unauthored.
+    reason: 'Species damage-type CHOICE tied to an unauthored lineage/legacy pick (Tiefling\'s own Fiendish Legacy -- poison/necrotic/fire). Representable in principle via the same Source-modifier mechanism Dragonborn now uses, once Tiefling\'s own lineage choice is authored; not authored this phase.',
     ledgerIds: [],
-    matches: (d) => is(d, 'species', 'damage-type-choice')
+    matches: (d) => is(d, 'species', 'damage-type-choice') && !speciesFeatureOptionCovered(d.owner.slug)
   },
   {
     id: 'blk:species-size',

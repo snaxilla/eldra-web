@@ -108,15 +108,20 @@ describe('P2 spell corpus authority', () => {
   // size-choice AND its pre-existing spell-grant (Light Bearer) both reclassify to implemented;
   // Human's and Tiefling's own new size-choice decisions join the blocked set (neither species is
   // authored this phase). Moving the census from 648/433/180 to 651/435/181.
-  it('the Phase-0 decision census after the Aasimar Creation Completion phase: 651 total, 435 implemented, 181 blocked, 35 optional', () => {
+  // PURE-AUTHORING SPECIES SWEEP -- no new discovery this phase (no new DecisionFamily); exactly
+  // 4 real decisions reclassify blocked -> implemented: Dragonborn's own damage-type-choice, and
+  // Elf's/Gnome's/Goliath's own variant-choice (each species' lineage/ancestry CHOICE itself,
+  // via the generic choice:species.feature-option reuse). Moving the census from 651/435/181 to
+  // 651/439/177.
+  it('the Phase-0 decision census after the Pure-Authoring Species Sweep: 651 total, 439 implemented, 177 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(651)
-    expect(counts.implemented).toBe(435)
-    expect(counts.blocked).toBe(181)
+    expect(counts.implemented).toBe(439)
+    expect(counts.blocked).toBe(177)
     expect(counts.optional).toBe(35)
   })
 

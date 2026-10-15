@@ -356,6 +356,18 @@ export type FixedSpellGrant = {
   // normal preparation routine (Telepathic's Detect Thoughts). Mirrors `flagFor`'s own two values
   // exactly (app/lib/characters/spell-requirements.ts) -- never a third flag invented here.
   flag: 'known' | 'prepared'
+  // PURE-AUTHORING SPECIES SWEEP -- a fixed grant that only applies once a NAMED option within the
+  // SAME owning facet is active (Elf's own Drow/High-Elf/Wood-Elf lineage, each fixing a DIFFERENT
+  // cantrip; Gnome's own Forest-Gnome/Rock-Gnome lineage, each fixing different cantrips/spells).
+  // Unlike Telekinetic's/Telepathic's own unconditional grants (the owning FACET itself is only
+  // ever present when that feat is owned, so no further gating was ever needed), a lineage choice
+  // is a SUB-SELECTION within one always-present species facet -- the grant itself still has no
+  // player choice ("of your choice" never appears in the source text), but WHETHER it applies does.
+  // Reuses the IDENTICAL generic gate check `SpellRequirement.requiresActive` already uses
+  // (`isGateActive`, app/lib/characters/spell-requirement-ownership.ts) -- the same evaluator, a
+  // new call site, never a second gating mechanism. Omitted (as for Telekinetic/Telepathic) means
+  // unconditional, exactly as before this field existed.
+  requiresActive?: readonly DefinitionId[]
 }
 
 export type RulesFacetFeatureRequirement = {

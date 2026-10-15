@@ -5870,5 +5870,277 @@
     "default": false,
     "visibility": "public",
     "label": "Radiant Resistance"
+  },
+  {
+    "id": "value:resistance.acid.granted",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Acid Resistance"
+  },
+  {
+    "id": "value:resistance.lightning.granted",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Lightning Resistance"
+  },
+  {
+    "id": "value:resistance.fire.granted",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Fire Resistance"
+  },
+  {
+    "id": "value:resistance.poison.granted",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Poison Resistance"
+  },
+  {
+    "id": "value:resistance.cold.granted",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Cold Resistance"
+  },
+  {
+    "id": "value:innate-spellcasting.ability.int",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Innate Spellcasting: Intelligence"
+  },
+  {
+    "id": "value:innate-spellcasting.ability.wis",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Innate Spellcasting: Wisdom"
+  },
+  {
+    "id": "value:innate-spellcasting.ability.cha",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Innate Spellcasting: Charisma"
+  },
+  {
+    "id": "choice:species.feature-option",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Species Feature Option",
+    "prompt": "Choose one of the following options.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "effect": "activate-source"
+  },
+  {
+    "id": "choice:species.innate-spellcasting-ability",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Innate Spellcasting Ability",
+    "prompt": "Choose the ability you use for the spells you cast with this trait.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true
+  },
+  {
+    "id": "source:giant-ancestry.clouds-jaunt",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Giant Ancestry: Cloud's Jaunt",
+    "modifiers": []
+  },
+  {
+    "id": "source:giant-ancestry.fires-burn",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Giant Ancestry: Fire's Burn",
+    "modifiers": []
+  },
+  {
+    "id": "source:giant-ancestry.frosts-chill",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Giant Ancestry: Frost's Chill",
+    "modifiers": []
+  },
+  {
+    "id": "source:giant-ancestry.hills-tumble",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Giant Ancestry: Hill's Tumble",
+    "modifiers": []
+  },
+  {
+    "id": "source:giant-ancestry.stones-endurance",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Giant Ancestry: Stone's Endurance",
+    "modifiers": []
+  },
+  {
+    "id": "source:giant-ancestry.storms-thunder",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Giant Ancestry: Storm's Thunder",
+    "modifiers": []
+  },
+  {
+    "id": "source:draconic-ancestry.black",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Black",
+    "modifiers": [
+      { "target": "value:resistance.acid.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.blue",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Blue",
+    "modifiers": [
+      { "target": "value:resistance.lightning.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.brass",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Brass",
+    "modifiers": [
+      { "target": "value:resistance.fire.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.bronze",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Bronze",
+    "modifiers": [
+      { "target": "value:resistance.lightning.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.copper",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Copper",
+    "modifiers": [
+      { "target": "value:resistance.acid.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.gold",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Gold",
+    "modifiers": [
+      { "target": "value:resistance.fire.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.green",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Green",
+    "modifiers": [
+      { "target": "value:resistance.poison.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.red",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Red",
+    "modifiers": [
+      { "target": "value:resistance.fire.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.silver",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: Silver",
+    "modifiers": [
+      { "target": "value:resistance.cold.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:draconic-ancestry.white",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Draconic Ancestry: White",
+    "modifiers": [
+      { "target": "value:resistance.cold.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:elven-lineage.drow",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Elven Lineage: Drow",
+    "modifiers": []
+  },
+  {
+    "id": "source:elven-lineage.high",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Elven Lineage: High",
+    "modifiers": []
+  },
+  {
+    "id": "source:elven-lineage.wood",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Elven Lineage: Wood",
+    "modifiers": []
+  },
+  {
+    "id": "source:gnomish-lineage.forest-gnome",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Gnomish Lineage: Forest Gnome",
+    "modifiers": []
+  },
+  {
+    "id": "source:gnomish-lineage.rock-gnome",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Gnomish Lineage: Rock Gnome",
+    "modifiers": []
   }
 ]

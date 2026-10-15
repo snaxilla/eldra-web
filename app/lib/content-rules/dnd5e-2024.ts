@@ -3478,6 +3478,75 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       //    level-gating authoring at all today -- irrelevant here since there is no decision to
       //    gate, but flagged honestly rather than silently worked around.)
     },
+    // PURE-AUTHORING SPECIES SWEEP -- re-derived directly from races.json (XPHB). Draconic
+    // Ancestry: "Choose the kind of dragon from the Draconic Ancestors table. Your choice affects
+    // your Breath Weapon and Damage Resistance traits as well as your appearance" -- 10 named
+    // dragons (the table's own rows), collapsing to 5 UNIQUE damage types (confirmed directly:
+    // acid/lightning/fire/poison/cold), a genuine PERMANENT Level-1 choice ("choose 1 of N named
+    // options"), structurally identical to Divine Order's/Primal Order's own `choice:class
+    // .feature-option` -- reused under a second, owner-agnostic Definition id,
+    // `choice:species.feature-option` (same shape, `effect: 'activate-source'`; the "class." id
+    // would be misleading authored from a species facet, so a second Definition was added rather
+    // than renaming the existing public one). Each of the 10 named Sources carries its own real
+    // damage-type consequence as a Source `modifiers` entry (boolean `phase: 'set'`, the exact,
+    // already-proven mechanism `source:divine-order.protector`'s own proficiency grant uses) --
+    // the player chooses ancestry ONCE; Breath Weapon's damage type is a LINKED consequence of
+    // that single choice, never a second mandatory decision. Breath Weapon itself (a replace-one-
+    // attack action, PBx/Long Rest, scaling damage by level) and Draconic Flight (Level 5+, a
+    // Bonus Action, 1/Long Rest, NO choice of any kind) are both runtime actions with no build
+    // decision -- confirmed directly from the corpus text, deferred Milestone B, the same posture
+    // as Aasimar's own Healing Hands/Draconic Flight-shaped traits.
+    'dragonborn-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:species.feature-option',
+          count: 1,
+          from: [
+            'source:draconic-ancestry.black', 'source:draconic-ancestry.blue', 'source:draconic-ancestry.brass',
+            'source:draconic-ancestry.bronze', 'source:draconic-ancestry.copper', 'source:draconic-ancestry.gold',
+            'source:draconic-ancestry.green', 'source:draconic-ancestry.red', 'source:draconic-ancestry.silver',
+            'source:draconic-ancestry.white'
+          ]
+        }
+      ],
+      grants: [
+        { set: 'value:size.medium', to: true },
+        { set: 'value:speed.walking', to: 30 },
+        { set: 'value:sense.darkvision', to: 60 }
+      ]
+    },
+    // PURE-AUTHORING SPECIES SWEEP -- Elven Lineage re-derived from the REAL 2024 prose directly
+    // (not the raw `additionalSpells` structured field alone, which under-describes High Elf's own
+    // replacement clause): "Choose a lineage from the Elven Lineages table. You gain the level 1
+    // benefit of that lineage... Intelligence, Wisdom, or Charisma is your spellcasting ability for
+    // the spells you cast with this trait (choose the ability when you select the lineage)." TWO
+    // separate Level-1 decisions: the lineage pick itself (Drow/High Elf/Wood Elf, permanent,
+    // `choice:species.feature-option` reused again) and a NESTED casting-ability pick, unconditional
+    // on the species (every lineage needs it) -- a new, generic, reusable `choice:species.innate
+    // -spellcasting-ability` ChoiceSet (the exact `choice:species.size` shape: a literal Value id
+    // per option, no activate-source), with 3 new, owner-agnostic Values
+    // (`value:innate-spellcasting.ability.int/wis/cha` -- deliberately NOT `value:spellcasting
+    // .ability.*`, which already means "my CLASS's own casting ability"; these are a separate real
+    // fact, "my TRAIT's own casting ability," per the corpus's own wording). Each lineage's own
+    // Level-1 grant is a TRUE FIXED cantrip (re-verified: Drow's Dancing Lights, Wood Elf's
+    // Druidcraft, and -- re-reading the prose precisely -- High Elf's own Prestidigitation too; the
+    // "replace that cantrip" clause is an OPTIONAL daily swap, classified OPTIONAL, never
+    // implemented, the same posture this project already gives every other replacement clause) --
+    // via `fixedSpellGrants`, each gated `requiresActive` on its own lineage Source (the ONE new,
+    // small, package-authored field this phase adds to `FixedSpellGrant`, reusing the IDENTICAL
+    // `isGateActive` evaluator `SpellRequirement.requiresActive` already uses -- see that field's
+    // own header, app/lib/content-rules/types.ts). Levels 3/5 (a further FIXED, no-choice spell per
+    // lineage, "always have that spell prepared," cast once free/Long Rest or via a real slot) are a
+    // genuine PROGRESSION-TIME fact, but species facets have no level-gating/progression authoring
+    // at all today, and building one is exactly the kind of new generic capability this phase is
+    // forbidden from inventing -- deliberately deferred, non-blocking (discovery collapses all of
+    // Elf's spell content into ONE Level-1 `variant-choice` decision, so this never blocks creation).
+    // Drow's own Darkvision-120 range increase and Wood Elf's own Speed-35 increase are NOT
+    // authored either: both would need a numeric Source `modifiers` override on top of an already-
+    // granted base Value, a shape with zero existing precedent anywhere in this package (every real
+    // `phase: 'set'` Source modifier today is boolean) -- rather than invent an unproven numeric-
+    // override mechanism, both are left as the species' own fixed base (Darkvision 60, Speed 30),
+    // honestly reported as deferred, not silently assumed correct.
     'elf-xphb': {
       choices: [
         {
@@ -3488,7 +3557,93 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.perception.proficient',
             'value:skill.survival.proficient'
           ]
+        },
+        {
+          choiceSet: 'choice:species.feature-option',
+          count: 1,
+          from: ['source:elven-lineage.drow', 'source:elven-lineage.high', 'source:elven-lineage.wood']
+        },
+        {
+          choiceSet: 'choice:species.innate-spellcasting-ability',
+          count: 1,
+          from: ['value:innate-spellcasting.ability.int', 'value:innate-spellcasting.ability.wis', 'value:innate-spellcasting.ability.cha']
         }
+      ],
+      grants: [
+        { set: 'value:size.medium', to: true },
+        { set: 'value:speed.walking', to: 30 },
+        { set: 'value:sense.darkvision', to: 60 }
+      ],
+      fixedSpellGrants: [
+        { slug: 'dancing-lights-xphb', flag: 'known', requiresActive: ['source:elven-lineage.drow'] },
+        { slug: 'prestidigitation-xphb', flag: 'known', requiresActive: ['source:elven-lineage.high'] },
+        { slug: 'druidcraft-xphb', flag: 'known', requiresActive: ['source:elven-lineage.wood'] }
+      ]
+    },
+    // PURE-AUTHORING SPECIES SWEEP -- Giant Ancestry re-derived directly: "Choose one of the
+    // following benefits -- a supernatural boon from your ancestry; you can use the chosen benefit
+    // a number of times equal to your Proficiency Bonus, and you regain all expended uses when you
+    // finish a Long Rest." Confirmed PERMANENT (chosen once, unlike Aasimar's own per-use Celestial
+    // Revelation) -- the exact `choice:species.feature-option` shape, 6 named benefits (Cloud's
+    // Jaunt, Fire's/Frost's/Storm's X, Hill's Tumble, Stone's Endurance), ZERO spell content, ZERO
+    // nested ability choice. None of the 6 benefits grants any currently fixed-representable state
+    // (teleport, on-hit damage, a condition, a reaction) -- all 6 are per-use runtime combat
+    // effects, so every Source's own `modifiers` is empty; the choice ITSELF is the entire Milestone
+    // -A decision. Large Form (Level 5+, a Bonus Action, no choice, 1/Long Rest) and Powerful Build
+    // (passive, no choice) need no authoring, the same posture as every other runtime/passive trait.
+    'goliath-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:species.feature-option',
+          count: 1,
+          from: [
+            'source:giant-ancestry.clouds-jaunt', 'source:giant-ancestry.fires-burn', 'source:giant-ancestry.frosts-chill',
+            'source:giant-ancestry.hills-tumble', 'source:giant-ancestry.stones-endurance', 'source:giant-ancestry.storms-thunder'
+          ]
+        }
+      ],
+      grants: [
+        { set: 'value:size.medium', to: true },
+        { set: 'value:speed.walking', to: 35 }
+      ]
+    },
+    // PURE-AUTHORING SPECIES SWEEP -- Gnomish Lineage re-derived directly: "Choose one of the
+    // following options; whichever one you choose, Intelligence, Wisdom, or Charisma is your
+    // spellcasting ability for the spells you cast with this trait (choose the ability when you
+    // select the lineage)." The EXACT same two-decision shape as Elf (lineage pick + the SAME
+    // shared `choice:species.innate-spellcasting-ability`, reused verbatim, never Gnome- or
+    // Elf-specific). Forest Gnome: a fixed cantrip (Minor Illusion, 'known') + a fixed,
+    // always-prepared spell (Speak with Animals, 'prepared' -- "you also always have [it]
+    // prepared," the identical wording convention Magic Initiate's own fixed Level-1 spell already
+    // uses) -- both gated `requiresActive` on the Forest-Gnome Source. The PBx/Long-Rest free-cast-
+    // without-a-slot resource and ordinary slot-casting are both Milestone B, deferred. Rock Gnome:
+    // two fixed cantrips (Mending, Prestidigitation), gated on the Rock-Gnome Source; its own Tiny-
+    // clockwork-device crafting mechanic is NOT a spell-acquisition shape at all (an item-creation
+    // mechanic), genuinely unrepresented but Milestone B, never a blocker for the lineage choice or
+    // its spell content.
+    'gnome-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:species.feature-option',
+          count: 1,
+          from: ['source:gnomish-lineage.forest-gnome', 'source:gnomish-lineage.rock-gnome']
+        },
+        {
+          choiceSet: 'choice:species.innate-spellcasting-ability',
+          count: 1,
+          from: ['value:innate-spellcasting.ability.int', 'value:innate-spellcasting.ability.wis', 'value:innate-spellcasting.ability.cha']
+        }
+      ],
+      grants: [
+        { set: 'value:size.small', to: true },
+        { set: 'value:speed.walking', to: 30 },
+        { set: 'value:sense.darkvision', to: 60 }
+      ],
+      fixedSpellGrants: [
+        { slug: 'minor-illusion-xphb', flag: 'known', requiresActive: ['source:gnomish-lineage.forest-gnome'] },
+        { slug: 'speak-with-animals-xphb', flag: 'prepared', requiresActive: ['source:gnomish-lineage.forest-gnome'] },
+        { slug: 'mending-xphb', flag: 'known', requiresActive: ['source:gnomish-lineage.rock-gnome'] },
+        { slug: 'prestidigitation-xphb', flag: 'known', requiresActive: ['source:gnomish-lineage.rock-gnome'] }
       ]
     },
     'human-xphb': {

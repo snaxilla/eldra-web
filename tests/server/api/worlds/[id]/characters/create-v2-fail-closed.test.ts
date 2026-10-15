@@ -52,6 +52,7 @@ const entry = (title: string, slug: string, facet: any) => ({
 
 const SPECIES = {
   elf: entry('Elf', 'elf-xphb', findRulesFacet('dnd5e.2024', 'species', 'elf-xphb')),
+  tiefling: entry('Tiefling', 'tiefling-xphb', findRulesFacet('dnd5e.2024', 'species', 'tiefling-xphb')),
   dwarf: entry('Dwarf', 'dwarf-xphb', null)
 }
 const CLASSES = {
@@ -130,8 +131,11 @@ beforeEach(() => {
 })
 
 describe('PHASE 0 -- creation is refused, with zero writes, when a selected entity owns an unrecordable decision', () => {
-  it('an Elf (lineage choice) is refused before any entity is created', async () => {
-    await expect(handler(fakeEvent(bodyWith('elf-xphb', 'wizard-xphb', 'criminal-xphb')) as any))
+  // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable (choice:species
+  // .feature-option); Tiefling replaces it as the one species whose own lineage choice (among its
+  // other, separately-blocked decisions) Eldra still cannot record.
+  it('a Tiefling (lineage choice, among its own other unauthored decisions) is refused before any entity is created', async () => {
+    await expect(handler(fakeEvent(bodyWith('tiefling-xphb', 'wizard-xphb', 'criminal-xphb')) as any))
       .rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/cannot be completed yet.*lineage or ancestry choice/) })
     expectNoWrites()
   })

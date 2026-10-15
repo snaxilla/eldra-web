@@ -26,11 +26,14 @@ const ownOf = (kind: 'species' | 'class' | 'background', slug: string) => creati
 )
 
 describe('the refusal wording is plain and names the owner (production impact counts live in creation-availability.test.ts)', () => {
-  it('the refusal for Elf names the lineage choice in plain words, with no internal identifier', () => {
-    const elf = describeUnresolved(ownOf('species', 'elf-xphb'))
-    expect(elf).toMatch(/cannot be completed yet/)
-    expect(elf).toMatch(/lineage or ancestry choice/)
-    expect(elf).not.toMatch(/blk:|ENGINE_BLOCKED|CONTENT_BLOCKED|additionalSpells|variants|species\./)
+  // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable (choice:species
+  // .feature-option); Tiefling replaces it here as the one species whose lineage choice remains
+  // genuinely unrecorded (its own Fiendish Legacy pick is not authored this phase).
+  it('the refusal for Tiefling names the lineage choice in plain words, with no internal identifier', () => {
+    const tiefling = describeUnresolved(ownOf('species', 'tiefling-xphb'))
+    expect(tiefling).toMatch(/cannot be completed yet/)
+    expect(tiefling).toMatch(/lineage or ancestry choice/)
+    expect(tiefling).not.toMatch(/blk:|ENGINE_BLOCKED|CONTENT_BLOCKED|additionalSpells|variants|species\./)
   })
 })
 

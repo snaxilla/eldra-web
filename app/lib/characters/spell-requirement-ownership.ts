@@ -104,14 +104,26 @@ export type ResolveFixedSpellGrantsResult =
   | { ok: true, entries: StoredSpellEntry[] }
   | { ok: false, reason: string }
 
+// PURE-AUTHORING SPECIES SWEEP -- `selections` added (default `{}`, so every pre-existing call
+// site -- Telekinetic/Telepathic's own unconditional grants -- is unaffected): a grant whose own
+// `requiresActive` names one or more ids is resolved ONLY when every one of them is active, via
+// the IDENTICAL `isGateActive` check `gatherSpellRequirements` already uses, scoped to the SAME
+// `owners` facet list (a lineage Source set by `choice:species.feature-option`'s own
+// `activate-source` effect lands in `selections` verbatim, exactly like Thaumaturge's/Magician's
+// own chosen-Source gate). An inactive grant is simply skipped, never an error -- the same
+// "non-live, non-blocking" posture `gatherSpellRequirements` already establishes for a
+// `SpellRequirement` whose gate is not yet satisfied.
 export function resolveFixedSpellGrants(
   owners: readonly FixedSpellGrantOwner[],
   catalogue: readonly { packageId: string, slug: string, title?: string }[],
-  existing: readonly StoredSpellEntry[] = []
+  existing: readonly StoredSpellEntry[] = [],
+  selections: Readonly<Record<string, readonly string[]>> = {}
 ): ResolveFixedSpellGrantsResult {
+  const facets = owners.map((owner) => owner.facet)
   const entries: StoredSpellEntry[] = []
   for (const owner of owners) {
     for (const grant of owner.facet?.fixedSpellGrants ?? []) {
+      if ((grant.requiresActive ?? []).some((id) => !isGateActive(id, selections, facets))) continue
       const found = catalogue.find((entry) => entry.packageId === owner.packageId && entry.slug === grant.slug)
       if (!found) {
         return { ok: false, reason: `Fixed spell grant "${grant.slug}" (from "${owner.ownerKey}") is not in this World's Content Catalogue` }

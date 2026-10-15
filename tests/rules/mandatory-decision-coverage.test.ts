@@ -360,7 +360,9 @@ describe('P8 -- starting equipment reconciliation', () => {
     // AASIMAR CREATION COMPLETION PHASE -- Aasimar's own remaining blockers (size choice, Light
     // Bearer's fixed spell grant) are now authored too; Aasimar joins the roster (Dwarf/Halfling/
     // Orc plus Aasimar).
-    expect(availableSpecies.length).toBe(4)
+    // PURE-AUTHORING SPECIES SWEEP -- Dragonborn, Elf, Goliath, and Gnome all join too (their own
+    // lineage/ancestry choice is now representable via choice:species.feature-option reuse).
+    expect(availableSpecies.length).toBe(8)
     // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the roster.
     // WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, Ranger join too (Rogue remains
     // creation-blocked by Expertise and Thieves' Cant/language policy at the time).
@@ -383,10 +385,9 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // AASIMAR CREATION COMPLETION PHASE -- 4 species * 12 available classes * 16 available
-    // backgrounds = 768, enumerated through the real authority above (never computed as a
-    // hardcoded product).
-    expect(combinations).toBe(768)
+    // PURE-AUTHORING SPECIES SWEEP -- 8 species * 12 available classes * 16 available backgrounds
+    // = 1536, enumerated through the real authority above (never computed as a hardcoded product).
+    expect(combinations).toBe(1536)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
@@ -645,5 +646,83 @@ describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
       source: 'size'
     }
     expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic)).map((r) => r.id)).toEqual(['blk:species-size'])
+  })
+})
+
+describe('PURE-AUTHORING SPECIES SWEEP -- reconciliation', () => {
+  const featureOptionDecisions = DECISIONS.filter((d) =>
+    d.owner.kind === 'species' && (d.family === 'variant-choice' || d.family === 'damage-type-choice'))
+  const dragonbornDecision = featureOptionDecisions.find((d) => d.owner.slug === 'dragonborn-xphb')!
+  const elfDecision = featureOptionDecisions.find((d) => d.owner.slug === 'elf-xphb')!
+  const gnomeDecision = featureOptionDecisions.find((d) => d.owner.slug === 'gnome-xphb')!
+  const goliathDecision = featureOptionDecisions.find((d) => d.owner.slug === 'goliath-xphb')!
+  const tieflingDecisions = featureOptionDecisions.filter((d) => d.owner.slug === 'tiefling-xphb')
+
+  it('RECLASSIFICATION -- Dragonborn\'s damage-type-choice and Elf\'s/Gnome\'s/Goliath\'s own variant-choice are all now implemented', () => {
+    for (const d of [dragonbornDecision, elfDecision, gnomeDecision, goliathDecision]) {
+      expect(d, 'decision exists').toBeDefined()
+      expect(classifyDecision(d).status, d.id).toBe('implemented')
+      expect(classifyDecision(d).rule, d.id).toBe('impl:species-feature-option')
+    }
+  })
+
+  it('RECLASSIFICATION -- Tiefling\'s own lineage/damage decisions remain blocked, untouched this phase', () => {
+    expect(tieflingDecisions.length).toBeGreaterThan(0)
+    for (const d of tieflingDecisions) expect(classifyDecision(d).status, d.id).toBe('blocked')
+  })
+
+  it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
+    expect(contractViolations(DECISIONS)).toEqual([])
+  })
+
+  it('BITE -- deleting impl:species-feature-option leaves all four real decisions uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:species-feature-option')
+    for (const d of [dragonbornDecision, elfDecision, gnomeDecision, goliathDecision]) {
+      expect(without.filter((rule) => rule.matches(d)).length, d.id).toBe(0)
+    }
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- Tiefling\'s own still-unauthored decisions are never falsely greened by impl:species-feature-option', () => {
+    for (const d of tieflingDecisions) {
+      expect(matchingRules(d).map((r) => r.id)).toEqual(d.family === 'variant-choice' ? ['blk:species-lineage'] : ['blk:species-damage'])
+    }
+  })
+
+  it('BITE -- runtime-only species traits never masquerade as a mandatory build decision -- none is discovered as one at all', () => {
+    // Draconic Flight (Dragonborn, Level 5+, no choice), Large Form/Powerful Build (Goliath, no
+    // choice), Fey Ancestry/Trance (Elf, passive, no choice), Gnomish Cunning (Gnome, passive, no
+    // choice), Rock Gnome's own device-crafting mechanic -- none of these is a field
+    // `detectSpeciesDecisions` scans at all, so the real decision population for each of the four
+    // species is EXACTLY what this phase implements, never a phantom extra decision silently
+    // invented or silently blocked.
+    const byOwner: Record<string, number> = {}
+    for (const d of DECISIONS) if (d.owner.kind === 'species' && ['dragonborn-xphb', 'goliath-xphb', 'elf-xphb', 'gnome-xphb'].includes(d.owner.slug)) {
+      byOwner[d.owner.slug] = (byOwner[d.owner.slug] ?? 0) + 1
+    }
+    expect(byOwner).toEqual({ 'dragonborn-xphb': 1, 'goliath-xphb': 1, 'elf-xphb': 2, 'gnome-xphb': 1 })
+  })
+
+  it('BITE -- a fixed consequence determined by the SAME ancestry choice (Dragonborn\'s own resistance) never becomes a second mandatory decision', () => {
+    // Dragonborn owns exactly ONE species decision (the ancestry pick itself, damage-type-choice);
+    // the resistance it determines is a Source modifier, never independently discovered as its
+    // own decision.
+    const dragonbornAll = DECISIONS.filter((d) => d.owner.kind === 'species' && d.owner.slug === 'dragonborn-xphb')
+    expect(dragonbornAll).toHaveLength(1)
+    expect(dragonbornAll[0]!.family).toBe('damage-type-choice')
+  })
+
+  it('a FUTURE, unsupported species-owned variant-choice decision is never falsely greened by impl:species-feature-option (fails closed)', () => {
+    const synthetic: DecisionRecord = {
+      id: 'species:future-xphb:L1:variant-choice:lineage',
+      owner: { kind: 'species', slug: 'future-xphb', name: 'Future' },
+      level: 1,
+      timing: 'creation',
+      family: 'variant-choice',
+      mandatory: true,
+      cardinality: 1,
+      source: 'lineage'
+    }
+    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic)).map((r) => r.id)).toEqual(['blk:species-lineage'])
   })
 })

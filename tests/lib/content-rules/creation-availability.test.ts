@@ -59,7 +59,11 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // via the new generic choice:species.size ChoiceSet; Light Bearer's fixed spell grant, via
 // FixedSpellGrant) are now authored. Aasimar joins the creation-complete roster (3 -> 4 species),
 // lifting the complete combinations from 576 to 768 (4 x 12 x 16).
-const BASELINE = { species: 4, classes: 12, backgrounds: 16, combinations: 768 }
+// PURE-AUTHORING SPECIES SWEEP -- Dragonborn, Elf, Goliath, Gnome all join the creation-complete
+// roster (their own lineage/ancestry choice is now representable via choice:species.feature
+// -option reuse, zero new primitive), lifting species from 4 to 8 and combinations from 768 to
+// 1536 (8 x 12 x 16).
+const BASELINE = { species: 8, classes: 12, backgrounds: 16, combinations: 1536 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

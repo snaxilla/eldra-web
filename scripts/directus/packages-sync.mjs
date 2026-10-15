@@ -373,6 +373,68 @@ async function runPreflight({ modules, worldId, rulesClassification, contentResu
 }
 
 // ---------------------------------------------------------------------------
+// Diagnostics -- PARTIAL-FAILURE ERROR SUMMARY
+// ---------------------------------------------------------------------------
+//
+// Real production incident: REFRESH_CONTENT POSTs to /items/content_packs via
+// `directusServiceRequest` (server/utils/directus.ts), which uses Nuxt's own
+// `$fetch` (ofetch) under the hood. A non-2xx response makes `$fetch` throw an
+// ofetch `FetchError` carrying the PARSED Directus response body on `error.data`
+// (and, again, the same body under `error.response?._data` -- ofetch's own
+// nested convenience field) -- never just a bare "400 Bad Request" string. The
+// `executeApply` catch block below used to keep only `error.message`, so a real
+// Directus validation failure (a field name, a reason, an extension code) was
+// silently discarded before it ever reached the console.
+//
+// `summarizeDirectusError` extracts ONLY Directus's own structured diagnostic
+// fields -- `errors[].message` and `errors[].extensions.code` -- plus the
+// numeric HTTP status (`error.statusCode` or `error.status`, whichever the
+// thrown error actually carries). It deliberately never touches `error.config`/
+// `error.request`/`error.options` (ofetch sometimes attaches the ORIGINAL
+// request, headers and all, to those), never logs the full response body
+// verbatim, and bounds every string it does keep -- so neither an
+// unexpectedly-shaped Directus error nor a verbose one can leak a header,
+// an Authorization token, an env var, a request payload, or flood the console.
+const MAX_ERROR_FIELD_LENGTH = 300
+const MAX_DIAGNOSTIC_LENGTH = 1000
+
+function sanitizedText(value, max = MAX_ERROR_FIELD_LENGTH) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
+}
+
+// Directus's own structured error shape: `{ errors: [{ message, extensions: { code } }] }`.
+// Reads ONLY `message` and `extensions.code` from each entry -- never any other
+// field a future Directus version might add, and never the raw entry itself.
+function directusErrorEntries(body) {
+  if (!body || typeof body !== 'object' || !Array.isArray(body.errors)) return []
+  return body.errors
+    .map((entry) => {
+      const message = sanitizedText(entry?.message)
+      const code = sanitizedText(entry?.extensions?.code, 60)
+      if (!message && !code) return null
+      return code ? `${message ?? 'Directus error'} [${code}]` : message
+    })
+    .filter((entry) => entry !== null)
+}
+
+// Exported for direct unit testing against a synthetic ofetch-style error (see
+// tests/scripts/directus/packages-sync-apply.test.ts) -- the same "test the
+// real seam directly" posture every other function in this file already uses.
+export function summarizeDirectusError(error) {
+  const safeError = error && typeof error === 'object' ? error : {}
+  const body = safeError.data ?? safeError.response?._data
+  const status = safeError.statusCode ?? safeError.status ?? null
+  const entries = directusErrorEntries(body)
+
+  const detail = entries.length > 0 ? entries.join('; ') : (sanitizedText(safeError.message) ?? 'Unknown error')
+  const summary = status ? `HTTP ${status}: ${detail}` : detail
+  return summary.length > MAX_DIAGNOSTIC_LENGTH ? `${summary.slice(0, MAX_DIAGNOSTIC_LENGTH)}…` : summary
+}
+
+// ---------------------------------------------------------------------------
 // Apply -- dependency-ordered execution + post-apply verification
 // ---------------------------------------------------------------------------
 
@@ -477,7 +539,7 @@ export async function executeApply({ modules, world, rulesClassification, conten
       }
     }
   } catch (error) {
-    return { ok: false, completed, failedAt: plan[completed.length]?.kind ?? 'unknown', error: error.message, notAttempted: plan.slice(completed.length + 1) }
+    return { ok: false, completed, failedAt: plan[completed.length]?.kind ?? 'unknown', error: summarizeDirectusError(error), notAttempted: plan.slice(completed.length + 1) }
   }
 
   return { ok: true, completed, notAttempted: [] }

@@ -31,7 +31,8 @@ vi.mock('../../../scripts/directus/publish-rules-package.mjs', async (importOrig
 })
 
 import {
-  executeApply
+  executeApply,
+  summarizeDirectusError
   // @ts-expect-error -- plain .mjs, no type declarations
 } from '../../../scripts/directus/packages-sync.mjs'
 
@@ -166,5 +167,103 @@ describe('executeApply -- combined PUBLISH_RULES + REFRESH_CONTENT + ACTIVATE_RU
     expect(modules.worldContentPackBinding.bindContentPackToWorld).toHaveBeenCalledWith(
       WORLD.id, 'eldra.solaris.xphb', '1.0.5'
     )
+  })
+})
+
+// Package Sync Diagnostics Hotfix -- regression coverage for the real production incident this
+// fixes: REFRESH_CONTENT failed with a bare "400 Bad Request" in the console, because `executeApply`'s
+// own catch block kept only `error.message`, discarding the structured Directus response body
+// `directusServiceRequest`'s own `$fetch` (ofetch) call actually throws (`error.data` /
+// `error.response?._data`). These tests build a SYNTHETIC ofetch-style FetchError directly (never a
+// real Directus instance), proving both that the real diagnostic now surfaces AND that nothing
+// dangerous (headers, Authorization, env vars, the full request/response) is ever included.
+function syntheticOfetchError(overrides: Record<string, unknown> = {}) {
+  const error: any = new Error('400 Bad Request')
+  error.statusCode = undefined
+  error.status = 400
+  error.data = {
+    errors: [
+      { message: 'Field "packageId" in collection "content_packs" has to be unique.', extensions: { code: 'RECORD_NOT_UNIQUE' } }
+    ]
+  }
+  // ofetch's own nested convenience field -- same body again under `response._data`.
+  error.response = { _data: error.data, status: 400 }
+  // The DANGEROUS fields a real ofetch error can carry alongside the above --
+  // the original request, including whatever headers/Authorization it sent.
+  // summarizeDirectusError must never read or echo any of these.
+  error.request = '/items/content_packs'
+  error.options = { headers: { Authorization: 'Bearer super-secret-directus-token' }, body: '{"packageId":"eldra.solaris.xphb"}' }
+  Object.assign(error, overrides)
+  return error
+}
+
+describe('summarizeDirectusError -- extracts Directus\'s own structured diagnostic, never credentials', () => {
+  it('a synthetic HTTP 400 with a Directus errors[] body produces a useful, sanitized diagnostic', () => {
+    const summary = summarizeDirectusError(syntheticOfetchError())
+    expect(summary).toContain('400')
+    expect(summary).toContain('Field "packageId" in collection "content_packs" has to be unique.')
+    expect(summary).toContain('RECORD_NOT_UNIQUE')
+  })
+
+  it('never includes the Authorization header, the bearer token, or the raw request/options object', () => {
+    const summary = summarizeDirectusError(syntheticOfetchError())
+    expect(summary).not.toContain('super-secret-directus-token')
+    expect(summary).not.toContain('Authorization')
+    expect(summary).not.toContain('Bearer')
+    expect(summary).not.toContain('/items/content_packs')
+  })
+
+  it('falls back to error.response?._data when error.data is absent', () => {
+    const error = syntheticOfetchError()
+    delete error.data
+    const summary = summarizeDirectusError(error)
+    expect(summary).toContain('RECORD_NOT_UNIQUE')
+  })
+
+  it('falls back to the bare, bounded error.message when Directus returned no structured body at all (e.g. a network failure)', () => {
+    const error: any = new Error('fetch failed: ECONNREFUSED')
+    const summary = summarizeDirectusError(error)
+    expect(summary).toBe('fetch failed: ECONNREFUSED')
+  })
+
+  it('bounds an unexpectedly long Directus message rather than flooding the console', () => {
+    const error = syntheticOfetchError({ data: { errors: [{ message: 'x'.repeat(5000) }] } })
+    const summary = summarizeDirectusError(error)
+    expect(summary.length).toBeLessThan(1100)
+  })
+
+  it('reads error.statusCode in preference to error.status when both are present', () => {
+    const error = syntheticOfetchError({ statusCode: 409, status: 400 })
+    const summary = summarizeDirectusError(error)
+    expect(summary).toContain('409')
+  })
+})
+
+describe('executeApply -- a failing REFRESH_CONTENT surfaces the real Directus diagnostic, not a bare "400"', () => {
+  it('result.error contains the Directus errors[] message and extension code, never the Authorization header', async () => {
+    const modules = fakeModules()
+    const contentResults = [{
+      sourceKey: 'xphb',
+      classification: { status: 'REFRESH_REQUIRED', packageId: 'eldra.solaris.xphb', staleVersion: '1.0.4', reason: 'stale' },
+      provider: { collectionKey: 'xphb' },
+      collection: { key: 'xphb' }
+    }]
+    const plan = [{ kind: 'REFRESH_CONTENT', sourceKey: 'xphb', packageId: 'eldra.solaris.xphb' }]
+
+    modules.contentSourceRefresh.refreshContentSource.mockRejectedValue(syntheticOfetchError())
+
+    const result = await executeApply({
+      modules, world: WORLD, rulesClassification: { status: 'CURRENT' }, contentResults, plan
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.failedAt).toBe('REFRESH_CONTENT')
+    expect(result.error).toContain('RECORD_NOT_UNIQUE')
+    expect(result.error).toContain('has to be unique')
+    expect(result.error).not.toContain('super-secret-directus-token')
+    expect(result.error).not.toContain('Authorization')
+    // The existing partial-failure shape (completed/notAttempted) is unchanged by this fix.
+    expect(result.completed).toEqual([])
+    expect(result.notAttempted).toEqual([])
   })
 })

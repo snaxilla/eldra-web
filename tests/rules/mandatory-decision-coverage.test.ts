@@ -9,6 +9,7 @@
 // a rule whose removal leaves a decision uncovered. A contract that cannot fail proves nothing.
 
 import { describe, expect, it } from 'vitest'
+import { findRulesFacet } from '../../app/lib/content-rules'
 import { DND5E_2024_PROGRESSION_COVERAGE } from '../../app/lib/content-rules/dnd5e-2024-progression-coverage'
 import { COVERAGE_RULES, classifyDecision, matchingRules, type CoverageRule } from '../../app/lib/content-rules/mandatory-decision-coverage'
 import {
@@ -175,9 +176,11 @@ describe('P3.5 -- spell decision reconciliation', () => {
   // blocked: Aasimar's own Light Bearer (a true fixed grant, no "of your choice" clause at all)
   // is now implemented (impl:species-spell-fixed-grant in mandatory-decision-coverage.ts), the
   // exact same FixedSpellGrant shape Telekinetic's/Telepathic's own feat-owned fixed spells
-  // already use. Every OTHER species-owned spell decision (Elf/Gnome/Goliath/Tiefling's own
-  // lineage/legacy spells, all genuinely gated behind an unauthored lineage CHOICE) remains
-  // blocked, for the real reason recorded in blk:species-lineage's own updated reason text.
+  // already use. No OTHER species owns a decision in this family -- Elf's/Gnome's/Goliath's/
+  // Tiefling's own lineage/legacy spells are discovered as `variant-choice` (or, for Tiefling's
+  // resistance, `damage-type-choice`), never `spell-grant`/`spell-choice`/`spell-count` -- so this
+  // test's own filter never reaches them at all; their own reconciliation lives in the
+  // "PURE-AUTHORING SPECIES SWEEP"/"TIEFLING SPECIES COMPLETION" describe blocks below.
   it('STILL BLOCKED -- species-granted spell decisions, except Aasimar\'s own fixed grant', () => {
     const speciesSpell = DECISIONS.filter((d) => d.owner.kind === 'species' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family))
     expect(speciesSpell.length).toBeGreaterThan(0)
@@ -362,7 +365,9 @@ describe('P8 -- starting equipment reconciliation', () => {
     // Orc plus Aasimar).
     // PURE-AUTHORING SPECIES SWEEP -- Dragonborn, Elf, Goliath, and Gnome all join too (their own
     // lineage/ancestry choice is now representable via choice:species.feature-option reuse).
-    expect(availableSpecies.length).toBe(8)
+    // TIEFLING SPECIES COMPLETION -- Tiefling's own Fiendish Legacy, size choice, and innate
+    // casting ability are all authored too; Tiefling joins the roster (9 of 10 named species).
+    expect(availableSpecies.length).toBe(9)
     // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the roster.
     // WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, Ranger join too (Rogue remains
     // creation-blocked by Expertise and Thieves' Cant/language policy at the time).
@@ -385,9 +390,9 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // PURE-AUTHORING SPECIES SWEEP -- 8 species * 12 available classes * 16 available backgrounds
-    // = 1536, enumerated through the real authority above (never computed as a hardcoded product).
-    expect(combinations).toBe(1536)
+    // TIEFLING SPECIES COMPLETION -- 9 species * 12 available classes * 16 available backgrounds
+    // = 1728, enumerated through the real authority above (never computed as a hardcoded product).
+    expect(combinations).toBe(1728)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
@@ -585,13 +590,16 @@ describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
   const sizeDecisions = DECISIONS.filter((d) => d.family === 'size-choice')
   const aasimarSpellGrant = DECISIONS.find((d) => d.owner.slug === 'aasimar-xphb' && d.family === 'spell-grant')!
 
-  it('RECLASSIFICATION -- the real size-choice census (Aasimar, Human, Tiefling all genuinely have one); only Aasimar\'s own is implemented', () => {
+  // TIEFLING SPECIES COMPLETION -- Tiefling's own size-choice is reclassified too (its facet now
+  // declares choice:species.size, see the dedicated "TIEFLING SPECIES COMPLETION" describe block
+  // for its own full reconciliation). Human alone remains blocked.
+  it('RECLASSIFICATION -- the real size-choice census (Aasimar, Human, Tiefling all genuinely have one); Aasimar\'s and Tiefling\'s own are implemented', () => {
     expect(sizeDecisions.length).toBe(3)
     const byOwner = sizeDecisions.map((d) => d.owner.slug).sort()
     expect(byOwner).toEqual(['aasimar-xphb', 'human-xphb', 'tiefling-xphb'])
     expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'aasimar-xphb')!).status).toBe('implemented')
     expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'human-xphb')!).status).toBe('blocked')
-    expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'tiefling-xphb')!).status).toBe('blocked')
+    expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'tiefling-xphb')!).status).toBe('implemented')
   })
 
   it('RECLASSIFICATION -- Aasimar\'s own Light Bearer spell-grant is now implemented too (a true fixed grant, via FixedSpellGrant)', () => {
@@ -616,8 +624,11 @@ describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
     expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
   })
 
-  it('BITE -- Human\'s and Tiefling\'s own size-choice decisions remain fail-closed (blk:species-size), never falsely greened by impl:species-size-choice', () => {
-    for (const d of sizeDecisions.filter((d) => d.owner.slug !== 'aasimar-xphb')) {
+  // TIEFLING SPECIES COMPLETION -- Tiefling's own size-choice is REMOVED from this list: its
+  // facet now declares choice:species.size too (the same real "Small or Medium" shape Aasimar
+  // has), so it reclassifies to implemented. Human alone remains.
+  it('BITE -- Human\'s own size-choice decision remains fail-closed (blk:species-size), never falsely greened by impl:species-size-choice', () => {
+    for (const d of sizeDecisions.filter((d) => d.owner.slug !== 'aasimar-xphb' && d.owner.slug !== 'tiefling-xphb')) {
       expect(matchingRules(d).map((r) => r.id)).toEqual(['blk:species-size'])
     }
   })
@@ -666,27 +677,32 @@ describe('PURE-AUTHORING SPECIES SWEEP -- reconciliation', () => {
     }
   })
 
-  it('RECLASSIFICATION -- Tiefling\'s own lineage/damage decisions remain blocked, untouched this phase', () => {
-    expect(tieflingDecisions.length).toBeGreaterThan(0)
-    for (const d of tieflingDecisions) expect(classifyDecision(d).status, d.id).toBe('blocked')
+  // TIEFLING SPECIES COMPLETION -- reclassified: Tiefling's own Fiendish Legacy is now authored
+  // too (see the dedicated "TIEFLING SPECIES COMPLETION" describe block below for its own full
+  // reconciliation). Both of its real decisions here (variant-choice, damage-type-choice) are
+  // implemented via the SAME impl:species-feature-option rule the other four species use.
+  it('RECLASSIFICATION -- Tiefling\'s own lineage/damage decisions are now implemented too', () => {
+    expect(tieflingDecisions.length).toBe(2)
+    for (const d of tieflingDecisions) {
+      expect(classifyDecision(d).status, d.id).toBe('implemented')
+      expect(classifyDecision(d).rule, d.id).toBe('impl:species-feature-option')
+    }
   })
 
   it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
     expect(contractViolations(DECISIONS)).toEqual([])
   })
 
-  it('BITE -- deleting impl:species-feature-option leaves all four real decisions uncovered and the contract fails', () => {
+  it('BITE -- deleting impl:species-feature-option leaves all six real decisions (five species, Tiefling owning two) uncovered and the contract fails', () => {
     const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:species-feature-option')
-    for (const d of [dragonbornDecision, elfDecision, gnomeDecision, goliathDecision]) {
+    for (const d of [dragonbornDecision, elfDecision, gnomeDecision, goliathDecision, ...tieflingDecisions]) {
+      // Zero matching rules -- `classifyDecision`'s own fail-closed default (app/lib/content-
+      // rules/mandatory-decision-coverage.ts) reports exactly this case as 'blocked', never a
+      // silent pass-through, but that default only ever consults the real, module-level
+      // COVERAGE_RULES -- asserted directly against `without` here instead.
       expect(without.filter((rule) => rule.matches(d)).length, d.id).toBe(0)
     }
     expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
-  })
-
-  it('BITE -- Tiefling\'s own still-unauthored decisions are never falsely greened by impl:species-feature-option', () => {
-    for (const d of tieflingDecisions) {
-      expect(matchingRules(d).map((r) => r.id)).toEqual(d.family === 'variant-choice' ? ['blk:species-lineage'] : ['blk:species-damage'])
-    }
   })
 
   it('BITE -- runtime-only species traits never masquerade as a mandatory build decision -- none is discovered as one at all', () => {
@@ -712,7 +728,13 @@ describe('PURE-AUTHORING SPECIES SWEEP -- reconciliation', () => {
     expect(dragonbornAll[0]!.family).toBe('damage-type-choice')
   })
 
-  it('a FUTURE, unsupported species-owned variant-choice decision is never falsely greened by impl:species-feature-option (fails closed)', () => {
+  // TIEFLING SPECIES COMPLETION -- `blk:species-lineage` is deleted (every real species-owned
+  // variant-choice/damage-type-choice decision is implemented now, so that rule matched zero real
+  // decisions -- see its own removal note above). A future, genuinely unsupported species lineage
+  // shape (one whose facet declares no `choice:species.feature-option` at all) therefore matches
+  // ZERO coverage rules -- `classifyDecision`'s own fail-closed default (never a rule's own
+  // `allowZero`) is what catches it, asserted directly here.
+  it('a FUTURE, unsupported species-owned variant-choice decision matches zero coverage rules and classifies blocked (fails closed via classifyDecision\'s own default, not a dedicated rule)', () => {
     const synthetic: DecisionRecord = {
       id: 'species:future-xphb:L1:variant-choice:lineage',
       owner: { kind: 'species', slug: 'future-xphb', name: 'Future' },
@@ -723,6 +745,79 @@ describe('PURE-AUTHORING SPECIES SWEEP -- reconciliation', () => {
       cardinality: 1,
       source: 'lineage'
     }
-    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic)).map((r) => r.id)).toEqual(['blk:species-lineage'])
+    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic))).toEqual([])
+    expect(classifyDecision(synthetic)).toMatchObject({ status: 'blocked', rule: 'unclassified' })
+  })
+})
+
+describe('TIEFLING SPECIES COMPLETION -- reconciliation', () => {
+  const tieflingDecisions = DECISIONS.filter((d) => d.owner.slug === 'tiefling-xphb')
+  const variantDecision = tieflingDecisions.find((d) => d.family === 'variant-choice')!
+  const damageDecision = tieflingDecisions.find((d) => d.family === 'damage-type-choice')!
+  const sizeDecision = tieflingDecisions.find((d) => d.family === 'size-choice')!
+
+  it('RECLASSIFICATION -- all three of Tiefling\'s own real decisions are now implemented, none a phantom extra', () => {
+    expect(tieflingDecisions).toHaveLength(3)
+    expect(tieflingDecisions.map((d) => d.family).sort()).toEqual(['damage-type-choice', 'size-choice', 'variant-choice'])
+    for (const d of tieflingDecisions) expect(classifyDecision(d).status, d.id).toBe('implemented')
+    expect(classifyDecision(variantDecision).rule).toBe('impl:species-feature-option')
+    expect(classifyDecision(damageDecision).rule).toBe('impl:species-feature-option')
+    expect(classifyDecision(sizeDecision).rule).toBe('impl:species-size-choice')
+  })
+
+  it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
+    expect(contractViolations(DECISIONS)).toEqual([])
+  })
+
+  it('BITE -- deleting impl:species-feature-option leaves Tiefling\'s own variant-choice AND damage-type-choice decisions uncovered (one legacy pick, two discovered decisions)', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:species-feature-option')
+    expect(without.filter((rule) => rule.matches(variantDecision)).length).toBe(0)
+    expect(without.filter((rule) => rule.matches(damageDecision)).length).toBe(0)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- deleting impl:species-size-choice leaves Tiefling\'s own size-choice decision uncovered', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:species-size-choice')
+    expect(without.filter((rule) => rule.matches(sizeDecision)).length).toBe(0)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- Tiefling\'s own fixed legacy consequence (resistance) never becomes a SECOND mandatory decision alongside the legacy pick itself', () => {
+    // Tiefling's own resistance is discovered as a SEPARATE decision family (damage-type-choice)
+    // purely because `detectSpeciesDecisions` scans `resist` and `additionalSpells`/lineage
+    // entries independently -- re-verified directly this phase, not assumed: both decisions
+    // reclassify through the SAME single authored choice (one Fiendish Legacy pick), never two
+    // independent player decisions. No THIRD decision exists for the resistance itself beyond
+    // these two already-accounted-for discovery artifacts.
+    expect(tieflingDecisions.filter((d) => d.family === 'damage-type-choice' || d.family === 'variant-choice')).toHaveLength(2)
+  })
+
+  it('BITE -- the once-per-Long-Rest innate free-cast runtime effect is never discovered as a mandatory build decision', () => {
+    // Otherworldly Presence's unconditional Thaumaturgy grant, and every legacy's own Level-3/5
+    // "cast once free, then via a real slot" runtime behavior, are NOT fields
+    // `detectSpeciesDecisions` scans at all -- Tiefling's real decision population is EXACTLY the
+    // 3 decisions this phase implements (legacy, resistance, size), never a phantom 4th
+    // "free-cast" decision silently invented or silently blocked.
+    expect(tieflingDecisions).toHaveLength(3)
+  })
+
+  it('a Tiefling-owned option is never offered by Elf\'s or Gnome\'s own facet, and vice versa, despite sharing the same generic ChoiceSet ids', () => {
+    // `choice:species.feature-option` and `choice:species.innate-spellcasting-ability` are shared
+    // verbatim by Elf, Gnome, AND Tiefling -- re-verified directly against the real facets:
+    // Tiefling's own `from` array names ONLY its own 3 Fiendish Legacy Sources, never Elf's Elven
+    // Lineage Sources or Gnome's Gnomish Lineage Sources (and vice versa), so a stale answer from
+    // one species can never be among another's own legal options merely because the ChoiceSet id
+    // is shared -- the Builder-level proof of this lives in create-v2-species-sweep.test.ts's own
+    // "SPECIES SWITCHING" describe block; this is the underlying facet-data fact that proof rests on.
+    const tieflingFacet = findRulesFacet('dnd5e.2024', 'species', 'tiefling-xphb')!
+    const elfFacet = findRulesFacet('dnd5e.2024', 'species', 'elf-xphb')!
+    const gnomeFacet = findRulesFacet('dnd5e.2024', 'species', 'gnome-xphb')!
+    const tieflingLegacyOptions = tieflingFacet.choices!.find((c) => c.choiceSet === 'choice:species.feature-option')!.from
+    const elfLineageOptions = elfFacet.choices!.find((c) => c.choiceSet === 'choice:species.feature-option')!.from
+    const gnomeLineageOptions = gnomeFacet.choices!.find((c) => c.choiceSet === 'choice:species.feature-option')!.from
+    for (const option of tieflingLegacyOptions ?? []) {
+      expect(elfLineageOptions).not.toContain(option)
+      expect(gnomeLineageOptions).not.toContain(option)
+    }
   })
 })

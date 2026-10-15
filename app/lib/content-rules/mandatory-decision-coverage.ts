@@ -662,29 +662,17 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: (d) => is(d, 'species', 'feat-choice')
   },
-  {
-    id: 'blk:species-lineage',
-    status: 'blocked',
-    // PURE-AUTHORING SPECIES SWEEP -- excludes Elf's/Gnome's/Goliath's own variant-choice (now
-    // covered by impl:species-feature-option above) and Aasimar's own spell-grant (covered by
-    // impl:species-spell-fixed-grant). Tiefling alone remains: its own lineage CHOICE is now
-    // representable in principle (the SAME choice:species.feature-option reuse that unblocked
-    // Elf/Gnome/Goliath would work identically for Tiefling), but it is not authored this phase.
-    reason: 'Species lineage, ancestry, or legacy choice: Tiefling\'s own Fiendish Legacy choice is now representable in principle via the generic choice:species.feature-option mechanism (the same reuse Elf/Gnome/Goliath now use), but it is not authored this phase (explicitly out of scope).',
-    ledgerIds: [],
-    matches: (d) => (is(d, 'species', 'variant-choice') && !speciesFeatureOptionCovered(d.owner.slug)) || (is(d, 'species', 'spell-grant') && !speciesFixedSpellGrantCovered(d.owner.slug))
-  },
-  {
-    id: 'blk:species-damage',
-    status: 'blocked',
-    // PURE-AUTHORING SPECIES SWEEP -- excludes Dragonborn's own damage-type-choice (now covered by
-    // impl:species-feature-option: the ancestry pick itself is the decision, and each option's own
-    // Source modifiers resolve the linked resistance consequence). Tiefling alone remains -- its
-    // own resistance is tied to the SAME Fiendish Legacy pick that remains unauthored.
-    reason: 'Species damage-type CHOICE tied to an unauthored lineage/legacy pick (Tiefling\'s own Fiendish Legacy -- poison/necrotic/fire). Representable in principle via the same Source-modifier mechanism Dragonborn now uses, once Tiefling\'s own lineage choice is authored; not authored this phase.',
-    ledgerIds: [],
-    matches: (d) => is(d, 'species', 'damage-type-choice') && !speciesFeatureOptionCovered(d.owner.slug)
-  },
+  // TIEFLING SPECIES COMPLETION -- `blk:species-lineage`/`blk:species-damage` are REMOVED: Tiefling
+  // was the one real species-owned `variant-choice`/`damage-type-choice` decision either rule still
+  // matched (Aasimar/Dragonborn/Elf/Gnome/Goliath were already excluded last phase); now that
+  // Tiefling's own Fiendish Legacy is authored (the same choice:species.feature-option reuse), both
+  // rules match zero real decisions -- a 'blocked' rule may never carry `allowZero` (see this
+  // file's own established contract), so, mirroring the prior deletion of `blk:origin-feat
+  // -unsupported` two phases ago, both are deleted outright rather than kept alive artificially.
+  // Every species-owned `variant-choice`/`damage-type-choice` decision today is implemented, via
+  // `impl:species-feature-option`; a future, genuinely unsupported species lineage/damage shape
+  // falls fail-closed through Rule A of the bidirectional contract itself (zero matching rules is
+  // itself a contract violation, caught by the BITE test proving exactly this).
   {
     id: 'blk:species-size',
     status: 'blocked',

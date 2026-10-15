@@ -368,6 +368,19 @@ export type FixedSpellGrant = {
   // new call site, never a second gating mechanism. Omitted (as for Telekinetic/Telepathic) means
   // unconditional, exactly as before this field existed.
   requiresActive?: readonly DefinitionId[]
+  // TIEFLING SPECIES COMPLETION -- the character level this grant first becomes true (Tiefling's
+  // own Fiendish Legacy: "When you reach character levels 3 and 5, you learn a higher-level
+  // spell... You always have that spell prepared" -- a genuine PROGRESSION-TIME fixed fact, never
+  // a decision). Omitted means 1 (every existing grant -- Aasimar's Light Bearer, Elf's/Gnome's
+  // own Level-1 lineage cantrips, every feat-owned grant -- is unconditionally resolvable from the
+  // moment its owner is active, exactly as before this field existed). Consumed by
+  // `resolveFixedSpellGrants`'s own new, optional `levelWindow` parameter -- a plain numeric
+  // comparison against the character's current/target level, reusing that SAME function, never a
+  // second resolver or a new persistence model. A grant naming a `minLevel` above the window
+  // resolved this call simply does not appear; it is picked up by a LATER call once the
+  // character's own level actually reaches it, never fabricated early and never duplicated once
+  // resolved (see that function's own header for the exact windowing contract).
+  minLevel?: number
 }
 
 export type RulesFacetFeatureRequirement = {

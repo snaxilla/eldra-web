@@ -553,6 +553,11 @@ export default defineEventHandler(async (event) => {
   // Gnome's own lineage-gated fixed cantrips (Drow's Dancing Lights, Forest Gnome's Minor
   // Illusion, etc.) need `FixedSpellGrant.requiresActive` resolved against the chosen lineage
   // Source, the same chosen-Source gate check Thaumaturge's/Magician's own spellRequirements use.
+  // TIEFLING SPECIES COMPLETION -- `levelWindow: { from: 0, to: 1 }` passed explicitly: creation is
+  // always exactly Level 1, so only a grant with `minLevel` 1 (every existing grant; every one of
+  // Tiefling's own Level-1 legacy cantrips and its unconditional Otherworldly Presence Thaumaturgy)
+  // resolves here. Tiefling's own Level-3/5 fixed grants (`minLevel: 3`/`5`) are resolved later, by
+  // `confirmProgression`'s own matching window, never here.
   const fixedSpellGrantsResolution = resolveFixedSpellGrants(
     [
       { packageId: species.packageId, facet: species.rulesFacet, ownerKey: species.slug },
@@ -562,7 +567,8 @@ export default defineEventHandler(async (event) => {
     ],
     catalogue.spells,
     [],
-    rulesChoices.selections
+    rulesChoices.selections,
+    { from: 0, to: 1 }
   )
   if (!fixedSpellGrantsResolution.ok) {
     throw createError({ statusCode: 400, statusMessage: fixedSpellGrantsResolution.reason })

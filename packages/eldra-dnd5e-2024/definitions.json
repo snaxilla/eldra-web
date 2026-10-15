@@ -6142,5 +6142,32 @@
     "category": "core.proficiency",
     "label": "Gnomish Lineage: Rock Gnome",
     "modifiers": []
+  },
+  {
+    "id": "source:fiendish-legacy.abyssal",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Fiendish Legacy: Abyssal",
+    "modifiers": [
+      { "target": "value:resistance.poison.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:fiendish-legacy.chthonic",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Fiendish Legacy: Chthonic",
+    "modifiers": [
+      { "target": "value:resistance.necrotic.granted", "phase": "set", "value": true }
+    ]
+  },
+  {
+    "id": "source:fiendish-legacy.infernal",
+    "kind": "source",
+    "category": "core.proficiency",
+    "label": "Fiendish Legacy: Infernal",
+    "modifiers": [
+      { "target": "value:resistance.fire.granted", "phase": "set", "value": true }
+    ]
   }
 ]

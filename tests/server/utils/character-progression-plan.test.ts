@@ -1124,3 +1124,181 @@ describe('confirmProgression -- feat authority (repeatability, prerequisite, cap
     })
   })
 })
+
+// TIEFLING SPECIES COMPLETION -- the CRITICAL ACCEPTANCE TARGET: Fiendish Legacy's own real
+// Level-3/5 fixed spell growth, proven through REAL `confirmProgression`/`resolveCurrentProgression`
+// authority (never a bare pure-helper call), using THIS file's own established "mock only the
+// Directus I/O boundary, run the real Rules Runtime" pattern. Species facet declares no mandatory
+// choice this file's own completeness stub would need answering beyond the legacy/ability picks
+// already recorded in `rulesChoices` below -- class is deliberately a bare, unfaceted Fighter (no
+// Fighting Style/Weapon Mastery noise) so every assertion stays about Tiefling's own species
+// mechanics alone.
+describe('TIEFLING SPECIES COMPLETION -- Fiendish Legacy Level-3/5 fixed spell growth, through real confirmProgression authority', () => {
+  const TIEFLING_ENTRY = baseEntry({ title: 'Tiefling', slug: 'tiefling-xphb', rulesFacet: findRulesFacet('dnd5e.2024', 'species', 'tiefling-xphb') ?? undefined })
+  const FIGHTER_ENTRY_BARE = baseEntry({ title: 'Fighter', slug: 'fighter-xphb' })
+  const ABYSSAL_SELECTIONS = {
+    'species:choice:species.feature-option': ['source:fiendish-legacy.abyssal'],
+    'species:choice:species.innate-spellcasting-ability': ['value:innate-spellcasting.ability.cha']
+  }
+  const CHTHONIC_SELECTIONS = {
+    'species:choice:species.feature-option': ['source:fiendish-legacy.chthonic'],
+    'species:choice:species.innate-spellcasting-ability': ['value:innate-spellcasting.ability.cha']
+  }
+
+  function tieflingCatalogue() {
+    const spell = (slug: string) => baseEntry({ title: slug, slug, packageId: 'eldra.content.xphb' })
+    return {
+      worldId: '5', packs: [], species: [], classes: [], backgrounds: [], feats: [], subclasses: [], items: [], monsters: [],
+      spells: [
+        spell('thaumaturgy-xphb'), spell('poison-spray-xphb'), spell('chill-touch-xphb'),
+        spell('ray-of-sickness-xphb'), spell('false-life-xphb'),
+        spell('hold-person-xphb'), spell('ray-of-enfeeblement-xphb')
+      ]
+    }
+  }
+
+  // A bare "already has its Level-1 spells" baseline, as if persisted by a prior create-v2.post
+  // write -- the Level-1 legacy cantrip + Otherworldly Presence's own unconditional Thaumaturgy,
+  // tagged with the SAME synthetic provenance `resolveFixedSpellGrants` itself writes.
+  function level1Spells(legacyCantripSlug: string) {
+    return [
+      { instanceId: 'a', ref: { packageId: 'eldra.content.xphb', slug: 'thaumaturgy-xphb' }, known: true, prepared: false, requirementIds: ['fixed-spell-grant.species.thaumaturgy-xphb'] },
+      { instanceId: 'b', ref: { packageId: 'eldra.content.xphb', slug: legacyCantripSlug }, known: true, prepared: false, requirementIds: [`fixed-spell-grant.species.${legacyCantripSlug}`] }
+    ]
+  }
+
+  function tieflingBlueprint(overrides: Record<string, unknown> = {}) {
+    return {
+      worldId: '5', characterId: '42', characterTitle: 'Rhyzae',
+      species: { status: 'resolved', entry: TIEFLING_ENTRY },
+      class: { status: 'resolved', entry: FIGHTER_ENTRY_BARE },
+      background: { status: 'resolved', entry: baseEntry({ title: 'Criminal', slug: 'criminal-xphb' }) },
+      abilityScores: { method: 'standard-array', scores: { str: 15, dex: 14, con: 13, int: 10, wis: 12, cha: 8 } },
+      rulesChoices: { selections: ABYSSAL_SELECTIONS },
+      inventory: [], notes: null, health: null,
+      spells: level1Spells('poison-spray-xphb'),
+      expendedSlots: {},
+      progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 1 }] },
+      packs: [],
+      ...overrides
+    }
+  }
+
+  beforeEach(() => {
+    getWorldContentCatalogueMock.mockResolvedValue(tieflingCatalogue())
+  })
+
+  async function confirmTo(targetLevel: number, blueprintOverrides: Record<string, unknown> = {}) {
+    assembleCharacterMock.mockResolvedValue({ available: true, blueprint: tieflingBlueprint(blueprintOverrides) })
+    const plan = await planProgression('5', '42', targetLevel)
+    if (!plan.ok) throw new Error('expected a valid plan')
+    return confirmProgression('5', '42', targetLevel, plan.plan.fingerprint)
+  }
+
+  it('Level 1 -> 2: no premature Level-3 grant -- only the already-persisted Level-1 spells remain', async () => {
+    const result = await confirmTo(2, { progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 1 }] } })
+    expect(result.ok).toBe(true)
+    // No NEW spell state to write at all -- the Level window (1, 2] contains neither legacy
+    // spell's own minLevel (3 or 5), so resolveFixedSpellGrants resolves nothing new.
+    expect(saveCharacterSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('Level 2 -> 3: the correct Abyssal Level-3 spell (Ray of Sickness) is granted, always prepared', async () => {
+    const result = await confirmTo(3, { progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 2 }] } })
+    expect(result.ok).toBe(true)
+    expect(saveCharacterSpellcastingMock).toHaveBeenCalledTimes(1)
+    const [, written] = saveCharacterSpellcastingMock.mock.calls[0]!
+    const raySickness = written.spells.find((s: any) => s.ref?.slug === 'ray-of-sickness-xphb')
+    expect(raySickness).toBeDefined()
+    expect(raySickness.known).toBe(false)
+    expect(raySickness.prepared).toBe(true)
+    // The Level-1 spells persisted BEFORE this confirm are retained, byte-identical, never
+    // renumbered.
+    expect(written.spells.some((s: any) => s.ref?.slug === 'thaumaturgy-xphb')).toBe(true)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'poison-spray-xphb')).toBe(true)
+    // Infernal's/Chthonic's own Level-3 spells never leak in for an Abyssal Tiefling.
+    expect(written.spells.some((s: any) => s.ref?.slug === 'false-life-xphb')).toBe(false)
+    // No duplicate physical rows: every instanceId is distinct.
+    const instanceIds = written.spells.map((s: any) => s.instanceId)
+    expect(new Set(instanceIds).size).toBe(instanceIds.length)
+  })
+
+  it('Level 3 -> 4: the Level-3 grant is retained, and no new grant is added prematurely', async () => {
+    const persistedAtLevel3 = [
+      ...level1Spells('poison-spray-xphb'),
+      { instanceId: 'c', ref: { packageId: 'eldra.content.xphb', slug: 'ray-of-sickness-xphb' }, known: false, prepared: true, requirementIds: ['fixed-spell-grant.species.ray-of-sickness-xphb'] }
+    ]
+    const result = await confirmTo(4, {
+      progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 3 }] },
+      spells: persistedAtLevel3
+    })
+    expect(result.ok).toBe(true)
+    // The window (3, 4] contains neither legacy spell's own minLevel (3 is excluded by the
+    // EXCLUSIVE lower bound -- already resolved; 5 is above the upper bound) -- nothing new.
+    expect(saveCharacterSpellcastingMock).not.toHaveBeenCalled()
+  })
+
+  it('Level 4 -> 5: the correct Abyssal Level-5 spell (Hold Person) is granted, Level-3 grant still present', async () => {
+    const persistedAtLevel4 = [
+      ...level1Spells('poison-spray-xphb'),
+      { instanceId: 'c', ref: { packageId: 'eldra.content.xphb', slug: 'ray-of-sickness-xphb' }, known: false, prepared: true, requirementIds: ['fixed-spell-grant.species.ray-of-sickness-xphb'] }
+    ]
+    const result = await confirmTo(5, {
+      progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 4 }] },
+      spells: persistedAtLevel4
+    })
+    expect(result.ok).toBe(true)
+    expect(saveCharacterSpellcastingMock).toHaveBeenCalledTimes(1)
+    const [, written] = saveCharacterSpellcastingMock.mock.calls[0]!
+    expect(written.spells.some((s: any) => s.ref?.slug === 'hold-person-xphb')).toBe(true)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'ray-of-sickness-xphb')).toBe(true)
+    const instanceIds = written.spells.map((s: any) => s.instanceId)
+    expect(new Set(instanceIds).size).toBe(instanceIds.length)
+  })
+
+  it('a DIRECT Level 1 -> 5 jump grants BOTH the Level-3 and Level-5 spells in one confirm, with no duplicates', async () => {
+    const result = await confirmTo(5, { progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 1 }] } })
+    expect(result.ok).toBe(true)
+    expect(saveCharacterSpellcastingMock).toHaveBeenCalledTimes(1)
+    const [, written] = saveCharacterSpellcastingMock.mock.calls[0]!
+    expect(written.spells.some((s: any) => s.ref?.slug === 'ray-of-sickness-xphb')).toBe(true)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'hold-person-xphb')).toBe(true)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'thaumaturgy-xphb')).toBe(true)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'poison-spray-xphb')).toBe(true)
+    const instanceIds = written.spells.map((s: any) => s.instanceId)
+    expect(new Set(instanceIds).size).toBe(instanceIds.length)
+  })
+
+  it('a DIFFERENT legacy (Chthonic) grants its OWN Level-3/5 spells, never Abyssal\'s', async () => {
+    const result = await confirmTo(5, {
+      rulesChoices: { selections: CHTHONIC_SELECTIONS },
+      spells: level1Spells('chill-touch-xphb'),
+      progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 1 }] }
+    })
+    expect(result.ok).toBe(true)
+    const [, written] = saveCharacterSpellcastingMock.mock.calls[0]!
+    expect(written.spells.some((s: any) => s.ref?.slug === 'false-life-xphb')).toBe(true)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'ray-of-enfeeblement-xphb')).toBe(true)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'ray-of-sickness-xphb')).toBe(false)
+    expect(written.spells.some((s: any) => s.ref?.slug === 'hold-person-xphb')).toBe(false)
+  })
+
+  it('a FRESH READ after the direct 1 -> 5 jump (resolveCurrentProgression) sees the exact persisted state, never re-mutated', async () => {
+    const result = await confirmTo(5, { progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 1 }] } })
+    expect(result.ok).toBe(true)
+    const [, written] = saveCharacterSpellcastingMock.mock.calls[0]!
+
+    // Simulate the fresh read a later request would perform: assembleCharacter now returns the
+    // JUST-WRITTEN spell state (a real character's own next read would see exactly this).
+    assembleCharacterMock.mockResolvedValue({
+      available: true,
+      blueprint: tieflingBlueprint({ spells: written.spells, progression: { classes: [{ classRef: { packageId: 'eldra.content.xphb', slug: 'fighter-xphb' }, level: 5 }] } })
+    })
+    const fresh = await resolveCurrentProgression('5', '42')
+    expect(fresh.ok).toBe(true)
+    if (!fresh.ok) return
+    expect(fresh.state.currentLevel).toBe(5)
+    expect(fresh.state.spells.some((s: any) => s.ref?.slug === 'ray-of-sickness-xphb')).toBe(true)
+    expect(fresh.state.spells.some((s: any) => s.ref?.slug === 'hold-person-xphb')).toBe(true)
+  })
+})

@@ -113,15 +113,20 @@ describe('P2 spell corpus authority', () => {
   // Elf's/Gnome's/Goliath's own variant-choice (each species' lineage/ancestry CHOICE itself,
   // via the generic choice:species.feature-option reuse). Moving the census from 651/435/181 to
   // 651/439/177.
-  it('the Phase-0 decision census after the Pure-Authoring Species Sweep: 651 total, 439 implemented, 177 blocked, 35 optional', () => {
+  // TIEFLING SPECIES COMPLETION -- no new discovery this phase either; exactly 3 more real
+  // decisions reclassify blocked -> implemented: Tiefling's own variant-choice (Fiendish Legacy)
+  // and damage-type-choice (both via choice:species.feature-option reuse, exactly like
+  // Dragonborn's own) plus its own size-choice (via choice:species.size reuse, exactly like
+  // Aasimar's own). Moving the census from 651/439/177 to 651/442/174.
+  it('the Phase-0 decision census after Tiefling Species Completion: 651 total, 442 implemented, 174 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(651)
-    expect(counts.implemented).toBe(439)
-    expect(counts.blocked).toBe(177)
+    expect(counts.implemented).toBe(442)
+    expect(counts.blocked).toBe(174)
     expect(counts.optional).toBe(35)
   })
 

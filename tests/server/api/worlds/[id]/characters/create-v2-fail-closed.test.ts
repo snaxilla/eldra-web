@@ -53,6 +53,7 @@ const entry = (title: string, slug: string, facet: any) => ({
 const SPECIES = {
   elf: entry('Elf', 'elf-xphb', findRulesFacet('dnd5e.2024', 'species', 'elf-xphb')),
   tiefling: entry('Tiefling', 'tiefling-xphb', findRulesFacet('dnd5e.2024', 'species', 'tiefling-xphb')),
+  human: entry('Human', 'human-xphb', findRulesFacet('dnd5e.2024', 'species', 'human-xphb')),
   dwarf: entry('Dwarf', 'dwarf-xphb', null)
 }
 const CLASSES = {
@@ -132,11 +133,12 @@ beforeEach(() => {
 
 describe('PHASE 0 -- creation is refused, with zero writes, when a selected entity owns an unrecordable decision', () => {
   // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable (choice:species
-  // .feature-option); Tiefling replaces it as the one species whose own lineage choice (among its
-  // other, separately-blocked decisions) Eldra still cannot record.
-  it('a Tiefling (lineage choice, among its own other unauthored decisions) is refused before any entity is created', async () => {
-    await expect(handler(fakeEvent(bodyWith('tiefling-xphb', 'wizard-xphb', 'criminal-xphb')) as any))
-      .rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/cannot be completed yet.*lineage or ancestry choice/) })
+  // .feature-option); Tiefling replaced it last phase. TIEFLING SPECIES COMPLETION -- Tiefling
+  // itself is now REMOVED too (all 3 of its own decisions are implemented). Human replaces it as
+  // the one species whose own decision (a free Origin feat choice) Eldra still cannot record.
+  it('a Human (free Origin feat choice) is refused before any entity is created', async () => {
+    await expect(handler(fakeEvent(bodyWith('human-xphb', 'wizard-xphb', 'criminal-xphb')) as any))
+      .rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/cannot be completed yet.*a feat choice/) })
     expectNoWrites()
   })
 

@@ -433,6 +433,14 @@ export type CurrentProgressionState = {
   // it) -- see `gatherSpellRequirements`'s own header.
   speciesFacet: RulesFacet | null
   backgroundFacet: RulesFacet | null
+  // TIEFLING SPECIES COMPLETION -- each resolved slot's own `packageId`, alongside its already-
+  // exposed facet, so a LEVEL-GATED `fixedSpellGrants` resolution (owners need `{packageId, facet,
+  // ownerKey}`, the same shape `create-v2.post.ts` already builds at creation) can run here too,
+  // without re-deriving the resolved entry a second time. `null` mirrors the matching facet field
+  // exactly (an unresolved slot has neither).
+  speciesPackageId: string | null
+  classPackageId: string | null
+  backgroundPackageId: string | null
   // FEAT-OWNED SPELL ACQUISITION PHASE -- the character's own PERSISTED choice answers
   // (`rules_choices`), needed to decide whether a conditionally-gated `SpellRequirement`
   // (`requiresActive`) is currently active -- see `gatherSpellRequirements`'s own header for why a
@@ -459,6 +467,9 @@ export async function resolveCurrentProgression(
   const featFacets = (assembly.blueprint.feats ?? []).map((slot) => (slot.status === 'resolved' ? (slot.entry.rulesFacet ?? null) : null))
   const speciesFacet = assembly.blueprint.species?.status === 'resolved' ? (assembly.blueprint.species.entry.rulesFacet ?? null) : null
   const backgroundFacet = assembly.blueprint.background?.status === 'resolved' ? (assembly.blueprint.background.entry.rulesFacet ?? null) : null
+  const classPackageId = assembly.blueprint.class.status === 'resolved' ? assembly.blueprint.class.entry.packageId : null
+  const speciesPackageId = assembly.blueprint.species?.status === 'resolved' ? assembly.blueprint.species.entry.packageId : null
+  const backgroundPackageId = assembly.blueprint.background?.status === 'resolved' ? assembly.blueprint.background.entry.packageId : null
   return {
     ok: true,
     state: {
@@ -470,6 +481,9 @@ export async function resolveCurrentProgression(
       featFacets,
       speciesFacet,
       backgroundFacet,
+      speciesPackageId,
+      classPackageId,
+      backgroundPackageId,
       rulesChoiceSelections: assembly.blueprint.rulesChoices?.selections ?? {}
     }
   }
@@ -1679,22 +1693,55 @@ export async function confirmProgression(
     ? buildProgressionAcceptedSpellEntries(persistedStoredSpells, spellRequirements, planResult.spellPlan, planResult.spellTentative)
     : persistedStoredSpells
 
+  // TIEFLING SPECIES COMPLETION -- species/class/background-owned LEVEL-GATED fixed grants
+  // (Tiefling's own Fiendish Legacy Level-3/5 spell, "you always have that spell prepared"): a
+  // SEPARATE call from the feat-acquisition one immediately below, windowed `{ from: currentLevel,
+  // to: targetLevel }` -- the EXCLUSIVE lower bound is what makes this call safe to make on EVERY
+  // confirm without ever re-resolving (and therefore duplicating) a grant an EARLIER confirm
+  // already resolved (see `resolveFixedSpellGrants`'s own header for the full windowing contract).
+  // A direct multi-level jump (e.g. Level 1 -> 5) resolves every grant in between in this ONE call,
+  // since the window spans the whole jump. Feats are deliberately NOT included here -- their own
+  // fixed grants are gated by ACQUISITION, not a level threshold, and remain on the untouched call
+  // below.
+  const levelGatedOwners = [
+    { packageId: current.state.speciesPackageId ?? '', facet: current.state.speciesFacet, ownerKey: 'species' },
+    { packageId: current.state.classPackageId ?? '', facet: current.state.classFacet, ownerKey: 'class' },
+    { packageId: current.state.backgroundPackageId ?? '', facet: current.state.backgroundFacet, ownerKey: 'background' }
+  ].filter((owner) => (owner.facet?.fixedSpellGrants ?? []).some((grant) => (grant.minLevel ?? 1) > 1))
+
   let fixedSpellGrantEntries: StoredSpellEntry[] = []
-  if (resolvedFeatAcquisitions.length > 0) {
+  if (levelGatedOwners.length > 0 || resolvedFeatAcquisitions.length > 0) {
     const catalogue = await getWorldContentCatalogue(worldId)
-    const fixedSpellGrantsResolution = resolveFixedSpellGrants(
-      resolvedFeatAcquisitions.map((acquisition) => ({
-        packageId: acquisition.ref.packageId,
-        facet: catalogue.feats.find((entry) => entry.packageId === acquisition.ref.packageId && entry.slug === acquisition.ref.slug)?.rulesFacet,
-        ownerKey: acquisition.ref.slug
-      })),
-      catalogue.spells,
-      nextAcquiredSpells
-    )
-    if (!fixedSpellGrantsResolution.ok) {
-      return { ok: false, reason: 'illegal-feat-selection', message: fixedSpellGrantsResolution.reason }
+
+    if (levelGatedOwners.length > 0) {
+      const levelGatedResolution = resolveFixedSpellGrants(
+        levelGatedOwners,
+        catalogue.spells,
+        nextAcquiredSpells,
+        { ...current.state.rulesChoiceSelections, ...answers },
+        { from: currentLevel, to: targetLevel }
+      )
+      if (!levelGatedResolution.ok) {
+        return { ok: false, reason: 'illegal-feat-selection', message: levelGatedResolution.reason }
+      }
+      fixedSpellGrantEntries = levelGatedResolution.entries
     }
-    fixedSpellGrantEntries = fixedSpellGrantsResolution.entries
+
+    if (resolvedFeatAcquisitions.length > 0) {
+      const fixedSpellGrantsResolution = resolveFixedSpellGrants(
+        resolvedFeatAcquisitions.map((acquisition) => ({
+          packageId: acquisition.ref.packageId,
+          facet: catalogue.feats.find((entry) => entry.packageId === acquisition.ref.packageId && entry.slug === acquisition.ref.slug)?.rulesFacet,
+          ownerKey: acquisition.ref.slug
+        })),
+        catalogue.spells,
+        [...nextAcquiredSpells, ...fixedSpellGrantEntries]
+      )
+      if (!fixedSpellGrantsResolution.ok) {
+        return { ok: false, reason: 'illegal-feat-selection', message: fixedSpellGrantsResolution.reason }
+      }
+      fixedSpellGrantEntries = [...fixedSpellGrantEntries, ...fixedSpellGrantsResolution.entries]
+    }
   }
 
   if (nextAcquiredSpells !== persistedStoredSpells || fixedSpellGrantEntries.length > 0) {

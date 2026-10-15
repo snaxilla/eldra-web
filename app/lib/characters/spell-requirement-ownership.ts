@@ -113,16 +113,31 @@ export type ResolveFixedSpellGrantsResult =
 // own chosen-Source gate). An inactive grant is simply skipped, never an error -- the same
 // "non-live, non-blocking" posture `gatherSpellRequirements` already establishes for a
 // `SpellRequirement` whose gate is not yet satisfied.
+//
+// TIEFLING SPECIES COMPLETION -- `levelWindow` added, default `{ from: 0, to: Infinity }`: every
+// pre-existing call site (every current caller resolves feat-owned grants, none of which name a
+// `minLevel`) keeps resolving every grant regardless of level, byte-identical to before this
+// parameter existed. A grant's own `minLevel` (default 1) must fall in `(from, to]` to resolve --
+// the EXCLUSIVE lower bound is what makes repeat calls safe: a caller resolving level-by-level
+// (the Level Manager's own `confirmProgression`, advancing `from` to the character's own
+// just-reached level each call) can never re-resolve, and therefore never duplicate, a grant it
+// already resolved on an earlier call, without this function needing to inspect `existing` for
+// that purpose at all -- the caller's own window IS the de-duplication. A direct multi-level jump
+// (e.g. Level 1 -> 5 in one call) naturally resolves every grant in between in the SAME call,
+// since the window spans the whole jump.
 export function resolveFixedSpellGrants(
   owners: readonly FixedSpellGrantOwner[],
   catalogue: readonly { packageId: string, slug: string, title?: string }[],
   existing: readonly StoredSpellEntry[] = [],
-  selections: Readonly<Record<string, readonly string[]>> = {}
+  selections: Readonly<Record<string, readonly string[]>> = {},
+  levelWindow: { from: number, to: number } = { from: 0, to: Infinity }
 ): ResolveFixedSpellGrantsResult {
   const facets = owners.map((owner) => owner.facet)
   const entries: StoredSpellEntry[] = []
   for (const owner of owners) {
     for (const grant of owner.facet?.fixedSpellGrants ?? []) {
+      const minLevel = grant.minLevel ?? 1
+      if (minLevel <= levelWindow.from || minLevel > levelWindow.to) continue
       if ((grant.requiresActive ?? []).some((id) => !isGateActive(id, selections, facets))) continue
       const found = catalogue.find((entry) => entry.packageId === owner.packageId && entry.slug === grant.slug)
       if (!found) {

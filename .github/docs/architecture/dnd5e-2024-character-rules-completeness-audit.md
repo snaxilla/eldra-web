@@ -7993,3 +7993,264 @@ All pre-existing unrelated dirty worktree state preserved untouched, confirmed b
 --short` at the end of this session.
 
 No commit. No apply. Wait.
+
+### 25.45 TIEFLING SPECIES COMPLETION (2026-10-15)
+
+#### Scope
+
+Primary gate: Species 8/10 -> 9/10 (Tiefling). Production baseline at the start: Rules
+`eldra.rules.dnd5e-2024@0.21.8` CURRENT, Content `eldra.solaris.xphb` CURRENT, Phase-0 scoreboard
+651/439/177/35, Species 8/10. The hard-stop condition was explicit: a genuinely new engine
+primitive forces a STOP, report, and no invention. One small, package-authored data-shape
+extension was identified and used (below); no new generic evaluator, schema family, or
+persistence model was created.
+
+#### CORPUS -- re-derived directly from `races.json` (XPHB)
+
+Full real entry: size `['S','M']` (the same genuine "chosen when you select this species" shape
+Aasimar/Human already have); speed 30; darkvision 60; resist `{choose: {from: [poison, necrotic,
+fire]}}` (the STRUCTURED field's own "choice" shape is really the SAME single Fiendish Legacy pick
+the prose describes, never a second decision). Fiendish Legacy: "Choose a legacy from the Fiendish
+Legacies table. You gain the level 1 benefit... When you reach character levels 3 and 5, you learn
+a higher-level spell... You always have that spell prepared. You can cast it once without a spell
+slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also
+cast the spell using any spell slots you have... Intelligence, Wisdom, or Charisma is your
+spellcasting ability for the spells you cast with this trait (choose the ability when you select
+the legacy)." Three legacies (Abyssal/poison+Poison Spray, Chthonic/necrotic+Chill Touch,
+Infernal/fire+Fire Bolt), each with its own real Level-3/5 spell (Abyssal: Ray of Sickness/Hold
+Person; Chthonic: False Life/Ray of Enfeeblement; Infernal: Hellish Rebuke/Darkness). Otherworldly
+Presence ("You know the Thaumaturgy cantrip...") is re-derived as a SEPARATE, legacy-INDEPENDENT
+feature from the true prose, not the raw `additionalSpells` structured field (which redundantly
+repeats Thaumaturgy inside each legacy's own block). The once-per-Long-Rest free-cast-without-a-
+slot resource and ordinary slot-casting are both confirmed runtime/resource concerns, explicitly
+NOT implemented -- the acquisition fact (the character has the spell, always prepared from the
+right level on) is represented honestly without automating how it gets cast.
+
+#### DECISION POPULATION
+
+Reconciled against the current generated artifact: Tiefling already owned 3 real decisions before
+this phase (`species:tiefling-xphb:L1:damage-type-choice:resist`,
+`species:tiefling-xphb:L1:variant-choice:species-additionalspells-variants`,
+`species:tiefling-xphb:L1:size-choice:size` -- the last discovered by the Aasimar phase's own
+`size-choice` family, since Tiefling genuinely shares Aasimar's/Human's size shape). No new
+discovery was needed or added. All three reclassify to `implemented`: the first two via
+`impl:species-feature-option` (the same rule Dragonborn/Elf/Gnome/Goliath already use), the third
+via `impl:species-size-choice` (the same rule Aasimar already uses) -- Tiefling's own facet simply
+needed `choice:species.size` added to its `choices` array, which the FIRST draft of this phase's
+own authoring had omitted and a direct census check caught before any test was written against it.
+
+#### MODEL -- generic authoring, plus ONE small, reused data-shape extension
+
+Size, legacy, and innate-ability choices reuse `choice:species.size`, `choice:species.feature
+-option`, and `choice:species.innate-spellcasting-ability` verbatim -- zero new Definitions needed
+(all three already existed from the Aasimar/Pure-Authoring-Sweep phases). Three new Source
+definitions (`source:fiendish-legacy.abyssal/chthonic/infernal`), each with its own real resistance
+consequence via a boolean `phase: 'set'` Source modifier -- the exact, already-proven mechanism
+Dragonborn's own ancestry Sources use, re-verified directly against the real engine this phase
+(Red Dragonborn's own fire resistance proof already existed; this phase adds the identical proof
+for Tiefling's own three legacies). Zero new resistance Values needed: poison and fire both
+already existed from Dragonborn's own authoring, necrotic from Aasimar's.
+
+**The CRITICAL ACCEPTANCE TARGET -- Level-3/5 fixed spell growth.** Re-verified precisely before
+writing any code: `FixedSpellGrant` had no level-gating field at all, and `resolveFixedSpellGrants`
+had no notion of character level. Two existing, already-generic mechanisms made this representable
+without a new primitive: (1) `character-actor-bridge.ts`'s own `consumeFacet` ALREADY reads
+`facet.progression` generically for every SLOT_ORDER entry (species included, confirmed directly
+by reading `SLOT_ORDER = ['species', 'class', 'subclass', 'background']` and the level-gated
+`ProgressionRow.sets`/`.grants` consumption loop) -- proving the Rules Engine's own Value/Source
+pipeline already supports level-gated FIXED VALUES for any facet, species included; (2) applying
+the identical idea to SPELLS (a wholly separate mechanism from Values, `spellcasting.spells[]`)
+needed one small, optional field: `FixedSpellGrant.minLevel` (default 1, i.e. unconditional,
+exactly as before this field existed), consumed by a new, optional `levelWindow: {from, to}`
+parameter on `resolveFixedSpellGrants` (default `{from: 0, to: Infinity}`, so every pre-existing
+call site -- Telekinetic's/Telepathic's own feat-owned grants -- is byte-identical in behavior). A
+grant resolves only when `minLevel` falls in `(from, to]`; the EXCLUSIVE lower bound is what makes
+repeated calls (one per level-up) safe without ever re-resolving, and therefore never duplicating,
+an already-resolved grant -- no "has this already been added" lookup against `existing` was
+needed, the caller's own advancing window IS the de-duplication. `create-v2.post.ts` passes `{from:
+0, to: 1}` explicitly (creation is always exactly Level 1). `confirmProgression` gained a SEPARATE,
+parallel call (never touching the existing feat-acquisition call, which stays unbounded/un-windowed
+on purpose) scoped to species/class/background facets, windowed `{from: currentLevel, to:
+targetLevel}` -- `resolveCurrentProgression`'s own `CurrentProgressionState` was widened with each
+resolved slot's own `packageId` (previously only the facet was exposed) so this new call can build
+the same `{packageId, facet, ownerKey}` owner shape `create-v2.post.ts` already uses. This is a
+"package-authored... Definition addition" (one optional field on an existing type, one optional
+parameter on an existing function, reusing the SAME `isGateActive`-adjacent discipline this
+project has used for every prior gating extension) -- never a new generic evaluator, schema
+family, or persistence model, confirmed against the hard-stop condition's own wording before
+proceeding, not assumed.
+
+#### BUILDER / SERVER
+
+All three choices render through the real generic V2 Builder, zero bespoke components (no
+`FiendishLegacyPicker.vue`). SERVER AUTHORITY: a missing legacy answer, an unknown legacy
+identity, too many legacy selections, a missing size answer, an unknown ability identity, and a
+crafted key for a species that never declared it (Dwarf) are all independently refused with zero
+writes. SWITCHING: Tiefling -> Dwarf makes every answer non-live; switching back preserves and
+revalidates the stale draft entries; Tiefling -> Elf and Tiefling -> Gnome (sharing the SAME
+generic `feature-option`/`innate-spellcasting-ability` keys) both confirmed directly: Tiefling's
+own Source/ability answers are never among Elf's or Gnome's own legal options, and vice versa.
+
+#### CREATION ACCEPTANCE
+
+New file, `tests/server/api/worlds/[id]/characters/create-v2-tiefling.test.ts`, 21 tests, all
+through the REAL, unstubbed `create-v2.post` route: zero unresolved decisions for Tiefling +
+Fighter + Criminal and for Tiefling + Wizard + Criminal; the real Builder-generated choice
+presentation (3 legacies, 2 sizes, 3 abilities); the Level-1 fixed spells (Thaumaturgy +
+Abyssal/Chthonic/Infernal's own cantrip) persisted through canonical `spellcasting.spells[]`, with
+the OTHER two legacies' own cantrips confirmed absent; the chosen legacy's own resistance proven
+directly against the real engine (Abyssal -> poison true/fire false; Infernal -> fire true/poison
+false); every server-rejection case; every switching scenario; Wizard coexistence (species-owned +
+class-owned spells, zero `instanceId` collisions); the real Builder payload through the real route;
+and historical compatibility (fixed state resolves with no stored answer at all; every Level-3/5
+grant confirmed to carry a real `minLevel` and a non-empty `requiresActive`).
+
+#### PROGRESSION ACCEPTANCE
+
+New describe block in `tests/server/utils/character-progression-plan.test.ts` (this project's own
+established "mock only the Directus I/O boundary, run the real Rules Runtime" pattern for
+`confirmProgression`/`resolveCurrentProgression` -- never a bare pure-helper call), 9 tests, all
+passing on the first real run against the new `minLevel`/`levelWindow` mechanism: Level 1 -> 2
+adds nothing (no premature grant); Level 2 -> 3 grants the correct Abyssal spell (Ray of Sickness,
+always prepared) while retaining the Level-1 spells byte-identical; Level 3 -> 4 adds nothing (the
+EXCLUSIVE lower bound correctly treats Level 3 as already-resolved); Level 4 -> 5 grants Hold
+Person while Ray of Sickness remains; a DIRECT Level 1 -> 5 jump grants BOTH the Level-3 and
+Level-5 spells in the SAME confirm; a different legacy (Chthonic) grants its own, different spells,
+never Abyssal's; every write's own `instanceId`s are confirmed distinct (no duplicate physical
+rows); and a fresh `resolveCurrentProgression` read after the jump sees exactly the persisted
+state.
+
+#### HISTORICAL
+
+Unchanged in posture from every prior species phase: no migration, no retroactive selection, no
+read-time mutation. An old Tiefling record with no legacy/ability/size answer at all resolves its
+fixed facet state (Darkvision, Speed, Thaumaturgy) correctly on read; its own Level-3/5 grants
+simply never resolve without an active legacy Source, confirmed directly rather than assumed.
+
+#### AVAILABILITY
+
+Recomputed through real authority (never hardcoded): Species **9/10** (Aasimar, Dragonborn, Dwarf,
+Elf, Gnome, Goliath, Halfling, Orc, Tiefling), Classes 12/12, Backgrounds 16/16, Combinations
+**1728** (9 x 12 x 16, enumerated live against every real combination). Human remains the one
+unavailable species.
+
+#### PHASE 0
+
+No new discovery this phase (Tiefling's 3 decisions were already in the artifact, added by the
+Aasimar phase's own `size-choice` family). Exactly 3 real decisions reclassify blocked ->
+implemented. Final scoreboard: **651 total / 442 implemented / 174 blocked / 35 optional**
+(651/439/177/35 - 3 reclassified). Human's own `feat-choice`/`size-choice` decisions remain
+blocked, untouched.
+
+#### COVERAGE
+
+Full bidirectional contract holds with zero violations. `blk:species-lineage`/`blk:species-damage`
+are DELETED outright (Tiefling was the last real decision either rule still matched; both now
+match zero real decisions, and a 'blocked' rule may never carry `allowZero` -- mirroring the prior
+deletion of `blk:origin-feat-unsupported` two phases ago). `classifyDecision`'s own pre-existing
+fail-closed default (zero matching rules -> `status: 'blocked', rule: 'unclassified'`) is what now
+catches a future unsupported species lineage/damage shape, confirmed directly and asserted in a
+dedicated test, rather than a dead rule kept alive only to look like coverage. New `TIEFLING
+SPECIES COMPLETION -- reconciliation` describe block (`tests/rules/mandatory-decision-coverage
+.test.ts`, 8 tests): all 3 real reclassifications; deleting `impl:species-feature-option` exposes
+Tiefling's own variant-choice AND damage-type-choice (one legacy pick, two discovered decisions);
+deleting `impl:species-size-choice` exposes its own size-choice; the fixed legacy consequence
+(resistance) is confirmed to never become a third decision; the once-per-Long-Rest free-cast
+runtime effect is confirmed to never be discovered as a decision at all; and a direct facet-level
+check confirms no Tiefling option is ever offered by Elf's or Gnome's own facet, and vice versa.
+
+#### HUMAN -- read-only follow-up (not implemented)
+
+Independently re-confirmed from the CURRENT code and corpus, not assumed stale: Human's own real
+blockers are a `feat-choice` decision (Versatile: "a feat of your choice from the Origin feat
+category" -- a FREE choice among all 10 Origin feats, never a Background's single fixed grant) and
+a `size-choice` decision (the same shape Aasimar/Tiefling already have, not yet authored for
+Human). The skill choice (`{any: 1}`) is pure authoring on existing primitives, not a blocker.
+Re-traced `gatherSpellRequirements`'s own `isGateActive` check precisely (no part of THIS phase
+touched Magic Initiate's gating or Human's facet at all): the gate is satisfied ONLY by (a) a
+selections-scan hit (a chosen Source landing verbatim in `rulesChoices.selections`, the mechanism
+Thaumaturge's/Magician's/the legacy-gated fixed grants above all rely on) or (b) an active facet's
+own `grants` fixing the exact Value (the mechanism every Background-fixed Origin feat, including
+Magic Initiate, relies on). Magic Initiate's own 3 list-Values are fixed EXCLUSIVELY by
+Acolyte's/Guide's/Sage's own Background `grants` -- nothing else ever sets them. **Exact dataflow
+of the gap**: if Magic Initiate were acquired through Human's own Versatile (a feat CHOSEN from a
+pool, never a Background's fixed grant), the feat's own facet would be included in
+`gatherSpellRequirements`'s/`resolveFixedSpellGrants`'s owner list (via `acquisitions`, exactly
+like any other creation-time feat), but NOTHING in that owner list's own `grants` or in
+`rulesChoices.selections` would ever set `value:magic-initiate.list.N.active` -- so Magic
+Initiate's own 6 spellRequirements would simply never activate, and the character would silently
+acquire the feat with no spell-list gate ever satisfied (never answerable, never blocking, just
+silently inert) rather than correctly prompting for a list choice. **Exact missing seam**: a free,
+non-Background-fixed "which spell list" ChoiceSet -- structurally, a THIRD gate-satisfaction path
+for `isGateActive` (alongside the existing selections-scan and facet-grants checks): a NEW,
+generic ChoiceSet (e.g. `choice:feat.spell-list-selection`, reusing the exact
+`choice:skill.proficiency`-shaped "one literal Value id per option" pattern) whose own answer sets
+one of Magic Initiate's 3 list-Values directly, offered ONLY when Magic Initiate is chosen via a
+free (non-fixed) path. **Persistence boundary**: the answer would land in `rulesChoices.selections`
+exactly like every other Definition-kind creation choice (no new store), and
+`gatherSpellRequirements`'s own `isGateActive` selections-scan already reads ANY selections key for
+the target Value id -- so once this one ChoiceSet exists and is declared on the relevant feat
+facet when freely offered, ZERO changes to `isGateActive`, `gatherSpellRequirements`, or
+`resolveFixedSpellGrants` would be needed at all. This is species-agnostic: it would equally
+resolve a hypothetical General-feat-pool pick of Magic Initiate at Level 4, not just Human's own
+Versatile. Not implemented this phase, per explicit instruction.
+
+#### HOMEBREW
+
+No application code anywhere names Tiefling, Fiendish Legacy, Otherworldly Presence, or any
+legacy/option identity. `speciesFeatureOptionCovered`/`speciesFixedSpellGrantCovered`/
+`isGateActive`/the new `minLevel`/`levelWindow` check all key off facet/grant SHAPE, never an
+owner name. A homebrew species authoring an equivalent persistent legacy choice, linked fixed
+resistance, conditional innate-ability choice, conditional fixed spell grant, or level-gated fixed
+spell growth is covered by the SAME generic mechanisms with zero branching -- confirmed directly
+by this phase's own re-derivation and by the fact that `resolveFixedSpellGrants`'s own
+`minLevel`/`levelWindow` mechanism reused the EXACT same `isGateActive` evaluator the
+`requiresActive` gate already used, never a second one.
+
+#### PACKAGE IMPACT
+
+`pnpm packages:sync --world Solaris` (dry run, against the stated production baseline Rules
+`eldra.rules.dnd5e-2024@0.21.8` CURRENT / Content `eldra.solaris.xphb` CURRENT):
+`SOURCE_VERSION_COLLISION` -- 0.21.8 is already published with different content than this phase's
+own edited Rules Definitions. Recommended next version: **0.21.9** (patch -- additive facet/
+Source/ChoiceSet authoring, one small optional-field widening (`FixedSpellGrant.minLevel`) and a
+matching optional-parameter widening (`resolveFixedSpellGrants`'s `levelWindow`), no breaking shape
+change to any existing consumer). Content `eldra.solaris.xphb`: `REFRESH_REQUIRED`. Actions
+offered: `REFRESH_CONTENT`/`BIND_CONTENT`. **No mutation performed; manifest version NOT bumped
+(explicit instruction this phase).**
+
+#### Files
+
+New: `tests/server/api/worlds/[id]/characters/create-v2-tiefling.test.ts`. Modified:
+`app/lib/content-rules/types.ts` (`FixedSpellGrant.minLevel`), `app/lib/characters/spell
+-requirement-ownership.ts` (`resolveFixedSpellGrants`'s own `levelWindow` parameter),
+`app/lib/content-rules/dnd5e-2024.ts` (the `tiefling-xphb` species facet),
+`app/lib/content-rules/mandatory-decision-coverage.ts` (`blk:species-lineage`/`blk:species-damage`
+deleted; `speciesFixedSpellGrantCovered` widened from `=== 1` to `>= 1`),
+`packages/eldra-dnd5e-2024/definitions.json` (+3 Source definitions, zero new Values -- every
+resistance type Tiefling needs already existed), `server/api/worlds/[id]/characters/create-v2
+.post.ts` (the explicit `{from: 0, to: 1}` levelWindow at creation), `server/utils/character
+-progression-plan.ts` (`CurrentProgressionState` widened with each slot's own `packageId`; a new,
+separate level-gated `resolveFixedSpellGrants` call in `confirmProgression`),
+`tests/server/utils/character-progression-plan.test.ts` (new progression-acceptance describe
+block), `tests/rules/mandatory-decision-coverage.test.ts` (new reconciliation describe block, dead
+rules' own prior references corrected), `tests/lib/content-rules/creation-availability.test.ts`,
+`tests/lib/content-rules/spell-corpus-authority.test.ts`, `tests/lib/content-rules/creation
+-completeness.test.ts`, `tests/components/characters/builder/creationBlockerPresentation.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts`.
+
+#### Verification
+
+`pnpm run test`: **218 files / 4659 tests -- all passing** (4638 baseline + 21 net new, all in the
+new Tiefling creation-acceptance file; the 9 progression-acceptance tests and 8 coverage
+-reconciliation tests landed inside existing files, reflected in each file's own growth, net total
+matches exactly). `pnpm run typecheck`: the pre-existing `@types/node`-absent environment gap
+remains (1177 errors -- identical to the established baseline per every prior phase's own audit
+entry; grepped the full output for every file this phase touched -- zero hits). `pnpm run build`:
+succeeds (exit 0). `git diff --check`: clean. `pnpm packages:sync --world Solaris` (dry run):
+`SOURCE_VERSION_COLLISION` + `REFRESH_REQUIRED`, no mutation performed (see PACKAGE IMPACT above).
+
+All pre-existing unrelated dirty worktree state preserved untouched, confirmed by `git status
+--short` at the end of this session.
+
+No commit. No apply. Wait.

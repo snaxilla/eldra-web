@@ -31,11 +31,13 @@ const INTERNAL = /ENGINE_BLOCKED|CONTENT_BLOCKED|MILESTONE|primitive|blk:|unclas
 
 describe('fail-closed presentation -- which entries are unavailable and why', () => {
   // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable; Tiefling
-  // replaces it as the one species still genuinely unavailable (its own FIRST unresolved
-  // decision is the damage-type choice tied to its own unauthored Fiendish Legacy pick).
-  it('a species whose lineage/legacy-tied choice Eldra cannot record is unavailable; Dwarf (no decisions) is not', () => {
-    const [tiefling, dwarf] = withCreationBlockers([entry('tiefling-xphb', 'Tiefling'), entry('dwarf-xphb', 'Dwarf')], 'species')
-    expect(tiefling!.rulesFacet?.creationUnavailable).toMatch(/^Requires a damage type choice/)
+  // replaced it last phase. TIEFLING SPECIES COMPLETION -- Tiefling itself is now REMOVED too
+  // (all 3 of its own decisions -- legacy, resistance, size -- are implemented). Human replaces
+  // it as the one species still genuinely unavailable (its own FIRST unresolved decision is the
+  // free Origin feat choice).
+  it('a species whose own decision Eldra cannot record is unavailable; Dwarf (no decisions) is not', () => {
+    const [human, dwarf] = withCreationBlockers([entry('human-xphb', 'Human'), entry('dwarf-xphb', 'Dwarf')], 'species')
+    expect(human!.rulesFacet?.creationUnavailable).toMatch(/^Requires a feat choice/)
     expect(dwarf!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
@@ -66,16 +68,15 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
   // this way, so only the species lineage/spell-grant cases remain as "alone" examples.
   // AASIMAR CREATION COMPLETION PHASE -- Aasimar is REMOVED from this list too: it is now
   // creation-complete alone (size-choice + spell-grant both implemented, 0 unresolved). Tiefling
-  // replaces it (still genuinely blocked: species-lineage + species-damage + species-size, all
-  // untouched this phase). PURE-AUTHORING SPECIES SWEEP -- Elf is REMOVED too (its own lineage
-  // choice is now representable); Human replaces it (still blocked: its own free Origin-feat
-  // choice + its own new size-choice, neither touched this phase).
+  // replaced it last phase; PURE-AUTHORING SPECIES SWEEP removed Elf. TIEFLING SPECIES COMPLETION
+  // -- Tiefling itself is now REMOVED too (all 3 of its own decisions are implemented, 0
+  // unresolved alone). Human is the ONLY species, class, or background left anywhere in this
+  // codebase that still owns an unrecordable decision at all (Classes 12/12, Backgrounds 16/16,
+  // Species 9/10) -- the only remaining example across all three `ownCreationBlocker` kinds.
   it('no reason ever exposes an internal identifier', () => {
-    for (const [slug, kind] of [['human-xphb', 'species'], ['tiefling-xphb', 'species']] as const) {
-      const blocker = ownCreationBlocker(kind, slug)
-      expect(blocker, slug).not.toBeNull()
-      expect(blockerReason(blocker!)).not.toMatch(INTERNAL)
-    }
+    const blocker = ownCreationBlocker('species', 'human-xphb')
+    expect(blocker).not.toBeNull()
+    expect(blockerReason(blocker!)).not.toMatch(INTERNAL)
   })
 })
 

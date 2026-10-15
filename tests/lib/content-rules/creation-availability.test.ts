@@ -63,7 +63,11 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // roster (their own lineage/ancestry choice is now representable via choice:species.feature
 // -option reuse, zero new primitive), lifting species from 4 to 8 and combinations from 768 to
 // 1536 (8 x 12 x 16).
-const BASELINE = { species: 8, classes: 12, backgrounds: 16, combinations: 1536 }
+// TIEFLING SPECIES COMPLETION -- Tiefling's own Fiendish Legacy (choice:species.feature-option
+// reuse), size choice (choice:species.size reuse), and innate casting ability (choice:species
+// .innate-spellcasting-ability reuse) are all authored. Tiefling joins the creation-complete
+// roster (8 -> 9 species), lifting the complete combinations from 1536 to 1728 (9 x 12 x 16).
+const BASELINE = { species: 9, classes: 12, backgrounds: 16, combinations: 1728 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

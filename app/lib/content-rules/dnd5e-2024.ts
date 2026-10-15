@@ -3646,6 +3646,75 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { slug: 'prestidigitation-xphb', flag: 'known', requiresActive: ['source:gnomish-lineage.rock-gnome'] }
       ]
     },
+    // TIEFLING SPECIES COMPLETION -- re-derived directly from races.json (XPHB), not trusted from
+    // any prior forecast. Full real entry: size ['S','M'] (the SAME "chosen when you select this
+    // species" shape Aasimar/Human already have -- reuses choice:species.size verbatim); speed 30;
+    // darkvision 60; resist `{choose: {from: [poison, necrotic, fire]}}` -- the STRUCTURED field's
+    // own "choice" shape is really the SAME single Fiendish Legacy pick the prose describes (never
+    // a second, separate decision -- `impl:species-feature-option` already matches BOTH
+    // `damage-type-choice` and `variant-choice`, so authoring the legacy choice alone resolves
+    // both discovered decisions at once, exactly as it did for Dragonborn). Fiendish Legacy:
+    // "Choose a legacy from the Fiendish Legacies table. You gain the level 1 benefit... When you
+    // reach character levels 3 and 5, you learn a higher-level spell... You always have that spell
+    // prepared... Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you
+    // cast with this trait (choose the ability when you select the legacy)" -- the EXACT Elf/Gnome
+    // two-decision shape (persistent legacy pick + a nested, unconditional innate-ability pick),
+    // reusing choice:species.feature-option + choice:species.innate-spellcasting-ability verbatim.
+    // Otherworldly Presence ("You know the Thaumaturgy cantrip...") is a SEPARATE, legacy-
+    // INDEPENDENT feature -- re-derived from the real prose, not the raw `additionalSpells`
+    // structured field (which redundantly repeats Thaumaturgy inside each legacy's own block,
+    // achieving the same end result but obscuring that it is unconditional) -- authored as a plain,
+    // ungated `fixedSpellGrants` entry, the same "re-derive the true prose, don't just mirror the
+    // structured field" discipline Elf's own High Elf entry already established.
+    'tiefling-xphb': {
+      choices: [
+        {
+          choiceSet: 'choice:species.size',
+          count: 1,
+          from: ['value:size.medium', 'value:size.small']
+        },
+        {
+          choiceSet: 'choice:species.feature-option',
+          count: 1,
+          from: ['source:fiendish-legacy.abyssal', 'source:fiendish-legacy.chthonic', 'source:fiendish-legacy.infernal']
+        },
+        {
+          choiceSet: 'choice:species.innate-spellcasting-ability',
+          count: 1,
+          from: ['value:innate-spellcasting.ability.int', 'value:innate-spellcasting.ability.wis', 'value:innate-spellcasting.ability.cha']
+        }
+      ],
+      grants: [
+        { set: 'value:speed.walking', to: 30 },
+        { set: 'value:sense.darkvision', to: 60 }
+      ],
+      // Otherworldly Presence: unconditional, no legacy gate at all. Level-1 legacy cantrips: each
+      // gated on its own legacy Source, `minLevel` omitted (defaults to 1, resolved at creation).
+      // Level-3/5 legacy spells: "you always have that spell prepared" -- flag 'prepared', the same
+      // wording convention Magic Initiate's/Telepathic's own fixed Level-1 spells already use --
+      // each gated on its own legacy Source AND carrying the real `minLevel` this phase's new field
+      // exists for, resolved ONLY once the character's own level actually reaches it (see
+      // `resolveFixedSpellGrants`'s own header, app/lib/characters/spell-requirement-ownership.ts,
+      // and `confirmProgression`'s own new windowed call,
+      // server/utils/character-progression-plan.ts). The once-per-Long-Rest free-cast-without-a-
+      // slot resource, and ordinary slot-casting, are BOTH deliberately NOT authored here -- a
+      // runtime/resource concern, Milestone B, never required to represent the acquisition fact
+      // honestly. Casting ability (the player's own innate-spellcasting-ability pick) is the same
+      // deferred Milestone-B/runtime concern as every other feat/species-owned spell's own casting
+      // ability in this project so far -- never silently invented.
+      fixedSpellGrants: [
+        { slug: 'thaumaturgy-xphb', flag: 'known' },
+        { slug: 'poison-spray-xphb', flag: 'known', requiresActive: ['source:fiendish-legacy.abyssal'] },
+        { slug: 'chill-touch-xphb', flag: 'known', requiresActive: ['source:fiendish-legacy.chthonic'] },
+        { slug: 'fire-bolt-xphb', flag: 'known', requiresActive: ['source:fiendish-legacy.infernal'] },
+        { slug: 'ray-of-sickness-xphb', flag: 'prepared', requiresActive: ['source:fiendish-legacy.abyssal'], minLevel: 3 },
+        { slug: 'false-life-xphb', flag: 'prepared', requiresActive: ['source:fiendish-legacy.chthonic'], minLevel: 3 },
+        { slug: 'hellish-rebuke-xphb', flag: 'prepared', requiresActive: ['source:fiendish-legacy.infernal'], minLevel: 3 },
+        { slug: 'hold-person-xphb', flag: 'prepared', requiresActive: ['source:fiendish-legacy.abyssal'], minLevel: 5 },
+        { slug: 'ray-of-enfeeblement-xphb', flag: 'prepared', requiresActive: ['source:fiendish-legacy.chthonic'], minLevel: 5 },
+        { slug: 'darkness-xphb', flag: 'prepared', requiresActive: ['source:fiendish-legacy.infernal'], minLevel: 5 }
+      ]
+    },
     'human-xphb': {
       choices: [
         {

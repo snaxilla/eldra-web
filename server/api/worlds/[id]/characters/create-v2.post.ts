@@ -543,9 +543,17 @@ export default defineEventHandler(async (event) => {
   // `spellRequirements`/`spellSelections` machinery above (see FixedSpellGrant's own header,
   // app/lib/content-rules/types.ts) -- a slug missing from this World's own Content Catalogue fails
   // closed, before any entity is written, same posture as every other check in this handler.
+  // AASIMAR CREATION COMPLETION PHASE -- widened to include species (and background, for the same
+  // symmetry `gatherSpellRequirements` above already has): Aasimar's own Light Bearer is a true
+  // fixed grant owned by the SPECIES facet (no "of your choice" clause at all), the exact same
+  // shape Telekinetic's/Telepathic's own feat-owned fixed grants already use. Omitting species here
+  // was a real gap this phase closes, not a new primitive -- `resolveFixedSpellGrants` itself
+  // already accepts an arbitrary owner list.
   const fixedSpellGrantsResolution = resolveFixedSpellGrants(
     [
+      { packageId: species.packageId, facet: species.rulesFacet, ownerKey: species.slug },
       { packageId: characterClass.packageId, facet: characterClass.rulesFacet, ownerKey: characterClass.slug },
+      { packageId: background.packageId, facet: background.rulesFacet, ownerKey: background.slug },
       ...acquisitions.map((acquisition) => ({ packageId: acquisition.featRef.packageId, facet: catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet, ownerKey: acquisition.featRef.slug }))
     ],
     catalogue.spells

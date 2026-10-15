@@ -171,10 +171,23 @@ describe('P3.5 -- spell decision reconciliation', () => {
     for (const d of subclassSpell) expect(classifyDecision(d).status, d.id).not.toBe('implemented')
   })
 
-  it('STILL BLOCKED -- species-granted spell decisions are untouched by P3.5 (lineage spells -- their own authoring/workflow does not exist today)', () => {
+  // AASIMAR CREATION COMPLETION PHASE -- species-granted spell decisions are NO LONGER uniformly
+  // blocked: Aasimar's own Light Bearer (a true fixed grant, no "of your choice" clause at all)
+  // is now implemented (impl:species-spell-fixed-grant in mandatory-decision-coverage.ts), the
+  // exact same FixedSpellGrant shape Telekinetic's/Telepathic's own feat-owned fixed spells
+  // already use. Every OTHER species-owned spell decision (Elf/Gnome/Goliath/Tiefling's own
+  // lineage/legacy spells, all genuinely gated behind an unauthored lineage CHOICE) remains
+  // blocked, for the real reason recorded in blk:species-lineage's own updated reason text.
+  it('STILL BLOCKED -- species-granted spell decisions, except Aasimar\'s own fixed grant', () => {
     const speciesSpell = DECISIONS.filter((d) => d.owner.kind === 'species' && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family))
     expect(speciesSpell.length).toBeGreaterThan(0)
-    for (const d of speciesSpell) expect(classifyDecision(d).status, d.id).not.toBe('implemented')
+    for (const d of speciesSpell) {
+      if (d.owner.slug === 'aasimar-xphb') {
+        expect(classifyDecision(d).status, d.id).toBe('implemented')
+        continue
+      }
+      expect(classifyDecision(d).status, d.id).not.toBe('implemented')
+    }
   })
 
   // FEAT-OWNED SPELL ACQUISITION PHASE -- feat-granted spell-choice/spell-grant decisions are no
@@ -344,7 +357,10 @@ describe('P8 -- starting equipment reconciliation', () => {
       creationUnresolvedDecisions({ species: species[0], class: classes[0], background: b, feats: [] })
         .filter((d) => d.owner.kind === 'background').length === 0)
 
-    expect(availableSpecies.length).toBe(3)
+    // AASIMAR CREATION COMPLETION PHASE -- Aasimar's own remaining blockers (size choice, Light
+    // Bearer's fixed spell grant) are now authored too; Aasimar joins the roster (Dwarf/Halfling/
+    // Orc plus Aasimar).
+    expect(availableSpecies.length).toBe(4)
     // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the roster.
     // WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, Ranger join too (Rogue remains
     // creation-blocked by Expertise and Thieves' Cant/language policy at the time).
@@ -367,10 +383,10 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // FEAT-OWNED SPELL ACQUISITION PHASE -- 3 species * 12 available classes * 16 available
-    // backgrounds = 576, enumerated through the real authority above (never computed as a
+    // AASIMAR CREATION COMPLETION PHASE -- 4 species * 12 available classes * 16 available
+    // backgrounds = 768, enumerated through the real authority above (never computed as a
     // hardcoded product).
-    expect(combinations).toBe(576)
+    expect(combinations).toBe(768)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
@@ -561,5 +577,73 @@ describe('LANGUAGE CORPUS + POLICY PHASE -- reconciliation', () => {
     // Druid's own Druidic feature is PURELY fixed (no embedded choice) -- zero language-choice
     // decisions attributed to Druid at all, proven directly against the real decision population.
     expect(languageDecisions.some((d) => d.owner.slug === 'druid-xphb')).toBe(false)
+  })
+})
+
+describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
+  const sizeDecisions = DECISIONS.filter((d) => d.family === 'size-choice')
+  const aasimarSpellGrant = DECISIONS.find((d) => d.owner.slug === 'aasimar-xphb' && d.family === 'spell-grant')!
+
+  it('RECLASSIFICATION -- the real size-choice census (Aasimar, Human, Tiefling all genuinely have one); only Aasimar\'s own is implemented', () => {
+    expect(sizeDecisions.length).toBe(3)
+    const byOwner = sizeDecisions.map((d) => d.owner.slug).sort()
+    expect(byOwner).toEqual(['aasimar-xphb', 'human-xphb', 'tiefling-xphb'])
+    expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'aasimar-xphb')!).status).toBe('implemented')
+    expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'human-xphb')!).status).toBe('blocked')
+    expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'tiefling-xphb')!).status).toBe('blocked')
+  })
+
+  it('RECLASSIFICATION -- Aasimar\'s own Light Bearer spell-grant is now implemented too (a true fixed grant, via FixedSpellGrant)', () => {
+    expect(aasimarSpellGrant).toBeDefined()
+    expect(classifyDecision(aasimarSpellGrant).status).toBe('implemented')
+  })
+
+  it('COVERAGE -- the bidirectional contract (A/B) still holds after reclassification', () => {
+    expect(contractViolations(DECISIONS)).toEqual([])
+  })
+
+  it('BITE -- deleting impl:species-size-choice leaves Aasimar\'s own size-choice decision uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:species-size-choice')
+    const aasimarSize = sizeDecisions.find((d) => d.owner.slug === 'aasimar-xphb')!
+    expect(without.filter((rule) => rule.matches(aasimarSize)).length).toBe(0)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- deleting impl:species-spell-fixed-grant leaves Aasimar\'s own Light Bearer decision uncovered and the contract fails', () => {
+    const without = COVERAGE_RULES.filter((rule) => rule.id !== 'impl:species-spell-fixed-grant')
+    expect(without.filter((rule) => rule.matches(aasimarSpellGrant)).length).toBe(0)
+    expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
+  })
+
+  it('BITE -- Human\'s and Tiefling\'s own size-choice decisions remain fail-closed (blk:species-size), never falsely greened by impl:species-size-choice', () => {
+    for (const d of sizeDecisions.filter((d) => d.owner.slug !== 'aasimar-xphb')) {
+      expect(matchingRules(d).map((r) => r.id)).toEqual(['blk:species-size'])
+    }
+  })
+
+  it('BITE -- Healing Hands and Celestial Revelation never masquerade as a mandatory build decision -- neither is discovered as one at all', () => {
+    // Healing Hands (a Magic action, 1/Long Rest) and Celestial Revelation (Level 3+, "choose
+    // the option EACH TIME you transform" -- a per-use runtime choice per the real corpus text
+    // itself) are deliberately NOT authored anywhere on the Aasimar facet, and neither one is a
+    // field `detectSpeciesDecisions` scans at all -- so the real decision population for Aasimar
+    // is EXACTLY the two decisions this phase implements, never a third, phantom "transformation
+    // choice" decision silently invented or silently blocked.
+    const aasimarDecisions = DECISIONS.filter((d) => d.owner.slug === 'aasimar-xphb')
+    expect(aasimarDecisions.length).toBe(2)
+    expect(aasimarDecisions.map((d) => d.family).sort()).toEqual(['size-choice', 'spell-grant'])
+  })
+
+  it('a FUTURE, unsupported species-owned size-choice decision is never falsely greened by impl:species-size-choice (fails closed)', () => {
+    const synthetic: DecisionRecord = {
+      id: 'species:future-xphb:L1:size-choice:size',
+      owner: { kind: 'species', slug: 'future-xphb', name: 'Future' },
+      level: 1,
+      timing: 'creation',
+      family: 'size-choice',
+      mandatory: true,
+      cardinality: 1,
+      source: 'size'
+    }
+    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic)).map((r) => r.id)).toEqual(['blk:species-size'])
   })
 })

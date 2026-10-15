@@ -102,15 +102,21 @@ describe('P2 spell corpus authority', () => {
   // `originFeatSlug`, the SAME `impl:background-origin-feat` rule every other Background's fixed
   // Origin Feat already uses). Moving the census from 648/418/195 to 648/433/180. Acolyte, Guide,
   // and Sage all become creation-available (Backgrounds 13/16 -> 16/16).
-  it('the Phase-0 decision census after the Feat-Owned Spell Acquisition phase: 648 total, 433 implemented, 180 blocked, 35 optional', () => {
+  // AASIMAR CREATION COMPLETION PHASE -- discovery itself grew by 3: a brand-new `size-choice`
+  // family (added this phase, since Aasimar/Human/Tiefling all genuinely have a real "chosen when
+  // you select this species" size), one decision per species that owns it. Aasimar's own
+  // size-choice AND its pre-existing spell-grant (Light Bearer) both reclassify to implemented;
+  // Human's and Tiefling's own new size-choice decisions join the blocked set (neither species is
+  // authored this phase). Moving the census from 648/433/180 to 651/435/181.
+  it('the Phase-0 decision census after the Aasimar Creation Completion phase: 651 total, 435 implemented, 181 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
-    expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(648)
-    expect(counts.implemented).toBe(433)
-    expect(counts.blocked).toBe(180)
+    expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(651)
+    expect(counts.implemented).toBe(435)
+    expect(counts.blocked).toBe(181)
     expect(counts.optional).toBe(35)
   })
 
@@ -139,13 +145,22 @@ describe('P2 spell corpus authority', () => {
 
   // The P4/follow-on ownership boundary (subclass/species-granted spells) is untouched by P3.5 or
   // by the Feat-Owned Spell Acquisition phase -- none of those decisions is owned by a class or a
-  // feat, so none is reclassified by either phase's own scoped coverage rules.
-  it('subclass/species-owned spell-family decisions remain NOT implemented', () => {
+  // feat, so none is reclassified by either phase's own scoped coverage rules. AASIMAR CREATION
+  // COMPLETION PHASE -- Aasimar's own Light Bearer is the one exception: a true fixed grant, the
+  // exact FixedSpellGrant shape this project's feat-owned fixed spells already use, now
+  // implemented. Every subclass-owned decision, and every OTHER species-owned one (Elf/Gnome/
+  // Goliath/Tiefling's own lineage spells, genuinely gated behind an unauthored lineage choice),
+  // remains not implemented.
+  it('subclass/species-owned spell-family decisions remain NOT implemented, except Aasimar\'s own fixed grant', () => {
     const nonClassSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
       (d) => (d.owner.kind === 'subclass' || d.owner.kind === 'species') && ['spell-choice', 'spell-grant', 'spell-count'].includes(d.family)
     )
     expect(nonClassSpellDecisions.length).toBeGreaterThan(0)
     for (const decision of nonClassSpellDecisions) {
+      if (decision.owner.slug === 'aasimar-xphb') {
+        expect(classifyDecision(decision).status, decision.id).toBe('implemented')
+        continue
+      }
       expect(classifyDecision(decision).status, decision.id).not.toBe('implemented')
     }
   })

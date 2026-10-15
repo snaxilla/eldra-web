@@ -55,7 +55,11 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // conditionally-activated (requiresActive) spellRequirements model. All three join the
 // creation-complete roster (13 -> 16 backgrounds, the full named roster), lifting the complete
 // combinations from 468 to 576 (3 x 12 x 16).
-const BASELINE = { species: 3, classes: 12, backgrounds: 16, combinations: 576 }
+// AASIMAR CREATION COMPLETION PHASE -- Aasimar's own real remaining blockers (the size choice,
+// via the new generic choice:species.size ChoiceSet; Light Bearer's fixed spell grant, via
+// FixedSpellGrant) are now authored. Aasimar joins the creation-complete roster (3 -> 4 species),
+// lifting the complete combinations from 576 to 768 (4 x 12 x 16).
+const BASELINE = { species: 4, classes: 12, backgrounds: 16, combinations: 768 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

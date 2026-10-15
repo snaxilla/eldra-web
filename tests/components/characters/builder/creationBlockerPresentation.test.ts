@@ -61,8 +61,12 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
   // selected alone (no feats array) no longer owns any unresolved decision at all, since Magic
   // Initiate's own decisions are implemented now, not blocked. Every XPHB Background now behaves
   // this way, so only the species lineage/spell-grant cases remain as "alone" examples.
+  // AASIMAR CREATION COMPLETION PHASE -- Aasimar is REMOVED from this list too: it is now
+  // creation-complete alone (size-choice + spell-grant both implemented, 0 unresolved). Tiefling
+  // replaces it (still genuinely blocked: species-lineage + species-damage + species-size, all
+  // untouched this phase).
   it('no reason ever exposes an internal identifier', () => {
-    for (const [slug, kind] of [['elf-xphb', 'species'], ['aasimar-xphb', 'species']] as const) {
+    for (const [slug, kind] of [['elf-xphb', 'species'], ['tiefling-xphb', 'species']] as const) {
       const blocker = ownCreationBlocker(kind, slug)
       expect(blocker, slug).not.toBeNull()
       expect(blockerReason(blocker!)).not.toMatch(INTERNAL)

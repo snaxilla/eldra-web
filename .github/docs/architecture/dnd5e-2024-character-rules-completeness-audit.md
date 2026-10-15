@@ -7360,3 +7360,332 @@ edits, `nuxt.config.ts`, `.github/copilot-instructions.md`) confirmed untouched 
 --short` at the end of this session, byte-for-byte matching the recovery prompt's own description.
 
 No commit. No apply. Wait.
+
+### 25.43 AASIMAR CREATION COMPLETION + POST-AASIMAR SPECIES BLOCKER RECONCILIATION (2026-10-15)
+
+#### Scope
+
+Primary gate: Species 3/10 -> 4/10 (Aasimar). Secondary, read-only: a fresh census of the
+remaining six unavailable XPHB species (Dragonborn, Elf, Gnome, Goliath, Human, Tiefling),
+re-verifying rather than trusting the prior phase's own forecast. Production baseline at the start
+of this phase: Rules `eldra.rules.dnd5e-2024@0.21.6` CURRENT, Content `eldra.solaris.xphb`
+CURRENT, Phase-0 scoreboard 648/433/180/35, Species 3/10 (Dwarf/Halfling/Orc). Out of scope, by
+explicit instruction: implementing any of the other six species, beginning species-level
+progression/level-gating authoring, beginning a damage-resistance-choice ChoiceSet, commit, apply.
+
+#### AASIMAR CORPUS -- re-derived directly from `races.json` (XPHB), not trusted from the prior
+forecast
+
+Full real entry: `size: ['S','M']` (sizeEntry: "Medium...or Small..., chosen when you select this
+species" -- a genuine Level-1 choice the prior forecast never mentioned); `speed: 30`;
+`darkvision: 60`; `resist: ['necrotic','radiant']` (plain strings, never `{choose:...}` -- fixed,
+never a decision); a single, UNNAMED `additionalSpells` block (`known.1: ['light|xphb#c']`,
+`ability: 'cha'`) -- Light Bearer's own source wording: "You know the Light cantrip. Charisma is
+your spellcasting ability for it," confirmed a true fixed grant with no "of your choice" clause at
+all. Healing Hands (a Magic action, PBx d4 healing, 1/Long Rest) is a runtime action with a
+rest-recharge resource. Celestial Revelation (Level 3+) is NOT a persistent build decision -- the
+corpus's own words are explicit: "choose the option EACH TIME you transform" -- confirmed a
+per-use runtime choice from the text itself, never inferred from feature presentation, per the
+task's own instruction. Classification: size (Level-1 mandatory decision, NEW), Light Bearer
+(Level-1 mandatory decision, pre-existing discovery, previously blocked), everything else fixed or
+runtime/deferred.
+
+#### AASIMAR MODEL
+
+Pure authoring on EXISTING primitives, zero new primitive -- the prior forecast's "pure authoring,
+zero new primitive" survives re-verification, with one correction (the size choice, which the
+forecast missed entirely). Size: a new, generic, reusable ChoiceSet `choice:species.size`
+(`packages/eldra-dnd5e-2024/definitions.json`) -- structurally identical to `choice:skill
+.proficiency` (a literal Value id per option, no `activate-source`), with two new Values
+(`value:size.medium`, `value:size.small`). Darkvision/Speed/Resistance: `value:sense.darkvision`,
+`value:speed.walking`, `value:resistance.necrotic.granted`, `value:resistance.radiant.granted` --
+plain, generic, reusable Values (the identical declarative pattern as `value:hit_points
+.hit_die_size`), confirmed by direct read that NO species facet, including the 3 already-available
+ones, had ever declared darkvision/speed/resistance vocabulary before (Dwarf's own real Poison
+resistance is equally unrepresented today, left untouched -- out of scope). Light Bearer:
+`fixedSpellGrants: [{slug: 'light-xphb', flag: 'known'}]`, the identical shape Telekinetic's/
+Telepathic's own fixed grants use. Casting ability (Charisma) is the same deferred Milestone-B/
+runtime concern as every other feat/species-owned fixed spell this project has authored so far.
+
+**A real gap found and fixed, not merely authored around**: `create-v2.post.ts`'s own
+`resolveFixedSpellGrants` call resolved fixed grants from `[characterClass, ...acquisitions]`
+only -- the SPECIES facet was never in that owner list at all (a real omission from when the
+primitive was first built last phase, when only class/feat owners existed). Caught directly by
+this phase's own acceptance test (test 4, "the Light Bearer fixed cantrip is persisted..." failed
+with `store.spellcasting === null` until fixed). Widened to `[species, characterClass, background,
+...acquisitions]`, matching `gatherSpellRequirements`'s own call site immediately above it, which
+had already been widened correctly. `confirmProgression`'s own, separately-scoped fixed-grant
+resolution (`character-progression-plan.ts`, scoped to `resolvedFeatAcquisitions` only) needed no
+change -- species-owned fixed grants are resolved exactly once, at creation, never re-resolved on
+level-up, confirmed by direct read.
+
+#### AASIMAR ACCEPTANCE
+
+New file, `tests/server/api/worlds/[id]/characters/create-v2-aasimar.test.ts` (mirroring
+`create-v2-weapon-mastery.test.ts`'s/`create-v2-invocations.test.ts`'s own harness shape exactly),
+18 tests, all passing through the REAL, unstubbed `create-v2.post` route:
+- `creationUnresolvedDecisions` is `[]` for Aasimar + Fighter + Criminal and for Aasimar + Wizard +
+  Criminal, through the real authority.
+- Selecting Aasimar declares `species:choice:species.size`, count 1, from exactly `value:size
+  .medium`/`value:size.small`, through the SAME generic `creationChoicePresentation` every other
+  creation choice already uses -- no `AasimarSizePicker.vue`.
+- The real route accepts a full real answer set and succeeds; the selected size persists through
+  `rules_choices`; the Light cantrip persists through the canonical `spellcasting.spells[]` store
+  (`known: true, prepared: false`); a FRESH READ of both survives.
+- SERVER AUTHORITY: a missing size answer, too many selections, an unknown size identity, and a
+  crafted key for a species that never declared the choice (Dwarf) are all independently refused
+  with zero writes, never trusting Builder metadata.
+- BUILDER: the real Builder functions (`emptyDraft`/`setChoiceSelections`/`toCreatePayload`)
+  produce a payload that meets the same server authority -- no bespoke component.
+- SPECIES SWITCHING: Aasimar selected makes the size choice live; switching to Dwarf (no such
+  choice) makes it non-live; switching back re-asks with the stale draft entry preserved, never
+  silently resurrected as satisfied.
+- COEXISTENCE: Aasimar + Wizard persists the Light cantrip (species-owned) and Wizard's own
+  class-owned spells together in `spellcasting.spells[]`, each with its own distinct `instanceId`
+  -- no collision, confirming `resolveFixedSpellGrants`'s own renumbering coexists correctly with
+  `buildAcceptedSpellEntries`'s class-owned rows.
+- HISTORICAL: the species facet's own fixed grants/`fixedSpellGrants` resolve directly off the
+  facet, independent of any `rules_choices` content -- an old record with no size answer at all
+  reads its fixed state correctly, with the size choice itself simply absent/pending, never
+  auto-answered, per `creation-completeness.ts`'s own "read paths do not call this module"
+  boundary.
+
+#### AVAILABILITY
+
+Recomputed through real authority (never hardcoded): Species **4/10** (Dwarf, Halfling, Orc,
+Aasimar), Classes 12/12, Backgrounds 16/16, Combinations **768** (4 x 12 x 16, enumerated live
+against every real combination, not computed as a product). No other species became available
+incidentally -- confirmed directly: Human and Tiefling each GAINED a new, genuinely blocked
+`size-choice` decision this phase (both share Aasimar's real "chosen when you select this species"
+size shape), reported honestly rather than silently absorbed.
+
+#### PHASE 0
+
+Discovery itself grew by 3 real decisions (the new `size-choice` family: Aasimar/Human/Tiefling,
+one each). Final scoreboard: **651 total / 435 implemented / 181 blocked / 35 optional** (648/433/
+180/35 + 3 discovered - 2 reclassified blocked->implemented [Aasimar's own size-choice and
+spell-grant] + 2 newly-blocked [Human's and Tiefling's own size-choice] = 651/435/181/35, derived
+from the real artifact, not assumed). No other species decision, runtime effect, or lineage choice
+was reclassified.
+
+#### REMAINING SPECIES -- fresh read-only census, re-verified against the real corpus
+
+**DRAGONBORN** (1 decision: `damage-type-choice`, "resist"). Draconic Ancestry: "Choose the kind
+of dragon from the Draconic Ancestors table" -- 10 named dragons collapsing to 5 unique damage
+types (acid/lightning/fire/poison/cold), confirmed by direct read of the raw `resist.choose.from`
+array. This is a "choose 1 of N named options" shape, structurally identical to `choice:class
+.feature-option` (reused, zero new primitive) -- each option activates a Source that both sets a
+resistance Value (vocabulary now partially exists: necrotic/radiant from this phase; acid/
+lightning/fire/poison/cold still need their own Values, pure authoring, not a new primitive) and
+determines Breath Weapon's damage type. Breath Weapon itself (PBx/Long Rest, a per-attack replace)
+is a limited-use runtime action, Milestone B, same deferred category as Healing Hands. **Existing
+capability fits entirely; missing: the 5 damage-type Values (authoring) and the ancestry facet
+itself (authoring). No new primitive.**
+
+**ELF** (2 decisions: `skill-choice` implemented; `variant-choice`, "additionalSpells.variants").
+Re-read the REAL 2024 prose directly (not the raw `additionalSpells` structured field alone, which
+under-describes High Elf's own replacement clause): Elven Lineage is "Choose a lineage from the
+Elven Lineages table" (Drow/High Elf/Wood Elf, permanent, chosen once) -- a `choice:class.feature-
+option`-shaped choice (reused, zero new primitive), PLUS a nested "Intelligence, Wisdom, or
+Charisma is your spellcasting ability... (choose the ability when you select the lineage)" --
+structurally identical to `choice:feat.ability-choice-1`/`choice:feat.epic-boon-ability` (reused,
+zero new primitive). Level-1 grant per lineage: Drow/Wood Elf get a true fixed cantrip (+ a
+Darkvision-range/Speed numeric override, the SAME Values this phase authored, just set
+differently); High Elf's own Prestidigitation is ALSO fixed, with an OPTIONAL daily-replacement
+clause (classify OPTIONAL, never implement, matching this project's own established replacement
+posture). Levels 3/5: a FIXED (no choice) higher-level spell per lineage, "always have that spell
+prepared," cast once free/Long Rest or via a real slot -- a genuine PROGRESSION-TIME fixed grant
+that needs species-level progression/level-gating authoring, which does not exist for species
+today (confirmed: no species facet declares a `progression` array anywhere). This does NOT block
+CREATION (discovery collapses all of Elf's spell content into ONE `variant-choice` decision at the
+minimum level, which is Level 1), so Elf's own CREATION decision is pure authoring once the
+lineage-choice + ability-choice + fixedSpellGrants/requiresActive pieces are authored; the Level
+3/5 GROWTH remains a separate, non-blocking completeness gap. **The prior forecast's "species-
+lineage-choice primitive" label was WRONG for the CREATION-blocking decision -- it is authoring,
+reusing three already-proven ChoiceSet shapes. A genuine (non-blocking) gap remains for Level 3/5
+growth: species progression authoring.**
+
+**GNOME** (1 decision: `variant-choice`, "Gnomish Lineage"). "Choose one of the following options"
+(Forest Gnome/Rock Gnome, permanent) + the SAME nested casting-ability choice as Elf ("choose the
+ability when you select the lineage"). Forest Gnome: a fixed cantrip (Minor Illusion) + a fixed,
+always-prepared spell (Speak with Animals) with a PBx/Long-Rest free-cast resource (Milestone B) +
+slot-casting (Milestone B). Rock Gnome: two fixed cantrips (Mending, Prestidigitation) + a
+non-spell item-crafting mechanic (a Tiny clockwork device) that is NOT a spell-acquisition shape at
+all -- genuinely unrepresented, but Milestone B (a crafting/item-creation mechanic), not a blocker
+for the lineage CHOICE or its spell content. **Same conclusion as Elf: the lineage choice + ability
+choice + fixed cantrips are pure authoring (feature-option + ability-choice + fixedSpellGrants,
+reused); Rock Gnome's own device-crafting trait is a separate, deferred Milestone-B mechanic.**
+
+**GOLIATH** (1 decision: `variant-choice`, "Giant Ancestry"). "Choose one of the following
+benefits... you can use the chosen benefit [PBx]... regain on Long Rest" -- confirmed PERMANENT
+(chosen once, unlike Aasimar's own per-use Celestial Revelation), 6 named benefits (Cloud's Jaunt,
+Fire's/Frost's/Storm's X, Hill's Tumble, Stone's Endurance), ZERO spell content at all -- purely
+combat/utility traits. This is `choice:class.feature-option` reused VERBATIM, with no spell
+component and no nested ability choice needed at all. **The cleanest finding of the six: Goliath's
+entire creation blocker is pure authoring on an already-proven mechanism, zero new primitive, zero
+spell-acquisition work needed.** (Large Form at Level 5 and Powerful Build are both
+runtime/passive, no decision, same posture as every other level-gated or passive trait.)
+
+**HUMAN** (2 decisions: `feat-choice`, "feats.anyFromCategory"; `size-choice`, NEW this phase).
+Versatile grants "a feat of your choice from the Origin feat category" -- a FREE choice among all
+10 Origin feats, genuinely different from a Background's single FIXED grant. Every Origin feat IS
+individually representable when a Background FIXES it (confirmed: `gatherSpellRequirements`'s own
+gate reads the GRANTING facet's `grants`), but Magic Initiate's own `requiresActive` gate has NO
+mechanism for a FREELY chosen (non-Background-fixed) spell list -- nothing would ever set
+`value:magic-initiate.list.N.active` if Magic Initiate were picked via Versatile instead of a
+Background. **A real, still-missing shape (confirmed by re-deriving the real mechanism, not by
+trusting the prior rule's own stale-sounding reason text, which has been corrected to name this
+precisely): a free "which spell list" choice for a non-Background-fixed acquisition path.** The
+skill choice (`{any:1}`) and the size choice (shared with Aasimar/Tiefling) are both pure
+authoring on existing primitives.
+
+**TIEFLING** (3 decisions: `damage-type-choice` + `variant-choice`, pre-existing; `size-choice`,
+NEW this phase). Fiendish Legacy: "Choose one of the following" (Abyssal/Chthonic/Infernal,
+permanent) -- `choice:class.feature-option` reused (zero new primitive). Each legacy fixes 2
+Level-1 cantrips (always Thaumaturgy + a legacy cantrip) -- `fixedSpellGrants` gated on the chosen
+legacy Source, the identical mechanism this phase proved for Thaumaturge/Magician last phase.
+Resistance is tied to the SAME legacy choice (poison/necrotic/fire) -- the generic resistance
+Value vocabulary this phase started (necrotic already exists; poison/fire still need authoring).
+Levels 3/5 innate spells: the SAME genuine, non-blocking species-progression gap as Elf (fixed
+grants needing level-gated authoring that doesn't exist for species), PLUS a real runtime 1/day-
+without-a-slot resource (Milestone B) for the free-cast usage -- but Milestone A does NOT need
+that runtime resource primitive merely to represent the ACQUISITION fact, and the Level 3/5 growth
+does not block Level-1 creation availability at all (same discovery-collapse reasoning as Elf).
+**The prior forecast's "lineage primitive + innate 1/day resource primitive" is corrected: the
+lineage primitive claim was wrong (pure authoring, reusing feature-option + fixedSpellGrants +
+requiresActive); the innate-resource observation was directionally right but overstated -- it
+affects only the Level 3/5 free-cast runtime behavior, never the Level-1 creation decision.**
+
+#### GROUPING -- common primitive/authoring families across all six
+
+1. **"Choose 1 of N named lineage/ancestry options" (Elf, Gnome, Goliath, Dragonborn, Tiefling --
+   5 of 6)**: zero new primitive. `choice:class.feature-option`, reused verbatim (as-is, or under a
+   better-named but structurally identical alias). The SAME mechanism this project has reused for
+   Divine Order, Primal Order, and (last phase) Thaumaturge/Magician's own gated spell grants.
+2. **Nested "choose your casting/relevant ability" (Elf, Gnome -- 2 of 6)**: zero new primitive.
+   `choice:feat.ability-choice-1`/`choice:feat.epic-boon-ability`'s own shape, reused.
+3. **Lineage-fixed spell grants, gated via `requiresActive` on the chosen lineage Source (Elf,
+   Gnome, Dragonborn N/A, Tiefling -- 3 of 6 with spell content)**: zero new primitive. This
+   phase's own `fixedSpellGrants` + `requiresActive` mechanism, the exact Thaumaturge/Magician
+   precedent.
+4. **Damage-type resistance Values (Dragonborn, Tiefling -- 2 of 6)**: pure authoring (more Values
+   of the exact kind this phase introduced for Aasimar), never a new primitive -- though Dragonborn/
+   Tiefling's own CHOICE additionally needs a reusable "choose 1 of N resistance Values" ChoiceSet
+   declaration (also pure authoring, the `choice:skill.proficiency` shape again).
+5. **Free, non-Background-fixed Origin feat choice (Human -- 1 of 6)**: a GENUINE missing shape --
+   a free "which spell list" gate for Magic Initiate (or any similarly-gated feat) acquired outside
+   a Background's own fixed grant. The only real candidate for a small NEW primitive among all six.
+6. **Species-level progression/level-gating authoring (Elf, Tiefling's own Level 3/5 growth; a
+   non-blocking completeness gap, not a creation blocker)**: a genuine missing shape, but
+   deliberately NOT required for creation availability -- deferred the same way class progression
+   growth is tracked separately from creation everywhere else in this project.
+7. **Milestone-B-only mechanics with no creation-blocking role at all (Gnome's clockwork device,
+   every PBx/Long-Rest free-cast/innate-cast resource, every combat/damage runtime effect)**: out
+   of scope for ANY creation-availability phase, by design.
+
+#### NEXT PHASE -- ranked recommendation
+
+**A (cheapest), B (species unlocked), C (decisions resolved), D (leverage):**
+1. **Goliath** -- A: trivial (one facet, 6 Source options, zero spell content, zero nested
+   choice). B: +1 species. C: 1 decision. D: 100% reuse of `choice:class.feature-option`, already
+   proven 3 times. The single cheapest, cleanest win of the six.
+2. **Dragonborn** -- A: small (one facet + 5 new resistance Values + one reusable "choose 1 of N"
+   ChoiceSet for the ancestry pick). B: +1 species. C: 1 decision. D: reuses `choice:class.feature-
+   option` + this phase's own resistance-Value pattern.
+3. **Elf + Gnome, GROUPED into one authoring phase** -- A: moderate (two facets, but BOTH reuse the
+   identical lineage-choice + ability-choice + fixedSpellGrants/requiresActive trio; authoring them
+   together means verifying that trio's correctness once, not twice). B: +2 species. C: 2
+   decisions (Level 1 only; Level 3/5 growth stays a documented, non-blocking gap for both). D:
+   100% reuse, with Gnome's own Rock Gnome device-crafting trait explicitly left as prose
+   (Milestone B), matching how Elf's High Elf replacement clause is already handled (OPTIONAL,
+   never implemented).
+4. **Tiefling** -- A: small-to-moderate (one facet, reusing the SAME trio as #3, plus 2 more
+   resistance Values). B: +1 species. C: 1 decision (Level 1 only; Level 3/5 growth + the innate
+   1/day resource stay documented, non-blocking gaps). D: full reuse, zero new primitive.
+5. **Human** -- A: requires deciding and building the one genuinely new, small primitive (a free
+   "which spell list" gate for a non-Background-fixed Magic-Initiate-shaped acquisition), THEN
+   authoring Versatile's own free-feat-choice ChoiceSet (reusing the general-feat-pool mechanism
+   already used at Level 4) on top of it. B: +1 species (the full 10/10 roster). C: 2 decisions.
+   D: the new primitive, once built, also benefits any future General-feat-pool pick of a
+   similarly-gated feat (not species-specific).
+
+Recommended smallest next phase: **Goliath alone**, or **Goliath + Dragonborn together** (both
+pure `choice:class.feature-option` reuse, Dragonback adding only the resistance-Value/ChoiceSet
+authoring on top) -- the highest-leverage, lowest-risk next step. Elf/Gnome should be grouped
+together whenever they are tackled, for the reason given above. Human should be LAST: it is the
+only one needing new primitive work, and finishing it completes 10/10.
+
+#### 10/10 FORECAST (planning only; nothing below is implemented)
+
+| Phase | Species unlocked | Primitive/authoring | Decisions moved | Depends on |
+|---|---|---|---|---|
+| Next-1 | Goliath | Pure authoring (`choice:class.feature-option` reuse) | 1 | None |
+| Next-2 | Dragonborn | Pure authoring + 5 resistance Values + 1 reusable ChoiceSet | 1 | None (independent of Next-1) |
+| Next-3 | Elf + Gnome | Pure authoring (lineage choice + ability choice + fixedSpellGrants/requiresActive, reused) | 2 (Level 1 only) | None (independent) |
+| Next-4 | Tiefling | Pure authoring (same trio as Next-3) + 2 resistance Values | 1 (Level 1 only) | Easiest right after Next-3 (same trio freshly exercised) |
+| Next-5 | Human | ONE new, small primitive (free "which spell list" gate for a non-Background-fixed acquisition) + authoring | 2 | None technically, but logically last (only non-reuse phase) |
+| Deferred, non-blocking | -- | Species-level progression/level-gating authoring (Elf's/Tiefling's own Level 3/5 growth) | 0 creation decisions (not creation-blocking) | Could land any time after Next-3/Next-4, never required for 10/10 |
+
+Five phases (or as few as three, if Goliath+Dragonborn and Elf+Gnome+Tiefling are each grouped)
+reach Species 10/10. No phase after Next-5 is required for the species-availability milestone
+itself; the deferred progression-authoring row is a separate, documented completeness gap, not a
+blocker.
+
+#### HOMEBREW
+
+Aasimar's own implementation introduces no application code naming Aasimar, Light Bearer, Celestial
+Revelation, or Healing Hands -- `gatherSpellRequirements`/`resolveFixedSpellGrants`/`choice
+:species.size` all key off facet SHAPE (does this facet declare `fixedSpellGrants`? does this
+owner's facet declare this ChoiceSet?), never an owner NAME. A homebrew species authoring the
+identical shapes (a fixed grant, a size/lineage choice, a conditionally-gated spell requirement)
+is covered by the SAME generic mechanisms with zero branching. The six remaining species'
+recommended path (feature-option reuse, ability-choice reuse, fixedSpellGrants/requiresActive
+reuse) is, by the SAME construction, equally homebrew-portable -- confirmed by this phase's own
+re-derivation, which at no point needed to special-case a real feature name to reach any of its
+conclusions.
+
+#### PACKAGE IMPACT
+
+`pnpm packages:sync --world Solaris` (dry run, against the stated production baseline Rules
+`eldra.rules.dnd5e-2024@0.21.6` CURRENT / Content `eldra.solaris.xphb` CURRENT): `SOURCE_VERSION
+_COLLISION` -- 0.21.6 is already published with different content than this phase's own edited
+Rules Definitions (the new `choice:species.size`/Value definitions). Recommended next version:
+**0.21.7** (patch -- additive facet/Value/ChoiceSet authoring and a server-side bug fix, no
+breaking shape change to any existing consumer). Content `eldra.solaris.xphb`: `REFRESH_REQUIRED`
+(the RulesFacet corpus changed). Actions offered: `REFRESH_CONTENT`/`BIND_CONTENT`. **No mutation
+performed; manifest version NOT bumped (explicit instruction this phase).**
+
+#### Files
+
+New: `tests/server/api/worlds/[id]/characters/create-v2-aasimar.test.ts`. Modified:
+`app/lib/content-rules/mandatory-decisions.ts` (`size-choice` family, `RawRace.size`,
+`detectSpeciesDecisions` extended), `app/lib/content-rules/mandatory-decision-coverage.ts` (2 new
+`impl:` rules, 1 new `blk:species-size` rule, 3 refined `blk:` reason texts, 2 new helper
+functions), `app/lib/content-rules/dnd5e-2024.ts` (the `aasimar-xphb` species facet + corrected
+"KNOWN DEFERRED EFFECTS"-style header reasoning), `app/lib/content-rules/dnd5e-2024-mandatory-
+decisions.json` (regenerated via `scripts/content-rules/write-mandatory-decisions.ts`, +3 real
+decisions), `packages/eldra-dnd5e-2024/definitions.json` (+7 definitions: 2 size Values, 1 size
+ChoiceSet, 2 sense/speed Values, 2 resistance Values), `server/api/worlds/[id]/characters/create-
+v2.post.ts` (the species-owner gap fix in `resolveFixedSpellGrants`'s own call site),
+`tests/components/characters/builder/creationBlockerPresentation.test.ts`,
+`tests/rules/mandatory-decision-coverage.test.ts` (new "AASIMAR CREATION COMPLETION PHASE"
+describe block), `tests/lib/content-rules/creation-availability.test.ts`, `tests/lib/content-rules
+/spell-corpus-authority.test.ts`. One self-inflicted literal-`text:`-substring mistake in a new
+`dnd5e-2024.ts` comment (mirroring last phase's identical one) was caught by `character-actor-
+bridge.test.ts`'s own pre-existing structural check and fixed in `dnd5e-2024.ts` itself -- that
+test file needed no edit.
+
+#### Verification
+
+`pnpm run test`: **216 files / 4577 tests -- all passing** (4551 baseline + 26 net new: 18 in the
+new Aasimar acceptance file, 8 in the new coverage-reconciliation block). `pnpm run typecheck`: the
+pre-existing `@types/node`-absent environment gap remains (1177 errors -- identical to the
+established baseline per every prior phase's own audit entry; grepped the full output for every
+file this phase touched -- zero hits). `pnpm run build`: succeeds (exit 0). `git diff --check`:
+clean. `pnpm packages:sync --world Solaris` (dry run): `SOURCE_VERSION_COLLISION` +
+`REFRESH_REQUIRED`, no mutation performed (see PACKAGE IMPACT above).
+
+All pre-existing unrelated dirty worktree state preserved untouched, confirmed by `git status
+--short` at the end of this session.
+
+No commit. No apply. Wait.

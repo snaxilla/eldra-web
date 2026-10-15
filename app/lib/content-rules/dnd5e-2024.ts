@@ -3416,6 +3416,68 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
   },
 
   species: {
+    // AASIMAR CREATION COMPLETION PHASE -- re-derived directly from races.json (XPHB), not
+    // trusted from any prior forecast. Full real entry: size ['S','M'] (sizeEntry: "Medium...or
+    // Small..., chosen when you select this species" -- a genuine Level-1 choice, never fixed);
+    // speed 30; darkvision 60; resist ['necrotic','radiant'] (plain strings, never `{choose:...}`
+    // -- fixed, not a decision); additionalSpells a single unnamed block (`known.1: ['light']`,
+    // ability 'cha') -- Light Bearer's own source wording: "You know the Light cantrip. Charisma is
+    // your spellcasting ability for it," a true fixed grant, no "of your choice" clause at all.
+    // Healing Hands (a Magic action, PBx d4 healing, 1/Long Rest) and Celestial Revelation
+    // (Level 3+, "choose the option EACH TIME you transform" -- the corpus's own words, confirming
+    // this is a PER-USE runtime choice, never a persistent build decision) are deliberately NOT
+    // authored here -- see this file's own header comment block below for the full reasoning.
+    'aasimar-xphb': {
+      // The size choice: the SAME "choose 1 of 2 named fixed options, each a literal Value id"
+      // shape `choice:skill.proficiency` already uses everywhere (no activate-source needed --
+      // size is a plain fact, not a Source). New, generic, reusable ChoiceSet `choice:species.size`
+      // (packages/eldra-dnd5e-2024/definitions.json) -- any future species with a size choice
+      // reuses it verbatim; never Aasimar-specific. Discovery (`detectSpeciesDecisions`,
+      // mandatory-decisions.ts) gained a matching `size-choice` family this phase, mirroring how
+      // every other real corpus shape earns its own discovery case.
+      choices: [
+        {
+          choiceSet: 'choice:species.size',
+          count: 1,
+          from: ['value:size.medium', 'value:size.small']
+        }
+      ],
+      // Darkvision/Speed/Resistance Value vocabulary did not exist anywhere in the package before
+      // this phase (confirmed directly: zero species facet -- including the 3 already-available
+      // ones, Dwarf/Halfling/Orc -- declares any of the three, even though Dwarf's own real corpus
+      // has a fixed Poison resistance of its own). Authored here as plain, generic, reusable
+      // Values (the exact same declarative pattern as value:hit_points.hit_die_size: a bare
+      // number/boolean Value, set via an ordinary facet grant -- never a new ChoiceSet/Source
+      // mechanism), so any future species/feat/homebrew with the identical fixed fact reuses them
+      // with zero new primitive. Only the two damage types Aasimar's own corpus actually needs are
+      // declared; more are added only when a real corpus fact needs them, the same incremental
+      // discipline every language/skill Value in this package already follows.
+      grants: [
+        { set: 'value:sense.darkvision', to: 60 },
+        { set: 'value:speed.walking', to: 30 },
+        { set: 'value:resistance.necrotic.granted', to: true },
+        { set: 'value:resistance.radiant.granted', to: true }
+      ],
+      // Light Bearer: a true fixed grant, the exact FixedSpellGrant shape Telekinetic's/
+      // Telepathic's own single always-known/-prepared spell already uses (FEAT-OWNED SPELL
+      // ACQUISITION PHASE) -- flag 'known' because the real text says "You know," never "you
+      // always have... prepared." Casting ability (Charisma) is the SAME deferred Milestone-B/
+      // runtime concern as every other feat/species-owned fixed spell this project has authored
+      // so far -- never silently invented.
+      fixedSpellGrants: [
+        { slug: 'light-xphb', flag: 'known' }
+      ]
+      // NOT authored (re-derived directly, not assumed):
+      //  - Healing Hands: a runtime action with a Long-Rest-recharge resource, the SAME deferred
+      //    category as Savage Attacker's/Lucky's own per-rest reroll -- Milestone B, not a build
+      //    decision; no mandatory decision exists for it.
+      //  - Celestial Revelation (Level 3+): the real corpus text is explicit -- "choose the
+      //    option EACH TIME you transform" -- a PER-USE runtime choice, never a persistent build
+      //    decision. Nothing is authored for it: no mandatory decision exists, so there is
+      //    nothing for Milestone A to represent. (Species facets also have no progression/
+      //    level-gating authoring at all today -- irrelevant here since there is no decision to
+      //    gate, but flagged honestly rather than silently worked around.)
+    },
     'elf-xphb': {
       choices: [
         {

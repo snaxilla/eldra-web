@@ -5792,5 +5792,83 @@
     "default": false,
     "visibility": "public",
     "label": "Magic Initiate: List 3 Active"
+  },
+  {
+    "id": "value:size.medium",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Size: Medium"
+  },
+  {
+    "id": "value:size.small",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Size: Small"
+  },
+  {
+    "id": "choice:species.size",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Size",
+    "prompt": "Choose your size.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true
+  },
+  {
+    "id": "value:sense.darkvision",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Darkvision Range"
+  },
+  {
+    "id": "value:speed.walking",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "number",
+    "storage": "stored",
+    "default": 0,
+    "constraints": {
+      "min": 0
+    },
+    "visibility": "public",
+    "label": "Walking Speed"
+  },
+  {
+    "id": "value:resistance.necrotic.granted",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Necrotic Resistance"
+  },
+  {
+    "id": "value:resistance.radiant.granted",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Radiant Resistance"
   }
 ]

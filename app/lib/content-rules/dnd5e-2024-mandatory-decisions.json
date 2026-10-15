@@ -7010,6 +7010,20 @@
       "source": "Choose Languages"
     },
     {
+      "id": "species:aasimar-xphb:L1:size-choice:size",
+      "owner": {
+        "kind": "species",
+        "slug": "aasimar-xphb",
+        "name": "Aasimar"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "size-choice",
+      "mandatory": true,
+      "cardinality": 1,
+      "source": "size"
+    },
+    {
       "id": "species:aasimar-xphb:L1:spell-grant:species-additionalspells-known",
       "owner": {
         "kind": "species",
@@ -7109,6 +7123,20 @@
       "detail": "category=O"
     },
     {
+      "id": "species:human-xphb:L1:size-choice:size",
+      "owner": {
+        "kind": "species",
+        "slug": "human-xphb",
+        "name": "Human"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "size-choice",
+      "mandatory": true,
+      "cardinality": 1,
+      "source": "size"
+    },
+    {
       "id": "species:human-xphb:L1:skill-choice:skillproficiencies",
       "owner": {
         "kind": "species",
@@ -7135,6 +7163,20 @@
       "mandatory": true,
       "cardinality": 1,
       "source": "resist"
+    },
+    {
+      "id": "species:tiefling-xphb:L1:size-choice:size",
+      "owner": {
+        "kind": "species",
+        "slug": "tiefling-xphb",
+        "name": "Tiefling"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "size-choice",
+      "mandatory": true,
+      "cardinality": 1,
+      "source": "size"
     },
     {
       "id": "species:tiefling-xphb:L1:variant-choice:species-additionalspells-variants",

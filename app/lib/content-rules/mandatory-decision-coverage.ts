@@ -74,6 +74,20 @@ function classFacetHasSkillChoice(slug: string): boolean {
 function speciesFacetHasSkillChoice(slug: string): boolean {
   return (findRulesFacet('dnd5e.2024', 'species', slug)?.choices ?? []).some((c) => c.choiceSet === 'choice:skill.proficiency')
 }
+// AASIMAR CREATION COMPLETION PHASE -- generic, name-agnostic: true whenever the OWNING species'
+// own facet declares the named ChoiceSet, regardless of which species it is. A future species
+// with the identical size (or any other) choice is covered the same way, with no species name in
+// this check.
+function speciesFacetHasChoice(slug: string, choiceSetId: string): boolean {
+  return (findRulesFacet('dnd5e.2024', 'species', slug)?.choices ?? []).some((c) => c.choiceSet === choiceSetId)
+}
+// AASIMAR CREATION COMPLETION PHASE -- the species counterpart of
+// `telekineticTelepathicSpellCovered`: a species-owned `spell-grant` decision is covered once its
+// own facet declares exactly one FixedSpellGrant (Aasimar's Light Bearer today; any future
+// species with the identical "a single named, no-choice spell" shape is covered the same way).
+function speciesFixedSpellGrantCovered(slug: string): boolean {
+  return (findRulesFacet('dnd5e.2024', 'species', slug)?.fixedSpellGrants ?? []).length === 1
+}
 function classProgression(slug: string): readonly string[] {
   return findRulesFacet('dnd5e.2024', 'class', slug)?.progression ?? []
 }
@@ -371,6 +385,20 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => is(d, 'species', 'skill-choice') && speciesFacetHasSkillChoice(d.owner.slug)
   },
   {
+    id: 'impl:species-size-choice',
+    status: 'implemented',
+    reason: 'Species size choice (Aasimar: Small or Medium, "chosen when you select this species"), via the generic, reusable choice:species.size ChoiceSet (the exact choice:skill.proficiency mechanism: a literal Value id per option, no activate-source needed) -- never a species name check.',
+    ledgerIds: [],
+    matches: (d) => is(d, 'species', 'size-choice') && speciesFacetHasChoice(d.owner.slug, 'choice:species.size')
+  },
+  {
+    id: 'impl:species-spell-fixed-grant',
+    status: 'implemented',
+    reason: 'Species-owned fixed spell grant with no "of your choice" clause at all (Aasimar\'s Light Bearer: "You know the Light cantrip"), via FixedSpellGrant -- the exact shape Telekinetic\'s/Telepathic\'s own feat-owned fixed grants already use. Casting ability is a separate, deferred fact, never conflated with this acquisition decision.',
+    ledgerIds: [],
+    matches: (d) => is(d, 'species', 'spell-grant') && speciesFixedSpellGrantCovered(d.owner.slug)
+  },
+  {
     id: 'impl:subclass-selection',
     status: 'implemented',
     reason: 'Subclass selection (progression:class.subclass-selection).',
@@ -604,23 +632,48 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'blk:species-feat-choice',
     status: 'blocked',
-    reason: 'Human Origin feat choice: the option set includes Origin feats whose own choices are blocked.',
+    // AASIMAR CREATION COMPLETION PHASE -- reason refined, not fixed: re-verified against Human's
+    // real corpus text (Versatile: "you gain a feat of your choice from the Origin feat
+    // category" -- a FREE choice among all 10 Origin feats, not a Background's single FIXED
+    // grant). Every Origin feat IS individually representable now when a Background fixes it
+    // (gatherSpellRequirements's own gate check reads the GRANTING facet's `grants`), but Magic
+    // Initiate's own `requiresActive` gate is satisfied ONLY by a Background fixing one of its
+    // three list Values -- nothing sets that gate when Magic Initiate is instead chosen freely
+    // from a pool (Human's Versatile, or any future general-feat-pool path). A free "which spell
+    // list" choice for that path does not exist. Still genuinely blocked, not merely stale.
+    reason: 'Human Origin feat choice (free choice from the whole Origin category): every Origin feat is representable when a Background fixes it, but Magic Initiate\'s own requiresActive gate has no mechanism for a FREELY chosen (non-Background-fixed) spell list -- a real, still-missing shape, not stale.',
     ledgerIds: [],
     matches: (d) => is(d, 'species', 'feat-choice')
   },
   {
     id: 'blk:species-lineage',
     status: 'blocked',
-    reason: 'Species lineage, ancestry, or legacy choice: variant spells and spellcasting ability are not represented.',
+    // AASIMAR CREATION COMPLETION PHASE -- excludes Aasimar's own spell-grant (now covered by
+    // impl:species-spell-fixed-grant above): Aasimar owns no lineage/legacy/variant choice at all
+    // (its additionalSpells block has no `.name`, so detectSpeciesDecisions never takes the
+    // variant-choice branch for it), so only the spell-GRANT decision needed excluding here.
+    reason: 'Species lineage, ancestry, or legacy choice: the lineage/legacy CHOICE itself (Elf/Gnome/Goliath/Dragonborn/Tiefling) is now representable in principle via the generic choice:class.feature-option mechanism (re-verified this phase -- the prior "species-lineage-choice primitive" label was wrong), but none of the five is authored; their own variant spells and spellcasting-ability sub-choice remain unauthored too. Not fixed in this phase (Aasimar only).',
     ledgerIds: [],
-    matches: (d) => is(d, 'species', 'variant-choice') || is(d, 'species', 'spell-grant')
+    matches: (d) => (is(d, 'species', 'variant-choice') || is(d, 'species', 'spell-grant')) && !speciesFixedSpellGrantCovered(d.owner.slug)
   },
   {
     id: 'blk:species-damage',
     status: 'blocked',
-    reason: 'Species damage-type choice (ancestry resistance): no damage-type vocabulary.',
+    // AASIMAR CREATION COMPLETION PHASE -- reason refined: `value:resistance.necrotic.granted`/
+    // `.radiant.granted` now exist (authored for Aasimar's own FIXED, non-choice resistance), but
+    // a damage-type CHOICE (Dragonborn: acid/lightning/fire/poison/cold; Tiefling: poison/
+    // necrotic/fire) still needs the remaining types' own Values plus a reusable "choose 1 of N"
+    // ChoiceSet -- not authored, Dragonborn/Tiefling untouched this phase.
+    reason: 'Species damage-type CHOICE (Dragonborn\'s/Tiefling\'s own ancestry/legacy resistance): most needed damage types still have no Value vocabulary, and no reusable choice ChoiceSet names them yet. Aasimar\'s own resistance is a FIXED grant (never a choice), so it never reaches this family at all.',
     ledgerIds: [],
     matches: (d) => is(d, 'species', 'damage-type-choice')
+  },
+  {
+    id: 'blk:species-size',
+    status: 'blocked',
+    reason: 'Species size choice not yet authored on this species\' own facet (Human, Tiefling both share Aasimar\'s real "Small or Medium" shape, via the SAME choice:species.size ChoiceSet this phase authored for Aasimar -- pure authoring, not a missing primitive; simply not done for these two species this phase).',
+    ledgerIds: [],
+    matches: (d) => is(d, 'species', 'size-choice') && !speciesFacetHasChoice(d.owner.slug, 'choice:species.size')
   },
   {
     id: 'impl:background-equipment',

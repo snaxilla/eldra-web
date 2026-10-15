@@ -54,6 +54,11 @@ export type DecisionFamily =
   | 'equipment-package'
   | 'language-choice'
   | 'replacement'
+  // AASIMAR CREATION COMPLETION PHASE -- a species whose own `size` array names more than one
+  // code (e.g. Aasimar's `['S','M']`, per its real sizeEntry prose: "chosen when you select this
+  // species"). A single-entry `size` array (every species that owns no size decision today) never
+  // produces this family at all.
+  | 'size-choice'
 
 export type DecisionRecord = {
   id: string
@@ -83,7 +88,10 @@ export type RawClass = {
   startingEquipment?: unknown
   classTableGroups?: { colLabels?: string[], rows?: unknown[][] }[]
 }
-export type RawRace = { name: string, resist?: unknown[], skillProficiencies?: unknown[], additionalSpells?: unknown[], feats?: unknown[], entries?: RawEntryNode[] }
+// AASIMAR CREATION COMPLETION PHASE -- `size` added: the raw corpus field is an array of
+// 5etools size codes (e.g. `['M']`, `['S']`, or `['S','M']`); more than one entry is the real
+// "chosen when you select this species" shape.
+export type RawRace = { name: string, size?: readonly string[], resist?: unknown[], skillProficiencies?: unknown[], additionalSpells?: unknown[], feats?: unknown[], entries?: RawEntryNode[] }
 export type RawBackground = { name: string, feats?: Record<string, boolean>[], ability?: unknown[], toolProficiencies?: Record<string, unknown>[], startingEquipment?: unknown }
 export type RawFeat = {
   name: string
@@ -517,6 +525,10 @@ function subclassDecisions(sub: RawSubclass, features: RawSubclassFeature[], out
 export function detectSpeciesDecisions(race: RawRace): DecisionRecord[] {
   const owner = { kind: 'species' as const, slug: ownerSlugOf(race.name), name: race.name }
   const out: DecisionRecord[] = []
+  // AASIMAR CREATION COMPLETION PHASE -- more than one size code is the real "chosen when you
+  // select this species" shape (Aasimar's own `['S','M']`); a single entry (every other XPHB
+  // species today) is fixed, never a decision.
+  if ((race.size?.length ?? 0) > 1) out.push(make(owner, 1, 'size-choice', 'size', 1))
   for (const r of race.resist ?? []) {
     if (r && typeof r === 'object' && 'choose' in (r as object)) out.push(make(owner, 1, 'damage-type-choice', 'resist', 1))
   }

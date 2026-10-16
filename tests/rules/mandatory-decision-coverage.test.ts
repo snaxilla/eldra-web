@@ -367,7 +367,10 @@ describe('P8 -- starting equipment reconciliation', () => {
     // lineage/ancestry choice is now representable via choice:species.feature-option reuse).
     // TIEFLING SPECIES COMPLETION -- Tiefling's own Fiendish Legacy, size choice, and innate
     // casting ability are all authored too; Tiefling joins the roster (9 of 10 named species).
-    expect(availableSpecies.length).toBe(9)
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own size choice and Versatile free
+    // Origin-feat choice (via the new generic `choice:feat.origin-selection`) are both authored
+    // too; Human joins the roster -- the full named 10-species roster, every one creation-complete.
+    expect(availableSpecies.length).toBe(10)
     // FEATURE-OPTION PHASE -- Cleric (Divine Order) and Druid (Primal Order) join the roster.
     // WEAPON MASTERY PHASE -- Barbarian, Fighter, Paladin, Ranger join too (Rogue remains
     // creation-blocked by Expertise and Thieves' Cant/language policy at the time).
@@ -390,9 +393,10 @@ describe('P8 -- starting equipment reconciliation', () => {
         }
       }
     }
-    // TIEFLING SPECIES COMPLETION -- 9 species * 12 available classes * 16 available backgrounds
-    // = 1728, enumerated through the real authority above (never computed as a hardcoded product).
-    expect(combinations).toBe(1728)
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- 10 species * 12 available classes * 16
+    // available backgrounds = 1920, enumerated through the real authority above (never computed
+    // as a hardcoded product) -- every native species x class x background combination.
+    expect(combinations).toBe(1920)
   })
 
   it('FIRST REAL CHARACTER -- Dwarf + Bard + Criminal is creation-complete through the real authority', () => {
@@ -590,15 +594,15 @@ describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
   const sizeDecisions = DECISIONS.filter((d) => d.family === 'size-choice')
   const aasimarSpellGrant = DECISIONS.find((d) => d.owner.slug === 'aasimar-xphb' && d.family === 'spell-grant')!
 
-  // TIEFLING SPECIES COMPLETION -- Tiefling's own size-choice is reclassified too (its facet now
-  // declares choice:species.size, see the dedicated "TIEFLING SPECIES COMPLETION" describe block
-  // for its own full reconciliation). Human alone remains blocked.
-  it('RECLASSIFICATION -- the real size-choice census (Aasimar, Human, Tiefling all genuinely have one); Aasimar\'s and Tiefling\'s own are implemented', () => {
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own size-choice is reclassified too
+  // (its facet now declares choice:species.size, the same real "Small or Medium" shape Aasimar/
+  // Tiefling already have). All three are implemented now.
+  it('RECLASSIFICATION -- the real size-choice census (Aasimar, Human, Tiefling all genuinely have one); all three are implemented', () => {
     expect(sizeDecisions.length).toBe(3)
     const byOwner = sizeDecisions.map((d) => d.owner.slug).sort()
     expect(byOwner).toEqual(['aasimar-xphb', 'human-xphb', 'tiefling-xphb'])
     expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'aasimar-xphb')!).status).toBe('implemented')
-    expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'human-xphb')!).status).toBe('blocked')
+    expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'human-xphb')!).status).toBe('implemented')
     expect(classifyDecision(sizeDecisions.find((d) => d.owner.slug === 'tiefling-xphb')!).status).toBe('implemented')
   })
 
@@ -624,14 +628,12 @@ describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
     expect(contractViolations(DECISIONS, without).length).toBeGreaterThan(0)
   })
 
-  // TIEFLING SPECIES COMPLETION -- Tiefling's own size-choice is REMOVED from this list: its
-  // facet now declares choice:species.size too (the same real "Small or Medium" shape Aasimar
-  // has), so it reclassifies to implemented. Human alone remains.
-  it('BITE -- Human\'s own size-choice decision remains fail-closed (blk:species-size), never falsely greened by impl:species-size-choice', () => {
-    for (const d of sizeDecisions.filter((d) => d.owner.slug !== 'aasimar-xphb' && d.owner.slug !== 'tiefling-xphb')) {
-      expect(matchingRules(d).map((r) => r.id)).toEqual(['blk:species-size'])
-    }
-  })
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own size-choice is REMOVED from this
+  // list too: its facet now declares choice:species.size (the same real "Small or Medium" shape
+  // Aasimar/Tiefling already have), so it reclassifies to implemented, and `blk:species-size`
+  // (its last remaining real match) is deleted outright, mirroring the prior deletion of the
+  // species `variant-choice`/`damage-type-choice` blocking rules. No species-owned size-choice
+  // decision remains blocked today, so this BITE test has nothing left to prove and is removed.
 
   it('BITE -- Healing Hands and Celestial Revelation never masquerade as a mandatory build decision -- neither is discovered as one at all', () => {
     // Healing Hands (a Magic action, 1/Long Rest) and Celestial Revelation (Level 3+, "choose
@@ -645,6 +647,10 @@ describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
     expect(aasimarDecisions.map((d) => d.family).sort()).toEqual(['size-choice', 'spell-grant'])
   })
 
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `blk:species-size` is deleted (no species-
+  // owned size-choice decision is blocked today), so a FUTURE, unsupported one now fails closed
+  // via the bidirectional contract's own generic default (zero matching rules -> 'blocked',
+  // `classifyDecision`'s own unclassified fallback), never via a dedicated catch-all rule.
   it('a FUTURE, unsupported species-owned size-choice decision is never falsely greened by impl:species-size-choice (fails closed)', () => {
     const synthetic: DecisionRecord = {
       id: 'species:future-xphb:L1:size-choice:size',
@@ -656,7 +662,8 @@ describe('AASIMAR CREATION COMPLETION PHASE -- reconciliation', () => {
       cardinality: 1,
       source: 'size'
     }
-    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic)).map((r) => r.id)).toEqual(['blk:species-size'])
+    expect(COVERAGE_RULES.filter((rule) => rule.matches(synthetic)).map((r) => r.id)).toEqual([])
+    expect(classifyDecision(synthetic).status).toBe('blocked')
   })
 })
 

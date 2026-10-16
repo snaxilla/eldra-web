@@ -3730,6 +3730,34 @@
     "distinct": true
   },
   {
+    "id": "choice:feat.origin-selection",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Origin Feat",
+    "prompt": "Choose an Origin feat.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentCatalogue",
+      "category": "feats",
+      "filter": {
+        "category": "origin"
+      }
+    },
+    "distinct": true
+  },
+  {
+    "id": "choice:feat.magic-initiate.list",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Spell List",
+    "prompt": "Choose the spell list this feat draws from.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true
+  },
+  {
     "id": "choice:class.weapon-mastery",
     "kind": "choiceSet",
     "category": "character.creation",

@@ -154,6 +154,30 @@ export type RulesFacet = {
   // it into progression.feats[] under a background-source key. Never read by
   // assembly: an existing character gets no retroactive grant.
   originFeatSlug?: string
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- when the feat named by THIS
+  // facet's own `originFeatSlug` declares one of its OWN `choices` entries (e.g.
+  // Magic Initiate's own "which spell list"), this presets that choice's answer --
+  // keyed by the choiceSet id, valued with the literal selected option(s) -- so the
+  // Background's own fixed fact answers it directly. Never persisted: re-derived
+  // fresh on every read from THIS facet (exactly like `grants`), merged into the
+  // acquisition's own effective selections only when its `choiceKey` matches the
+  // canonical origin-grant key AND its featRef matches `originFeatSlug` (see
+  // `originFeatPresetChoices`, app/lib/characters/creation-origin-feat.ts) -- a feat
+  // acquired through any OTHER path (freely chosen) is never preset, and must
+  // answer the same nested choice itself. Absent (every Background authored before
+  // this phase) means no preset, byte-identical old behavior.
+  originFeatPreset?: Readonly<Record<string, readonly string[]>>
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- for a REPEATABLE feat
+  // (CanonicalFeatMechanics.repeatable), names the choiceSetId of one of THIS
+  // facet's own `choices` entries whose answer the real corpus requires to differ
+  // across any two acquisitions of this SAME feat on one character (Magic
+  // Initiate's own "you must choose a different spell list each time"). Compared
+  // generically by answer equality (app/lib/characters/creation-origin-feat.ts's
+  // `findIllegalRepeatAcquisition`) -- never a parsed prerequisite string, never a
+  // named-feat branch. Absent (every feat authored before this phase, and most
+  // repeatable feats -- e.g. Ability Score Improvement, which has no such corpus
+  // condition) means unrestricted repeat acquisition, byte-identical old behavior.
+  repeatAcquisitionDifferentiator?: string
   // PHASE 2C.3A -- package-authored CREATION availability. Present means this
   // content is visible in the Builder but cannot be chosen at creation yet; the
   // string is the user-facing reason. Absent means available. Consumed generically

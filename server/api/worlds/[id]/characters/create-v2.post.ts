@@ -72,7 +72,8 @@ import {
   type ContentChoiceSelector
 } from '../../../../../app/lib/characters/creation-content-choices'
 import {
-  findDuplicateFeatAcquisition,
+  findIllegalRepeatAcquisition,
+  originFeatPresetChoices,
   resolveCreationOriginFeat
 } from '../../../../../app/lib/characters/creation-origin-feat'
 import { creationUnresolvedDecisions, describeUnresolved } from '../../../../../app/lib/content-rules/creation-completeness'
@@ -82,7 +83,8 @@ import { getDerivedCharacter } from '../../../../utils/character-derived'
 import { saveCharacterHealth } from '../../../../utils/character-health'
 import {
   emptyStoredRulesChoices,
-  validateChoiceSelection
+  validateChoiceSelection,
+  choiceKey
 } from '../../../../../app/lib/characters/rules-choices'
 import { resolveCreationChoices, type ChoiceSetRule } from '../../../../../app/lib/characters/creation-choice-eligibility'
 import { normalizeStoredAbilityScores } from '../../../../../app/lib/characters/ability-scores'
@@ -277,7 +279,7 @@ export default defineEventHandler(async (event) => {
   // Species/Class/Background composition already works. Absent/unconfigured
   // package means `null`, a no-op, byte-identical to before this phase.
   const universalFacet = runtime.configured && runtime.ok ? (runtime.runtime.manifest.universalCreation ?? null) : null
-  const slots = [
+  const baseSlots = [
     { slot: 'universal', facet: universalFacet },
     { slot: 'species', facet: species.rulesFacet },
     { slot: 'class', facet: characterClass.rulesFacet },
@@ -307,20 +309,124 @@ export default defineEventHandler(async (event) => {
     if (!definition || definition.kind !== 'choiceSet') return null
     return { distinct: definition.distinct, maxPerOption: definition.maxPerOption }
   }
-  const contentDeclarations = declaredCreationContentChoices(slots, contentSelectorOf)
+  const contentDeclarations = declaredCreationContentChoices(baseSlots, contentSelectorOf)
   const contentKeys = new Set(contentDeclarations.map((declaration) => declaration.key))
 
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- content choices (which feat/spell/item is
+  // ACQUIRED) are resolved BEFORE the Definition-choice block below, not after: a freely-chosen
+  // feat (e.g. Human's Versatile) may declare its OWN nested Definition-ChoiceSet (Magic
+  // Initiate's own "choose a spell list"), and that choice can only be discovered/validated once
+  // WHICH feat was chosen is known. Moved verbatim from its own prior position further down this
+  // handler -- nothing about WHAT this resolves changed, only WHEN. `resolveCreationContentChoices`
+  // reads only `baseSlots`/the catalogues/its own `submittedContent` argument, never
+  // `rulesChoices.selections`, so this reordering is safe.
+  const rawContent = body?.contentChoices
+  if (rawContent != null && (typeof rawContent !== 'object' || Array.isArray(rawContent))) {
+    throw createError({ statusCode: 400, statusMessage: '`contentChoices` must be an object of choice keys to ContentRef lists' })
+  }
+  const submittedContent = (rawContent ?? {}) as Record<string, unknown>
+  for (const [key, value] of Object.entries(submittedContent)) {
+    if (!contentKeys.has(key)) {
+      throw createError({ statusCode: 400, statusMessage: `This character's content declares no content choice "${key}"` })
+    }
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item)) {
+      throw createError({ statusCode: 400, statusMessage: `${key}: Selections must be a list of encoded ContentRefs.` })
+    }
+  }
+  const contentPresentations = resolveCreationContentChoices(
+    contentDeclarations,
+    baseSlots,
+    Object.fromEntries(Object.entries(submittedContent).map(([key, value]) => [key, value as string[]])),
+    catalogue.feats,
+    // D&D 2024 Character Rules P2 -- independently re-resolved server-side, exactly like
+    // `catalogue.feats` above: a crafted spell ContentRef is judged against THIS catalogue entry's
+    // own spellMechanics and the declared package filter, never against a client-submitted fact.
+    // No real facet declares a 'spells' choice yet (P3 owns acquisition counts), so this is
+    // currently always judged against zero declared choices -- wired now so the transport is not
+    // tied to one surface, per this phase's own scope.
+    catalogue.spells,
+    // Weapon Mastery phase -- items, mirroring `catalogue.feats`/`catalogue.spells` above exactly.
+    // Every item's own `itemMechanics` and the World's own derived proficiency facts (never the
+    // client's) decide eligibility; the Builder's offered list is presentation only.
+    catalogue.items
+  )
+  const contentAcquisitions: { featRef: { packageId: string, slug: string }, choiceKey: string }[] = []
+  // Weapon Mastery phase -- items-category offers are kept SEPARATE from `contentAcquisitions`
+  // (which feeds progression.feats[]): an item is not a feat, and `itemRef` would be a lie if
+  // stored under `featRef`. Routed by `presentation.category`, the same package-declared
+  // destination every other content choice is already routed by -- no choice-id branch.
+  const itemAcquisitions: { itemRef: { packageId: string, slug: string }, choiceKey: string }[] = []
+  for (const presentation of contentPresentations) {
+    const submitted = (submittedContent[presentation.key] as string[] | undefined) ?? []
+    if (submitted.length > presentation.count) {
+      throw createError({ statusCode: 400, statusMessage: `${presentation.key}: choose ${presentation.count}` })
+    }
+    for (const ref of submitted) {
+      const offer = presentation.offered.find((candidate) => candidate.ref === ref)
+      if (!offer) {
+        throw createError({ statusCode: 400, statusMessage: `${presentation.key}: "${ref}" is not a legal option for this choice` })
+      }
+      if (!offer.eligible) {
+        throw createError({ statusCode: 400, statusMessage: `${presentation.key}: "${offer.title}" is ${offer.reason ? offer.reason.toLowerCase() : 'not available'} and cannot be chosen` })
+      }
+    }
+    if (!presentation.valid) {
+      throw createError({ statusCode: 400, statusMessage: `${presentation.key}: choose ${presentation.count} option${presentation.count === 1 ? '' : 's'}` })
+    }
+    for (const offer of presentation.offered.filter((candidate) => presentation.selected.includes(candidate.ref))) {
+      if (presentation.category === 'items') {
+        itemAcquisitions.push({ itemRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
+      } else {
+        contentAcquisitions.push({ featRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
+      }
+    }
+  }
+
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `slots` widens `baseSlots` with one entry
+  // per CONTENT-acquired feat too, mirroring the Background's own fixed Origin Feat entry above
+  // exactly (`feat:${choiceKey}`, the acquired feat's own `rulesFacet`) -- so a freely-chosen
+  // feat's own nested Definition-choice is discoverable/validatable the SAME generic way a
+  // Background-fixed one already is. No change for a feat with no `choices` of its own: it simply
+  // contributes nothing to `resolveCreationChoices`'s own output, exactly as today.
+  const slots = [
+    ...baseSlots,
+    ...contentAcquisitions.map((acquisition) => ({
+      slot: `feat:${acquisition.choiceKey}`,
+      facet: catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet ?? null
+    }))
+  ]
+
   const declaredKeys = new Set(resolveCreationChoices(slots, {}, isContentChoiceSet, choiceSetRule).map((presentation) => presentation.key))
+
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- the Background's own fixed Origin Feat's
+  // preset answer (if its facet declares one -- see RulesFacet.originFeatPreset's own header),
+  // merged in as if the player had answered it directly, at the EXACT key the generic pipeline
+  // below would assign that acquisition's own nested choice. A feat acquired through any OTHER
+  // path is never preset here -- `originFeatPresetChoices` returns `undefined` unless this
+  // acquisition IS the Background's own canonical origin-grant.
+  const presetSelections: Record<string, string[]> = {}
+  if (originResolution.status === 'acquired') {
+    const preset = originFeatPresetChoices(originResolution.acquisition, background)
+    if (preset) {
+      for (const [choiceSetId, answer] of Object.entries(preset)) {
+        presetSelections[choiceKey(`feat:${originResolution.acquisition.choiceKey}`, choiceSetId)] = [...answer]
+      }
+    }
+  }
 
   const rulesChoices = emptyStoredRulesChoices()
   const rawSelections = body?.choices?.selections
 
-  if (rawSelections != null) {
-    if (typeof rawSelections !== 'object' || Array.isArray(rawSelections)) {
-      throw createError({ statusCode: 400, statusMessage: '`choices.selections` must be an object' })
-    }
+  if (rawSelections != null && (typeof rawSelections !== 'object' || Array.isArray(rawSelections))) {
+    throw createError({ statusCode: 400, statusMessage: '`choices.selections` must be an object' })
+  }
 
-    const entries = Object.entries(rawSelections as Record<string, unknown>)
+  {
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- presets are merged in BEFORE this block,
+    // not layered on after: they must flow through the identical judge/validate/record pipeline
+    // every real submitted answer already does, so a preset is "answered" by the SAME rule a
+    // player's own answer is, with no special-cased second path.
+    const entries = Object.entries({ ...presetSelections, ...((rawSelections as Record<string, unknown> | null) ?? {}) })
 
     for (const [key, value] of entries) {
       if (!declaredKeys.has(key)) {
@@ -374,70 +480,20 @@ export default defineEventHandler(async (event) => {
 
       rulesChoices.selections[key] = validation.selected
     }
-  }
 
-  // PHASE 2C.2B -- ContentRef answers to content-backed creation choices. The
-  // client names only (choice key, encoded ref). Category, variant, prerequisites,
-  // ownership, and the ref's real catalogue entry are all re-derived here from
-  // the package declaration and the World's catalogue -- never trusted.
-  const rawContent = body?.contentChoices
-  if (rawContent != null && (typeof rawContent !== 'object' || Array.isArray(rawContent))) {
-    throw createError({ statusCode: 400, statusMessage: '`contentChoices` must be an object of choice keys to ContentRef lists' })
-  }
-  const submittedContent = (rawContent ?? {}) as Record<string, unknown>
-  for (const [key, value] of Object.entries(submittedContent)) {
-    if (!contentKeys.has(key)) {
-      throw createError({ statusCode: 400, statusMessage: `This character's content declares no content choice "${key}"` })
-    }
-    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item)) {
-      throw createError({ statusCode: 400, statusMessage: `${key}: Selections must be a list of encoded ContentRefs.` })
-    }
-  }
-  const contentPresentations = resolveCreationContentChoices(
-    contentDeclarations,
-    slots,
-    Object.fromEntries(Object.entries(submittedContent).map(([key, value]) => [key, value as string[]])),
-    catalogue.feats,
-    // D&D 2024 Character Rules P2 -- independently re-resolved server-side, exactly like
-    // `catalogue.feats` above: a crafted spell ContentRef is judged against THIS catalogue entry's
-    // own spellMechanics and the declared package filter, never against a client-submitted fact.
-    // No real facet declares a 'spells' choice yet (P3 owns acquisition counts), so this is
-    // currently always judged against zero declared choices -- wired now so the transport is not
-    // tied to one surface, per this phase's own scope.
-    catalogue.spells,
-    // Weapon Mastery phase -- items, mirroring `catalogue.feats`/`catalogue.spells` above exactly.
-    // Every item's own `itemMechanics` and the World's own derived proficiency facts (never the
-    // client's) decide eligibility; the Builder's offered list is presentation only.
-    catalogue.items
-  )
-  const contentAcquisitions: { featRef: { packageId: string, slug: string }, choiceKey: string }[] = []
-  // Weapon Mastery phase -- items-category offers are kept SEPARATE from `contentAcquisitions`
-  // (which feeds progression.feats[]): an item is not a feat, and `itemRef` would be a lie if
-  // stored under `featRef`. Routed by `presentation.category`, the same package-declared
-  // destination every other content choice is already routed by -- no choice-id branch.
-  const itemAcquisitions: { itemRef: { packageId: string, slug: string }, choiceKey: string }[] = []
-  for (const presentation of contentPresentations) {
-    const submitted = (submittedContent[presentation.key] as string[] | undefined) ?? []
-    if (submitted.length > presentation.count) {
-      throw createError({ statusCode: 400, statusMessage: `${presentation.key}: choose ${presentation.count}` })
-    }
-    for (const ref of submitted) {
-      const offer = presentation.offered.find((candidate) => candidate.ref === ref)
-      if (!offer) {
-        throw createError({ statusCode: 400, statusMessage: `${presentation.key}: "${ref}" is not a legal option for this choice` })
-      }
-      if (!offer.eligible) {
-        throw createError({ statusCode: 400, statusMessage: `${presentation.key}: "${offer.title}" is ${offer.reason ? offer.reason.toLowerCase() : 'not available'} and cannot be chosen` })
-      }
-    }
-    if (!presentation.valid) {
-      throw createError({ statusCode: 400, statusMessage: `${presentation.key}: choose ${presentation.count} option${presentation.count === 1 ? '' : 's'}` })
-    }
-    for (const offer of presentation.offered.filter((candidate) => presentation.selected.includes(candidate.ref))) {
-      if (presentation.category === 'items') {
-        itemAcquisitions.push({ itemRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
-      } else {
-        contentAcquisitions.push({ featRef: { packageId: offer.packageId, slug: offer.slug }, choiceKey: presentation.key })
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- "a character may be created with its
+    // choices still outstanding" (this route's own long-standing rule, restated above) does NOT
+    // extend to a feat's own nested decision: this phase's own explicit requirement is that no
+    // such choice may remain missing while creation is declared complete. Scoped to feat-owned
+    // keys only (`feat:` prefix) -- species/class/background's own base choices keep their
+    // existing, unrelated leniency untouched. Reuses `CreationChoicePresentation.answered`,
+    // already computed by `judged` above for every DECLARED key, not only submitted ones.
+    for (const presentation of judged.values()) {
+      if (presentation.slot.startsWith('feat:') && !presentation.answered) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `${presentation.key}: this feat's own choice must be answered before this character can be created`
+        })
       }
     }
   }
@@ -446,9 +502,27 @@ export default defineEventHandler(async (event) => {
   // FEAT-OWNED SPELL ACQUISITION PHASE note above), joins the SAME progression.feats[] collection
   // as the content choices.
   const acquisitions = [...originAcquisitions, ...contentAcquisitions]
-  const duplicateFeat = findDuplicateFeatAcquisition(acquisitions)
-  if (duplicateFeat) {
-    throw createError({ statusCode: 400, statusMessage: `"${duplicateFeat}" would be acquired twice at creation and cannot be chosen` })
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- replaces findDuplicateFeatAcquisition:
+  // reuses the real corpus's own `repeatable`/`repeatAcquisitionDifferentiator` facts (never a
+  // hardcoded feat name) to decide whether two acquisitions of the SAME feat are legal, and -- if
+  // repeatable with a differentiator -- whether their own nested answers actually differ. Answers
+  // are read from `rulesChoices.selections` (which, by this point, already has presets merged in
+  // and has already been through the feat-choice completeness check immediately above), so an
+  // unanswered differentiator can never slip through as "trivially different" -- completeness is
+  // independently enforced first.
+  const illegalRepeat = findIllegalRepeatAcquisition(
+    acquisitions,
+    (featRef) => {
+      const entry = catalogue.feats.find((candidate) => candidate.packageId === featRef.packageId && candidate.slug === featRef.slug)
+      return {
+        repeatable: entry?.featMechanics?.repeatable === true,
+        differentiator: entry?.rulesFacet?.repeatAcquisitionDifferentiator
+      }
+    },
+    (ownerKey, choiceSetId) => rulesChoices.selections[choiceKey(ownerKey, choiceSetId)] ?? []
+  )
+  if (illegalRepeat) {
+    throw createError({ statusCode: 400, statusMessage: `"${illegalRepeat}" cannot be acquired this way at creation` })
   }
 
   // PHASE 0 -- FAIL CLOSED. Every mandatory decision the selected species, class, and
@@ -490,9 +564,17 @@ export default defineEventHandler(async (event) => {
   // own facets, app/lib/content-rules/dnd5e-2024.ts). Nothing past this line knows Magic Initiate
   // exists; it sees exactly the same flat `SpellRequirement[]` a pure single-class caster's own
   // spellRequirements already were.
-  const acquisitionFeatFacets = acquisitions.map((acquisition) => catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet)
   const spellRequirements = gatherSpellRequirements(
-    [species.rulesFacet, characterClass.rulesFacet, background.rulesFacet, ...acquisitionFeatFacets],
+    [
+      { packageId: species.packageId, facet: species.rulesFacet, ownerKey: 'species' },
+      { packageId: characterClass.packageId, facet: characterClass.rulesFacet, ownerKey: 'class' },
+      { packageId: background.packageId, facet: background.rulesFacet, ownerKey: 'background' },
+      ...acquisitions.map((acquisition) => ({
+        packageId: acquisition.featRef.packageId,
+        facet: catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet,
+        ownerKey: `feat:${acquisition.choiceKey}`
+      }))
+    ],
     rulesChoices.selections
   )
   let spellPlan: ReturnType<typeof buildCreationSpellPlan> | null = null
@@ -560,10 +642,14 @@ export default defineEventHandler(async (event) => {
   // `confirmProgression`'s own matching window, never here.
   const fixedSpellGrantsResolution = resolveFixedSpellGrants(
     [
-      { packageId: species.packageId, facet: species.rulesFacet, ownerKey: species.slug },
-      { packageId: characterClass.packageId, facet: characterClass.rulesFacet, ownerKey: characterClass.slug },
-      { packageId: background.packageId, facet: background.rulesFacet, ownerKey: background.slug },
-      ...acquisitions.map((acquisition) => ({ packageId: acquisition.featRef.packageId, facet: catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet, ownerKey: acquisition.featRef.slug }))
+      // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `ownerKey` corrected to the literal
+      // consumeFacet slot name/`feat:${choiceKey}` convention (was the bare slug), so the
+      // owner-prefix-scoped gate check in resolveFixedSpellGrants finds the SAME selection key
+      // this facet's own choice is actually stored under (`species:...`, never `human-xphb:...`).
+      { packageId: species.packageId, facet: species.rulesFacet, ownerKey: 'species' },
+      { packageId: characterClass.packageId, facet: characterClass.rulesFacet, ownerKey: 'class' },
+      { packageId: background.packageId, facet: background.rulesFacet, ownerKey: 'background' },
+      ...acquisitions.map((acquisition) => ({ packageId: acquisition.featRef.packageId, facet: catalogue.feats.find((entry) => entry.packageId === acquisition.featRef.packageId && entry.slug === acquisition.featRef.slug)?.rulesFacet, ownerKey: `feat:${acquisition.choiceKey}` }))
     ],
     catalogue.spells,
     [],

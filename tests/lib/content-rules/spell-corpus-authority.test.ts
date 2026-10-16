@@ -118,15 +118,24 @@ describe('P2 spell corpus authority', () => {
   // and damage-type-choice (both via choice:species.feature-option reuse, exactly like
   // Dragonborn's own) plus its own size-choice (via choice:species.size reuse, exactly like
   // Aasimar's own). Moving the census from 651/439/177 to 651/442/174.
-  it('the Phase-0 decision census after Tiefling Species Completion: 651 total, 442 implemented, 174 blocked, 35 optional', () => {
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- no new discovery this phase (no new
+  // DecisionFamily; the independent corpus re-derivation confirmed Human's own population is
+  // exactly the 3 decisions already discovered -- feat-choice, size-choice, skill-choice, the last
+  // already implemented). Exactly 2 real decisions reclassify blocked -> implemented: Human's own
+  // size-choice (via choice:species.size reuse, exactly like Aasimar's/Tiefling's own) and
+  // feat-choice (Versatile, via the new generic `choice:feat.origin-selection` content-catalogue
+  // ChoiceSet). Moving the census from 651/442/174 to 651/444/172. Explicitly NOT reclassified:
+  // Resourceful (Heroic Inspiration) and the casting-ability/Spell-Change facts on Origin feats
+  // acquired through Versatile -- all runtime/deferred, exactly as for every other species.
+  it('the Phase-0 decision census after Human Species Completion: 651 total, 444 implemented, 172 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
     expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(651)
-    expect(counts.implemented).toBe(442)
-    expect(counts.blocked).toBe(174)
+    expect(counts.implemented).toBe(444)
+    expect(counts.blocked).toBe(172)
     expect(counts.optional).toBe(35)
   })
 

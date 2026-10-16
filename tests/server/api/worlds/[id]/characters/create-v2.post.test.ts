@@ -740,9 +740,15 @@ describe('CHOICE ELIGIBILITY -- Background-granted skill is ineligible for the C
 
     // The Class's own proficiency choice is left outstanding, same as before P8 -- only the P8
     // starting-equipment answers (a different ChoiceSet family entirely) are now present.
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Sage's own fixed Magic Initiate (Wizard
+    // list) now also carries its own preset answer to the feat's own nested "choose a list" choice
+    // (RulesFacet.originFeatPreset, see dnd5e-2024.ts's own Sage header) -- a THIRD, server-
+    // synthesized key, never submitted by the client, exactly mirroring a Background's own fixed
+    // grant in every other respect.
     expect(result.rulesChoices.selections).toEqual({
       'class:choice:equipment.starting.wizard-xphb': ['B'],
-      'background:choice:equipment.starting.sage-xphb': ['B']
+      'background:choice:equipment.starting.sage-xphb': ['B'],
+      'feat:background:progression:1:grant:origin:choice:feat.magic-initiate.list': ['value:magic-initiate.list.3.active']
     })
     expect(createEntityRecordMock).toHaveBeenCalled()
   })

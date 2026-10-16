@@ -47,12 +47,30 @@ import type { DefinitionId } from '../rules/types'
 import type { RulesFacet, SpellRequirement } from '../content-rules/types'
 import { nextInstanceId, type StoredSpellEntry } from './spellcasting'
 
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `ownerPrefix` scopes the
+// SELECTIONS half of this check to ONE owner's own answers (every stored
+// selection key is `${ownerKey}:${choiceSetId}`, the exact consumeFacet
+// slotKey convention character-actor-bridge.ts already assigns). This matters
+// the moment the SAME repeatable feat is acquired more than once: before this
+// phase, a global selections-scan meant a SECOND acquisition's own spell-list
+// pick would also (wrongly) satisfy the FIRST acquisition's gate, and vice
+// versa, since both read/write literally the same opaque Value id. Restricting
+// the scan to the requirement's OWN owner means two acquisitions' nested
+// answers can never bleed into each other's gate. The GRANTS half stays
+// UNSCOPED (checks every active facet, exactly as before) because a `grants`
+// entry is a character-wide fact, never acquisition-instance-ambiguous --
+// every existing cross-owner case in this corpus (Thaumaturge/Magician's own
+// chosen Source, Elf/Gnome lineage, Tiefling fiendish legacy) is same-owner
+// for the SELECTIONS half already, so scoping it changes nothing for them;
+// see this phase's own audit for the exhaustive trace.
 function isGateActive(
   id: DefinitionId,
   selections: Readonly<Record<string, readonly string[]>>,
-  facets: readonly (RulesFacet | null | undefined)[]
+  facets: readonly (RulesFacet | null | undefined)[],
+  ownerPrefix: string
 ): boolean {
-  for (const values of Object.values(selections)) {
+  for (const [key, values] of Object.entries(selections)) {
+    if (!key.startsWith(ownerPrefix)) continue
     if (values.includes(id)) return true
   }
   for (const facet of facets) {
@@ -61,20 +79,55 @@ function isGateActive(
   return false
 }
 
-// `facets`: every RulesFacet actually active on the character right now (typically species, class,
-// background, plus one entry per genuinely acquired feat -- NEVER a feat merely offered/
-// selectable). Order does not matter; a requirement's own `id` is already globally stable and
-// unique, so two facets can never collide by concatenation alone. The SAME list doubles as the
-// gate-check scope (see this file's own header) -- a requirement's `requiresActive` gate may be
-// granted by a DIFFERENT facet than the one that owns the requirement (Magic Initiate's own
-// requirement is owned by the FEAT; the gate is granted by the BACKGROUND that acquired it), so
-// every active facet must be visible to the gate check, not just the requirement's own owner.
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `owners` replaces the bare
+// `facets` array this function took before: `ownerKey` is the EXACT consumeFacet
+// slotKey (`'species'`, `'class'`, `'background'`, or `feat:${choiceKey}`) this
+// owner is actually consumed under, never invented separately. It does two
+// things: (1) scopes the gate check above to this owner's own answers, and (2)
+// disambiguates a requirement id that more than one owner contributes (see the
+// frequency-based id construction below) -- both only possible because an
+// acquisition's `choiceKey` is already a stable, deterministic identity.
+export type SpellRequirementOwner = {
+  packageId: string
+  facet: RulesFacet | null | undefined
+  ownerKey: string
+}
+
+// An authored requirement id contributed by exactly ONE owner (every character
+// today, and every species/class/subclass/background requirement always, since
+// those slots are never acquired twice) keeps its id byte-identical to before
+// this phase -- zero persisted-provenance impact. An id contributed by MORE
+// THAN ONE owner -- only possible when the SAME repeatable feat is acquired
+// more than once on one character -- is suffixed by EVERY contributing owner's
+// own stable ownerKey, symmetrically: neither acquisition "wins" the plain
+// form, so the result never depends on `owners`' own iteration order (a
+// frequency count, not an encounter-order race).
 export function gatherSpellRequirements(
-  facets: readonly (RulesFacet | null | undefined)[],
+  owners: readonly SpellRequirementOwner[],
   selections: Readonly<Record<string, readonly string[]>>
 ): SpellRequirement[] {
-  const all = facets.flatMap((facet) => facet?.spellRequirements ?? [])
-  return all.filter((requirement) => (requirement.requiresActive ?? []).every((id) => isGateActive(id, selections, facets)))
+  const facets = owners.map((owner) => owner.facet)
+
+  const counts = new Map<string, number>()
+  for (const owner of owners) {
+    for (const requirement of owner.facet?.spellRequirements ?? []) {
+      counts.set(requirement.id, (counts.get(requirement.id) ?? 0) + 1)
+    }
+  }
+
+  const tagged = owners.flatMap((owner) =>
+    (owner.facet?.spellRequirements ?? []).map((requirement) => ({
+      ...requirement,
+      id: (counts.get(requirement.id) ?? 0) > 1 ? `${requirement.id}@${owner.ownerKey}` : requirement.id,
+      _ownerKey: owner.ownerKey
+    }))
+  )
+
+  return tagged
+    .filter((requirement) =>
+      (requirement.requiresActive ?? []).every((id) => isGateActive(id, selections, facets, `${requirement._ownerKey}:`))
+    )
+    .map(({ _ownerKey, ...requirement }) => requirement)
 }
 
 // FEAT-OWNED SPELL ACQUISITION PHASE -- the FixedSpellGrant counterpart of `gatherSpellRequirements`
@@ -95,8 +148,14 @@ export function gatherSpellRequirements(
 export type FixedSpellGrantOwner = {
   packageId: string
   facet: RulesFacet | null | undefined
-  // A stable, human-free identity for THIS owner (e.g. the feat's own slug) -- used only to build
-  // the synthetic provenance tag above, never compared against anything.
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- must be the EXACT consumeFacet slotKey this
+  // owner is consumed under (`'species'`, `'class'`, `'background'`, or `feat:${choiceKey}`), the
+  // SAME convention `SpellRequirementOwner.ownerKey` now uses, for the identical reason: it scopes
+  // this owner's own `requiresActive` gate check (below) to its own answers, and -- if this facet's
+  // `fixedSpellGrants` is ever acquired more than once -- keeps two acquisitions' synthetic
+  // provenance tags from colliding. Previously the bare feat slug; every current call site names
+  // species/class/subclass/background facets or a feat acquisition never taken twice, so this is a
+  // pure identity-source correction with no behavior change for any of them today.
   ownerKey: string
 }
 
@@ -138,7 +197,7 @@ export function resolveFixedSpellGrants(
     for (const grant of owner.facet?.fixedSpellGrants ?? []) {
       const minLevel = grant.minLevel ?? 1
       if (minLevel <= levelWindow.from || minLevel > levelWindow.to) continue
-      if ((grant.requiresActive ?? []).some((id) => !isGateActive(id, selections, facets))) continue
+      if ((grant.requiresActive ?? []).some((id) => !isGateActive(id, selections, facets, `${owner.ownerKey}:`))) continue
       const found = catalogue.find((entry) => entry.packageId === owner.packageId && entry.slug === grant.slug)
       if (!found) {
         return { ok: false, reason: `Fixed spell grant "${grant.slug}" (from "${owner.ownerKey}") is not in this World's Content Catalogue` }

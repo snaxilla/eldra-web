@@ -13,6 +13,8 @@ import {
   type BuilderCatalogueEntry
 } from '~/components/characters/builder/characterBuilderSelection'
 import { findRulesFacet } from '~/lib/content-rules'
+import { DND5E_2024_MANDATORY_DECISIONS, type UnresolvedDecision } from '~/lib/content-rules/creation-completeness'
+import { classifyDecision } from '~/lib/content-rules/mandatory-decision-coverage'
 
 const entry = (slug: string, title: string): BuilderCatalogueEntry => ({
   packageId: 'eldra.solaris.xphb',
@@ -30,14 +32,13 @@ const entry = (slug: string, title: string): BuilderCatalogueEntry => ({
 const INTERNAL = /ENGINE_BLOCKED|CONTENT_BLOCKED|MILESTONE|primitive|blk:|unclassified|startingEquipment|feats\.|anyFromCategory|\(ability\)|toolProficiencies/
 
 describe('fail-closed presentation -- which entries are unavailable and why', () => {
-  // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable; Tiefling
-  // replaced it last phase. TIEFLING SPECIES COMPLETION -- Tiefling itself is now REMOVED too
-  // (all 3 of its own decisions -- legacy, resistance, size -- are implemented). Human replaces
-  // it as the one species still genuinely unavailable (its own FIRST unresolved decision is the
-  // free Origin feat choice).
-  it('a species whose own decision Eldra cannot record is unavailable; Dwarf (no decisions) is not', () => {
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human (this test's own prior example) is now
+  // ALSO creation-complete alone (its own size choice and free Origin-feat choice -- Versatile --
+  // are both representable now; see creation-availability.test.ts: Species 10/10). No species is
+  // left that is unavailable alone -- this test now proves the positive case for both.
+  it('every species is individually creation-available alone now (Species 10/10); neither Human nor Dwarf is blocked', () => {
     const [human, dwarf] = withCreationBlockers([entry('human-xphb', 'Human'), entry('dwarf-xphb', 'Dwarf')], 'species')
-    expect(human!.rulesFacet?.creationUnavailable).toMatch(/^Requires a feat choice/)
+    expect(human!.rulesFacet?.creationUnavailable).toBeUndefined()
     expect(dwarf!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
@@ -62,31 +63,42 @@ describe('fail-closed presentation -- which entries are unavailable and why', ()
     expect(artisan!.rulesFacet?.creationUnavailable).toBeUndefined()
   })
 
-  // FEAT-OWNED SPELL ACQUISITION PHASE -- Acolyte/Sage are REMOVED from this list: a Background
-  // selected alone (no feats array) no longer owns any unresolved decision at all, since Magic
-  // Initiate's own decisions are implemented now, not blocked. Every XPHB Background now behaves
-  // this way, so only the species lineage/spell-grant cases remain as "alone" examples.
-  // AASIMAR CREATION COMPLETION PHASE -- Aasimar is REMOVED from this list too: it is now
-  // creation-complete alone (size-choice + spell-grant both implemented, 0 unresolved). Tiefling
-  // replaced it last phase; PURE-AUTHORING SPECIES SWEEP removed Elf. TIEFLING SPECIES COMPLETION
-  // -- Tiefling itself is now REMOVED too (all 3 of its own decisions are implemented, 0
-  // unresolved alone). Human is the ONLY species, class, or background left anywhere in this
-  // codebase that still owns an unrecordable decision at all (Classes 12/12, Backgrounds 16/16,
-  // Species 9/10) -- the only remaining example across all three `ownCreationBlocker` kinds.
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human (this test's own prior example) is
+  // REMOVED too: every species, class, and background is now individually creation-complete alone
+  // (Species 10/10, Classes 12/12, Backgrounds 16/16 -- see creation-availability.test.ts), so
+  // `ownCreationBlocker` has no remaining example at all. The wording guarantee is proven directly
+  // against a real, still-genuinely-blocked decision found dynamically from the full Phase-0
+  // census (172 decisions remain blocked overall -- none reachable alone by species/class/
+  // background, but real ones still exist), via the SAME `blockerReason` the Builder calls.
   it('no reason ever exposes an internal identifier', () => {
-    const blocker = ownCreationBlocker('species', 'human-xphb')
-    expect(blocker).not.toBeNull()
-    expect(blockerReason(blocker!)).not.toMatch(INTERNAL)
+    const blockedRecord = DND5E_2024_MANDATORY_DECISIONS.find((d) => classifyDecision(d).status === 'blocked')
+    expect(blockedRecord, 'at least one real decision must still be blocked for this test to mean anything').toBeDefined()
+    const classification = classifyDecision(blockedRecord!)
+    expect(classification.status).toBe('blocked')
+    if (classification.status !== 'blocked') return
+    const blocker: UnresolvedDecision = {
+      decisionId: blockedRecord!.id,
+      owner: blockedRecord!.owner,
+      family: blockedRecord!.family,
+      source: blockedRecord!.source,
+      level: blockedRecord!.level,
+      rule: classification.rule,
+      reason: classification.reason,
+      ledgerIds: classification.ledgerIds
+    }
+    expect(blockerReason(blocker)).not.toMatch(INTERNAL)
   })
 })
 
 describe('fail-closed presentation -- the Create gate names the same blockers', () => {
-  // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable; Human replaces
-  // it (still blocked, its own FIRST unresolved decision being the free Origin-feat choice).
-  it('a selected species that owns an unrecordable decision is named, and nothing else is', () => {
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human (this test's own prior example) is now
+  // creation-complete alone too, so selecting it produces no blocker message at all -- proven
+  // directly, rather than replaced by a new named example (no species/class/background is blocked
+  // alone anymore; see the "every species is individually creation-available" test above).
+  it('a selected species that is fully creation-complete alone produces no blocker message', () => {
     const draft = { ...emptyDraft(), species: entry('human-xphb', 'Human') }
     const messages = creationBlockerMessages(draft)
-    expect(messages).toEqual([expect.stringMatching(/^Species cannot be completed yet\. Requires a feat choice\.$/)])
+    expect(messages).toEqual([])
   })
 
   it('an empty draft has no blocker messages (blockers are about chosen content only)', () => {

@@ -2320,22 +2320,37 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     // CORPUS CORRECTION, re-derived directly (never trusted from this phase's own first-draft
     // assumption): the raw Background `feats` key is NOT a bare `"magic initiate|xphb"` -- it is
     // `"magic initiate; cleric|xphb"` (Acolyte), `"...; druid|xphb"` (Guide), `"...; wizard|xphb"`
-    // (Sage). The GRANTING BACKGROUND fixes WHICH list, every time -- there is NO real creation
-    // path in this corpus where a player freely chooses among the three (Magic Initiate's own
-    // category is 'O'/Origin, so it is never offered through the ordinary General feat-selection
-    // pool either). A "choose a spell list" ChoiceSet would therefore ask a question the real
-    // corpus never asks -- removed from an earlier draft of this phase for exactly that reason
-    // ("do not invent choices that don't exist").
+    // (Sage). The GRANTING BACKGROUND fixes WHICH list, every time, for ITS OWN acquisition.
     //
-    // Modeled instead as 6 `spellRequirements` (2 cantrip + 1 fixed-spell pool, times 3 lists),
-    // each gated via `requiresActive` against a plain boolean Value
-    // (`value:magic-initiate.list.1/2/3.active`) that the GRANTING BACKGROUND sets TRUE as an
-    // ordinary FIXED `grants` entry (see Acolyte/Guide/Sage's own facets below) -- the SAME
-    // `requiresActive`/conditional-SpellRequirement primitive this phase adds, just gated by a
-    // fixed grant rather than a player-chosen Source (see `gatherSpellRequirements`'s own header,
-    // app/lib/characters/spell-requirement-ownership.ts, for why checking grants is part of the
-    // SAME generic mechanism, not a second one). Only the granting background's own list's 2
-    // requirements ever participate -- `gatherSpellRequirements` drops the other 4 entirely.
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- the earlier claim here ("there is NO real
+    // creation path... where a player freely chooses among the three") was true only because no
+    // generic Origin-feat-selection mechanism existed yet. Human's Versatile ("you gain an Origin
+    // feat of your choice") is exactly that path now, and Magic Initiate's own category IS
+    // 'O'/Origin, so it is swept in by the SAME generic filter as every other Origin feat -- its
+    // own "choose a spell list" decision, re-derived directly from the feat's OWN real text
+    // (feats.json: "You learn two cantrips of your choice from the Cleric, Druid, or Wizard spell
+    // list... Intelligence, Wisdom, or Charisma is your spellcasting ability... choose when you
+    // select this feat"), is therefore now authored as `choice:feat.magic-initiate.list` below --
+    // the EXACT `choice:species.size` shape (a literal Value id per option, no activate-source).
+    //
+    // Still 6 `spellRequirements` (2 cantrip + 1 fixed-spell pool, times 3 lists), each gated via
+    // `requiresActive` against the SAME plain boolean Value (`value:magic-initiate.list.1/2/3.active`)
+    // as before -- but that Value is no longer set by a Background's own unconditional `grants`
+    // entry. Acolyte/Guide/Sage's own fixed Origin Feat grant now PRESETS this facet's own nested
+    // choice instead (`RulesFacet.originFeatPreset`, see their own facets below) -- the SAME
+    // generic mechanism a freely-chosen acquisition answers for itself, just answered by the
+    // Background rather than the player. `isGateActive`'s own owner-prefix scoping
+    // (app/lib/characters/spell-requirement-ownership.ts) means each ACQUISITION's own answer is
+    // checked against ONLY that acquisition's own selections -- a Background-fixed acquisition and
+    // a freely-chosen one can coexist on the SAME character (e.g. Human+Acolyte) without either's
+    // list choice bleeding into the other's gate.
+    //
+    // Repeatable (`"repeatable": true`, feats.json), and the corpus is explicit: "You can take
+    // this feat more than once, but you must choose a different spell list each time." Authored
+    // generically via `repeatAcquisitionDifferentiator: 'choice:feat.magic-initiate.list'` --
+    // `findIllegalRepeatAcquisition` (app/lib/characters/creation-origin-feat.ts) compares two
+    // acquisitions' own answers to THIS named choice, never a Magic-Initiate-specific check.
+    //
     // Casting-ability ("Intelligence, Wisdom, or Charisma... choose when you select this feat") and
     // "Spell Change" (replace a spell on level-up) are real corpus text but NEITHER is a discovered
     // Phase-0 decision today (`detectFeatDecisions` does not parse a feat's own `ability` field at
@@ -2349,6 +2364,14 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     // CONTENT fact, authored only here (list.1 = Cleric, list.2 = Druid, list.3 = Wizard) -- the
     // Value ids/labels in definitions.json name neither.
     'magic-initiate-xphb': { // Magic Initiate
+      choices: [
+        {
+          choiceSet: 'choice:feat.magic-initiate.list',
+          count: 1,
+          from: ['value:magic-initiate.list.1.active', 'value:magic-initiate.list.2.active', 'value:magic-initiate.list.3.active']
+        }
+      ],
+      repeatAcquisitionDifferentiator: 'choice:feat.magic-initiate.list',
       spellRequirements: [
         {
           id: 'spell-requirement.magic-initiate-xphb.cleric.cantrip',
@@ -2448,15 +2471,25 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // FEAT-OWNED SPELL ACQUISITION PHASE -- Magic Initiate's own spell decisions are now
       // representable (see the feat's own facet entry above); `creationUnavailable` removed. The
       // real corpus FIXES Acolyte's own Magic Initiate to the Cleric list (raw Background feats
-      // key: "magic initiate; cleric|xphb") -- `value:magic-initiate.list.1.active` (list.1 =
-      // Cleric) is granted here, fixed, exactly like every other Background fact, never a player
-      // choice.
+      // key: "magic initiate; cleric|xphb").
+      //
+      // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- the fixed list is no longer a plain
+      // `grants` entry: Magic Initiate's facet now declares its OWN "choose a spell list" nested
+      // choice unconditionally (so a FREELY-chosen acquisition, e.g. via Human's Versatile, can
+      // answer it too), and a global `grants` entry would answer it for every acquisition of this
+      // feat on the character, not just THIS Background's own -- exactly the cross-acquisition
+      // bleed this phase closes. `originFeatPreset` instead presets THIS acquisition's own answer
+      // to that nested choice (re-derived fresh every read, from this fact, never persisted) --
+      // the SAME real corpus fact, fixed, never a player choice, just expressed as an answer to
+      // the feat's own question rather than a global flag.
       originFeatSlug: 'magic-initiate-xphb',
+      originFeatPreset: {
+        'choice:feat.magic-initiate.list': ['value:magic-initiate.list.1.active']
+      },
       grants: [
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.insight.proficient', to: true },
-        { set: 'value:skill.religion.proficient', to: true },
-        { set: 'value:magic-initiate.list.1.active', to: true }
+        { set: 'value:skill.religion.proficient', to: true }
       ],
       startingEquipment: {
         id: 'choice:equipment.starting.acolyte-xphb',
@@ -2892,12 +2925,16 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ],
       // FEAT-OWNED SPELL ACQUISITION PHASE -- see Acolyte's own identical note above. Guide's own
       // Magic Initiate is fixed to the Druid list (raw key: "magic initiate; druid|xphb").
+      // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- see Acolyte's own identical note above
+      // for why this is `originFeatPreset`, not a `grants` entry.
       originFeatSlug: 'magic-initiate-xphb',
+      originFeatPreset: {
+        'choice:feat.magic-initiate.list': ['value:magic-initiate.list.2.active']
+      },
       grants: [
         { set: 'value:tool.cartographers_tools.proficient', to: true },
         { set: 'value:skill.stealth.proficient', to: true },
-        { set: 'value:skill.survival.proficient', to: true },
-        { set: 'value:magic-initiate.list.2.active', to: true }
+        { set: 'value:skill.survival.proficient', to: true }
       ],
       startingEquipment: {
         id: 'choice:equipment.starting.guide-xphb',
@@ -3137,12 +3174,16 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       ],
       // FEAT-OWNED SPELL ACQUISITION PHASE -- see Acolyte's own identical note above. Sage's own
       // Magic Initiate is fixed to the Wizard list (raw key: "magic initiate; wizard|xphb").
+      // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- see Acolyte's own identical note above
+      // for why this is `originFeatPreset`, not a `grants` entry.
       originFeatSlug: 'magic-initiate-xphb',
+      originFeatPreset: {
+        'choice:feat.magic-initiate.list': ['value:magic-initiate.list.3.active']
+      },
       grants: [
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },
         { set: 'value:skill.arcana.proficient', to: true },
-        { set: 'value:skill.history.proficient', to: true },
-        { set: 'value:magic-initiate.list.3.active', to: true }
+        { set: 'value:skill.history.proficient', to: true }
       ],
       startingEquipment: {
         id: 'choice:equipment.starting.sage-xphb',
@@ -3715,8 +3756,27 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         { slug: 'darkness-xphb', flag: 'prepared', requiresActive: ['source:fiendish-legacy.infernal'], minLevel: 5 }
       ]
     },
+    // HUMAN SPECIES COMPLETION -- re-derived directly from races.json (XPHB), not trusted from any
+    // prior forecast. Full real entry: size ['S','M'] ("chosen when you select this species", the
+    // SAME shape Aasimar/Tiefling already have -- reuses choice:species.size verbatim); speed 30;
+    // no darkvision, no resistance. Skillful: "proficiency in one skill of your choice" -- the
+    // EXACT choice:skill.proficiency shape already authored below, unchanged, confirmed sufficient
+    // by this phase's own independent census (no missed nested decision). Versatile: "you gain an
+    // Origin feat of your choice" -- the REAL generic mechanism this phase adds: a creation-time,
+    // `fromContentCatalogue`-backed feat-selection ChoiceSet filtered to `category: 'origin'`,
+    // reusing the EXACT `choice:feat.fighting-style.fs-only`-shaped precedent (Fighter's own
+    // Fighting Style choice, already creation-time and catalogue-backed) -- never a Human-specific
+    // feat picker. No Human-specific application code exists anywhere: a selected feat's own
+    // facet (its `choices`/`spellRequirements`/`fixedSpellGrants`) activates through the SAME
+    // generic acquisition pipeline a Background's fixed Origin Feat already uses (see
+    // create-v2.post.ts's own `acquisitions`/`slots` widening).
     'human-xphb': {
       choices: [
+        {
+          choiceSet: 'choice:species.size',
+          count: 1,
+          from: ['value:size.medium', 'value:size.small']
+        },
         {
           choiceSet: 'choice:skill.proficiency',
           count: 1,
@@ -3740,6 +3800,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:skill.stealth.proficient',
             'value:skill.survival.proficient'
           ]
+        },
+        {
+          choiceSet: 'choice:feat.origin-selection',
+          count: 1
         }
       ]
     }

@@ -70,15 +70,60 @@ export function resolveCreationOriginFeat(input: {
   }
 }
 
-// Used by create-v2 POST to refuse one feat acquired twice at creation (a fixed
-// grant plus a content choice naming the same feat). Keyed by canonical ref, so
-// it cannot be fooled by a different encoding of the same entry.
-export function findDuplicateFeatAcquisition(acquisitions: readonly FixedFeatAcquisition[]): string | null {
-  const seen = new Set<string>()
-  for (const { featRef } of acquisitions) {
-    const ref = serializeContentRef(featRef)
-    if (seen.has(ref)) return ref
-    seen.add(ref)
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- when THIS acquisition is the
+// Background's own fixed Origin Feat grant (its `choiceKey` is the canonical
+// origin-grant key AND its featRef matches the Background's own `originFeatSlug`
+// -- both re-derivable from data already present, never a new persisted field),
+// returns the Background facet's own `originFeatPreset` (if it declares one) so
+// the acquired feat's own nested choice (e.g. Magic Initiate's "which spell
+// list") answers itself, exactly like a plain `grants` entry would, with no
+// opaque global gate. A feat acquired through any OTHER path (freely chosen)
+// never matches, and returns `undefined` -- its own nested choice stays
+// genuinely pending. Pure, generic: works for any Background/any feat with a
+// nested choice, never named here.
+export function originFeatPresetChoices(
+  acquisition: FixedFeatAcquisition,
+  background: { packageId: string, rulesFacet?: { originFeatSlug?: string, originFeatPreset?: Readonly<Record<string, readonly string[]>> } | null }
+): Readonly<Record<string, readonly string[]>> | undefined {
+  const canonicalKey = progressionChoiceKey(ORIGIN_FEAT_SLOT, CREATION_LEVEL, ORIGIN_FEAT_GRANT_SEGMENT)
+  if (acquisition.choiceKey !== canonicalKey) return undefined
+  if (background.rulesFacet?.originFeatSlug !== acquisition.featRef.slug) return undefined
+  return background.rulesFacet?.originFeatPreset
+}
+
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- replaces the narrower
+// findDuplicateFeatAcquisition: the real corpus distinguishes "may never be
+// acquired twice" (CanonicalFeatMechanics.repeatable === false) from "may be
+// acquired more than once, but each acquisition's own differentiating nested
+// choice must answer differently" (RulesFacet.repeatAcquisitionDifferentiator,
+// e.g. Magic Initiate's spell list) from "may be acquired more than once with
+// no such constraint" (repeatable with no differentiator, e.g. Ability Score
+// Improvement). `lookup`/`answerFor` are injected so this stays pure (no
+// catalogue/selections access of its own); `answerFor` must be called with the
+// SAME `feat:${choiceKey}` owner-prefix convention `gatherSpellRequirements`
+// uses, so an unanswered differentiator reads as `[]`, never a stand-in value --
+// callers are expected to have ALREADY rejected a feat-owned choice left
+// genuinely unanswered (see create-v2.post.ts's own feat-choice completeness
+// check) before this runs, so an empty answer here always means "illegally
+// incomplete, not yet caught," never "legitimately blank."
+export function findIllegalRepeatAcquisition(
+  acquisitions: readonly FixedFeatAcquisition[],
+  lookup: (featRef: { packageId: string, slug: string }) => { repeatable: boolean, differentiator?: string },
+  answerFor: (ownerKey: string, choiceSetId: string) => readonly string[]
+): string | null {
+  const bySlug = new Map<string, FixedFeatAcquisition[]>()
+  for (const acquisition of acquisitions) {
+    const ref = serializeContentRef(acquisition.featRef)
+    bySlug.set(ref, [...(bySlug.get(ref) ?? []), acquisition])
+  }
+  for (const [ref, group] of bySlug) {
+    const first = group[0]
+    if (group.length < 2 || !first) continue
+    const { repeatable, differentiator } = lookup(first.featRef)
+    if (!repeatable) return ref
+    if (!differentiator) continue
+    const answers = group.map((a) => [...answerFor(`feat:${a.choiceKey}`, differentiator)].sort().join(','))
+    if (new Set(answers).size !== answers.length) return ref
   }
   return null
 }

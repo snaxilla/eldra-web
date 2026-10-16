@@ -225,7 +225,9 @@ import {
   loadCharacterRulesChoices,
   saveCharacterRulesChoices
 } from './character-rules-choices'
-import { emptyStoredRulesChoices, resolveChoiceTarget } from '../../app/lib/characters/rules-choices'
+import { emptyStoredRulesChoices, resolveChoiceTarget, choiceKey, progressionChoiceKey } from '../../app/lib/characters/rules-choices'
+import { originFeatPresetChoices, ORIGIN_FEAT_SLOT, ORIGIN_FEAT_GRANT_SEGMENT } from '../../app/lib/characters/creation-origin-feat'
+import { CREATION_LEVEL } from '../../app/lib/characters/creation-content-choices'
 import { featFilterVerdict, featOptionVerdict, type FeatPrerequisite, type FeatUnavailableReason } from '../../app/lib/feat-mechanics'
 import { itemOptionVerdict } from '../../app/lib/item-mechanics'
 import { weaponValueId } from '../../app/lib/content-rules/proficiency-vocabulary'
@@ -425,7 +427,13 @@ export type CurrentProgressionState = {
   // identically to the class's own, via `gatherSpellRequirements`
   // (app/lib/characters/spell-requirement-ownership.ts) -- this field exists so that gathering can
   // happen without re-deriving the resolved feat list a second time.
-  featFacets: readonly (RulesFacet | null)[]
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- widened from a bare facet array to carry each
+  // acquisition's own `choiceKey` alongside it: `gatherSpellRequirements`/`resolveFixedSpellGrants`
+  // now need the EXACT consumeFacet slotKey (`feat:${choiceKey}`) per owner, to scope a gate check to
+  // that owner's own answers and to disambiguate a requirement id two acquisitions of the SAME
+  // repeatable feat both contribute. Every pre-existing caller already had `choiceKey` one level up
+  // (`assembly.blueprint.feats`); this just carries it through instead of discarding it.
+  featFacets: readonly { facet: RulesFacet | null, choiceKey: string }[]
   // FEAT-OWNED SPELL ACQUISITION PHASE -- the currently resolved species/background facets, for
   // the identical reason `featFacets` exists: a requirement's own `requiresActive` gate may be
   // GRANTED by a different facet than the one that OWNS the requirement (Magic Initiate's own
@@ -464,12 +472,37 @@ export async function resolveCurrentProgression(
   const classFacet = assembly.blueprint.class.status === 'resolved'
     ? (assembly.blueprint.class.entry.rulesFacet ?? null)
     : null
-  const featFacets = (assembly.blueprint.feats ?? []).map((slot) => (slot.status === 'resolved' ? (slot.entry.rulesFacet ?? null) : null))
+  const featFacets = (assembly.blueprint.feats ?? []).map((slot) => ({
+    facet: slot.status === 'resolved' ? (slot.entry.rulesFacet ?? null) : null,
+    choiceKey: slot.choiceKey
+  }))
   const speciesFacet = assembly.blueprint.species?.status === 'resolved' ? (assembly.blueprint.species.entry.rulesFacet ?? null) : null
   const backgroundFacet = assembly.blueprint.background?.status === 'resolved' ? (assembly.blueprint.background.entry.rulesFacet ?? null) : null
   const classPackageId = assembly.blueprint.class.status === 'resolved' ? assembly.blueprint.class.entry.packageId : null
   const speciesPackageId = assembly.blueprint.species?.status === 'resolved' ? assembly.blueprint.species.entry.packageId : null
   const backgroundPackageId = assembly.blueprint.background?.status === 'resolved' ? assembly.blueprint.background.entry.packageId : null
+
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- re-derives the SAME preset answer
+  // create-v2.post.ts injects at creation, for the identical reason: a Background's fixed Origin
+  // Feat (e.g. Magic Initiate) no longer sets its own nested choice's gate via a plain `grants`
+  // entry -- it presets the choice itself (see RulesFacet.originFeatPreset's own header). Without
+  // re-deriving this here too, an EXISTING Acolyte/Guide/Sage's gate would read inactive the moment
+  // progression (not creation) recomputes spellRequirements, silently orphaning an already-persisted
+  // spell. Pure re-derivation from already-persisted data (`progression.feats`'s own `choiceKey`) and
+  // the Background's CURRENT facet -- nothing new is written, nothing migrated.
+  const originFeatAcquisition = (progression.feats ?? []).find(
+    (feat) => feat.choiceKey === progressionChoiceKey(ORIGIN_FEAT_SLOT, CREATION_LEVEL, ORIGIN_FEAT_GRANT_SEGMENT)
+  )
+  const originFeatPreset = originFeatAcquisition && backgroundPackageId
+    ? originFeatPresetChoices(originFeatAcquisition, { packageId: backgroundPackageId, rulesFacet: backgroundFacet })
+    : undefined
+  const presetSelections: Record<string, string[]> = {}
+  if (originFeatAcquisition && originFeatPreset) {
+    for (const [choiceSetId, answer] of Object.entries(originFeatPreset)) {
+      presetSelections[choiceKey(`feat:${originFeatAcquisition.choiceKey}`, choiceSetId)] = [...answer]
+    }
+  }
+
   return {
     ok: true,
     state: {
@@ -484,7 +517,7 @@ export async function resolveCurrentProgression(
       speciesPackageId,
       classPackageId,
       backgroundPackageId,
-      rulesChoiceSelections: assembly.blueprint.rulesChoices?.selections ?? {}
+      rulesChoiceSelections: { ...presetSelections, ...(assembly.blueprint.rulesChoices?.selections ?? {}) }
     }
   }
 }
@@ -1104,7 +1137,12 @@ export async function planProgression(
   // own tentative ones (tentative wins a same-key collision, matching every other tentative-over-
   // persisted read in this file) -- see `gatherSpellRequirements`'s own header for the exact check.
   const spellRequirements = gatherSpellRequirements(
-    [current.state.speciesFacet, current.state.classFacet, current.state.backgroundFacet, ...current.state.featFacets],
+    [
+      { packageId: current.state.speciesPackageId ?? '', facet: current.state.speciesFacet, ownerKey: 'species' },
+      { packageId: current.state.classPackageId ?? '', facet: current.state.classFacet, ownerKey: 'class' },
+      { packageId: current.state.backgroundPackageId ?? '', facet: current.state.backgroundFacet, ownerKey: 'background' },
+      ...current.state.featFacets.map((f) => ({ packageId: '', facet: f.facet, ownerKey: `feat:${f.choiceKey}` }))
+    ],
     { ...current.state.rulesChoiceSelections, ...tentativeAnswers }
   )
   let spellPlan: SpellAcquisitionPlan | null = null
@@ -1179,7 +1217,12 @@ export async function confirmProgression(
   // the full reasoning. `answers` (this call's own final parameter) plays the exact role
   // `tentativeAnswers` plays there.
   const spellRequirements = gatherSpellRequirements(
-    [current.state.speciesFacet, current.state.classFacet, current.state.backgroundFacet, ...current.state.featFacets],
+    [
+      { packageId: current.state.speciesPackageId ?? '', facet: current.state.speciesFacet, ownerKey: 'species' },
+      { packageId: current.state.classPackageId ?? '', facet: current.state.classFacet, ownerKey: 'class' },
+      { packageId: current.state.backgroundPackageId ?? '', facet: current.state.backgroundFacet, ownerKey: 'background' },
+      ...current.state.featFacets.map((f) => ({ packageId: '', facet: f.facet, ownerKey: `feat:${f.choiceKey}` }))
+    ],
     { ...current.state.rulesChoiceSelections, ...answers }
   )
   const [packageIntegrityHash, contentBindingFingerprint] = await Promise.all([
@@ -1732,10 +1775,11 @@ export async function confirmProgression(
         resolvedFeatAcquisitions.map((acquisition) => ({
           packageId: acquisition.ref.packageId,
           facet: catalogue.feats.find((entry) => entry.packageId === acquisition.ref.packageId && entry.slug === acquisition.ref.slug)?.rulesFacet,
-          ownerKey: acquisition.ref.slug
+          ownerKey: `feat:${acquisition.choiceKey}`
         })),
         catalogue.spells,
-        [...nextAcquiredSpells, ...fixedSpellGrantEntries]
+        [...nextAcquiredSpells, ...fixedSpellGrantEntries],
+        { ...current.state.rulesChoiceSelections, ...answers }
       )
       if (!fixedSpellGrantsResolution.ok) {
         return { ok: false, reason: 'illegal-feat-selection', message: fixedSpellGrantsResolution.reason }

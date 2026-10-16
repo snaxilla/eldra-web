@@ -8254,3 +8254,302 @@ All pre-existing unrelated dirty worktree state preserved untouched, confirmed b
 --short` at the end of this session.
 
 No commit. No apply. Wait.
+<!-- END OF §25.45 -- next section (§25.46) continues below -->
+
+### 25.46 HUMAN SPECIES COMPLETION + GENERIC SELECTED-FEAT OWNERSHIP (2026-10-15)
+
+#### Scope
+
+Primary gate: Species 9/10 -> 10/10 (Human, the last native species), Combinations 1728/1920 ->
+1920/1920. Production baseline at the start: Rules `eldra.rules.dnd5e-2024@0.21.9` CURRENT,
+Content `eldra.solaris.xphb` CURRENT, Phase-0 scoreboard 651/442/174/35. Explicit, non-negotiable
+constraint: the generic capability for "a freely selected feat activates the same mechanics as a
+Background-fixed one" must work for ANY package-authored selectable feat, never a Human-specific
+subsystem. Three design checkpoints were run before any implementation (dataflow trace, a
+cross-owner gating proof, an incomplete-repeat-acquisition proof); each surfaced a real gap, and
+each was closed with a small, generic, reused-shape extension -- none required escalating past the
+approved scope (no second feat/spell store, no persistence migration, no engine replacement, no
+Human-specific application routing).
+
+#### CORPUS -- re-derived directly from `races.json`/`feats.json` (XPHB)
+
+Human: size `['S','M']` (the same shape Aasimar/Tiefling already have); speed 30; no darkvision, no
+resistance. Resourceful (Heroic Inspiration at end of Long Rest) is runtime, out of scope, as for
+every other species' own runtime facts. Skillful ("proficiency in one skill of your choice") was
+already fully authored (`choice:skill.proficiency` on Human's own facet, from a prior phase) --
+confirmed sufficient by this phase's own independent census, no missed decision. Versatile ("you
+gain an Origin feat of your choice" -- `feats: [{anyFromCategory: {category: ['O'], count: 1}}]`)
+is the real new capability: a FREE choice from the whole 10-feat Origin category, not a Background's
+single fixed grant. Independently re-derived decision population (direct probe against the
+generated artifact, never trusted from memory): exactly 3 decisions --
+`species:human-xphb:L1:feat-choice:feats-anyfromcategory`, `species:human-xphb:L1:size-choice:size`,
+`species:human-xphb:L1:skill-choice:skillproficiencies` (the last already implemented). No missed
+decision; no invented one.
+
+Magic Initiate (`feats.json`): one feat record, `"repeatable": true`, `"repeatableHidden": true`,
+with its own real "Repeatable" text: "You can take this feat more than once, but you must choose a
+different spell list each time." The three named `_versions` ("Magic Initiate; Cleric/Druid/
+Wizard") are a 5etools display artifact, not separate importable catalogue entries -- confirmed by
+reading the import pipeline, which has no `_versions` handling at all, so the catalogue holds
+exactly one entry (`magic-initiate-xphb`). Backgrounds reference the SPECIFIC pre-chosen variant
+by raw key (`"magic initiate; cleric|xphb"` for Acolyte, etc.) -- the Background fixes the list,
+exactly as the prior Feat-Owned Spell Acquisition phase found; the feat's OWN base form (reachable
+only via a free choice, e.g. Human's Versatile) asks the player to choose the list themselves,
+confirmed directly from its own real text ("You learn two cantrips of your choice from the Cleric,
+Druid, or Wizard spell list... Intelligence, Wisdom, or Charisma is your spellcasting ability...
+choose when you select this feat").
+
+#### DATAFLOW AUDIT -- Background-fixed vs. freely selected feat
+
+Traced end to end, not assumed. `create-v2.post.ts`'s `acquisitions = [...originAcquisitions,
+...contentAcquisitions]` was ALREADY a single, generic array feeding `acquisitionFeatFacets`,
+`gatherSpellRequirements`, `resolveFixedSpellGrants`'s owners, Phase-0 completeness, and
+`progression.feats[]` -- identically regardless of acquisition origin. A creation-time,
+`fromContentCatalogue`-backed feat-selection ChoiceSet already worked end to end (Fighter's own
+Fighting Style, `choice:feat.fighting-style.fs-only`). The real, confirmed gap was narrower than
+either of those facts suggested: (1) the `slots` array `resolveCreationChoices` walks to discover a
+feat's own nested Definition-choices included an entry for the Background's fixed Origin Feat, but
+NONE for a content-chosen one -- so a freely-chosen feat's own nested choice (Magic Initiate's
+"choose a list") could never be discovered or validated at all; (2) Magic Initiate's own 6
+`spellRequirements` were gated by a plain `value:magic-initiate.list.N.active` Value that only a
+Background's own unconditional `grants` entry ever set -- nothing set it for a freely-chosen
+acquisition; (3) `findDuplicateFeatAcquisition` was a flat slug-equality check with no awareness of
+`CanonicalFeatMechanics.repeatable` at all, which would reject ANY second acquisition of the same
+feat regardless of corpus legality the moment two acquisition paths could coexist.
+
+#### STOP-CONDITION checkpoints (three, each closed within approved scope)
+
+**Checkpoint 1 -- acquisition-scoped gating.** The first proposed fix (widen `gatherSpellRequirements`
+to take `owners: {packageId, facet, ownerKey}[]` instead of bare facets, scope its gate check to the
+requirement's OWN owner) was traced against every existing cross-owner `requiresActive` use in the
+corpus (Thaumaturge/Magician's own chosen-Source gate, Elf/Gnome lineage and Tiefling fiendish-legacy
+`fixedSpellGrants`) and confirmed same-owner in every case -- zero regression risk, no STOP. The
+owner-prefix scoping (`isGateActive`'s selections-scan restricted to `` `${ownerPrefix}:` ``, the
+grants-scan left global since a `grants` entry is a character-wide fact, never acquisition-instance-
+ambiguous) is the one new mechanism this phase adds to the engine.
+
+**Checkpoint 2 -- stable requirement provenance.** A first-occurrence-wins id-disambiguation scheme
+was rejected (order-dependent, exactly the failure mode flagged) in favor of a frequency-based rule:
+an authored requirement id contributed by exactly one owner (every character today, and every
+species/class/subclass/background requirement always, since those slots are never acquired twice)
+keeps its id byte-identical; an id contributed by more than one owner -- only possible when the same
+repeatable feat is acquired more than once -- is suffixed by EVERY contributing owner's own stable
+`ownerKey` (`feat:${choiceKey}`, the exact `consumeFacet` slotKey, never array position),
+symmetrically, so the result never depends on iteration order.
+
+**Checkpoint 3 -- Magic Initiate repeatability.** Independently re-derived (not inferred from the
+bare `repeatable` flag): the corpus requires a DIFFERENT spell list each repeat, not unconditional
+repeatability. `RulesFacet.repeatAcquisitionDifferentiator` (new, optional, generic field: names one
+of a repeatable feat's own nested `choices` entries whose answer must differ across acquisitions)
+closes this -- declared only on `magic-initiate-xphb`'s own facet, consumed by a generic comparator
+(`findIllegalRepeatAcquisition`), never a Magic-Initiate-specific branch. A further proof (required
+explicitly before implementation) showed the differentiator-equality check alone could be fooled by
+two UNANSWERED acquisitions reading as trivially "different" (both `[]`) -- closed by a separate,
+generic completeness requirement (below), run strictly before the differentiator comparison.
+
+#### MODEL -- exact type and engine changes
+
+`app/lib/content-rules/types.ts`, `RulesFacet` gains two optional fields, both additive/no-op for
+every facet authored before this phase: `originFeatPreset?: Readonly<Record<string, readonly
+string[]>>` (a Background's own fixed Origin Feat presets one of the feat's own nested choices,
+keyed by `choiceSetId`, re-derived fresh every read, never persisted) and
+`repeatAcquisitionDifferentiator?: string` (names the nested choice two acquisitions of this feat
+must answer differently). `app/lib/characters/spell-requirement-ownership.ts`:
+`gatherSpellRequirements` takes `owners: SpellRequirementOwner[]` (was bare facets);
+`isGateActive` takes an `ownerPrefix` restricting its selections-scan;
+`resolveFixedSpellGrants`'s own `FixedSpellGrantOwner.ownerKey` corrected from the bare feat slug to
+the same `feat:${choiceKey}` convention (latent collision risk closed, not yet triggered by any
+shipped content). `app/lib/characters/creation-origin-feat.ts`: `originFeatPresetChoices` (pure,
+re-derives a preset from already-present data -- an acquisition's own `choiceKey` matching the
+canonical origin-grant key, cross-referenced against the Background's CURRENT `originFeatPreset`);
+`findIllegalRepeatAcquisition` replaces `findDuplicateFeatAcquisition` (adds the corpus
+`repeatable`/`repeatAcquisitionDifferentiator` checks, composable, generic).
+
+#### MAGIC INITIATE -- variant/list activation, same-plan composition
+
+Modeled as ONE catalogue feat (`magic-initiate-xphb`), unconditionally declaring its own nested
+choice (`choice:feat.magic-initiate.list`, a plain literal-Value-per-option ChoiceSet -- the exact
+`choice:species.size` shape, no `effect` needed) and `repeatAcquisitionDifferentiator:
+'choice:feat.magic-initiate.list'`. Acolyte/Guide/Sage's own `grants` entry for the list Value is
+REMOVED (it was a global, acquisition-instance-blind flag -- see Checkpoint 1) and replaced by
+`originFeatPreset: {'choice:feat.magic-initiate.list': ['value:magic-initiate.list.N.active']}` on
+each Background's own facet, so their fixed acquisition answers the SAME question a free one would,
+just pre-filled. A freely-chosen acquisition (e.g. Human's Versatile) leaves the choice genuinely
+pending, presented through the SAME generic pipeline (`resolveCreationChoices`/
+`creationChoicePresentation`) a Background-fixed one already used -- no special-cased UI, no
+Human-specific or Magic-Initiate-specific branch anywhere. Casting ability and the optional "Spell
+Change" replacement remain the SAME documented, deferred runtime/decision facts as every other
+feat-owned spell, never silently invented.
+
+#### BUILDER -- generic presentation, no new components
+
+`app/components/characters/builder/characterBuilderSelection.ts`: `creationChoicePresentation` and
+`creationContentPresentation` now share one `baseCreationSlots` builder (species/class/background/
+universal/Background-fixed-Origin-Feat, mirroring the server's own `baseSlots`), and
+`creationChoicePresentation` additionally widens its own `slots` with one entry per CONTENT-acquired
+feat (reads `creationContentPresentation`'s own output first -- content eligibility never depends on
+Definition answers, so no cycle). `spellRequirementsFor` rebuilt on the same `owners`/preset-merge
+shape the server uses. No `HumanBuilder.vue`, no `VersatileFeatPicker.vue`, no
+`MagicInitiateHumanPicker.vue` -- every new surface is the EXISTING generic V2 Builder pipeline,
+widened, never duplicated.
+
+#### SERVER -- authority, rejection matrix, completeness
+
+`create-v2.post.ts` reordered: content-choice resolution (which feat/spell/item is acquired) now
+runs BEFORE the Definition-choice (`choices.selections`) validation block, since a freely-chosen
+feat's own nested Definition-choice can only be discovered once WHICH feat was chosen is known; the
+expanded `slots` (`baseSlots` + one `feat:${choiceKey}` entry per content-acquired feat) feeds
+`declaredKeys`/`judged` exactly as the Background-fixed entry already did. The Background's own
+preset (if any) is merged into the effective submitted selections BEFORE validation, so it is
+"answered" by the identical rule a real submission is -- no second path. A NEW, narrowly-scoped
+completeness requirement (feat-owned keys only, `slot.startsWith('feat:')`, reusing
+`CreationChoicePresentation.answered` which was already computed but never consulted for
+completeness) rejects an unanswered feat-owned nested choice before `findIllegalRepeatAcquisition`
+ever runs -- closing Checkpoint 3's own proof requirement without touching the pre-existing, separate
+leniency for species/class/background's OWN base choices ("a character may be created with its
+choices still outstanding" remains true for everything this phase did not touch).
+Rejection matrix proven: missing feat-owned choice (rejected, completeness); non-repeatable feat
+acquired twice (rejected, `findIllegalRepeatAcquisition`); repeatable feat, same differentiator
+answer (rejected); repeatable feat, no differentiator (`ASI`-shaped, unconditionally legal); crafted/
+undeclared key (rejected, pre-existing `declaredKeys` check, unchanged); offered-but-ineligible value
+(rejected, pre-existing option-eligibility check, unchanged).
+
+#### ACCEPTANCE
+
+Human + Fighter + Criminal (non-spell Versatile pick, Tough): acquisitions
+`[{alert-xphb, background-origin-key}, {tough-xphb or sibling, species-origin-key}]`, both
+independent, zero collision, fresh reload reproduces both -- proven via
+`create-v2-fighter-mechanics.test.ts`'s own widened fixtures (every `SUPPORTED_ORIGIN` background
+case now also carries Human's own freely-chosen feat, avoidance logic never repeating the
+Background's own fixed one). Human + Acolyte (Background-fixed Magic Initiate Cleric coexisting
+with a freely-chosen, non-colliding second feat): proven through the SAME widened fixtures (Acolyte
+case: `['magic-initiate-xphb', 'alert-xphb']`). The specific Human+Acolyte-both-Magic-Initiate
+double-acquisition walk (Cleric via Background, Wizard via Versatile) is proven at the unit level
+(`findIllegalRepeatAcquisition`'s own "legal when answers differ" test, `gatherSpellRequirements`'s
+owner-scoped gating design trace) rather than as a full creation-acceptance integration test in this
+pass -- a real, bounded limitation, reported honestly rather than silently assumed covered end to
+end.
+
+#### PROGRESSION + HISTORICAL compatibility
+
+`server/utils/character-progression-plan.ts`'s `CurrentProgressionState.featFacets` widened to carry
+each acquisition's own `choiceKey` alongside its facet (was a bare facet array -- every pre-existing
+caller's own `(assembly.blueprint.feats ?? [])` guard added defensively, since several existing test
+fixtures construct `progression` objects without a `feats` array at all; this was a genuine crash
+this phase's own new code was the first to expose, fixed, not papered over).
+`resolveCurrentProgression` re-derives the SAME Background-fixed preset on every read, from already-
+persisted data (`progression.feats`'s own `choiceKey` plus the Background's CURRENT facet) -- nothing
+new is ever written, nothing migrated. An EXISTING Acolyte/Guide/Sage character's persisted
+`requirementIds` are unaffected: its requirement id's contributing-owner count is 1 (only one
+acquisition, exactly as before this phase), so `gatherSpellRequirements` reproduces the IDENTICAL,
+unscoped id on every future read -- confirmed by the frequency-based (not order-based) rule in
+Checkpoint 2. No migration, no retroactive answer, no read-time mutation.
+
+#### AVAILABILITY -- real authority, enumerated
+
+Recomputed through the real `creationUnresolvedDecisions` authority (never hardcoded): Species
+**10/10**, Classes **12/12**, Backgrounds **16/16**, Combinations **1920/1920** -- every native
+species x class x background combination is now creation-complete. Two coverage rules
+(`blk:species-size`, `blk:species-feat-choice`) are deleted outright, mirroring the prior deletion of
+the species `variant-choice`/`damage-type-choice` blocking rules: Human was each one's last remaining
+real match, and a `blocked` rule may never carry `allowZero`. Two new `impl:` rules added instead
+(`impl:species-feat-choice`, matching `is(d, 'species', 'feat-choice') &&
+speciesFacetHasChoice(d.owner.slug, 'choice:feat.origin-selection')`; `impl:species-size-choice`
+already generically covered Human once its facet declared the choice).
+
+#### PHASE 0 -- census and movement
+
+Total unchanged at **651** (no new `DecisionFamily`, confirmed by independent re-derivation: Human's
+population is exactly the 3 decisions already discovered). Implemented: **442 -> 444**. Blocked:
+**174 -> 172**. Optional: unchanged at **35**. Exact movement: Human's own `size-choice` and
+`feat-choice` decisions, and ONLY those two, reclassify blocked -> implemented. No unrelated Level
+2-20, subclass, optional-replacement, or runtime-effect decision touched.
+
+#### COVERAGE -- bidirectional, bite tests
+
+`tests/rules/mandatory-decision-coverage.test.ts`'s own A/B bidirectional contract re-verified after
+both rule deletions and additions (no rule matches zero decisions; no decision matches zero or more
+than one rule). New bite coverage in `tests/lib/characters/creation-origin-feat.test.ts`: a
+non-repeatable feat acquired twice is rejected; a repeatable feat with no differentiator is
+unconditionally legal; a repeatable feat WITH a differentiator is legal only when answers differ, and
+an all-`[]` (unanswered-on-both-sides) comparison is proven to collide rather than falsely read as
+"different" (the exact Checkpoint-3 proof, now a permanent regression guard);
+`originFeatPresetChoices` is proven to activate ONLY for the Background's own canonical acquisition,
+never a freely-chosen one, never an unrelated feat, never a Background with no declared preset.
+
+#### HOMEBREW -- genericity
+
+No Human, Versatile, Magic Initiate, Acolyte, Guide, or Sage literal appears as a behavioral branch
+in any engine file touched (`types.ts`, `spell-requirement-ownership.ts`, `creation-origin-feat.ts`,
+`create-v2.post.ts`, `character-progression-plan.ts`, `characterBuilderSelection.ts`) -- every new
+field/function is named by its generic mechanism (`originFeatPreset`, `repeatAcquisitionDifferentiator`,
+`SpellRequirementOwner`, `findIllegalRepeatAcquisition`) and operates on whatever a Content Pack
+declares. A homebrew species or class offering a free feat choice through
+`choice:feat.origin-selection` (or an equivalent category-filtered content ChoiceSet of its own) and
+a homebrew repeatable feat with its own `repeatAcquisitionDifferentiator` both activate through the
+identical, unmodified pipeline this phase built.
+
+#### PACKAGE IMPACT
+
+Rules Definitions changed (`choice:feat.origin-selection`, `choice:feat.magic-initiate.list` added to
+`packages/eldra-dnd5e-2024/definitions.json`) under the CURRENT published `eldra.rules.dnd5e-2024
+@0.21.9` -- `pnpm packages:sync --world Solaris` (dry run) reports `SOURCE_VERSION_COLLISION`
+(0.21.9 is already published with different content) and `REFRESH_REQUIRED` for Content. Recommended
+next version, per the established patch convention: **0.21.10**. Not bumped by this phase -- the
+manifest's own `version` field remains `0.21.9` on disk, exactly as this phase's own instructions
+require. Zero mutations performed (dry run only, confirmed by the sync script's own `DRY RUN -- no
+mutations performed` + `STOP: SOURCE_VERSION_COLLISION` output).
+
+#### IMPACT -- files touched
+
+Created: none (every change extends an existing file). Modified (engine/content): `app/lib/content
+-rules/types.ts`, `app/lib/content-rules/dnd5e-2024.ts` (Human's facet: size choice + Versatile
+content choice; `magic-initiate-xphb`'s facet: unconditional list choice + differentiator;
+Acolyte/Guide/Sage: `grants` -> `originFeatPreset`), `app/lib/content-rules/mandatory-decision
+-coverage.ts` (`blk:species-size`/`blk:species-feat-choice` deleted; `impl:species-feat-choice`
+added; `magicInitiateSpellCovered` reads `originFeatPreset` instead of `grants`),
+`app/lib/characters/spell-requirement-ownership.ts`, `app/lib/characters/creation-origin-feat.ts`,
+`app/components/characters/builder/characterBuilderSelection.ts`,
+`server/api/worlds/[id]/characters/create-v2.post.ts`, `server/utils/character-progression-plan.ts`,
+`packages/eldra-dnd5e-2024/definitions.json`. Modified (tests, ripple from Human's own two newly-
+mandatory decisions plus the `grants` -> `originFeatPreset`/`findDuplicateFeatAcquisition` ->
+`findIllegalRepeatAcquisition` renames -- no test file's OWN subject matter changed, only fixtures/
+expectations that happened to use Human as a decision-light placeholder species or asserted the now-
+superseded mechanism directly): `tests/lib/characters/creation-origin-feat.test.ts` (rewritten,
++14 tests for the new repeatability/preset authority), `tests/lib/content-rules/creation
+-availability.test.ts`, `tests/lib/content-rules/creation-completeness.test.ts`, `tests/lib/content
+-rules/spell-corpus-authority.test.ts`, `tests/rules/dnd5e-2024-origin-feat-acquisition.test.ts`,
+`tests/rules/mandatory-decision-coverage.test.ts` (1 now-moot BITE test removed, per the same
+established "a blocked rule that matches nothing is deleted, not kept artificially alive"
+convention), `tests/components/characters/builder/creationBlockerPresentation.test.ts`,
+`tests/components/characters/builder/creationContentChoiceBrowserShape.test.ts`,
+`tests/server/utils/character-actor-bridge.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2-fighter-mechanics.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2-spell-acquisition.test.ts`,
+`tests/server/api/worlds/[id]/characters/create-v2.post.test.ts`.
+
+#### Verification
+
+`pnpm run test`: **218 files / 4665 tests -- all passing** (committed HEAD baseline, verified
+directly against `2efa167` via the established `it(`/`it.each(`-counting convention: 218 files /
+4659 tests; this phase's own test-file edits land at +6 net, confirmed by direct re-run rather than
+assumed arithmetic -- 2 pre-existing files' own now-obsolete tests were REMOVED or REPURPOSED in
+place [a stale BITE test in `mandatory-decision-coverage.test.ts`; Human's own now-superseded "Phase
+0 refusal" case in `create-v2-fail-closed.test.ts`/`creationBlockerPresentation.test.ts`/
+`creation-completeness.test.ts`, replaced with dynamically-discovered still-blocked examples so the
+wording guarantee they prove is never lost], while `creation-origin-feat.test.ts` gained the largest
+share of new tests proving the repeatability/preset authority this phase adds). `pnpm run
+typecheck`: 1177 errors, byte-identical to the established baseline (grepped the full output for
+every file this phase touched: zero hits). `pnpm run build`: succeeds (exit 0; client + server +
+Nitro, only pre-existing unrelated warnings). `pnpm run lint`: could not execute in this environment
+-- `eslint.config.mjs` imports a `.nuxt/eslint.config.mjs` that `nuxt prepare` does not generate here;
+confirmed pre-existing/environmental (reproduces identically before any file this phase touched is
+even considered), not a regression this phase introduced. `git diff --check`: clean. `pnpm
+packages:sync --world Solaris` (dry run): `SOURCE_VERSION_COLLISION` + `REFRESH_REQUIRED`, no
+mutation performed (see PACKAGE IMPACT above).
+
+All pre-existing unrelated dirty worktree state preserved untouched, confirmed by `git status
+--short` at the end of this session.
+
+No commit. No apply. Wait.

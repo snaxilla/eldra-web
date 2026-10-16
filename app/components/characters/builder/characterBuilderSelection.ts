@@ -98,7 +98,7 @@ import {
   type EquipmentBundleResolvers
 } from '~/lib/characters/equipment-bundle'
 import { DND5E_2024_EQUIPMENT_CROSS_REFERENCE_ITEM_SLUGS } from '~/lib/content-rules/dnd5e-2024'
-import { resolveCreationOriginFeat } from '~/lib/characters/creation-origin-feat'
+import { resolveCreationOriginFeat, originFeatPresetChoices } from '~/lib/characters/creation-origin-feat'
 import { gatherSpellRequirements } from '~/lib/characters/spell-requirement-ownership'
 
 // D&D 2024 Character Rules P3.4 -- re-exported, not redefined: the Level Manager
@@ -431,30 +431,56 @@ export function hasAmbiguousTitles(options: readonly BuilderCatalogueEntry[]): b
 // creation-choice-eligibility.ts). The draft is passed whole so direct grants
 // from ALL three slots are visible to every choice -- never only the slot
 // that happens to render first.
-export function creationChoicePresentation(
-  draft: CharacterBuilderDraft,
-  context: BuilderCreationContext = NO_CREATION_CONTENT
-): CreationChoicePresentation[] {
-  // LANGUAGE CORPUS + POLICY PHASE -- the universal package-wide slot, placed FIRST so its own
-  // fixed grants (Common) and choice are visible to every later slot's own eligibility within
-  // this SAME call -- the real server (create-v2.post.ts) builds the identical slots array.
-  // FEAT-OWNED SPELL ACQUISITION PHASE -- the Background's own fixed Origin Feat (if any) gets its
-  // own slot, keyed by the SAME real acquisition `choiceKey` the server builds
-  // (`resolveCreationOriginFeat`'s own `ORIGIN_FEAT_SLOT`/`ORIGIN_FEAT_GRANT_SEGMENT` convention) --
-  // so Magic Initiate's own "choose a spell list" Definition ChoiceSet is discoverable/answerable
-  // here exactly like create-v2.post.ts's own identical slot.
+// LANGUAGE CORPUS + POLICY PHASE -- the universal package-wide slot, placed FIRST so its own
+// fixed grants (Common) and choice are visible to every later slot's own eligibility within
+// this SAME call -- the real server (create-v2.post.ts) builds the identical slots array.
+// FEAT-OWNED SPELL ACQUISITION PHASE -- the Background's own fixed Origin Feat (if any) gets its
+// own slot, keyed by the SAME real acquisition `choiceKey` the server builds
+// (`resolveCreationOriginFeat`'s own `ORIGIN_FEAT_SLOT`/`ORIGIN_FEAT_GRANT_SEGMENT` convention) --
+// so Magic Initiate's own "choose a spell list" Definition ChoiceSet is discoverable/answerable
+// here exactly like create-v2.post.ts's own identical slot. HUMAN + GENERIC SELECTED-FEAT
+// ACTIVATION PHASE -- factored out so `creationChoicePresentation` and `creationContentPresentation`
+// below share ONE base-slots builder, the server's own `baseSlots` mirrored verbatim.
+function baseCreationSlots(draft: CharacterBuilderDraft, context: BuilderCreationContext): CreationSlotInput[] {
   const originFeat = draft.background ? resolveCreationOriginFeat({ background: draft.background, feats: context.feats }) : { status: 'none' as const }
   const originFeatCatalogueEntry = originFeat.status === 'acquired'
     ? context.feats.find((entry) => entry.packageId === originFeat.acquisition.featRef.packageId && entry.slug === originFeat.acquisition.featRef.slug) ?? null
     : null
-  const slots: CreationSlotInput[] = [
+  return [
     { slot: 'universal', facet: context.universalFacet ?? null },
     ...CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet })),
     ...(originFeat.status === 'acquired' ? [{ slot: `feat:${originFeat.acquisition.choiceKey}`, facet: originFeatCatalogueEntry?.rulesFacet }] : [])
   ]
+}
+
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- widened to mirror create-v2.post.ts's own
+// `slots` expansion exactly: a CONTENT-acquired feat (e.g. Human's Versatile) gets its own slot
+// too, so its own nested Definition-choice (Magic Initiate's "choose a spell list") is
+// discoverable/answerable here the SAME generic way a Background-fixed one already was. Reads
+// `creationContentPresentation` (below) first to learn which feats are currently acquired -- safe,
+// since content eligibility never depends on Definition choice answers (see that function's own
+// header), so there is no cycle.
+export function creationChoicePresentation(
+  draft: CharacterBuilderDraft,
+  context: BuilderCreationContext = NO_CREATION_CONTENT
+): CreationChoicePresentation[] {
+  const acquiredFeats = creationContentPresentation(draft, context)
+    .filter((presentation) => presentation.category !== 'items')
+    .flatMap((presentation) => presentation.offered.filter((offer) => presentation.selected.includes(offer.ref)).map((offer) => ({ offer, choiceKey: presentation.key })))
+  const slots: CreationSlotInput[] = [
+    ...baseCreationSlots(draft, context),
+    ...acquiredFeats.map(({ offer, choiceKey }) => ({
+      slot: `feat:${choiceKey}`,
+      facet: context.feats.find((entry) => entry.packageId === offer.packageId && entry.slug === offer.slug)?.rulesFacet
+    }))
+  ]
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- the Background's own fixed Origin Feat's
+  // preset answer is merged in as an EFFECTIVE selection (never written into the draft itself), so
+  // its own nested choice (e.g. Magic Initiate's "choose a list") is judged "answered" the exact
+  // same way the server does -- never presented to the player as an outstanding question.
   return resolveCreationChoices(
     slots,
-    draft.choices.selections,
+    { ...originFeatPresetSelections(draft, context), ...draft.choices.selections },
     (id) => context.contentSelectorOf(id) !== null,
     (id) => context.choiceSetRule?.(id) ?? null
   )
@@ -463,11 +489,14 @@ export function creationChoicePresentation(
 // PHASE 2C.2B -- the creation-time ContentRef choices the CURRENT selected slots
 // declare (class switching changes this list), judged by the shared creation
 // content authority. Every presentation here is a content choice only.
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- uses `baseCreationSlots` (now including the
+// Background's own fixed Origin Feat, previously omitted here) for parity with the server's own
+// `baseSlots`.
 export function creationContentPresentation(
   draft: CharacterBuilderDraft,
   context: BuilderCreationContext = NO_CREATION_CONTENT
 ): CreationContentPresentation[] {
-  const slots = CHOICE_KEYS.map((key) => ({ slot: key, facet: draft[key]?.rulesFacet }))
+  const slots = baseCreationSlots(draft, context)
   const declarations = declaredCreationContentChoices(slots, context.contentSelectorOf)
   return resolveCreationContentChoices(declarations, slots, draft.contentChoices, context.feats, context.spells ?? [], context.items ?? [])
 }
@@ -510,10 +539,51 @@ export function originFeatEntry(draft: CharacterBuilderDraft, context: BuilderCr
 // `gatherSpellRequirements`'s own header (app/lib/characters/spell-requirement-ownership.ts) for
 // why a plain `requiresActive` scan against `draft.choices.selections` is the correct, generic
 // gate (Magic Initiate's own "choose a spell list" answer, when this draft has one).
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- widened from "species/class/background plus
+// the Background's own fixed Origin Feat alone" to ALSO include every CONTENT-acquired feat
+// (Human's Versatile), using the SAME `owners` shape (`ownerKey` = the exact consumeFacet slotKey)
+// `gatherSpellRequirements` now requires, and merging in the Background's own fixed Origin Feat's
+// preset answer (if any) exactly as create-v2.post.ts does -- so the Builder's own live preview
+// can never disagree with the server about which spellRequirements are active.
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- the Background's own fixed Origin Feat's preset
+// answer (if any), as an EFFECTIVE selections overlay -- never written into `draft.choices.selections`
+// itself (the draft stores only the player's own answers). Shared by `creationChoicePresentation`
+// (so a Background-fixed feat's own nested choice is never wrongly presented as outstanding) and
+// `spellRequirementsFor` (so its own spellRequirements gate correctly), for the identical reason
+// create-v2.post.ts merges the SAME preset into its own effective selections before validation.
+function originFeatPresetSelections(draft: CharacterBuilderDraft, context: BuilderCreationContext): Record<string, string[]> {
+  const origin = draft.background ? resolveCreationOriginFeat({ background: draft.background, feats: context.feats }) : { status: 'none' as const }
+  const presetSelections: Record<string, string[]> = {}
+  if (origin.status === 'acquired' && draft.background) {
+    const preset = originFeatPresetChoices(origin.acquisition, draft.background)
+    if (preset) {
+      for (const [choiceSetId, answer] of Object.entries(preset)) {
+        presetSelections[choiceKey(`feat:${origin.acquisition.choiceKey}`, choiceSetId)] = [...answer]
+      }
+    }
+  }
+  return presetSelections
+}
+
 export function spellRequirementsFor(draft: CharacterBuilderDraft, context: BuilderCreationContext = NO_CREATION_CONTENT) {
+  const origin = draft.background ? resolveCreationOriginFeat({ background: draft.background, feats: context.feats }) : { status: 'none' as const }
+  const presetSelections = originFeatPresetSelections(draft, context)
+  const acquiredFeats = creationContentPresentation(draft, context)
+    .filter((presentation) => presentation.category !== 'items')
+    .flatMap((presentation) => presentation.offered.filter((offer) => presentation.selected.includes(offer.ref)).map((offer) => ({ offer, choiceKey: presentation.key })))
   return gatherSpellRequirements(
-    [draft.species?.rulesFacet, draft.class?.rulesFacet, draft.background?.rulesFacet, originFeatEntry(draft, context)?.rulesFacet],
-    draft.choices.selections
+    [
+      { packageId: draft.species?.packageId ?? '', facet: draft.species?.rulesFacet, ownerKey: 'species' },
+      { packageId: draft.class?.packageId ?? '', facet: draft.class?.rulesFacet, ownerKey: 'class' },
+      { packageId: draft.background?.packageId ?? '', facet: draft.background?.rulesFacet, ownerKey: 'background' },
+      ...(origin.status === 'acquired' ? [{ packageId: origin.acquisition.featRef.packageId, facet: originFeatEntry(draft, context)?.rulesFacet, ownerKey: `feat:${origin.acquisition.choiceKey}` }] : []),
+      ...acquiredFeats.map(({ offer, choiceKey: ck }) => ({
+        packageId: offer.packageId,
+        facet: context.feats.find((entry) => entry.packageId === offer.packageId && entry.slug === offer.slug)?.rulesFacet,
+        ownerKey: `feat:${ck}`
+      }))
+    ],
+    { ...presetSelections, ...draft.choices.selections }
   )
 }
 

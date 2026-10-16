@@ -54,6 +54,7 @@ const UNIT_STUBBING = [
 const ACCEPTANCE_REAL = [
   'tests/server/api/worlds/[id]/characters/create-v2-fail-closed.test.ts',
   'tests/server/api/worlds/[id]/characters/create-v2-feature-option.test.ts',
+  'tests/server/api/worlds/[id]/characters/create-v2-human-versatile-magic-initiate.test.ts',
   'tests/server/api/worlds/[id]/characters/create-v2-language.test.ts',
   'tests/server/api/worlds/[id]/characters/create-v2-invocations.test.ts',
   'tests/server/api/worlds/[id]/characters/create-v2-rogue-expertise.test.ts',

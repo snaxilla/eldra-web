@@ -38,6 +38,12 @@ const FS_ONLY_KEY = 'class:progression:1:choice:feat.fighting-style.fs-only'
 // Fighting Style; unanswered here (this file's own fixture declares no catalogue items), so it
 // always reads as the empty-selection key, never omitted.
 const WEAPON_MASTERY_KEY = 'class:progression:1:choice:class.weapon-mastery'
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own Versatile free Origin-feat
+// choice, declared on the SPECIES slot (not the class), so it is present regardless of which
+// class the draft holds -- unanswered here (this file's own fixture declares no catalogue
+// feats), always reading as the empty-selection key, never omitted, exactly like Weapon Mastery's
+// own key above.
+const ORIGIN_SELECTION_KEY = 'species:progression:1:choice:feat.origin-selection'
 
 function hydrate(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(hydrate)
@@ -167,14 +173,17 @@ describe('class switching -- the Fighter requirement and its answer never leak',
   it('switching away from Fighter removes the requirement from the effective submission', () => {
     const draft = fighterDraft()
     setContentChoiceSelections(draft, FS_ONLY_KEY, [archery], CONTEXT)
-    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({ [FS_ONLY_KEY]: [archery], [WEAPON_MASTERY_KEY]: [] })
+    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({ [FS_ONLY_KEY]: [archery], [WEAPON_MASTERY_KEY]: [], [ORIGIN_SELECTION_KEY]: [] })
 
     draft.class = WIZARD
     pruneChoices(draft, CONTEXT)
     expect(fightingStylePresentation(draft)).toBeUndefined()
-    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({})
+    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({ [ORIGIN_SELECTION_KEY]: [] })
     expect(draft.contentChoices).toEqual({})
-    expect(missingRequirements(draft, CONTEXT).some((line) => line.includes('choose 1 option'))).toBe(false)
+    // Human's own unrelated (species-owned) Versatile choice is ALSO genuinely unanswered here and
+    // legitimately produces its own "choose 1 option" line -- this only proves Fighter's OWN
+    // Fighting Style requirement specifically is gone, never that every such message vanished.
+    expect(missingRequirements(draft, CONTEXT).some((line) => line.startsWith('Class:') && line.includes('choose 1 option'))).toBe(false)
   })
 
   it('a hidden Fighter answer is never submitted for a Wizard, even if the draft held one', () => {
@@ -183,7 +192,7 @@ describe('class switching -- the Fighter requirement and its answer never leak',
     draft.class = WIZARD
     // Submission is built from the CURRENT declarations only.
     expect(toCreatePayload({ ...draft, name: 'Brenna', abilities: draft.abilities }, CONTEXT)).toBeNull()
-    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({})
+    expect(effectiveContentChoices(draft, CONTEXT)).toEqual({ [ORIGIN_SELECTION_KEY]: [] })
   })
 
   it('switching back to Fighter re-asks the question (the prior answer was pruned, by the same convention Definition answers follow)', () => {

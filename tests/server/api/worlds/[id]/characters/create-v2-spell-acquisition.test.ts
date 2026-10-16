@@ -199,7 +199,14 @@ function fakeEvent(body: unknown): H3Event {
 // reference resolution against this file's own (items-less) synthetic catalogue -- 'B' for every
 // class but Fighter, whose own 'B' is a second physical-gear option (its pure-currency bundle is
 // 'C'; see dnd5e-2024.ts's own Fighter facet).
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own Versatile free Origin-feat choice
+// is now MANDATORY at creation. Soldier's own fixed Origin feat is Savage Attacker; answered with
+// any other plain, no-nested-choice Origin feat so it never collides as an illegal duplicate.
+const ORIGIN_SELECTION_KEY = progressionChoiceKey('species', 1, 'choice:feat.origin-selection')
+const ORIGIN_SELECTION_ANSWER = [serializeContentRef(ref('alert-xphb'))]
+
 function bodyWith(classSlug: string, spellSelections: unknown, overrides: Record<string, unknown> = {}) {
+  const { contentChoices, ...rest } = overrides
   return {
     title: 'Elowen',
     species: ref('human-xphb'),
@@ -211,7 +218,8 @@ function bodyWith(classSlug: string, spellSelections: unknown, overrides: Record
       [`choice:equipment.starting.${classSlug}`]: classSlug === 'fighter-xphb' ? 'C' : 'B',
       'choice:equipment.starting.soldier-xphb': 'B'
     },
-    ...overrides
+    contentChoices: { [ORIGIN_SELECTION_KEY]: ORIGIN_SELECTION_ANSWER, ...(contentChoices as Record<string, unknown> | undefined) },
+    ...rest
   }
 }
 

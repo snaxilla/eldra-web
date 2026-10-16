@@ -91,16 +91,21 @@ describe('PHASE 2C.3A -- Background Origin feat declarations match the real XPHB
   })
 
   // FEAT-OWNED SPELL ACQUISITION PHASE -- for Magic Initiate specifically, the raw `; <variant>`
-  // tail fixes WHICH spell list; proven here against the facet's own `grants` (never the
-  // originFeatSlug field, which names the feat identity only).
-  it('Magic Initiate\'s own fixed variant per Background matches the raw corpus tail, via the granting facet\'s own grants', () => {
+  // tail fixes WHICH spell list.
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- proven against the facet's own
+  // `originFeatPreset` (never the originFeatSlug field, which names the feat identity only; never
+  // `grants`, which this phase removed -- a global grant could no longer distinguish a
+  // Background-fixed acquisition from a freely-chosen one, see dnd5e-2024.ts's own header on
+  // Acolyte/Guide/Sage). The preset answers Magic Initiate's own nested
+  // `choice:feat.magic-initiate.list` choice directly.
+  it('Magic Initiate\'s own fixed variant per Background matches the raw corpus tail, via the granting facet\'s own originFeatPreset', () => {
     for (const { background, facet } of CLASSIFIED) {
       if (facet?.originFeatSlug !== 'magic-initiate-xphb') continue
       const variant = rawFeatVariantOf(background)
       expect(variant, `${background.name}'s Magic Initiate must name a variant`).not.toBeNull()
       const expectedValue = MAGIC_INITIATE_VARIANT_VALUE[variant!]
       expect(expectedValue, `${background.name}'s variant "${variant}" must be a known list`).toBeDefined()
-      expect(facet?.grants?.some((g) => g.set === expectedValue && g.to === true), `${background.name} must fix-grant ${expectedValue}`).toBe(true)
+      expect(facet?.originFeatPreset?.['choice:feat.magic-initiate.list'], `${background.name} must preset ${expectedValue}`).toEqual([expectedValue])
     }
   })
 

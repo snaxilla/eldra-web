@@ -67,7 +67,18 @@ const individuallyCreatable = (kind: 'species' | 'class' | 'background', slug: s
 // reuse), size choice (choice:species.size reuse), and innate casting ability (choice:species
 // .innate-spellcasting-ability reuse) are all authored. Tiefling joins the creation-complete
 // roster (8 -> 9 species), lifting the complete combinations from 1536 to 1728 (9 x 12 x 16).
-const BASELINE = { species: 9, classes: 12, backgrounds: 16, combinations: 1728 }
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own two remaining blockers are both
+// closed: its size choice (choice:species.size reuse, the same shape Aasimar/Tiefling already
+// have) and its Versatile free Origin-feat choice (the NEW generic, reusable
+// `choice:feat.origin-selection` content-catalogue ChoiceSet, category-filtered to 'origin' --
+// never a Human-specific picker). Magic Initiate's own former blocker (no mechanism for a freely-
+// chosen, non-Background-fixed spell list) is independently closed too: its facet now declares an
+// unconditional nested "choose a list" choice, and a Background's fixed acquisition presets it
+// instead of setting a global gate (see dnd5e-2024.ts's own header on `magic-initiate-xphb`).
+// Human joins the creation-complete roster (9 -> 10 species, the full named roster), lifting the
+// complete combinations from 1728 to 1920 (10 x 12 x 16) -- EVERY native species x class x
+// background combination is now creation-complete.
+const BASELINE = { species: 10, classes: 12, backgrounds: 16, combinations: 1920 }
 
 describe('real creation availability -- derived from the corpus through the real authority', () => {
   it('the corpus population is what the index says it is (10 species, 12 classes, 16 backgrounds)', () => {

@@ -145,8 +145,12 @@ function magicInitiateSpellCovered(grantedBy?: string): boolean {
   if (grantedBy === undefined) return true
   const expectedGate = MAGIC_INITIATE_LIST_BY_BACKGROUND[grantedBy]
   if (!expectedGate) return false
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- the granting Background no longer fixes the
+  // list via a plain `grants` entry (a global Value, blind to WHICH acquisition it belongs to --
+  // see dnd5e-2024.ts's own Acolyte/Guide/Sage header). It presets Magic Initiate's own nested
+  // "choose a list" choice instead, via `originFeatPreset`.
   const backgroundFacet = findRulesFacet('dnd5e.2024', 'background', grantedBy)
-  return (backgroundFacet?.grants ?? []).some((grant) => grant.set === expectedGate && grant.to === true)
+  return (backgroundFacet?.originFeatPreset?.['choice:feat.magic-initiate.list'] ?? []).includes(expectedGate)
 }
 function feyShadowTouchedSpellCovered(slug: string): boolean {
   const facet = findRulesFacet('dnd5e.2024', 'feat', slug)
@@ -646,21 +650,25 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     ledgerIds: [],
     matches: (d) => is(d, 'subclass', 'proficiency-choice') || is(d, 'subclass', 'damage-type-choice') || is(d, 'class', 'damage-type-choice')
   },
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `blk:species-feat-choice` deleted outright,
+  // mirroring `blk:species-size` immediately below: Human was the ONLY species-owned `feat-choice`
+  // decision in the whole corpus (independently confirmed), and it is now representable via the
+  // generic `choice:feat.origin-selection` content-catalogue ChoiceSet (`impl:species-feat-choice`
+  // below), so this rule would match zero real decisions. Versatile's own real semantics ("you gain
+  // a feat of your choice from the Origin feat category") is a FREE choice among all 10 Origin
+  // feats, reusing the EXACT `choice:feat.fighting-style.fs-only`-shaped precedent (a creation-time,
+  // catalogue-backed feat selection) -- never a Human-specific picker. Magic Initiate's own former
+  // blocker (its `requiresActive` gate had no mechanism for a freely-chosen, non-Background-fixed
+  // spell list) is independently closed this phase too: the feat's own facet now declares an
+  // unconditional nested "choose a list" choice, and a Background's fixed acquisition presets it
+  // (`originFeatPreset`) instead of setting a global gate -- see dnd5e-2024.ts's own header on
+  // `magic-initiate-xphb`/Acolyte/Guide/Sage for the full mechanism.
   {
-    id: 'blk:species-feat-choice',
-    status: 'blocked',
-    // AASIMAR CREATION COMPLETION PHASE -- reason refined, not fixed: re-verified against Human's
-    // real corpus text (Versatile: "you gain a feat of your choice from the Origin feat
-    // category" -- a FREE choice among all 10 Origin feats, not a Background's single FIXED
-    // grant). Every Origin feat IS individually representable now when a Background fixes it
-    // (gatherSpellRequirements's own gate check reads the GRANTING facet's `grants`), but Magic
-    // Initiate's own `requiresActive` gate is satisfied ONLY by a Background fixing one of its
-    // three list Values -- nothing sets that gate when Magic Initiate is instead chosen freely
-    // from a pool (Human's Versatile, or any future general-feat-pool path). A free "which spell
-    // list" choice for that path does not exist. Still genuinely blocked, not merely stale.
-    reason: 'Human Origin feat choice (free choice from the whole Origin category): every Origin feat is representable when a Background fixes it, but Magic Initiate\'s own requiresActive gate has no mechanism for a FREELY chosen (non-Background-fixed) spell list -- a real, still-missing shape, not stale.',
+    id: 'impl:species-feat-choice',
+    status: 'implemented',
+    reason: 'Species-owned free feat choice (Human\'s Versatile: "a feat of your choice from the Origin feat category"), via the generic, reusable, category-filtered `choice:feat.origin-selection` content-catalogue ChoiceSet -- never a species name check. A selected feat\'s own nested choices (if any) activate through the SAME generic acquisition pipeline a Background-fixed feat already uses.',
     ledgerIds: [],
-    matches: (d) => is(d, 'species', 'feat-choice')
+    matches: (d) => is(d, 'species', 'feat-choice') && speciesFacetHasChoice(d.owner.slug, 'choice:feat.origin-selection')
   },
   // TIEFLING SPECIES COMPLETION -- `blk:species-lineage`/`blk:species-damage` are REMOVED: Tiefling
   // was the one real species-owned `variant-choice`/`damage-type-choice` decision either rule still
@@ -673,13 +681,14 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   // `impl:species-feature-option`; a future, genuinely unsupported species lineage/damage shape
   // falls fail-closed through Rule A of the bidirectional contract itself (zero matching rules is
   // itself a contract violation, caught by the BITE test proving exactly this).
-  {
-    id: 'blk:species-size',
-    status: 'blocked',
-    reason: 'Species size choice not yet authored on this species\' own facet (Human, Tiefling both share Aasimar\'s real "Small or Medium" shape, via the SAME choice:species.size ChoiceSet this phase authored for Aasimar -- pure authoring, not a missing primitive; simply not done for these two species this phase).',
-    ledgerIds: [],
-    matches: (d) => is(d, 'species', 'size-choice') && !speciesFacetHasChoice(d.owner.slug, 'choice:species.size')
-  },
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- `blk:species-size` deleted outright, mirroring
+  // the prior deletion of the species `variant-choice`/`damage-type-choice` blocking rules two
+  // phases ago (see this file's own header above): Human was its last remaining real match
+  // (Tiefling's own size-choice was already reclassified to `impl:species-size-choice` in the
+  // Tiefling phase), and Human's size-choice is now ALSO authored via the SAME
+  // `choice:species.size` ChoiceSet, so this rule would match zero real decisions -- a 'blocked'
+  // rule may never carry `allowZero`, so it is removed rather than kept alive artificially. Every
+  // species-owned `size-choice` decision today is implemented, via `impl:species-size-choice`.
   {
     id: 'impl:background-equipment',
     status: 'implemented',

@@ -134,13 +134,12 @@ beforeEach(() => {
 describe('PHASE 0 -- creation is refused, with zero writes, when a selected entity owns an unrecordable decision', () => {
   // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable (choice:species
   // .feature-option); Tiefling replaced it last phase. TIEFLING SPECIES COMPLETION -- Tiefling
-  // itself is now REMOVED too (all 3 of its own decisions are implemented). Human replaces it as
-  // the one species whose own decision (a free Origin feat choice) Eldra still cannot record.
-  it('a Human (free Origin feat choice) is refused before any entity is created', async () => {
-    await expect(handler(fakeEvent(bodyWith('human-xphb', 'wizard-xphb', 'criminal-xphb')) as any))
-      .rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/cannot be completed yet.*a feat choice/) })
-    expectNoWrites()
-  })
+  // itself is now REMOVED too (all 3 of its own decisions are implemented). HUMAN + GENERIC
+  // SELECTED-FEAT ACTIVATION PHASE -- Human (this test's own prior example) is REMOVED too: its
+  // own size choice and free Origin-feat choice (Versatile) are both representable now (Species
+  // 10/10, see creation-availability.test.ts). No species remains that Phase 0 refuses alone; a
+  // real Human acceptance walk (with its own new mandatory answers correctly supplied) lives in
+  // create-v2-fighter-mechanics.test.ts.
 
   // WEAPON MASTERY PHASE -- Dwarf + Fighter + Criminal is now creation-complete through the real
   // authority (see create-v2-weapon-mastery.test.ts). ROGUE EXPERTISE PHASE -- Rogue's Expertise

@@ -95,6 +95,14 @@ const PACKAGE_ID = 'eldra.rules.dnd5e-2024'
 const CONTENT_PACKAGE = 'eldra.solaris.xphb'
 const FS_ONLY_KEY = progressionChoiceKey('class', 1, 'choice:feat.fighting-style.fs-only')
 const FEATURE = 'value:feature.fighting-style'
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own Versatile free Origin-feat choice
+// (a content choice, not a Definition choice) is now MANDATORY at creation, exactly like Fighter's
+// own Fighting Style/Weapon Mastery above -- every test in this file using Human as its species
+// needs a legal answer or the request is refused before it ever reaches the mechanics these tests
+// exist to prove. Answered with Tough (a plain Origin feat with no nested choices of its own), so
+// it never interferes with the Fighting Style/Origin-feat-routing mechanics this file tests.
+const ORIGIN_SELECTION_KEY = progressionChoiceKey('species', 1, 'choice:feat.origin-selection')
+const ORIGIN_SELECTION_ANSWER = [`${CONTENT_PACKAGE}::tough-xphb`]
 
 // ---- real package -----------------------------------------------------------
 
@@ -268,7 +276,7 @@ function fighterBody(overrides: Record<string, unknown> = {}) {
     // MANDATORY at creation (a content choice, not a Definition choice) -- every one of this
     // file's own mechanics tests needs a legal answer or the request is refused before it ever
     // reaches the Fighting Style/Origin Feat mechanics these tests exist to prove.
-    contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(archery)], [WEAPON_MASTERY_KEY]: fighterWeaponSelections() },
+    contentChoices: { [FS_ONLY_KEY]: [serializeContentRef(archery)], [WEAPON_MASTERY_KEY]: fighterWeaponSelections(), [ORIGIN_SELECTION_KEY]: ORIGIN_SELECTION_ANSWER },
     startingEquipment: { 'choice:equipment.starting.fighter-xphb': 'C', 'choice:equipment.starting.criminal-xphb': 'B' },
     ...overrides
   }
@@ -411,10 +419,13 @@ describe('Fighter Level-1 Fighting Style routing (mechanics; completeness author
     const progression = store.progression as any
     // PHASE 2C.3A -- the default Background (Criminal) grants Alert as a fixed Origin
     // feat, so the Fighter holds BOTH; the Fighting Style stays under its own key.
-    expect(progression.feats).toHaveLength(2)
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- also holds its own freely-chosen
+    // Versatile feat (fighterBody's own default answer, Tough), a THIRD distinct acquisition.
+    expect(progression.feats).toHaveLength(3)
     expect(progression.feats).toEqual(expect.arrayContaining([
       { featRef: archery, choiceKey: FS_ONLY_KEY },
-      { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: 'background:progression:1:grant:origin' }
+      { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: 'background:progression:1:grant:origin' },
+      { featRef: ref(CONTENT_PACKAGE, 'tough-xphb'), choiceKey: ORIGIN_SELECTION_KEY }
     ]))
     expect(FS_ONLY_KEY).toBe('class:progression:1:choice:feat.fighting-style.fs-only')
     // D&D 2024 Character Rules P8 -- rules_choices is no longer null: it now carries the
@@ -433,10 +444,11 @@ describe('Fighter Level-1 Fighting Style routing (mechanics; completeness author
     // Ownership: the normal assembly derived state consumes resolves the feat slot
     // from progression.feats[] -- the same blueprint the derived read above used.
     const assembled = blueprintFromStore(String(store.createdEntityId))
-    expect(assembled.feats).toHaveLength(2)
+    expect(assembled.feats).toHaveLength(3)
     expect(assembled.feats).toEqual(expect.arrayContaining([
       expect.objectContaining({ status: 'resolved', choiceKey: FS_ONLY_KEY, entry: expect.objectContaining({ slug: 'archery-xphb' }) }),
-      expect.objectContaining({ status: 'resolved', choiceKey: 'background:progression:1:grant:origin', entry: expect.objectContaining({ slug: 'alert-xphb' }) })
+      expect.objectContaining({ status: 'resolved', choiceKey: 'background:progression:1:grant:origin', entry: expect.objectContaining({ slug: 'alert-xphb' }) }),
+      expect.objectContaining({ status: 'resolved', choiceKey: ORIGIN_SELECTION_KEY, entry: expect.objectContaining({ slug: 'tough-xphb' }) })
     ]))
   })
 
@@ -600,6 +612,15 @@ const SUPPORTED_ORIGIN: [string, string][] = [
   ['Criminal', 'alert-xphb'], ['Guard', 'alert-xphb'], ['Farmer', 'tough-xphb'], ['Hermit', 'healer-xphb'],
   ['Merchant', 'lucky-xphb'], ['Wayfarer', 'lucky-xphb'], ['Sailor', 'tavern-brawler-xphb'], ['Soldier', 'savage-attacker-xphb']
 ]
+// HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human's own Versatile answer must never name
+// the SAME feat this test's own Background already fixes (Tough is NOT repeatable, so Human +
+// Farmer both picking Tough would be an illegal duplicate acquisition, correctly rejected by
+// findIllegalRepeatAcquisition) -- picks any other plain, no-nested-choice Origin feat instead.
+const SIMPLE_ORIGIN_FEATS = ['alert-xphb', 'healer-xphb', 'lucky-xphb', 'savage-attacker-xphb', 'tavern-brawler-xphb', 'tough-xphb']
+function originSelectionAnswerAvoiding(ownFeatSlug?: string): string[] {
+  const pick = SIMPLE_ORIGIN_FEATS.find((slug) => slug !== ownFeatSlug) ?? SIMPLE_ORIGIN_FEATS[0]
+  return [`${CONTENT_PACKAGE}::${pick}`]
+}
 function bodyWith(backgroundName: string, overrides: Record<string, unknown> = {}) {
   return {
     title: 'Brenna',
@@ -607,6 +628,7 @@ function bodyWith(backgroundName: string, overrides: Record<string, unknown> = {
     class: ref(CONTENT_PACKAGE, 'wizard-xphb'),
     background: ref(CONTENT_PACKAGE, slugOf(backgroundName)),
     abilities: STANDARD_ARRAY,
+    contentChoices: { [ORIGIN_SELECTION_KEY]: originSelectionAnswerAvoiding(SUPPORTED_ORIGIN.find(([name]) => name === backgroundName)?.[1]) },
     // D&D 2024 Character Rules P3.3 -- this file's own default class (Wizard) now has real Level-1
     // spell requirements; a legal answer is supplied by default so every pre-existing test here
     // keeps asserting exactly what it always asserted (rules_choices/Origin-feat mechanics), not
@@ -632,25 +654,35 @@ describe('PHASE 2C.3A -- fixed Origin Feat routing (mechanics; completeness stub
 
   it.each(SUPPORTED_ORIGIN)('%s acquires %s from the server-derived Background facet, with no client-supplied feat', async (background, feat) => {
     await postCreate(bodyWith(background))
-    expect((store.progression as any).feats).toEqual([{ featRef: ref(CONTENT_PACKAGE, feat), choiceKey: ORIGIN_KEY }])
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- also acquires its own freely-chosen
+    // Versatile feat, via the SAME avoidance logic bodyWith's own default answer uses.
+    const versatile = originSelectionAnswerAvoiding(feat)[0]!.split('::')[1]
+    expect((store.progression as any).feats).toEqual(expect.arrayContaining([
+      { featRef: ref(CONTENT_PACKAGE, feat), choiceKey: ORIGIN_KEY },
+      { featRef: ref(CONTENT_PACKAGE, versatile), choiceKey: ORIGIN_SELECTION_KEY }
+    ]))
+    expect((store.progression as any).feats).toHaveLength(2)
   })
 
   it('Fighter + Criminal: progression.feats[] holds BOTH the Fighting Style and the Origin feat under distinct keys, and a fresh read keeps both', async () => {
     await postCreate(fighterBody({ background: ref(CONTENT_PACKAGE, 'criminal-xphb') }))
     const feats = (store.progression as any).feats as { featRef: ContentRef; choiceKey: string }[]
-    expect(feats).toHaveLength(2)
+    // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- also acquires its own freely-chosen
+    // Versatile feat (fighterBody's own default answer, Tough), a THIRD distinct acquisition.
+    expect(feats).toHaveLength(3)
     expect(feats).toEqual(expect.arrayContaining([
       { featRef: archery, choiceKey: FS_ONLY_KEY },
-      { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: ORIGIN_KEY }
+      { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: ORIGIN_KEY },
+      { featRef: ref(CONTENT_PACKAGE, 'tough-xphb'), choiceKey: ORIGIN_SELECTION_KEY }
     ]))
     const fresh = blueprintFromStore('4242')
-    expect(fresh.feats.map((feat) => feat.choiceKey).sort()).toEqual([FS_ONLY_KEY, ORIGIN_KEY].sort())
+    expect(fresh.feats.map((feat) => feat.choiceKey).sort()).toEqual([FS_ONLY_KEY, ORIGIN_KEY, ORIGIN_SELECTION_KEY].sort())
   })
 
-  it('a NON-Fighter with a supported Background owns the Origin feat and NO Fighting Style', async () => {
+  it('a NON-Fighter with a supported Background owns the Origin feat, its own freely-chosen Versatile feat, and NO Fighting Style', async () => {
     await postCreate(bodyWith('Criminal'))
     const feats = (store.progression as any).feats as { choiceKey: string }[]
-    expect(feats.map((feat) => feat.choiceKey)).toEqual([ORIGIN_KEY])
+    expect(feats.map((feat) => feat.choiceKey)).toEqual([ORIGIN_KEY, ORIGIN_SELECTION_KEY])
     expect(feats.some((feat) => feat.choiceKey.includes('fighting-style'))).toBe(false)
   })
 
@@ -669,7 +701,9 @@ describe('PHASE 2C.3A -- fixed Origin Feat routing (mechanics; completeness stub
 
   it('client-supplied fixed-feat fields are IGNORED: a Criminal cannot be substituted with Tough', async () => {
     await postCreate(bodyWith('Criminal', { fixedFeats: [serializeContentRef(ref(CONTENT_PACKAGE, 'tough-xphb'))], originFeat: 'tough-xphb' }))
-    expect((store.progression as any).feats).toEqual([{ featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: ORIGIN_KEY }])
+    expect((store.progression as any).feats).toEqual(expect.arrayContaining([
+      { featRef: ref(CONTENT_PACKAGE, 'alert-xphb'), choiceKey: ORIGIN_KEY }
+    ]))
   })
 
   it('an Origin feat missing from the World catalogue fails CLOSED before any entity exists', async () => {
@@ -685,15 +719,15 @@ describe('PHASE 2C.3A -- fixed Origin Feat routing (mechanics; completeness stub
     // own real spellRequirements (fixed to the Cleric list) need a real answer, same as this
     // file's own default Wizard class spell answer.
     await postCreate(bodyWith('Acolyte', { spellSelections: [...wizardSpellSelections(), ...magicInitiateClericSpellSelections()] }))
-    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['magic-initiate-xphb'])
+    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['magic-initiate-xphb', 'alert-xphb'])
 
     resetStore()
     await postCreate(bodyWith('Criminal'))
-    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['alert-xphb'])
+    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['alert-xphb', 'healer-xphb'])
 
     resetStore()
     await postCreate(bodyWith('Farmer'))
-    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['tough-xphb'])
+    expect((store.progression as any).feats.map((feat: { featRef: ContentRef }) => feat.featRef.slug)).toEqual(['tough-xphb', 'alert-xphb'])
   })
 
   it('an OLD Criminal character (catalogue_selection only, no progression) carries NO retroactive Origin grant on read', () => {

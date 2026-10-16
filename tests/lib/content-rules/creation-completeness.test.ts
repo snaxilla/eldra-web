@@ -26,15 +26,22 @@ const ownOf = (kind: 'species' | 'class' | 'background', slug: string) => creati
 )
 
 describe('the refusal wording is plain and names the owner (production impact counts live in creation-availability.test.ts)', () => {
-  // PURE-AUTHORING SPECIES SWEEP -- Elf's own lineage choice is now representable (choice:species
-  // .feature-option); Tiefling was its own replacement example, now ALSO representable
-  // (TIEFLING SPECIES COMPLETION). Human replaces it here as the one remaining species whose own
-  // decision (a free Origin feat choice) is genuinely unrecorded.
-  it('the refusal for Human names the feat choice in plain words, with no internal identifier', () => {
-    const human = describeUnresolved(ownOf('species', 'human-xphb'))
-    expect(human).toMatch(/cannot be completed yet/)
-    expect(human).toMatch(/a feat choice/)
-    expect(human).not.toMatch(/blk:|ENGINE_BLOCKED|CONTENT_BLOCKED|additionalSpells|variants|species\./)
+  // HUMAN + GENERIC SELECTED-FEAT ACTIVATION PHASE -- Human (this test's own prior example) is now
+  // fully creation-complete (species 10/10, see creation-availability.test.ts), so it has nothing
+  // left to refuse. Every species/class/background is now individually creation-complete too, so
+  // this demonstration moves to a genuinely still-blocked decision found dynamically (never
+  // hardcoded by owner name) rather than naming a species that may itself be reclassified again.
+  it('a real refusal names its decision in plain words, with no internal identifier', () => {
+    const blocked = DECISIONS.find((d) => classifyDecision(d).status === 'blocked' && d.timing === 'creation')
+    expect(blocked, 'at least one real creation-time decision must still be blocked for this test to mean anything').toBeDefined()
+    const described = describeUnresolved(creationUnresolvedDecisions({
+      species: blocked!.owner.kind === 'species' ? blocked!.owner.slug : NONE,
+      class: blocked!.owner.kind === 'class' ? blocked!.owner.slug : NONE,
+      background: blocked!.owner.kind === 'background' ? blocked!.owner.slug : (blocked!.grantedBy ?? NONE),
+      feats: blocked!.owner.kind === 'feat' ? [blocked!.owner.slug] : []
+    }))
+    expect(described).toMatch(/cannot be completed yet/)
+    expect(described).not.toMatch(/blk:|ENGINE_BLOCKED|CONTENT_BLOCKED|additionalSpells|variants|species\./)
   })
 })
 

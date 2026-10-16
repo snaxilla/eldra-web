@@ -513,16 +513,22 @@ describe('Fighter creation -- write-order mechanics (completeness stubbed)', () 
   // Creation answers are keyed `slot:choiceSetId` (resolveCreationChoices), not the progression key form.
   const ARTISAN_TOOL_KEY = 'background:choice:proficiency.artisan-tool.background'
   const CARPENTERS = 'value:tool.carpenters_tools.proficient'
+  // D&D 2024 Character Rules A1 -- Crafter (Artisan's own Origin feat) now has its own real
+  // nested "choose 3 tools" choice, so a legal Artisan creation answer must supply it too, keyed
+  // under the Origin feat's own fixed acquisition (ORIGIN_FEAT_SLOT/ORIGIN_FEAT_GRANT_SEGMENT,
+  // app/lib/characters/creation-origin-feat.ts).
+  const CRAFTER_TOOLS_KEY = 'feat:background:progression:1:grant:origin:choice:feat.crafter.tools'
+  const CRAFTER_TOOLS = ['value:tool.leatherworkers_tools.proficient', 'value:tool.masons_tools.proficient', 'value:tool.potters_tools.proficient']
 
   it('a P1 Artisan tool answer is persisted through rules_choices and survives a fresh read', async () => {
-    await postCreate(bodyWith('Artisan', { choices: { selections: { [ARTISAN_TOOL_KEY]: [CARPENTERS] } } }))
+    await postCreate(bodyWith('Artisan', { choices: { selections: { [ARTISAN_TOOL_KEY]: [CARPENTERS], [CRAFTER_TOOLS_KEY]: CRAFTER_TOOLS } } }))
     expect(mocks.saveCharacterRulesChoices).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(store.rules)).toContain(CARPENTERS)
   })
 
   it('a failed rules_choices write fails the request, and no health is written after it', async () => {
     mocks.saveCharacterRulesChoices.mockRejectedValueOnce(new Error('rules_choices write failed'))
-    await expect(postCreate(bodyWith('Artisan', { choices: { selections: { [ARTISAN_TOOL_KEY]: [CARPENTERS] } } })))
+    await expect(postCreate(bodyWith('Artisan', { choices: { selections: { [ARTISAN_TOOL_KEY]: [CARPENTERS], [CRAFTER_TOOLS_KEY]: CRAFTER_TOOLS } } })))
       .rejects.toThrow('rules_choices write failed')
     expect(mocks.saveCharacterHealth).not.toHaveBeenCalled()
   })

@@ -1762,6 +1762,20 @@
     "writesTo": "value:skill.{selected}.expertise"
   },
   {
+    "id": "choice:save.proficiency",
+    "kind": "choiceSet",
+    "category": "character.creation",
+    "label": "Saving Throw Proficiency",
+    "prompt": "Choose a saving throw proficiency.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true,
+    "excludeIfAlreadyActive": true,
+    "writesTo": "value:save.{selected}.proficient"
+  },
+  {
     "id": "progression:class.skill-expertise",
     "kind": "progression",
     "category": "progression",
@@ -3758,6 +3772,18 @@
     "distinct": true
   },
   {
+    "id": "choice:feat.elemental-adept.damage-type",
+    "kind": "choiceSet",
+    "category": "progression",
+    "label": "Damage Type",
+    "prompt": "Choose a damage type for Energy Mastery.",
+    "count": 0,
+    "from": {
+      "kind": "fromContentFacet"
+    },
+    "distinct": true
+  },
+  {
     "id": "choice:class.weapon-mastery",
     "kind": "choiceSet",
     "category": "character.creation",
@@ -5492,6 +5518,116 @@
     "tags": ["invocation"]
   },
   {
+    "id": "value:metamagic.careful_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Careful Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.distant_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Distant Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.empowered_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Empowered Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.extended_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Extended Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.heightened_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Heightened Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.quickened_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Quickened Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.seeking_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Seeking Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.subtle_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Subtle Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.transmuted_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Transmuted Spell",
+    "tags": ["metamagic"]
+  },
+  {
+    "id": "value:metamagic.twinned_spell.known",
+    "kind": "value",
+    "category": "core.proficiency",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Twinned Spell",
+    "tags": ["metamagic"]
+  },
+  {
     "id": "choice:class.accumulating-option",
     "kind": "choiceSet",
     "category": "character.creation",
@@ -5820,6 +5956,154 @@
     "default": false,
     "visibility": "public",
     "label": "Magic Initiate: List 3 Active"
+  },
+  {
+    "id": "value:elemental-adept.damage-type.acid.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Adept: Acid Active"
+  },
+  {
+    "id": "value:elemental-adept.damage-type.cold.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Adept: Cold Active"
+  },
+  {
+    "id": "value:elemental-adept.damage-type.fire.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Adept: Fire Active"
+  },
+  {
+    "id": "value:elemental-adept.damage-type.lightning.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Adept: Lightning Active"
+  },
+  {
+    "id": "value:elemental-adept.damage-type.thunder.active",
+    "kind": "value",
+    "category": "progression",
+    "valueType": "boolean",
+    "storage": "stored",
+    "default": false,
+    "visibility": "public",
+    "label": "Elemental Adept: Thunder Active"
+  },
+  {
+    "id": "progression:class.accumulating-option-growth-2-10-17",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Metamagic Growth",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 2,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 2,
+            "from": [
+              "value:metamagic.careful_spell.known",
+              "value:metamagic.distant_spell.known",
+              "value:metamagic.empowered_spell.known",
+              "value:metamagic.extended_spell.known",
+              "value:metamagic.heightened_spell.known",
+              "value:metamagic.quickened_spell.known",
+              "value:metamagic.seeking_spell.known",
+              "value:metamagic.subtle_spell.known",
+              "value:metamagic.transmuted_spell.known",
+              "value:metamagic.twinned_spell.known"
+            ]
+          }
+        ]
+      },
+      {
+        "at": 10,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 2,
+            "from": [
+              "value:metamagic.careful_spell.known",
+              "value:metamagic.distant_spell.known",
+              "value:metamagic.empowered_spell.known",
+              "value:metamagic.extended_spell.known",
+              "value:metamagic.heightened_spell.known",
+              "value:metamagic.quickened_spell.known",
+              "value:metamagic.seeking_spell.known",
+              "value:metamagic.subtle_spell.known",
+              "value:metamagic.transmuted_spell.known",
+              "value:metamagic.twinned_spell.known"
+            ]
+          }
+        ]
+      },
+      {
+        "at": 17,
+        "choices": [
+          {
+            "choiceSet": "choice:class.accumulating-option",
+            "count": 2,
+            "from": [
+              "value:metamagic.careful_spell.known",
+              "value:metamagic.distant_spell.known",
+              "value:metamagic.empowered_spell.known",
+              "value:metamagic.extended_spell.known",
+              "value:metamagic.heightened_spell.known",
+              "value:metamagic.quickened_spell.known",
+              "value:metamagic.seeking_spell.known",
+              "value:metamagic.subtle_spell.known",
+              "value:metamagic.transmuted_spell.known",
+              "value:metamagic.twinned_spell.known"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "progression:class.skill-proficiency-growth-3",
+    "kind": "progression",
+    "category": "progression",
+    "label": "Skill Proficiency Growth",
+    "keyedBy": "value:level",
+    "rows": [
+      {
+        "at": 3,
+        "choices": [
+          {
+            "choiceSet": "choice:skill.proficiency",
+            "count": 1,
+            "from": [
+              "value:skill.animal_handling.proficient",
+              "value:skill.athletics.proficient",
+              "value:skill.intimidation.proficient",
+              "value:skill.nature.proficient",
+              "value:skill.perception.proficient",
+              "value:skill.survival.proficient"
+            ]
+          }
+        ]
+      }
+    ]
   },
   {
     "id": "value:size.medium",

@@ -462,6 +462,12 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
     'value:skill.arcana.expertise', 'value:skill.history.expertise'
   ])]
   const usedSkills = new Set<string>()
+  // D&D 2024 Character Rules A1 -- Primal Knowledge's own Level-3 re-offer of `choice:skill.
+  // proficiency` (Barbarian only) relies on the SAME `excludeIfAlreadyActive` exclusion the real
+  // engine applies: the Level-1 class answer (this fixture's own `rulesChoices.selections['class:
+  // choice:skill.proficiency']`, via `realSkillProficiencyAnswer`) must be seeded as already used
+  // so the Level-3 pick names a genuinely different, still-eligible skill.
+  const usedProficientSkills = new Set<string>(realSkillProficiencyAnswer(classSlug))
   // Weapon Mastery phase -- additive per-level growth: each row (creation L1, then whatever
   // growth levels this class's own real table has) must pick NEW, not-yet-selected weapons, so
   // the cumulative total across every row is always `count` distinct identities. Both the
@@ -545,6 +551,12 @@ function legalAnswersFor(expected: ExpectedChoice[], subclassSlug: string, class
         .slice(0, count)
       answers[key] = picked
       for (const id of picked) usedInvocations.add(id)
+    } else if (choiceSetId === 'choice:skill.proficiency') {
+      // Primal Knowledge (Barbarian, Level 3) -- `count` legal, not-yet-proficient skills from
+      // this row's own real 6-skill `from` list.
+      const picked = from.filter((id) => !usedProficientSkills.has(id)).slice(0, count)
+      answers[key] = picked
+      for (const id of picked) usedProficientSkills.add(id)
     }
     // Anything else: left unanswered on purpose -- see this function's
     // own header.
@@ -972,7 +984,7 @@ describe('FEAT MECHANICS -- prerequisite filtering and repeatability (synthetic 
 describe('BOB SEQUENCE -- Barbarian, Level 1 -> 20 browser-visible plan shape (mechanics; completeness stubbed)', () => {
   beforeEach(() => useClass('barbarian-xphb'))
 
-  it('produces the real SHOULD-APPEAR sequence: Subclass at L3, Ability Score Improvement at L4/8/12/16, Weapon Mastery growth at L4/L10, Epic Boon at L19, nothing else', async () => {
+  it('produces the real SHOULD-APPEAR sequence: Subclass + Primal Knowledge at L3, Ability Score Improvement at L4/8/12/16, Weapon Mastery growth at L4/L10, Epic Boon at L19, nothing else', async () => {
     const result = await planProgression(WORLD_ID, CHARACTER_ID, 20)
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -982,7 +994,7 @@ describe('BOB SEQUENCE -- Barbarian, Level 1 -> 20 browser-visible plan shape (m
       .map((step) => ({ level: step.level, choiceSetIds: step.requiredChoices.map((c) => c.choiceSetId).sort() }))
 
     expect(sequence).toEqual([
-      { level: 3, choiceSetIds: ['choice:class.subclass'] },
+      { level: 3, choiceSetIds: ['choice:class.subclass', 'choice:skill.proficiency'] },
       { level: 4, choiceSetIds: ['choice:class.weapon-mastery.melee-only', 'choice:feat.selection'] },
       { level: 8, choiceSetIds: ['choice:feat.selection'] },
       { level: 10, choiceSetIds: ['choice:class.weapon-mastery.melee-only'] },

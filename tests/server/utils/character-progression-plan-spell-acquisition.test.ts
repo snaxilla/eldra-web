@@ -190,7 +190,7 @@ beforeEach(() => {
 // SUCCESS MATRIX
 // ---------------------------------------------------------------------------
 describe('SUCCESS MATRIX', () => {
-  it('A -- SORCERER: ordinary + cantrip target growth, Level 1 -> 2 (no unrelated choice at Level 2)', async () => {
+  it('A -- SORCERER: ordinary + cantrip target growth, Level 1 -> 2 (plus the real Metamagic choice at Level 2)', async () => {
     useFixture('sorcerer-xphb', baseEntry({ parentClassSlug: 'sorcerer-xphb' }))
     const requirements = findRulesFacet('dnd5e.2024', 'class', 'sorcerer-xphb')!.spellRequirements!
     const spellId = requirements.find((r) => r.pool === 'spell')!.id
@@ -198,9 +198,14 @@ describe('SUCCESS MATRIX', () => {
     const spellTarget = requirements.find((r) => r.id === spellId)!.totalByLevel[1]!
     const cantripTarget = requirements.find((r) => r.id === cantripId)!.totalByLevel[1]!
 
+    // D&D 2024 Character Rules A1 -- Sorcerer's own real Metamagic choice (two options, Level 2)
+    // is now a genuinely IMPLEMENTED required choice too; a legal plan at Level 2 answers it like
+    // every other real required choice this fixture already answers.
+    const metamagicKey = progressionChoiceKey('class', 2, 'choice:class.accumulating-option')
     const answers = {
       [spellAnswerKey(requirements.find((r) => r.id === spellId)!, 2)]: Array.from({ length: spellTarget }, (_, i) => `${PKG}::spell-1-${i}`),
-      [spellAnswerKey(requirements.find((r) => r.id === cantripId)!, 2)]: Array.from({ length: cantripTarget }, (_, i) => `${PKG}::cantrip-${i}`)
+      [spellAnswerKey(requirements.find((r) => r.id === cantripId)!, 2)]: Array.from({ length: cantripTarget }, (_, i) => `${PKG}::cantrip-${i}`),
+      [metamagicKey]: ['value:metamagic.careful_spell.known', 'value:metamagic.distant_spell.known']
     }
     const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
     expect(plan.ok).toBe(true)
@@ -402,9 +407,12 @@ describe('REPEAT PREVIEW', () => {
     const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
     const spellTargetAt2 = requirements.find((r) => r.id === spellId)!.totalByLevel[1]!
     const cantripTargetAt2 = requirements.find((r) => r.id === cantripId)!.totalByLevel[1]!
+    // D&D 2024 Character Rules A1 -- see the SUCCESS MATRIX test above for why this Level-2
+    // answer must now also cover Metamagic.
     const answers = {
       [spellAnswerKey(requirements.find((r) => r.id === spellId)!, 2)]: Array.from({ length: spellTargetAt2 }, (_, i) => `${PKG}::spell-1-${i}`),
-      [spellAnswerKey(requirements.find((r) => r.id === cantripId)!, 2)]: Array.from({ length: cantripTargetAt2 }, (_, i) => `${PKG}::cantrip-${i}`)
+      [spellAnswerKey(requirements.find((r) => r.id === cantripId)!, 2)]: Array.from({ length: cantripTargetAt2 }, (_, i) => `${PKG}::cantrip-${i}`),
+      [progressionChoiceKey('class', 2, 'choice:class.accumulating-option')]: ['value:metamagic.careful_spell.known', 'value:metamagic.distant_spell.known']
     }
     const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
     if (!plan.ok) throw new Error('plan failed')
@@ -682,9 +690,12 @@ describe('PERSISTENCE SENSITIVITY', () => {
     const cantripId = requirements.find((r) => r.pool === 'cantrip')!.id
     const spellTarget = requirements.find((r) => r.id === spellId)!.totalByLevel[1]!
     const cantripTarget = requirements.find((r) => r.id === cantripId)!.totalByLevel[1]!
+    // D&D 2024 Character Rules A1 -- see the SUCCESS MATRIX test above for why this Level-2
+    // answer must now also cover Metamagic.
     const answers = {
       [spellAnswerKey(requirements.find((r) => r.id === spellId)!, 2)]: Array.from({ length: spellTarget }, (_, i) => `${PKG}::spell-1-${i}`),
-      [spellAnswerKey(requirements.find((r) => r.id === cantripId)!, 2)]: Array.from({ length: cantripTarget }, (_, i) => `${PKG}::cantrip-${i}`)
+      [spellAnswerKey(requirements.find((r) => r.id === cantripId)!, 2)]: Array.from({ length: cantripTarget }, (_, i) => `${PKG}::cantrip-${i}`),
+      [progressionChoiceKey('class', 2, 'choice:class.accumulating-option')]: ['value:metamagic.careful_spell.known', 'value:metamagic.distant_spell.known']
     }
     const plan = await planProgression(WORLD_ID, CHARACTER_ID, 2, answers)
     if (!plan.ok) throw new Error('plan failed')

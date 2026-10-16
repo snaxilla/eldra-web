@@ -96,6 +96,10 @@ export function valueIdsOfToken(token: string): string[] {
     }
     case 'skill-tool':
       return payload === 'any' ? [...SKILLS.map(skillValueId), ...allToolIds()] : []
+    case 'skill-from':
+      return payload.split('|').filter((s) => (SKILLS as readonly string[]).includes(s)).map(skillValueId)
+    case 'skill-any':
+      return [...SKILLS.map(skillValueId)]
     case 'save':
       return payload.split(',').filter((a) => (ABILITY_KEYS as readonly string[]).includes(a)).map(saveValueId)
     default:

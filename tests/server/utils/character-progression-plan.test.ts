@@ -216,6 +216,22 @@ function catalogueWithSubclass() {
           repeatable: false,
           prerequisiteGroups: [[{ kind: 'ability', ability: 'str', minimum: 13 }]]
         }
+      },
+      // D&D 2024 Character Rules A1 -- a real, repeatable General feat with its own
+      // `repeatAcquisitionDifferentiator` (the real corpus's own "must choose a different damage
+      // type each time for Energy Mastery"), for the differentiator-enforcement tests below.
+      // Prerequisite left empty (DragoWizard is a real caster either way) -- these tests isolate
+      // the differentiator mechanism, not prerequisite checking (already covered above).
+      {
+        packageId: 'eldra.content.xphb',
+        packageVersion: '1.0.0',
+        systemKey: 'dnd5e',
+        title: 'Elemental Adept',
+        slug: 'elemental-adept-xphb',
+        externalId: 'Elemental Adept__XPHB',
+        provider: '5etools-json',
+        featMechanics: { category: 'general', variant: 'G', unsupportedPrerequisites: [], repeatable: true, prerequisiteGroups: [] },
+        rulesFacet: findRulesFacet('dnd5e.2024', 'feat', 'elemental-adept-xphb') ?? undefined
       }
     ],
     // Weapon Mastery phase -- Fighter's own real Level-4 growth row (progression:class.weapon-
@@ -1063,6 +1079,237 @@ describe('confirmProgression -- feat authority (repeatability, prerequisite, cap
       { featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: FEAT_CHOICE_KEY },
       { featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: secondFeatKey }
     ])
+  })
+
+  // D&D 2024 Character Rules A1 -- Elemental Adept's own real repeatability rule ("you can take
+  // this feat more than once, but you must choose a different damage type each time"), the ONE
+  // call site where `findIllegalRepeatAcquisition` (app/lib/characters/creation-origin-feat.ts) is
+  // actually reachable for a General feat (never offered at creation). The prior acquisition's own
+  // nested answer is read back through the SAME merged persisted+tentative selections map
+  // (`current.state.rulesChoiceSelections` + `answers`) every other feat-owned nested choice uses.
+  describe('repeat-acquisition differentiator (Elemental Adept)', () => {
+    const priorChoiceKey = FEAT_CHOICE_KEY
+    const priorFeatRef = { packageId: 'eldra.content.xphb', slug: 'elemental-adept-xphb' }
+    const priorDamageTypeKey = `feat:${priorChoiceKey}:choice:feat.elemental-adept.damage-type`
+
+    function blueprintWithPriorElementalAdept(damageTypeValueId: string) {
+      return wizardBlueprint({
+        progression: {
+          classes: [{ classRef: CLASS_REF, level: 4 }],
+          feats: [{ featRef: priorFeatRef, choiceKey: priorChoiceKey }]
+        },
+        rulesChoices: {
+          selections: {
+            'class:choice:skill.proficiency': ['value:skill.arcana.proficient', 'value:skill.history.proficient'],
+            [priorDamageTypeKey]: [damageTypeValueId]
+          }
+        },
+        spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 8)
+      })
+    }
+
+    it('a second acquisition with a DIFFERENT legal damage type succeeds, and both are owned', async () => {
+      assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprintWithPriorElementalAdept('value:elemental-adept.damage-type.fire.active') })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const secondNestedKey = `feat:${secondFeatKey}:choice:feat.elemental-adept.damage-type`
+      // D&D 2024 Character Rules A1.1 -- Elemental Adept's facet ALSO declares its own real
+      // ability-choice-1 (int/wis/cha), now enforced as mandatory too by the generic completeness
+      // gate -- a fully legal Confirm answers BOTH of this feat's own declared choices.
+      const secondAbilityKey = `feat:${secondFeatKey}:choice:feat.ability-choice-1`
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [serializeContentRef(priorFeatRef)],
+        [secondNestedKey]: ['value:elemental-adept.damage-type.cold.active'],
+        [secondAbilityKey]: ['source:asi.increase.int']
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.progression.feats).toEqual([
+        { featRef: priorFeatRef, choiceKey: priorChoiceKey },
+        { featRef: priorFeatRef, choiceKey: secondFeatKey }
+      ])
+    })
+
+    it('a second acquisition with the SAME damage type is rejected, zero writes', async () => {
+      assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprintWithPriorElementalAdept('value:elemental-adept.damage-type.fire.active') })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const secondNestedKey = `feat:${secondFeatKey}:choice:feat.elemental-adept.damage-type`
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [serializeContentRef(priorFeatRef)],
+        [secondNestedKey]: ['value:elemental-adept.damage-type.fire.active']
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('illegal-feat-selection')
+      expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+    })
+
+    // D&D 2024 Character Rules A1.1 -- the generic feat-owned nested choice completeness gate
+    // (character-progression-plan.ts, reusing resolveCreationChoices verbatim) now closes the
+    // gap the NOTE above used to document: a missing or illegal nested answer is rejected,
+    // BEFORE any write, through the real Confirm authority.
+    it('a second acquisition with NO damage-type answer is rejected (unresolved choice), zero writes', async () => {
+      assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprintWithPriorElementalAdept('value:elemental-adept.damage-type.fire.active') })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [serializeContentRef(priorFeatRef)]
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('unresolved-choices')
+      expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+      expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
+    })
+
+    it('a second acquisition naming an illegal (non-enumerated) damage-type Value is rejected, zero writes', async () => {
+      assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprintWithPriorElementalAdept('value:elemental-adept.damage-type.fire.active') })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const secondNestedKey = `feat:${secondFeatKey}:choice:feat.elemental-adept.damage-type`
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [serializeContentRef(priorFeatRef)],
+        [secondNestedKey]: ['value:elemental-adept.damage-type.does-not-exist.active']
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('unresolved-choices')
+      expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+      expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
+    })
+
+    // A crafted key naming a ChoiceSet THIS feat's own facet never declares is simply never
+    // produced by `resolveCreationChoices` at all (it only ever walks the facet's own
+    // `choices` array) -- there is no presentation to mark unanswered, so it is silently
+    // irrelevant to this gate. It is NOT silently accepted as this feat's answer, though: a
+    // crafted key can only ever satisfy a REAL declared key (keyed by this exact choiceKey +
+    // choiceSetId), so an undeclared key never substitutes for a real one, and the real one
+    // still shows up unanswered.
+    it('a crafted key for a ChoiceSet this feat never declares does not satisfy the real nested choice; still rejected', async () => {
+      assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprintWithPriorElementalAdept('value:elemental-adept.damage-type.fire.active') })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [serializeContentRef(priorFeatRef)],
+        [`feat:${secondFeatKey}:choice:does-not-exist`]: ['value:elemental-adept.damage-type.cold.active']
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('unresolved-choices')
+      expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+    })
+
+    // A (re-submitted) answer keyed under the FIRST (prior) acquisition's own choiceKey can
+    // never satisfy the SECOND (new) acquisition's own nested choice -- `resolveCreationChoices`
+    // keys by `feat:${choiceKey}:${choiceSetId}`, unique per acquisition, never per ChoiceSet
+    // alone. Submitting an answer under the WRONG (first) feat's key leaves the SECOND feat's
+    // own real required key genuinely unanswered.
+    it('an answer keyed under a DIFFERENT (prior) feat acquisition cannot satisfy the current one; still rejected', async () => {
+      assembleCharacterMock.mockResolvedValue({ available: true, blueprint: blueprintWithPriorElementalAdept('value:elemental-adept.damage-type.fire.active') })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [serializeContentRef(priorFeatRef)],
+        // Mistakenly (or maliciously) re-answers the FIRST acquisition's own key, never the
+        // second's -- the real key this NEW acquisition needs is never supplied.
+        [priorDamageTypeKey]: ['value:elemental-adept.damage-type.cold.active']
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('unresolved-choices')
+      expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+    })
+
+    // HISTORICAL COMPATIBILITY -- a character who already owns Elemental Adept from a PRIOR
+    // confirm, with NO nested damage-type answer on record at all (predates this phase, or was
+    // never required under an older rules version), still loads and can progress normally: the
+    // completeness gate is scoped to feats ACQUIRED IN THIS TRANSITION only, never retroactively
+    // to `base.feats`. A LATER, unrelated transition (e.g. an ordinary ASI pick) must not be
+    // blocked by that old, still-missing answer.
+    it('a historical Elemental Adept acquisition with no nested answer on record does not block an unrelated later transition', async () => {
+      assembleCharacterMock.mockResolvedValue({
+        available: true,
+        blueprint: wizardBlueprint({
+          progression: {
+            classes: [{ classRef: CLASS_REF, level: 4 }],
+            feats: [{ featRef: priorFeatRef, choiceKey: priorChoiceKey }]
+          },
+          // No `priorDamageTypeKey` entry at all -- simulates a pre-A1 historical character.
+          rulesChoices: { selections: { 'class:choice:skill.proficiency': ['value:skill.arcana.proficient', 'value:skill.history.proficient'] } },
+          spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 8)
+        })
+      })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const secondNestedKey = `feat:${secondFeatKey}:choice:feat.asi-ability-increase`
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [ASI_OPTION],
+        [secondNestedKey]: ['source:asi.increase.con', 'source:asi.increase.con']
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.progression.feats).toEqual([
+        { featRef: priorFeatRef, choiceKey: priorChoiceKey },
+        { featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: secondFeatKey }
+      ])
+    })
+  })
+
+  // D&D 2024 Character Rules A1.1 -- the SAME generic completeness gate, proven against ASI's
+  // own real nested ability-distribution choice (the choice EVERY existing test in this file's
+  // feat-authority block already answers correctly -- these two make that requirement explicit
+  // and prove the negative case too).
+  describe('generic feat-owned nested choice completeness (ASI)', () => {
+    it('ASI with NO nested ability-distribution answer is rejected (unresolved choice), zero writes', async () => {
+      assembleCharacterMock.mockResolvedValue({
+        available: true,
+        blueprint: wizardBlueprint({
+          progression: {
+            classes: [{ classRef: CLASS_REF, level: 4 }],
+            feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+          },
+          spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 8)
+        })
+      })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [ASI_OPTION]
+        // The nested `feat:${secondFeatKey}:choice:feat.asi-ability-increase` answer is deliberately omitted.
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.reason).toBe('unresolved-choices')
+      expect(saveCharacterProgressionMock).not.toHaveBeenCalled()
+      expect(saveCharacterRulesChoicesMock).not.toHaveBeenCalled()
+    })
+
+    it('ASI with a legal nested ability-distribution answer is accepted (unchanged behavior)', async () => {
+      assembleCharacterMock.mockResolvedValue({
+        available: true,
+        blueprint: wizardBlueprint({
+          progression: {
+            classes: [{ classRef: CLASS_REF, level: 4 }],
+            feats: [{ featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY }]
+          },
+          spells: fullySatisfyingSpellState(WIZARD_SPELL_REQUIREMENTS, 8)
+        })
+      })
+      const secondFeatKey = progressionChoiceKey('class', 8, 'choice:feat.selection')
+      const secondNestedKey = `feat:${secondFeatKey}:choice:feat.asi-ability-increase`
+      const fingerprint = await freshFingerprint(8)
+      const result = await confirmProgression('5', '42', 8, fingerprint, {
+        [secondFeatKey]: [ASI_OPTION],
+        [secondNestedKey]: ['source:asi.increase.con', 'source:asi.increase.con']
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.progression.feats).toEqual([
+        { featRef: { packageId: 'eldra.content.xphb', slug: 'actor-xphb' }, choiceKey: FEAT_CHOICE_KEY },
+        { featRef: { packageId: 'eldra.content.xphb', slug: 'ability-score-improvement-xphb' }, choiceKey: secondFeatKey }
+      ])
+    })
   })
 
   it('rejects a feat whose real prerequisite this character does not meet', async () => {

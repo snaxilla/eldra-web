@@ -196,20 +196,20 @@ describe('P3.5 -- spell decision reconciliation', () => {
   // FEAT-OWNED SPELL ACQUISITION PHASE -- feat-granted spell-choice/spell-grant decisions are no
   // longer uniformly blocked: Magic Initiate (variant-choice, not this family, already excluded
   // above), Fey-Touched, Shadow-Touched, Telekinetic, Telepathic, Blessed Warrior, and Druidic
-  // Warrior are now implemented (see `impl:feat-spell-*` in mandatory-decision-coverage.ts); Ritual
-  // Caster alone remains blocked, for a real, different reason (discovery forces its real
-  // level-gated growth table to 5 flat creation-time decisions -- see `blk:feat-nested-spells`'s
-  // own updated reason).
-  it('STILL BLOCKED -- Ritual Caster alone, among feat-granted spell-choice/spell-grant decisions', () => {
+  // Warrior are now implemented (see `impl:feat-spell-*` in mandatory-decision-coverage.ts). D&D
+  // 2024 Character Rules A1 -- Ritual Caster is now implemented too (`impl:feat-spell-ritual-
+  // caster`, verifying the real authored totalByLevel growth shape directly, since discovery
+  // still mis-tags all 5 of its decisions to level 1/creation -- a known, deliberately unfixed
+  // discovery/model mismatch). No feat-granted spell-choice/spell-grant decision remains blocked.
+  it('NONE BLOCKED -- every feat-granted spell-choice/spell-grant decision is now implemented (Ritual Caster included)', () => {
     const featSpell = DECISIONS.filter((d) => d.owner.kind === 'feat' && ['spell-choice', 'spell-grant'].includes(d.family))
     expect(featSpell.length).toBeGreaterThan(0)
     const stillBlocked = featSpell.filter((d) => classifyDecision(d).status !== 'implemented')
-    expect(stillBlocked.every((d) => d.owner.slug === 'ritual-caster-xphb')).toBe(true)
-    expect(stillBlocked.length).toBeGreaterThan(0)
+    expect(stillBlocked).toEqual([])
   })
 
-  it('RECLASSIFIED -- Magic Initiate, Fey-Touched, Shadow-Touched, Telekinetic, Telepathic, Blessed Warrior, and Druidic Warrior are now implemented', () => {
-    const slugs = ['magic-initiate-xphb', 'fey-touched-xphb', 'shadow-touched-xphb', 'telekinetic-xphb', 'telepathic-xphb', 'blessed-warrior-xphb', 'druidic-warrior-xphb']
+  it('RECLASSIFIED -- Magic Initiate, Fey-Touched, Shadow-Touched, Telekinetic, Telepathic, Blessed Warrior, Druidic Warrior, and Ritual Caster are now implemented', () => {
+    const slugs = ['magic-initiate-xphb', 'fey-touched-xphb', 'shadow-touched-xphb', 'telekinetic-xphb', 'telepathic-xphb', 'blessed-warrior-xphb', 'druidic-warrior-xphb', 'ritual-caster-xphb']
     const decisions = DECISIONS.filter((d) => d.owner.kind === 'feat' && slugs.includes(d.owner.slug) && ['spell-choice', 'spell-grant', 'variant-choice'].includes(d.family))
     expect(decisions.length).toBeGreaterThan(0)
     for (const d of decisions) expect(classifyDecision(d).status, d.id).toBe('implemented')

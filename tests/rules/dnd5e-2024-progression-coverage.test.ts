@@ -95,7 +95,13 @@ const KNOWN_CLASS_FEATURE_NAMES = new Set([
   // class-*.json), but phrased "...of your choice" / "...your choice" rather than
   // matching STRONG_CHOICE_PHRASING's literal "choose" wording -- added here, not
   // to the regex, since each is a stable, well-understood mechanic identity.
-  'Divine Order', 'Primal Order', 'Blessed Strikes', 'Elemental Fury'
+  'Divine Order', 'Primal Order', 'Blessed Strikes', 'Elemental Fury',
+  // D&D 2024 Character Rules A1 -- Barbarian's own Level-3 "Primal Knowledge": "You gain
+  // proficiency in another skill of your choice from the skill list available to Barbarians at
+  // level 1." Does not match STRONG_CHOICE_PHRASING ("of your choice" alone has no "you choose"/
+  // "choose one of the following" literal) -- added by stable feature identity, exactly like
+  // Deft Explorer/Thieves' Cant above.
+  'Primal Knowledge'
 ])
 
 function isKnownSubclassSelectionFeature(name: string, className: string): boolean {

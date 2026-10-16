@@ -34,13 +34,14 @@ export type SpellUnavailableReason =
   | 'wrong-class-list'
   | 'wrong-level'
   | 'wrong-school'
+  | 'not-ritual'
 
 export type SpellOptionVerdict = { eligible: true } | { eligible: false; reason: SpellUnavailableReason }
 
 // The filter's own closed vocabulary (app/lib/rules/types.ts's SpellCatalogueFilter). A field
 // outside this set is refused outright -- a future filter dimension needs a change HERE before it
 // can ever be satisfied, never a silent pass-through of a field this function does not evaluate.
-const KNOWN_FILTER_KEYS: readonly string[] = ['classList', 'level', 'school']
+const KNOWN_FILTER_KEYS: readonly string[] = ['classList', 'level', 'school', 'ritual']
 
 export function spellOptionVerdict(input: {
   mechanics: CanonicalSpellMechanics | null | undefined
@@ -69,6 +70,10 @@ export function spellOptionVerdict(input: {
 
   if (filter.school && filter.school.length > 0 && !filter.school.includes(mechanics.school ?? '')) {
     return { eligible: false, reason: 'wrong-school' }
+  }
+
+  if (filter.ritual && !mechanics.ritual) {
+    return { eligible: false, reason: 'not-ritual' }
   }
 
   return { eligible: true }

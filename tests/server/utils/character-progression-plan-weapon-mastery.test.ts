@@ -191,6 +191,12 @@ function nonWeaponAnswers(classSlug: string, toLevel: number): Record<string, st
     const subclassSlug = REAL_SUBCLASSES_BY_CLASS[classSlug]![0]!
     answers[progressionChoiceKey('class', 3, 'choice:class.subclass')] = [serializeContentRef({ packageId: PKG, slug: subclassSlug })]
   }
+  // D&D 2024 Character Rules A1 -- Barbarian's own real Primal Knowledge (Level 3): this
+  // fixture's own rulesChoices is null (no Level-1 skill-proficiency answer on record), so
+  // nothing is yet proficient and any one of the real 6-skill list is legal here.
+  if (toLevel >= 3 && classSlug === 'barbarian-xphb') {
+    answers[progressionChoiceKey('class', 3, 'choice:skill.proficiency')] = ['value:skill.athletics.proficient']
+  }
   for (const asiLevel of ASI_LEVELS_BY_CLASS[classSlug]!) {
     if (toLevel < asiLevel) continue
     const featKey = progressionChoiceKey('class', asiLevel, 'choice:feat.selection')

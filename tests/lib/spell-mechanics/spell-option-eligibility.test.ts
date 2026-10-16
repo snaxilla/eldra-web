@@ -114,6 +114,25 @@ describe('P2 school filter -- supported because the metadata is already canonica
   })
 })
 
+describe('D&D 2024 Character Rules A1 -- ritual filter (Ritual Caster)', () => {
+  it('a real Ritual-tagged spell (Detect Magic) is accepted by a ritual:true filter', async () => {
+    const detectMagic = await realMechanics('Detect Magic')
+    expect(detectMagic.ritual).toBe(true)
+    expect(spellOptionVerdict({ mechanics: detectMagic, filter: { level: 1, ritual: true } })).toEqual({ eligible: true })
+  })
+
+  it('a real minimal pair: Magic Missile (same level, no Ritual tag) is rejected by the SAME ritual:true filter', async () => {
+    const missile = await realMechanics('Magic Missile')
+    expect(missile.ritual).toBeFalsy()
+    expect(spellOptionVerdict({ mechanics: missile, filter: { level: 1, ritual: true } })).toEqual({ eligible: false, reason: 'not-ritual' })
+  })
+
+  it('ritual is absent from the filter means unconstrained -- a non-ritual spell still passes', async () => {
+    const missile = await realMechanics('Magic Missile')
+    expect(spellOptionVerdict({ mechanics: missile, filter: { level: 1 } })).toEqual({ eligible: true })
+  })
+})
+
 describe('P2 combined filter -- every declared dimension must hold (AND across dimensions)', () => {
   const filter: SpellCatalogueFilter = { classList: ['Wizard'], level: 1, school: ['Evocation'] }
 
@@ -144,7 +163,7 @@ describe('P2 fail closed -- no best-effort legality', () => {
 
   it('an unrecognized filter field is refused, never silently ignored', async () => {
     const missile = await realMechanics('Magic Missile')
-    const verdict = spellOptionVerdict({ mechanics: missile, filter: { level: 1, ritual: true } as unknown as SpellCatalogueFilter })
+    const verdict = spellOptionVerdict({ mechanics: missile, filter: { level: 1, tag: 'concentration' } as unknown as SpellCatalogueFilter })
     expect(verdict).toEqual({ eligible: false, reason: 'unsupported-filter' })
   })
 

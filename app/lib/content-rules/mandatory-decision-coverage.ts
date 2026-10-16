@@ -26,7 +26,7 @@
 
 import { findRulesFacet } from './index'
 import { slugOf, type DecisionRecord } from './mandatory-decisions'
-import { valueIdsOfDetail } from './proficiency-vocabulary'
+import { valueIdsOfDetail, SKILLS, skillValueId } from './proficiency-vocabulary'
 import type { EquipmentChoice, RulesFacet } from './types'
 
 export type CoverageStatus = 'implemented' | 'blocked' | 'optional' | 'false-positive' | 'runtime-effect'
@@ -168,6 +168,23 @@ function blessedDruidicWarriorSpellCovered(slug: string): boolean {
   return requirement !== undefined && (requirement.totalByLevel[0] ?? 0) === 2
 }
 
+// D&D 2024 Character Rules A1 -- Ritual Caster's real growth (2 at Level 1, +1 at each real
+// Proficiency-Bonus-increase threshold: 5/9/13/17) is discovered as 5 SEPARATE, identically-shaped
+// `spell-choice` decisions (every one forced to `level: 1` by `spellGrantDecisions`'s own
+// `context !== 'feat'` collapse, mandatory-decisions.ts -- a known, documented discovery/model
+// mismatch this phase deliberately does not fix). This
+// verifies the REAL authored facet carries the actual growth shape (ungated `fixed` pool, the
+// `ritual` filter dimension, and a monotonically non-decreasing totalByLevel reaching 6 by Level
+// 17) rather than trusting the decision's own (miscounted) level/count fields -- every one of the
+// 5 decisions sweeps in together once the facet is real, never individually.
+function ritualCasterSpellCovered(): boolean {
+  const facet = findRulesFacet('dnd5e.2024', 'feat', 'ritual-caster-xphb')
+  const requirement = (facet?.spellRequirements ?? []).find((r) => r.pool === 'fixed' && r.filter.ritual === true)
+  if (!requirement) return false
+  const table = requirement.totalByLevel
+  return (table[0] ?? 0) === 2 && (table[4] ?? 0) === 3 && (table[8] ?? 0) === 4 && (table[12] ?? 0) === 5 && (table[16] ?? 0) === 6
+}
+
 // Weapon Mastery phase -- the real build decision is IMPLEMENTED once the owning facet genuinely
 // references the generic primitive: the Level-1 creation decision through the facet's own
 // `choices` array (the exact ChoiceSet id this class's own real corpus text restricts to --
@@ -209,7 +226,12 @@ const CLASS_ACCUMULATING_OPTION_CHOICE_SET: Record<string, string> = {
   'warlock-xphb': 'choice:class.accumulating-option'
 }
 const CLASS_ACCUMULATING_OPTION_GROWTH_PROGRESSION: Record<string, string> = {
-  'warlock-xphb': 'progression:class.accumulating-option-growth-2-5-7-9-12-15-18'
+  'warlock-xphb': 'progression:class.accumulating-option-growth-2-5-7-9-12-15-18',
+  // D&D 2024 Character Rules A1 -- Sorcerer's own Metamagic (XPHB classFeature "Metamagic"): gains
+  // two options at Level 2 (never a Level-1 decision, unlike Warlock's Level-1 Invocation pick --
+  // `accumulatingOptionCovered`'s own `d.level === 1` branch is therefore never reached for this
+  // class), two more at 10, two more at 17.
+  'sorcerer-xphb': 'progression:class.accumulating-option-growth-2-10-17'
 }
 function accumulatingOptionCovered(d: DecisionRecord): boolean {
   if (!is(d, 'class', 'accumulating-option')) return false
@@ -371,6 +393,42 @@ export function abilityDistributionCovered(d: DecisionRecord): boolean {
     && parsed.max === 2
 }
 
+// D&D 2024 Character Rules A1 -- feat-owned Expertise (Skill Expert, Boon of Skill: `expertise:
+// [{anyProficientSkill: N}]`). Deliberately SEPARATE from `impl:expertise` above (narrowly scoped
+// to `owner.kind === 'class'` via SUPPORTED_EXPERTISE), never widened into it -- a feat's own
+// Expertise choice has no class-level cadence, only the feat's own facet. Covered when the facet
+// offers `choice:skill.expertise` with the real corpus count and the full 18-skill universe, gated
+// by the matching 18 proficient Values (requiresActive) -- the SAME shape the class rows already
+// verify, reused, never re-derived ad hoc.
+function featExpertiseCovered(d: DecisionRecord): boolean {
+  if (!(d.owner.kind === 'feat' && d.family === 'expertise-choice')) return false
+  const facet = findRulesFacet('dnd5e.2024', 'feat', d.owner.slug)
+  const expertiseIds = SKILLS.map(skillExpertiseValueId)
+  const proficientIds = SKILLS.map(skillValueId)
+  return (facet?.choices ?? []).some((c) =>
+    c.choiceSet === 'choice:skill.expertise'
+    && c.count === d.cardinality
+    && sameSet(c.from ?? [], expertiseIds)
+    && sameSet(c.requiresActive?.filter((v): v is string => v !== null) ?? [], proficientIds)
+  )
+}
+function skillExpertiseValueId(skill: string): string {
+  return `value:skill.${skill}.expertise`
+}
+
+// D&D 2024 Character Rules A1 -- Elemental Adept's own prose-only damage-type choice ("Energy
+// Mastery"). Covered when the facet offers the 5-option `choice:feat.elemental-adept.damage-type`
+// AND declares `repeatAcquisitionDifferentiator` against the SAME ChoiceSet -- the real corpus is
+// explicit that a repeat acquisition must choose a different damage type, and that is the ONLY
+// generic primitive (`findIllegalRepeatAcquisition`) that can enforce it, so a facet missing the
+// differentiator is not really covered, even if it offers the choice.
+function elementalAdeptDamageTypeCovered(d: DecisionRecord): boolean {
+  if (!(d.owner.kind === 'feat' && d.owner.slug === 'elemental-adept-xphb' && d.family === 'damage-type-choice')) return false
+  const facet = findRulesFacet('dnd5e.2024', 'feat', 'elemental-adept-xphb')
+  const hasChoice = (facet?.choices ?? []).some((c) => c.choiceSet === 'choice:feat.elemental-adept.damage-type' && c.count === d.cardinality && (c.from?.length ?? 0) === 5)
+  return hasChoice && facet?.repeatAcquisitionDifferentiator === 'choice:feat.elemental-adept.damage-type'
+}
+
 export function proficiencyCovered(d: DecisionRecord): boolean {
   if (!isProficiency(d)) return false
   const ids = valueIdsOfDetail(d.detail)
@@ -390,6 +448,13 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     reason: 'Class skill proficiency choice at Level 1 (choice:skill.proficiency on the class facet).',
     ledgerIds: [],
     matches: (d) => is(d, 'class', 'skill-choice') && d.level === 1 && d.source.startsWith('startingProficiencies.skills') && classFacetHasSkillChoice(d.owner.slug)
+  },
+  {
+    id: 'impl:primal-knowledge',
+    status: 'implemented',
+    reason: 'Barbarian Primal Knowledge (Level 3): "another skill of your choice from the skill list available to Barbarians at level 1," via progression:class.skill-proficiency-growth-3 -- the SAME choice:skill.proficiency + excludeIfAlreadyActive primitive Level 1\'s own skill choice already uses, re-offered from the identical 6-skill list (the 2 already chosen at Level 1 are automatically excluded).',
+    ledgerIds: ['barbarian-xphb:primal-knowledge'],
+    matches: (d) => is(d, 'class', 'skill-choice') && d.level === 3 && d.source === 'Primal Knowledge' && classProgression(d.owner.slug).includes('progression:class.skill-proficiency-growth-3')
   },
   {
     id: 'impl:species-skill-choice',
@@ -455,6 +520,20 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => is(d, 'class', 'expertise-choice') && (SUPPORTED_EXPERTISE[d.owner.slug] ?? []).includes(d.level)
   },
   {
+    id: 'impl:feat-expertise-choice',
+    status: 'implemented',
+    reason: 'Skill Expert / Boon of Skill: feat-owned Expertise (expertise.anyProficientSkill), via the SAME choice:skill.expertise + all-18-skill requiresActive shape the class Expertise rows above already use -- a separate rule from impl:expertise, never a widening of its class-only SUPPORTED_EXPERTISE allowlist. The real corpus has no third feat with an `expertise` field, so this rule carries no paired `blk:` fallback (an always-zero blocked rule is dead code, not a real fail-closed guard -- see this file\'s own precedent for `blk:feat-nested-spells`\'s removal); an uncovered feat-owned expertise-choice decision still fails closed via `classifyDecision`\'s own zero-match default.',
+    ledgerIds: [],
+    matches: (d) => featExpertiseCovered(d)
+  },
+  {
+    id: 'impl:feat-damage-type-choice',
+    status: 'implemented',
+    reason: 'Elemental Adept\'s prose-only "Energy Mastery" damage-type choice (discovered via the small, named FEAT_DAMAGE_TYPE_CHOICE supplement, mandatory-decisions.ts -- mirrors FeatureRequirementMapping\'s own precedent, never a prose-parsing engine), via the 5-option choice:feat.elemental-adept.damage-type ChoiceSet, with repeatAcquisitionDifferentiator enforcing the real corpus\'s "must choose a different damage type each time" rule across repeat acquisitions (findIllegalRepeatAcquisition, reused generically, never Elemental-Adept-specific code). The real corpus has no second feat with this prose-only shape, so this rule carries no paired `blk:` fallback; an uncovered damage-type-choice decision still fails closed via classifyDecision\'s own zero-match default.',
+    ledgerIds: [],
+    matches: (d) => elementalAdeptDamageTypeCovered(d)
+  },
+  {
     id: 'impl:origin-fixed-feat',
     status: 'implemented',
     reason: 'Background fixed Origin feat, server-derived from facet.originFeatSlug (Phase 2C.3A).',
@@ -518,19 +597,17 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   {
     id: 'impl:invocations',
     status: 'implemented',
-    reason: 'Eldritch Invocations (the Level-1 choice, plus the real Level 2/5/7/9/12/15/18 count growth) via the generic, class/feature-name-agnostic choice:class.accumulating-option ChoiceSet and progression:class.accumulating-option-growth-2-5-7-9-12-15-18. Runtime effects of an acquired invocation are a separate accountability row, never conflated with this acquisition decision.',
-    ledgerIds: ['warlock-xphb:eldritch-invocations', 'warlock-xphb:eldritch-invocations-growth'],
+    reason: 'Eldritch Invocations (the Level-1 choice, plus the real Level 2/5/7/9/12/15/18 count growth) via the generic, class/feature-name-agnostic choice:class.accumulating-option ChoiceSet and progression:class.accumulating-option-growth-2-5-7-9-12-15-18. Sorcerer Metamagic (Level 2/10/17, two options gained at each) reclassified here too, via the SAME primitive and its own progression:class.accumulating-option-growth-2-10-17 -- never a feature-name branch, the identical accumulating-option shape either way. Runtime effects of an acquired invocation/Metamagic option are a separate accountability row, never conflated with this acquisition decision.',
+    ledgerIds: ['warlock-xphb:eldritch-invocations', 'warlock-xphb:eldritch-invocations-growth', 'sorcerer-xphb:metamagic'],
     matches: (d) => accumulatingOptionCovered(d)
   },
 
   // ------------------------------------------------------------------ blocked
-  {
-    id: 'blk:metamagic',
-    status: 'blocked',
-    reason: 'Metamagic: two options per increase, no accumulating shape exists.',
-    ledgerIds: ['sorcerer-xphb:metamagic'],
-    matches: (d) => is(d, 'class', 'accumulating-option') && d.source === 'Metamagic'
-  },
+  // D&D 2024 Character Rules A1 -- `blk:metamagic` is REMOVED, not merely narrowed: Metamagic is
+  // now authored via the generic accumulating-option primitive (progression:class.accumulating-
+  // option-growth-2-10-17) and reclassified onto `impl:invocations` above -- a permanently-empty
+  // blocked rule is dead code, not a real fail-closed guard (established precedent elsewhere in
+  // this file).
   {
     id: 'blk:battle-master-maneuvers',
     status: 'blocked',
@@ -589,13 +666,12 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   // now authored and reclassified onto `impl:expertise` above. Every real
   // `expertise-choice` decision (7 total -- Bard L2/L9, Ranger L2/L9, Rogue
   // L1/L6, Wizard L2) now matches `impl:expertise` and nothing else.
-  {
-    id: 'blk:class-skill-extra',
-    status: 'blocked',
-    reason: 'Extra skill proficiency at a later level (Barbarian Primal Knowledge).',
-    ledgerIds: [],
-    matches: (d) => is(d, 'class', 'skill-choice') && !(d.level === 1 && d.source.startsWith('startingProficiencies.skills'))
-  },
+  // D&D 2024 Character Rules A1 -- `blk:class-skill-extra` (the former catch-all for "extra skill
+  // proficiency at a later level," Barbarian Primal Knowledge's own prior home) is REMOVED, not
+  // merely narrowed: Primal Knowledge was the ONLY real corpus decision in this shape, and it is
+  // now implemented via `impl:primal-knowledge` above -- a permanently-empty blocked rule is dead
+  // code, not a real fail-closed guard (see this file's own established precedent for `blk:feat-
+  // spell-*`'s own removed rules).
   // LANGUAGE CORPUS + POLICY PHASE -- `blk:class-language` (previously the single catch-all for
   // every `language-choice` decision) is RETIRED: all 3 real decisions (1 package-owned
   // universal rule, Rogue L1, Ranger L2) are now authored. Split into two rules below so a
@@ -709,12 +785,11 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
   // fits the generic, class/feat-name-agnostic `spellRequirements`/`fixedSpellGrants` model exactly
   // (see those fields' own headers,
   // app/lib/content-rules/types.ts). Each checks the REAL authored facet, never a bare name match.
-  // Ritual Caster alone remains blocked, under its own narrower rule below, for a real, different
-  // reason: `detectFeatDecisions` (mandatory-decisions.ts) forces EVERY feat-sourced numeric table
-  // key to `level: 1, timing: 'creation'` (`context !== 'feat'` in `spellGrantDecisions`), so its 5
-  // real tiers (2 at Level 1, +1 at the real Proficiency-Bonus thresholds 5/9/13/17) are discovered
-  // as 5 creation-time decisions -- a genuine mismatch with the real level-gated growth shape, not
-  // a storage/model gap this phase's own primitive can close without also changing discovery.
+  // D&D 2024 Character Rules A1 -- Ritual Caster's own 5 (miscounted-level) decisions are now
+  // covered too, by `impl:feat-spell-ritual-caster` below: `detectFeatDecisions` still forces every
+  // one of them to `level: 1` (the discovery/model mismatch described above is deliberately left
+  // alone this phase, per instruction -- the coverage rule recognizes the real facet shape
+  // directly, never fixed via a discovery rewrite).
   {
     id: 'impl:feat-spell-magic-initiate',
     status: 'implemented',
@@ -744,16 +819,19 @@ export const COVERAGE_RULES: readonly CoverageRule[] = [
     matches: (d) => d.owner.kind === 'feat' && (d.owner.slug === 'blessed-warrior-xphb' || d.owner.slug === 'druidic-warrior-xphb') && d.family === 'spell-choice' && blessedDruidicWarriorSpellCovered(d.owner.slug)
   },
   {
-    id: 'blk:feat-nested-spells',
-    status: 'blocked',
-    reason: 'Ritual Caster: a real level-gated GROWING spell pool (2 at Level 1, +1 at Proficiency-Bonus thresholds 5/9/13/17), but discovery (`detectFeatDecisions`) forces every feat-sourced numeric table key to level 1/creation -- a genuine discovery/model mismatch, not fixed by this phase (see this rule\'s own header above for the full reasoning). Any other feat-owned spell-choice/spell-grant/variant-choice decision not claimed by an `impl:feat-spell-*` rule above also falls here, fail-closed.',
+    id: 'impl:feat-spell-ritual-caster',
+    status: 'implemented',
+    reason: 'Ritual Caster: the real 2-at-Level-1/+1-at-5/9/13/17 growing spell pool, modeled via an ungated `fixed`-pool spellRequirements entry whose `filter.ritual: true` restricts to the Ritual tag (no classList, matching the real text). `detectFeatDecisions` still discovers this as 5 separate, identically level-1-tagged decisions (a known discovery/model mismatch this phase does not fix) -- this rule verifies the REAL authored totalByLevel growth shape directly, rather than trusting those miscounted fields, so all 5 sweep in together.',
     ledgerIds: [],
-    matches: (d) => d.owner.kind === 'feat' && (d.family === 'spell-choice' || d.family === 'spell-grant' || d.family === 'variant-choice')
-      && !(d.owner.slug === 'magic-initiate-xphb' && magicInitiateSpellCovered(d.grantedBy))
-      && !((d.owner.slug === 'fey-touched-xphb' || d.owner.slug === 'shadow-touched-xphb') && feyShadowTouchedSpellCovered(d.owner.slug))
-      && !((d.owner.slug === 'telekinetic-xphb' || d.owner.slug === 'telepathic-xphb') && telekineticTelepathicSpellCovered(d.owner.slug))
-      && !((d.owner.slug === 'blessed-warrior-xphb' || d.owner.slug === 'druidic-warrior-xphb') && blessedDruidicWarriorSpellCovered(d.owner.slug))
+    matches: (d) => d.owner.kind === 'feat' && d.owner.slug === 'ritual-caster-xphb' && d.family === 'spell-choice' && ritualCasterSpellCovered()
   },
+  // D&D 2024 Character Rules A1 -- `blk:feat-nested-spells` is REMOVED, not merely narrowed:
+  // Ritual Caster was the real corpus's own last remaining feat-owned spell-choice/spell-grant/
+  // variant-choice decision not yet claimed by an `impl:feat-spell-*` rule above; now that it is
+  // (`impl:feat-spell-ritual-caster`), every real decision in this family is implemented and this
+  // rule would match zero -- a permanently-empty blocked rule is dead code, not a real fail-closed
+  // guard (established precedent elsewhere in this file). A future feat with an unrepresentable
+  // spell shape still fails closed via `classifyDecision`'s own zero-match default.
   {
     id: 'blk:feat-nested-proficiency',
     status: 'blocked',

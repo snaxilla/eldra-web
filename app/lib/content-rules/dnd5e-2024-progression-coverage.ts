@@ -483,6 +483,23 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
     implementationRef: 'progression:class.weapon-mastery-growth-4-10',
     notes: 'Count grows from 2 to 3 at Level 4, 3 to 4 at Level 10 (verified this phase against class-barbarian.json\'s own classTableGroups). Additive ProgressionRows on the SAME melee-only ChoiceSet the creation row above uses -- previously-selected weapons remain owned (ownedElsewhere check spans every acquisition, every level), a direct level jump requests only the real deficit, never a second persistence model.'
   },
+  // D&D 2024 Character Rules A1 -- Primal Knowledge (Level 3): "another skill of your choice
+  // from the skill list available to Barbarians at level 1." Via progression:class.skill-
+  // proficiency-growth-3, re-offering the SAME choice:skill.proficiency + excludeIfAlreadyActive
+  // primitive the Level-1 skill choice already uses, from the identical 6-skill list -- the 2
+  // already chosen at Level 1 are automatically excluded. The Rage-active ability-check-as-
+  // Strength clause (real corpus text) is a RUNTIME effect, not an acquisition decision -- tracked
+  // separately, not by this entry.
+  {
+    id: 'barbarian-xphb:primal-knowledge',
+    classSlug: 'barbarian-xphb',
+    featureName: 'Primal Knowledge',
+    levels: [3],
+    surface: 'level-up',
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.skill-proficiency-growth-3',
+    notes: 'Real corpus wording (XPHB): "You gain proficiency in another skill of your choice from the skill list available to Barbarians at level 1." Modeled via choice:skill.proficiency\'s own generic excludeIfAlreadyActive, never a Barbarian-specific check.'
+  },
   {
     id: 'fighter-xphb:weapon-mastery-growth',
     classSlug: 'fighter-xphb',
@@ -670,14 +687,21 @@ export const DND5E_2024_PROGRESSION_COVERAGE: ProgressionCoverageEntry[] = [
   // mechanic). Missing a generic primitive, not merely unauthored
   // content -- see ACCUMULATING_OPTIONAL_FEATURE_BLOCKER's own header.
   // -------------------------------------------------------------------
+  // D&D 2024 Character Rules A1 -- RECLASSIFIED IMPLEMENTED (was ENGINE_BLOCKED): the generic
+  // accumulating-option primitive `ACCUMULATING_OPTIONAL_FEATURE_BLOCKER` named as missing is the
+  // SAME one Eldritch Invocations already proved out above (`choice:class.accumulating-option`) --
+  // Metamagic needed only its own growth-cadence Progression (2/10/17, two options gained at each,
+  // re-derived directly from class-sorcerer.json: XPHB grants the first two at Level 2, never 3),
+  // never new engine code.
   {
     id: 'sorcerer-xphb:metamagic',
     classSlug: 'sorcerer-xphb',
     featureName: 'Metamagic',
     levels: [2, 10, 17],
     surface: 'level-up',
-    status: 'ENGINE_BLOCKED',
-    blockerReason: ACCUMULATING_OPTIONAL_FEATURE_BLOCKER
+    status: 'IMPLEMENTED',
+    implementationRef: 'progression:class.accumulating-option-growth-2-10-17',
+    notes: 'Real corpus wording (XPHB): "you gain two Metamagic options of your choice... You gain another one at 10th and 17th level" -- re-derived directly: two MORE at each of 10 and 17 (never one), matching this phase\'s own growth-cadence Progression exactly.'
   },
   // ELDRITCH INVOCATIONS PHASE -- RECLASSIFIED IMPLEMENTED (was ENGINE_BLOCKED): the generic
   // accumulating-option primitive this entry's own history named as missing now exists

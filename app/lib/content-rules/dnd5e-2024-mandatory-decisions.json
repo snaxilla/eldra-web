@@ -6463,6 +6463,21 @@
       "source": "feat.additionalSpells.known"
     },
     {
+      "id": "feat:boon-of-skill-xphb:L1:expertise-choice:expertise-anyproficientskill",
+      "owner": {
+        "kind": "feat",
+        "slug": "boon-of-skill-xphb",
+        "name": "Boon of Skill"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "expertise-choice",
+      "mandatory": true,
+      "cardinality": 1,
+      "source": "expertise.anyProficientSkill",
+      "detail": "skill-any"
+    },
+    {
       "id": "feat:chef-xphb:L1:proficiency-grant:toolproficiencies-cooks-utensils",
       "owner": {
         "kind": "feat",
@@ -6523,6 +6538,20 @@
       "source": "feat.additionalSpells.known"
     },
     {
+      "id": "feat:elemental-adept-xphb:L1:damage-type-choice:energy-mastery",
+      "owner": {
+        "kind": "feat",
+        "slug": "elemental-adept-xphb",
+        "name": "Elemental Adept"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "damage-type-choice",
+      "mandatory": true,
+      "cardinality": 1,
+      "source": "Energy Mastery"
+    },
+    {
       "id": "feat:fey-touched-xphb:L1:spell-choice:feat-additionalspells-innate",
       "owner": {
         "kind": "feat",
@@ -6578,7 +6607,7 @@
       "mandatory": true,
       "cardinality": 1,
       "source": "skillProficiencies.choose",
-      "detail": "skill"
+      "detail": "skill-from:arcana|history|investigation|nature|religion"
     },
     {
       "id": "feat:lightly-armored-xphb:L1:proficiency-grant:armorproficiencies",
@@ -6728,7 +6757,7 @@
       "mandatory": true,
       "cardinality": 1,
       "source": "skillProficiencies.choose",
-      "detail": "skill"
+      "detail": "skill-from:insight|investigation|perception"
     },
     {
       "id": "feat:poisoner-xphb:L1:proficiency-grant:toolproficiencies-poisoners-kit",
@@ -6859,6 +6888,21 @@
       "source": "feat.additionalSpells.innate"
     },
     {
+      "id": "feat:skill-expert-xphb:L1:expertise-choice:expertise-anyproficientskill",
+      "owner": {
+        "kind": "feat",
+        "slug": "skill-expert-xphb",
+        "name": "Skill Expert"
+      },
+      "level": 1,
+      "timing": "creation",
+      "family": "expertise-choice",
+      "mandatory": true,
+      "cardinality": 1,
+      "source": "expertise.anyProficientSkill",
+      "detail": "skill-any"
+    },
+    {
       "id": "feat:skill-expert-xphb:L1:proficiency-choice:skillproficiencies-any",
       "owner": {
         "kind": "feat",
@@ -6871,7 +6915,7 @@
       "mandatory": true,
       "cardinality": 1,
       "source": "skillProficiencies.any",
-      "detail": "skill"
+      "detail": "skill-any"
     },
     {
       "id": "feat:skilled-xphb:L1:proficiency-choice:skilltoollanguageproficiencies-choose",

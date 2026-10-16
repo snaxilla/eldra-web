@@ -74,12 +74,14 @@ const BACKGROUNDS = {
 // entries, no spell answers supplied) they still reject -- but for an entirely different, mechanics-
 // level reason (Wizard's own unanswered spellbook requirement), not an unrecordable decision, so they
 // no longer belong in a list asserting "cannot be chosen at creation yet". A real acceptance walk for
-// Acolyte/Guide/Sage lives in create-v2-fighter-mechanics.test.ts. The remaining 5 names are refused
-// for a wholly separate, pre-existing, out-of-scope reason: Crafter/Skilled/Musician's own ungated
-// "requires a tool, armor, or weapon proficiency" decision (blk:feat-nested-proficiency), which this
-// phase did not touch.
-const CREATION_UNAVAILABLE_BACKGROUNDS = ['Artisan', 'Charlatan', 'Entertainer', 'Noble', 'Scribe']
-  .map((name) => entry(name, slugOf(name), findRulesFacet('dnd5e.2024', 'background', slugOf(name))))
+// Acolyte/Guide/Sage lives in create-v2-fighter-mechanics.test.ts.
+// D&D 2024 Character Rules A1 -- Artisan/Charlatan/Entertainer/Noble/Scribe are REMOVED too:
+// Crafter/Musician/Skilled's own nested tool/instrument/skill-or-tool choices are now representable
+// (each has its own real RulesFacet), so none of these 5 is creation-unavailable at Phase 0 anymore.
+// Requesting one WITHOUT its own nested answer still rejects -- but for the same mechanics-level
+// "this feat's own choice must be answered" reason Crafter's own facet now enforces, not an
+// unrecordable decision. A real acceptance walk for Artisan lives in create-v2-fighter-mechanics.test.ts.
+const CREATION_UNAVAILABLE_BACKGROUNDS: ReturnType<typeof entry>[] = []
 
 // The World catalogue carries the real feat mechanics (the Criminal Origin feat is resolved first).
 const FEATS = xphbFeats.feats.map((raw) => ({

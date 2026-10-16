@@ -133,17 +133,26 @@ describe('P1 coverage bite tests (the real facets decide; a mismatch never cover
     expect(proficiencyCovered(decision({ owner: { kind: 'class', slug: 'barbarian-xphb', name: 'Barbarian' }, family: 'proficiency-grant', detail: undefined }))).toBe(false)
   })
 
+  // D&D 2024 Character Rules A1 -- Crafter (previously this test's own example) now has its own
+  // real feat facet, so its decision is covered STANDALONE too; it can no longer demonstrate "not
+  // standalone." A fictional feat slug (no own facet at all) paired with Artisan's own REAL,
+  // UNRELATED `choice:proficiency.artisan-tool.background` entry (17 artisan tools, count 1) still
+  // proves the identical mechanism: `grantedBy` is what makes the background's own facet count.
   it('a Background-granted feat choice is covered through the granting background, and not standalone', () => {
-    const crafter = { kind: 'feat' as const, slug: 'crafter-xphb', name: 'Crafter' }
-    const granted = decision({ owner: crafter, family: 'proficiency-choice', detail: 'tools-from:carpenter\'s tools|leatherworker\'s tools|mason\'s tools|potter\'s tools|smith\'s tools|tinker\'s tools|weaver\'s tools|woodcarver\'s tools', cardinality: 3, grantedBy: 'artisan-xphb' })
+    const fictionalFeat = { kind: 'feat' as const, slug: 'no-such-feat-xphb', name: 'No Such Feat' }
+    const granted = decision({ owner: fictionalFeat, family: 'proficiency-choice', detail: 'tools-choice:artisan', cardinality: 1, grantedBy: 'artisan-xphb' })
     expect(proficiencyCovered(granted)).toBe(true)
     expect(proficiencyCovered({ ...granted, grantedBy: undefined })).toBe(false)
   })
 
-  it('a feat choice with no facet offering it stays blocked (Resilient saving throws, Keen Mind skills)', () => {
+  // D&D 2024 Character Rules A1 -- Resilient's own saving-throw choice is now authored (choice:
+  // save.proficiency on its own facet) and implemented; Keen Mind's real "proficiency-OR-
+  // Expertise" dual-output shape still needs a genuinely new primitive this phase does not invent
+  // (see mandatory-decisions.ts's own `skill-from` detail fix), so it remains correctly blocked.
+  it('a feat choice with no facet offering it stays blocked (Keen Mind skills); Resilient is now implemented', () => {
     const resilient = DND5E_2024_MANDATORY_DECISIONS.find((d) => d.owner.slug === 'resilient-xphb' && d.family === 'proficiency-choice')
     const keenMind = DND5E_2024_MANDATORY_DECISIONS.find((d) => d.owner.slug === 'keen-mind-xphb' && d.family === 'proficiency-choice')
-    expect(resilient && classifyDecision(resilient).status).toBe('blocked')
+    expect(resilient && classifyDecision(resilient).status).toBe('implemented')
     expect(keenMind && classifyDecision(keenMind).status).toBe('blocked')
   })
 })

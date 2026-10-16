@@ -102,6 +102,7 @@ export type RawFeat = {
   armorProficiencies?: unknown[]
   skillToolLanguageProficiencies?: unknown[]
   savingThrowProficiencies?: unknown[]
+  expertise?: unknown[]
 }
 
 export type RawCorpus = {
@@ -610,9 +611,22 @@ export function backgroundAbilityDistribution(abilityEntries: unknown[]): { tota
   return { total, max, detail: `weighted-abilities:${from.join(',')};total:${total};max:${max}` }
 }
 
+// D&D 2024 Character Rules A1 -- feats whose real text declares a damage-type choice with NO
+// structured field at all (Elemental Adept's "Energy Mastery": "Choose one of the following
+// damage types: Acid, Cold, Fire, Lightning, or Thunder"). A small, explicit, named mapping from a
+// raw fact the engine cannot structurally parse to a representable one -- mirrors
+// FeatureRequirementMapping's own precedent (app/lib/feat-mechanics/eligibility.ts), never a
+// prose-parsing engine. Re-derived directly from feats.json; a feat not listed here produces no
+// `damage-type-choice` decision at all, never guessed.
+const FEAT_DAMAGE_TYPE_CHOICE: Record<string, { source: string, cardinality: number }> = {
+  'elemental-adept-xphb': { source: 'Energy Mastery', cardinality: 1 }
+}
+
 export function detectFeatDecisions(feat: RawFeat): DecisionRecord[] {
   const owner = { kind: 'feat' as const, slug: ownerSlugOf(feat.name), name: feat.name }
   const out: DecisionRecord[] = []
+  const damageTypeChoice = FEAT_DAMAGE_TYPE_CHOICE[owner.slug]
+  if (damageTypeChoice) out.push(make(owner, 1, 'damage-type-choice', damageTypeChoice.source, damageTypeChoice.cardinality))
   spellGrantDecisions(feat.additionalSpells ?? [], owner, out, 'feat', 1)
   for (const t of feat.toolProficiencies ?? []) {
     if (!t || typeof t !== 'object') continue
@@ -641,8 +655,23 @@ export function detectFeatDecisions(feat: RawFeat): DecisionRecord[] {
   }
   for (const s of feat.skillProficiencies ?? []) {
     if (!s || typeof s !== 'object') continue
-    if ('choose' in (s as object)) out.push(make(owner, 1, 'proficiency-choice', 'skillProficiencies.choose', (s as any).choose?.count ?? 1, { detail: 'skill' }))
-    else if (typeof (s as any).any === 'number') out.push(make(owner, 1, 'proficiency-choice', 'skillProficiencies.any', (s as any).any, { detail: 'skill' }))
+    if ('choose' in (s as object)) {
+      const pick = (s as any).choose as { from?: unknown[], count?: number }
+      const from = (pick?.from ?? []).map(String)
+      out.push(make(owner, 1, 'proficiency-choice', 'skillProficiencies.choose', pick?.count ?? 1, { detail: `skill-from:${from.join('|')}` }))
+    } else if (typeof (s as any).any === 'number') {
+      out.push(make(owner, 1, 'proficiency-choice', 'skillProficiencies.any', (s as any).any, { detail: 'skill-any' }))
+    }
+  }
+  // FEAT-OWNED EXPERTISE PHASE -- `expertise: [{anyProficientSkill: N}]` (Skill Expert, Boon of
+  // Skill): "choose N of your proficient skills to gain Expertise in." Never conflated with
+  // `skillProficiencies` (a genuinely separate real clause in both feats' own corpus text) -- the
+  // generic `'expertise-choice'` family already exists (class-owned Expertise uses it), this is the
+  // first FEAT-owned use.
+  for (const e of feat.expertise ?? []) {
+    if (!e || typeof e !== 'object') continue
+    const count = (e as any).anyProficientSkill
+    if (typeof count === 'number') out.push(make(owner, 1, 'expertise-choice', 'expertise.anyProficientSkill', count, { detail: 'skill-any' }))
   }
   // Skilled: `[{ choose: [{ from: ["anySkill", "anyTool"], count: 3 }] }]`. A pick that is not the
   // known skill-or-tool shape keeps its decision with no vocabulary, so it stays blocked (never dropped).

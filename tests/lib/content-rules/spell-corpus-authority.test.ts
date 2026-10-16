@@ -127,15 +127,23 @@ describe('P2 spell corpus authority', () => {
   // ChoiceSet). Moving the census from 651/442/174 to 651/444/172. Explicitly NOT reclassified:
   // Resourceful (Heroic Inspiration) and the casting-ability/Spell-Change facts on Origin feats
   // acquired through Versatile -- all runtime/deferred, exactly as for every other species.
-  it('the Phase-0 decision census after Human Species Completion: 651 total, 444 implemented, 172 blocked, 35 optional', () => {
+  // D&D 2024 Character Rules A1 -- +3 real decisions discovered (2 new feat-owned Expertise
+  // decisions, Skill Expert/Boon of Skill; 1 new feat-owned damage-type-choice, Elemental Adept's
+  // own prose-only Energy Mastery, via the new FEAT_DAMAGE_TYPE_CHOICE supplement). +17 reclassify
+  // blocked -> implemented: Crafter/Musician/Skilled/Resilient's own nested proficiency choices (4),
+  // Skill Expert's basic skill pick + its own new Expertise pick + Boon of Skill's own new
+  // Expertise pick (3), Elemental Adept's own new damage-type choice (1), Ritual Caster's 5
+  // (miscounted-level) spell-choice decisions (5), Sorcerer's Metamagic at L2/10/17 (3), Barbarian's
+  // Primal Knowledge at L3 (1) = 17. Moving the census from 651/444/172 to 654/461/158.
+  it('the Phase-0 decision census after A1 (Feat/Class Authoring + Legality Cleanup): 654 total, 461 implemented, 158 blocked, 35 optional', () => {
     const counts: Record<string, number> = {}
     for (const decision of DND5E_2024_MANDATORY_DECISIONS) {
       const status = classifyDecision(decision).status
       counts[status] = (counts[status] ?? 0) + 1
     }
-    expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(651)
-    expect(counts.implemented).toBe(444)
-    expect(counts.blocked).toBe(172)
+    expect(DND5E_2024_MANDATORY_DECISIONS.length).toBe(654)
+    expect(counts.implemented).toBe(461)
+    expect(counts.blocked).toBe(158)
     expect(counts.optional).toBe(35)
   })
 
@@ -184,18 +192,20 @@ describe('P2 spell corpus authority', () => {
     }
   })
 
-  // FEAT-OWNED SPELL ACQUISITION PHASE -- feat-owned spell-choice/spell-grant decisions are no
-  // longer uniformly blocked; Ritual Caster alone remains so, for a real, different reason (see
-  // `blk:feat-nested-spells`'s own updated reason, mandatory-decision-coverage.ts). Magic
-  // Initiate's own decisions are `variant-choice` family, not `spell-choice`/`spell-grant`/
-  // `spell-count`, so they are checked separately in mandatory-decision-coverage.test.ts.
-  it('feat-owned spell-choice/spell-grant decisions: Ritual Caster alone remains NOT implemented', () => {
+  // D&D 2024 Character Rules A1 -- Ritual Caster's own real growing spell pool is now
+  // implemented too (`impl:feat-spell-ritual-caster`, mandatory-decision-coverage.ts, verifying
+  // the real authored totalByLevel growth shape directly, since `detectFeatDecisions` still
+  // mis-tags all 5 of its decisions to level 1 -- a known, deliberately unfixed discovery/model
+  // mismatch). Every feat-owned spell-choice/spell-grant decision in the real corpus is now
+  // implemented; none remains blocked. Magic Initiate's own decisions are `variant-choice`
+  // family, not `spell-choice`/`spell-grant`/`spell-count`, so they are checked separately in
+  // mandatory-decision-coverage.test.ts.
+  it('feat-owned spell-choice/spell-grant decisions: none remain blocked (Ritual Caster is now implemented)', () => {
     const featSpellDecisions = DND5E_2024_MANDATORY_DECISIONS.filter(
       (d) => d.owner.kind === 'feat' && ['spell-choice', 'spell-grant'].includes(d.family)
     )
     expect(featSpellDecisions.length).toBeGreaterThan(0)
     const stillBlocked = featSpellDecisions.filter((d) => classifyDecision(d).status !== 'implemented')
-    expect(stillBlocked.length).toBeGreaterThan(0)
-    expect(stillBlocked.every((d) => d.owner.slug === 'ritual-caster-xphb')).toBe(true)
+    expect(stillBlocked).toEqual([])
   })
 })

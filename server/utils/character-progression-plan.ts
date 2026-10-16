@@ -226,8 +226,9 @@ import {
   saveCharacterRulesChoices
 } from './character-rules-choices'
 import { emptyStoredRulesChoices, resolveChoiceTarget, choiceKey, progressionChoiceKey } from '../../app/lib/characters/rules-choices'
-import { originFeatPresetChoices, ORIGIN_FEAT_SLOT, ORIGIN_FEAT_GRANT_SEGMENT } from '../../app/lib/characters/creation-origin-feat'
+import { originFeatPresetChoices, ORIGIN_FEAT_SLOT, ORIGIN_FEAT_GRANT_SEGMENT, findIllegalRepeatAcquisition } from '../../app/lib/characters/creation-origin-feat'
 import { CREATION_LEVEL } from '../../app/lib/characters/creation-content-choices'
+import { resolveCreationChoices } from '../../app/lib/characters/creation-choice-eligibility'
 import { featFilterVerdict, featOptionVerdict, type FeatPrerequisite, type FeatUnavailableReason } from '../../app/lib/feat-mechanics'
 import { itemOptionVerdict } from '../../app/lib/item-mechanics'
 import { weaponValueId } from '../../app/lib/content-rules/proficiency-vocabulary'
@@ -1485,6 +1486,31 @@ export async function confirmProgression(
       ...resolvedFeatAcquisitions
     ]
 
+    // D&D 2024 Character Rules A1 -- the SAME repeat-acquisition differentiator check
+    // create-v2.post.ts's own `illegalRepeat` already runs at creation (findIllegalRepeatAcquisition,
+    // app/lib/characters/creation-origin-feat.ts), now ALSO run here: a repeatable feat with a real
+    // `repeatAcquisitionDifferentiator` (Elemental Adept's own "a different damage type each time")
+    // is only ever acquirable through PROGRESSION (General feats are never offered at creation), so
+    // this is the one call site where that rule is actually reachable. Answers are read from the
+    // SAME merged persisted+tentative selections map `gatherSpellRequirements` above already builds
+    // (tentative wins a same-key collision), using the identical `feat:${choiceKey}` owner-prefix
+    // convention `answerFor` has always used -- never a second lookup convention.
+    const mergedFeatAnswers: Record<string, readonly string[]> = { ...current.state.rulesChoiceSelections, ...answers }
+    const illegalRepeat = findIllegalRepeatAcquisition(
+      allAcquisitions.map((a) => ({ featRef: a.ref, choiceKey: a.choiceKey })),
+      (featRef) => {
+        const entry = catalogue.feats.find((candidate) => candidate.packageId === featRef.packageId && candidate.slug === featRef.slug)
+        return {
+          repeatable: entry?.featMechanics?.repeatable === true,
+          differentiator: entry?.rulesFacet?.repeatAcquisitionDifferentiator
+        }
+      },
+      (ownerKey, choiceSetId) => mergedFeatAnswers[choiceKey(ownerKey, choiceSetId)] ?? []
+    )
+    if (illegalRepeat) {
+      return { ok: false, reason: 'illegal-feat-selection', message: `"${illegalRepeat}" cannot be acquired this way` }
+    }
+
     for (const acquisition of resolvedFeatAcquisitions) {
       const catalogueEntry = catalogue.feats.find(
         (candidate) => candidate.packageId === acquisition.ref.packageId && candidate.slug === acquisition.ref.slug
@@ -1590,6 +1616,55 @@ export async function confirmProgression(
               message: `This selection would raise '${valueTarget}' to ${before + addCount}, above the legal maximum of ${cap}`
             }
           }
+        }
+      }
+    }
+
+    // D&D 2024 Character Rules A1.1 -- GENERIC FEAT-OWNED NESTED CHOICE COMPLETENESS GATE.
+    // Mirrors create-v2.post.ts's own "a feat's own choice must be answered" rule
+    // (resolveCreationChoices, plus the identical `slot.startsWith('feat:')`-style completeness
+    // loop) verbatim at progression time -- the SAME generic Definition-choice machinery, no new
+    // validation engine, no feat name anywhere in this block. Elemental Adept's damage-type
+    // choice, ASI's ability-distribution choice, Crafter/Musician/Skilled/Resilient's own tool/
+    // instrument/skill/save choice, Skill Expert's skill+Expertise choices -- every one of them
+    // reaches this SAME check, exactly as a species/class/background choice already does at
+    // creation.
+    //
+    // Eligibility (`requiresActive`/`excludeIfAlreadyActive`) is judged across the character's
+    // WHOLE acquired state -- species, class, background, and EVERY feat, historical and new
+    // alike (`completenessSlots` below) -- so a gate like Skill Expert's own Expertise pick (which
+    // depends on a skill proficiency the SAME acquisition just granted) resolves correctly.
+    // COMPLETENESS ("must be answered"), by contrast, is enforced ONLY for feats ACQUIRED IN THIS
+    // TRANSITION (`newAcquisitionKeys` below) -- a historical feat's own nested choice, even one
+    // left unanswered under an older rules version before this phase existed, is never
+    // retroactively made mandatory; it stays exactly as outstanding (or not) as it already was.
+    // A stale answer submitted under a DIFFERENT feat's own choiceKey can never satisfy this one:
+    // `resolveCreationChoices`'s own key format (`feat:${choiceKey}:${choiceSetId}`) is unique per
+    // acquisition, never per ChoiceSet alone.
+    const isContentChoiceSetForCompleteness = (choiceSetId: string) => lookupContent(choiceSetId) != null
+    const choiceSetRuleForCompleteness = (choiceSetId: string): { distinct?: boolean, maxPerOption?: number } | null => {
+      const definition = lookupChoiceSet(choiceSetId)
+      return definition && definition.kind === 'choiceSet' ? { distinct: definition.distinct, maxPerOption: definition.maxPerOption } : null
+    }
+    const newAcquisitionSlots = resolvedFeatAcquisitions.map((acquisition) => ({
+      slot: `feat:${acquisition.choiceKey}`,
+      facet: catalogue.feats.find((entry) => entry.packageId === acquisition.ref.packageId && entry.slug === acquisition.ref.slug)?.rulesFacet ?? null
+    }))
+    const completenessSlots = [
+      { slot: 'species', facet: current.state.speciesFacet },
+      { slot: 'class', facet: current.state.classFacet },
+      { slot: 'background', facet: current.state.backgroundFacet },
+      ...current.state.featFacets.map((f) => ({ slot: `feat:${f.choiceKey}`, facet: f.facet })),
+      ...newAcquisitionSlots
+    ]
+    const newAcquisitionKeys = new Set(newAcquisitionSlots.map((s) => s.slot))
+    const completenessPresentations = resolveCreationChoices(completenessSlots, mergedFeatAnswers, isContentChoiceSetForCompleteness, choiceSetRuleForCompleteness)
+    for (const presentation of completenessPresentations) {
+      if (newAcquisitionKeys.has(presentation.slot) && !presentation.answered) {
+        return {
+          ok: false,
+          reason: 'unresolved-choices',
+          message: `${presentation.key}: this feat's own choice must be answered before this transition can be confirmed`
         }
       }
     }

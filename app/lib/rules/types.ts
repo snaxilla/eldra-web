@@ -1225,6 +1225,12 @@ export type SpellCatalogueFilter = {
   // authored facet used the single-string shape before this phase (confirmed by inspection), so
   // this is a safe, backward-compatible widening, not a migration.
   school?: readonly string[]
+  // D&D 2024 Character Rules A1 -- Ritual Caster's own real text ("spells... that have the Ritual
+  // tag"). Matched against CanonicalSpellMechanics.ritual exactly; `true` means the spell must
+  // carry the tag, absent means no restriction (mirrors every other dimension's own "absent is
+  // unconstrained" default). No real corpus use needs `false` (a filter for "never a ritual"), so
+  // this stays a plain boolean flag, never a tri-state.
+  ritual?: boolean
 }
 
 // Weapon Mastery phase -- the smallest typed filter a package-authored item-selection choice

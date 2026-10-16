@@ -333,7 +333,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // phase) reads 2 at Level 1, 3 at Level 4, 4 at Level 10, unchanged through Level 20 -- the
       // SAME `-4-10` cadence Fighter does not share (Fighter grows at 4/10/16 instead), hence the
       // separate cadence id, named by SHAPE, never by class.
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon', 'progression:class.weapon-mastery-growth-4-10'],
+      // D&D 2024 Character Rules A1 -- Primal Knowledge (XPHB classFeature, level 3): "You gain
+      // proficiency in another skill of your choice from the skill list available to Barbarians
+      // at level 1" -- the SAME 6-skill list as Barbarian's own Level-1 `choice:skill.proficiency`
+      // above, re-offered via `choice:skill.proficiency`'s own generic `excludeIfAlreadyActive`
+      // (the 2 already chosen at Level 1 are automatically excluded, leaving a real 4-option
+      // choice -- "another skill" is honored for free, never a Barbarian-specific check). The
+      // Rage-active ability-check-as-Strength clause is a RUNTIME effect (Milestone B), not an
+      // acquisition decision -- not modeled here.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.epic-boon', 'progression:class.weapon-mastery-growth-4-10', 'progression:class.skill-proficiency-growth-3'],
       startingEquipment: {
         id: 'choice:equipment.starting.barbarian-xphb',
         bundles: [
@@ -1324,7 +1332,16 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
       // pool (this phase's own category E) -- not modeled; Long Rest's
       // full recovery is correct at every level regardless.
       // ALL-CLASS PROGRESSION CONTRACT AUDIT (2026-10-01) -- see barbarian's own note above for the full corpus evidence (all 12 classes select subclass at Level 3).
-      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points', 'progression:class.epic-boon'],
+      // D&D 2024 Character Rules A1 -- Metamagic (XPHB classFeature "Metamagic", level 2: "you
+      // gain two Metamagic options"; "Metamagic" at 10/17: "you learn an additional metamagic
+      // option" -- re-derived from class-sorcerer.json directly: unlike the 2014/TCE text, XPHB
+      // grants the FIRST two options at level 2 (never 3), and two MORE at each of level 10 and
+      // 17 (never one). Authored via the SAME `choice:class.accumulating-option` +
+      // `excludeIfAlreadyActive` machinery Eldritch Invocations already uses -- no new engine, a
+      // new growth-cadence Definition named by shape (`-2-10-17`), never by class. Runtime
+      // Metamagic effects (Careful/Distant/Empowered/etc Spell's own mechanical benefit) remain
+      // Milestone B -- the 10 `value:metamagic.*.known` Values are deliberately opaque booleans.
+      progression: ['progression:class.subclass-selection', 'progression:class.asi-standard', 'progression:class.resources-sorcery-points', 'progression:class.epic-boon', 'progression:class.accumulating-option-growth-2-10-17'],
       startingEquipment: {
         id: 'choice:equipment.starting.sorcerer-xphb',
         bundles: [
@@ -1867,12 +1884,83 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ]
     },
+    // D&D 2024 Character Rules A1 -- real wording: unconditional "gain proficiency in a skill of
+    // your choice" for EVERY one of the 18 skills (the raw corpus's own skill-proficiency field is
+    // a flat `true` grant per skill, never a `choose`/`any` shape -- there is no skill PICK here,
+    // only the Expertise pick below). Authored as plain `grants`, never a Definition-authored choice
+    // (there is nothing to choose). "Direct grants are collected... before any choice is judged"
+    // (creation-choice-eligibility.ts) means the Expertise choice's `requiresActive` sees all 18
+    // as already active regardless of declaration order.
     'boon-of-skill-xphb': { // Boon of Skill
+      grants: [
+        { set: 'value:skill.acrobatics.proficient', to: true },
+        { set: 'value:skill.animal_handling.proficient', to: true },
+        { set: 'value:skill.arcana.proficient', to: true },
+        { set: 'value:skill.athletics.proficient', to: true },
+        { set: 'value:skill.deception.proficient', to: true },
+        { set: 'value:skill.history.proficient', to: true },
+        { set: 'value:skill.insight.proficient', to: true },
+        { set: 'value:skill.intimidation.proficient', to: true },
+        { set: 'value:skill.investigation.proficient', to: true },
+        { set: 'value:skill.medicine.proficient', to: true },
+        { set: 'value:skill.nature.proficient', to: true },
+        { set: 'value:skill.perception.proficient', to: true },
+        { set: 'value:skill.performance.proficient', to: true },
+        { set: 'value:skill.persuasion.proficient', to: true },
+        { set: 'value:skill.religion.proficient', to: true },
+        { set: 'value:skill.sleight_of_hand.proficient', to: true },
+        { set: 'value:skill.stealth.proficient', to: true },
+        { set: 'value:skill.survival.proficient', to: true }
+      ],
       choices: [
         {
           choiceSet: 'choice:feat.epic-boon-ability',
           count: 1,
           from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        },
+        {
+          choiceSet: 'choice:skill.expertise',
+          count: 1,
+          from: [
+            'value:skill.acrobatics.expertise',
+            'value:skill.animal_handling.expertise',
+            'value:skill.arcana.expertise',
+            'value:skill.athletics.expertise',
+            'value:skill.deception.expertise',
+            'value:skill.history.expertise',
+            'value:skill.insight.expertise',
+            'value:skill.intimidation.expertise',
+            'value:skill.investigation.expertise',
+            'value:skill.medicine.expertise',
+            'value:skill.nature.expertise',
+            'value:skill.perception.expertise',
+            'value:skill.performance.expertise',
+            'value:skill.persuasion.expertise',
+            'value:skill.religion.expertise',
+            'value:skill.sleight_of_hand.expertise',
+            'value:skill.stealth.expertise',
+            'value:skill.survival.expertise'
+          ],
+          requiresActive: [
+            'value:skill.acrobatics.proficient',
+            'value:skill.animal_handling.proficient',
+            'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient',
+            'value:skill.deception.proficient',
+            'value:skill.history.proficient',
+            'value:skill.insight.proficient',
+            'value:skill.intimidation.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.perception.proficient',
+            'value:skill.performance.proficient',
+            'value:skill.persuasion.proficient',
+            'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient',
+            'value:skill.stealth.proficient',
+            'value:skill.survival.proficient'
+          ]
         }
       ]
     },
@@ -1954,6 +2042,24 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ]
     },
+    'crafter-xphb': { // Crafter
+      choices: [
+        {
+          choiceSet: 'choice:feat.crafter.tools',
+          count: 3,
+          from: [
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient'
+          ]
+        }
+      ]
+    },
     'crossbow-expert-xphb': { // Crossbow Expert
       sources: ['source:asi.increase.dex']
     },
@@ -1981,14 +2087,37 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'durable-xphb': { // Durable
       sources: ['source:asi.increase.con']
     },
+    // XPHB text (feats.json, Energy Mastery): "Choose one of the following damage types: Acid,
+    // Cold, Fire, Lightning, or Thunder." -- no structured corpus field carries this at all, so
+    // `detectFeatDecisions` needs a small, named supplement (see mandatory-decisions.ts's own
+    // `FEAT_DAMAGE_TYPE_CHOICE`, mirroring `FeatureRequirementMapping`'s own "a small authored
+    // mapping from a raw fact the engine cannot structurally parse" precedent -- never a
+    // prose-parsing engine). Repeatable
+    // (`"repeatable": true`), and the corpus is explicit: "you must choose a different damage type
+    // each time for Energy Mastery" -- authored via `repeatAcquisitionDifferentiator`, the SAME
+    // generic mechanism Magic Initiate's own spell-list differentiator uses. The 5
+    // `value:elemental-adept.damage-type.*.active` Values are deliberately opaque booleans (no
+    // runtime Resistance-ignoring/reroll effect modeled -- Milestone B).
     'elemental-adept-xphb': { // Elemental Adept
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
           count: 1,
           from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        },
+        {
+          choiceSet: 'choice:feat.elemental-adept.damage-type',
+          count: 1,
+          from: [
+            'value:elemental-adept.damage-type.acid.active',
+            'value:elemental-adept.damage-type.cold.active',
+            'value:elemental-adept.damage-type.fire.active',
+            'value:elemental-adept.damage-type.lightning.active',
+            'value:elemental-adept.damage-type.thunder.active'
+          ]
         }
-      ]
+      ],
+      repeatAcquisitionDifferentiator: 'choice:feat.elemental-adept.damage-type'
     },
     'fey-touched-xphb': { // Fey-Touched
       choices: [
@@ -2125,6 +2254,26 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
         }
       ]
     },
+    'musician-xphb': { // Musician
+      choices: [
+        {
+          choiceSet: 'choice:feat.musician.instruments',
+          count: 3,
+          from: [
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient'
+          ]
+        }
+      ]
+    },
     'observant-xphb': { // Observant
       choices: [
         {
@@ -2170,15 +2319,49 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
           choiceSet: 'choice:feat.ability-choice-1',
           count: 1,
           from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        },
+        {
+          choiceSet: 'choice:save.proficiency',
+          count: 1,
+          from: [
+            'value:save.str.proficient',
+            'value:save.dex.proficient',
+            'value:save.con.proficient',
+            'value:save.int.proficient',
+            'value:save.wis.proficient',
+            'value:save.cha.proficient'
+          ]
         }
       ]
     },
+    // D&D 2024 Character Rules A1 -- real wording: "Choose a number of level 1 spells equal to your
+    // Proficiency Bonus that have the Ritual tag... Whenever your Proficiency Bonus increases
+    // thereafter, you can add an additional level 1 spell with the Ritual tag." Re-derived
+    // directly from feats.json's own structured `additionalSpells.prepared` block (levels
+    // "1"/"5"/"9"/"13"/"17", counts 2/1/1/1/1 -- matching the real Proficiency Bonus growth table
+    // exactly, since PB is 2 at level 1 and increases by 1 at each of those same four levels).
+    // Modeled via the SAME `fixed` pool kind Magic Initiate/Fey-Touched already use (ungated, flag
+    // 'prepared', exact level 1) -- no new pool kind. `filter.ritual: true` is the ONE new
+    // dimension this phase adds to `SpellCatalogueFilter` (app/lib/rules/types.ts), wired into
+    // `spellOptionVerdict` (app/lib/spell-mechanics/spell-option-eligibility.ts) against the
+    // ALREADY-existing `CanonicalSpellMechanics.ritual` field -- no classList restriction (the
+    // real text names none). "Quick Ritual" (cast without the extended ritual time, once per Long
+    // Rest) is a RUNTIME effect (Milestone B), not an acquisition decision -- not modeled here.
     'ritual-caster-xphb': { // Ritual Caster
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
           count: 1,
           from: ['source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        }
+      ],
+      spellRequirements: [
+        {
+          id: 'spell-requirement.ritual-caster-xphb.spell',
+          pool: 'fixed',
+          filter: { level: 1, ritual: true },
+          totalByLevel: [2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6],
+          label: 'Ritual Caster Spells'
         }
       ]
     },
@@ -2221,12 +2404,156 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
     'shield-master-xphb': { // Shield Master
       sources: ['source:asi.increase.str']
     },
+    // D&D 2024 Character Rules A1 -- real wording: "gain proficiency in one skill of your choice...
+    // Choose one of your skill proficiencies [this feat's own new one included -- see below]. You
+    // gain Expertise in that skill." The skill-proficiency choice is declared BEFORE the Expertise
+    // choice in this facet's own `choices` array -- creation-choice-eligibility.ts's own documented
+    // "sibling answers are judged in... facet order" rule means the newly-granted proficiency is
+    // already visible to the Expertise choice's `requiresActive` gate in the SAME acquisition, so a
+    // character with no OTHER proficient skill can still legally pick Expertise in the one this
+    // feat itself just granted. Reuses the IDENTICAL `choice:skill.expertise` + all-18
+    // `requiresActive` shape the class Expertise progression rows already use (Rogue/Bard/Ranger/
+    // Wizard) -- a NEW coverage rule is needed (`impl:feat-expertise-choice`) because the existing
+    // `impl:expertise` rule is narrowly scoped to `owner.kind === 'class'`.
     'skill-expert-xphb': { // Skill Expert
       choices: [
         {
           choiceSet: 'choice:feat.ability-choice-1',
           count: 1,
           from: ['source:asi.increase.str', 'source:asi.increase.dex', 'source:asi.increase.con', 'source:asi.increase.int', 'source:asi.increase.wis', 'source:asi.increase.cha']
+        },
+        {
+          choiceSet: 'choice:skill.proficiency',
+          count: 1,
+          from: [
+            'value:skill.acrobatics.proficient',
+            'value:skill.animal_handling.proficient',
+            'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient',
+            'value:skill.deception.proficient',
+            'value:skill.history.proficient',
+            'value:skill.insight.proficient',
+            'value:skill.intimidation.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.perception.proficient',
+            'value:skill.performance.proficient',
+            'value:skill.persuasion.proficient',
+            'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient',
+            'value:skill.stealth.proficient',
+            'value:skill.survival.proficient'
+          ]
+        },
+        {
+          choiceSet: 'choice:skill.expertise',
+          count: 1,
+          from: [
+            'value:skill.acrobatics.expertise',
+            'value:skill.animal_handling.expertise',
+            'value:skill.arcana.expertise',
+            'value:skill.athletics.expertise',
+            'value:skill.deception.expertise',
+            'value:skill.history.expertise',
+            'value:skill.insight.expertise',
+            'value:skill.intimidation.expertise',
+            'value:skill.investigation.expertise',
+            'value:skill.medicine.expertise',
+            'value:skill.nature.expertise',
+            'value:skill.perception.expertise',
+            'value:skill.performance.expertise',
+            'value:skill.persuasion.expertise',
+            'value:skill.religion.expertise',
+            'value:skill.sleight_of_hand.expertise',
+            'value:skill.stealth.expertise',
+            'value:skill.survival.expertise'
+          ],
+          requiresActive: [
+            'value:skill.acrobatics.proficient',
+            'value:skill.animal_handling.proficient',
+            'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient',
+            'value:skill.deception.proficient',
+            'value:skill.history.proficient',
+            'value:skill.insight.proficient',
+            'value:skill.intimidation.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.perception.proficient',
+            'value:skill.performance.proficient',
+            'value:skill.persuasion.proficient',
+            'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient',
+            'value:skill.stealth.proficient',
+            'value:skill.survival.proficient'
+          ]
+        }
+      ]
+    },
+    'skilled-xphb': { // Skilled
+      choices: [
+        {
+          choiceSet: 'choice:feat.skilled.skill-or-tool',
+          count: 3,
+          from: [
+            'value:skill.acrobatics.proficient',
+            'value:skill.animal_handling.proficient',
+            'value:skill.arcana.proficient',
+            'value:skill.athletics.proficient',
+            'value:skill.deception.proficient',
+            'value:skill.history.proficient',
+            'value:skill.insight.proficient',
+            'value:skill.intimidation.proficient',
+            'value:skill.investigation.proficient',
+            'value:skill.medicine.proficient',
+            'value:skill.nature.proficient',
+            'value:skill.perception.proficient',
+            'value:skill.performance.proficient',
+            'value:skill.persuasion.proficient',
+            'value:skill.religion.proficient',
+            'value:skill.sleight_of_hand.proficient',
+            'value:skill.stealth.proficient',
+            'value:skill.survival.proficient',
+            'value:tool.alchemists_supplies.proficient',
+            'value:tool.brewers_supplies.proficient',
+            'value:tool.calligraphers_supplies.proficient',
+            'value:tool.carpenters_tools.proficient',
+            'value:tool.cartographers_tools.proficient',
+            'value:tool.cobblers_tools.proficient',
+            'value:tool.cooks_utensils.proficient',
+            'value:tool.glassblowers_tools.proficient',
+            'value:tool.jewelers_tools.proficient',
+            'value:tool.leatherworkers_tools.proficient',
+            'value:tool.masons_tools.proficient',
+            'value:tool.painters_supplies.proficient',
+            'value:tool.potters_tools.proficient',
+            'value:tool.smiths_tools.proficient',
+            'value:tool.tinkers_tools.proficient',
+            'value:tool.weavers_tools.proficient',
+            'value:tool.woodcarvers_tools.proficient',
+            'value:tool.bagpipes.proficient',
+            'value:tool.drum.proficient',
+            'value:tool.dulcimer.proficient',
+            'value:tool.flute.proficient',
+            'value:tool.horn.proficient',
+            'value:tool.lute.proficient',
+            'value:tool.lyre.proficient',
+            'value:tool.pan_flute.proficient',
+            'value:tool.shawm.proficient',
+            'value:tool.viol.proficient',
+            'value:tool.dice_set.proficient',
+            'value:tool.dragonchess_set.proficient',
+            'value:tool.playing_cards.proficient',
+            'value:tool.three_dragon_ante_set.proficient',
+            'value:tool.disguise_kit.proficient',
+            'value:tool.forgery_kit.proficient',
+            'value:tool.herbalism_kit.proficient',
+            'value:tool.navigators_tools.proficient',
+            'value:tool.poisoners_kit.proficient',
+            'value:tool.thieves_tools.proficient'
+          ]
         }
       ]
     },
@@ -2550,21 +2877,15 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:tool.woodcarvers_tools.proficient'
           ]
         },
-        {
-          choiceSet: 'choice:feat.crafter.tools',
-          count: 3,
-          from: [
-            'value:tool.carpenters_tools.proficient',
-            'value:tool.leatherworkers_tools.proficient',
-            'value:tool.masons_tools.proficient',
-            'value:tool.potters_tools.proficient',
-            'value:tool.smiths_tools.proficient',
-            'value:tool.tinkers_tools.proficient',
-            'value:tool.weavers_tools.proficient',
-            'value:tool.woodcarvers_tools.proficient'
-          ]
-        },
       ],
+      // D&D 2024 Character Rules A1 -- the former literal duplicate of Crafter's own nested
+      // "choose 3 tools" choice (declared directly on THIS background's facet, back when Crafter
+      // had no facet of its own) is REMOVED: Crafter now has its own real facet carrying this
+      // exact choice, and the duplicate would have asked the player twice under two different
+      // keys (`background:choice:feat.crafter.tools` here vs. the feat acquisition's own
+      // `feat:<choiceKey>:choice:feat.crafter.tools`). The generic acquisition pipeline reaches
+      // the feat's own facet automatically once it is acquired -- no preset needed, since the
+      // player freely chooses which 3 tools, unlike Magic Initiate's own Background-FIXED list.
       originFeatSlug: 'crafter-xphb',
       grants: [
         { set: 'value:skill.investigation.proficient', to: true },
@@ -2604,68 +2925,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'source:background.increase.cha'
           ]
         },
-        {
-          choiceSet: 'choice:feat.skilled.skill-or-tool',
-          count: 3,
-          from: [
-            'value:skill.acrobatics.proficient',
-            'value:skill.animal_handling.proficient',
-            'value:skill.arcana.proficient',
-            'value:skill.athletics.proficient',
-            'value:skill.deception.proficient',
-            'value:skill.history.proficient',
-            'value:skill.insight.proficient',
-            'value:skill.intimidation.proficient',
-            'value:skill.investigation.proficient',
-            'value:skill.medicine.proficient',
-            'value:skill.nature.proficient',
-            'value:skill.perception.proficient',
-            'value:skill.performance.proficient',
-            'value:skill.persuasion.proficient',
-            'value:skill.religion.proficient',
-            'value:skill.sleight_of_hand.proficient',
-            'value:skill.stealth.proficient',
-            'value:skill.survival.proficient',
-            'value:tool.alchemists_supplies.proficient',
-            'value:tool.brewers_supplies.proficient',
-            'value:tool.calligraphers_supplies.proficient',
-            'value:tool.carpenters_tools.proficient',
-            'value:tool.cartographers_tools.proficient',
-            'value:tool.cobblers_tools.proficient',
-            'value:tool.cooks_utensils.proficient',
-            'value:tool.glassblowers_tools.proficient',
-            'value:tool.jewelers_tools.proficient',
-            'value:tool.leatherworkers_tools.proficient',
-            'value:tool.masons_tools.proficient',
-            'value:tool.painters_supplies.proficient',
-            'value:tool.potters_tools.proficient',
-            'value:tool.smiths_tools.proficient',
-            'value:tool.tinkers_tools.proficient',
-            'value:tool.weavers_tools.proficient',
-            'value:tool.woodcarvers_tools.proficient',
-            'value:tool.bagpipes.proficient',
-            'value:tool.drum.proficient',
-            'value:tool.dulcimer.proficient',
-            'value:tool.flute.proficient',
-            'value:tool.horn.proficient',
-            'value:tool.lute.proficient',
-            'value:tool.lyre.proficient',
-            'value:tool.pan_flute.proficient',
-            'value:tool.shawm.proficient',
-            'value:tool.viol.proficient',
-            'value:tool.dice_set.proficient',
-            'value:tool.dragonchess_set.proficient',
-            'value:tool.playing_cards.proficient',
-            'value:tool.three_dragon_ante_set.proficient',
-            'value:tool.disguise_kit.proficient',
-            'value:tool.forgery_kit.proficient',
-            'value:tool.herbalism_kit.proficient',
-            'value:tool.navigators_tools.proficient',
-            'value:tool.poisoners_kit.proficient',
-            'value:tool.thieves_tools.proficient'
-          ]
-        },
       ],
+      // D&D 2024 Character Rules A1 -- the former literal duplicate of Skilled's own nested
+      // "choose 3 skills or tools" choice (see Artisan's own identical note above) is REMOVED:
+      // Skilled now has its own real facet carrying this exact choice.
       originFeatSlug: 'skilled-xphb',
       grants: [
         { set: 'value:tool.forgery_kit.proficient', to: true },
@@ -2765,23 +3028,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:tool.viol.proficient'
           ]
         },
-        {
-          choiceSet: 'choice:feat.musician.instruments',
-          count: 3,
-          from: [
-            'value:tool.bagpipes.proficient',
-            'value:tool.drum.proficient',
-            'value:tool.dulcimer.proficient',
-            'value:tool.flute.proficient',
-            'value:tool.horn.proficient',
-            'value:tool.lute.proficient',
-            'value:tool.lyre.proficient',
-            'value:tool.pan_flute.proficient',
-            'value:tool.shawm.proficient',
-            'value:tool.viol.proficient'
-          ]
-        },
       ],
+      // D&D 2024 Character Rules A1 -- the former literal duplicate of Musician's own nested
+      // "choose 3 instruments" choice (see Artisan's own identical note above) is REMOVED:
+      // Musician now has its own real facet carrying this exact choice.
       originFeatSlug: 'musician-xphb',
       grants: [
         { set: 'value:skill.acrobatics.proficient', to: true },
@@ -3070,68 +3320,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'value:tool.three_dragon_ante_set.proficient'
           ]
         },
-        {
-          choiceSet: 'choice:feat.skilled.skill-or-tool',
-          count: 3,
-          from: [
-            'value:skill.acrobatics.proficient',
-            'value:skill.animal_handling.proficient',
-            'value:skill.arcana.proficient',
-            'value:skill.athletics.proficient',
-            'value:skill.deception.proficient',
-            'value:skill.history.proficient',
-            'value:skill.insight.proficient',
-            'value:skill.intimidation.proficient',
-            'value:skill.investigation.proficient',
-            'value:skill.medicine.proficient',
-            'value:skill.nature.proficient',
-            'value:skill.perception.proficient',
-            'value:skill.performance.proficient',
-            'value:skill.persuasion.proficient',
-            'value:skill.religion.proficient',
-            'value:skill.sleight_of_hand.proficient',
-            'value:skill.stealth.proficient',
-            'value:skill.survival.proficient',
-            'value:tool.alchemists_supplies.proficient',
-            'value:tool.brewers_supplies.proficient',
-            'value:tool.calligraphers_supplies.proficient',
-            'value:tool.carpenters_tools.proficient',
-            'value:tool.cartographers_tools.proficient',
-            'value:tool.cobblers_tools.proficient',
-            'value:tool.cooks_utensils.proficient',
-            'value:tool.glassblowers_tools.proficient',
-            'value:tool.jewelers_tools.proficient',
-            'value:tool.leatherworkers_tools.proficient',
-            'value:tool.masons_tools.proficient',
-            'value:tool.painters_supplies.proficient',
-            'value:tool.potters_tools.proficient',
-            'value:tool.smiths_tools.proficient',
-            'value:tool.tinkers_tools.proficient',
-            'value:tool.weavers_tools.proficient',
-            'value:tool.woodcarvers_tools.proficient',
-            'value:tool.bagpipes.proficient',
-            'value:tool.drum.proficient',
-            'value:tool.dulcimer.proficient',
-            'value:tool.flute.proficient',
-            'value:tool.horn.proficient',
-            'value:tool.lute.proficient',
-            'value:tool.lyre.proficient',
-            'value:tool.pan_flute.proficient',
-            'value:tool.shawm.proficient',
-            'value:tool.viol.proficient',
-            'value:tool.dice_set.proficient',
-            'value:tool.dragonchess_set.proficient',
-            'value:tool.playing_cards.proficient',
-            'value:tool.three_dragon_ante_set.proficient',
-            'value:tool.disguise_kit.proficient',
-            'value:tool.forgery_kit.proficient',
-            'value:tool.herbalism_kit.proficient',
-            'value:tool.navigators_tools.proficient',
-            'value:tool.poisoners_kit.proficient',
-            'value:tool.thieves_tools.proficient'
-          ]
-        },
       ],
+      // D&D 2024 Character Rules A1 -- the former literal duplicate of Skilled's own nested
+      // "choose 3 skills or tools" choice (see Artisan's own identical note above) is REMOVED:
+      // Skilled now has its own real facet carrying this exact choice.
       originFeatSlug: 'skilled-xphb',
       grants: [
         { set: 'value:skill.history.proficient', to: true },
@@ -3263,68 +3455,10 @@ export const DND5E_2024_RULES_FACETS: RulesFacetCorpus = {
             'source:background.increase.wis'
           ]
         },
-        {
-          choiceSet: 'choice:feat.skilled.skill-or-tool',
-          count: 3,
-          from: [
-            'value:skill.acrobatics.proficient',
-            'value:skill.animal_handling.proficient',
-            'value:skill.arcana.proficient',
-            'value:skill.athletics.proficient',
-            'value:skill.deception.proficient',
-            'value:skill.history.proficient',
-            'value:skill.insight.proficient',
-            'value:skill.intimidation.proficient',
-            'value:skill.investigation.proficient',
-            'value:skill.medicine.proficient',
-            'value:skill.nature.proficient',
-            'value:skill.perception.proficient',
-            'value:skill.performance.proficient',
-            'value:skill.persuasion.proficient',
-            'value:skill.religion.proficient',
-            'value:skill.sleight_of_hand.proficient',
-            'value:skill.stealth.proficient',
-            'value:skill.survival.proficient',
-            'value:tool.alchemists_supplies.proficient',
-            'value:tool.brewers_supplies.proficient',
-            'value:tool.calligraphers_supplies.proficient',
-            'value:tool.carpenters_tools.proficient',
-            'value:tool.cartographers_tools.proficient',
-            'value:tool.cobblers_tools.proficient',
-            'value:tool.cooks_utensils.proficient',
-            'value:tool.glassblowers_tools.proficient',
-            'value:tool.jewelers_tools.proficient',
-            'value:tool.leatherworkers_tools.proficient',
-            'value:tool.masons_tools.proficient',
-            'value:tool.painters_supplies.proficient',
-            'value:tool.potters_tools.proficient',
-            'value:tool.smiths_tools.proficient',
-            'value:tool.tinkers_tools.proficient',
-            'value:tool.weavers_tools.proficient',
-            'value:tool.woodcarvers_tools.proficient',
-            'value:tool.bagpipes.proficient',
-            'value:tool.drum.proficient',
-            'value:tool.dulcimer.proficient',
-            'value:tool.flute.proficient',
-            'value:tool.horn.proficient',
-            'value:tool.lute.proficient',
-            'value:tool.lyre.proficient',
-            'value:tool.pan_flute.proficient',
-            'value:tool.shawm.proficient',
-            'value:tool.viol.proficient',
-            'value:tool.dice_set.proficient',
-            'value:tool.dragonchess_set.proficient',
-            'value:tool.playing_cards.proficient',
-            'value:tool.three_dragon_ante_set.proficient',
-            'value:tool.disguise_kit.proficient',
-            'value:tool.forgery_kit.proficient',
-            'value:tool.herbalism_kit.proficient',
-            'value:tool.navigators_tools.proficient',
-            'value:tool.poisoners_kit.proficient',
-            'value:tool.thieves_tools.proficient'
-          ]
-        },
       ],
+      // D&D 2024 Character Rules A1 -- the former literal duplicate of Skilled's own nested
+      // "choose 3 skills or tools" choice (see Artisan's own identical note above) is REMOVED:
+      // Skilled now has its own real facet carrying this exact choice.
       originFeatSlug: 'skilled-xphb',
       grants: [
         { set: 'value:tool.calligraphers_supplies.proficient', to: true },

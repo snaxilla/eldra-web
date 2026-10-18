@@ -33,6 +33,7 @@ import type { RecoveryActionType } from '~/components/characters/CharacterComman
 import { formatDerivedValue, type DerivedValue } from './characterDerivedValues'
 import {
   genericResourcesToCharacterResources,
+  spellSlotsToCharacterResources,
   type DerivedResourceForPresentation
 } from './characterResourcePresentation'
 
@@ -53,6 +54,11 @@ const props = withDefaults(defineProps<{
   summaryValues?: readonly DerivedValue[]
   resources?: readonly DerivedResourceForPresentation[]
   resourcesPendingIds?: ReadonlySet<string>
+  // Phase 4C: spell slots by level, the same Rules-Engine table rows the
+  // Spells tab used to show -- now persistent here, beside class
+  // resources, so remaining uses are visible from every section.
+  slotLevels?: readonly { level: number; max: number; expended: number }[]
+  spellSaving?: boolean
   conditions: EncounterConditionView[]
   inEncounter: boolean
   isMyTurn: boolean
@@ -73,6 +79,8 @@ const props = withDefaults(defineProps<{
   summaryValues: () => [],
   resources: () => [],
   resourcesPendingIds: () => new Set(),
+  slotLevels: () => [],
+  spellSaving: false,
   restAvailable: true,
   recoverySaving: false,
   recoveryError: ''
@@ -83,6 +91,8 @@ const emit = defineEmits<{
   recovery: [{ type: RecoveryActionType; amount?: number }]
   'expend-resource': [{ resourceId: string; amount: number }]
   'restore-resource': [{ resourceId: string; amount: number }]
+  'expend-slot': [number]
+  'restore-slot': [number]
   'update-portrait': [File]
   'clear-portrait': []
   'select-condition': [EncounterConditionView]
@@ -102,9 +112,38 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
   emit('save', { ...props.health, deathSaves: { ...props.health.deathSaves, [kind]: nextCount } })
 }
 
-// Header shows the package's generic class resources only. Spell Slots
-// live with spells (the Spells section), where they are spent.
+// Class resources (Second Wind, Rage, ...) from the package, rendered by
+// their own ResourcePresentation (pool / dice / points).
 const resourceGroups = computed(() => genericResourcesToCharacterResources(props.resources))
+// Spell slots keep their own Orbs instance: they are gated by the
+// spellcasting save (`spellSaving`), class resources per pool
+// (`resourcesPendingIds`) -- the same split CharacterCommandResources had.
+const slotGroups = computed(() => spellSlotsToCharacterResources(props.slotLevels))
+const hasResources = computed(() => resourceGroups.value.length > 0 || slotGroups.value.length > 0)
+
+function handleSlotExpend({ poolId }: { groupId: string; poolId: string; amount: number }) {
+  emit('expend-slot', Number(poolId))
+}
+
+function handleSlotRestore({ poolId }: { groupId: string; poolId: string; amount: number }) {
+  emit('restore-slot', Number(poolId))
+}
+
+// Phones: resources sit behind one labelled toggle so the header stays
+// short; from 600px they are always shown. Remaining/total across every
+// pool gives the collapsed toggle something useful to say.
+const resourcesOpen = ref(false)
+const resourceTotals = computed(() => {
+  let remaining = 0
+  let max = 0
+  for (const group of [...slotGroups.value, ...resourceGroups.value]) {
+    for (const pool of group.pools) {
+      remaining += Math.max(0, pool.max - pool.expended)
+      max += pool.max
+    }
+  }
+  return { remaining, max }
+})
 
 function handleResourceExpend({ poolId, amount }: { groupId: string; poolId: string; amount: number }) {
   emit('expend-resource', { resourceId: poolId, amount })
@@ -318,7 +357,7 @@ function summaryText(entry: DerivedValue): string {
 
     <!-- Status: conditions, turn, resources, Rest. -->
     <div
-      v-if="conditions.length || inEncounter || resourceGroups.length || restAvailable"
+      v-if="conditions.length || inEncounter || hasResources || restAvailable"
       class="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-eldra-accent/12 pt-2.5"
     >
       <div
@@ -365,16 +404,52 @@ function summaryText(entry: DerivedValue): string {
         <span>{{ isMyTurn ? 'Your turn' : `Round ${round ?? '—'}` }}</span>
       </div>
 
-      <CharacterResourceOrbs
-        v-if="resourceGroups.length"
-        layout="inline"
-        selectable
-        :groups="resourceGroups"
-        :pending-pool-ids="resourcesPendingIds"
-        @expend="handleResourceExpend"
-        @restore="handleResourceRestore"
-        @select="emit('select-resource', $event)"
-      />
+      <!-- RESOURCES -- Phase 4C: spell slots and class resources, visible
+           from every section. -->
+      <template v-if="hasResources">
+        <button
+          type="button"
+          class="inline-flex min-h-9 items-center gap-1.5 border border-eldra-accent/30 px-2.5 text-xs font-semibold uppercase tracking-[0.1em] text-eldra-text-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent pointer-coarse:min-h-11 @[600px]/sheet:hidden"
+          :aria-expanded="resourcesOpen"
+          aria-controls="sheet-header-resources"
+          @click="resourcesOpen = !resourcesOpen"
+        >
+          Resources
+          <span class="tabular-nums text-eldra-text-strong">{{ resourceTotals.remaining }}/{{ resourceTotals.max }}</span>
+          <UIcon
+            :name="resourcesOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+            class="h-3.5 w-3.5"
+            aria-hidden="true"
+          />
+        </button>
+
+        <div
+          id="sheet-header-resources"
+          role="group"
+          aria-label="Resources"
+          class="order-last w-full flex-wrap items-center gap-x-5 gap-y-2 @[600px]/sheet:order-none @[600px]/sheet:flex @[600px]/sheet:w-auto"
+          :class="resourcesOpen ? 'flex' : 'hidden'"
+        >
+          <CharacterResourceOrbs
+            v-if="slotGroups.length"
+            layout="inline"
+            :groups="slotGroups"
+            :saving="spellSaving"
+            @expend="handleSlotExpend"
+            @restore="handleSlotRestore"
+          />
+          <CharacterResourceOrbs
+            v-if="resourceGroups.length"
+            layout="inline"
+            selectable
+            :groups="resourceGroups"
+            :pending-pool-ids="resourcesPendingIds"
+            @expend="handleResourceExpend"
+            @restore="handleResourceRestore"
+            @select="emit('select-resource', $event)"
+          />
+        </div>
+      </template>
 
       <!-- REST -- gameplay control, kept apart from management actions. -->
       <UPopover

@@ -328,7 +328,6 @@ import CharacterEncounterPanel from '~/components/characters/CharacterEncounterP
 import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
 import CharacterSheetShell from '~/components/characters/CharacterSheetShell.vue'
 import CharacterSheetHeader from '~/components/characters/CharacterSheetHeader.vue'
-import CharacterResourceOrbs from '~/components/characters/CharacterResourceOrbs.vue'
 import CharacterReferencePanels from '~/components/characters/CharacterReferencePanels.vue'
 import CharacterSkillList from '~/components/characters/CharacterSkillList.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
@@ -336,7 +335,6 @@ import WorldRollTray from '~/components/world/WorldRollTray.vue'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
 import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
-import { spellSlotsToCharacterResources } from '~/components/characters/characterResourcePresentation'
 import type { CharacterAbilityRow } from '~/components/characters/CharacterAbilityGrid.vue'
 import type { CharacterSaveRow } from '~/components/characters/CharacterSaveList.vue'
 import {
@@ -829,17 +827,6 @@ const presentedReferenceEntries = computed(() =>
 )
 const proficiencyEntries = computed(() => derived.value?.byCategory?.['core.proficiency'] ?? [])
 
-// Spell Slots live with spells (the header carries class resources only).
-const spellSlotGroups = computed(() => spellSlotsToCharacterResources(slotLevels.value))
-
-function handleSpellSlotExpend({ poolId }: { groupId: string; poolId: string; amount: number }) {
-  mutations.spellcasting.expendSlot(Number(poolId))
-}
-
-function handleSpellSlotRestore({ poolId }: { groupId: string; poolId: string; amount: number }) {
-  mutations.spellcasting.restoreSlot(Number(poolId))
-}
-
 // Rest is offered when the package declares the Health values the
 // Recovery System acts on; a package without them gets no Rest control.
 const restAvailable = computed(() => maxHp.value !== null)
@@ -1202,6 +1189,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             :summary-values="summaryValues"
             :resources="characterResources"
             :resources-pending-ids="mutations.resources.pendingIds"
+            :slot-levels="slotLevels"
+            :spell-saving="mutations.spellcasting.saving"
             :conditions="conditions.mine"
             :in-encounter="encounter.isInSelected"
             :is-my-turn="isMyTurn"
@@ -1216,6 +1205,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             @recovery="mutations.recovery.apply"
             @expend-resource="mutations.resources.expend"
             @restore-resource="mutations.resources.restore"
+            @expend-slot="mutations.spellcasting.expendSlot"
+            @restore-slot="mutations.spellcasting.restoreSlot"
             @update-portrait="mutations.portrait.update"
             @clear-portrait="mutations.portrait.clear"
             @select-condition="openConditionContext"
@@ -1311,27 +1302,6 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             v-else-if="mainSection === 'spells'"
             class="grid gap-6"
           >
-            <!-- Spell Slots sit with the spells they pay for. Same orbs,
-                 same expend/restore mutations as before. -->
-            <section
-              v-if="spellSlotGroups.length"
-              aria-labelledby="sheet-slots-heading"
-            >
-              <h3
-                id="sheet-slots-heading"
-                class="eldra-sheet-heading"
-              >
-                Spell Slots
-              </h3>
-              <CharacterResourceOrbs
-                layout="inline"
-                :groups="spellSlotGroups"
-                :saving="mutations.spellcasting.saving"
-                @expend="handleSpellSlotExpend"
-                @restore="handleSpellSlotRestore"
-              />
-            </section>
-
             <section aria-label="Spellcasting">
               <CharacterSpellcastingPanel
                 :spells="spellItems"
@@ -1575,21 +1545,10 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
           </div>
         </template>
 
-        <!-- Large desktop: the reserved inspector lane, while empty. -->
-        <template #inspector-idle>
-          <div class="border border-dashed border-eldra-accent/20 p-5 text-sm leading-6 text-eldra-text-faint">
-            <UIcon
-              name="i-lucide-panel-right"
-              class="mb-2 h-5 w-5 text-eldra-accent/60"
-              aria-hidden="true"
-            />
-            <p>Select an action, spell, item, skill, or condition to see its details here.</p>
-          </div>
-        </template>
-
-        <!-- Eldra's ONE context system, placed inline: the shell gives it
-             a column (or a phone bottom sheet), so opening it never moves
-             the main workspace. `content="detail"` skips the World Entity
+        <!-- Eldra's ONE context system, placed inline: the shell opens it
+             as the right-hand pane (or a phone bottom sheet) and the main
+             workspace contracts beside it -- no space is reserved while it
+             is closed (Phase 4C). `content="detail"` skips the World Entity
              affordances. The lead slot repeats the originating row's own
              rolls, through the same handlers. -->
         <template #inspector>

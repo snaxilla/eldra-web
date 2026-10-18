@@ -15,18 +15,20 @@
 // page), never the viewport -- the workspace rail's width is already
 // subtracted. Widths are the sheet container's:
 //
-//   >= 1750px  rail | skills | main | inspector lane (always reserved)
-//   >= 1240px  rail | skills | main; the inspector takes the Skills column
-//   >=  880px  rail (with skills beneath) | main; the inspector takes the rail
-//    <  880px  one section at a time; the inspector is a bottom sheet
+//                closed                        inspector open
+//   >= 1600px    rail | skills | main          rail | skills | main | inspector
+//   >= 1240px    rail | skills | main          rail | main | inspector
+//   >=  880px    rail (skills beneath) | main  main | inspector
+//    <  880px    one section at a time         bottom sheet
 //
-// THE MAIN WORKSPACE NEVER MOVES. In every mode the inspector occupies a
-// track that already exists at the same width -- the reserved lane, the
-// Skills column, or the rail -- so opening it changes neither the main
-// column's width nor its position. The column it replaces is hidden with
-// `visibility`, not `display`, so the page height (and the player's
-// scroll position in a long list) is unchanged too.
-//
+// Phase 4C (production feedback): NO SPACE IS RESERVED for the inspector.
+// Closed, the sheet uses its full width; open, the inspector is Eldra's
+// usual right-hand context pane and the main workspace contracts to make
+// room -- the same three-pane behaviour as the rest of the workspace.
+// Where the container is too narrow for every column, the inspector
+// temporarily takes the reference columns' place; closing it restores
+// them. The resize is a plain grid change -- no animation.
+
 // Phones: a condensed sticky bar (the page's `condensed` slot) appears
 // once the full header scrolls away -- one IntersectionObserver boolean,
 // everything else CSS, transitions off under reduced motion. The section
@@ -265,15 +267,6 @@ onBeforeUnmount(() => {
         </div>
       </main>
 
-      <!-- Reserved inspector lane at large widths, while nothing is open. -->
-      <aside
-        v-if="slots['inspector-idle'] && !inspectorOpen"
-        class="eldra-sheet__idle"
-        aria-label="Details"
-      >
-        <slot name="inspector-idle" />
-      </aside>
-
       <div
         v-if="inspectorOpen"
         class="eldra-sheet__scrim"
@@ -311,7 +304,7 @@ onBeforeUnmount(() => {
   --sheet-condensed-h: 3.25rem;
   --sheet-rail-w: 17rem;
   --sheet-side-w: 20rem;
-  --sheet-lane-w: 23.75rem;
+  --sheet-inspector-w: 22.5rem;
 }
 
 .eldra-sheet__panel {
@@ -337,8 +330,7 @@ onBeforeUnmount(() => {
 
 .eldra-sheet__rail,
 .eldra-sheet__skills,
-.eldra-sheet__main,
-.eldra-sheet__idle {
+.eldra-sheet__main {
   display: none;
 }
 
@@ -552,22 +544,30 @@ onBeforeUnmount(() => {
     background: var(--eldra-accent);
   }
 
-  /* The inspector takes the rail's place (both rows of column 1). */
+  /* Open: the inspector is the right-hand pane; the main workspace
+     contracts beside it. Too narrow here for the reference column as
+     well, so it steps aside until the inspector closes. */
+  .eldra-sheet[data-inspector="open"] .eldra-sheet__body {
+    grid-template-columns: minmax(0, 1fr) var(--sheet-inspector-w);
+    grid-template-rows: auto;
+    grid-template-areas: "main inspector";
+  }
+
+  .eldra-sheet[data-inspector="open"] .eldra-sheet__rail,
+  .eldra-sheet[data-inspector="open"] .eldra-sheet__skills {
+    display: none;
+  }
+
   .eldra-sheet__inspector {
     position: sticky;
     inset: auto;
     top: 1rem;
     z-index: 1;
-    grid-area: 1 / 1 / 3 / 2;
+    grid-area: inspector;
     align-self: start;
     height: calc(100dvh - 6rem);
     max-height: 52rem;
     padding: 0;
-  }
-
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__rail,
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__skills {
-    visibility: hidden;
   }
 }
 
@@ -580,38 +580,27 @@ onBeforeUnmount(() => {
     grid-template-areas: "rail skills main";
   }
 
-  /* The inspector takes the Skills column. */
-  .eldra-sheet__inspector {
-    grid-area: skills;
+  /* Open: abilities and saves stay; Skills steps aside for the pane. */
+  .eldra-sheet[data-inspector="open"] .eldra-sheet__body {
+    grid-template-columns: var(--sheet-rail-w) minmax(0, 1fr) var(--sheet-inspector-w);
+    grid-template-areas: "rail main inspector";
   }
 
   .eldra-sheet[data-inspector="open"] .eldra-sheet__rail {
-    visibility: visible;
+    display: block;
   }
 }
 
-/* --- Large desktop: + a reserved inspector lane ----------------------- */
+/* --- Large desktop: room for every column and the pane ---------------- */
 
-@container sheet (min-width: 1750px) {
-  .eldra-sheet__body {
-    grid-template-columns: var(--sheet-rail-w) var(--sheet-side-w) minmax(0, 1fr) var(--sheet-lane-w);
-    grid-template-areas: "rail skills main lane";
-  }
-
-  .eldra-sheet__inspector,
-  .eldra-sheet .eldra-sheet__idle {
-    grid-area: lane;
-  }
-
-  .eldra-sheet .eldra-sheet__idle {
-    display: block;
-    position: sticky;
-    top: 1rem;
-    align-self: start;
+@container sheet (min-width: 1600px) {
+  .eldra-sheet[data-inspector="open"] .eldra-sheet__body {
+    grid-template-columns: var(--sheet-rail-w) var(--sheet-side-w) minmax(0, 1fr) var(--sheet-inspector-w);
+    grid-template-areas: "rail skills main inspector";
   }
 
   .eldra-sheet[data-inspector="open"] .eldra-sheet__skills {
-    visibility: visible;
+    display: block;
   }
 }
 

@@ -34,6 +34,27 @@
   }
 }
 
+/* Native form controls inside glass panels take the theme accent instead
+   of the browser default blue. Appearance only -- controls stay native. */
+.eldra-glass-surface :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress) {
+  accent-color: var(--eldra-accent);
+}
+
+/* Sections inside a glass panel (e.g. inspector Details/Summary/
+   Relationships). Deliberately light: the outer glass frame carries the
+   ornament and weight; sections only group content. No ornament here. */
+.eldra-glass-section {
+  position: relative;
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.12);
+  background: rgb(var(--eldra-panel-rgb) / calc(var(--eldra-panel-alpha) * 0.32));
+}
+
+/* Rows/values nested in a glass section. */
+.eldra-glass-row {
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.1);
+  background: rgb(var(--eldra-ink-rgb) / 0.22);
+}
+
 /* ------------------------------------------------------------------
    Ornaments -- purely decorative, never interactive. Use as an empty,
    aria-hidden child of a positioned, isolated element (Tailwind

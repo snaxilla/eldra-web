@@ -104,16 +104,17 @@ function removeOverlay() {
     >
       <div
         v-if="open && editingOverlay"
-        class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
+        class="eldra-ornate-panel eldra-glass-surface isolate fixed right-0 top-0 z-40 h-full w-[420px] border-l"
       >
+        <span class="eldra-ornament-frame" aria-hidden="true" />
         <div class="flex h-full flex-col">
-          <header class="border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+          <header class="relative px-6 pb-5 pt-6">
             <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
               Image Overlay
             </div>
             <div class="mt-2 flex items-start justify-between gap-4">
               <div>
-                <h2 class="text-2xl font-semibold text-white">
+                <h2 class="eldra-display text-2xl text-white">
                   {{ cleanText(editingOverlay.objectId) ? 'Edit Overlay' : 'Create Overlay' }}
                 </h2>
                 <p class="mt-1 text-sm text-[#9f9278]">
@@ -129,6 +130,7 @@ function removeOverlay() {
                 Close
               </button>
             </div>
+            <span class="eldra-ornament-divider absolute inset-x-6 bottom-0" aria-hidden="true" />
           </header>
 
           <div class="flex-1 overflow-y-auto px-5 py-5">
@@ -218,7 +220,7 @@ function removeOverlay() {
                 </div>
               </div>
 
-              <div class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]">
+              <div class="eldra-glass-section rounded-none px-4 py-2 text-xs text-[#9f9278]">
                 The overlay uses the current map bounds and is toggled through the Image Overlays layer.
               </div>
             </div>

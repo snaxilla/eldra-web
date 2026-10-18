@@ -78,8 +78,9 @@ const ICON_OPTIONS = [
   <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
     <div
       v-if="open && editingPin"
-      class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
+      class="eldra-ornate-panel eldra-glass-surface isolate fixed right-0 top-0 z-40 h-full w-[420px] border-l"
     >
+      <span class="eldra-ornament-frame" aria-hidden="true" />
       <div class="flex h-full flex-col">
         <MapPinEditorHeader
           :editing-pin="editingPin"
@@ -261,7 +262,7 @@ const ICON_OPTIONS = [
             <div v-if="editingPin.id">
               <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Position</label>
 
-              <div class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]">
+              <div class="eldra-glass-section rounded-none px-4 py-2 text-xs text-[#9f9278]">
                 x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
               </div>
 
@@ -308,7 +309,7 @@ const ICON_OPTIONS = [
 
             <div
               v-else
-              class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]"
+              class="eldra-glass-section rounded-none px-4 py-2 text-xs text-[#9f9278]"
             >
               x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
             </div>

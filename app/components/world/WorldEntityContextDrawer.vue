@@ -376,7 +376,7 @@ function readMore() {
 
           <div
             v-if="detailLines.length"
-            class="eldra-codex-soft mt-5 rounded-none p-4"
+            class="eldra-glass-section mt-5 rounded-none p-4"
           >
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
               {{ detailHeading }}
@@ -386,14 +386,14 @@ function readMore() {
               <div
                 v-for="line in detailLines"
                 :key="line"
-                class="rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(20,17,12,0.52)] px-3 py-2"
+                class="eldra-glass-row rounded-none px-3 py-2"
               >
                 {{ line }}
               </div>
             </div>
           </div>
 
-                    <div class="eldra-codex-soft mt-5 rounded-none p-4">
+                    <div class="eldra-glass-section mt-5 rounded-none p-4">
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
               Summary
             </div>
@@ -444,7 +444,7 @@ function readMore() {
 
           <div
             v-if="destinationMapTitle"
-            class="eldra-codex-soft mt-5 rounded-none p-4"
+            class="eldra-glass-section mt-5 rounded-none p-4"
           >
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
               Destination Map
@@ -471,7 +471,7 @@ function readMore() {
 
 <div
             v-if="allowBuildActions && mode === 'build'"
-            class="eldra-codex-soft mt-5 rounded-none p-4"
+            class="eldra-glass-section mt-5 rounded-none p-4"
           >
             <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
               Build Mode

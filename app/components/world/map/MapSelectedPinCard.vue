@@ -21,15 +21,16 @@ const emit = defineEmits<{
   >
     <div
       v-if="open"
-      class="eldra-ornate-panel eldra-frame-corners fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+      class="eldra-ornate-panel eldra-glass-surface isolate fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5"
     >
+      <span class="eldra-ornament-frame" aria-hidden="true" />
       <div class="mb-1 text-xs uppercase tracking-[0.3em] text-[#9f9278]">
         {{ formatLocationType(selectedPin.pinType) || 'Location' }}
       </div>
 
-      <div class="text-xl font-semibold text-white">
+      <h2 class="eldra-display text-xl text-white">
         {{ selectedPin.resolvedTitle }}
-      </div>
+      </h2>
 
       <div class="mt-2 text-sm text-[#9f9278]">
         Icon: {{ iconLabel(selectedPin.icon) }}

@@ -654,7 +654,7 @@ onBeforeUnmount(() => {
     class="relationship-panel rounded-none"
     :class="isArticleVariant
       ? 'eldra-ornate-panel eldra-frame-corners border p-5'
-      : 'eldra-codex-soft mt-5 p-4'"
+      : 'eldra-glass-section mt-5 p-4'"
   >
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>

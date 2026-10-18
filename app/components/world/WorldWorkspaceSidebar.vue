@@ -82,6 +82,8 @@ const navItems = computed(() => [
             : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
           @click="emit('set-mode', 'play')"
           title="Play"
+          aria-label="Play mode"
+          :aria-pressed="mode === 'play'"
         >
           <UIcon name="i-lucide-play" class="h-4 w-4" />
         </button>
@@ -94,23 +96,33 @@ const navItems = computed(() => [
             : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
           @click="emit('set-mode', 'build')"
           title="Build"
+          aria-label="Build mode"
+          :aria-pressed="mode === 'build'"
         >
           <UIcon name="i-lucide-hammer" class="h-4 w-4" />
         </button>
       </div>
 
-      <nav class="min-h-0 flex-1 overflow-y-auto px-2">
+      <!-- Icon rail: scrolls on short viewports; labels are exposed as
+           tooltips (hover + keyboard focus) and accessible names. -->
+      <nav aria-label="World navigation" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1">
         <div class="space-y-2">
-          <NuxtLink
+          <UTooltip
             v-for="item in navItems"
             :key="item.label"
-            :to="item.to"
-            class="eldra-sidebar-nav-item flex h-10 items-center justify-center rounded-none border border-transparent text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.24)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]"
-            active-class="border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]"
-            :title="item.label"
+            :text="item.label"
+            :content="{ side: 'right' }"
+            :ui="{ content: 'rounded-none bg-eldra-panel text-eldra-text-strong ring-1 ring-eldra-accent/40 shadow-lg' }"
           >
-            <UIcon :name="item.icon" class="h-5 w-5" />
-          </NuxtLink>
+            <NuxtLink
+              :to="item.to"
+              class="eldra-sidebar-nav-item flex h-10 items-center justify-center rounded-none border border-transparent text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.24)] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent-bright"
+              active-class="border-[rgba(201,164,90,0.42)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]"
+              :aria-label="item.label"
+            >
+              <UIcon :name="item.icon" class="h-5 w-5" />
+            </NuxtLink>
+          </UTooltip>
         </div>
       </nav>
 
@@ -123,6 +135,8 @@ const navItems = computed(() => [
             : 'border-[rgba(201,164,90,0.22)] text-[#b5a88d] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
           @click="showPins = !showPins"
           :title="showPins ? 'Pins Visible' : 'Pins Hidden'"
+          :aria-label="showPins ? 'Hide map pins' : 'Show map pins'"
+          :aria-pressed="showPins"
         >
           <UIcon :name="showPins ? 'i-lucide-eye' : 'i-lucide-eye-off'" class="h-4 w-4" />
         </button>
@@ -135,6 +149,7 @@ const navItems = computed(() => [
           to="/"
           class="eldra-sidebar-switch flex h-10 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
           title="Switch World"
+          aria-label="Switch World"
         >
           <UIcon name="i-lucide-arrow-left-right" class="h-4 w-4" />
         </NuxtLink>

@@ -104,16 +104,18 @@ function onPresetChange() {
   >
     <div
       v-if="open && editingRoad"
-      class="eldra-ornate-panel eldra-frame-corners fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+      class="eldra-ornate-panel eldra-glass-surface isolate fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5"
     >
+      <span class="eldra-ornament-frame" aria-hidden="true" />
       <div class="mb-3 flex items-center justify-between">
-        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+        <h2 class="eldra-display text-sm uppercase text-[#efe2bd]">
           Road
-        </div>
+        </h2>
 
         <button
           type="button"
           class="text-[#9f9278] transition hover:text-white"
+          aria-label="Close road editor"
           @click="emit('close')"
         >
           <UIcon

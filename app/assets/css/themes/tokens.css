@@ -1,0 +1,64 @@
+/* Eldra semantic design tokens (Theming Architecture, Phase 2).
+   See .github/docs/architecture/theming.md.
+
+   Layering:
+   - :root carries the platform default (Fantasy) values, so anything
+     rendered before/without a theme root still looks correct.
+   - themes/<key>.css re-declares tokens under [data-eldra-theme="<key>"].
+   - The theme root (<html>) also receives runtime variables from
+     resolveTheme() (app/lib/eldra/themes.ts): --eldra-panel-alpha and
+     --eldra-panel-blur, already clamped and accessibility-adjusted.
+   - [data-eldra-*] accessibility attributes below are applied last and
+     always win over theme values.
+
+   Colors are stored as space-separated RGB channels so any alpha can be
+   derived: rgb(var(--eldra-accent-rgb) / 0.34). Tailwind utilities for
+   the same tokens are registered in main.css (@theme inline). */
+
+:root {
+  /* Derived colors (stable public names) */
+  --eldra-accent: rgb(var(--eldra-accent-rgb));
+  --eldra-accent-soft: rgb(var(--eldra-accent-rgb) / 0.36);
+  --eldra-accent-faint: rgb(var(--eldra-accent-rgb) / 0.14);
+  --eldra-border: rgb(var(--eldra-accent-rgb) / 0.24);
+  --eldra-border-strong: rgb(var(--eldra-accent-rgb) / 0.48);
+  --eldra-text: rgb(var(--eldra-text-rgb));
+  --eldra-text-strong: rgb(var(--eldra-text-strong-rgb));
+  --eldra-text-muted: rgb(var(--eldra-text-muted-rgb));
+
+  /* Darkglass (runtime-overridable by resolveTheme) */
+  --eldra-panel-alpha: 0.86;
+  --eldra-panel-blur: 12px;
+
+  /* Shape, depth, glow */
+  --eldra-radius: 0;
+  --eldra-shadow-panel: 0 22px 70px rgba(0, 0, 0, 0.42);
+  --eldra-glow-accent: inset 0 0 48px rgb(var(--eldra-accent-rgb) / 0.04);
+
+  /* Typography -- display face is a Phase 3 addition; it must be vendored
+     locally (see eldra-design-language.md §4), never fetched at build. */
+  --eldra-font-display: 'Public Sans', sans-serif;
+  --eldra-font-body: 'Public Sans', sans-serif;
+  --eldra-tracking-kicker: 0.32em;
+
+  /* Ornaments -- `none` until a theme supplies assets. */
+  --eldra-ornament-corner: none;
+  --eldra-ornament-divider: none;
+
+  /* Motion */
+  --eldra-motion-duration: 200ms;
+}
+
+/* Darkglass panel primitive. Not yet applied to the shell (Phase 3). */
+.eldra-glass {
+  background-color: rgb(var(--eldra-panel-rgb) / var(--eldra-panel-alpha));
+  border: 1px solid var(--eldra-border);
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .eldra-glass {
+    background-color: rgb(var(--eldra-panel-rgb) / 0.96);
+  }
+}

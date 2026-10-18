@@ -1,0 +1,27 @@
+/* Fantasy -- the platform default theme.
+   Values match the hardcoded gold/ink already used across the app, so
+   applying this theme is visually a no-op in Phase 2. `:root` is listed
+   so the platform default holds even before the theme root is set.
+
+   A new theme copies this file, changes the selector to
+   :root[data-eldra-theme="<key>"], and re-declares whichever tokens differ.
+   See .github/docs/architecture/theming.md "Adding a theme". */
+
+:root,
+:root[data-eldra-theme="fantasy"] {
+  /* Core palette */
+  --eldra-accent-rgb: 201 164 90;          /* antique gold #c9a45a */
+  --eldra-accent-bright-rgb: 255 229 158;  /* gilt highlight */
+  --eldra-ink-rgb: 7 6 4;                  /* #070604 */
+  --eldra-charcoal-rgb: 17 16 13;          /* #11100d */
+  --eldra-panel-rgb: 19 17 13;             /* darkglass fill */
+  --eldra-panel-strong-rgb: 10 9 7;
+  --eldra-well-rgb: 8 17 27;               /* steel interactive well */
+  --eldra-text-rgb: 239 226 189;           /* #efe2bd */
+  --eldra-text-strong-rgb: 255 247 223;    /* #fff7df */
+  --eldra-text-muted-rgb: 167 155 133;     /* #a79b85 */
+  --eldra-parchment-rgb: 232 217 181;      /* #e8d9b5 */
+
+  /* Shape/typography/ornament tokens currently equal the structural
+     defaults in tokens.css; Phase 3 overrides them here. */
+}

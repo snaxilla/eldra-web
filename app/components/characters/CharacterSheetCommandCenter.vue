@@ -178,6 +178,15 @@ function triggerPortraitUpload() {
   portraitFileInput.value?.click()
 }
 
+// Phase 4B-0: on touch (coarse pointers) the thumbnail is too narrow for
+// two 44px targets side by side, so both portrait actions sit behind one
+// full-width "Edit portrait" button. Same handlers as the fine-pointer
+// buttons -- nothing about what Change/Remove do changes.
+const portraitMenuItems = computed(() => [[
+  { label: 'Change portrait', icon: 'i-lucide-camera', disabled: props.portraitSaving, onSelect: () => triggerPortraitUpload() },
+  { label: 'Remove portrait', icon: 'i-lucide-trash-2', color: 'error' as const, disabled: props.portraitSaving, onSelect: () => emit('clear-portrait') }
+]])
+
 function handlePortraitFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -228,7 +237,7 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
     elevation="feature"
     density="compact"
   >
-    <div class="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(96px,1fr)_5fr] xl:items-stretch xl:gap-5">
+    <div class="flex flex-col gap-4 @5xl/sheet:grid @5xl/sheet:grid-cols-[minmax(96px,1fr)_5fr] @5xl/sheet:items-stretch @5xl/sheet:gap-5">
       <!-- Portrait: the folio's cover illustration, not an avatar.
            aspect-[4/5] below `xl` (a fixed-ratio thumbnail beside identity
            in a flex row); at `xl` the grid ITSELF now stretches this
@@ -249,8 +258,8 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
            defect -- so the portrait always fills its frame exactly
            (`inset-0 h-full w-full object-cover`), cropping gracefully
            instead of leaving a gap or stretching. -->
-      <div class="w-16 shrink-0 sm:w-20 xl:w-full xl:h-full">
-      <div class="eldra-image-frame group relative aspect-[4/5] w-full overflow-hidden rounded-none border bg-black/25 xl:aspect-auto xl:h-full">
+      <div class="w-16 shrink-0 sm:w-20 @5xl/sheet:w-full @5xl/sheet:h-full">
+      <div class="eldra-image-frame group relative aspect-[4/5] w-full overflow-hidden rounded-none border bg-black/25 @5xl/sheet:aspect-auto @5xl/sheet:h-full">
         <img
           v-if="imageUrl"
           :src="imageUrl"
@@ -308,36 +317,56 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
           <div class="absolute left-1/2 top-1/2 h-1 w-[200%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-600 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
         </div>
 
-        <!-- Hover/focus edit affordances, shown only over an EXISTING
-             portrait -- discoverable without a mouse: `opacity-100` by
-             default (touch has no hover), dimmed on pointer-capable/
-             desktop viewports until hover OR keyboard focus
-             (`md:opacity-0 md:group-hover:opacity-100
-             focus-visible:opacity-100`, the same pattern the legacy
-             sheet's own Build Mode portrait editor already used, minus
-             its Build Mode gate). -->
-        <button
+        <!-- Edit affordances over an EXISTING portrait. Phase 4B-0: one
+             bottom bar holding both actions. Always visible for touch
+             (coarse pointers have no hover), with 44px targets there;
+             revealed on hover or keyboard focus for fine pointers only.
+             The old `md:opacity-0` gate hid them on touch tablets. -->
+        <div
           v-if="canEditPortrait && imageUrl"
-          type="button"
-          class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-1 bg-black/80 px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#fff7df] opacity-100 transition focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed md:opacity-0 md:group-hover:opacity-100"
-          :disabled="portraitSaving"
-          aria-label="Change character portrait"
-          @click="triggerPortraitUpload"
+          class="absolute inset-x-0 bottom-0 z-10 bg-black/80 opacity-100 transition pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100"
         >
-          <UIcon name="i-lucide-camera" class="h-3 w-3" />
-          <span>{{ portraitSaving ? 'Saving…' : 'Change' }}</span>
-        </button>
+          <!-- Fine pointers: two compact buttons, revealed on hover/focus. -->
+          <div class="flex pointer-coarse:hidden">
+            <button
+              type="button"
+              class="flex min-h-7 min-w-0 flex-1 items-center justify-center gap-1 px-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-eldra-text-strong focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent disabled:cursor-not-allowed"
+              :disabled="portraitSaving"
+              aria-label="Change character portrait"
+              @click="triggerPortraitUpload"
+            >
+              <UIcon name="i-lucide-camera" class="h-3 w-3 shrink-0" />
+              <!-- Text only where the portrait is a full grid column. -->
+              <span class="hidden truncate @5xl/sheet:inline">{{ portraitSaving ? 'Saving…' : 'Change' }}</span>
+            </button>
 
-        <button
-          v-if="canEditPortrait && imageUrl"
-          type="button"
-          class="absolute right-0 top-0 z-10 bg-black/70 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#d8ceb8] opacity-100 transition hover:text-red-300 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed md:opacity-0 md:group-hover:opacity-100"
-          :disabled="portraitSaving"
-          aria-label="Remove character portrait"
-          @click="emit('clear-portrait')"
-        >
-          ✕
-        </button>
+            <button
+              type="button"
+              class="flex min-h-7 w-7 shrink-0 items-center justify-center border-l border-eldra-accent/20 text-[10px] text-eldra-text-soft transition hover:text-red-300 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent disabled:cursor-not-allowed"
+              :disabled="portraitSaving"
+              aria-label="Remove character portrait"
+              @click="emit('clear-portrait')"
+            >
+              ✕
+            </button>
+          </div>
+
+          <!-- Touch: one full-width 44px target opening both actions. -->
+          <UDropdownMenu
+            :items="portraitMenuItems"
+            :content="{ align: 'start', side: 'bottom' }"
+          >
+            <button
+              type="button"
+              class="hidden min-h-11 w-full items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-eldra-text-strong focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent pointer-coarse:flex"
+              :disabled="portraitSaving"
+              aria-label="Edit character portrait"
+            >
+              <UIcon name="i-lucide-camera" class="h-4 w-4 shrink-0" />
+              <span class="hidden @5xl/sheet:inline">{{ portraitSaving ? 'Saving…' : 'Edit' }}</span>
+            </button>
+          </UDropdownMenu>
+        </div>
 
         <input
           ref="portraitFileInput"

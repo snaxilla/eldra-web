@@ -1069,6 +1069,30 @@ function openConditionContext(condition: EncounterConditionView) {
   })
 }
 
+// A class resource (Second Wind, Rage, ...) from the header, read from the
+// already-derived resource -- its pool and the package's recovery rules.
+const RECOVERY_TRIGGER_LABELS: Record<string, string> = { 'short-rest': 'Short Rest', 'long-rest': 'Long Rest' }
+
+function openResourceContext(resourceId: string) {
+  const resource = characterResources.value.find((candidate) => candidate.id === resourceId)
+  if (!resource) return
+  const lines = [`Remaining: ${resource.max - resource.expended} / ${resource.max}`]
+  for (const rule of resource.recovery ?? []) {
+    const amount = rule.amount === 'full' ? 'all uses' : `${rule.amount}`
+    lines.push(`${RECOVERY_TRIGGER_LABELS[rule.trigger] ?? rule.trigger}: regain ${amount}`)
+  }
+
+  openSheetContext({
+    kind: 'resource',
+    id: resource.id,
+    title: resource.label || resource.id,
+    eyebrow: 'Resource',
+    detailLines: lines,
+    summary: '',
+    tags: []
+  })
+}
+
 // ---------------------------------------------------------------------------
 // INSPECTOR ROLLS -- Phase 4B. A context payload names its rolls as data
 // (CharacterSheetContextRoll); the handlers that run them stay here, bound
@@ -1195,6 +1219,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             @update-portrait="mutations.portrait.update"
             @clear-portrait="mutations.portrait.clear"
             @select-condition="openConditionContext"
+            @select-resource="openResourceContext"
           />
         </template>
 

@@ -345,13 +345,21 @@ function resolve(actionId: string) {
   emit('resolve', { actionId, targetCharacterId: targetCharacterId.value })
 }
 
+// Phase 4B: which control's roll/cast is in flight (`aria-busy`), the
+// initiation feedback for the one button pressed. Cleared when the page's
+// own rolling/casting state settles.
+const busyKey = ref<string | null>(null)
+watch(() => props.rolling || props.casting, (busy) => { if (!busy) busyKey.value = null })
+
 function attack(actionId: string) {
   if (props.rolling) return
+  busyKey.value = `attack:${actionId}`
   emit('attack', { actionId })
 }
 
 function damage(actionId: string) {
   if (props.rolling) return
+  busyKey.value = `damage:${actionId}`
   emit('damage', { actionId })
 }
 
@@ -495,6 +503,7 @@ function onCastPrimaryClick(action: CharacterAction) {
   const config = castConfigurationOf(action)
   if (!config.canCast) return
   if (!config.requiresConfiguration) {
+    busyKey.value = `cast:${action.id}`
     emit('cast', { actionId: action.id })
     return
   }
@@ -505,6 +514,7 @@ function confirmCast(action: CharacterAction) {
   if (props.casting) return
   const config = castConfigurationOf(action)
   if (!hasCompleteSelection(action, config)) return
+  busyKey.value = `cast:${action.id}`
   emit('cast', castPayload(action, config))
   openConfigActionId.value = null
 }
@@ -526,6 +536,7 @@ function onSpellDamageRowClick(action: CharacterAction) {
     openConfiguration(action, config)
     return
   }
+  busyKey.value = `spell-damage:${action.id}`
   emit('spellDamage', castPayload(action, config))
 }
 
@@ -702,8 +713,9 @@ function resolvedDamageText(action: CharacterAction): string {
           >
             <button
               type="button"
-              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 @[38rem]:flex-1 @[38rem]:grid @[38rem]:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] @[38rem]:items-center @[38rem]:gap-3"
+              class="eldra-rollable block w-full min-w-0 rounded-none px-1 py-1 text-left focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 @[38rem]:flex-1 @[38rem]:grid @[38rem]:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] @[38rem]:items-center @[38rem]:gap-3"
               :disabled="rolling"
+              :aria-busy="busyKey === `attack:${action.id}` && rolling ? 'true' : undefined"
               :aria-label="`Roll ${action.name} Attack, bonus ${hitOrDc(action)}`"
               @click="attack(action.id)"
             >
@@ -753,6 +765,7 @@ function resolvedDamageText(action: CharacterAction): string {
                 type="button"
                 class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 @[38rem]:flex-none @[38rem]:px-4"
                 :disabled="rolling"
+                :aria-busy="busyKey === `damage:${action.id}` && rolling ? 'true' : undefined"
                 :aria-label="`Roll ${action.name} Damage`"
                 @click="damage(action.id)"
               >
@@ -779,8 +792,9 @@ function resolvedDamageText(action: CharacterAction): string {
           >
             <button
               type="button"
-              class="block w-full min-w-0 rounded-none py-0 text-left transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 @[38rem]:flex-1 @[38rem]:grid @[38rem]:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] @[38rem]:items-center @[38rem]:gap-3"
+              class="eldra-rollable block w-full min-w-0 rounded-none px-1 py-1 text-left focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 @[38rem]:flex-1 @[38rem]:grid @[38rem]:grid-cols-[minmax(0,1fr)_3.75rem_3.25rem_7rem_5rem] @[38rem]:items-center @[38rem]:gap-3"
               :disabled="casting || !castConfigurationOf(action).canCast"
+              :aria-busy="busyKey === `cast:${action.id}` && casting ? 'true' : undefined"
               :aria-label="`Cast ${action.name}`"
               @click="onCastPrimaryClick(action)"
             >
@@ -822,6 +836,7 @@ function resolvedDamageText(action: CharacterAction): string {
                 type="button"
                 class="eldra-button min-h-11 flex-1 rounded-none px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50 @[38rem]:flex-none @[38rem]:px-4"
                 :disabled="casting"
+                :aria-busy="busyKey === `spell-damage:${action.id}` && casting ? 'true' : undefined"
                 :aria-label="`Roll ${action.name} Damage`"
                 @click="onSpellDamageRowClick(action)"
               >

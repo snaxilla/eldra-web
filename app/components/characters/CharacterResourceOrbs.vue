@@ -97,7 +97,11 @@ const props = withDefaults(defineProps<{
   // Phase 4B: 'inline' sets each group's label beside its pools, in one
   // wrapping row -- the V2 header's compact resource strip.
   layout?: 'stacked' | 'inline'
+  // Phase 4B: when true, each group's label is a button emitting `select`
+  // (the V2 sheet opens the resource in its inspector).
+  selectable?: boolean
 }>(), {
+  selectable: false,
   saving: false,
   layout: 'stacked',
   pendingPoolIds: () => new Set()
@@ -110,6 +114,7 @@ function poolDisabled(pool: CharacterResourcePool): boolean {
 const emit = defineEmits<{
   expend: [{ groupId: string; poolId: string; amount: number }]
   restore: [{ groupId: string; poolId: string; amount: number }]
+  select: [string]
 }>()
 
 function orbAvailable(pool: CharacterResourcePool, position: number): boolean {
@@ -168,7 +173,19 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
       :key="group.id"
       :class="layout === 'inline' ? 'flex flex-wrap items-center gap-2' : ''"
     >
-      <div class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">
+      <button
+        v-if="selectable"
+        type="button"
+        class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint underline-offset-4 transition hover:text-eldra-text-soft hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent pointer-coarse:min-h-9"
+        :aria-label="`${group.label} details`"
+        @click="emit('select', group.id)"
+      >
+        {{ group.label }}
+      </button>
+      <div
+        v-else
+        class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint"
+      >
         {{ group.label }}
       </div>
 

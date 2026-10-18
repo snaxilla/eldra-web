@@ -322,3 +322,9 @@
   height: 1px;
   background: rgb(var(--eldra-accent-rgb) / 0.16);
 }
+
+/* A themed button whose roll/cast is in flight (Phase 4B). */
+.eldra-button[aria-busy="true"] {
+  cursor: progress;
+  box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-bright-rgb) / 0.7);
+}

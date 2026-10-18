@@ -86,6 +86,7 @@ const emit = defineEmits<{
   'update-portrait': [File]
   'clear-portrait': []
   'select-condition': [EncounterConditionView]
+  'select-resource': [string]
 }>()
 
 const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health.deathSaves))
@@ -367,10 +368,12 @@ function summaryText(entry: DerivedValue): string {
       <CharacterResourceOrbs
         v-if="resourceGroups.length"
         layout="inline"
+        selectable
         :groups="resourceGroups"
         :pending-pool-ids="resourcesPendingIds"
         @expend="handleResourceExpend"
         @restore="handleResourceRestore"
+        @select="emit('select-resource', $event)"
       />
 
       <!-- REST -- gameplay control, kept apart from management actions. -->

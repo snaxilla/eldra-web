@@ -420,7 +420,12 @@ function readMore() {
             </div>
           </div>
 
-                    <div class="eldra-glass-section mt-5 rounded-none p-4">
+          <!-- A sheet detail payload with no prose has no Summary to show
+               (Phase 4B); entity content keeps its "No summary yet." -->
+          <div
+            v-if="isEntityContent || entitySummary"
+            class="eldra-glass-section mt-5 rounded-none p-4"
+          >
             <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
               Summary
             </div>

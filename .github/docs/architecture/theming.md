@@ -1,7 +1,7 @@
 # Eldra Theming Architecture
 
-Status: **Phase 2 (foundation) and Phase 3A (World Map experience) implemented.** Phase 3B
-(remaining shell surfaces, dialogs, broader token migration) not started.
+Status: **Phase 2 (foundation), Phase 3A (World Map experience) and Phase 3B-1 (World Map polish)
+implemented.** Phase 3B-2 (remaining shell surfaces, dialogs, broader token migration) not started.
 
 Eldra lets the Game Master control how a World *looks*. That choice is a presentation decision,
 deliberately **independent of the game system**: a D&D World can run a Horror theme, a Cyberpunk
@@ -130,6 +130,7 @@ tokens.
 | Class | Use |
 |---|---|
 | `.eldra-glass-surface` | Major floating panels (sidebar over the map, contextual inspector, map layer panel). Combine with `eldra-ornate-panel`; overrides its fill. Opaque fallback without `backdrop-filter`. |
+| `.eldra-glass-section` / `.eldra-glass-row` | Light groupings *inside* a glass panel (inspector details, editor notes). No ornament; the outer frame carries the weight. |
 | `.eldra-ornament-frame` (`--compact`) | Empty `aria-hidden` child of a `relative isolate` host. Draws the theme's four corner ornaments beneath content, `pointer-events: none`. |
 | `.eldra-ornament-divider` | Header flourish or rule (`aria-hidden`). |
 | `.eldra-ornament-emblem` | Small motif (Fantasy: compass rose) beside a brand or heading. |
@@ -141,8 +142,18 @@ Ornament SVGs live in `app/assets/ornaments/<theme>/`, are referenced from the t
 are inlined by Vite. They work offline and need no runtime fetch. Because they are masks, one asset
 works in any color, and accessibility can dim them (high contrast lowers `--eldra-ornament-color`).
 
-**Display font:** Cinzel, bundled through `@fontsource/cinzel` (latin subset, weights 500/600) and
-imported in `main.css`. The Fantasy theme sets `--eldra-font-display` to it, with serif fallbacks.
+Native checkboxes, radios and range inputs inside glass panels take `accent-color:
+var(--eldra-accent)`. They stay native controls with no ornament.
+
+**Fonts are all bundled locally.**
+- **Cinzel** (display) comes from `@fontsource/cinzel` (latin subset, weights 500/600). The Fantasy
+  theme sets `--eldra-font-display` to it, with serif fallbacks.
+- **Public Sans** (body) comes from `@fontsource/public-sans` (weights 400–700, all subsets declared;
+  browsers fetch only the unicode ranges they need).
+- Both are imported in `main.css`, and Nuxt UI's `@nuxt/fonts` integration is disabled
+  (`ui.fonts: false` in `nuxt.config.ts`). The production build performs no font downloads and works
+  offline.
+- A future theme's fonts must follow the same pattern.
 
 ### Full-bleed World Map shell (Phase 3A)
 
@@ -159,6 +170,30 @@ up, `world-workspace.vue` takes the workspace sidebar out of the grid and floats
   it so the floating sidebar never covers them.
 - The contextual inspector (`WorldEntityContextDrawer`) was already `fixed` over the content. It
   now shares the same glass and ornaments on every page that uses it.
+
+#### Viewport insets (Phase 3B-1)
+
+The renderer constrains panning with `maxBounds` and `maxBoundsViscosity: 1`, and the initial view
+"covers" the viewport. Under floating panels, the strip of map beneath a panel could never be
+panned out from under it, at any zoom.
+
+`WorldMapLeaflet.client.vue` therefore takes an optional `viewportInsets: { left, right }` prop, in
+screen pixels:
+
+- `maxBounds` is widened horizontally by those pixels, converted to map units at the current zoom
+  (CRS.Simple: 1 unit = 2^zoom px). It is recomputed on `zoomend` and when the insets change, so map
+  edges can be dragged exactly clear of a panel at every zoom.
+- The initial view is shifted so the map's center lands in the middle of the uncovered area.
+- Coordinates, emitted click coordinates, cover zoom and scene data are untouched. With no insets
+  (prop absent or zero) the renderer behaves exactly as before.
+
+Where the insets come from:
+
+- **Left:** published by `world-workspace.vue` as `useState('world-map-viewport-inset-left')`. It is
+  292 or 80 (expanded or collapsed) on the desktop full-bleed map, and 0 on mobile and on every other
+  page.
+- **Right:** added by the map page while the inspector (380px) or the pin/overlay editor (420px) is
+  open. It only applies when the left inset is non-zero, i.e. at desktop widths.
 
 **Atmospheric effects:** mark optional decorative elements with `data-eldra-atmospheric`. They are
 hidden whenever the resolved theme has atmosphere off.

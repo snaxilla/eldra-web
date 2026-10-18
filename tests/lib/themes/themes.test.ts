@@ -159,6 +159,34 @@ describe('resolveTheme -- accessibility overrides', () => {
     for (const theme of ELDRA_THEMES) {
       expect(imports).toContain(`${theme.key}.css`)
     }
+
+    // ...and after every other stylesheet main.css imports (legacy
+    // component styles and the shared surfaces included).
+    const allImports = [...mainCss.matchAll(/@import\s+"([^"]+)"/g)].map((match) => match[1])
+    expect(allImports[allImports.length - 1]).toBe('./themes/accessibility.css')
+  })
+})
+
+describe('shared surface primitives', () => {
+  const surfacesCss = readFileSync(
+    fileURLToPath(new URL('../../../app/assets/css/themes/surfaces.css', import.meta.url)),
+    'utf8'
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('contain no hardcoded theme colors -- every color comes from a token', () => {
+    expect(surfacesCss).not.toMatch(/#[0-9a-f]{3,8}\b/i)
+    // Plain black shadows are palette-neutral; anything else must be a var().
+    const literalColors = [...surfacesCss.matchAll(/rgba?\(\s*(\d[^)]*)\)/g)]
+      .map((match) => match[1]!.replace(/\s+/g, ' ').trim())
+      .filter((channels) => !/^0 0 0 \/ [\d.]+$/.test(channels) && !/^0, 0, 0, [\d.]+$/.test(channels))
+    expect(literalColors).toEqual([])
+  })
+
+  it('keep decorative ornament layers out of pointer interaction', () => {
+    for (const selector of ['.eldra-ornament-frame', '.eldra-ornament-divider', '.eldra-ornament-emblem']) {
+      const block = surfacesCss.slice(surfacesCss.indexOf(`${selector} {`))
+      expect(block.slice(0, block.indexOf('}'))).toContain('pointer-events: none')
+    }
   })
 })
 

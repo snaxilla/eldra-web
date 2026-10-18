@@ -1,7 +1,7 @@
 # Eldra Theming Architecture
 
-Status: **Phase 2 (foundation) implemented.** Phase 3 (Fantasy visual overhaul, map-under-glass
-World Map shell) not started.
+Status: **Phase 2 (foundation) and Phase 3A (World Map experience) implemented.** Phase 3B
+(remaining shell surfaces, dialogs, broader token migration) not started.
 
 Eldra lets the Game Master control how a World *looks*. That choice is a presentation decision,
 deliberately **independent of the game system**: a D&D World can run a Horror theme, a Cyberpunk
@@ -101,7 +101,10 @@ Colors are stored as RGB channel triplets so any alpha can be derived:
 | `--eldra-panel-alpha`, `--eldra-panel-blur` | Darkglass, set at runtime from theme options |
 | `--eldra-radius`, `--eldra-shadow-panel`, `--eldra-glow-accent` | Shape and depth |
 | `--eldra-font-display`, `--eldra-font-body`, `--eldra-tracking-kicker` | Typography |
-| `--eldra-ornament-corner`, `--eldra-ornament-divider` | Ornament assets (`url(...)` or `none`) |
+| `--eldra-ornament-corner-{tl,tr,bl,br}`, `--eldra-ornament-divider`, `--eldra-ornament-emblem` | Ornament assets (`url(...)` or `none`), used as CSS masks |
+| `--eldra-ornament-color`, `--eldra-ornament-size`, `--eldra-ornament-inset` | Ornament paint and geometry (`transparent` = no ornaments) |
+| `--eldra-glass-sheen`, `--eldra-leather-rgb` | Glass top sheen; sidebar "leather" binding |
+| `--eldra-display-tracking`, `--eldra-display-weight` | Display type treatment |
 | `--eldra-motion-duration` | Motion |
 
 Derived, stable names: `--eldra-accent`, `--eldra-accent-soft`, `--eldra-accent-faint`,
@@ -117,8 +120,45 @@ instead of `border-[rgba(201,164,90,0.24)]`-style literals.
 
 **Darkglass primitive:** `.eldra-glass` uses the panel color, `--eldra-panel-alpha` and
 `--eldra-panel-blur`. It has an opaque fallback where `backdrop-filter` is unsupported and becomes
-solid under reduced transparency or high contrast. It is defined, but not yet applied to the shell
-(Phase 3).
+solid under reduced transparency or high contrast.
+
+### Shared surface primitives (Phase 3A, `themes/surfaces.css`)
+
+These classes contain no theme colors; a test enforces that. A theme restyles them purely through
+tokens.
+
+| Class | Use |
+|---|---|
+| `.eldra-glass-surface` | Major floating panels (sidebar over the map, contextual inspector, map layer panel). Combine with `eldra-ornate-panel`; overrides its fill. Opaque fallback without `backdrop-filter`. |
+| `.eldra-ornament-frame` (`--compact`) | Empty `aria-hidden` child of a `relative isolate` host. Draws the theme's four corner ornaments beneath content, `pointer-events: none`. |
+| `.eldra-ornament-divider` | Header flourish or rule (`aria-hidden`). |
+| `.eldra-ornament-emblem` | Small motif (Fantasy: compass rose) beside a brand or heading. |
+| `.eldra-display` | Display typography. Only for titles, World names and place names: never inputs, dense lists, technical text or body copy. |
+| `.eldra-map-control` | Quiet glass for small map controls (breadcrumbs, tool bar). The active state is `aria-pressed="true"`, not a color-only ring. |
+| `.eldra-sidebar-ornate` | Workspace sidebar "leather" background, moved here from a hardcoded utility. |
+
+Ornament SVGs live in `app/assets/ornaments/<theme>/`, are referenced from the theme's CSS file, and
+are inlined by Vite. They work offline and need no runtime fetch. Because they are masks, one asset
+works in any color, and accessibility can dim them (high contrast lowers `--eldra-ornament-color`).
+
+**Display font:** Cinzel, bundled through `@fontsource/cinzel` (latin subset, weights 500/600) and
+imported in `main.css`. The Fantasy theme sets `--eldra-font-display` to it, with serif fallbacks.
+
+### Full-bleed World Map shell (Phase 3A)
+
+Only on the World Map route (`pageKey === 'world-map'`, i.e. `/worlds/:id`), and only at `md` and
+up, `world-workspace.vue` takes the workspace sidebar out of the grid and floats it
+(`absolute`, `z-40`) over a single full-width map column, adding `.eldra-glass-surface`.
+
+- Every other page keeps the two-column grid, and below `md` every page keeps the existing
+  off-canvas drawer.
+- Collapse still toggles 280px/68px. It no longer resizes the map container, so Leaflet's
+  coordinate space only changes on a window resize, which Leaflet already tracks.
+- The layout sets `--eldra-map-inset-left` (sidebar width + 12px at `md`+ on the map, `0`
+  elsewhere). Left-anchored map overlays (breadcrumbs, tool bar, layer panel, Leaflet zoom) offset by
+  it so the floating sidebar never covers them.
+- The contextual inspector (`WorldEntityContextDrawer`) was already `fixed` over the content. It
+  now shares the same glass and ornaments on every page that uses it.
 
 **Atmospheric effects:** mark optional decorative elements with `data-eldra-atmospheric`. They are
 hidden whenever the resolved theme has atmosphere off.
@@ -182,8 +222,10 @@ Example: Cyberpunk. No component changes are required.
    ornament `url()`s, ...).
 3. **Import** it in `main.css` between `fantasy.css` and `accessibility.css`. The order is enforced
    by a test.
-4. **Assets**: put ornament SVGs under `app/assets/ornaments/<theme>/` and reference them from the
-   ornament tokens. Fonts must be vendored locally (`@fontsource/*`), never fetched from Google
+4. **Assets**: put ornament SVGs under `app/assets/ornaments/<theme>/` (opaque shapes; they are
+   used as masks) and reference them from the ornament tokens. Cyberpunk would supply angular
+   corner brackets and set `--eldra-ornament-color` to its neon accent. A theme without ornaments
+   simply omits them. Fonts must be vendored locally (`@fontsource/*`), never fetched from Google
    Fonts at build time (eldra-design-language.md §4).
 5. **Nuxt UI palette**: if the theme names a palette Tailwind does not ship, register its scale in
    `main.css` `@theme static` (as `--color-gold-*` is).
@@ -200,7 +242,8 @@ follow-up.
 ## 6. Tests
 
 - `tests/lib/themes/themes.test.ts`: registry, platform fallback, World inheritance, accessibility
-  overrides, invalid/missing configuration, World scoping, CSS import order.
+  overrides, invalid/missing configuration, World scoping, CSS import order (accessibility last
+  overall), no hardcoded colors in shared surfaces, ornaments non-interactive.
 - `tests/server/utils/world-presentation-settings.test.ts`: load, save and patch parsing against a
   fake Directus, the 502-vs-absent distinction, and clamping on write.
 - `tests/server/api/worlds/[id]/presentation-settings.test.ts`: real `can()`. Players can read, only

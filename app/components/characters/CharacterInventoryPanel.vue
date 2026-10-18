@@ -144,6 +144,8 @@ const filteredOptions = computed(() => {
 
 const canAdd = computed(() => Boolean(selectedKey.value) || Boolean(customName.value.trim()))
 
+const addOpen = ref(false)
+
 function submitAdd() {
   if (!canAdd.value || props.saving) return
 
@@ -160,108 +162,108 @@ function submitAdd() {
   customName.value = ''
   quantity.value = '1'
   notes.value = ''
+  addOpen.value = false
 }
 </script>
 
 <template>
   <div class="grid gap-4">
-    <!-- Add ---------------------------------------------------------------- -->
-    <div class="eldra-well rounded-none p-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
-            Add Inventory
+    <p
+      v-if="errorMessage"
+      class="rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
+    >
+      {{ errorMessage }}
+    </p>
+
+    <!-- Add -- Phase 4C: character management, not play. The same
+         fields and the same `submitAdd`, behind the "Add item" action
+         beside the list instead of permanently above it. -->
+    <UModal
+      v-model:open="addOpen"
+      title="Add item"
+      description="Add published equipment, or a custom item of your own."
+    >
+      <template #body>
+        <div class="grid gap-3">
+          <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_140px]">
+            <label class="block">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
+                Search published items
+              </span>
+              <input
+                v-model="search"
+                type="search"
+                class="eldra-input mb-2 min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+                :placeholder="options.length ? 'Search by name…' : 'No item content is bound to this World'"
+                :disabled="!options.length"
+              >
+              <select
+                v-model="selectedKey"
+                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+                :disabled="!options.length"
+              >
+                <option
+                  value=""
+                  class="bg-eldra-ink text-eldra-accent-text"
+                >
+                  No published item selected
+                </option>
+                <option
+                  v-for="option in filteredOptions"
+                  :key="optionKey(option)"
+                  :value="optionKey(option)"
+                  class="bg-eldra-ink text-eldra-accent-text"
+                >
+                  {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
+                </option>
+              </select>
+            </label>
+
+            <label class="block">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
+                Quantity
+              </span>
+              <input
+                v-model="quantity"
+                inputmode="numeric"
+                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+              >
+            </label>
+
+            <label class="block lg:col-span-2">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
+                Custom item name
+              </span>
+              <input
+                v-model="customName"
+                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+                placeholder="Used when no published item is selected"
+              >
+            </label>
+
+            <label class="block lg:col-span-2">
+              <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
+                Notes
+              </span>
+              <input
+                v-model="notes"
+                class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
+                placeholder="Optional"
+              >
+            </label>
           </div>
-          <div class="mt-1 text-sm text-eldra-text-soft">
-            Add published equipment, or a custom item of your own.
-          </div>
+
+          <button
+            type="button"
+            class="eldra-button mt-3 min-h-11 w-full rounded-none px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!canAdd || saving"
+            @click="submitAdd"
+          >
+            {{ saving ? 'Saving…' : 'Add Item' }}
+          </button>
         </div>
-      </div>
-
-      <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_140px]">
-        <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
-            Search published items
-          </span>
-          <input
-            v-model="search"
-            type="search"
-            class="eldra-input mb-2 min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-            :placeholder="options.length ? 'Search by name…' : 'No item content is bound to this World'"
-            :disabled="!options.length"
-          >
-          <select
-            v-model="selectedKey"
-            class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-            :disabled="!options.length"
-          >
-            <option
-              value=""
-              class="bg-eldra-ink text-eldra-accent-text"
-            >
-              No published item selected
-            </option>
-            <option
-              v-for="option in filteredOptions"
-              :key="optionKey(option)"
-              :value="optionKey(option)"
-              class="bg-eldra-ink text-eldra-accent-text"
-            >
-              {{ option.title }}<template v-if="option.sourceBook"> · {{ option.sourceBook }}</template>
-            </option>
-          </select>
-        </label>
-
-        <label class="block">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
-            Quantity
-          </span>
-          <input
-            v-model="quantity"
-            inputmode="numeric"
-            class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-          >
-        </label>
-
-        <label class="block lg:col-span-2">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
-            Custom item name
-          </span>
-          <input
-            v-model="customName"
-            class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-            placeholder="Used when no published item is selected"
-          >
-        </label>
-
-        <label class="block lg:col-span-2">
-          <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">
-            Notes
-          </span>
-          <input
-            v-model="notes"
-            class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-white"
-            placeholder="Optional"
-          >
-        </label>
-      </div>
-
-      <button
-        type="button"
-        class="eldra-button mt-3 min-h-11 w-full rounded-none px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-        :disabled="!canAdd || saving"
-        @click="submitAdd"
-      >
-        {{ saving ? 'Saving…' : 'Add Item' }}
-      </button>
-
-      <p
-        v-if="errorMessage"
-        class="mt-3 rounded-none border border-red-900 bg-red-950/40 p-3 text-sm text-red-300"
-      >
-        {{ errorMessage }}
-      </p>
-    </div>
+      </template>
+    </UModal>
 
     <!-- Carried ------------------------------------------------------------ -->
     <div>
@@ -269,8 +271,23 @@ function submitAdd() {
         <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
           Carried
         </div>
-        <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
-          {{ items.length }} Item{{ items.length === 1 ? '' : 's' }}
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="eldra-gold-chip rounded-none border px-3 py-1 text-xs">
+            {{ items.length }} Item{{ items.length === 1 ? '' : 's' }}
+          </div>
+          <button
+            type="button"
+            class="eldra-button inline-flex min-h-9 items-center gap-1.5 rounded-none px-3 text-xs font-semibold pointer-coarse:min-h-11"
+            aria-haspopup="dialog"
+            @click="addOpen = true"
+          >
+            <UIcon
+              name="i-lucide-plus"
+              class="h-3.5 w-3.5"
+              aria-hidden="true"
+            />
+            Add item
+          </button>
         </div>
       </div>
 

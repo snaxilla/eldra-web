@@ -79,8 +79,14 @@ describe('resolveTheme -- platform fallback', () => {
     })
   })
 
-  it('maps Nuxt UI colors from the theme (Phase 2 keeps the existing palette)', () => {
-    expect(resolveTheme().nuxtUi).toEqual({ primary: 'green', neutral: 'slate' })
+  it('maps Nuxt UI colors from the theme (Fantasy: gold primary)', () => {
+    expect(resolveTheme().nuxtUi).toEqual({ primary: 'gold', neutral: 'slate' })
+  })
+
+  it('never themes semantic status colors (success/warning/error keep their meaning)', () => {
+    for (const theme of ELDRA_THEMES) {
+      expect(Object.keys(theme.nuxtUi).sort()).toEqual(['neutral', 'primary'])
+    }
   })
 })
 
@@ -247,4 +253,40 @@ describe('isPathInWorld -- World theme scope', () => {
     expect(isPathInWorld('/login', '12')).toBe(false)
     expect(isPathInWorld('/worlds/12', null)).toBe(false)
   })
+})
+
+describe('shared components migrated onto theme tokens', () => {
+  // Phase 3B-2 migrated these shared surfaces off hardcoded Fantasy colors.
+  // New markup must use token utilities (border-eldra-accent/24,
+  // text-eldra-text-soft, ...) so other themes can restyle it.
+  const migrated = [
+    'app/layouts/world-workspace.vue',
+    'app/components/AppTopbar.vue',
+    'app/components/AppSidebar.vue',
+    'app/components/MobileBottomNav.vue',
+    'app/components/EldraAccessibilityMenu.vue',
+    'app/components/world/WorldWorkspaceSidebar.vue',
+    'app/components/world/WorldEntityContextDrawer.vue',
+    'app/components/world/WorldEntityRelationshipsPanel.vue',
+    'app/components/world/WorldEntityInteractivePage.vue',
+    'app/components/world/WorldPagePresentationPanel.vue',
+    'app/components/world/WorldThemeSettingsPanel.vue',
+    'app/components/world/map/MapBreadcrumbs.vue',
+    'app/components/world/map/MapBuildBanner.vue',
+    'app/components/world/map/MapImageOverlayEditor.vue',
+    'app/components/world/map/MapLayerPanel.vue',
+    'app/components/world/map/MapPinEditor.vue',
+    'app/components/world/map/MapPinEditorHeader.vue',
+    'app/components/world/map/MapRoadEditor.vue',
+    'app/components/world/map/MapSelectedPinCard.vue'
+  ]
+  const forbidden = /-\[(?:rgba\(\s*201\s*,\s*164\s*,\s*90|#(?:c9a45a|fff7df|efe2bd|d8ceb8|b5a88d|9f9278|f5e7bd)\])/i
+
+  for (const file of migrated) {
+    it(`${file} has no hardcoded Fantasy color classes`, () => {
+      const source = readFileSync(fileURLToPath(new URL(`../../../${file}`, import.meta.url)), 'utf8')
+      const offending = source.split('\n').filter((line) => forbidden.test(line))
+      expect(offending).toEqual([])
+    })
+  }
 })

@@ -117,6 +117,10 @@ const navItems = computed(() => [
           <UIcon :name="showPins ? 'i-lucide-eye' : 'i-lucide-eye-off'" class="h-4 w-4" />
         </button>
 
+        <div class="mb-2">
+          <EldraAccessibilityMenu compact fill />
+        </div>
+
         <NuxtLink
           to="/"
           class="eldra-sidebar-switch flex h-10 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
@@ -214,6 +218,8 @@ const navItems = computed(() => [
             Hide map markers without deleting them.
           </div>
         </div>
+
+        <EldraAccessibilityMenu />
 
         <NuxtLink
           to="/"

@@ -43,6 +43,8 @@ const pageTitle = computed(() => {
           <span class="truncate max-w-[160px]">{{ activeWorld.name }}</span>
         </div>
 
+        <EldraAccessibilityMenu compact />
+
         <NuxtLink
           to="/"
           class="rounded-full border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/[0.08]"

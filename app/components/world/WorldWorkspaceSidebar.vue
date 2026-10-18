@@ -46,12 +46,22 @@ const navItems = computed(() => [
 </script>
 
 <template>
-  <aside class="eldra-sidebar-ornate eldra-frame-corners flex h-full min-h-0 flex-col border-r border-[rgba(201,164,90,0.24)] bg-[linear-gradient(to_bottom,#090806,#11100d_48%,#070604)] text-[#efe2bd]">
+  <!-- Background/border/text come from .eldra-sidebar-ornate (theme
+       tokens, themes/surfaces.css); the full-bleed World Map adds
+       .eldra-glass-surface from the layout. -->
+  <aside class="eldra-sidebar-ornate relative isolate flex h-full min-h-0 flex-col border-r">
+    <span
+      class="eldra-ornament-frame"
+      :class="collapsed ? 'eldra-ornament-frame--compact' : ''"
+      aria-hidden="true"
+    />
+
     <!-- COLLAPSED -->
     <template v-if="collapsed">
       <div class="flex items-center justify-center p-3">
         <button
           class="inline-flex h-10 w-10 items-center justify-center rounded-none border border-[rgba(201,164,90,0.24)] text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.48)] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+          aria-label="Expand navigation"
           @click="emit('toggle-collapse')"
         >
           <UIcon name="i-lucide-panel-left-open" class="h-5 w-5" />
@@ -60,7 +70,7 @@ const navItems = computed(() => [
 
       <div class="flex items-center justify-center px-2 pb-3">
         <div class="text-center">
-          <div class="text-sm font-semibold text-[#fff7df]">Eldra</div>
+          <div class="eldra-display text-sm text-[#fff7df]">Eldra</div>
         </div>
       </div>
 
@@ -135,20 +145,24 @@ const navItems = computed(() => [
     <template v-else>
       <div class="eldra-sidebar-brand p-4">
         <div class="flex items-center justify-between">
-          <div>
-            <div class="eldra-sidebar-brandmark text-2xl font-semibold text-[#fff7df]">Eldra</div>
-            <div class="text-xs uppercase tracking-[0.28em] text-[#9f9278]">World Platform</div>
+          <div class="flex items-center gap-3">
+            <span class="eldra-ornament-emblem" aria-hidden="true" />
+            <div>
+              <div class="eldra-sidebar-brandmark eldra-display text-2xl text-[#fff7df]">Eldra</div>
+              <div class="text-xs uppercase tracking-[0.28em] text-[#9f9278]">World Platform</div>
+            </div>
           </div>
 
           <button
             class="rounded-none border border-[rgba(201,164,90,0.24)] p-2 text-[#b5a88d] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]"
+            aria-label="Collapse navigation"
             @click="emit('toggle-collapse')"
           >
             <UIcon name="i-lucide-panel-left-close" class="h-4 w-4" />
           </button>
         </div>
 
-        <div class="mt-4 text-sm text-[#d8ceb8]">
+        <div class="eldra-display mt-4 text-base leading-snug text-[#efe2bd]">
           {{ world?.name }}
         </div>
       </div>

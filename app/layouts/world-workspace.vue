@@ -181,6 +181,35 @@ const pageKey = computed(() => {
   return maybePage || 'world-map'
 })
 
+// Theming Phase 3A: the World Map (and only the World Map) is full-bleed --
+// at `md`+ the map extends behind the workspace sidebar, which floats over
+// it as darkglass instead of taking its own grid column. Every other page
+// keeps the existing two-column grid untouched. Below `md` nothing changes:
+// the sidebar is the same off-canvas drawer on every page.
+const isFullBleedMap = computed(() => pageKey.value === 'world-map')
+
+const sidebarWidth = computed(() => (leftCollapsed.value ? '68px' : '280px'))
+
+const gridStyle = computed(() => ({
+  '--wksp-cols': isFullBleedMap.value ? 'minmax(0,1fr)' : `${sidebarWidth.value} minmax(0,1fr)`
+}))
+
+// Map overlays anchored to the left edge (breadcrumbs, tool bar, layer
+// panel, Leaflet zoom) offset themselves by this so the floating sidebar
+// never covers them. 0 below `md` and on every non-map page.
+const mapInsetClass = computed(() => {
+  if (!isFullBleedMap.value) return ''
+  return leftCollapsed.value ? 'md:[--eldra-map-inset-left:80px]' : 'md:[--eldra-map-inset-left:292px]'
+})
+
+const sidebarWrapperDesktopClass = computed(() => {
+  if (!isFullBleedMap.value) return 'md:static md:z-auto md:w-auto'
+  return [
+    'md:absolute md:inset-y-0 md:left-0 md:z-40',
+    leftCollapsed.value ? 'md:w-[68px]' : 'md:w-[280px]'
+  ]
+})
+
 const presentationState = useState<{
   worldKey: string
   pageKey: string
@@ -245,8 +274,9 @@ const backgroundImageUrl = computed(() => {
 <template>
   <div class="h-screen w-screen overflow-hidden text-slate-100 bg-[#0a0d12]">
     <div
-      class="grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
-      :style="{ '--wksp-cols': leftCollapsed ? '68px minmax(0,1fr)' : '280px minmax(0,1fr)' }"
+      class="relative grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
+      :class="isFullBleedMap ? 'eldra-map-shell' : ''"
+      :style="gridStyle"
     >
       <!-- Mobile drawer backdrop. Dismiss-by-tap; not rendered at all at
            `md`+, matching the fixed-backdrop convention already used by
@@ -264,13 +294,14 @@ const backgroundImageUrl = computed(() => {
            markup/behavior is byte-for-byte what it was before Phase 0. -->
       <div
         ref="mobileDrawerRef"
-        class="fixed inset-y-0 left-0 z-[100] w-[280px] max-w-[85vw] -translate-x-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 md:pt-0 md:pb-0 md:transition-none"
-        :class="mobileDrawerOpen ? 'translate-x-0' : ''"
+        class="fixed inset-y-0 left-0 z-[100] w-[280px] max-w-[85vw] -translate-x-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out md:max-w-none md:translate-x-0 md:pt-0 md:pb-0 md:transition-none"
+        :class="[mobileDrawerOpen ? 'translate-x-0' : '', sidebarWrapperDesktopClass]"
         role="dialog"
         aria-modal="true"
         aria-label="World navigation"
       >
         <WorldWorkspaceSidebar
+          :class="isFullBleedMap ? 'eldra-glass-surface' : ''"
           :world="world"
           :collapsed="leftCollapsed"
           :mode="mode"
@@ -311,7 +342,7 @@ const backgroundImageUrl = computed(() => {
         <UIcon name="i-lucide-menu" class="h-5 w-5" />
       </button>
 
-      <div class="min-w-0 overflow-hidden relative">
+      <div class="min-w-0 overflow-hidden relative" :class="mapInsetClass">
         <div class="absolute inset-0 bg-[linear-gradient(to_bottom,#0b0d12,#0d1117_40%,#10141b)]"></div>
 
         <div

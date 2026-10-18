@@ -1157,21 +1157,32 @@ onBeforeUnmount(() => {
 
 :deep(.leaflet-control-zoom) {
   margin-top: 72px !important;
-  margin-left: 16px !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 18px !important;
+  /* --eldra-map-inset-left: width of the floating workspace sidebar on the
+     full-bleed World Map (0 elsewhere) -- keeps zoom clear of it. */
+  margin-left: calc(16px + var(--eldra-map-inset-left, 0px)) !important;
+  border: 1px solid var(--eldra-border-strong) !important;
+  border-radius: var(--eldra-radius) !important;
   overflow: hidden;
+  background: rgb(var(--eldra-panel-rgb) / max(var(--eldra-panel-alpha), 0.8)) !important;
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  transition: margin-left var(--eldra-motion-duration) ease;
 }
 
 :deep(.leaflet-control-zoom a) {
-  background: rgba(8, 16, 27, 0.9) !important;
-  color: #e2e8f0 !important;
+  background: transparent !important;
+  color: var(--eldra-text-strong) !important;
   border: 0 !important;
+  border-radius: 0 !important;
+}
+
+:deep(.leaflet-control-zoom a + a) {
+  border-top: 1px solid var(--eldra-border) !important;
 }
 
 :deep(.leaflet-control-zoom a:hover) {
-  background: rgba(20, 30, 48, 0.98) !important;
+  background: rgb(var(--eldra-accent-rgb) / 0.16) !important;
 }
 
 :deep(.eldra-leaflet-pin) {
@@ -1180,16 +1191,16 @@ onBeforeUnmount(() => {
 }
 
 :deep(.eldra-pin-tooltip) {
-  background: rgba(8, 16, 27, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #e2e8f0;
+  background: rgb(var(--eldra-panel-rgb) / 0.92);
+  border: 1px solid var(--eldra-border);
+  border-radius: var(--eldra-radius);
+  color: var(--eldra-text-strong);
   font-size: 12px;
   padding: 4px 10px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
 :deep(.eldra-pin-tooltip::before) {
-  border-top-color: rgba(255, 255, 255, 0.12) !important;
+  border-top-color: var(--eldra-border) !important;
 }
 </style>

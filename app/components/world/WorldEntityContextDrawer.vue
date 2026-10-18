@@ -47,7 +47,8 @@ const contextRailVariant = computed(() =>
 )
 
 const contextRailClass = computed(() => [
-  'eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-30 h-full border-l backdrop-blur',
+  // Theming Phase 3A: shared darkglass + theme ornaments (surfaces.css).
+  'eldra-ornate-panel eldra-glass-surface isolate fixed right-0 top-0 z-30 h-full border-l',
   contextRailVariant.value === 'sheet'
     ? 'w-full max-w-[440px]'
     : 'w-[380px] max-w-[calc(100vw-1rem)]'
@@ -318,8 +319,10 @@ function readMore() {
       :data-world-context-rail="contextRailVariant === 'workspace' ? 'true' : undefined"
       :class="contextRailClass"
     >
+      <span class="eldra-ornament-frame" aria-hidden="true" />
+
       <div class="flex h-full flex-col">
-        <div class="flex items-start justify-between gap-3 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+        <div class="relative flex items-start justify-between gap-3 px-5 pb-5 pt-4">
           <div class="min-w-0">
             <button
               v-if="canGoBack"
@@ -335,18 +338,21 @@ function readMore() {
               {{ eyebrowLabel }}
             </div>
 
-            <div class="mt-1 break-words text-xl font-semibold text-white">
+            <h2 class="eldra-display mt-1 break-words text-xl text-white">
               {{ entityTitle }}
-            </div>
+            </h2>
           </div>
 
           <button
             class="shrink-0 text-[#9f9278] transition hover:text-white"
             type="button"
+            aria-label="Close details"
             @click="close"
           >
             <UIcon name="i-lucide-x" class="h-5 w-5" />
           </button>
+
+          <span class="eldra-ornament-divider absolute inset-x-5 bottom-0" aria-hidden="true" />
         </div>
 
         <div class="flex-1 overflow-y-auto p-5">

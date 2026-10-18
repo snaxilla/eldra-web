@@ -320,7 +320,7 @@ const groupedSpells = computed<SpellGroup[]>(() => {
             {{ group.label }}
           </div>
 
-          <div class="mt-2 grid gap-2 md:grid-cols-2">
+          <div class="mt-2 grid gap-2 @2xl:grid-cols-2">
             <article
               v-for="entry in group.entries"
               :key="entry.instanceId"

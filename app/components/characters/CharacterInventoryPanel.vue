@@ -283,7 +283,7 @@ function submitAdd() {
 
       <div
         v-else
-        class="mt-3 grid gap-2 md:grid-cols-2"
+        class="mt-3 grid gap-2 @2xl:grid-cols-2"
       >
         <article
           v-for="item in items"

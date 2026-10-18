@@ -31,7 +31,7 @@
 // to REFERENCE_CATEGORIES in characterDerivedValues.ts is the entire change
 // needed for it to appear here, correctly grouped and labelled.
 
-import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
+import CharacterProficiencyList from '~/components/characters/CharacterProficiencyList.vue'
 import CharacterSaveList from '~/components/characters/CharacterSaveList.vue'
 import CharacterAbilityGrid from '~/components/characters/CharacterAbilityGrid.vue'
 import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel.vue'
@@ -39,12 +39,18 @@ import type { DerivedValue } from './characterDerivedValues'
 import type { CharacterAbilityRow } from './CharacterAbilityGrid.vue'
 import type { CharacterSaveRow } from './CharacterSaveList.vue'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   abilityEntries?: readonly DerivedValue[]
   saveEntries?: readonly DerivedValue[]
   // One entry per Rule Category routed to this region, already selected by
   // the page from the same `derivedRegions` every other section reads.
   referenceRegions?: readonly { category: string; label: string; entries: DerivedValue[] }[]
+  // Phase 4B. Values the package placed in the reference rail
+  // (`presentation.sheet: 'reference'` -- passives, senses, ...), and the
+  // proficiency category's entries for CharacterProficiencyList. Either
+  // region is omitted when it has nothing to show.
+  presentedEntries?: readonly DerivedValue[]
+  proficiencyEntries?: readonly DerivedValue[]
   // Rendered only while derived values are still being evaluated; the page
   // owns the distinction between "loading" and "unavailable".
   pending?: boolean
@@ -58,6 +64,8 @@ withDefaults(defineProps<{
   abilityEntries: () => [],
   saveEntries: () => [],
   referenceRegions: () => [],
+  presentedEntries: () => [],
+  proficiencyEntries: () => [],
   pending: false,
   unavailableMessage: '',
   rolling: false
@@ -67,68 +75,101 @@ const emit = defineEmits<{
   'roll-ability': [CharacterAbilityRow]
   'roll-save': [CharacterSaveRow]
 }>()
+
+const hasProficiencies = computed(() =>
+  props.proficiencyEntries.some((entry) => entry.value === true && entry.label && entry.tags?.length)
+)
 </script>
 
 <template>
-  <div class="grid gap-4">
+  <!-- Phase 4B: one continuous reference column (the host supplies the
+       surface) with quiet section headings -- not a stack of cards. -->
+  <div class="grid gap-5">
     <p
       v-if="pending"
-      class="rounded-none border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
+      class="border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
     >
       Evaluating this character against the World’s rules…
     </p>
 
     <p
       v-else-if="unavailableMessage"
-      class="rounded-none border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
+      class="border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
     >
       {{ unavailableMessage }}
     </p>
 
     <template v-else>
-      <!-- Abilities lead the reference region (Header Phase H2) -- read
-           constantly, changed almost never, exactly the profile this
-           region exists for. Score and modifier always paired; see
-           CharacterAbilityGrid.vue's own header for why no standalone
-           modifier card is ever rendered. -->
-      <CharacterSheetSection
+      <section
         v-if="abilityEntries.length"
-        heading="Abilities"
-        density="compact"
+        aria-labelledby="sheet-ref-abilities"
       >
-        <div class="mt-3">
-          <CharacterAbilityGrid
-            :entries="abilityEntries"
-            :rolling="rolling"
-            @roll="emit('roll-ability', $event)"
-          />
-        </div>
-      </CharacterSheetSection>
+        <h3
+          id="sheet-ref-abilities"
+          class="eldra-sheet-heading"
+        >
+          Abilities
+        </h3>
+        <CharacterAbilityGrid
+          :entries="abilityEntries"
+          :rolling="rolling"
+          @roll="emit('roll-ability', $event)"
+        />
+      </section>
 
-      <CharacterSheetSection
+      <section
         v-if="saveEntries.length"
-        heading="Saving Throws"
-        density="compact"
+        aria-labelledby="sheet-ref-saves"
       >
-        <div class="mt-3">
-          <CharacterSaveList
-            :entries="saveEntries"
-            :rolling="rolling"
-            @roll="emit('roll-save', $event)"
-          />
-        </div>
-      </CharacterSheetSection>
+        <h3
+          id="sheet-ref-saves"
+          class="eldra-sheet-heading"
+        >
+          Saving Throws
+        </h3>
+        <CharacterSaveList
+          :entries="saveEntries"
+          :rolling="rolling"
+          @roll="emit('roll-save', $event)"
+        />
+      </section>
 
-      <CharacterSheetSection
+      <section
+        v-if="presentedEntries.length"
+        aria-labelledby="sheet-ref-presented"
+      >
+        <h3
+          id="sheet-ref-presented"
+          class="eldra-sheet-heading"
+        >
+          Reference
+        </h3>
+        <CharacterDerivedPanel :entries="[...presentedEntries]" />
+      </section>
+
+      <section
         v-for="region in referenceRegions"
         :key="region.category"
-        :heading="region.label"
-        density="compact"
+        :aria-label="region.label"
       >
-        <div class="mt-3">
-          <CharacterDerivedPanel :entries="region.entries" />
-        </div>
-      </CharacterSheetSection>
+        <h3 class="eldra-sheet-heading">
+          {{ region.label }}
+        </h3>
+        <CharacterDerivedPanel :entries="region.entries" />
+      </section>
+
+      <section
+        v-if="hasProficiencies"
+        aria-labelledby="sheet-ref-proficiencies"
+      >
+        <h3
+          id="sheet-ref-proficiencies"
+          class="eldra-sheet-heading"
+        >
+          Proficiencies &amp; Languages
+        </h3>
+        <CharacterProficiencyList :entries="proficiencyEntries" />
+      </section>
     </template>
   </div>
 </template>

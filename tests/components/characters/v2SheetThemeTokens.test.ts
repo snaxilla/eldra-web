@@ -19,7 +19,7 @@ const v2Files = [
 
 // Any 3/6/8-digit hex colour, or an rgb()/rgba() written with literal
 // channel numbers. Theme-agnostic black shadows (rgba(0,0,0,...)) are allowed.
-const LITERAL = /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b(?![0-9a-fA-F])|rgba?\((?!0,\s*0,\s*0\b)\s*\d/g
+const LITERAL = /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b(?![0-9a-fA-F])|rgba?\((?!0[,\s]+0[,\s]+0\b)\s*\d/g
 
 describe('V2 character sheet theme tokens', () => {
   it('finds the V2 files', () => {

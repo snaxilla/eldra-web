@@ -94,8 +94,12 @@ const props = withDefaults(defineProps<{
   groups: readonly CharacterResourceGroup[]
   saving?: boolean
   pendingPoolIds?: ReadonlySet<string>
+  // Phase 4B: 'inline' sets each group's label beside its pools, in one
+  // wrapping row -- the V2 header's compact resource strip.
+  layout?: 'stacked' | 'inline'
 }>(), {
   saving: false,
+  layout: 'stacked',
   pendingPoolIds: () => new Set()
 })
 
@@ -157,17 +161,21 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
 <template>
   <div
     v-if="groups.length"
-    class="grid gap-2.5"
+    :class="layout === 'inline' ? 'flex flex-wrap items-center gap-x-5 gap-y-2' : 'grid gap-2.5'"
   >
     <div
       v-for="group in groups"
       :key="group.id"
+      :class="layout === 'inline' ? 'flex flex-wrap items-center gap-2' : ''"
     >
       <div class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">
         {{ group.label }}
       </div>
 
-      <div class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      <div
+        class="flex flex-wrap items-center gap-x-4 gap-y-1.5"
+        :class="layout === 'inline' ? '' : 'mt-1.5'"
+      >
         <div
           v-for="pool in group.pools"
           :key="pool.id"

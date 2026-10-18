@@ -322,20 +322,21 @@ import CharacterDerivedPanel from '~/components/characters/CharacterDerivedPanel
 import CharacterActionsPanel from '~/components/characters/CharacterActionsPanel.vue'
 import CharacterProgressionPanel from '~/components/characters/CharacterProgressionPanel.vue'
 import ContentPresentationPanel from '~/components/characters/ContentPresentationPanel.vue'
-import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
 import CharacterStatChip from '~/components/characters/CharacterStatChip.vue'
 import CharacterEmptyState from '~/components/characters/CharacterEmptyState.vue'
 import CharacterEncounterPanel from '~/components/characters/CharacterEncounterPanel.vue'
 import CharacterConditionsPanel from '~/components/characters/CharacterConditionsPanel.vue'
 import CharacterSheetShell from '~/components/characters/CharacterSheetShell.vue'
-import CharacterSheetCommandCenter from '~/components/characters/CharacterSheetCommandCenter.vue'
+import CharacterSheetHeader from '~/components/characters/CharacterSheetHeader.vue'
+import CharacterResourceOrbs from '~/components/characters/CharacterResourceOrbs.vue'
 import CharacterReferencePanels from '~/components/characters/CharacterReferencePanels.vue'
 import CharacterSkillList from '~/components/characters/CharacterSkillList.vue'
 import WorldEntityContextDrawer from '~/components/world/WorldEntityContextDrawer.vue'
 import WorldRollTray from '~/components/world/WorldRollTray.vue'
 import type { CharacterAction } from '~/components/characters/CharacterActionsPanel.vue'
 import type { CharacterSkillRow } from '~/components/characters/CharacterSkillList.vue'
-import { resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
+import { isAttackCapableAction, resolveActionDamage, formatActionDamage } from '~/lib/content-actions'
+import { spellSlotsToCharacterResources } from '~/components/characters/characterResourcePresentation'
 import type { CharacterAbilityRow } from '~/components/characters/CharacterAbilityGrid.vue'
 import type { CharacterSaveRow } from '~/components/characters/CharacterSaveList.vue'
 import {
@@ -343,12 +344,19 @@ import {
   HOMED_CATEGORIES,
   REFERENCE_CATEGORIES,
   SAVES_CATEGORY,
-  SKILLS_CATEGORY
+  SKILLS_CATEGORY,
+  formatDerivedValue,
+  selectPresentedValues
 } from '~/components/characters/characterDerivedValues'
+import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import { useCharacterProgression } from '~/composables/useCharacterProgression'
-import { useCharacterSheetLayout } from '~/composables/useCharacterSheetLayout'
+import {
+  useCharacterSheetLayout,
+  type CharacterSheetContext,
+  type CharacterSheetContextRoll
+} from '~/composables/useCharacterSheetLayout'
 import { useWorldRolls } from '~/composables/useWorldRolls'
 import type { AssembledInventoryItem } from '~/lib/characters/inventory'
 import type { AssembledSpellEntry } from '~/lib/characters/spellcasting'
@@ -642,9 +650,7 @@ const {
   hitDiceMax,
   hitDiceAvailable,
   hitDieSize,
-  armorClass,
-  proficiencyBonus,
-  speed,
+  summaryValues,
   characterLevel,
   spellcastingIsCaster,
   spellcastingAbilityMod,
@@ -758,15 +764,31 @@ const vitalsError = computed(() =>
 // only copy.
 // ---------------------------------------------------------------------------
 
+const abilityEntries = computed(() => derived.value?.byCategory?.[ABILITIES_CATEGORY] ?? [])
+const saveEntries = computed(() => derived.value?.byCategory?.[SAVES_CATEGORY] ?? [])
+const skillEntries = computed(() => derived.value?.byCategory?.[SKILLS_CATEGORY] ?? [])
+
+// Phase 4B: which sections this character has -- from what the package
+// and the character actually provide, never a system id. A package with
+// no abilities/saves has no Stats section, one with no skills category no
+// Skills section, and Spells exists only for a character who casts or
+// knows a spell.
+const sectionAvailability = computed(() => ({
+  stats: Boolean(abilityEntries.value.length || saveEntries.value.length),
+  skills: skillEntries.value.length > 0,
+  spells: spellcastingIsCaster.value === true || spellItems.value.length > 0
+}))
+
 const {
-  tabs,
+  sections,
   activeTab,
+  mainSection,
   setActiveTab,
   context,
   contextEntity,
   openContext,
   closeContext
-} = useCharacterSheetLayout()
+} = useCharacterSheetLayout(sectionAvailability)
 
 // ---------------------------------------------------------------------------
 // WHICH RULE CATEGORY RENDERS WHERE -- Desktop IA pass, corrected by
@@ -788,13 +810,39 @@ const {
 // as the engine produced it.
 // ---------------------------------------------------------------------------
 
-const abilityEntries = computed(() => derived.value?.byCategory?.[ABILITIES_CATEGORY] ?? [])
-const saveEntries = computed(() => derived.value?.byCategory?.[SAVES_CATEGORY] ?? [])
-const skillEntries = computed(() => derived.value?.byCategory?.[SKILLS_CATEGORY] ?? [])
+
+// Reference regions, minus anything the header's summary strip already
+// shows (Armor Class) -- one home per fact.
+const summaryIds = computed(() => new Set(summaryValues.value.map((entry) => entry.id)))
 
 const referenceRegions = computed(() =>
-  derivedRegions.value.filter((region) => REFERENCE_CATEGORIES.includes(region.category))
+  derivedRegions.value
+    .filter((region) => REFERENCE_CATEGORIES.includes(region.category))
+    .map((region) => ({ ...region, entries: region.entries.filter((entry) => !summaryIds.value.has(entry.id)) }))
+    .filter((region) => region.entries.length > 0)
 )
+
+// Phase 4B rail regions: package-placed reference values (F1
+// `presentation.sheet: 'reference'`) and the proficiency category's flags.
+const presentedReferenceEntries = computed(() =>
+  selectPresentedValues(derived.value?.byCategory ?? {}, 'reference').filter((entry) => !summaryIds.value.has(entry.id))
+)
+const proficiencyEntries = computed(() => derived.value?.byCategory?.['core.proficiency'] ?? [])
+
+// Spell Slots live with spells (the header carries class resources only).
+const spellSlotGroups = computed(() => spellSlotsToCharacterResources(slotLevels.value))
+
+function handleSpellSlotExpend({ poolId }: { groupId: string; poolId: string; amount: number }) {
+  mutations.spellcasting.expendSlot(Number(poolId))
+}
+
+function handleSpellSlotRestore({ poolId }: { groupId: string; poolId: string; amount: number }) {
+  mutations.spellcasting.restoreSlot(Number(poolId))
+}
+
+// Rest is offered when the package declares the Health values the
+// Recovery System acts on; a package without them gets no Rest control.
+const restAvailable = computed(() => maxHp.value !== null)
 
 const otherDerivedRegions = computed(() =>
   derivedRegions.value.filter((region) => !HOMED_CATEGORIES.includes(region.category))
@@ -881,15 +929,30 @@ function openActionContext(action: CharacterAction) {
   if (action.usage) lines.push(`Usage: ${action.usage}`)
   if (action.sourceBook) lines.push(`Source: ${action.sourceBook}`)
 
-  openContext({
+  // Phase 4B: an attack-capable row's own two rolls, offered again in the
+  // inspector -- the same handlers the row calls. Spells keep Cast on
+  // their row, where Cast Configuration lives.
+  const rolls: CharacterSheetContextRoll[] = []
+  const handlers: Record<string, () => void> = {}
+  if (isAttackCapableAction(action)) {
+    if (action.attackBonus !== undefined) {
+      rolls.push({ id: 'attack', label: 'Attack', value: signedNumber(action.attackBonus) })
+      handlers.attack = () => rollActionAttack({ actionId: action.id })
+    }
+    rolls.push({ id: 'damage', label: 'Damage', value: resolvedDamage ? formatActionDamage(resolvedDamage) : action.damage || '—' })
+    handlers.damage = () => rollActionDamage({ actionId: action.id })
+  }
+
+  openSheetContext({
     kind: 'action',
     id: action.id,
     title: action.name,
     eyebrow: action.actionType || 'Action',
     detailLines: lines,
     summary: action.description || '',
-    tags: [action.category]
-  })
+    tags: [action.category],
+    rolls
+  }, handlers)
 }
 
 // Character Sheet Body Phase 1B.1 -- reads the canonical spell mechanics
@@ -918,7 +981,7 @@ function openSpellContext(spell: AssembledSpellEntry) {
   // permanently-blank '' this used to hardcode.
   const summary = mechanics?.description || spell.entry?.actions?.[0]?.description || ''
 
-  openContext({
+  openSheetContext({
     kind: 'spell',
     id: spell.instanceId,
     title: spell.title,
@@ -941,7 +1004,7 @@ function openItemContext(item: AssembledInventoryItem) {
   if (item.equipped) tags.push('Equipped')
   if (item.attuned) tags.push('Attuned')
 
-  openContext({
+  openSheetContext({
     kind: 'item',
     id: item.instanceId,
     title: item.title,
@@ -961,7 +1024,7 @@ function openFeatureContext(label: string, presentation: PresentationEntry | nul
     ...(presentation?.notes ?? [])
   ]
 
-  openContext({
+  openSheetContext({
     kind: 'feature',
     id: `${label}:${title}`,
     title,
@@ -977,58 +1040,72 @@ function openSkillContext(skill: CharacterSkillRow) {
   if (skill.qualifier) lines.push(`Ability: ${skill.qualifier.toUpperCase()}`)
   if (skill.proficient !== null) lines.push(`Proficient: ${skill.proficient ? 'Yes' : 'No'}`)
 
-  openContext({
+  openSheetContext({
     kind: 'skill',
     id: skill.key,
     title: skill.label,
     eyebrow: 'Skill',
     detailLines: lines,
     summary: '',
-    tags: skill.proficient ? ['Proficient'] : []
+    tags: skill.proficient ? ['Proficient'] : [],
+    rolls: [{ id: 'skill', label: 'Roll', value: skill.value }]
+  }, { skill: () => rollSkill(skill) })
+}
+
+// Conditions open in the same inspector, from the header's chips.
+function openConditionContext(condition: EncounterConditionView) {
+  const lines: string[] = []
+  if (condition.duration !== null) lines.push(`Duration: ${condition.duration} round${condition.duration === 1 ? '' : 's'}`)
+  if (condition.source) lines.push(`Source: ${condition.source}`)
+
+  openSheetContext({
+    kind: 'condition',
+    id: condition.id,
+    title: condition.label,
+    eyebrow: 'Condition',
+    detailLines: lines,
+    summary: '',
+    tags: []
   })
+}
+
+// ---------------------------------------------------------------------------
+// INSPECTOR ROLLS -- Phase 4B. A context payload names its rolls as data
+// (CharacterSheetContextRoll); the handlers that run them stay here, bound
+// to the same roll functions the originating row uses.
+// ---------------------------------------------------------------------------
+const contextRollHandlers = shallowRef<Record<string, () => void>>({})
+
+function openSheetContext(next: CharacterSheetContext, handlers: Record<string, () => void> = {}) {
+  contextRollHandlers.value = handlers
+  openContext(next)
+}
+
+watch(context, (current) => {
+  if (!current) contextRollHandlers.value = {}
+})
+
+function runContextRoll(roll: CharacterSheetContextRoll) {
+  contextRollHandlers.value[roll.id]?.()
 }
 </script>
 
 <template>
   <!-- World Backdrop Activation. `bg-transparent`, matching every sibling
-       world-workspace page (characters/index.vue, entities/[entityId]/
-       index.vue, WorldEntityInteractivePage.vue all use the identical
-       "h-full overflow-y-auto bg-transparent" root) -- NOT `eldra-ground`.
-       `world-workspace.vue`'s own layout already paints the page's Ground
-       material (a dark gradient, always present) plus the World's
-       configured backdrop image/overlay (per-`pageKey`, via the existing
-       Page Setup / WorldPagePresentationPanel system -- see admin.vue's
-       'characters' Page Setup entry, which already targets exactly the
-       `pageKey` this route's own path resolves to) BEHIND this page's
-       `<slot />`. An opaque `eldra-ground` root here would paint over that
-       entire system and hide any backdrop a Game Admin configures -- which
-       is exactly what happened before this task: Material Phase 1 applied
-       `eldra-ground` directly to this page without realizing the
-       workspace layout already owns "the ground," the same way it already
-       does for every other World page. Nothing about the sheet's own
-       panels changes: CharacterSheetCommandCenter/CharacterSheetSection
-       are already semi-transparent + backdrop-blur (Glass/Frame material),
-       the same treatment WorldEntityInteractivePage.vue's panels already
-       use successfully over this exact backdrop system today. -->
+       world-workspace page: `world-workspace.vue` already paints the
+       page's Ground plus the World's configured backdrop (Page Setup /
+       WorldPagePresentationPanel, per `pageKey`) BEHIND this page's
+       `<slot />`. An opaque root here would hide that backdrop. The
+       sheet's own surfaces are translucent glass over it. -->
   <div class="h-full overflow-y-auto bg-transparent">
-    <!-- Sheet width, not dashboard width: capped at 1400px -- about the
-         measure a real two-column character sheet is printed at.
-
-         Phase 4B-0: this element is the `sheet` CONTAINER. Layout inside
-         the sheet (reference rail, skills split, command-center portrait
-         grid) responds to the width actually available here -- after the
-         workspace rail -- via `@container/sheet` queries, not to the
-         viewport. Below the rail threshold the sheet is one readable
-         column at whatever width it has.
-
-         Eldra's EXISTING context drawer (WorldEntityContextDrawer) floats
-         over the sheet instead of compressing it: it is `fixed` to the
-         viewport's right edge, so opening it never reflows the center
-         workspace. On a phone it goes full-width over the sheet, as on
-         every other page. -->
-    <div
-      class="@container/sheet mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8"
-    >
+    <!-- Phase 4B: this element is the `sheet` CONTAINER. Every layout
+         decision inside the sheet (header rows, reference rail, skills
+         column, inspector placement, phone sections) responds to the
+         width available HERE -- after the workspace rail -- via
+         `@container/sheet` queries, never the viewport. See
+         CharacterSheetShell.vue for the breakpoints. Wide enough at
+         1920px for the docked inspector lane. -->
+    <div class="@container/sheet mx-auto max-w-[1880px] px-3 pb-10 pt-3 sm:px-6 sm:pt-6">
       <div
         v-if="pending"
         class="text-sm text-eldra-text-faint"
@@ -1052,19 +1129,39 @@ function openSkillContext(skill: CharacterSkillRow) {
 
       <CharacterSheetShell
         v-else-if="blueprint"
-        :tabs="tabs"
-        :active-tab="activeTab"
-        @select-tab="setActiveTab"
+        :sections="sections"
+        :active-section="activeTab"
+        :main-section="mainSection"
+        :inspector-open="Boolean(context)"
+        :inspector-label="context ? `${context.title} details` : 'Details'"
+        @select-section="setActiveTab"
+        @close-inspector="closeContext"
       >
-        <!-- Command center: sticky within THIS page's own overflow-y-auto
-             root (see the class on this file's outermost div), never
-             `fixed` -- per the approved plan's own risk note on why. The
-             page's one Feature surface (§7.2/Design Language §8 Rule 1),
-             spent here. No height measurement needed -- there is no rail
-             left to offset beneath it. -->
-        <template #vitals>
-          <CharacterSheetCommandCenter
-            class="sticky top-0 z-20"
+        <!-- Phones: the bar that replaces the header once it scrolls away.
+             Name, HP (still the HP control's target -- tapping it scrolls
+             back up to the full header), and the first summary value. -->
+        <template #condensed>
+          <div class="eldra-glass-surface flex h-full items-center gap-3 border px-3 max-md:pl-16">
+            <span class="eldra-display min-w-0 flex-1 truncate text-base text-eldra-text-strong">
+              {{ identity.characterTitle || 'Character' }}
+            </span>
+            <span class="shrink-0 text-sm tabular-nums text-eldra-text-strong">
+              <span class="text-[0.55rem] font-semibold uppercase tracking-[0.16em] text-eldra-accent-text">HP</span>
+              {{ healthDraft.currentHp }}<span class="text-eldra-text-faint">/{{ maxHp ?? '—' }}</span>
+            </span>
+            <span
+              v-if="summaryValues[0]"
+              class="shrink-0 text-sm tabular-nums text-eldra-text-strong"
+            >
+              <span class="text-[0.55rem] font-semibold uppercase tracking-[0.16em] text-eldra-text-faint">{{ summaryValues[0].label }}</span>
+              {{ formatDerivedValue(summaryValues[0]) }}
+            </span>
+          </div>
+        </template>
+
+        <template #header>
+          <CharacterSheetHeader
+            class="max-md:pl-16"
             :world-id="worldId"
             :character-title="identity.characterTitle"
             :image-url="characterImageUrlDraft"
@@ -1072,64 +1169,49 @@ function openSkillContext(skill: CharacterSkillRow) {
             :portrait-saving="mutations.portrait.saving"
             :portrait-error="mutations.portrait.error"
             :level="characterLevel"
-            :class-name="characterClassName"
             :identity-rows="identity.identityRows"
             :health="healthDraft"
             :max-hp="maxHp"
             :hit-dice-max="hitDiceMax"
             :hit-dice-available="hitDiceAvailable"
             :hit-die-size="hitDieSize"
-            :armor-class="armorClass"
-            :speed="speed"
-            :proficiency-bonus="proficiencyBonus"
-            :is-caster="spellcastingIsCaster"
-            :spell-save-dc="spellcastingSaveDc"
-            :spell-attack-bonus="spellcastingAttackBonus"
-            :slot-levels="slotLevels"
+            :summary-values="summaryValues"
             :resources="characterResources"
             :resources-pending-ids="mutations.resources.pendingIds"
             :conditions="conditions.mine"
             :in-encounter="encounter.isInSelected"
             :is-my-turn="isMyTurn"
             :round="encounter.view?.round ?? null"
+            :rest-available="restAvailable"
             :saving="vitalsSaving"
             :error="vitalsError"
             :recovery-saving="mutations.recovery.saving"
             :recovery-error="mutations.recovery.error"
-            :spell-saving="mutations.spellcasting.saving"
             :remove-condition="mutations.conditions.remove"
             @save="mutations.recovery.save"
             @recovery="mutations.recovery.apply"
-            @expend-slot="mutations.spellcasting.expendSlot"
-            @restore-slot="mutations.spellcasting.restoreSlot"
             @expend-resource="mutations.resources.expend"
             @restore-resource="mutations.resources.restore"
             @update-portrait="mutations.portrait.update"
             @clear-portrait="mutations.portrait.clear"
+            @select-condition="openConditionContext"
           />
         </template>
 
-        <!-- Left region: reference data, read constantly, changed almost
-             never. Desktop only -- the same content is rendered again
-             inside the Character tab when the sheet container is narrower than 64rem (see that copy, and
-             CharacterReferencePanels.vue's header, for why duplicating
-             THESE panels specifically is safe).
-
-             REAL BROWSER DEFECT HOTFIX (D&D 2024 Character Rules Phase
-             2A.2) -- `:pending` is `derivedInitialLoading`, NOT the raw
-             `derivedPending`: the latter flips true on EVERY derived
-             refresh (every Resource-orb click, Confirm Progression, ...),
-             which used to blank Abilities/Saves behind the "Evaluating
-             this character..." placeholder even though a perfectly valid
-             derived character was already rendered. `derivedInitialLoading`
-             is true only before the FIRST successful load -- see
-             useCharacterSheet.ts's own `derivedRefresh` header for the
-             full lifecycle fix. -->
-        <template #left>
+        <!-- Reference rail -- rendered once; the shell places it (a column,
+             or the phone's Stats section). `:pending` is
+             `derivedInitialLoading`, not `derivedPending`, so a refresh
+             never blanks values already on screen. -->
+        <template
+          v-if="sectionAvailability.stats || proficiencyEntries.length || derivedInitialLoading || !derived"
+          #rail
+        >
           <CharacterReferencePanels
             :ability-entries="abilityEntries"
             :save-entries="saveEntries"
             :reference-regions="referenceRegions"
+            :presented-entries="presentedReferenceEntries"
+            :proficiency-entries="proficiencyEntries"
             :pending="derivedInitialLoading"
             :unavailable-message="derived ? '' : derivedUnavailable"
             :rolling="rollPending"
@@ -1138,121 +1220,219 @@ function openSkillContext(skill: CharacterSkillRow) {
           />
         </template>
 
-        <!-- Skills: persistent at every width, never behind a tab. Its own
-             column beside the tab body at >= 1536px, stacked above the tab
-             bar below that. -->
-        <template #skills>
-          <CharacterSheetSection
-            heading="Skills"
-            density="compact"
-          >
-            <div class="mt-3">
-              <CharacterSkillList
-                :entries="skillEntries"
-                :rolling="rollPending"
-                @select="openSkillContext"
-                @roll="rollSkill"
-              />
-            </div>
-          </CharacterSheetSection>
+        <template
+          v-if="sectionAvailability.skills"
+          #skills
+        >
+          <h3 class="eldra-sheet-heading">
+            Skills
+          </h3>
+          <CharacterSkillList
+            :entries="skillEntries"
+            :rolling="rollPending"
+            @select="openSkillContext"
+            @roll="rollSkill"
+          />
         </template>
 
-        <!-- Center region: the working surface -- the only region that
-             changes with the tab. -->
-        <template #center>
-          <template v-if="activeTab === 'play'">
-            <!-- Actions: "what can my character do?", and now "execute one
-                 against one target" -- this character's own state is never
-                 edited here (Combat Resolution mutates the TARGET's HP, not
-                 this character's own stored data). See CharacterActionsPanel.vue's
-                 own header for why. -->
-            <CharacterSheetSection heading="Actions">
-              <div class="mt-4">
-                <CharacterActionsPanel
-                  :actions="characterActions"
-                  :pending="actionsPending"
-                  :error-message="actionsUnavailableMessage || mutations.combat.error || rollError || castError"
-                  :notice="castNotice"
-                  :target-options="combatTargetOptions"
-                  :results="mutations.combat.results"
-                  :resolving="mutations.combat.resolving"
-                  :rolling="rollPending"
-                  :casting="castPending"
-                  :slot-levels="slotLevels"
-                  @resolve="mutations.combat.resolve"
-                  @attack="rollActionAttack"
-                  @damage="rollActionDamage"
-                  @cast="castSpell"
-                  @spell-damage="rollSpellDamage"
-                  @select="openActionContext"
-                />
-              </div>
-            </CharacterSheetSection>
+        <template #main>
+          <div
+            v-if="mainSection === 'actions'"
+            class="grid gap-6"
+          >
+            <!-- Actions: Attack/Damage rolls and Cast on each row; Info
+                 opens the inspector beside the list. See
+                 CharacterActionsPanel.vue's own header. -->
+            <section aria-label="Actions">
+              <CharacterActionsPanel
+                :actions="characterActions"
+                :pending="actionsPending"
+                :error-message="actionsUnavailableMessage || mutations.combat.error || rollError || castError"
+                :notice="castNotice"
+                :target-options="combatTargetOptions"
+                :results="mutations.combat.results"
+                :resolving="mutations.combat.resolving"
+                :rolling="rollPending"
+                :casting="castPending"
+                :slot-levels="slotLevels"
+                @resolve="mutations.combat.resolve"
+                @attack="rollActionAttack"
+                @damage="rollActionDamage"
+                @cast="castSpell"
+                @spell-damage="rollSpellDamage"
+                @select="openActionContext"
+              />
+            </section>
 
-            <!-- Recovery no longer lives here (Command Center
-                 Reconstruction, Phase H5) -- HP correction, Damage/Heal,
-                 Hit Dice, and Death Saves all moved into the command
-                 center's own CharacterCommandResources, which this page
-                 wires to the exact same mutations.recovery.save/apply
-                 handlers below. Encounter/Conditions stay inside Play,
-                 not a third rail -- unaffected by this phase. -->
-            <CharacterSheetSection heading="Encounter">
-              <div class="mt-4">
-                <CharacterEncounterPanel
-                  :encounter="encounter"
-                  :mutations="mutations.conditions"
-                >
-                  <template #conditions>
-                    <CharacterConditionsPanel
-                      v-if="encounter.isInSelected"
-                      :conditions="conditions"
-                      :mutations="mutations.conditions"
-                      :pending="encounter.pending"
-                      :encounter-ended="encounter.view?.status === 'ended'"
-                    />
-                  </template>
-                </CharacterEncounterPanel>
-              </div>
-            </CharacterSheetSection>
-          </template>
+            <section aria-label="Encounter">
+              <CharacterEncounterPanel
+                :encounter="encounter"
+                :mutations="mutations.conditions"
+              >
+                <template #conditions>
+                  <CharacterConditionsPanel
+                    v-if="encounter.isInSelected"
+                    :conditions="conditions"
+                    :mutations="mutations.conditions"
+                    :pending="encounter.pending"
+                    :encounter-ended="encounter.view?.status === 'ended'"
+                  />
+                </template>
+              </CharacterEncounterPanel>
+            </section>
+          </div>
 
-          <template v-else-if="activeTab === 'character'">
-            <!-- Portrait/name/level/Species/Class/Background are NOT
-                 repeated here (Header Phase H2) -- the command center
-                 already shows all of them, and a second copy with no new
-                 purpose is exactly the duplication H2's own principle
-                 forbids ("no duplicated information unless the second
-                 copy serves a new purpose"). This tab is now reference
-                 material and depth: the reference region's fold-in copy
-                 below, ability score editing, Derived, and the full
-                 Species/Class/Background prose further down -- none of
-                 which the command center's one-line summary attempts. -->
+          <div
+            v-else-if="mainSection === 'spells'"
+            class="grid gap-6"
+          >
+            <!-- Spell Slots sit with the spells they pay for. Same orbs,
+                 same expend/restore mutations as before. -->
+            <section
+              v-if="spellSlotGroups.length"
+              aria-labelledby="sheet-slots-heading"
+            >
+              <h3
+                id="sheet-slots-heading"
+                class="eldra-sheet-heading"
+              >
+                Spell Slots
+              </h3>
+              <CharacterResourceOrbs
+                layout="inline"
+                :groups="spellSlotGroups"
+                :saving="mutations.spellcasting.saving"
+                @expend="handleSpellSlotExpend"
+                @restore="handleSpellSlotRestore"
+              />
+            </section>
 
-            <!-- The left region's content, for widths that have no left
-                 region. CSS decides which copy is visible, not JS -- safe
-                 here and only here because these panels are read-only
-                 projections with no state of their own (the rule this does
-                 NOT break is the one about never duplicating Recovery or
-                 Encounter, which mutate and are still rendered once). -->
-            <CharacterReferencePanels
-              class="@5xl/sheet:hidden"
-              :ability-entries="abilityEntries"
-              :save-entries="saveEntries"
-              :reference-regions="referenceRegions"
-              :pending="derivedInitialLoading"
-              :unavailable-message="derived ? '' : derivedUnavailable"
-              :rolling="rollPending"
-              @roll-ability="rollAbility"
-              @roll-save="rollSave"
+            <section aria-label="Spellcasting">
+              <CharacterSpellcastingPanel
+                :spells="spellItems"
+                :options="spellOptions"
+                :is-caster="spellcastingIsCaster"
+                :ability-mod="spellcastingAbilityMod"
+                :save-dc="spellcastingSaveDc"
+                :attack-bonus="spellcastingAttackBonus"
+                :saving="mutations.spellcasting.saving"
+                :error-message="mutations.spellcasting.error"
+                @add="mutations.spellcasting.add"
+                @remove="mutations.spellcasting.remove"
+                @toggle-flag="mutations.spellcasting.toggleFlag"
+                @select="openSpellContext"
+              />
+            </section>
+          </div>
+
+          <section
+            v-else-if="mainSection === 'inventory'"
+            aria-label="Inventory"
+          >
+            <CharacterInventoryPanel
+              :items="inventoryItems"
+              :options="inventoryOptions"
+              :saving="mutations.inventory.saving"
+              :error-message="mutations.inventory.error"
+              @add="mutations.inventory.add"
+              @remove="mutations.inventory.remove"
+              @change-quantity="mutations.inventory.changeQuantity"
+              @toggle-flag="mutations.inventory.toggleFlag"
+              @select="openItemContext"
             />
+          </section>
 
-            <!-- H3: the score+modifier information itself is not repeated
-                 here -- it is already visible above, via the reference
-                 region's fold-in copy (the Abilities list). Only the
-                 Builder edit/assign ACTION is relocated, per this task's
-                 own "if the Builder/Edit action still needs a home,
-                 relocate only that action; do not duplicate the
-                 information." -->
+          <div
+            v-else-if="mainSection === 'features'"
+            class="grid gap-6"
+          >
+            <!-- Species/Class/Background prose and traits, each also
+                 openable in the inspector from its Details control. -->
+            <section
+              v-for="section in identity.sections"
+              :key="section.key"
+              :aria-label="section.label"
+            >
+              <div class="flex items-center gap-3">
+                <h3 class="eldra-sheet-heading min-w-0 flex-1">
+                  {{ section.label }}
+                </h3>
+                <button
+                  v-if="section.slot.status === 'resolved' && section.slot.entry.presentation"
+                  type="button"
+                  class="-mt-2 shrink-0 text-xs text-eldra-text-faint underline-offset-4 transition hover:text-eldra-text-soft hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent pointer-coarse:min-h-11"
+                  :aria-label="`${section.slot.entry.title} details`"
+                  @click="openFeatureContext(section.label, section.slot.entry.presentation, section.slot.entry.title)"
+                >
+                  Details
+                </button>
+              </div>
+
+              <template v-if="section.slot.status === 'resolved'">
+                <div
+                  v-if="!section.slot.entry.presentation"
+                  class="break-words text-xl font-semibold text-eldra-text-strong"
+                >
+                  {{ section.slot.entry.title }}
+                </div>
+
+                <ContentPresentationPanel
+                  :entry="section.slot.entry.presentation"
+                  context="detail"
+                  :empty-message="`This Content Pack publishes no further details for this ${section.label.toLowerCase()}.`"
+                />
+
+                <p class="mt-4 break-words border-t border-eldra-accent/14 pt-3 text-xs text-eldra-text-ghost">
+                  Resolved from {{ section.slot.entry.packageId }}@{{ section.slot.entry.packageVersion }}
+                </p>
+              </template>
+
+              <div
+                v-else
+                class="rounded-none border border-red-900 bg-red-950/40 p-3"
+              >
+                <div class="text-sm font-semibold uppercase tracking-[0.1em] text-red-300">
+                  Missing
+                </div>
+                <p class="mt-1 text-sm text-red-200">
+                  {{ section.slot.reason }}
+                </p>
+                <dl
+                  v-if="section.slot.packageId"
+                  class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs"
+                >
+                  <dt class="text-red-300/70">
+                    Package
+                  </dt>
+                  <dd class="text-red-200">
+                    {{ section.slot.packageId }}
+                  </dd>
+                </dl>
+              </div>
+            </section>
+          </div>
+
+          <section
+            v-else-if="mainSection === 'notes'"
+            aria-label="Notes"
+          >
+            <CharacterNotesPanel
+              :notes="noteDraft"
+              :saving="notesSaving"
+              :error-message="notesError"
+              @save="saveNotes"
+            />
+          </section>
+
+          <div
+            v-else-if="mainSection === 'details'"
+            class="grid gap-6"
+          >
+            <!-- Details: everything the old Character tab held that is not
+                 Features -- ability score editing, the Level Manager
+                 (Game Admin only), and every derived category without a
+                 bespoke home, so a package's unfamiliar categories stay
+                 visible. -->
             <p class="text-sm text-eldra-text-faint">
               <NuxtLink
                 :to="`/worlds/${worldId}/characters/${characterId}/abilities`"
@@ -1262,77 +1442,74 @@ function openSkillContext(skill: CharacterSkillRow) {
               </NuxtLink>
             </p>
 
-            <!-- Character Progression Phase 1A -- Game Admin only, hidden
-                 entirely for a player (client hint; the server independently
-                 re-enforces `world.character.edit_any` on every
-                 progression/* route -- see CharacterProgressionPanel.vue's
-                 own header). Placed in this tab (reference/depth/admin
-                 material), not the Play tab, per this task's own "do not
-                 clutter normal player Play Mode." -->
-            <CharacterSheetSection
+            <section
               v-if="canEditCharacter"
-              heading="Level Manager"
+              aria-labelledby="sheet-level-heading"
             >
-              <div class="mt-3">
-                <CharacterProgressionPanel
-                  :current-level="characterLevel"
-                  :pending="derivedInitialLoading"
-                  :error-message="derived ? '' : derivedUnavailable"
-                  :plan="progression.plan.value"
-                  :plan-pending="progression.planPending.value"
-                  :plan-error-message="progression.planError.value"
-                  :confirming="progression.confirming.value"
-                  :confirm-error-message="progression.confirmError.value"
-                  @preview="requestProgressionPreview"
-                  @confirm="confirmProgressionLevelUp"
-                  @clear-plan="clearProgressionPlan"
-                  @answer="answerProgressionChoice"
-                />
-              </div>
-            </CharacterSheetSection>
+              <h3
+                id="sheet-level-heading"
+                class="eldra-sheet-heading"
+              >
+                Level Manager
+              </h3>
+              <CharacterProgressionPanel
+                :current-level="characterLevel"
+                :pending="derivedInitialLoading"
+                :error-message="derived ? '' : derivedUnavailable"
+                :plan="progression.plan.value"
+                :plan-pending="progression.planPending.value"
+                :plan-error-message="progression.planError.value"
+                :confirming="progression.confirming.value"
+                :confirm-error-message="progression.confirmError.value"
+                @preview="requestProgressionPreview"
+                @confirm="confirmProgressionLevelUp"
+                @clear-plan="clearProgressionPlan"
+                @answer="answerProgressionChoice"
+              />
+            </section>
 
-            <CharacterSheetSection heading="Derived">
-              <template #heading-end>
+            <section aria-labelledby="sheet-derived-heading">
+              <div class="flex items-center gap-3">
+                <h3
+                  id="sheet-derived-heading"
+                  class="eldra-sheet-heading min-w-0 flex-1"
+                >
+                  Derived
+                </h3>
                 <p
                   v-if="derived"
-                  class="break-words text-xs text-eldra-text-ghost"
+                  class="-mt-2 shrink-0 break-words text-xs text-eldra-text-ghost"
                 >
                   {{ derived.packageId }}@{{ derived.packageVersion }}
                 </p>
-              </template>
+              </div>
 
               <p
                 v-if="derivedPending"
-                class="mt-3 text-sm text-eldra-text-faint"
+                class="text-sm text-eldra-text-faint"
               >
                 Evaluating this character against the World's rules…
               </p>
 
               <p
                 v-else-if="!derived"
-                class="mt-3 rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
+                class="rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
               >
                 {{ derivedUnavailable }}
               </p>
 
               <div
                 v-else
-                class="mt-3 grid gap-5"
+                class="grid gap-5"
               >
-                <!-- Only the categories WITHOUT a bespoke home. Abilities
-                     (command center), saves (reference region) and skills
-                     (persistent table) are deliberately absent here --
-                     rendering them again would be the same fact reached by
-                     two different paths. Anything else a package declares
-                     still lands here automatically. -->
                 <div
                   v-for="region in otherDerivedRegions"
                   :key="region.category"
                   class="min-w-0"
                 >
-                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
+                  <h4 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
                     {{ region.label }}
-                  </h3>
+                  </h4>
                   <CharacterDerivedPanel :entries="region.entries" />
                 </div>
 
@@ -1341,9 +1518,9 @@ function openSkillContext(skill: CharacterSkillRow) {
                   :key="collection.id"
                   class="min-w-0"
                 >
-                  <h3 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
+                  <h4 class="mb-2 text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
                     {{ collection.label || 'Equipment Slots' }}
-                  </h3>
+                  </h4>
                   <div class="flex flex-wrap gap-2">
                     <CharacterStatChip
                       v-for="equipmentSlot in collection.slots"
@@ -1369,164 +1546,71 @@ function openSkillContext(skill: CharacterSkillRow) {
                   </NuxtLink>.
                 </p>
               </div>
-            </CharacterSheetSection>
+            </section>
+          </div>
+        </template>
 
-            <!-- Species/Class/Background prose+traits: T2 Character at
-                 every breakpoint (§3.2) -- the one piece of Character-tab
-                 content that was never a rail item in the first place. -->
-            <CharacterSheetSection
-              v-for="section in identity.sections"
-              :key="section.key"
-              :heading="section.label"
+        <!-- Large desktop: the reserved inspector lane, while empty. -->
+        <template #inspector-idle>
+          <div class="border border-dashed border-eldra-accent/20 p-5 text-sm leading-6 text-eldra-text-faint">
+            <UIcon
+              name="i-lucide-panel-right"
+              class="mb-2 h-5 w-5 text-eldra-accent/60"
+              aria-hidden="true"
+            />
+            <p>Select an action, spell, item, skill, or condition to see its details here.</p>
+          </div>
+        </template>
+
+        <!-- Eldra's ONE context system, placed inline: the shell gives it
+             a column (or a phone bottom sheet), so opening it never moves
+             the main workspace. `content="detail"` skips the World Entity
+             affordances. The lead slot repeats the originating row's own
+             rolls, through the same handlers. -->
+        <template #inspector>
+          <WorldEntityContextDrawer
+            :open="Boolean(context)"
+            :entity="contextEntity"
+            :world-id="worldId"
+            content="detail"
+            rail-variant="sheet"
+            placement="inline"
+            @close="closeContext"
+          >
+            <template
+              v-if="context?.rolls?.length"
+              #lead
             >
-              <!-- Features open in the shared context drawer too, from the
-                   section heading rather than from inside the panel:
-                   ContentPresentationPanel is shared with the Builder, and
-                   teaching it to emit a selection would change a component
-                   two surfaces depend on in order to serve one. The prose
-                   stays rendered inline exactly as before -- the drawer is
-                   an additional way to read it, not a replacement. -->
-              <template
-                v-if="section.slot.status === 'resolved' && section.slot.entry.presentation"
-                #heading-end
-              >
+              <div class="mb-4 grid grid-cols-2 gap-2">
                 <button
+                  v-for="roll in context.rolls"
+                  :key="roll.id"
                   type="button"
-                  class="text-sm text-eldra-text-faint underline-offset-4 transition hover:text-eldra-text-soft hover:underline"
-                  @click="openFeatureContext(section.label, section.slot.entry.presentation, section.slot.entry.title)"
+                  class="eldra-well eldra-rollable flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-none border border-eldra-accent/30 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="rollPending"
+                  :aria-label="`Roll ${context.title} ${roll.label}, ${roll.value}`"
+                  @click="runContextRoll(roll)"
                 >
-                  Details
+                  <span class="text-[0.55rem] font-semibold uppercase tracking-[0.18em] text-eldra-text-faint">{{ roll.label }}</span>
+                  <span class="flex items-center gap-1.5 text-lg font-semibold tabular-nums text-eldra-text-strong">
+                    {{ roll.value }}
+                    <UIcon
+                      name="i-lucide-dices"
+                      class="eldra-roll-hint h-3.5 w-3.5"
+                      aria-hidden="true"
+                    />
+                  </span>
                 </button>
-              </template>
-
-              <template v-if="section.slot.status === 'resolved'">
-                <!-- When the pack publishes details, the panel supplies the
-                     name and source line itself; the bare title is the
-                     fallback for an entry that resolved but carries no
-                     presentation model. -->
-                <div
-                  v-if="!section.slot.entry.presentation"
-                  class="mt-2 break-words text-xl font-semibold text-white"
-                >
-                  {{ section.slot.entry.title }}
-                </div>
-
-                <div class="mt-2">
-                  <ContentPresentationPanel
-                    :entry="section.slot.entry.presentation"
-                    context="detail"
-                    :empty-message="`This Content Pack publishes no further details for this ${section.label.toLowerCase()}.`"
-                  />
-                </div>
-
-                <!-- Which bound pack this choice resolved through -- a fact
-                     about this character, not about the Species/Class/
-                     Background. -->
-                <p class="mt-4 break-words border-t border-eldra-accent/14 pt-3 text-xs text-eldra-text-ghost">
-                  Resolved from {{ section.slot.entry.packageId }}@{{ section.slot.entry.packageVersion }}
-                </p>
-              </template>
-
-              <template v-else>
-                <div class="mt-2 rounded-none border border-red-900 bg-red-950/40 p-3">
-                  <div class="text-sm font-semibold uppercase tracking-[0.1em] text-red-300">
-                    Missing
-                  </div>
-                  <p class="mt-1 text-sm text-red-200">
-                    {{ section.slot.reason }}
-                  </p>
-                  <dl
-                    v-if="section.slot.packageId"
-                    class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs"
-                  >
-                    <dt class="text-red-300/70">
-                      Package
-                    </dt>
-                    <dd class="text-red-200">
-                      {{ section.slot.packageId }}
-                    </dd>
-                  </dl>
-                </div>
-              </template>
-            </CharacterSheetSection>
-          </template>
-
-          <template v-else-if="activeTab === 'spells'">
-            <!-- Spellcasting: also editable -- see
-                 CharacterSpellcastingPanel.vue's header. Spell Slots no
-                 longer live here (Command Center Reconstruction, Phase
-                 H5) -- they moved into the command center's own
-                 CharacterCommandResources, alongside every other resource
-                 a player spends mid-combat, so this panel keeps only the
-                 summary, Add Spell, and Known/Prepared list. -->
-            <CharacterSheetSection heading="Spellcasting">
-              <div class="mt-4">
-                <CharacterSpellcastingPanel
-                  :spells="spellItems"
-                  :options="spellOptions"
-                  :is-caster="spellcastingIsCaster"
-                  :ability-mod="spellcastingAbilityMod"
-                  :save-dc="spellcastingSaveDc"
-                  :attack-bonus="spellcastingAttackBonus"
-                  :saving="mutations.spellcasting.saving"
-                  :error-message="mutations.spellcasting.error"
-                  @add="mutations.spellcasting.add"
-                  @remove="mutations.spellcasting.remove"
-                  @toggle-flag="mutations.spellcasting.toggleFlag"
-                  @select="openSpellContext"
-                />
               </div>
-            </CharacterSheetSection>
-          </template>
-
-          <template v-else-if="activeTab === 'inventory'">
-            <!-- Inventory: the one editable region on this page. See the
-                 file header and CharacterInventoryPanel.vue for why. -->
-            <CharacterSheetSection heading="Inventory">
-              <div class="mt-4">
-                <CharacterInventoryPanel
-                  :items="inventoryItems"
-                  :options="inventoryOptions"
-                  :saving="mutations.inventory.saving"
-                  :error-message="mutations.inventory.error"
-                  @add="mutations.inventory.add"
-                  @remove="mutations.inventory.remove"
-                  @change-quantity="mutations.inventory.changeQuantity"
-                  @toggle-flag="mutations.inventory.toggleFlag"
-                  @select="openItemContext"
-                />
-              </div>
-            </CharacterSheetSection>
-          </template>
-
-          <template v-else-if="activeTab === 'notes'">
-            <!-- Notes: also editable -- see CharacterNotesPanel.vue's
-                 header. -->
-            <CharacterSheetSection heading="Notes">
-              <div class="mt-4">
-                <CharacterNotesPanel
-                  :notes="noteDraft"
-                  :saving="notesSaving"
-                  :error-message="notesError"
-                  @save="saveNotes"
-                />
-              </div>
-            </CharacterSheetSection>
-          </template>
+            </template>
+          </WorldEntityContextDrawer>
         </template>
       </CharacterSheetShell>
-
     </div>
 
-    <!-- Eldra Roll System Phase 2C -- the permanent Roll Tray, replacing
-         Phase 2B's temporary inline "latest roll" strip entirely (this
-         phase's own instruction: "only one canonical presentation
-         exists"). Rendered as a page-level sibling, not inside
-         CharacterSheetShell's slots, because it is `fixed`-positioned and
-         must float above the whole viewport regardless of which tab is
-         active -- see WorldRollTray.vue's own header for the exact
-         desktop/mobile docking behavior and why bottom-right never
-         collides with the left sidebar or the command center. -->
+    <!-- Eldra Roll System Phase 2C -- the permanent Roll Tray, unchanged
+         (Phase 4B does not move or restyle it). A page-level sibling
+         because it is `fixed` to the viewport. -->
     <WorldRollTray
       v-if="blueprint"
       :rolls="rollHistory"
@@ -1560,23 +1644,5 @@ function openSkillContext(skill: CharacterSkillRow) {
         </div>
       </template>
     </WorldRollTray>
-
-    <!-- Eldra's ONE context system, mounted by this page exactly as the
-         World map, roster, admin, timelines and entity pages already mount
-         it -- and as the legacy sheet already does, with the same
-         `rail-variant="sheet"` this drawer has carried for that purpose all
-         along. `content="detail"` is the only new thing: it tells the
-         drawer that what it is showing is an action/spell/item/feature/
-         skill rather than a World Entity, so it skips the relationships
-         panel, the Open Sheet link, and the entity footer. See that
-         component's own header. -->
-    <WorldEntityContextDrawer
-      :open="Boolean(context)"
-      :entity="contextEntity"
-      :world-id="worldId"
-      content="detail"
-      rail-variant="sheet"
-      @close="closeContext"
-    />
   </div>
 </template>

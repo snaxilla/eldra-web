@@ -962,6 +962,46 @@ function centerInVisibleArea() {
   if (shift) map.panBy([-shift, 0], { animate: false })
 }
 
+// Respects the viewer's Eldra accessibility preference (set on <html> by
+// useEldraThemeRoot) and the OS-level setting.
+function prefersReducedMotion() {
+  if (typeof window === 'undefined') return true
+  return document.documentElement.dataset.eldraMotion === 'reduced'
+    || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+}
+
+const SELECTED_PIN_VISIBLE_MARGIN = 48
+
+// Theming Phase 3B-2: keep the selected pin inside the area not covered by
+// floating panels. Pans only by the distance needed, and not at all when
+// the pin is already visible. Only active with viewport insets (the
+// full-bleed World Map); otherwise nothing covers the map and behavior is
+// unchanged. Never alters pin data or coordinates -- view only.
+function ensureSelectedPinVisible() {
+  if (!map || !L || !currentBounds || !props.selectedPinId || !hasViewportInsets()) return
+  const pin = (resolvedPins.value || []).find((candidate) => String(candidate.id) === String(props.selectedPinId))
+  if (!pin) return
+
+  // Panels may have opened in the same tick as the selection: make sure
+  // maxBounds already allows panning out from under them.
+  applyMaxBounds()
+
+  const point = map.latLngToContainerPoint(pinToLatLng(pin))
+  const size = map.getSize()
+  const margin = SELECTED_PIN_VISIBLE_MARGIN
+  const minX = viewportInset('left') + margin
+  const maxX = size.x - viewportInset('right') - margin
+  const minY = margin
+  const maxY = size.y - margin
+  if (minX > maxX || minY > maxY) return
+
+  const dx = point.x < minX ? point.x - minX : point.x > maxX ? point.x - maxX : 0
+  const dy = point.y < minY ? point.y - minY : point.y > maxY ? point.y - maxY : 0
+  if (!dx && !dy) return
+
+  map.panBy([dx, dy], { animate: !prefersReducedMotion() })
+}
+
 function getCoverZoom(bounds: any) {
   if (!map) return 0
 
@@ -1064,7 +1104,11 @@ async function renderMap() {
 
 watch(
   () => [viewportInset('left'), viewportInset('right')],
-  () => applyMaxBounds()
+  () => {
+    applyMaxBounds()
+    // An inspector/editor opening over the selected pin.
+    ensureSelectedPinVisible()
+  }
 )
 
 watch(
@@ -1128,6 +1172,7 @@ watch(
   () => props.selectedPinId,
   () => {
     renderPins()
+    ensureSelectedPinVisible()
   }
 )
 

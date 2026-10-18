@@ -22,6 +22,18 @@
   --eldra-text-muted-rgb: 167 155 133;     /* #a79b85 */
   --eldra-parchment-rgb: 232 217 181;      /* #e8d9b5 */
 
-  /* Shape/typography/ornament tokens currently equal the structural
-     defaults in tokens.css; Phase 3 overrides them here. */
+  --eldra-leather-rgb: 9 8 6;              /* sidebar binding #090806 */
+
+  /* Typography: Cinzel (bundled via @fontsource/cinzel, imported in
+     main.css) for display only -- titles, World and place names. */
+  --eldra-font-display: 'Cinzel', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+
+  /* Gilded filigree. Paths are relative to this file; Vite inlines them. */
+  --eldra-ornament-corner-tl: url("../../ornaments/fantasy/corner-tl.svg");
+  --eldra-ornament-corner-tr: url("../../ornaments/fantasy/corner-tr.svg");
+  --eldra-ornament-corner-bl: url("../../ornaments/fantasy/corner-bl.svg");
+  --eldra-ornament-corner-br: url("../../ornaments/fantasy/corner-br.svg");
+  --eldra-ornament-divider: url("../../ornaments/fantasy/divider.svg");
+  --eldra-ornament-emblem: url("../../ornaments/fantasy/emblem.svg");
+  --eldra-ornament-color: rgb(var(--eldra-accent-rgb) / 0.72);
 }

@@ -1,14 +1,22 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* Fantasy display face, bundled locally (no build-time font download).
+   Latin subset, display weights only. */
+@import "@fontsource/cinzel/latin-500.css";
+@import "@fontsource/cinzel/latin-600.css";
+
 /* Theme layer -- see .github/docs/architecture/theming.md. Order matters:
-   structural tokens, then theme scopes, then accessibility (always last so
-   a viewer's preferences win over any theme). */
+   structural tokens, then theme scopes, then legacy component styles,
+   then theme-agnostic surfaces, then accessibility (always last so a
+   viewer's preferences win over any theme). */
 @import "./themes/tokens.css";
 @import "./themes/fantasy.css";
-@import "./themes/accessibility.css";
 
 @import "./eldra-fieldguide.css";
+
+@import "./themes/surfaces.css";
+@import "./themes/accessibility.css";
 
 @theme static {
   --font-sans: 'Public Sans', sans-serif;

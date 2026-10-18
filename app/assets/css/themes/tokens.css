@@ -35,15 +35,31 @@
   --eldra-shadow-panel: 0 22px 70px rgba(0, 0, 0, 0.42);
   --eldra-glow-accent: inset 0 0 48px rgb(var(--eldra-accent-rgb) / 0.04);
 
-  /* Typography -- display face is a Phase 3 addition; it must be vendored
-     locally (see eldra-design-language.md §4), never fetched at build. */
+  /* Typography -- any display face must be vendored locally (see
+     eldra-design-language.md §4), never fetched at build time. */
   --eldra-font-display: 'Public Sans', sans-serif;
   --eldra-font-body: 'Public Sans', sans-serif;
   --eldra-tracking-kicker: 0.32em;
 
-  /* Ornaments -- `none` until a theme supplies assets. */
-  --eldra-ornament-corner: none;
+  /* Glass surface: a faint top sheen over the panel fill. */
+  --eldra-glass-sheen: linear-gradient(180deg, rgb(var(--eldra-accent-rgb) / 0.05), transparent 24%);
+
+  /* Ornaments (see surfaces.css). Assets are used as CSS masks and painted
+     with --eldra-ornament-color, so one SVG serves any palette. A theme with
+     no ornaments leaves the images `none` and the color transparent. */
+  --eldra-ornament-corner-tl: none;
+  --eldra-ornament-corner-tr: none;
+  --eldra-ornament-corner-bl: none;
+  --eldra-ornament-corner-br: none;
   --eldra-ornament-divider: none;
+  --eldra-ornament-emblem: none;
+  --eldra-ornament-color: transparent;
+  --eldra-ornament-size: 56px;
+  --eldra-ornament-inset: 6px;
+
+  /* Display typography treatment */
+  --eldra-display-tracking: 0.06em;
+  --eldra-display-weight: 600;
 
   /* Motion */
   --eldra-motion-duration: 200ms;

@@ -350,6 +350,7 @@ import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import { useCharacterSheet } from '~/composables/useCharacterSheet'
 import { useCharacterMutations } from '~/composables/useCharacterMutations'
 import { useCharacterProgression } from '~/composables/useCharacterProgression'
+import { useCharacterSheetPresentation } from '~/composables/useCharacterSheetPresentation'
 import {
   useCharacterSheetLayout,
   type CharacterSheetContext,
@@ -754,10 +755,8 @@ const vitalsError = computed(() =>
 // ---------------------------------------------------------------------------
 // Shell -- Corrective Phase 2R. `tabs`/`activeTab`/`setActiveTab` are still
 // useCharacterSheetLayout.ts's (URL-synced tab state is still useful, per
-// this task's own KEEP list). Every tab's content renders identically at
-// every breakpoint. `isDesktop` is used for one thing only (Phase 4C):
-// whether the context inspector opens as the workspace right rail or as
-// the phone bottom sheet -- never to choose which sheet content shows.
+// this task's own KEEP list). Every tab's content renders identically in
+// both presentations; see the PRESENTATION section below.
 // ---------------------------------------------------------------------------
 
 const abilityEntries = computed(() => derived.value?.byCategory?.[ABILITIES_CATEGORY] ?? [])
@@ -779,13 +778,31 @@ const {
   sections,
   activeTab,
   mainSection,
-  isDesktop,
   setActiveTab,
   context,
   contextEntity,
   openContext,
   closeContext
 } = useCharacterSheetLayout(sectionAvailability)
+
+// ---------------------------------------------------------------------------
+// PRESENTATION -- Phase 4C. Desktop or Companion, from the width the World
+// workspace gives this page (see useCharacterSheetPresentation.ts). Both
+// render every piece of content below; only the arrangement differs. The
+// measurement is the scroll root's border box, and the inspector's
+// contraction is padding inside it, so opening the inspector never
+// switches presentation.
+// ---------------------------------------------------------------------------
+
+const workspaceEl = ref<HTMLElement | null>(null)
+const { presentation, density } = useCharacterSheetPresentation(workspaceEl)
+
+// Full desktop: the inspector is the workspace right rail and the whole
+// sheet contracts beside it (the roster page's `pr-[380px]` precedent).
+// Compact desktop: the same rail overlays the sheet. Companion: bottom sheet.
+const inspectorContractsSheet = computed(() =>
+  Boolean(context.value) && presentation.value === 'desktop' && density.value === 'full'
+)
 
 // ---------------------------------------------------------------------------
 // WHICH RULE CATEGORY RENDERS WHERE -- Desktop IA pass, corrected by
@@ -1107,22 +1124,21 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
        WorldPagePresentationPanel, per `pageKey`) BEHIND this page's
        `<slot />`. An opaque root here would hide that backdrop. The
        sheet's own surfaces are translucent glass over it. -->
-  <!-- Phase 4C: while the inspector is open as the workspace right rail
-       (WorldEntityContextDrawer, fixed, 380px), the WHOLE sheet contracts
-       by that width -- the roster page's `pr-[380px]` precedent -- so the
-       header and every column reflow through the sheet's own container
+  <!-- Phase 4C: the measured character workspace (see PRESENTATION in the
+       script). On full desktop, while the inspector is open as the
+       workspace right rail (WorldEntityContextDrawer, fixed, 380px), the
+       WHOLE sheet contracts by that width -- the roster page's
+       `pr-[380px]` precedent -- and reflows through its own container
        queries. Nothing is reserved while it is closed. -->
   <div
+    ref="workspaceEl"
     class="h-full overflow-y-auto bg-transparent"
-    :class="context && isDesktop ? 'pr-[380px]' : ''"
+    :class="inspectorContractsSheet ? 'pr-[380px]' : ''"
   >
-    <!-- Phase 4B: this element is the `sheet` CONTAINER. Every layout
-         decision inside the sheet (header rows, reference rail, skills
-         column, inspector placement, phone sections) responds to the
-         width available HERE -- after the workspace rail -- via
-         `@container/sheet` queries, never the viewport. See
-         CharacterSheetShell.vue for the breakpoints. Wide enough at
-         1920px for the docked inspector lane. -->
+    <!-- The `sheet` CONTAINER. Layout INSIDE a presentation (desktop
+         columns, header rows) responds to the width available here via
+         `@container/sheet` queries; WHICH presentation renders is decided
+         from the workspace width above (Phase 4C). -->
     <div class="@container/sheet mx-auto max-w-[1880px] px-3 pb-10 pt-3 sm:px-6 sm:pt-6">
       <div
         v-if="pending"
@@ -1152,7 +1168,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         :main-section="mainSection"
         :inspector-open="Boolean(context)"
         :inspector-label="context ? `${context.title} details` : 'Details'"
-        :inspector-mode="isDesktop ? 'rail' : 'sheet'"
+        :presentation="presentation"
         @select-section="setActiveTab"
         @close-inspector="closeContext"
       >
@@ -1181,6 +1197,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         <template #header>
           <CharacterSheetHeader
             class="max-md:pl-16"
+            :presentation="presentation"
             :world-id="worldId"
             :character-title="identity.characterTitle"
             :image-url="characterImageUrlDraft"
@@ -1553,11 +1570,11 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
           </div>
         </template>
 
-        <!-- Eldra's ONE context system. From 1024px it is the workspace's
-             standard right rail (overlay placement, the same 380px rail
-             every other World page opens) and the page contracts beside
-             it; below that it is the phone bottom sheet (inline placement
-             inside the shell). `content="detail"` skips the World Entity
+        <!-- Eldra's ONE context system. Desktop: the workspace's standard
+             right rail (overlay placement, the same 380px rail every other
+             World page opens); on full desktop the page contracts beside
+             it. Companion: the bottom sheet (inline placement inside the
+             companion layout). `content="detail"` skips the World Entity
              affordances. The lead slot repeats the originating row's own
              rolls, through the same handlers. -->
         <template #inspector>
@@ -1566,8 +1583,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             :entity="contextEntity"
             :world-id="worldId"
             content="detail"
-            :rail-variant="isDesktop ? 'workspace' : 'sheet'"
-            :placement="isDesktop ? 'overlay' : 'inline'"
+            :rail-variant="presentation === 'desktop' ? 'workspace' : 'sheet'"
+            :placement="presentation === 'desktop' ? 'overlay' : 'inline'"
             @close="closeContext"
           >
             <template

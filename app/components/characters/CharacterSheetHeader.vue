@@ -16,10 +16,11 @@
 // `summaryValues`). This component names no Definition id; it renders the
 // list it is given, label and value as the engine produced them.
 //
-// Layout is container-aware (`@container/sheet`, set by the page): the
-// phone header puts HP in a badge beside the name and the summary values
-// in a 4-up row; from 880px the values join the main row. The condensed
-// sticky bar a phone shows on scroll is CharacterSheetShell.vue's.
+// Two variants (Phase 4C), chosen by the `presentation` prop, not by width:
+// `companion` puts HP in a badge beside the name, the summary values in a
+// 4-up row and resources behind a toggle; `desktop` is one dense row, with
+// the summary values joining it once the sheet container reaches 880px.
+// The companion's condensed sticky bar is CharacterSheetCompanionLayout's.
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import { isCharacterDeceasedFromDeathSaves, type StoredCharacterHealth } from '~/lib/characters/health'
 import CharacterPortrait from '~/components/characters/CharacterPortrait.vue'
@@ -38,6 +39,10 @@ import {
 } from './characterResourcePresentation'
 
 const props = withDefaults(defineProps<{
+  // Phase 4C: which presentation this header belongs to. `companion` is
+  // the touch-first layout (HP badge beside the name, essential stats in a
+  // 4-up row, resources behind a toggle); `desktop` the dense row.
+  presentation?: 'desktop' | 'companion'
   worldId: string
   characterTitle: string
   imageUrl?: string | null
@@ -72,6 +77,7 @@ const props = withDefaults(defineProps<{
   recoveryError?: string
   removeCondition: (conditionInstanceId: string) => void
 }>(), {
+  presentation: 'desktop',
   imageUrl: null,
   canEditPortrait: false,
   portraitSaving: false,
@@ -98,6 +104,8 @@ const emit = defineEmits<{
   'select-condition': [EncounterConditionView]
   'select-resource': [string]
 }>()
+
+const companion = computed(() => props.presentation === 'companion')
 
 const isDeceased = computed(() => isCharacterDeceasedFromDeathSaves(props.health.deathSaves))
 const atZeroHp = computed(() => props.maxHp != null && props.health.currentHp <= 0)
@@ -129,8 +137,8 @@ function handleSlotRestore({ poolId }: { groupId: string; poolId: string; amount
   emit('restore-slot', Number(poolId))
 }
 
-// Phones: resources sit behind one labelled toggle so the header stays
-// short; from 600px they are always shown. Remaining/total across every
+// Companion: resources sit behind one labelled toggle so the header stays
+// short; on desktop they are always shown. Remaining/total across every
 // pool gives the collapsed toggle something useful to say.
 const resourcesOpen = ref(false)
 const resourceTotals = computed(() => {
@@ -167,7 +175,9 @@ function summaryText(entry: DerivedValue): string {
 
 <template>
   <header
-    class="eldra-glass-surface relative isolate border px-3 py-3 @[600px]/sheet:px-4"
+    class="eldra-glass-surface relative isolate border py-3"
+    :class="companion ? 'px-3' : 'px-4'"
+    :data-sheet-header="presentation"
     aria-label="Character summary"
   >
     <span
@@ -175,10 +185,14 @@ function summaryText(entry: DerivedValue): string {
       aria-hidden="true"
     />
 
-    <div class="flex items-center gap-3 @[600px]/sheet:gap-4">
+    <div
+      class="flex items-center"
+      :class="companion ? 'gap-3' : 'gap-4'"
+    >
       <NuxtLink
+        v-if="!companion"
         :to="`/worlds/${worldId}/characters`"
-        class="hidden size-8 shrink-0 items-center justify-center text-eldra-text-faint transition hover:text-eldra-text-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent @[600px]/sheet:flex"
+        class="flex size-8 shrink-0 items-center justify-center text-eldra-text-faint transition hover:text-eldra-text-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent"
         aria-label="Back to characters"
       >
         <UIcon
@@ -189,7 +203,7 @@ function summaryText(entry: DerivedValue): string {
 
       <div class="shrink-0">
         <CharacterPortrait
-          class="size-14 @[600px]/sheet:size-16"
+          :class="companion ? 'size-14' : 'size-16'"
           :image-url="imageUrl"
           :title="characterTitle"
           :can-edit="canEditPortrait"
@@ -201,10 +215,16 @@ function summaryText(entry: DerivedValue): string {
       </div>
 
       <div class="min-w-0 flex-1">
-        <h1 class="eldra-display line-clamp-2 text-lg leading-tight text-eldra-text-strong @[600px]/sheet:truncate @[600px]/sheet:text-2xl">
+        <h1
+          class="eldra-display leading-tight text-eldra-text-strong"
+          :class="companion ? 'line-clamp-2 text-lg' : 'truncate text-2xl'"
+        >
           {{ characterTitle || 'Character' }}
         </h1>
-        <p class="mt-0.5 truncate text-xs text-eldra-text-soft @[600px]/sheet:text-sm">
+        <p
+          class="mt-0.5 truncate text-eldra-text-soft"
+          :class="companion ? 'text-xs' : 'text-sm'"
+        >
           <span class="text-eldra-text-faint">Level</span> {{ level }}
           <template
             v-for="row in identityRows"
@@ -233,15 +253,18 @@ function summaryText(entry: DerivedValue): string {
       >
         <button
           type="button"
-          class="group flex shrink-0 flex-col items-end border border-eldra-accent/45 bg-eldra-accent/10 px-2.5 py-1.5 text-right transition hover:border-eldra-accent/80 hover:bg-eldra-accent/16 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent @[600px]/sheet:min-w-36 @[600px]/sheet:px-3"
-          :class="atZeroHp ? 'border-red-500/70' : ''"
+          class="group flex shrink-0 flex-col items-end border border-eldra-accent/45 bg-eldra-accent/10 py-1.5 text-right transition hover:border-eldra-accent/80 hover:bg-eldra-accent/16 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-eldra-accent"
+          :class="[companion ? 'px-2.5' : 'min-w-36 px-3', atZeroHp ? 'border-red-500/70' : '']"
           :aria-label="hpLabel"
           aria-haspopup="dialog"
           :aria-expanded="hpOpen"
           data-sheet-hp-control
         >
           <span class="flex items-baseline gap-1 tabular-nums">
-            <span class="text-xl font-semibold leading-none text-eldra-text-strong @[600px]/sheet:text-2xl">{{ health.currentHp }}</span>
+            <span
+              class="font-semibold leading-none text-eldra-text-strong"
+              :class="companion ? 'text-xl' : 'text-2xl'"
+            >{{ health.currentHp }}</span>
             <span class="text-sm text-eldra-text-faint">/ {{ maxHp ?? '—' }}</span>
             <span
               v-if="health.temporaryHp"
@@ -249,7 +272,8 @@ function summaryText(entry: DerivedValue): string {
             >+{{ health.temporaryHp }}</span>
           </span>
           <CharacterHealthBar
-            class="mt-1 hidden w-full @[600px]/sheet:block"
+            v-if="!companion"
+            class="mt-1 w-full"
             :current-hp="health.currentHp"
             :max-hp="maxHp"
           />
@@ -307,7 +331,7 @@ function summaryText(entry: DerivedValue): string {
       <!-- Summary values join this row from 880px; narrower headers get
            the 4-up row below, so the name keeps its room. -->
       <dl
-        v-if="summaryValues.length"
+        v-if="!companion && summaryValues.length"
         class="hidden shrink-0 items-stretch @[880px]/sheet:flex"
       >
         <div
@@ -328,7 +352,10 @@ function summaryText(entry: DerivedValue): string {
         </div>
       </dl>
 
-      <div class="hidden shrink-0 items-center gap-2 @[880px]/sheet:flex">
+      <div
+        v-if="!companion"
+        class="hidden shrink-0 items-center gap-2 @[880px]/sheet:flex"
+      >
         <CharacterSaveIndicator
           :saving="saving"
           :error="error"
@@ -339,7 +366,8 @@ function summaryText(entry: DerivedValue): string {
     <!-- Below 880px: summary values 4-up beneath the identity row. -->
     <dl
       v-if="summaryValues.length"
-      class="mt-2.5 grid grid-cols-4 items-start border-t border-eldra-accent/12 pt-2 @[880px]/sheet:hidden"
+      class="mt-2.5 grid grid-cols-4 items-start border-t border-eldra-accent/12 pt-2"
+      :class="companion ? '' : '@[880px]/sheet:hidden'"
     >
       <div
         v-for="entry in summaryValues.slice(0, 4)"
@@ -408,8 +436,9 @@ function summaryText(entry: DerivedValue): string {
            from every section. -->
       <template v-if="hasResources">
         <button
+          v-if="companion"
           type="button"
-          class="inline-flex min-h-9 items-center gap-1.5 border border-eldra-accent/30 px-2.5 text-xs font-semibold uppercase tracking-[0.1em] text-eldra-text-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent pointer-coarse:min-h-11 @[600px]/sheet:hidden"
+          class="inline-flex min-h-11 items-center gap-1.5 border border-eldra-accent/30 px-2.5 text-xs font-semibold uppercase tracking-[0.1em] text-eldra-text-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent"
           :aria-expanded="resourcesOpen"
           aria-controls="sheet-header-resources"
           @click="resourcesOpen = !resourcesOpen"
@@ -427,8 +456,8 @@ function summaryText(entry: DerivedValue): string {
           id="sheet-header-resources"
           role="group"
           aria-label="Resources"
-          class="order-last w-full flex-wrap items-center gap-x-5 gap-y-2 @[600px]/sheet:order-none @[600px]/sheet:flex @[600px]/sheet:w-auto"
-          :class="resourcesOpen ? 'flex' : 'hidden'"
+          class="flex-wrap items-center gap-x-5 gap-y-2"
+          :class="companion ? ['order-last w-full', resourcesOpen ? 'flex' : 'hidden'] : 'flex'"
         >
           <CharacterResourceOrbs
             v-if="slotGroups.length"

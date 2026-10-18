@@ -191,11 +191,6 @@ export function useCharacterSheetLayout(
     })
   }
 
-  // Phase 4C: also decides where the context inspector opens -- the
-  // workspace's right rail from 1024px (Tailwind `lg`, tablet landscape
-  // and up), the bottom sheet below that. Viewport-based on purpose: it
-  // chooses between two workspace surfaces, not a sheet column layout
-  // (that stays container-driven).
   const isDesktop = ref(true)
   let desktopQuery: MediaQueryList | null = null
 
@@ -205,7 +200,7 @@ export function useCharacterSheetLayout(
 
   onMounted(() => {
     if (!import.meta.client) return
-    desktopQuery = window.matchMedia('(min-width: 1024px)')
+    desktopQuery = window.matchMedia('(min-width: 1280px)')
     onDesktopQueryChange(desktopQuery)
     desktopQuery.addEventListener('change', onDesktopQueryChange)
   })

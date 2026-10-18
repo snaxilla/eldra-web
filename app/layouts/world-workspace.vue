@@ -74,7 +74,12 @@ function onMobileDrawerKeydown(event: KeyboardEvent) {
 }
 
 let breakpointQuery: MediaQueryList | null = null
+// `md`+ (matches the media query below). Client-only; false during SSR,
+// which is fine -- it only feeds the map viewport inset.
+const isDesktop = ref(false)
+
 function onBreakpointChange(query: MediaQueryList | MediaQueryListEvent) {
+  isDesktop.value = query.matches
   // A drawer left open through a resize/rotation past `md` would otherwise
   // strand the scroll lock below with no visible way to dismiss it, since
   // the hamburger/backdrop are both `md:hidden`.
@@ -200,6 +205,16 @@ const gridStyle = computed(() => ({
 const mapInsetClass = computed(() => {
   if (!isFullBleedMap.value) return ''
   return leftCollapsed.value ? 'md:[--eldra-map-inset-left:80px]' : 'md:[--eldra-map-inset-left:292px]'
+})
+
+// Screen pixels the floating sidebar covers on the full-bleed map, for the
+// map page to pass to the renderer as `viewportInsets.left` (Phase 3B-1).
+// Mirrors mapInsetClass; 0 on mobile and every non-map page.
+const worldMapInsetLeft = useState<number>('world-map-viewport-inset-left', () => 0)
+watchEffect(() => {
+  worldMapInsetLeft.value = isFullBleedMap.value && isDesktop.value
+    ? (leftCollapsed.value ? 80 : 292)
+    : 0
 })
 
 const sidebarWrapperDesktopClass = computed(() => {

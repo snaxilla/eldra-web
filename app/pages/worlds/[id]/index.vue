@@ -857,6 +857,22 @@ const selectedPinMapUrl = computed(() => {
 })
 
 const showPinEditor = ref(false)
+
+// Theming Phase 3B-1: screen pixels covered by floating panels, so the
+// renderer can let edge content pan out from under them and center the
+// initial view in the visible area. The left inset is owned by the
+// world-workspace layout (0 on mobile/non-full-bleed); the right inset is
+// whichever right-hand panel is open here (widths match those panels).
+// Only ever applied at `md`+, where the left inset is non-zero.
+const worldMapInsetLeft = useState<number>('world-map-viewport-inset-left', () => 0)
+const mapViewportInsets = computed(() => {
+  const left = worldMapInsetLeft.value
+  if (!left) return { left: 0, right: 0 }
+  let right = 0
+  if (showPinEditor.value || showImageOverlayEditor.value) right = 420
+  else if (selectedPin.value && mode.value === 'play') right = 380
+  return { left, right }
+})
 const savingPin = ref(false)
 const saveError = ref('')
 const creatingEntity = ref(false)
@@ -1494,6 +1510,7 @@ function openSelectedPinContextMap() {
         :editing-road-style="editingRoadStylePreview"
         :build-mode="mode === 'build' && (activeBuildTool === 'pin' || activeBuildTool === 'road')"
         :road-mode="mode === 'build' && activeBuildTool === 'road'"
+        :viewport-insets="mapViewportInsets"
         @select-pin="selectPin"
         @select-road="selectRoad"
         @map-click="onMapClick"

@@ -192,6 +192,14 @@ const props = defineProps<{
   editingRoadStyle?: { color?: string; width?: number; opacity?: number; dashPattern?: string } | null
   buildMode?: boolean
   roadMode?: boolean
+  // Screen-space pixels covered by floating workspace panels (Theming
+  // Phase 3B-1: the full-bleed World Map's glass sidebar on the left, the
+  // inspector/editors on the right). Optional; absent/zero keeps the exact
+  // previous behavior. Used only to (a) let maxBounds extend that many
+  // pixels past the map edge so edge content can be panned out from under
+  // a panel, and (b) center the initial view in the visible area. Never
+  // affects map coordinates, emitted coords, or scene data.
+  viewportInsets?: { left?: number; right?: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -624,6 +632,9 @@ async function ensureMap() {
   map.on('zoomend', () => {
     renderRoads()
     renderPins()
+    // Inset padding is constant in screen pixels, so its size in map
+    // units changes with zoom.
+    if (hasViewportInsets()) applyMaxBounds()
   })
 
   markerLayer = L.layerGroup().addTo(map)
@@ -915,6 +926,42 @@ function renderPins() {
   }
 }
 
+function viewportInset(side: 'left' | 'right') {
+  const value = Number(props.viewportInsets?.[side] ?? 0)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+function hasViewportInsets() {
+  return viewportInset('left') > 0 || viewportInset('right') > 0
+}
+
+// currentBounds, widened horizontally by the viewport insets converted to
+// map units at the current zoom (CRS.Simple: 1 unit = 2^zoom px). With no
+// insets this is exactly currentBounds, as before.
+function insetMaxBounds() {
+  if (!map || !currentBounds || !hasViewportInsets()) return currentBounds
+  const unitsPerPx = 1 / Math.pow(2, map.getZoom())
+  const sw = currentBounds.getSouthWest()
+  const ne = currentBounds.getNorthEast()
+  return L.latLngBounds(
+    [sw.lat, sw.lng - viewportInset('left') * unitsPerPx],
+    [ne.lat, ne.lng + viewportInset('right') * unitsPerPx]
+  )
+}
+
+function applyMaxBounds() {
+  if (!map || !currentBounds) return
+  map.setMaxBounds(insetMaxBounds())
+}
+
+// Shift the initial view so the map's center sits in the middle of the
+// area not covered by panels.
+function centerInVisibleArea() {
+  if (!map || !hasViewportInsets()) return
+  const shift = (viewportInset('left') - viewportInset('right')) / 2
+  if (shift) map.panBy([-shift, 0], { animate: false })
+}
+
 function getCoverZoom(bounds: any) {
   if (!map) return 0
 
@@ -995,16 +1042,30 @@ async function renderMap() {
   map.setMaxBounds(currentBounds)
   map.options.maxBoundsViscosity = 1.0
   map.setView(center, startZoom, { animate: false })
+  // Insets need a zoom to convert pixels to map units, so they apply
+  // after the view is set (no-op without insets).
+  if (hasViewportInsets()) applyMaxBounds()
+  centerInVisibleArea()
 
   renderPins()
 
   requestAnimationFrame(() => {
     if (!map) return
     map.invalidateSize()
-    map.setMaxBounds(currentBounds)
+    // The map has a zoom by now, so the (possibly inset-padded) bounds can
+    // be applied directly -- exactly currentBounds when there are no
+    // insets. Applying the un-padded bounds first would start an animated
+    // pan back to center that undoes centerInVisibleArea().
+    applyMaxBounds()
     map.setView(center, startZoom, { animate: false })
+    centerInVisibleArea()
   })
 }
+
+watch(
+  () => [viewportInset('left'), viewportInset('right')],
+  () => applyMaxBounds()
+)
 
 watch(
   () => [

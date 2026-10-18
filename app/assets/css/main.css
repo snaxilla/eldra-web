@@ -26,6 +26,7 @@
 @import "./eldra-fieldguide.css";
 
 @import "./themes/surfaces.css";
+@import "./themes/nuxt-ui.css";
 @import "./themes/accessibility.css";
 
 @theme static {
@@ -73,6 +74,10 @@
   --color-eldra-text-strong: rgb(var(--eldra-text-strong-rgb));
   --color-eldra-muted: rgb(var(--eldra-text-muted-rgb));
   --color-eldra-parchment: rgb(var(--eldra-parchment-rgb));
+  --color-eldra-text-soft: rgb(var(--eldra-text-soft-rgb, var(--eldra-text-rgb)));
+  --color-eldra-text-dim: rgb(var(--eldra-text-dim-rgb, var(--eldra-text-muted-rgb)));
+  --color-eldra-text-faint: rgb(var(--eldra-text-faint-rgb, var(--eldra-text-muted-rgb)));
+  --color-eldra-accent-text: rgb(var(--eldra-accent-text-rgb, var(--eldra-text-strong-rgb)));
 
   --font-eldra-display: var(--eldra-font-display);
   --font-eldra-body: var(--eldra-font-body);

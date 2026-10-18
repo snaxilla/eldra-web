@@ -32,6 +32,8 @@
 
   /* Shape, depth, glow */
   --eldra-radius: 0;
+  /* Nuxt UI component radius (must carry a unit). */
+  --eldra-ui-radius: 0rem;
   --eldra-shadow-panel: 0 22px 70px rgba(0, 0, 0, 0.42);
   --eldra-glow-accent: inset 0 0 48px rgb(var(--eldra-accent-rgb) / 0.04);
 

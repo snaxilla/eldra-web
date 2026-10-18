@@ -90,11 +90,11 @@ export const ELDRA_THEMES: readonly EldraThemeDefinition[] = [
       panelBlur: 12,
       atmosphere: true
     },
-    // Phase 2 keeps Nuxt UI's existing palette so the app looks unchanged.
-    // eldra-design-language.md §5 calls for gold primary actions; Phase 3
-    // flips this to 'gold' (scale already registered in main.css).
+    // Gold primary actions (eldra-design-language.md §5). The scale is
+    // registered in main.css. Semantic success/warning/error colors are
+    // deliberately not themed -- they keep Nuxt UI's meanings.
     nuxtUi: {
-      primary: 'green',
+      primary: 'gold',
       neutral: 'slate'
     }
   }

@@ -15,19 +15,19 @@
 // page), never the viewport -- the workspace rail's width is already
 // subtracted. Widths are the sheet container's:
 //
-//                closed                        inspector open
-//   >= 1600px    rail | skills | main          rail | skills | main | inspector
-//   >= 1240px    rail | skills | main          rail | main | inspector
-//   >=  880px    rail (skills beneath) | main  main | inspector
-//    <  880px    one section at a time         bottom sheet
+//   >= 1240px  rail | skills | main
+//   >=  880px  rail (skills beneath) | main
+//    <  880px  one section at a time, with section navigation
 //
-// Phase 4C (production feedback): NO SPACE IS RESERVED for the inspector.
-// Closed, the sheet uses its full width; open, the inspector is Eldra's
-// usual right-hand context pane and the main workspace contracts to make
-// room -- the same three-pane behaviour as the rest of the workspace.
-// Where the container is too narrow for every column, the inspector
-// temporarily takes the reference columns' place; closing it restores
-// them. The resize is a plain grid change -- no animation.
+// THE INSPECTOR IS NOT A REGION OF THE SHEET (Phase 4C correction). On a
+// desktop/tablet viewport (`inspectorMode="rail"`) it is the workspace's
+// own contextual right rail -- WorldEntityContextDrawer in its standard
+// overlay form, exactly as the roster, timelines and entity pages use it
+// -- and the PAGE contracts the whole sheet (header included) by the rail's
+// width, the roster page's `pr-[380px]` precedent. The sheet's columns
+// then reflow purely by container width; nothing here reads whether the
+// inspector is open. On phones (`inspectorMode="sheet"`) it is the
+// bottom sheet below. Nothing is reserved while it is closed.
 
 // Phones: a condensed sticky bar (the page's `condensed` slot) appears
 // once the full header scrolls away -- one IntersectionObserver boolean,
@@ -48,8 +48,12 @@ const props = withDefaults(defineProps<{
   mainSection: CharacterSheetSectionKey
   inspectorOpen?: boolean
   inspectorLabel?: string
+  // 'rail': the drawer renders itself as the workspace right rail; this
+  // shell only hosts it (focus/Escape). 'sheet': the phone bottom sheet.
+  inspectorMode?: 'rail' | 'sheet'
 }>(), {
   inspectorOpen: false,
+  inspectorMode: 'sheet',
   inspectorLabel: 'Details'
 })
 
@@ -267,32 +271,45 @@ onBeforeUnmount(() => {
         </div>
       </main>
 
-      <div
-        v-if="inspectorOpen"
-        class="eldra-sheet__scrim"
-        aria-hidden="true"
-        @click="closeInspector"
-      />
-
-      <aside
-        ref="inspectorEl"
-        class="eldra-sheet__inspector"
-        :aria-label="inspectorLabel"
-        :style="dragOffset ? { transform: `translateY(${dragOffset}px)` } : undefined"
-        data-sheet-region="inspector"
-      >
+      <template v-if="inspectorMode === 'sheet'">
         <div
-          class="eldra-sheet__grip"
+          v-if="inspectorOpen"
+          class="eldra-sheet__scrim"
           aria-hidden="true"
-          @touchstart.passive="onGripStart"
-          @touchmove.passive="onGripMove"
-          @touchend="onGripEnd"
-          @touchcancel="onGripEnd"
+          @click="closeInspector"
+        />
+
+        <aside
+          ref="inspectorEl"
+          class="eldra-sheet__inspector"
+          :aria-label="inspectorLabel"
+          :style="dragOffset ? { transform: `translateY(${dragOffset}px)` } : undefined"
+          data-sheet-region="inspector"
         >
-          <span />
-        </div>
-        <slot name="inspector" />
-      </aside>
+          <div
+            class="eldra-sheet__grip"
+            aria-hidden="true"
+            @touchstart.passive="onGripStart"
+            @touchmove.passive="onGripMove"
+            @touchend="onGripEnd"
+            @touchcancel="onGripEnd"
+          >
+            <span />
+          </div>
+          <slot name="inspector" />
+        </aside>
+      </template>
+    </div>
+
+    <!-- Rail mode: the drawer positions itself (the workspace right rail);
+         this wrapper only scopes focus management. -->
+    <div
+      v-if="inspectorMode === 'rail'"
+      ref="inspectorEl"
+      class="contents"
+      data-sheet-inspector-host
+    >
+      <slot name="inspector" />
     </div>
   </div>
 </template>
@@ -304,7 +321,6 @@ onBeforeUnmount(() => {
   --sheet-condensed-h: 3.25rem;
   --sheet-rail-w: 17rem;
   --sheet-side-w: 20rem;
-  --sheet-inspector-w: 22.5rem;
 }
 
 .eldra-sheet__panel {
@@ -479,9 +495,7 @@ onBeforeUnmount(() => {
 
 @container sheet (min-width: 880px) {
   .eldra-sheet__condensed,
-  .eldra-sheet__sectionnav,
-  .eldra-sheet__scrim,
-  .eldra-sheet__grip {
+  .eldra-sheet__sectionnav {
     display: none;
   }
 
@@ -543,32 +557,6 @@ onBeforeUnmount(() => {
     height: 2px;
     background: var(--eldra-accent);
   }
-
-  /* Open: the inspector is the right-hand pane; the main workspace
-     contracts beside it. Too narrow here for the reference column as
-     well, so it steps aside until the inspector closes. */
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__body {
-    grid-template-columns: minmax(0, 1fr) var(--sheet-inspector-w);
-    grid-template-rows: auto;
-    grid-template-areas: "main inspector";
-  }
-
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__rail,
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__skills {
-    display: none;
-  }
-
-  .eldra-sheet__inspector {
-    position: sticky;
-    inset: auto;
-    top: 1rem;
-    z-index: 1;
-    grid-area: inspector;
-    align-self: start;
-    height: calc(100dvh - 6rem);
-    max-height: 52rem;
-    padding: 0;
-  }
 }
 
 /* --- Standard desktop: rail | skills | main --------------------------- */
@@ -578,29 +566,6 @@ onBeforeUnmount(() => {
     grid-template-columns: var(--sheet-rail-w) var(--sheet-side-w) minmax(0, 1fr);
     grid-template-rows: auto;
     grid-template-areas: "rail skills main";
-  }
-
-  /* Open: abilities and saves stay; Skills steps aside for the pane. */
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__body {
-    grid-template-columns: var(--sheet-rail-w) minmax(0, 1fr) var(--sheet-inspector-w);
-    grid-template-areas: "rail main inspector";
-  }
-
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__rail {
-    display: block;
-  }
-}
-
-/* --- Large desktop: room for every column and the pane ---------------- */
-
-@container sheet (min-width: 1600px) {
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__body {
-    grid-template-columns: var(--sheet-rail-w) var(--sheet-side-w) minmax(0, 1fr) var(--sheet-inspector-w);
-    grid-template-areas: "rail skills main inspector";
-  }
-
-  .eldra-sheet[data-inspector="open"] .eldra-sheet__skills {
-    display: block;
   }
 }
 

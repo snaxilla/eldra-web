@@ -754,12 +754,10 @@ const vitalsError = computed(() =>
 // ---------------------------------------------------------------------------
 // Shell -- Corrective Phase 2R. `tabs`/`activeTab`/`setActiveTab` are still
 // useCharacterSheetLayout.ts's (URL-synced tab state is still useful, per
-// this task's own KEEP list); `isDesktop` is not destructured here anymore
-// -- CharacterSheetShell.vue no longer branches on it (there is no more
-// rail/tab-fold distinction left for it to decide), and every tab's
-// content below now renders identically at every breakpoint, the same
-// content that used to be gated `v-if="!isDesktop"` and is now simply the
-// only copy.
+// this task's own KEEP list). Every tab's content renders identically at
+// every breakpoint. `isDesktop` is used for one thing only (Phase 4C):
+// whether the context inspector opens as the workspace right rail or as
+// the phone bottom sheet -- never to choose which sheet content shows.
 // ---------------------------------------------------------------------------
 
 const abilityEntries = computed(() => derived.value?.byCategory?.[ABILITIES_CATEGORY] ?? [])
@@ -781,6 +779,7 @@ const {
   sections,
   activeTab,
   mainSection,
+  isDesktop,
   setActiveTab,
   context,
   contextEntity,
@@ -1108,7 +1107,15 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
        WorldPagePresentationPanel, per `pageKey`) BEHIND this page's
        `<slot />`. An opaque root here would hide that backdrop. The
        sheet's own surfaces are translucent glass over it. -->
-  <div class="h-full overflow-y-auto bg-transparent">
+  <!-- Phase 4C: while the inspector is open as the workspace right rail
+       (WorldEntityContextDrawer, fixed, 380px), the WHOLE sheet contracts
+       by that width -- the roster page's `pr-[380px]` precedent -- so the
+       header and every column reflow through the sheet's own container
+       queries. Nothing is reserved while it is closed. -->
+  <div
+    class="h-full overflow-y-auto bg-transparent"
+    :class="context && isDesktop ? 'pr-[380px]' : ''"
+  >
     <!-- Phase 4B: this element is the `sheet` CONTAINER. Every layout
          decision inside the sheet (header rows, reference rail, skills
          column, inspector placement, phone sections) responds to the
@@ -1145,6 +1152,7 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
         :main-section="mainSection"
         :inspector-open="Boolean(context)"
         :inspector-label="context ? `${context.title} details` : 'Details'"
+        :inspector-mode="isDesktop ? 'rail' : 'sheet'"
         @select-section="setActiveTab"
         @close-inspector="closeContext"
       >
@@ -1545,10 +1553,11 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
           </div>
         </template>
 
-        <!-- Eldra's ONE context system, placed inline: the shell opens it
-             as the right-hand pane (or a phone bottom sheet) and the main
-             workspace contracts beside it -- no space is reserved while it
-             is closed (Phase 4C). `content="detail"` skips the World Entity
+        <!-- Eldra's ONE context system. From 1024px it is the workspace's
+             standard right rail (overlay placement, the same 380px rail
+             every other World page opens) and the page contracts beside
+             it; below that it is the phone bottom sheet (inline placement
+             inside the shell). `content="detail"` skips the World Entity
              affordances. The lead slot repeats the originating row's own
              rolls, through the same handlers. -->
         <template #inspector>
@@ -1557,8 +1566,8 @@ function runContextRoll(roll: CharacterSheetContextRoll) {
             :entity="contextEntity"
             :world-id="worldId"
             content="detail"
-            rail-variant="sheet"
-            placement="inline"
+            :rail-variant="isDesktop ? 'workspace' : 'sheet'"
+            :placement="isDesktop ? 'overlay' : 'inline'"
             @close="closeContext"
           >
             <template

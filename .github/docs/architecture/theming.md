@@ -1,7 +1,8 @@
 # Eldra Theming Architecture
 
-Status: **Phase 2 (foundation), Phase 3A (World Map experience) and Phase 3B-1 (World Map polish)
-implemented.** Phase 3B-2 (remaining shell surfaces, dialogs, broader token migration) not started.
+Status: **Phase 2 (foundation), Phase 3A (World Map), Phase 3B-1 (World Map polish) and Phase 3B-2
+(global Nuxt UI integration, shared UI polish) implemented.** Cyberpunk and page-by-page migration
+are not started.
 
 Eldra lets the Game Master control how a World *looks*. That choice is a presentation decision,
 deliberately **independent of the game system**: a D&D World can run a Horror theme, a Cyberpunk
@@ -115,7 +116,9 @@ Derived, stable names: `--eldra-accent`, `--eldra-accent-soft`, `--eldra-accent-
 
 **Tailwind utilities** (registered with `@theme inline` in `main.css`, so they track runtime
 values): `bg-eldra-panel`, `border-eldra-accent/24`, `text-eldra-muted`, `text-eldra-text-strong`,
-`bg-eldra-well/50`, `font-eldra-display`, and so on. New and migrated markup should use these
+`bg-eldra-well/50`, `font-eldra-display`, and so on. The text ramp is `text-eldra-text-strong` →
+`text-eldra-text` → `text-eldra-text-soft` → `text-eldra-text-dim` → `text-eldra-text-faint`. Use
+`text-eldra-accent-text` for gold-tinted labels. New and migrated markup should use these
 instead of `border-[rgba(201,164,90,0.24)]`-style literals.
 
 **Darkglass primitive:** `.eldra-glass` uses the panel color, `--eldra-panel-alpha` and
@@ -283,3 +286,64 @@ follow-up.
   fake Directus, the 502-vs-absent distinction, and clamping on write.
 - `tests/server/api/worlds/[id]/presentation-settings.test.ts`: real `can()`. Players can read, only
   `world.settings.edit` can write, and unknown keys get 400.
+
+## 7. Nuxt UI integration (Phase 3B-2)
+
+- **Color mode:** Nuxt UI bundles `@nuxtjs/color-mode` with preference `system`, which put Nuxt UI
+  components in light mode for light-OS users inside the dark app. `nuxt.config.ts` now sets
+  `colorMode: { preference: 'dark', fallback: 'dark' }`. The module stays installed, so an
+  explicitly stored preference is honored and SSR keeps its no-flash script. Nothing in the app
+  used color mode or `dark:` variants.
+- **Palette:** each registry entry's `nuxtUi.primary`/`neutral` are written to app config at runtime.
+  Fantasy is `gold`/`slate`. Success, warning, error and info are never themed (a test enforces
+  this), so status colors keep their meaning.
+- **Surfaces (`themes/nuxt-ui.css`):** Nuxt UI's `--ui-bg*`, `--ui-text*`, `--ui-border*` and
+  `--ui-radius` are mapped onto Eldra tokens in both color modes. Every Nuxt UI component (buttons,
+  inputs, selects, tables, cards…) follows the active theme with no per-page overrides.
+- **Overlays (`app.config.ts` slots, theme-agnostic classes only):**
+  - Modals and slideovers use `.eldra-glass-surface` and `.eldra-ornamented` (the pseudo-element
+    corner ornaments, 32px on modals) with a display-font title.
+  - Popovers, dropdown and context menus, selects and tooltips use the quieter, more opaque
+    `.eldra-glass-menu`, with no ornament.
+
+## 8. Remaining theme-incompatible surfaces
+
+Phase 3B-2 migrated the shared shell onto tokens: the workspace and platform sidebars, top bar,
+bottom nav, workspace ground, inspector, relationships panel, collection cards
+(`WorldEntityInteractivePage`), presentation and theme panels, and every map editor. A test guards
+these files against reintroducing literal Fantasy colors. The shared `.eldra-button`,
+`.eldra-input` and `.eldra-ornate-panel` classes read tokens too.
+
+About **1,230 gold literals in 113 files** remain, mostly page-specific. The largest are
+`pages/worlds/[id]/admin.vue`, `entities/[entityId]/index.vue`, `eldra-shell.css` (Character Sheet
+parchment rules, which also match class strings via `[class*=…]` selectors), `importer.vue`, the
+Character Sheet (`sheet.vue`, `SheetActionCenter.vue`, `SheetActionsTab.vue`), `EldraRichTextEditor`,
+`enemies.vue`, the character builder pages and `AdminMembersPanel`.
+
+Under a non-gold theme these stay gold. They are best migrated page by page with the same
+mechanical class mapping (`-[rgba(201,164,90,A)]` → `-eldra-accent/A`, the text ramp hexes →
+`text-eldra-text-*`), except for the Character Sheet. The Sheet's `[class*="bg-[rgba(20,17,12"…]`
+CSS selectors depend on the literal class strings, so it must be migrated together with
+`eldra-shell.css`.
+
+## 9. Recommendations for a Cyberpunk theme
+
+1. Add a registry entry, e.g. `nuxtUi: { primary: 'cyan', neutral: 'zinc' }`, with lower default
+   blur and slightly higher opacity (neon reads best on crisper glass).
+2. Create `themes/cyberpunk.css` under `:root[data-eldra-theme="cyberpunk"]`:
+   - `--eldra-accent-rgb` set to neon cyan (`0 240 255`) and `--eldra-accent-bright-rgb` to magenta;
+   - a cool `--eldra-panel-rgb`;
+   - a re-tuned text ramp (`--eldra-text-*-rgb`);
+   - `--eldra-ui-radius: 0.125rem`;
+   - a vendored geometric display face (`@fontsource/*`) in `--eldra-font-display`, and
+     `--eldra-display-tracking: 0.12em`.
+3. Ornaments: put angular corner brackets and a scanline or chevron divider under
+   `app/assets/ornaments/cyberpunk/`. Set `--eldra-ornament-color` to the accent and consider a
+   larger `--eldra-ornament-size`. The emblem could be a hex or circuit glyph.
+4. Glow: override `--eldra-glass-sheen` with a faint accent gradient and `--eldra-shadow-panel` with
+   an accent-tinted outer glow. Put any animated effects behind `[data-eldra-atmospheric]` so reduced
+   motion and high contrast drop them automatically.
+5. Before shipping, migrate the remaining page literals listed in §8 for the pages that matter
+   (at least the Character Sheet), or they will stay gold.
+6. Tests: the registry, CSS-import-order and migrated-file guards cover the new theme automatically.
+   Add a contrast check of the new text ramp against the panel fill at the clamped minimum opacity.

@@ -29,33 +29,87 @@
 // via `matchMedia`, same mechanism world-workspace.vue's own breakpoint
 // watcher already established.
 
-export type CharacterSheetTabKey = 'play' | 'character' | 'spells' | 'inventory' | 'notes'
+import type { Ref } from 'vue'
 
-export type CharacterSheetTab = {
-  key: CharacterSheetTabKey
+// ---------------------------------------------------------------------------
+// SECTIONS -- Phase 4B. Supersedes the five fixed tabs.
+// ---------------------------------------------------------------------------
+// The sheet is a set of SECTIONS. Two are reference sections (Stats,
+// Skills): on desktop/tablet they are always-visible columns, and only on
+// a phone do they become sections you switch to. The rest are MAIN
+// sections: the tabbed workspace on wider screens, one-at-a-time on a
+// phone. Which sections exist for a character is decided by the page from
+// what the package/character actually provides (no Spells for a
+// non-caster, no Skills for a package without a skills category) --
+// `availableCharacterSheetSections` only filters this ordered list.
+//
+// Order is the D&D-first priority the phone nav reads left to right:
+// Stats, Actions, Spells, Inventory, then the rest. Skills sits beside
+// Stats in the reference columns; on a phone it is folded into Stats (see
+// CharacterSheetShell.vue) and also reachable directly from More.
+export type CharacterSheetSectionKey =
+  | 'stats'
+  | 'skills'
+  | 'actions'
+  | 'spells'
+  | 'inventory'
+  | 'features'
+  | 'notes'
+  | 'details'
+
+// Kept as an alias so existing consumers of the old name keep compiling.
+export type CharacterSheetTabKey = CharacterSheetSectionKey
+
+export type CharacterSheetSection = {
+  key: CharacterSheetSectionKey
   label: string
+  // Phone nav label, when the full label is too long for a direct button.
+  shortLabel?: string
   icon: string
+  placement: 'reference' | 'main'
 }
 
-// Icons match §7.5's vocabulary exactly (i-lucide-swords Play/attack,
-// i-lucide-user Character, i-lucide-sparkles Spells, i-lucide-backpack
-// Inventory, i-lucide-notebook-pen Notes).
-//
-// ORDER AND LABELS -- Desktop IA pass. Reordered and relabelled to match
-// the tab order a 5e player already has muscle memory for (Actions,
-// Spells, Inventory, Features, Notes). The `play` KEY is deliberately
-// unchanged behind its new "Actions" label: `?tab=play` is a URL other
-// people may already have bookmarked or shared, and renaming a route
-// vocabulary to match a label change would break those for nothing. The
-// same applies to `character`, whose tab now holds what the reference
-// sheet calls Features & Traits.
-export const CHARACTER_SHEET_TABS: readonly CharacterSheetTab[] = [
-  { key: 'play', label: 'Actions', icon: 'i-lucide-swords' },
-  { key: 'spells', label: 'Spells', icon: 'i-lucide-sparkles' },
-  { key: 'inventory', label: 'Inventory', icon: 'i-lucide-backpack' },
-  { key: 'character', label: 'Character', icon: 'i-lucide-user' },
-  { key: 'notes', label: 'Notes', icon: 'i-lucide-notebook-pen' }
+export type CharacterSheetTab = CharacterSheetSection
+
+export const CHARACTER_SHEET_SECTIONS: readonly CharacterSheetSection[] = [
+  { key: 'stats', label: 'Stats', icon: 'i-lucide-activity', placement: 'reference' },
+  { key: 'actions', label: 'Actions', icon: 'i-lucide-swords', placement: 'main' },
+  { key: 'spells', label: 'Spells', icon: 'i-lucide-sparkles', placement: 'main' },
+  { key: 'inventory', label: 'Inventory', shortLabel: 'Gear', icon: 'i-lucide-backpack', placement: 'main' },
+  { key: 'skills', label: 'Skills', icon: 'i-lucide-target', placement: 'reference' },
+  { key: 'features', label: 'Features & Traits', shortLabel: 'Features', icon: 'i-lucide-scroll-text', placement: 'main' },
+  { key: 'notes', label: 'Notes', icon: 'i-lucide-notebook-pen', placement: 'main' },
+  { key: 'details', label: 'Details', icon: 'i-lucide-book-open', placement: 'main' }
 ]
+
+// `?tab=` values from the five-tab era. `play` and `character` were the
+// route keys behind the "Actions" and "Character" labels; links people
+// already shared keep landing in the same place.
+export const CHARACTER_SHEET_TAB_ALIASES: Readonly<Record<string, CharacterSheetSectionKey>> = {
+  play: 'actions',
+  character: 'features'
+}
+
+export const DEFAULT_CHARACTER_SHEET_SECTION: CharacterSheetSectionKey = 'actions'
+
+export function normalizeCharacterSheetTab(value: unknown): CharacterSheetSectionKey {
+  const raw = String(Array.isArray(value) ? value[0] : value || DEFAULT_CHARACTER_SHEET_SECTION)
+  const tab = CHARACTER_SHEET_TAB_ALIASES[raw] ?? raw
+  return CHARACTER_SHEET_SECTIONS.some((option) => option.key === tab)
+    ? (tab as CharacterSheetSectionKey)
+    : DEFAULT_CHARACTER_SHEET_SECTION
+}
+
+export type CharacterSheetSectionAvailability = Partial<Record<CharacterSheetSectionKey, boolean>>
+
+// Sections whose availability is not `false`, in canonical order. A key
+// the page does not mention stays available -- Actions/Inventory/Notes/
+// Details always have something to show (an empty state, at minimum).
+export function availableCharacterSheetSections(
+  availability: CharacterSheetSectionAvailability
+): CharacterSheetSection[] {
+  return CHARACTER_SHEET_SECTIONS.filter((section) => availability[section.key] !== false)
+}
 
 // ---------------------------------------------------------------------------
 // CONTEXT SELECTION -- WHAT THE SHARED DRAWER IS CURRENTLY SHOWING
@@ -72,7 +126,25 @@ export const CHARACTER_SHEET_TABS: readonly CharacterSheetTab[] = [
 // Every field is already-resolved data handed over by a panel -- there is
 // no fetch here, and nothing in this file reads `derived`, the catalogue,
 // or a Content Pack.
-export type CharacterSheetContextKind = 'action' | 'spell' | 'item' | 'feature' | 'skill'
+export type CharacterSheetContextKind =
+  | 'action'
+  | 'spell'
+  | 'item'
+  | 'feature'
+  | 'skill'
+  | 'ability'
+  | 'save'
+  | 'condition'
+  | 'resource'
+
+// A roll the inspector can start for what it is showing. Data only: the
+// page maps `id` back to the existing roll/cast handler that row already
+// used, so the inspector never learns how a roll is made.
+export type CharacterSheetContextRoll = {
+  id: string
+  label: string
+  value: string
+}
 
 export type CharacterSheetContext = {
   kind: CharacterSheetContextKind
@@ -83,27 +155,38 @@ export type CharacterSheetContext = {
   summary?: string
   tags?: string[]
   imageUrl?: string | null
+  rolls?: CharacterSheetContextRoll[]
 }
 
-const DEFAULT_TAB: CharacterSheetTabKey = 'play'
-
-export function normalizeCharacterSheetTab(value: unknown): CharacterSheetTabKey {
-  const tab = String(Array.isArray(value) ? value[0] : value || DEFAULT_TAB)
-  return CHARACTER_SHEET_TABS.some((option) => option.key === tab) ? (tab as CharacterSheetTabKey) : DEFAULT_TAB
-}
-
-export function useCharacterSheetLayout() {
+export function useCharacterSheetLayout(
+  availability: Ref<CharacterSheetSectionAvailability> = ref({})
+) {
   const route = useRoute()
   const router = useRouter()
 
-  const activeTab = computed<CharacterSheetTabKey>(() => normalizeCharacterSheetTab(route.query.tab))
+  const sections = computed(() => availableCharacterSheetSections(availability.value))
 
-  function setActiveTab(tab: CharacterSheetTabKey) {
+  // The requested section, falling back to the default when this
+  // character does not have it (e.g. `?tab=spells` on a non-caster).
+  const activeTab = computed<CharacterSheetSectionKey>(() => {
+    const requested = normalizeCharacterSheetTab(route.query.tab)
+    return sections.value.some((section) => section.key === requested) ? requested : DEFAULT_CHARACTER_SHEET_SECTION
+  })
+
+  // What the main workspace shows. A reference section (Stats/Skills) is
+  // its own column wherever there is room for one, so the main workspace
+  // keeps showing the default section beside it.
+  const mainSection = computed<CharacterSheetSectionKey>(() => {
+    const active = sections.value.find((section) => section.key === activeTab.value)
+    return active?.placement === 'main' ? active.key : DEFAULT_CHARACTER_SHEET_SECTION
+  })
+
+  function setActiveTab(tab: CharacterSheetSectionKey) {
     router.replace({
       path: route.path,
       query: {
         ...route.query,
-        tab: tab === DEFAULT_TAB ? undefined : tab
+        tab: tab === DEFAULT_CHARACTER_SHEET_SECTION ? undefined : tab
       }
     })
   }
@@ -161,8 +244,10 @@ export function useCharacterSheetLayout() {
   })
 
   return {
-    tabs: CHARACTER_SHEET_TABS,
+    tabs: sections,
+    sections,
     activeTab,
+    mainSection,
     setActiveTab,
     isDesktop,
     context,

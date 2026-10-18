@@ -366,6 +366,14 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
   // `core.proficiency` category's one Value.
   const proficiencyBonus = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.proficiency', 'value:proficiency_bonus'))
 
+  // Walking Speed -- Phase 4B-0 header wiring. Same read-only
+  // `findDerivedNumber(category, key)` shape as Armor Class above;
+  // `value:speed.walking` is packages/eldra-dnd5e-2024/definitions.json's
+  // own id (declared under `core.proficiency`). Null when a package does
+  // not declare it -- the vitals bar already renders '—' for that.
+  // (Initiative has no package Value yet, so the header keeps its '—'.)
+  const speed = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'core.proficiency', 'value:speed.walking'))
+
   // Read-only Spellcasting summaries.
   const spellcastingIsCaster = computed(() => findDerivedBoolean(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.is_caster'))
   const spellcastingAbilityMod = computed(() => findDerivedNumber(derived.value?.byCategory ?? {}, 'spellcasting', 'value:spellcasting.ability_mod'))
@@ -597,6 +605,7 @@ export async function useCharacterSheet(worldId: Ref<string>, characterId: Ref<s
     hitDieSize,
     armorClass,
     proficiencyBonus,
+    speed,
     characterLevel,
     spellcastingIsCaster,
     spellcastingAbilityMod,

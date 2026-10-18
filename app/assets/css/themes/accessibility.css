@@ -20,6 +20,11 @@
 
 :root[data-eldra-contrast="high"] {
   --eldra-text-muted-rgb: 214 204 182;
+  /* Phase 4B: the quieter steps of the text ramp, which the V2 sheet uses
+     for labels and captions, rise with it. */
+  --eldra-text-dim-rgb: 220 210 188;
+  --eldra-text-faint-rgb: 206 195 171;
+  --eldra-text-ghost-rgb: 190 179 155;
   --eldra-border: rgb(var(--eldra-accent-rgb) / 0.6);
 }
 

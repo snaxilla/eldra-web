@@ -80,6 +80,16 @@ const emit = defineEmits<{
   roll: [CharacterSkillRow]
 }>()
 
+// Which row's roll is in flight -- the initiation feedback for the one
+// control the player pressed, cleared when the page's roll settles.
+const rollingKey = ref<string | null>(null)
+watch(() => props.rolling, (rolling) => { if (!rolling) rollingKey.value = null })
+
+function roll(row: CharacterSkillRow) {
+  rollingKey.value = row.key
+  emit('roll', row)
+}
+
 const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
   groupDerivedValues(props.entries)
     .map((group) => {
@@ -139,10 +149,11 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
                  shape -- Phase 2B.1's own correction. -->
             <button
               type="button"
-              class="col-span-4 grid grid-cols-[1.25rem_2rem_minmax(0,1fr)_2.5rem] items-center gap-2 rounded-none py-0 text-left transition disabled:cursor-not-allowed disabled:opacity-50"
+              class="eldra-rollable col-span-4 -my-1.5 -ml-2 grid min-h-9 grid-cols-[1.25rem_2rem_minmax(0,1fr)_2.5rem] items-center gap-2 rounded-none py-1.5 pl-2 text-left disabled:cursor-not-allowed disabled:opacity-60 pointer-coarse:min-h-11"
               :disabled="rolling"
+              :aria-busy="rollingKey === row.key && rolling ? 'true' : undefined"
               :aria-label="`Roll ${row.label}${row.proficient ? ', proficient' : ''}, bonus ${row.value}`"
-              @click="emit('roll', row)"
+              @click="roll(row)"
             >
               <span
                 class="text-xs"
@@ -177,7 +188,7 @@ const rows = computed<(CharacterSkillRow & { error: string | null })[]>(() =>
                  component always sent. -->
             <button
               type="button"
-              class="flex items-center justify-center rounded-none text-eldra-text-ghost transition hover:text-eldra-text-soft"
+              class="flex items-center justify-center rounded-none text-eldra-text-ghost transition hover:text-eldra-text-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent pointer-coarse:min-h-11"
               :aria-label="`View ${row.label} details`"
               @click="emit('select', row)"
             >

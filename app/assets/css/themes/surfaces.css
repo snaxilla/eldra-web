@@ -235,3 +235,90 @@
 .eldra-map-control .eldra-map-control-icon {
   color: rgb(var(--eldra-accent-bright-rgb) / 0.9);
 }
+
+/* ------------------------------------------------------------------
+   Rollable controls (Phase 4B, V2 Character Sheet) -- an ability, save,
+   skill, attack, or damage value that starts a real server-side roll.
+   Hover/focus raise an accent edge and reveal the roll indicator
+   (`.eldra-roll-hint`, a die icon); `aria-busy="true"` marks the one
+   control whose roll is in flight. Coarse pointers have no hover, so the
+   indicator stays faintly visible there. Only used where a real roll
+   handler exists.
+------------------------------------------------------------------- */
+
+.eldra-rollable {
+  cursor: pointer;
+  transition:
+    background-color var(--eldra-motion-duration) ease,
+    box-shadow var(--eldra-motion-duration) ease;
+}
+
+.eldra-rollable:hover:not(:disabled) {
+  background-color: rgb(var(--eldra-accent-rgb) / 0.1);
+  box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-rgb) / 0.42);
+}
+
+.eldra-rollable:focus-visible {
+  outline: 2px solid rgb(var(--eldra-accent-bright-rgb) / 0.85);
+  outline-offset: -2px;
+}
+
+.eldra-rollable[aria-busy="true"] {
+  background-color: rgb(var(--eldra-accent-rgb) / 0.14);
+  box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-rgb) / 0.7);
+}
+
+.eldra-roll-hint {
+  color: rgb(var(--eldra-accent-bright-rgb) / 0.9);
+  opacity: 0;
+  transition: opacity var(--eldra-motion-duration) ease;
+}
+
+.eldra-rollable:hover .eldra-roll-hint,
+.eldra-rollable:focus-visible .eldra-roll-hint,
+.eldra-rollable[aria-busy="true"] .eldra-roll-hint {
+  opacity: 1;
+}
+
+.eldra-rollable[aria-busy="true"] .eldra-roll-hint {
+  animation: eldra-roll-spin 0.9s linear infinite;
+}
+
+@media (pointer: coarse) {
+  .eldra-roll-hint {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eldra-rollable[aria-busy="true"] .eldra-roll-hint {
+    animation: none;
+  }
+}
+
+@keyframes eldra-roll-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Section heading inside a V2 sheet column (Phase 4B): small caps label
+   with a hairline rule -- structure without a card per section. */
+.eldra-sheet-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(var(--eldra-accent-text-rgb) / 0.82);
+}
+
+.eldra-sheet-heading::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgb(var(--eldra-accent-rgb) / 0.16);
+}

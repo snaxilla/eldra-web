@@ -82,6 +82,16 @@ const emit = defineEmits<{
   roll: [CharacterAbilityRow]
 }>()
 
+// Which row's roll is in flight -- the initiation feedback for the one
+// control the player pressed, cleared when the page's roll settles.
+const rollingKey = ref<string | null>(null)
+watch(() => props.rolling, (rolling) => { if (!rolling) rollingKey.value = null })
+
+function roll(row: CharacterAbilityRow) {
+  rollingKey.value = row.key
+  emit('roll', row)
+}
+
 const rows = computed<CharacterAbilityRow[]>(() =>
   groupDerivedValues(props.entries)
     .filter((group) => group.numbers.length > 0)
@@ -102,42 +112,55 @@ const rows = computed<CharacterAbilityRow[]>(() =>
 </script>
 
 <template>
-  <ul
+  <!-- Phase 4B: tiles, modifier first -- the number a player rolls with is
+       the dominant one, the score its quieter badge. Three across in a
+       narrow rail, six across once the container allows. -->
+  <div
     v-if="rows.length"
-    class="grid gap-1"
+    class="@container"
   >
-    <li
-      v-for="row in rows"
-      :key="row.key"
-    >
-      <button
-        type="button"
-        class="eldra-well grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-none px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="rolling"
-        :aria-label="`Roll ${row.label}${row.modifier ? `, ${row.modifier}` : ''}`"
-        @click="emit('roll', row)"
+    <ul class="grid grid-cols-3 gap-1.5 @md:grid-cols-6">
+      <li
+        v-for="row in rows"
+        :key="row.key"
       >
-        <span class="min-w-0 truncate text-sm font-semibold uppercase tracking-[0.12em] text-eldra-text-soft">
-          {{ row.label }}
-        </span>
-
-        <span
-          v-if="row.error"
-          :title="row.error"
-          class="text-right text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
-        >Err</span>
-
-        <span
-          v-else
-          class="text-right text-lg font-semibold tabular-nums text-eldra-text-strong"
+        <button
+          type="button"
+          class="eldra-well eldra-rollable relative flex w-full flex-col items-center rounded-none px-1 pb-2 pt-1.5 text-center disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="rolling"
+          :aria-busy="rollingKey === row.key && rolling ? 'true' : undefined"
+          :aria-label="`Roll ${row.label}${row.modifier ? `, ${row.modifier}` : ''}`"
+          @click="roll(row)"
         >
-          {{ row.score }}
+          <UIcon
+            name="i-lucide-dices"
+            class="eldra-roll-hint absolute right-1 top-1 h-3 w-3"
+            aria-hidden="true"
+          />
           <span
-            v-if="row.modifier"
-            class="text-sm font-normal text-eldra-text-faint"
-          >({{ row.modifier }})</span>
-        </span>
-      </button>
-    </li>
-  </ul>
+            class="w-full truncate text-[0.55rem] font-semibold uppercase tracking-[0.04em] text-eldra-text-faint"
+            :title="row.label"
+          >
+            {{ row.label }}
+          </span>
+
+          <span
+            v-if="row.error"
+            :title="row.error"
+            class="mt-1 text-[0.65rem] uppercase tracking-[0.1em] text-red-300"
+          >Err</span>
+
+          <template v-else>
+            <span class="mt-0.5 text-2xl font-semibold leading-none tabular-nums text-eldra-text-strong">
+              {{ row.modifier ?? row.score }}
+            </span>
+            <span
+              v-if="row.modifier"
+              class="mt-1.5 min-w-8 border border-eldra-accent/24 px-1.5 text-xs tabular-nums text-eldra-text-soft"
+            >{{ row.score }}</span>
+          </template>
+        </button>
+      </li>
+    </ul>
+  </div>
 </template>

@@ -83,6 +83,7 @@
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import { isCharacterDeceasedFromDeathSaves, type StoredCharacterHealth } from '~/lib/characters/health'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
+import CharacterPortrait from '~/components/characters/CharacterPortrait.vue'
 import CharacterSaveIndicator from '~/components/characters/CharacterSaveIndicator.vue'
 import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
 import CharacterHealthBar from '~/components/characters/CharacterHealthBar.vue'
@@ -171,28 +172,8 @@ const emit = defineEmits<{
 // model). No second upload system: this still just captures a `File` and
 // hands it to the page, which POSTs it through the exact same
 // `.../characters/:id/update` endpoint Build Mode already uses.
-const portraitFileInput = ref<HTMLInputElement | null>(null)
-
-function triggerPortraitUpload() {
-  if (!props.canEditPortrait) return
-  portraitFileInput.value?.click()
-}
-
-// Phase 4B-0: on touch (coarse pointers) the thumbnail is too narrow for
-// two 44px targets side by side, so both portrait actions sit behind one
-// full-width "Edit portrait" button. Same handlers as the fine-pointer
-// buttons -- nothing about what Change/Remove do changes.
-const portraitMenuItems = computed(() => [[
-  { label: 'Change portrait', icon: 'i-lucide-camera', disabled: props.portraitSaving, onSelect: () => triggerPortraitUpload() },
-  { label: 'Remove portrait', icon: 'i-lucide-trash-2', color: 'error' as const, disabled: props.portraitSaving, onSelect: () => emit('clear-portrait') }
-]])
-
-function handlePortraitFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) emit('update-portrait', file)
-  input.value = ''
-}
+// The upload input, menu, and handlers live in CharacterPortrait.vue
+// (Phase 4B extraction); this component relays its update/clear events.
 
 // ---------------------------------------------------------------------------
 // DECEASED PORTRAIT PRESENTATION -- HEADER CLEANUP 3, FLAVOR ONLY
@@ -259,124 +240,17 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
            (`inset-0 h-full w-full object-cover`), cropping gracefully
            instead of leaving a gap or stretching. -->
       <div class="w-16 shrink-0 sm:w-20 @5xl/sheet:w-full @5xl/sheet:h-full">
-      <div class="eldra-image-frame group relative aspect-[4/5] w-full overflow-hidden rounded-none border bg-black/25 @5xl/sheet:aspect-auto @5xl/sheet:h-full">
-        <img
-          v-if="imageUrl"
-          :src="imageUrl"
-          :alt="characterTitle || 'Character portrait'"
-          class="absolute inset-0 h-full w-full object-cover object-top transition duration-200"
-          :class="isDeceased ? 'grayscale' : ''"
-          loading="lazy"
-        >
-        <button
-          v-else-if="canEditPortrait"
-          type="button"
-          class="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-1 text-center text-eldra-text-faint transition hover:bg-eldra-accent/10 focus-visible:bg-eldra-accent/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent/65 disabled:cursor-not-allowed"
-          :disabled="portraitSaving"
-          aria-label="Add character portrait"
-          @click="triggerPortraitUpload"
-        >
-          <UIcon name="i-lucide-image-plus" class="h-4 w-4" />
-          <span class="text-[9px] uppercase tracking-[0.1em]">{{ portraitSaving ? 'Saving…' : 'Add portrait' }}</span>
-        </button>
-        <div
-          v-else
-          class="absolute inset-0 flex h-full w-full items-center justify-center text-center text-[9px] uppercase tracking-[0.1em] text-eldra-text-faint"
-        >
-          No portrait
-        </div>
-
-        <!-- Deceased presentation -- Header Cleanup 3, flavor only (see
-             `isDeceased`'s own script comment above). Always in the DOM,
-             opacity-toggled rather than v-if, so the ~200ms transition
-             actually animates instead of snapping in/out. `pointer-
-             events-none` throughout: never intercepts the Add/Change/
-             Remove controls below, which keep working identically while
-             deceased (Change/Remove also carry their own `z-10`, so they
-             stay visually on top of this too, not just clickable through
-             it). Works with or without a portrait image -- the dark
-             overlay and red X render over the placeholder/"No portrait"
-             state exactly the same way, since neither depends on `imageUrl`. -->
-        <span
-          v-if="isDeceased"
-          class="sr-only"
-        >
-          Deceased
-        </span>
-        <div
-          class="pointer-events-none absolute inset-0 bg-black/35 transition-opacity duration-200"
-          :class="isDeceased ? 'opacity-100' : 'opacity-0'"
-          aria-hidden="true"
-        />
-        <div
-          class="pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-200"
-          :class="isDeceased ? 'opacity-100' : 'opacity-0'"
-          aria-hidden="true"
-        >
-          <div class="absolute left-1/2 top-1/2 h-1 w-[200%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-red-600 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
-          <div class="absolute left-1/2 top-1/2 h-1 w-[200%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-600 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
-        </div>
-
-        <!-- Edit affordances over an EXISTING portrait. Phase 4B-0: one
-             bottom bar holding both actions. Always visible for touch
-             (coarse pointers have no hover), with 44px targets there;
-             revealed on hover or keyboard focus for fine pointers only.
-             The old `md:opacity-0` gate hid them on touch tablets. -->
-        <div
-          v-if="canEditPortrait && imageUrl"
-          class="absolute inset-x-0 bottom-0 z-10 bg-black/80 opacity-100 transition pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100"
-        >
-          <!-- Fine pointers: two compact buttons, revealed on hover/focus. -->
-          <div class="flex pointer-coarse:hidden">
-            <button
-              type="button"
-              class="flex min-h-7 min-w-0 flex-1 items-center justify-center gap-1 px-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-eldra-text-strong focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent disabled:cursor-not-allowed"
-              :disabled="portraitSaving"
-              aria-label="Change character portrait"
-              @click="triggerPortraitUpload"
-            >
-              <UIcon name="i-lucide-camera" class="h-3 w-3 shrink-0" />
-              <!-- Text only where the portrait is a full grid column. -->
-              <span class="hidden truncate @5xl/sheet:inline">{{ portraitSaving ? 'Saving…' : 'Change' }}</span>
-            </button>
-
-            <button
-              type="button"
-              class="flex min-h-7 w-7 shrink-0 items-center justify-center border-l border-eldra-accent/20 text-[10px] text-eldra-text-soft transition hover:text-red-300 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent disabled:cursor-not-allowed"
-              :disabled="portraitSaving"
-              aria-label="Remove character portrait"
-              @click="emit('clear-portrait')"
-            >
-              ✕
-            </button>
-          </div>
-
-          <!-- Touch: one full-width 44px target opening both actions. -->
-          <UDropdownMenu
-            :items="portraitMenuItems"
-            :content="{ align: 'start', side: 'bottom' }"
-          >
-            <button
-              type="button"
-              class="hidden min-h-11 w-full items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-eldra-text-strong focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-eldra-accent pointer-coarse:flex"
-              :disabled="portraitSaving"
-              aria-label="Edit character portrait"
-            >
-              <UIcon name="i-lucide-camera" class="h-4 w-4 shrink-0" />
-              <span class="hidden @5xl/sheet:inline">{{ portraitSaving ? 'Saving…' : 'Edit' }}</span>
-            </button>
-          </UDropdownMenu>
-        </div>
-
-        <input
-          ref="portraitFileInput"
-          type="file"
-          accept="image/*"
-          class="sr-only"
-          tabindex="-1"
-          @change="handlePortraitFileChange"
-        >
-      </div>
+      <CharacterPortrait
+        class="aspect-[4/5] w-full @5xl/sheet:aspect-auto @5xl/sheet:h-full"
+        :image-url="imageUrl"
+        :title="characterTitle"
+        :can-edit="canEditPortrait"
+        :saving="portraitSaving"
+        :is-deceased="isDeceased"
+        label-class="hidden @5xl/sheet:inline"
+        @update="emit('update-portrait', $event)"
+        @clear="emit('clear-portrait')"
+      />
 
       <p
         v-if="portraitError"

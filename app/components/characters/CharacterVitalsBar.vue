@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CharacterDeathSaves from '~/components/characters/CharacterDeathSaves.vue'
 // CharacterVitalsBar -- Character Sheet Beautification Pass, Phase 3 (see
 // .github/docs/architecture/character-sheet-beauty-pass.md §3.1/§3.2 "T0",
 // §7.2, §7.3, §7.9, §8.1, §11 Phase 3). The single highest-impact change:
@@ -150,15 +151,8 @@ function formatBonus(value: number | null): string {
 // (app/lib/characters/health.ts) never touches death saves, only Long
 // Rest and Reset do, and neither of those changed here. A character
 // dropped back to 0 HP later will see whatever marks were already there.
-function markDeathSave(kind: 'successes' | 'failures', count: number) {
-  const current = props.deathSaves[kind]
-  const nextCount = current === count ? count - 1 : count
-  emit('mark-death-save', { kind, nextCount })
-}
-
-function resetDeathSaves() {
-  emit('recovery', { type: 'reset-death-saves' })
-}
+// The marks and Reset now live in CharacterDeathSaves.vue (Phase 4B
+// extraction), shared with the V2 sheet header's HP control.
 </script>
 
 <template>
@@ -286,57 +280,13 @@ function resetDeathSaves() {
            CharacterCommandResources.vue's marks used, same aria-label/
            aria-pressed semantics, same click-to-toggle behavior -- only
            WHERE this lives, and WHEN it renders, changed. -->
-      <div
+      <CharacterDeathSaves
         v-if="atZeroHp"
-        class="flex flex-wrap items-center gap-3"
-      >
-        <div class="flex items-center gap-1.5">
-          <span class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">Fails</span>
-          <div class="flex gap-1">
-            <button
-              v-for="mark in [1, 2, 3]"
-              :key="`failures-${mark}`"
-              type="button"
-              class="size-6 shrink-0 rounded-full border text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed"
-              :class="mark <= deathSaves.failures
-                ? 'border-red-500 bg-red-950/40'
-                : 'border-eldra-accent/24 bg-transparent'"
-              :disabled="deathSavesSaving"
-              :aria-label="`Death save failure mark ${mark}`"
-              :aria-pressed="mark <= deathSaves.failures"
-              @click="markDeathSave('failures', mark)"
-            />
-          </div>
-        </div>
-
-        <div class="flex items-center gap-1.5">
-          <span class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">Succ</span>
-          <div class="flex gap-1">
-            <button
-              v-for="mark in [1, 2, 3]"
-              :key="`successes-${mark}`"
-              type="button"
-              class="size-6 shrink-0 rounded-full border text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed"
-              :class="mark <= deathSaves.successes
-                ? 'border-eldra-positive bg-eldra-positive/22'
-                : 'border-eldra-accent/24 bg-transparent'"
-              :disabled="deathSavesSaving"
-              :aria-label="`Death save success mark ${mark}`"
-              :aria-pressed="mark <= deathSaves.successes"
-              @click="markDeathSave('successes', mark)"
-            />
-          </div>
-        </div>
-
-        <button
-          type="button"
-          class="text-[0.65rem] uppercase tracking-[0.15em] text-eldra-text-faint underline-offset-2 hover:text-eldra-text-soft hover:underline disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="deathSavesSaving || (deathSaves.successes === 0 && deathSaves.failures === 0)"
-          @click="resetDeathSaves"
-        >
-          Reset
-        </button>
-      </div>
+        :death-saves="deathSaves"
+        :saving="deathSavesSaving"
+        @mark-death-save="emit('mark-death-save', $event)"
+        @recovery="emit('recovery', $event)"
+      />
 
       <!-- Conditions: same eldra-gold-chip treatment CharacterConditionsPanel.vue
            uses, so a condition looks identical wherever it appears. -->

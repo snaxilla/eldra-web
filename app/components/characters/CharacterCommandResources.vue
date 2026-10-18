@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CharacterHpAdjust from '~/components/characters/CharacterHpAdjust.vue'
+import CharacterRestActions from '~/components/characters/CharacterRestActions.vue'
 // CharacterCommandResources -- Command Center Reconstruction, Phase H5.
 // The player's combat dashboard: everything that changes Health, spends a
 // Hit Die, rests-adjacent resource state, marks a Death Save, or spends/
@@ -145,35 +147,6 @@ const emit = defineEmits<{
 // above Maximum HP, which Heal deliberately never allows) -- an accepted,
 // explicit product decision, not an oversight.
 
-const amountDraft = ref('')
-
-const parsedAmount = computed(() => {
-  const parsed = Math.trunc(Number(amountDraft.value))
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
-})
-
-function emitRecovery(type: RecoveryActionType, amount?: number) {
-  emit('recovery', amount === undefined ? { type } : { type, amount })
-}
-
-function applyDamageAction() {
-  if (parsedAmount.value === null) return
-  emitRecovery('damage', parsedAmount.value)
-  amountDraft.value = ''
-}
-
-function applyHealingAction() {
-  if (parsedAmount.value === null) return
-  emitRecovery('heal', parsedAmount.value)
-  amountDraft.value = ''
-}
-
-function applyTempHpAction() {
-  if (parsedAmount.value === null) return
-  emitRecovery('temp-hp', parsedAmount.value)
-  amountDraft.value = ''
-}
-
 // --- Hit Dice ----------------------------------------------------------------
 // Header Cleanup 2.1: "Spend Hit Die" is disabled with no Hit Die available
 // (unchanged) OR at full Current HP (new -- server/utils/character-
@@ -183,10 +156,6 @@ function applyTempHpAction() {
 // benefit. Uses `health`/`maxHp`, both already props here for Damage/Heal;
 // no new prop was added for this.
 
-const hitDiceLabel = computed(() => {
-  if (props.hitDieSize == null) return 'Hit Dice'
-  return `Hit Dice (d${props.hitDieSize})`
-})
 
 // --- Spell Slots -> Character Resource orbs -------------------------------
 // Caster Pass 0.1: adapts the EXISTING `slotLevels` prop (unchanged --
@@ -283,40 +252,10 @@ function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; p
         <div class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">
           Damage / Heal
         </div>
-        <input
-          v-model="amountDraft"
-          inputmode="numeric"
-          placeholder="0"
-          aria-label="Amount"
-          class="eldra-input mt-1.5 min-h-11 w-full rounded-none px-2 py-1 text-center text-sm font-semibold tabular-nums text-white"
-          :disabled="recoverySaving"
-        >
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            class="min-h-11 rounded-none border border-red-900/60 bg-red-950/20 text-xs font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-red-500/60 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="recoverySaving || parsedAmount === null"
-            @click="applyDamageAction"
-          >
-            Damage
-          </button>
-          <button
-            type="button"
-            class="eldra-button min-h-11 rounded-none text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="recoverySaving || parsedAmount === null"
-            @click="applyHealingAction"
-          >
-            Heal
-          </button>
-        </div>
-        <button
-          type="button"
-          class="mt-1.5 min-h-11 w-full rounded-none border border-eldra-accent/50 bg-eldra-accent/12 text-xs font-semibold text-eldra-text-strong focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="recoverySaving || parsedAmount === null"
-          @click="applyTempHpAction"
-        >
-          Temp HP
-        </button>
+        <CharacterHpAdjust
+          :saving="recoverySaving"
+          @recovery="emit('recovery', $event)"
+        />
       </div>
 
       <!-- Rest ---------------------------------------------------------------
@@ -351,54 +290,15 @@ function handleResourceRestore({ groupId, poolId, amount }: { groupId: string; p
           Rest
         </div>
 
-        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            class="eldra-button flex min-h-11 items-center justify-center gap-1.5 rounded-none text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="recoverySaving"
-            @click="emitRecovery('short-rest')"
-          >
-            <UIcon
-              name="i-lucide-coffee"
-              class="h-4 w-4 shrink-0"
-              aria-hidden="true"
-            />
-            <span class="truncate">Short Rest</span>
-          </button>
-
-          <button
-            type="button"
-            class="eldra-button flex min-h-11 items-center justify-center gap-1.5 rounded-none text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="recoverySaving"
-            @click="emitRecovery('long-rest')"
-          >
-            <!-- The installed Lucide set (@iconify-json/lucide) has no
-                 "campfire" glyph -- confirmed by inspecting its own
-                 icons.json before choosing this -- so "flame" is the
-                 closest semantically-correct alternative, per this task's
-                 own explicit instruction to prefer Campfire over Flame
-                 only when Campfire actually exists. -->
-            <UIcon
-              name="i-lucide-flame"
-              class="h-4 w-4 shrink-0"
-              aria-hidden="true"
-            />
-            <span class="truncate">Long Rest</span>
-          </button>
-        </div>
-
-        <div class="mt-2 flex items-center justify-between gap-2 border-t border-eldra-accent/14 pt-1.5">
-          <span class="min-w-0 truncate text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint">{{ hitDiceLabel }}</span>
-          <span class="shrink-0 text-sm tabular-nums text-eldra-text-soft">{{ hitDiceAvailable ?? '—' }} / {{ hitDiceMax ?? '—' }}</span>
-        </div>
-        <button
-          type="button"
-          class="eldra-button mt-1.5 min-h-11 w-full rounded-none text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="recoverySaving || (hitDiceAvailable != null && hitDiceAvailable <= 0) || (maxHp != null && health.currentHp >= maxHp)"
-          @click="emitRecovery('spend-hit-die')"
-        >
-          Spend Hit Die
-        </button>
+        <CharacterRestActions
+          :health="health"
+          :max-hp="maxHp"
+          :hit-dice-max="hitDiceMax"
+          :hit-dice-available="hitDiceAvailable"
+          :hit-die-size="hitDieSize"
+          :saving="recoverySaving"
+          @recovery="emit('recovery', $event)"
+        />
       </div>
 
       <!-- Character Resources -- Caster Pass 0.1. Replaces both the old

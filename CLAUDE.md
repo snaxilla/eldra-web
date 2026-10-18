@@ -147,6 +147,16 @@ UI: `app/components/world/WorldPagePresentationPanel.vue` (~490 lines). API:
 Independent of the Scene Graph — don't confuse "presentation" (page chrome/background) with
 "properties"/"style" in the Scene Graph object model.
 
+### 7. Theming
+
+World-wide visual theme (GM-selected, independent of `systemKey`) layered as platform default →
+World theme (`world_presentation_settings`, one row per World) → the viewer's accessibility
+preferences (always win). Semantic CSS tokens live in `app/assets/css/themes/*`; the registry and
+pure resolver are in `app/lib/eldra/themes.ts`; runtime is `app/composables/useEldraTheme.ts`. Read
+[.github/docs/architecture/theming.md](.github/docs/architecture/theming.md) before adding theme
+styling. New markup should use token utilities (`border-eldra-accent/24`, `bg-eldra-panel`) rather
+than `rgba(201,164,90,…)` literals.
+
 ## Layouts
 
 Two layouts are relevant to map/world work and are easy to conflate:

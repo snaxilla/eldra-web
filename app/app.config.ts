@@ -15,7 +15,7 @@ export default defineAppConfig({
     modal: {
       slots: {
         overlay: 'bg-eldra-ink/70 backdrop-blur-[2px]',
-        content: 'eldra-glass-surface eldra-ornamented divide-eldra-accent/15 ring-1 ring-eldra-accent/30',
+        content: 'eldra-glass-surface eldra-ornamented [--eldra-ornament-size:32px] divide-eldra-accent/15 ring-1 ring-eldra-accent/30',
         title: 'eldra-display text-eldra-text-strong'
       }
     },

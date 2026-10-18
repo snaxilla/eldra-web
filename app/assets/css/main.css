@@ -1,6 +1,16 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* Body face (Public Sans), bundled locally from @fontsource/public-sans
+   instead of being downloaded at build time by @nuxt/fonts (disabled via
+   `ui.fonts: false` in nuxt.config.ts). Weights in use: 400/500/600/700.
+   All subsets are declared; browsers fetch only the unicode ranges a page
+   actually uses. */
+@import "@fontsource/public-sans/400.css";
+@import "@fontsource/public-sans/500.css";
+@import "@fontsource/public-sans/600.css";
+@import "@fontsource/public-sans/700.css";
+
 /* Fantasy display face, bundled locally (no build-time font download).
    Latin subset, display weights only. */
 @import "@fontsource/cinzel/latin-500.css";

@@ -938,9 +938,9 @@ function hasViewportInsets() {
 // currentBounds, widened horizontally by the viewport insets converted to
 // map units at the current zoom (CRS.Simple: 1 unit = 2^zoom px). With no
 // insets this is exactly currentBounds, as before.
-function insetMaxBounds() {
+function insetMaxBounds(zoom?: number) {
   if (!map || !currentBounds || !hasViewportInsets()) return currentBounds
-  const unitsPerPx = 1 / Math.pow(2, map.getZoom())
+  const unitsPerPx = 1 / Math.pow(2, zoom ?? map.getZoom())
   const sw = currentBounds.getSouthWest()
   const ne = currentBounds.getNorthEast()
   return L.latLngBounds(
@@ -951,15 +951,23 @@ function insetMaxBounds() {
 
 function applyMaxBounds() {
   if (!map || !currentBounds) return
-  map.setMaxBounds(insetMaxBounds())
+  const bounds = insetMaxBounds()
+  // setMaxBounds() corrects the view with an animated pan; under reduced
+  // motion, settle it instantly first (inset path only -- no-inset
+  // behavior is unchanged).
+  if (hasViewportInsets() && prefersReducedMotion()) map.panInsideBounds(bounds, { animate: false })
+  map.setMaxBounds(bounds)
 }
 
-// Shift the initial view so the map's center sits in the middle of the
-// area not covered by panels.
-function centerInVisibleArea() {
-  if (!map || !hasViewportInsets()) return
+// The view center that puts `center` in the middle of the area not covered
+// by panels. Passed straight to setView (which clamps synchronously to the
+// already-padded maxBounds) rather than panning afterwards, so no later
+// bounds correction can undo it. Exactly `center` without insets.
+function visibleCenter(center: any, zoom: number) {
+  if (!map || !hasViewportInsets()) return center
   const shift = (viewportInset('left') - viewportInset('right')) / 2
-  if (shift) map.panBy([-shift, 0], { animate: false })
+  if (!shift) return center
+  return map.unproject(map.project(center, zoom).subtract([shift, 0]), zoom)
 }
 
 // Respects the viewer's Eldra accessibility preference (set on <html> by
@@ -1079,13 +1087,13 @@ async function renderMap() {
   const center = currentBounds.getCenter()
   const startZoom = getCoverZoom(currentBounds)
 
-  map.setMaxBounds(currentBounds)
+  // With insets, the padded bounds are computed for the starting zoom up
+  // front: applying the un-padded bounds first would start an animated
+  // correction that later undoes the visible-area centering. Without
+  // insets both calls are exactly what they were before.
+  map.setMaxBounds(insetMaxBounds(startZoom))
   map.options.maxBoundsViscosity = 1.0
-  map.setView(center, startZoom, { animate: false })
-  // Insets need a zoom to convert pixels to map units, so they apply
-  // after the view is set (no-op without insets).
-  if (hasViewportInsets()) applyMaxBounds()
-  centerInVisibleArea()
+  map.setView(visibleCenter(center, startZoom), startZoom, { animate: false })
 
   renderPins()
 
@@ -1095,10 +1103,9 @@ async function renderMap() {
     // The map has a zoom by now, so the (possibly inset-padded) bounds can
     // be applied directly -- exactly currentBounds when there are no
     // insets. Applying the un-padded bounds first would start an animated
-    // pan back to center that undoes centerInVisibleArea().
+    // pan back to center that undoes the visible-area centering.
     applyMaxBounds()
-    map.setView(center, startZoom, { animate: false })
-    centerInVisibleArea()
+    map.setView(visibleCenter(center, startZoom), startZoom, { animate: false })
   })
 }
 

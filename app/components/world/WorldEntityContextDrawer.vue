@@ -29,12 +29,19 @@ const props = withDefaults(defineProps<{
   readMoreLabel?: string
   railVariant?: 'workspace' | 'sheet'
   content?: 'entity' | 'detail'
+  // Phase 4B. `'overlay'` (default, every existing caller): fixed to the
+  // viewport's right edge. `'inline'`: in normal flow, filling whatever
+  // box the host gives it -- the V2 Character Sheet places it in a grid
+  // column (docked / replacing a column) or a bottom sheet, so opening it
+  // never moves the sheet's main workspace. The host owns that box.
+  placement?: 'overlay' | 'inline'
 }>(), {
   mode: 'play',
   allowBuildActions: false,
   readMoreLabel: 'Read More',
   railVariant: 'workspace',
-  content: 'entity'
+  content: 'entity',
+  placement: 'overlay'
 })
 
 const isEntityContent = computed(() => props.content === 'entity')
@@ -46,13 +53,17 @@ const contextRailVariant = computed(() =>
   props.railVariant === 'sheet' ? 'sheet' : 'workspace'
 )
 
-const contextRailClass = computed(() => [
-  // Theming Phase 3A: shared darkglass + theme ornaments (surfaces.css).
-  'eldra-ornate-panel eldra-glass-surface isolate fixed right-0 top-0 z-30 h-full border-l',
-  contextRailVariant.value === 'sheet'
-    ? 'w-full max-w-[440px]'
-    : 'w-[380px] max-w-[calc(100vw-1rem)]'
-])
+const isInline = computed(() => props.placement === 'inline')
+
+const contextRailClass = computed(() => isInline.value
+  ? 'eldra-ornate-panel eldra-glass-surface isolate relative h-full w-full border'
+  : [
+      // Theming Phase 3A: shared darkglass + theme ornaments (surfaces.css).
+      'eldra-ornate-panel eldra-glass-surface isolate fixed right-0 top-0 z-30 h-full border-l',
+      contextRailVariant.value === 'sheet'
+        ? 'w-full max-w-[440px]'
+        : 'w-[380px] max-w-[calc(100vw-1rem)]'
+    ])
 
 const emit = defineEmits<{
   close: []
@@ -307,22 +318,29 @@ function readMore() {
 </script>
 
 <template>
+  <!-- Inline placement fades rather than slides: the host's box is
+       already where the drawer belongs, so a slide would imply movement
+       the layout never makes. -->
   <Transition
-    enter-from-class="translate-x-full opacity-0"
-    enter-active-class="transition duration-200"
-    leave-to-class="translate-x-full opacity-0"
-    leave-active-class="transition duration-200"
+    :enter-from-class="isInline ? 'opacity-0' : 'translate-x-full opacity-0'"
+    enter-active-class="transition duration-200 motion-reduce:transition-none"
+    :leave-to-class="isInline ? 'opacity-0' : 'translate-x-full opacity-0'"
+    :leave-active-class="isInline ? 'hidden' : 'transition duration-200'"
   >
     <div
       v-if="open"
-      :data-sheet-detail-rail="contextRailVariant === 'sheet' ? 'true' : undefined"
-      :data-world-context-rail="contextRailVariant === 'workspace' ? 'true' : undefined"
+      :data-sheet-detail-rail="!isInline && contextRailVariant === 'sheet' ? 'true' : undefined"
+      :data-world-context-rail="!isInline && contextRailVariant === 'workspace' ? 'true' : undefined"
+      :data-context-inline="isInline ? 'true' : undefined"
       :class="contextRailClass"
     >
       <span class="eldra-ornament-frame" aria-hidden="true" />
 
       <div class="flex h-full flex-col">
-        <div class="relative flex items-start justify-between gap-3 px-6 pb-5 pt-6">
+        <div
+          class="relative flex items-start justify-between gap-3"
+          :class="isInline ? 'px-5 pb-4 pt-5' : 'px-6 pb-5 pt-6'"
+        >
           <div class="min-w-0">
             <button
               v-if="canGoBack"
@@ -344,9 +362,10 @@ function readMore() {
           </div>
 
           <button
-            class="shrink-0 text-eldra-text-faint transition hover:text-white"
+            class="flex shrink-0 items-center justify-center text-eldra-text-faint transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent pointer-coarse:size-11"
             type="button"
             aria-label="Close details"
+            data-context-close
             @click="close"
           >
             <UIcon name="i-lucide-x" class="h-5 w-5" />
@@ -355,7 +374,15 @@ function readMore() {
           <span class="eldra-ornament-divider absolute inset-x-6 bottom-0" aria-hidden="true" />
         </div>
 
-        <div class="flex-1 overflow-y-auto p-5">
+        <div
+          class="flex-1 overflow-y-auto"
+          :class="isInline ? 'px-5 pb-5 pt-1' : 'p-5'"
+        >
+          <!-- Inline hosts (the V2 sheet) put their primary actions -- Roll
+               Attack, Roll Damage, Cast -- at the top of the body, where a
+               player looks first. -->
+          <slot name="lead" />
+
           <button
             v-if="entityImageUrl"
             type="button"

@@ -9,19 +9,21 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="flex items-center justify-between border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+  <div class="relative flex items-center justify-between px-6 pb-5 pt-6">
     <div>
-      <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+      <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
         Build Mode
       </div>
 
-      <h3 class="mt-1 text-lg font-semibold text-white">
+      <h3 class="eldra-display mt-1 text-lg text-white">
         {{ editingPin?.id ? 'Edit Pin' : 'Place Pin' }}
       </h3>
     </div>
 
     <button
-      class="text-[#9f9278] transition hover:text-white"
+      type="button"
+      class="text-eldra-text-faint transition hover:text-white"
+      aria-label="Close pin editor"
       @click="emit('close')"
     >
       <UIcon
@@ -29,5 +31,7 @@ const emit = defineEmits<{
         class="h-5 w-5"
       />
     </button>
+
+    <span class="eldra-ornament-divider absolute inset-x-6 bottom-0" aria-hidden="true" />
   </div>
 </template>

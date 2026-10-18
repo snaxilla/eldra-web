@@ -48,27 +48,36 @@
 const props = defineProps<{
   hasLeft?: boolean
   hasSkills?: boolean
-  // True while the shared context drawer is compressing the sheet. The
-  // skills column then stacks instead of splitting: at 1536px, a left rail
-  // plus a skills column plus a 440px drawer would leave the tab body --
-  // the region actually being worked in -- around 160px. Skills stay
-  // VISIBLE either way (that is the whole point of them being persistent);
-  // this only changes whether they sit beside the tab body or above it.
+  // Forces the skills column to stack above the tab body instead of
+  // splitting beside it. Phase 4B-0: the context drawer now FLOATS over
+  // the sheet instead of compressing it, so the sheet page no longer sets
+  // this; kept for any caller that genuinely narrows the sheet. Skills stay
+  // VISIBLE either way -- this only changes whether they sit beside the
+  // tab body or above it.
   drawerOpen?: boolean
 }>()
 
 const skillsSplit = computed(() => Boolean(props.hasSkills) && !props.drawerOpen)
 
+// Phase 4B-0: thresholds are the SHEET CONTAINER's width (`@container/sheet`
+// on sheet-v2.vue's wrapper), not the viewport's -- the workspace rail and
+// any page chrome have already been subtracted. 84rem (1344px) is the
+// narrowest sheet where a 320px rail + 280px skills column still leaves the
+// tab body over 700px.
 const skillsSplitClass = computed(() =>
-  skillsSplit.value ? '2xl:grid-cols-[280px_minmax(0,1fr)]' : ''
+  skillsSplit.value ? '@[84rem]/sheet:grid-cols-[280px_minmax(0,1fr)]' : ''
 )
 </script>
 
 <template>
-  <div class="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
+  <!-- Reference rail beside the tab body once the sheet container is 64rem
+       (1024px) wide -- the tab body then keeps at least ~700px. Below
+       that the rail's content renders inside the Character tab instead
+       (sheet-v2.vue, `@5xl/sheet:hidden`). -->
+  <div class="grid gap-4 @5xl/sheet:grid-cols-[300px_minmax(0,1fr)] @[84rem]/sheet:grid-cols-[320px_minmax(0,1fr)]">
     <aside
       v-if="hasLeft"
-      class="hidden min-w-0 xl:block"
+      class="hidden min-w-0 @5xl/sheet:block"
       aria-label="Character reference"
     >
       <slot name="left" />

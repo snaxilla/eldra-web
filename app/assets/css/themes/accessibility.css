@@ -1,0 +1,56 @@
+/* Individual accessibility preferences (Theming Architecture, Phase 2).
+   Imported AFTER every theme file in main.css: these selectors have the
+   same specificity as [data-eldra-theme] scopes, so source order is what
+   guarantees a viewer's preference always wins over the GM's theme. The
+   attributes are set by resolveTheme() (app/lib/eldra/themes.ts). */
+
+:root[data-eldra-transparency="reduced"],
+:root[data-eldra-contrast="high"] {
+  --eldra-panel-alpha: 1;
+  --eldra-panel-blur: 0px;
+}
+
+:root[data-eldra-transparency="reduced"] :is(.eldra-glass, .eldra-glass-surface, .eldra-glass-menu, .eldra-map-control),
+:root[data-eldra-contrast="high"] :is(.eldra-glass, .eldra-glass-surface, .eldra-glass-menu, .eldra-map-control),
+:root[data-eldra-transparency="reduced"] .leaflet-control-zoom,
+:root[data-eldra-contrast="high"] .leaflet-control-zoom {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:root[data-eldra-contrast="high"] {
+  --eldra-text-muted-rgb: 214 204 182;
+  /* Phase 4B: the quieter steps of the text ramp, which the V2 sheet uses
+     for labels and captions, rise with it. */
+  --eldra-text-dim-rgb: 220 210 188;
+  --eldra-text-faint-rgb: 206 195 171;
+  --eldra-text-ghost-rgb: 190 179 155;
+  --eldra-border: rgb(var(--eldra-accent-rgb) / 0.6);
+}
+
+:root[data-eldra-motion="reduced"] {
+  --eldra-motion-duration: 0ms;
+}
+
+:root[data-eldra-motion="reduced"] *,
+:root[data-eldra-motion="reduced"] *::before,
+:root[data-eldra-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Optional atmospheric effects opt in with [data-eldra-atmospheric]; they
+   disappear when the resolved theme turns atmosphere off (GM option, or
+   the viewer's reduced-motion / high-contrast preference). */
+:root[data-eldra-atmosphere="off"] [data-eldra-atmospheric] {
+  display: none !important;
+}
+
+/* High contrast: ornaments stay but step back so they never compete with
+   text; control borders strengthen. */
+:root[data-eldra-contrast="high"] {
+  --eldra-ornament-color: rgb(var(--eldra-accent-rgb) / 0.45);
+  --eldra-border-strong: rgb(var(--eldra-accent-rgb) / 0.85);
+}

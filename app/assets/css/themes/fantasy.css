@@ -1,0 +1,55 @@
+/* Fantasy -- the platform default theme.
+   Values match the hardcoded gold/ink already used across the app, so
+   applying this theme is visually a no-op in Phase 2. `:root` is listed
+   so the platform default holds even before the theme root is set.
+
+   A new theme copies this file, changes the selector to
+   :root[data-eldra-theme="<key>"], and re-declares whichever tokens differ.
+   See .github/docs/architecture/theming.md "Adding a theme". */
+
+:root,
+:root[data-eldra-theme="fantasy"] {
+  /* Core palette */
+  --eldra-accent-rgb: 201 164 90;          /* antique gold #c9a45a */
+  --eldra-accent-bright-rgb: 255 229 158;  /* gilt highlight */
+  --eldra-ink-rgb: 7 6 4;                  /* #070604 */
+  --eldra-charcoal-rgb: 17 16 13;          /* #11100d */
+  --eldra-panel-rgb: 19 17 13;             /* darkglass fill */
+  --eldra-panel-strong-rgb: 10 9 7;
+  --eldra-well-rgb: 8 17 27;               /* steel interactive well */
+  --eldra-text-rgb: 239 226 189;           /* #efe2bd */
+  --eldra-text-strong-rgb: 255 247 223;    /* #fff7df */
+  --eldra-text-muted-rgb: 167 155 133;     /* #a79b85 */
+  --eldra-parchment-rgb: 232 217 181;      /* #e8d9b5 */
+  /* Text ramp used across shared components (values unchanged from the
+     literals they replace). */
+  --eldra-text-soft-rgb: 216 206 184;      /* #d8ceb8 */
+  --eldra-text-dim-rgb: 181 168 141;       /* #b5a88d */
+  --eldra-text-faint-rgb: 159 146 120;     /* #9f9278 */
+  --eldra-accent-text-rgb: 245 231 189;    /* #f5e7bd -- gold-tinted label text */
+  --eldra-text-ghost-rgb: 111 103 84;      /* #6f6754 -- quietest captions */
+  /* Status tints (Phase 4B, V2 sheet migration). Not Nuxt UI semantic
+     colors -- those stay untouched -- but the theme's own positive/caution
+     hues for HP, turn emphasis, and prepared/expended state. */
+  --eldra-positive-rgb: 158 195 125;       /* #9ec37d */
+  --eldra-caution-rgb: 224 169 74;         /* #e0a94a */
+
+  --eldra-leather-rgb: 9 8 6;              /* sidebar binding #090806 */
+  /* Workspace ground behind ordinary (non-map) pages: cool ink. */
+  --eldra-ground-top-rgb: 11 13 18;        /* #0b0d12 */
+  --eldra-ground-mid-rgb: 13 17 23;        /* #0d1117 */
+  --eldra-ground-bottom-rgb: 16 20 27;     /* #10141b */
+
+  /* Typography: Cinzel (bundled via @fontsource/cinzel, imported in
+     main.css) for display only -- titles, World and place names. */
+  --eldra-font-display: 'Cinzel', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+
+  /* Gilded filigree. Paths are relative to this file; Vite inlines them. */
+  --eldra-ornament-corner-tl: url("../../ornaments/fantasy/corner-tl.svg");
+  --eldra-ornament-corner-tr: url("../../ornaments/fantasy/corner-tr.svg");
+  --eldra-ornament-corner-bl: url("../../ornaments/fantasy/corner-bl.svg");
+  --eldra-ornament-corner-br: url("../../ornaments/fantasy/corner-br.svg");
+  --eldra-ornament-divider: url("../../ornaments/fantasy/divider.svg");
+  --eldra-ornament-emblem: url("../../ornaments/fantasy/emblem.svg");
+  --eldra-ornament-color: rgb(var(--eldra-accent-rgb) / 0.72);
+}

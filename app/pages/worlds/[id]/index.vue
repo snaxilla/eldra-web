@@ -857,6 +857,22 @@ const selectedPinMapUrl = computed(() => {
 })
 
 const showPinEditor = ref(false)
+
+// Theming Phase 3B-1: screen pixels covered by floating panels, so the
+// renderer can let edge content pan out from under them and center the
+// initial view in the visible area. The left inset is owned by the
+// world-workspace layout (0 on mobile/non-full-bleed); the right inset is
+// whichever right-hand panel is open here (widths match those panels).
+// Only ever applied at `md`+, where the left inset is non-zero.
+const worldMapInsetLeft = useState<number>('world-map-viewport-inset-left', () => 0)
+const mapViewportInsets = computed(() => {
+  const left = worldMapInsetLeft.value
+  if (!left) return { left: 0, right: 0 }
+  let right = 0
+  if (showPinEditor.value || showImageOverlayEditor.value) right = 420
+  else if (selectedPin.value && mode.value === 'play') right = 380
+  return { left, right }
+})
 const savingPin = ref(false)
 const saveError = ref('')
 const creatingEntity = ref(false)
@@ -1494,6 +1510,7 @@ function openSelectedPinContextMap() {
         :editing-road-style="editingRoadStylePreview"
         :build-mode="mode === 'build' && (activeBuildTool === 'pin' || activeBuildTool === 'road')"
         :road-mode="mode === 'build' && activeBuildTool === 'road'"
+        :viewport-insets="mapViewportInsets"
         @select-pin="selectPin"
         @select-road="selectRoad"
         @map-click="onMapClick"
@@ -1519,17 +1536,19 @@ function openSelectedPinContextMap() {
 
     <div
       v-if="mapImageUrl"
-      class="absolute left-4 top-20 z-20 inline-flex items-center gap-2"
+      class="absolute top-20 z-20 inline-flex items-center gap-2 left-[calc(var(--eldra-map-inset-left,0px)+1rem)] transition-[left] duration-200"
+      role="toolbar"
+      aria-label="Map tools"
     >
       <button
         type="button"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
-        :class="showLayerPanel ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        class="eldra-map-control inline-flex items-center gap-2 rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+        :aria-pressed="showLayerPanel"
         @click="showLayerPanel = !showLayerPanel"
       >
         <UIcon
           name="i-lucide-layers-3"
-          class="h-4 w-4 text-[#f5e7bd]"
+          class="eldra-map-control-icon h-4 w-4"
         />
         <span>Layers</span>
       </button>
@@ -1537,8 +1556,8 @@ function openSelectedPinContextMap() {
       <button
         v-if="mode === 'build'"
         type="button"
-        class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
-        :class="activeBuildTool === 'road' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        class="eldra-map-control rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+        :aria-pressed="activeBuildTool === 'road'"
         @click="setActiveBuildTool('road')"
       >
         Road
@@ -1547,8 +1566,8 @@ function openSelectedPinContextMap() {
       <button
         v-if="mode === 'build'"
         type="button"
-        class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
-        :class="activeBuildTool === 'select' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        class="eldra-map-control rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+        :aria-pressed="activeBuildTool === 'select'"
         @click="setActiveBuildTool('select')"
       >
         Select
@@ -1557,8 +1576,8 @@ function openSelectedPinContextMap() {
       <button
         v-if="mode === 'build'"
         type="button"
-        class="eldra-button rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
-        :class="activeBuildTool === 'pin' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        class="eldra-map-control rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+        :aria-pressed="activeBuildTool === 'pin'"
         @click="setActiveBuildTool('pin')"
       >
         Pin
@@ -1567,13 +1586,13 @@ function openSelectedPinContextMap() {
       <button
         v-if="mode === 'build'"
         type="button"
-        class="eldra-button inline-flex items-center gap-2 rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] backdrop-blur"
-        :class="activeBuildTool === 'image-overlay' ? 'ring-1 ring-[rgba(201,164,90,0.58)]' : ''"
+        class="eldra-map-control inline-flex items-center gap-2 rounded-none px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em]"
+        :aria-pressed="activeBuildTool === 'image-overlay'"
         @click="openImageOverlayEditor"
       >
         <UIcon
           name="i-lucide-image"
-          class="h-4 w-4 text-[#f5e7bd]"
+          class="eldra-map-control-icon h-4 w-4"
         />
         <span>{{ currentImageOverlayObject ? 'Edit Overlay' : 'Add Overlay' }}</span>
       </button>

@@ -104,16 +104,18 @@ function onPresetChange() {
   >
     <div
       v-if="open && editingRoad"
-      class="eldra-ornate-panel eldra-frame-corners fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5 backdrop-blur"
+      class="eldra-ornate-panel eldra-glass-surface isolate fixed bottom-6 right-6 z-30 w-80 rounded-none border p-5"
     >
+      <span class="eldra-ornament-frame" aria-hidden="true" />
       <div class="mb-3 flex items-center justify-between">
-        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+        <h2 class="eldra-display text-sm uppercase text-eldra-text">
           Road
-        </div>
+        </h2>
 
         <button
           type="button"
-          class="text-[#9f9278] transition hover:text-white"
+          class="text-eldra-text-faint transition hover:text-white"
+          aria-label="Close road editor"
           @click="emit('close')"
         >
           <UIcon
@@ -131,7 +133,7 @@ function onPresetChange() {
       </div>
 
       <div>
-        <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Name</label>
+        <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Name</label>
         <input
           v-model="editingRoad.name"
           type="text"
@@ -140,43 +142,43 @@ function onPresetChange() {
         >
       </div>
 
-      <div class="mt-3 text-sm text-[#9f9278]">
+      <div class="mt-3 text-sm text-eldra-text-faint">
         Vertices: {{ vertexCount }}
       </div>
 
-      <div class="mt-4 border-t border-[rgba(201,164,90,0.22)] pt-4">
-        <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Road Type</label>
+      <div class="mt-4 border-t border-eldra-accent/22 pt-4">
+        <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Road Type</label>
         <select
           v-model="editingRoad.preset"
-          class="eldra-input w-full rounded-none px-3 py-1.5 text-sm text-[#f5e7bd]"
+          class="eldra-input w-full rounded-none px-3 py-1.5 text-sm text-eldra-accent-text"
           @change="onPresetChange"
         >
           <option
             v-for="preset in ROAD_PRESETS"
             :key="preset.id"
             :value="preset.id"
-            class="bg-[#090909] text-[#f5e7bd]"
+            class="bg-[#090909] text-eldra-accent-text"
           >
             {{ preset.label }}
           </option>
         </select>
       </div>
 
-      <div class="mt-4 border-t border-[rgba(201,164,90,0.22)] pt-4">
-        <div class="mb-2 text-xs uppercase tracking-[0.25em] text-[#9f9278]">Style</div>
+      <div class="mt-4 border-t border-eldra-accent/22 pt-4">
+        <div class="mb-2 text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Style</div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="mb-1 block text-xs text-[#9f9278]">Color</label>
+            <label class="mb-1 block text-xs text-eldra-text-faint">Color</label>
             <input
               v-model="editingRoad.color"
               type="color"
-              class="h-9 w-full cursor-pointer rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] p-1"
+              class="h-9 w-full cursor-pointer rounded-none border border-eldra-accent/22 bg-eldra-panel/72 p-1"
             >
           </div>
 
           <div>
-            <label class="mb-1 block text-xs text-[#9f9278]">Width</label>
+            <label class="mb-1 block text-xs text-eldra-text-faint">Width</label>
             <input
               v-model.number="editingRoad.width"
               type="number"
@@ -188,7 +190,7 @@ function onPresetChange() {
           </div>
 
           <div>
-            <label class="mb-1 block text-xs text-[#9f9278]">Opacity ({{ editingRoad.opacity.toFixed(2) }})</label>
+            <label class="mb-1 block text-xs text-eldra-text-faint">Opacity ({{ editingRoad.opacity.toFixed(2) }})</label>
             <input
               v-model.number="editingRoad.opacity"
               type="range"
@@ -200,16 +202,16 @@ function onPresetChange() {
           </div>
 
           <div>
-            <label class="mb-1 block text-xs text-[#9f9278]">Dash Pattern</label>
+            <label class="mb-1 block text-xs text-eldra-text-faint">Dash Pattern</label>
             <select
               v-model="editingRoad.dashPattern"
-              class="eldra-input w-full rounded-none px-3 py-1.5 text-sm text-[#f5e7bd]"
+              class="eldra-input w-full rounded-none px-3 py-1.5 text-sm text-eldra-accent-text"
             >
               <option
                 v-for="opt in DASH_PATTERN_OPTIONS"
                 :key="opt.value"
                 :value="opt.value"
-                class="bg-[#090909] text-[#f5e7bd]"
+                class="bg-[#090909] text-eldra-accent-text"
               >
                 {{ opt.label }}
               </option>

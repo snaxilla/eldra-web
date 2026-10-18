@@ -15,7 +15,7 @@
 // a page or component that needs more should get it from the endpoint, not
 // by widening this.
 
-import type { RuleCategory } from '~/lib/rules/types'
+import type { RuleCategory, ValuePresentation } from '~/lib/rules/types'
 
 // `value` is `unknown` on purpose. The engine returns a `RuleValue` union
 // (number | string | boolean | array | DiceSpec | RulesError), and a
@@ -27,6 +27,9 @@ export type DerivedValue = {
   label?: string
   category: RuleCategory
   tags?: string[]
+  // Phase 4B (F1): package-authored layout hint, passed through verbatim
+  // from the Definition. Optional -- most Values carry none.
+  presentation?: ValuePresentation
   value?: unknown
   error?: string
 }
@@ -201,7 +204,9 @@ export function formatDerivedValue(entry: DerivedValue): string {
   const value = entry.value
 
   if (typeof value === 'number') {
-    const signed = (entry.tags ?? []).some((tag) => SIGNED_TAGS.includes(tag))
+    // A package-authored `presentation.format` wins over the tag guess.
+    const format = entry.presentation?.format
+    const signed = format ? format === 'signed' : (entry.tags ?? []).some((tag) => SIGNED_TAGS.includes(tag))
     return signed && value >= 0 ? `+${value}` : String(value)
   }
 
@@ -353,4 +358,35 @@ export function groupDerivedValues(entries: readonly DerivedValue[]): DerivedGro
       error: errored?.error ?? null
     }
   })
+}
+
+// ---------------------------------------------------------------------------
+// PACKAGE-AUTHORED SHEET PLACEMENT -- Phase 4B (F1)
+// ---------------------------------------------------------------------------
+// Every Value whose Definition declares `presentation.sheet === placement`,
+// across all categories, sorted by `presentation.order` (ascending; absent
+// sorts last) with declaration order as the tiebreak. Reads only the
+// package's own metadata -- never an id, label, or category name -- so a
+// package that declares no presentation simply yields `[]` and the caller
+// falls back to whatever it rendered before.
+export function selectPresentedValues(
+  byCategory: Partial<Record<RuleCategory, DerivedValue[]>>,
+  placement: NonNullable<ValuePresentation['sheet']>
+): DerivedValue[] {
+  const matches: { entry: DerivedValue; index: number }[] = []
+  let index = 0
+  for (const entries of Object.values(byCategory)) {
+    for (const entry of entries ?? []) {
+      if (entry.presentation?.sheet === placement) matches.push({ entry, index })
+      index++
+    }
+  }
+  return matches
+    .sort((a, b) => (a.entry.presentation?.order ?? Infinity) - (b.entry.presentation?.order ?? Infinity) || a.index - b.index)
+    .map(({ entry }) => entry)
+}
+
+// True when the package asked for a Value to stay out of generic regions.
+export function isHiddenOnSheet(entry: DerivedValue): boolean {
+  return entry.presentation?.sheet === 'hidden'
 }

@@ -78,8 +78,9 @@ const ICON_OPTIONS = [
   <Transition enter-from-class="translate-x-full opacity-0" enter-active-class="transition duration-200" leave-to-class="translate-x-full opacity-0" leave-active-class="transition duration-200">
     <div
       v-if="open && editingPin"
-      class="eldra-ornate-panel eldra-frame-corners fixed right-0 top-0 z-40 h-full w-[420px] border-l backdrop-blur"
+      class="eldra-ornate-panel eldra-glass-surface isolate fixed right-0 top-0 z-40 h-full w-[420px] border-l"
     >
+      <span class="eldra-ornament-frame" aria-hidden="true" />
       <div class="flex h-full flex-col">
         <MapPinEditorHeader
           :editing-pin="editingPin"
@@ -101,7 +102,7 @@ const ICON_OPTIONS = [
             </div>
 
             <div>
-              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Title</label>
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Title</label>
               <input
                 v-model="editingPin.title"
                 type="text"
@@ -111,23 +112,23 @@ const ICON_OPTIONS = [
             </div>
 
               <div>
-                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Type</label>
+                <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Type</label>
                 <select
                   v-model="editingPin.pinType"
-                  class="eldra-input w-full rounded-none px-4 py-2.5 text-sm text-[#f5e7bd]"
+                  class="eldra-input w-full rounded-none px-4 py-2.5 text-sm text-eldra-accent-text"
                 >
                   <option
                     v-for="opt in PIN_TYPE_OPTIONS"
                     :key="opt.value"
                     :value="opt.value"
-                    class="bg-[#090909] text-[#f5e7bd]"
+                    class="bg-[#090909] text-eldra-accent-text"
                   >
                     {{ opt.label }}
                   </option>
                 </select>
               </div>
             <div>
-              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Color</label>
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Color</label>
               <div class="flex flex-wrap gap-2">
                 <button
                   v-for="c in PIN_COLORS"
@@ -141,7 +142,7 @@ const ICON_OPTIONS = [
             </div>
 
             <div>
-              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Marker Style</label>
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Marker Style</label>
               <div class="grid grid-cols-2 gap-2">
                 <button
                   v-for="opt in ICON_OPTIONS"
@@ -149,8 +150,8 @@ const ICON_OPTIONS = [
                   type="button"
                   class="rounded-none border px-3 py-2 text-left transition"
                   :class="editingPin.icon === opt.value
-                    ? 'border-[rgba(201,164,90,0.48)] bg-[rgba(201,164,90,0.14)] text-[#fff7df]'
-                    : 'border-[rgba(201,164,90,0.22)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)]'"
+                    ? 'border-eldra-accent/48 bg-eldra-accent/14 text-eldra-text-strong'
+                    : 'border-eldra-accent/22 bg-eldra-panel/72 text-eldra-text-soft hover:bg-eldra-accent/10'"
                   @click="editingPin.icon = opt.value"
                 >
                   <div class="text-lg leading-none">{{ opt.symbol }}</div>
@@ -160,7 +161,7 @@ const ICON_OPTIONS = [
             </div>
 
             <div>
-              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Summary / Blurb</label>
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Summary / Blurb</label>
               <WorldMentionAutocompleteTextarea
                 v-model="editingPin.summary"
                 :world-id="worldId"
@@ -172,7 +173,7 @@ const ICON_OPTIONS = [
 
             <div>
               <div class="mb-1.5 flex items-center justify-between gap-3">
-                <label class="block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Link Existing Article</label>
+                <label class="block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Link Existing Article</label>
                 <button
                   type="button"
                   class="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50"
@@ -198,13 +199,13 @@ const ICON_OPTIONS = [
                 </option>
               </select>
 
-              <p class="mt-2 text-xs text-[#9f9278]">
+              <p class="mt-2 text-xs text-eldra-text-faint">
                 Only map-relevant entity types are shown here.
               </p>
             </div>
 
             <div>
-              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Link Destination Map</label>
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Link Destination Map</label>
               <select
                 v-model="editingPin.linkedMapId"
                 class="eldra-input w-full rounded-none px-4 py-3 text-sm"
@@ -220,13 +221,13 @@ const ICON_OPTIONS = [
                 </option>
               </select>
 
-              <p class="mt-2 text-xs text-[#9f9278]">
+              <p class="mt-2 text-xs text-eldra-text-faint">
                 Choose a destination map for drill-down navigation.
               </p>
             </div>
 
             <div>
-              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Preview Image</label>
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Preview Image</label>
 
               <div
                 v-if="editingPin.imageUrl"
@@ -242,26 +243,26 @@ const ICON_OPTIONS = [
               <input
                 type="file"
                 accept="image/*"
-                class="block w-full text-sm text-[#d8ceb8] file:mr-4 file:rounded-none file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
+                class="block w-full text-sm text-eldra-text-soft file:mr-4 file:rounded-none file:border-0 file:bg-white/[0.08] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-white/[0.12]"
                 @change="emit('upload-image', $event)"
               >
             </div>
 
             <div>
-              <label class="flex items-start gap-3 text-sm text-[#d8ceb8]">
+              <label class="flex items-start gap-3 text-sm text-eldra-text-soft">
                 <input
                   v-model="editingPin.inheritFromEntity"
                   type="checkbox"
-                  class="mt-0.5 h-4 w-4 rounded border-white/10 bg-[rgba(20,17,12,0.72)]"
+                  class="mt-0.5 h-4 w-4 rounded border-white/10 bg-eldra-panel/72"
                 >
                 <span>Use linked article summary/image when pin fields are empty</span>
               </label>
             </div>
 
             <div v-if="editingPin.id">
-              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-[#9f9278]">Position</label>
+              <label class="mb-1.5 block text-xs uppercase tracking-[0.25em] text-eldra-text-faint">Position</label>
 
-              <div class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]">
+              <div class="eldra-glass-section rounded-none px-4 py-2 text-xs text-eldra-text-faint">
                 x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
               </div>
 
@@ -282,7 +283,7 @@ const ICON_OPTIONS = [
                 v-else
                 class="mt-2 space-y-2"
               >
-                <p class="text-xs text-[#9f9278]">
+                <p class="text-xs text-eldra-text-faint">
                   Click the map to reposition this pin. Esc cancels.
                 </p>
 
@@ -308,14 +309,14 @@ const ICON_OPTIONS = [
 
             <div
               v-else
-              class="eldra-codex-soft rounded-none px-4 py-2 text-xs text-[#9f9278]"
+              class="eldra-glass-section rounded-none px-4 py-2 text-xs text-eldra-text-faint"
             >
               x: {{ editingPin.x.toFixed(1) }} &nbsp; y: {{ editingPin.y.toFixed(1) }}
             </div>
           </div>
         </div>
 
-        <div class="border-t border-[rgba(201,164,90,0.22)] p-5">
+        <div class="border-t border-eldra-accent/22 p-5">
           <div class="flex gap-3">
             <button
               type="button"

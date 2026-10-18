@@ -1,0 +1,37 @@
+/* Nuxt UI bridge (Theming Phase 3B-2). See theming.md §3.
+
+   Nuxt UI styles every component from its semantic --ui-* variables. Mapping
+   them onto Eldra tokens here themes all Nuxt UI components centrally, for
+   whichever theme is active, with no per-component or per-page overrides.
+   Primary/neutral palettes are mapped separately (app config `ui.colors`,
+   set at runtime from the theme registry); success/warning/error/info are
+   intentionally left as Nuxt UI's own semantic colors.
+
+   Applied in both color modes: Eldra's interface is dark-designed, and a
+   user who stored an explicit 'light' color-mode preference should still
+   get readable, on-theme components. `:root.dark`/`:root.light` outrank
+   Nuxt UI's own `.dark`/`:root` declarations. */
+
+:root,
+:root.light,
+:root.dark {
+  --ui-bg: rgb(var(--eldra-panel-strong-rgb));
+  --ui-bg-muted: rgb(var(--eldra-panel-rgb));
+  --ui-bg-elevated: rgb(var(--eldra-panel-rgb));
+  --ui-bg-accented: rgb(var(--eldra-accent-rgb) / 0.12);
+  --ui-bg-inverted: rgb(var(--eldra-text-strong-rgb));
+
+  --ui-text: rgb(var(--eldra-text-rgb));
+  --ui-text-highlighted: rgb(var(--eldra-text-strong-rgb));
+  --ui-text-toned: rgb(var(--eldra-text-rgb) / 0.9);
+  --ui-text-muted: rgb(var(--eldra-text-muted-rgb));
+  --ui-text-dimmed: rgb(var(--eldra-text-muted-rgb) / 0.8);
+  --ui-text-inverted: rgb(var(--eldra-ink-rgb));
+
+  --ui-border: rgb(var(--eldra-accent-rgb) / 0.22);
+  --ui-border-muted: rgb(var(--eldra-accent-rgb) / 0.14);
+  --ui-border-accented: rgb(var(--eldra-accent-rgb) / 0.4);
+  --ui-border-inverted: rgb(var(--eldra-text-strong-rgb));
+
+  --ui-radius: var(--eldra-ui-radius);
+}

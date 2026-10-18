@@ -36,16 +36,16 @@ const widthPercent = computed(() => `${Math.round((ratio.value ?? 0) * 100)}%`)
 // Above 50% -> green, 50% down to 33% -> yellow, below 33% -> red.
 const barColor = computed(() => {
   const value = ratio.value ?? 0
-  if (value > 0.5) return '#9ec37d'
-  if (value >= 0.33) return '#c9922c'
-  return '#ef4444'
+  if (value > 0.5) return 'rgb(var(--eldra-positive-rgb))'
+  if (value >= 0.33) return 'rgb(var(--eldra-caution-rgb))'
+  return 'var(--ui-color-error-500)'
 })
 </script>
 
 <template>
   <div
     v-if="ratio !== null"
-    class="h-1.5 w-full overflow-hidden rounded-none bg-[rgba(9,17,26,0.62)]"
+    class="h-1.5 w-full overflow-hidden rounded-none bg-eldra-well/62"
     role="progressbar"
     aria-label="Hit points"
     :aria-valuenow="currentHp"

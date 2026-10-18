@@ -1155,6 +1155,8 @@ async function refreshAdmin() {
         </aside>
 
         <div class="grid gap-6">
+          <WorldThemeSettingsPanel :world-id="worldId" />
+
           <section class="eldra-ornate-panel eldra-frame-corners rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] p-5 backdrop-blur">
             <div class="flex flex-wrap items-start justify-between gap-4">
               <div>

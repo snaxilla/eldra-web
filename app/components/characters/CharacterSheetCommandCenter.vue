@@ -83,6 +83,7 @@
 import type { EncounterConditionView } from '~/composables/useCharacterSheet'
 import { isCharacterDeceasedFromDeathSaves, type StoredCharacterHealth } from '~/lib/characters/health'
 import CharacterSheetSection from '~/components/characters/CharacterSheetSection.vue'
+import CharacterPortrait from '~/components/characters/CharacterPortrait.vue'
 import CharacterSaveIndicator from '~/components/characters/CharacterSaveIndicator.vue'
 import CharacterVitalsBar from '~/components/characters/CharacterVitalsBar.vue'
 import CharacterHealthBar from '~/components/characters/CharacterHealthBar.vue'
@@ -171,19 +172,8 @@ const emit = defineEmits<{
 // model). No second upload system: this still just captures a `File` and
 // hands it to the page, which POSTs it through the exact same
 // `.../characters/:id/update` endpoint Build Mode already uses.
-const portraitFileInput = ref<HTMLInputElement | null>(null)
-
-function triggerPortraitUpload() {
-  if (!props.canEditPortrait) return
-  portraitFileInput.value?.click()
-}
-
-function handlePortraitFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) emit('update-portrait', file)
-  input.value = ''
-}
+// The upload input, menu, and handlers live in CharacterPortrait.vue
+// (Phase 4B extraction); this component relays its update/clear events.
 
 // ---------------------------------------------------------------------------
 // DECEASED PORTRAIT PRESENTATION -- HEADER CLEANUP 3, FLAVOR ONLY
@@ -228,7 +218,7 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
     elevation="feature"
     density="compact"
   >
-    <div class="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(96px,1fr)_5fr] xl:items-stretch xl:gap-5">
+    <div class="flex flex-col gap-4 @5xl/sheet:grid @5xl/sheet:grid-cols-[minmax(96px,1fr)_5fr] @5xl/sheet:items-stretch @5xl/sheet:gap-5">
       <!-- Portrait: the folio's cover illustration, not an avatar.
            aspect-[4/5] below `xl` (a fixed-ratio thumbnail beside identity
            in a flex row); at `xl` the grid ITSELF now stretches this
@@ -249,105 +239,18 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
            defect -- so the portrait always fills its frame exactly
            (`inset-0 h-full w-full object-cover`), cropping gracefully
            instead of leaving a gap or stretching. -->
-      <div class="w-16 shrink-0 sm:w-20 xl:w-full xl:h-full">
-      <div class="eldra-image-frame group relative aspect-[4/5] w-full overflow-hidden rounded-none border bg-black/25 xl:aspect-auto xl:h-full">
-        <img
-          v-if="imageUrl"
-          :src="imageUrl"
-          :alt="characterTitle || 'Character portrait'"
-          class="absolute inset-0 h-full w-full object-cover object-top transition duration-200"
-          :class="isDeceased ? 'grayscale' : ''"
-          loading="lazy"
-        >
-        <button
-          v-else-if="canEditPortrait"
-          type="button"
-          class="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-1 text-center text-[#9f9278] transition hover:bg-[rgba(201,164,90,0.1)] focus-visible:bg-[rgba(201,164,90,0.1)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
-          :disabled="portraitSaving"
-          aria-label="Add character portrait"
-          @click="triggerPortraitUpload"
-        >
-          <UIcon name="i-lucide-image-plus" class="h-4 w-4" />
-          <span class="text-[9px] uppercase tracking-[0.1em]">{{ portraitSaving ? 'Saving…' : 'Add portrait' }}</span>
-        </button>
-        <div
-          v-else
-          class="absolute inset-0 flex h-full w-full items-center justify-center text-center text-[9px] uppercase tracking-[0.1em] text-[#9f9278]"
-        >
-          No portrait
-        </div>
-
-        <!-- Deceased presentation -- Header Cleanup 3, flavor only (see
-             `isDeceased`'s own script comment above). Always in the DOM,
-             opacity-toggled rather than v-if, so the ~200ms transition
-             actually animates instead of snapping in/out. `pointer-
-             events-none` throughout: never intercepts the Add/Change/
-             Remove controls below, which keep working identically while
-             deceased (Change/Remove also carry their own `z-10`, so they
-             stay visually on top of this too, not just clickable through
-             it). Works with or without a portrait image -- the dark
-             overlay and red X render over the placeholder/"No portrait"
-             state exactly the same way, since neither depends on `imageUrl`. -->
-        <span
-          v-if="isDeceased"
-          class="sr-only"
-        >
-          Deceased
-        </span>
-        <div
-          class="pointer-events-none absolute inset-0 bg-black/35 transition-opacity duration-200"
-          :class="isDeceased ? 'opacity-100' : 'opacity-0'"
-          aria-hidden="true"
-        />
-        <div
-          class="pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-200"
-          :class="isDeceased ? 'opacity-100' : 'opacity-0'"
-          aria-hidden="true"
-        >
-          <div class="absolute left-1/2 top-1/2 h-1 w-[200%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-red-600 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
-          <div class="absolute left-1/2 top-1/2 h-1 w-[200%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-600 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
-        </div>
-
-        <!-- Hover/focus edit affordances, shown only over an EXISTING
-             portrait -- discoverable without a mouse: `opacity-100` by
-             default (touch has no hover), dimmed on pointer-capable/
-             desktop viewports until hover OR keyboard focus
-             (`md:opacity-0 md:group-hover:opacity-100
-             focus-visible:opacity-100`, the same pattern the legacy
-             sheet's own Build Mode portrait editor already used, minus
-             its Build Mode gate). -->
-        <button
-          v-if="canEditPortrait && imageUrl"
-          type="button"
-          class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-1 bg-black/80 px-1 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#fff7df] opacity-100 transition focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed md:opacity-0 md:group-hover:opacity-100"
-          :disabled="portraitSaving"
-          aria-label="Change character portrait"
-          @click="triggerPortraitUpload"
-        >
-          <UIcon name="i-lucide-camera" class="h-3 w-3" />
-          <span>{{ portraitSaving ? 'Saving…' : 'Change' }}</span>
-        </button>
-
-        <button
-          v-if="canEditPortrait && imageUrl"
-          type="button"
-          class="absolute right-0 top-0 z-10 bg-black/70 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.1em] text-[#d8ceb8] opacity-100 transition hover:text-red-300 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed md:opacity-0 md:group-hover:opacity-100"
-          :disabled="portraitSaving"
-          aria-label="Remove character portrait"
-          @click="emit('clear-portrait')"
-        >
-          ✕
-        </button>
-
-        <input
-          ref="portraitFileInput"
-          type="file"
-          accept="image/*"
-          class="sr-only"
-          tabindex="-1"
-          @change="handlePortraitFileChange"
-        >
-      </div>
+      <div class="w-16 shrink-0 sm:w-20 @5xl/sheet:w-full @5xl/sheet:h-full">
+      <CharacterPortrait
+        class="aspect-[4/5] w-full @5xl/sheet:aspect-auto @5xl/sheet:h-full"
+        :image-url="imageUrl"
+        :title="characterTitle"
+        :can-edit="canEditPortrait"
+        :saving="portraitSaving"
+        :is-deceased="isDeceased"
+        label-class="hidden @5xl/sheet:inline"
+        @update="emit('update-portrait', $event)"
+        @clear="emit('clear-portrait')"
+      />
 
       <p
         v-if="portraitError"
@@ -365,13 +268,13 @@ function handleMarkDeathSave({ kind, nextCount }: { kind: 'successes' | 'failure
             <h1 class="eldra-title truncate text-2xl font-semibold leading-tight sm:text-3xl">
               {{ characterTitle || 'Character' }}
             </h1>
-            <p class="mt-1 flex flex-wrap items-baseline gap-x-1.5 truncate text-sm text-[#d8ceb8]">
-              <span class="text-[#9f9278]">Level {{ level }}</span>
+            <p class="mt-1 flex flex-wrap items-baseline gap-x-1.5 truncate text-sm text-eldra-text-soft">
+              <span class="text-eldra-text-faint">Level {{ level }}</span>
               <template
                 v-for="row in identityRows"
                 :key="row.key"
               >
-                <span class="text-[#9f9278]">·</span>
+                <span class="text-eldra-text-faint">·</span>
                 <span :class="row.missing ? 'text-red-300' : ''">{{ row.value }}</span>
               </template>
             </p>

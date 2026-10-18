@@ -44,14 +44,14 @@ const selectedId = computed({
 <template>
   <div>
     <label class="block">
-      <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-[#9f9278]">Encounter</span>
+      <span class="mb-2 block text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Encounter</span>
       <select
         v-model="selectedId"
-        class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-[#f5e7bd]"
+        class="eldra-input min-h-11 w-full rounded-none px-3 py-2 text-sm text-eldra-accent-text"
       >
         <option
           value=""
-          class="bg-[#090909]"
+          class="bg-eldra-ink"
         >
           No encounter selected
         </option>
@@ -59,7 +59,7 @@ const selectedId = computed({
           v-for="option in encounter.available"
           :key="option.id"
           :value="String(option.id)"
-          class="bg-[#090909]"
+          class="bg-eldra-ink"
         >
           {{ option.title }}
         </option>
@@ -76,12 +76,12 @@ const selectedId = computed({
     <template v-if="encounter.view">
       <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
         <div>
-          <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Round</span>
-          <div class="text-lg font-semibold tabular-nums text-[#fff7df]">{{ encounter.view.round }}</div>
+          <span class="text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Round</span>
+          <div class="text-lg font-semibold tabular-nums text-eldra-text-strong">{{ encounter.view.round }}</div>
         </div>
         <div>
-          <span class="text-xs uppercase tracking-[0.22em] text-[#9f9278]">Current Turn</span>
-          <div class="text-lg font-semibold text-[#fff7df]">
+          <span class="text-xs uppercase tracking-[0.22em] text-eldra-text-faint">Current Turn</span>
+          <div class="text-lg font-semibold text-eldra-text-strong">
             {{ encounter.view.currentCombatant?.characterTitle ?? '—' }}
           </div>
         </div>

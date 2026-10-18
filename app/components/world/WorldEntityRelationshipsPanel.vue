@@ -345,7 +345,7 @@ function attitudeDotClass(relationship: any) {
   if (strength > 0) return 'bg-emerald-400'
   if (strength < 0) return 'bg-red-400'
 
-  return 'bg-[#c9a45a]'
+  return 'bg-eldra-accent'
 }
 
 function relationshipDirectionLabel(relationship: any) {
@@ -654,11 +654,11 @@ onBeforeUnmount(() => {
     class="relationship-panel rounded-none"
     :class="isArticleVariant
       ? 'eldra-ornate-panel eldra-frame-corners border p-5'
-      : 'eldra-codex-soft mt-5 p-4'"
+      : 'eldra-glass-section mt-5 p-4'"
   >
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+        <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
           Relationships
         </div>
 
@@ -669,9 +669,9 @@ onBeforeUnmount(() => {
           Relationship Web
         </h3>
 
-        <p class="mt-1 text-sm leading-6 text-[#d8ceb8]">
+        <p class="mt-1 text-sm leading-6 text-eldra-text-soft">
           People, places, factions, items, and story links.
-          <span v-if="hasRelationships" class="text-[#9f9278]">
+          <span v-if="hasRelationships" class="text-eldra-text-faint">
             {{ filteredRelationships.length }} shown / {{ sortedRelationships.length }} total.
           </span>
         </p>
@@ -680,14 +680,14 @@ onBeforeUnmount(() => {
       <div class="flex flex-wrap items-center justify-end gap-2">
         <div
           v-if="isArticleVariant && showGraph"
-          class="inline-flex overflow-hidden rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(8,17,27,0.42)]"
+          class="inline-flex overflow-hidden rounded-none border border-eldra-accent/22 bg-eldra-well/42"
         >
           <button
             type="button"
             class="px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition"
             :class="activeView === 'list'
-              ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-              : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
+              ? 'bg-eldra-accent/16 text-eldra-text-strong'
+              : 'text-eldra-text-dim hover:bg-eldra-accent/8 hover:text-eldra-text-strong'"
             @click="activeView = 'list'"
           >
             List
@@ -695,10 +695,10 @@ onBeforeUnmount(() => {
 
           <button
             type="button"
-            class="border-l border-[rgba(201,164,90,0.14)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition"
+            class="border-l border-eldra-accent/14 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition"
             :class="activeView === 'web'
-              ? 'bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-              : 'text-[#b5a88d] hover:bg-[rgba(201,164,90,0.08)] hover:text-[#fff7df]'"
+              ? 'bg-eldra-accent/16 text-eldra-text-strong'
+              : 'text-eldra-text-dim hover:bg-eldra-accent/8 hover:text-eldra-text-strong'"
             @click="activeView = 'web'"
           >
             Web
@@ -708,7 +708,7 @@ onBeforeUnmount(() => {
         <button
           v-if="canEdit && !payload?.schemaMissing"
           type="button"
-          class="rounded-none border border-[rgba(201,164,90,0.28)] bg-[rgba(201,164,90,0.10)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#fff7df] transition hover:border-[rgba(201,164,90,0.54)] hover:bg-[rgba(201,164,90,0.16)]"
+          class="rounded-none border border-eldra-accent/28 bg-eldra-accent/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-eldra-text-strong transition hover:border-eldra-accent/54 hover:bg-eldra-accent/16"
           @click="addOpen = !addOpen"
         >
           {{ addOpen ? 'Cancel Add' : 'Add Relationship' }}
@@ -739,7 +739,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="addOpen && canEdit && !payload?.schemaMissing"
-      class="mt-5 rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.38)] p-4"
+      class="mt-5 rounded-none border border-eldra-accent/18 bg-eldra-well/38 p-4"
     >
       <div class="flex flex-wrap gap-2">
         <button
@@ -748,8 +748,8 @@ onBeforeUnmount(() => {
           type="button"
           class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
           :class="form.relationshipType === type.value
-            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/62 bg-eldra-accent/16 text-eldra-text-strong'
+            : 'border-[rgba(65,82,103,0.70)] bg-eldra-well/42 text-eldra-text-dim hover:border-eldra-accent/36 hover:text-eldra-text-strong'"
           @click="presetRelationship(type.value)"
         >
           {{ type.label }}
@@ -758,7 +758,7 @@ onBeforeUnmount(() => {
 
       <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <label class="block">
-          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">
+          <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">
             Target Entity
           </span>
 
@@ -770,18 +770,18 @@ onBeforeUnmount(() => {
 
           <div
             v-if="targetSuggestions.length"
-            class="mt-2 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(5,8,12,0.96)]"
+            class="mt-2 overflow-hidden rounded-none border border-eldra-accent/18 bg-[rgba(5,8,12,0.96)]"
           >
             <button
               v-for="target in targetSuggestions"
               :key="target.id"
               type="button"
-              class="flex w-full items-center justify-between gap-3 border-b border-[rgba(201,164,90,0.10)] px-3 py-2 text-left last:border-b-0 hover:bg-[rgba(201,164,90,0.08)]"
+              class="flex w-full items-center justify-between gap-3 border-b border-eldra-accent/10 px-3 py-2 text-left last:border-b-0 hover:bg-eldra-accent/8"
               @click="selectTarget(target)"
             >
               <span>
                 <span class="block text-sm font-semibold text-white">{{ target.title }}</span>
-                <span class="block text-[10px] uppercase tracking-[0.18em] text-[#9f9278]">{{ target.entityType }}</span>
+                <span class="block text-[10px] uppercase tracking-[0.18em] text-eldra-text-faint">{{ target.entityType }}</span>
               </span>
             </button>
           </div>
@@ -796,7 +796,7 @@ onBeforeUnmount(() => {
 
         <div class="grid gap-3 sm:grid-cols-2">
           <label>
-            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Attitude</span>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Attitude</span>
             <select
               v-model.number="form.strength"
               class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -805,7 +805,7 @@ onBeforeUnmount(() => {
                 v-for="option in ATTITUDE_OPTIONS"
                 :key="option.value"
                 :value="option.value"
-                class="bg-[#090909] text-[#f5e7bd]"
+                class="bg-[#090909] text-eldra-accent-text"
               >
                 {{ option.label }}
               </option>
@@ -813,7 +813,7 @@ onBeforeUnmount(() => {
           </label>
 
           <label>
-            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Visibility</span>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Visibility</span>
             <select
               v-model="form.visibility"
               class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -822,7 +822,7 @@ onBeforeUnmount(() => {
                 v-for="option in VISIBILITY_OPTIONS"
                 :key="option.value"
                 :value="option.value"
-                class="bg-[#090909] text-[#f5e7bd]"
+                class="bg-[#090909] text-eldra-accent-text"
               >
                 {{ option.label }}
               </option>
@@ -830,7 +830,7 @@ onBeforeUnmount(() => {
           </label>
 
           <label>
-            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Label</span>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Label</span>
             <input
               v-model="form.label"
               class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -839,7 +839,7 @@ onBeforeUnmount(() => {
           </label>
 
           <label>
-            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Reverse Label</span>
+            <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Reverse Label</span>
             <input
               v-model="form.inverseLabel"
               class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -850,7 +850,7 @@ onBeforeUnmount(() => {
       </div>
 
       <label class="mt-4 block">
-        <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Summary</span>
+        <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Summary</span>
         <textarea
           v-model="form.summary"
           rows="3"
@@ -862,7 +862,7 @@ onBeforeUnmount(() => {
       <div class="mt-4 flex flex-wrap justify-end gap-2">
         <button
           type="button"
-          class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-4 py-2 text-sm font-semibold text-[#d8ceb8]"
+          class="rounded-none border border-[rgba(65,82,103,0.70)] bg-eldra-well/42 px-4 py-2 text-sm font-semibold text-eldra-text-soft"
           @click="resetForm"
         >
           Reset
@@ -893,7 +893,7 @@ onBeforeUnmount(() => {
 
         <button
           type="button"
-          class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#b5a88d] transition hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]"
+          class="rounded-none border border-[rgba(65,82,103,0.70)] bg-eldra-well/42 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-eldra-text-dim transition hover:border-eldra-accent/36 hover:text-eldra-text-strong"
           @click="resetFilters"
         >
           Clear Filters
@@ -907,8 +907,8 @@ onBeforeUnmount(() => {
           type="button"
           class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
           :class="relationshipFilter === option.key
-            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/62 bg-eldra-accent/16 text-eldra-text-strong'
+            : 'border-[rgba(65,82,103,0.70)] bg-eldra-well/42 text-eldra-text-dim hover:border-eldra-accent/36 hover:text-eldra-text-strong'"
           @click="relationshipFilter = option.key"
         >
           {{ option.label }}
@@ -923,8 +923,8 @@ onBeforeUnmount(() => {
           type="button"
           class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
           :class="attitudeFilter === option.key
-            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/62 bg-eldra-accent/16 text-eldra-text-strong'
+            : 'border-[rgba(65,82,103,0.70)] bg-eldra-well/42 text-eldra-text-dim hover:border-eldra-accent/36 hover:text-eldra-text-strong'"
           @click="attitudeFilter = option.key"
         >
           {{ option.label }}
@@ -937,8 +937,8 @@ onBeforeUnmount(() => {
           type="button"
           class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
           :class="directionFilter === option.key
-            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/62 bg-eldra-accent/16 text-eldra-text-strong'
+            : 'border-[rgba(65,82,103,0.70)] bg-eldra-well/42 text-eldra-text-dim hover:border-eldra-accent/36 hover:text-eldra-text-strong'"
           @click="directionFilter = option.key"
         >
           {{ option.label }}
@@ -951,8 +951,8 @@ onBeforeUnmount(() => {
           type="button"
           class="rounded-none border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition"
           :class="visibilityFilter === option.key
-            ? 'border-[rgba(201,164,90,0.62)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-            : 'border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] text-[#b5a88d] hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]'"
+            ? 'border-eldra-accent/62 bg-eldra-accent/16 text-eldra-text-strong'
+            : 'border-[rgba(65,82,103,0.70)] bg-eldra-well/42 text-eldra-text-dim hover:border-eldra-accent/36 hover:text-eldra-text-strong'"
           @click="visibilityFilter = option.key"
         >
           {{ option.label }}
@@ -963,7 +963,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="loading"
-      class="mt-5 rounded-none border border-[rgba(201,164,90,0.14)] p-4 text-sm text-[#9f9278]"
+      class="mt-5 rounded-none border border-eldra-accent/14 p-4 text-sm text-eldra-text-faint"
     >
       Loading relationships...
     </div>
@@ -971,7 +971,7 @@ onBeforeUnmount(() => {
     <template v-else>
       <div
         v-if="!hasRelationships && !payload?.schemaMissing"
-        class="mt-5 rounded-none border border-dashed border-[rgba(201,164,90,0.22)] p-5 text-sm leading-7 text-[#9f9278]"
+        class="mt-5 rounded-none border border-dashed border-eldra-accent/22 p-5 text-sm leading-7 text-eldra-text-faint"
       >
         No relationships yet.
         <span v-if="canEdit">Add one to start building this entity's web.</span>
@@ -979,7 +979,7 @@ onBeforeUnmount(() => {
 
       <div
         v-else-if="activeView === 'web' && isArticleVariant && showGraph"
-        class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)] bg-[rgba(8,17,27,0.28)]"
+        class="mt-5 overflow-hidden rounded-none border border-eldra-accent/18 bg-eldra-well/28"
       >
         <div class="relative h-[520px] min-w-[680px]">
           <svg
@@ -1022,7 +1022,7 @@ onBeforeUnmount(() => {
               x="340"
               y="266"
               text-anchor="middle"
-              class="fill-[#9f9278] text-[10px] uppercase tracking-[0.18em]"
+              class="fill-eldra-text-faint text-[10px] uppercase tracking-[0.18em]"
             >
               Current
             </text>
@@ -1055,7 +1055,7 @@ onBeforeUnmount(() => {
                 :x="node.x"
                 :y="node.y + 62"
                 text-anchor="middle"
-                class="fill-[#d8ceb8] text-xs font-semibold"
+                class="fill-eldra-text-soft text-xs font-semibold"
               >
                 {{ relationshipOtherTitle(node.relationship).slice(0, 24) }}
               </text>
@@ -1064,7 +1064,7 @@ onBeforeUnmount(() => {
                 :x="node.x"
                 :y="node.y + 78"
                 text-anchor="middle"
-                class="fill-[#9f9278] text-[10px] uppercase tracking-[0.16em]"
+                class="fill-eldra-text-faint text-[10px] uppercase tracking-[0.16em]"
               >
                 {{ typeLabel(node.relationship.relationshipType) }}
               </text>
@@ -1075,12 +1075,12 @@ onBeforeUnmount(() => {
 
       <div
         v-else
-        class="mt-5 overflow-hidden rounded-none border border-[rgba(201,164,90,0.18)]"
-        :class="isDrawerVariant ? 'divide-y divide-[rgba(201,164,90,0.10)]' : ''"
+        class="mt-5 overflow-hidden rounded-none border border-eldra-accent/18"
+        :class="isDrawerVariant ? 'divide-y divide-eldra-accent/10' : ''"
       >
         <div
           v-if="!displayedRelationships.length"
-          class="p-5 text-sm text-[#9f9278]"
+          class="p-5 text-sm text-eldra-text-faint"
         >
           No relationships match the current filters.
         </div>
@@ -1088,7 +1088,7 @@ onBeforeUnmount(() => {
         <article
           v-for="relationship in displayedRelationships"
           :key="relationship.id"
-          class="relationship-row border-b border-[rgba(201,164,90,0.10)] bg-[rgba(8,17,27,0.28)] p-4 last:border-b-0"
+          class="relationship-row border-b border-eldra-accent/10 bg-eldra-well/28 p-4 last:border-b-0"
         >
           <div
             v-if="String(editingId) !== String(relationship.id)"
@@ -1102,7 +1102,7 @@ onBeforeUnmount(() => {
                   :style="{ backgroundColor: relationshipColor(relationship) }"
                 />
 
-                <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#9f9278]">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-eldra-text-faint">
                   {{ relationshipDirectionLabel(relationship) }} · {{ typeLabel(relationship.relationshipType) }}
                 </span>
               </div>
@@ -1111,7 +1111,7 @@ onBeforeUnmount(() => {
                 {{ relationship.displayLabel || relationship.label || 'related to' }}
               </div>
 
-              <div class="mt-1 text-xs text-[#9f9278]">
+              <div class="mt-1 text-xs text-eldra-text-faint">
                 Reverse: {{ relationship.inverseLabel || relationship.label || 'related to' }}
               </div>
             </div>
@@ -1125,13 +1125,13 @@ onBeforeUnmount(() => {
                 {{ relationshipOtherTitle(relationship) }}
               </div>
 
-              <div class="mt-1 text-[10px] uppercase tracking-[0.2em] text-[#9f9278]">
+              <div class="mt-1 text-[10px] uppercase tracking-[0.2em] text-eldra-text-faint">
                 {{ relationshipOtherType(relationship) }}
               </div>
 
               <p
                 v-if="relationship.summary"
-                class="mt-2 text-sm leading-6 text-[#d8ceb8]"
+                class="mt-2 text-sm leading-6 text-eldra-text-soft"
               >
                 {{ relationship.summary }}
               </p>
@@ -1142,18 +1142,18 @@ onBeforeUnmount(() => {
                 class="h-3 w-3 rounded-full"
                 :class="attitudeDotClass(relationship)"
               />
-              <span class="text-sm text-[#d8ceb8]">{{ attitudeLabel(relationship) }}</span>
+              <span class="text-sm text-eldra-text-soft">{{ attitudeLabel(relationship) }}</span>
             </div>
 
             <div class="flex flex-wrap items-start gap-2">
-              <span class="rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(201,164,90,0.08)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#d8ceb8]">
+              <span class="rounded-none border border-eldra-accent/16 bg-eldra-accent/8 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-eldra-text-soft">
                 {{ visibilityLabel(relationship.visibility) }}
               </span>
 
               <button
                 v-if="isArticleVariant"
                 type="button"
-                class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-2 py-1.5 text-xs font-semibold text-[#d8ceb8] transition hover:border-[rgba(201,164,90,0.36)] hover:text-[#fff7df]"
+                class="rounded-none border border-[rgba(65,82,103,0.70)] bg-eldra-well/42 px-2 py-1.5 text-xs font-semibold text-eldra-text-soft transition hover:border-eldra-accent/36 hover:text-eldra-text-strong"
                 @click="openRelationshipEntity(relationship)"
               >
                 Details
@@ -1162,7 +1162,7 @@ onBeforeUnmount(() => {
               <button
                 v-if="canEdit"
                 type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(201,164,90,0.10)] px-2 py-1.5 text-xs font-semibold text-[#fff7df]"
+                class="rounded-none border border-eldra-accent/24 bg-eldra-accent/10 px-2 py-1.5 text-xs font-semibold text-eldra-text-strong"
                 @click="beginEdit(relationship)"
               >
                 Edit
@@ -1182,11 +1182,11 @@ onBeforeUnmount(() => {
 
           <div
             v-else
-            class="grid gap-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(4,8,14,0.48)] p-4"
+            class="grid gap-4 rounded-none border border-eldra-accent/16 bg-[rgba(4,8,14,0.48)] p-4"
           >
             <div class="grid gap-3 md:grid-cols-2">
               <label>
-                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Type</span>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Type</span>
                 <select
                   v-model="editForm.relationshipType"
                   class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -1195,7 +1195,7 @@ onBeforeUnmount(() => {
                     v-for="type in RELATIONSHIP_TYPES"
                     :key="type.value"
                     :value="type.value"
-                    class="bg-[#090909] text-[#f5e7bd]"
+                    class="bg-[#090909] text-eldra-accent-text"
                   >
                     {{ type.label }}
                   </option>
@@ -1203,7 +1203,7 @@ onBeforeUnmount(() => {
               </label>
 
               <label>
-                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Visibility</span>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Visibility</span>
                 <select
                   v-model="editForm.visibility"
                   class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -1212,7 +1212,7 @@ onBeforeUnmount(() => {
                     v-for="option in VISIBILITY_OPTIONS"
                     :key="option.value"
                     :value="option.value"
-                    class="bg-[#090909] text-[#f5e7bd]"
+                    class="bg-[#090909] text-eldra-accent-text"
                   >
                     {{ option.label }}
                   </option>
@@ -1220,7 +1220,7 @@ onBeforeUnmount(() => {
               </label>
 
               <label>
-                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Label</span>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Label</span>
                 <input
                   v-model="editForm.label"
                   class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -1228,7 +1228,7 @@ onBeforeUnmount(() => {
               </label>
 
               <label>
-                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Reverse Label</span>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Reverse Label</span>
                 <input
                   v-model="editForm.inverseLabel"
                   class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -1236,7 +1236,7 @@ onBeforeUnmount(() => {
               </label>
 
               <label>
-                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Attitude</span>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Attitude</span>
                 <select
                   v-model.number="editForm.strength"
                   class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -1245,7 +1245,7 @@ onBeforeUnmount(() => {
                     v-for="option in ATTITUDE_OPTIONS"
                     :key="option.value"
                     :value="option.value"
-                    class="bg-[#090909] text-[#f5e7bd]"
+                    class="bg-[#090909] text-eldra-accent-text"
                   >
                     {{ option.label }}
                   </option>
@@ -1253,7 +1253,7 @@ onBeforeUnmount(() => {
               </label>
 
               <label>
-                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Status</span>
+                <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Status</span>
                 <input
                   v-model="editForm.status"
                   class="eldra-input w-full rounded-none px-3 py-2 text-sm text-white"
@@ -1262,7 +1262,7 @@ onBeforeUnmount(() => {
             </div>
 
             <label>
-              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-[#9f9278]">Summary</span>
+              <span class="mb-2 block text-[10px] uppercase tracking-[0.22em] text-eldra-text-faint">Summary</span>
               <textarea
                 v-model="editForm.summary"
                 rows="3"
@@ -1273,7 +1273,7 @@ onBeforeUnmount(() => {
             <div class="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                class="rounded-none border border-[rgba(65,82,103,0.70)] bg-[rgba(8,17,27,0.42)] px-3 py-2 text-sm font-semibold text-[#d8ceb8]"
+                class="rounded-none border border-[rgba(65,82,103,0.70)] bg-eldra-well/42 px-3 py-2 text-sm font-semibold text-eldra-text-soft"
                 @click="cancelEdit"
               >
                 Cancel
@@ -1294,7 +1294,7 @@ onBeforeUnmount(() => {
 
       <div
         v-if="isDrawerVariant && filteredRelationships.length > drawerRelationships.length"
-        class="mt-3 text-xs leading-5 text-[#9f9278]"
+        class="mt-3 text-xs leading-5 text-eldra-text-faint"
       >
         Showing {{ drawerRelationships.length }} of {{ filteredRelationships.length }} links. Open the full article to manage the full web.
       </div>
@@ -1314,7 +1314,7 @@ onBeforeUnmount(() => {
 }
 
 .relationship-row:hover {
-  background-color: rgba(201, 164, 90, 0.045);
+  background-color: rgb(var(--eldra-accent-rgb) / 0.045);
 }
 
 .relationship-panel svg text {

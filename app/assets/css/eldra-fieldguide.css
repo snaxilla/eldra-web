@@ -1,18 +1,20 @@
+/* Legacy token names, now aliases of the semantic theme tokens
+   (app/assets/css/themes/*). Resolved values are unchanged. */
 :root {
-  --eldra-ink: #070604;
-  --eldra-charcoal: #11100d;
-  --eldra-panel: rgba(19, 17, 13, 0.86);
-  --eldra-panel-strong: rgba(10, 9, 7, 0.94);
-  --eldra-gold: #c9a45a;
-  --eldra-gold-soft: rgba(201, 164, 90, 0.36);
-  --eldra-gold-faint: rgba(201, 164, 90, 0.14);
-  --eldra-parchment: #e8d9b5;
-  --eldra-muted: #a79b85;
+  --eldra-ink: rgb(var(--eldra-ink-rgb));
+  --eldra-charcoal: rgb(var(--eldra-charcoal-rgb));
+  --eldra-panel: rgb(var(--eldra-panel-rgb) / 0.86);
+  --eldra-panel-strong: rgb(var(--eldra-panel-strong-rgb) / 0.94);
+  --eldra-gold: var(--eldra-accent);
+  --eldra-gold-soft: var(--eldra-accent-soft);
+  --eldra-gold-faint: var(--eldra-accent-faint);
+  --eldra-parchment: rgb(var(--eldra-parchment-rgb));
+  --eldra-muted: var(--eldra-text-muted);
 }
 
 .eldra-fieldguide-bg {
   background:
-    radial-gradient(900px 520px at 18% -10%, rgba(201, 164, 90, 0.16), transparent 55%),
+    radial-gradient(900px 520px at 18% -10%, rgb(var(--eldra-accent-rgb) / 0.16), transparent 55%),
     radial-gradient(760px 520px at 92% 8%, rgba(120, 80, 38, 0.12), transparent 58%),
     linear-gradient(180deg, #090806 0%, #11100d 45%, #070604 100%);
 }
@@ -22,7 +24,7 @@
   border: 1px solid var(--eldra-gold-soft);
   background:
     linear-gradient(180deg, rgba(27, 24, 18, 0.90), rgba(9, 8, 6, 0.86)),
-    radial-gradient(900px 280px at 50% 0%, rgba(201, 164, 90, 0.10), transparent 70%);
+    radial-gradient(900px 280px at 50% 0%, rgb(var(--eldra-accent-rgb) / 0.10), transparent 70%);
   box-shadow:
     0 22px 70px rgba(0, 0, 0, 0.48),
     inset 0 1px 0 rgba(255, 238, 190, 0.05);
@@ -33,7 +35,7 @@
   position: absolute;
   inset: 8px;
   pointer-events: none;
-  border: 1px solid rgba(201, 164, 90, 0.16);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.16);
 }
 
 .eldra-codex-panel > * {
@@ -41,12 +43,12 @@
 }
 
 .eldra-codex-soft {
-  border: 1px solid rgba(201, 164, 90, 0.22);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.22);
   background: linear-gradient(180deg, rgba(22, 19, 14, 0.76), rgba(8, 8, 6, 0.66));
 }
 
 .eldra-codex-frame {
-  border: 1px solid rgba(201, 164, 90, 0.30);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.30);
   background: rgba(5, 5, 4, 0.54);
   box-shadow:
     0 14px 34px rgba(0, 0, 0, 0.45),
@@ -60,36 +62,36 @@
 }
 
 .eldra-title {
-  color: #fff7df;
-  text-shadow: 0 2px 18px rgba(201, 164, 90, 0.10);
+  color: rgb(var(--eldra-text-strong-rgb));
+  text-shadow: 0 2px 18px rgb(var(--eldra-accent-rgb) / 0.10);
 }
 
 .eldra-gold-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(201, 164, 90, 0.58), transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--eldra-accent-rgb) / 0.58), transparent);
 }
 
 .eldra-button {
-  border: 1px solid rgba(201, 164, 90, 0.34);
-  background: rgba(17, 15, 11, 0.86);
-  color: #f5e7bd;
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.34);
+  background: rgb(var(--eldra-panel-rgb) / 0.86);
+  color: rgb(var(--eldra-accent-text-rgb));
   transition: background 140ms ease, border-color 140ms ease;
 }
 
 .eldra-button:hover {
-  border-color: rgba(201, 164, 90, 0.58);
-  background: rgba(64, 45, 18, 0.42);
+  border-color: rgb(var(--eldra-accent-rgb) / 0.58);
+  background: rgb(var(--eldra-accent-rgb) / 0.16);
 }
 
 .eldra-input {
-  border: 1px solid rgba(201, 164, 90, 0.24);
-  background: rgba(5, 5, 4, 0.72);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.24);
+  background: rgb(var(--eldra-ink-rgb) / 0.72);
   color: #f5f0df;
   outline: none;
 }
 
 .eldra-input:focus {
-  border-color: rgba(201, 164, 90, 0.58);
+  border-color: rgb(var(--eldra-accent-rgb) / 0.58);
 }
 
 .eldra-filigree {
@@ -107,7 +109,7 @@
   background:
     linear-gradient(var(--eldra-gold-soft), var(--eldra-gold-soft)) left top / 30px 1px no-repeat,
     linear-gradient(var(--eldra-gold-soft), var(--eldra-gold-soft)) left top / 1px 30px no-repeat,
-    radial-gradient(circle at left top, transparent 17px, rgba(201,164,90,0.45) 18px, transparent 20px);
+    radial-gradient(circle at left top, transparent 17px, rgb(var(--eldra-accent-rgb) / 0.45) 18px, transparent 20px);
 }
 
 .eldra-filigree::before {
@@ -123,14 +125,14 @@
 
 .eldra-ornate-card {
   position: relative;
-  border-color: rgba(201,164,90,0.34) !important;
+  border-color: rgb(var(--eldra-accent-rgb) / 0.34) !important;
   background:
-    radial-gradient(420px 160px at 18% 0%, rgba(201,164,90,0.13), transparent 62%),
+    radial-gradient(420px 160px at 18% 0%, rgb(var(--eldra-accent-rgb) / 0.13), transparent 62%),
     linear-gradient(180deg, rgba(16,15,12,0.90), rgba(7,7,6,0.82)) !important;
   box-shadow:
     0 18px 48px rgba(0,0,0,0.35),
     inset 0 0 0 1px rgba(255,235,180,0.035),
-    inset 0 0 32px rgba(201,164,90,0.035);
+    inset 0 0 32px rgb(var(--eldra-accent-rgb) / 0.035);
 }
 
 .eldra-ornate-card::before {
@@ -138,36 +140,36 @@
   position: absolute;
   inset: 7px;
   pointer-events: none;
-  border: 1px solid rgba(201,164,90,0.16);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.16);
 }
 
 .eldra-gold-chip {
-  border-color: rgba(201,164,90,0.42) !important;
+  border-color: rgb(var(--eldra-accent-rgb) / 0.42) !important;
   background:
-    linear-gradient(180deg, rgba(201,164,90,0.16), rgba(45,31,12,0.18)) !important;
-  color: #f5e7bd !important;
-  box-shadow: inset 0 0 10px rgba(201,164,90,0.08);
+    linear-gradient(180deg, rgb(var(--eldra-accent-rgb) / 0.16), rgba(45,31,12,0.18)) !important;
+  color: rgb(var(--eldra-accent-text-rgb)) !important;
+  box-shadow: inset 0 0 10px rgb(var(--eldra-accent-rgb) / 0.08);
 }
 
 .eldra-arcane-link {
-  color: #f5e7bd !important;
-  text-shadow: 0 0 14px rgba(201,164,90,0.18);
+  color: rgb(var(--eldra-accent-text-rgb)) !important;
+  text-shadow: 0 0 14px rgb(var(--eldra-accent-rgb) / 0.18);
 }
 
 .eldra-arcane-link:hover {
-  color: #fff7df !important;
+  color: rgb(var(--eldra-text-strong-rgb)) !important;
 }
 
 .eldra-ornate-panel {
   position: relative;
-  border-color: rgba(201,164,90,0.34) !important;
+  border-color: rgb(var(--eldra-accent-rgb) / 0.34) !important;
   background:
-    radial-gradient(900px 220px at 50% 0%, rgba(201,164,90,0.11), transparent 68%),
-    linear-gradient(180deg, rgba(20,18,13,0.88), rgba(8,7,5,0.78)) !important;
+    radial-gradient(900px 220px at 50% 0%, rgb(var(--eldra-accent-rgb) / 0.11), transparent 68%),
+    linear-gradient(180deg, rgb(var(--eldra-panel-rgb) / 0.88), rgb(var(--eldra-ink-rgb) / 0.78)) !important;
   box-shadow:
     0 22px 70px rgba(0,0,0,0.42),
     inset 0 0 0 1px rgba(255,238,190,0.035),
-    inset 0 0 48px rgba(201,164,90,0.04);
+    inset 0 0 48px rgb(var(--eldra-accent-rgb) / 0.04);
 }
 
 .eldra-ornate-panel::before {
@@ -175,7 +177,7 @@
   position: absolute;
   inset: 8px;
   pointer-events: none;
-  border: 1px solid rgba(201,164,90,0.16);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.16);
 }
 
 .eldra-ornate-panel::after {
@@ -202,7 +204,7 @@
   color: rgba(245,231,189,0.72);
   font-size: 15px;
   line-height: 1;
-  text-shadow: 0 0 12px rgba(201,164,90,0.42);
+  text-shadow: 0 0 12px rgb(var(--eldra-accent-rgb) / 0.42);
 }
 
 .eldra-corner-runes::before {
@@ -229,14 +231,14 @@
   pointer-events: none;
   opacity: 0.18;
   background:
-    radial-gradient(circle, transparent 42%, rgba(201,164,90,0.75) 43%, transparent 46%),
-    linear-gradient(45deg, transparent 47%, rgba(201,164,90,0.7) 48%, rgba(201,164,90,0.7) 52%, transparent 53%),
-    linear-gradient(-45deg, transparent 47%, rgba(201,164,90,0.7) 48%, rgba(201,164,90,0.7) 52%, transparent 53%);
+    radial-gradient(circle, transparent 42%, rgb(var(--eldra-accent-rgb) / 0.75) 43%, transparent 46%),
+    linear-gradient(45deg, transparent 47%, rgb(var(--eldra-accent-rgb) / 0.7) 48%, rgb(var(--eldra-accent-rgb) / 0.7) 52%, transparent 53%),
+    linear-gradient(-45deg, transparent 47%, rgb(var(--eldra-accent-rgb) / 0.7) 48%, rgb(var(--eldra-accent-rgb) / 0.7) 52%, transparent 53%);
 }
 
 .eldra-image-frame {
   position: relative;
-  border-color: rgba(201,164,90,0.34) !important;
+  border-color: rgb(var(--eldra-accent-rgb) / 0.34) !important;
   box-shadow:
     inset 0 0 0 1px rgba(255,238,190,0.05),
     0 0 0 1px rgba(0,0,0,0.45);
@@ -247,7 +249,7 @@
   position: absolute;
   inset: 5px;
   pointer-events: none;
-  border: 1px solid rgba(201,164,90,0.18);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.18);
   z-index: 2;
 }
 
@@ -255,9 +257,9 @@
   border-color: rgba(255,211,112,0.88) !important;
   box-shadow:
     0 0 0 1px rgba(255,211,112,0.55),
-    0 0 26px rgba(201,164,90,0.34),
+    0 0 26px rgb(var(--eldra-accent-rgb) / 0.34),
     0 22px 54px rgba(0,0,0,0.45),
-    inset 0 0 38px rgba(201,164,90,0.10) !important;
+    inset 0 0 38px rgb(var(--eldra-accent-rgb) / 0.10) !important;
 }
 
 .eldra-rune-label {
@@ -268,7 +270,7 @@
 .eldra-rune-label::before,
 .eldra-rune-label::after {
   content: "◆";
-  color: rgba(201,164,90,0.65);
+  color: rgb(var(--eldra-accent-rgb) / 0.65);
   font-size: 0.55rem;
   vertical-align: middle;
 }
@@ -283,7 +285,7 @@
 
 .eldra-gold-rule {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(201,164,90,0.72), transparent);
+  background: linear-gradient(90deg, transparent, rgb(var(--eldra-accent-rgb) / 0.72), transparent);
 }
 
 .eldra-ornate-panel.fixed {
@@ -294,7 +296,7 @@
   position: relative;
   box-shadow:
     inset -1px 0 0 rgba(255,238,190,0.05),
-    inset -18px 0 44px rgba(201,164,90,0.045);
+    inset -18px 0 44px rgb(var(--eldra-accent-rgb) / 0.045);
 }
 
 .eldra-sidebar-ornate::before {
@@ -302,7 +304,7 @@
   position: absolute;
   inset: 10px;
   pointer-events: none;
-  border: 1px solid rgba(201,164,90,0.12);
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.12);
 }
 
 .eldra-sidebar-brand {
@@ -317,13 +319,13 @@
   right: 0.25rem;
   bottom: 0;
   height: 1px;
-  background: linear-gradient(90deg, rgba(201,164,90,0.75), transparent);
+  background: linear-gradient(90deg, rgb(var(--eldra-accent-rgb) / 0.75), transparent);
 }
 
 .eldra-sidebar-brandmark {
-  color: #fff7df;
+  color: rgb(var(--eldra-text-strong-rgb));
   text-shadow:
-    0 0 18px rgba(201,164,90,0.22),
+    0 0 18px rgb(var(--eldra-accent-rgb) / 0.22),
     0 1px 0 rgba(0,0,0,0.6);
 }
 
@@ -341,7 +343,7 @@
   opacity: 0;
   transform: translateY(-50%) rotate(45deg);
   background: rgba(245,231,189,0.86);
-  box-shadow: 0 0 10px rgba(201,164,90,0.65);
+  box-shadow: 0 0 10px rgb(var(--eldra-accent-rgb) / 0.65);
 }
 
 .eldra-sidebar-nav-item:hover::before,
@@ -352,7 +354,7 @@
 .eldra-sidebar-mode {
   box-shadow:
     inset 0 0 0 1px rgba(255,238,190,0.035),
-    inset 0 0 18px rgba(201,164,90,0.035);
+    inset 0 0 18px rgb(var(--eldra-accent-rgb) / 0.035);
 }
 
 .eldra-sidebar-switch {
@@ -366,7 +368,7 @@
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  color: rgba(201,164,90,0.55);
+  color: rgb(var(--eldra-accent-rgb) / 0.55);
   font-size: 0.7rem;
 }
 
@@ -385,17 +387,17 @@
   z-index: 3;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) left top / 54px 2px no-repeat,
-    linear-gradient(180deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) left top / 2px 54px no-repeat,
+    linear-gradient(90deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) left top / 54px 2px no-repeat,
+    linear-gradient(180deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) left top / 2px 54px no-repeat,
 
-    linear-gradient(270deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) right top / 54px 2px no-repeat,
-    linear-gradient(180deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) right top / 2px 54px no-repeat,
+    linear-gradient(270deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) right top / 54px 2px no-repeat,
+    linear-gradient(180deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) right top / 2px 54px no-repeat,
 
-    linear-gradient(90deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) left bottom / 54px 2px no-repeat,
-    linear-gradient(0deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) left bottom / 2px 54px no-repeat,
+    linear-gradient(90deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) left bottom / 54px 2px no-repeat,
+    linear-gradient(0deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) left bottom / 2px 54px no-repeat,
 
-    linear-gradient(270deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) right bottom / 54px 2px no-repeat,
-    linear-gradient(0deg, rgba(255,224,139,.88), rgba(201,164,90,.24)) right bottom / 2px 54px no-repeat;
+    linear-gradient(270deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) right bottom / 54px 2px no-repeat,
+    linear-gradient(0deg, rgba(255,224,139,.88), rgb(var(--eldra-accent-rgb) / .24)) right bottom / 2px 54px no-repeat;
 }
 
 .eldra-frame-corners::after {
@@ -424,7 +426,7 @@
 .eldra-frame-medallion .eldra-gold-chip {
   box-shadow:
     inset 0 0 0 1px rgba(255,238,190,.08),
-    0 0 18px rgba(201,164,90,.10);
+    0 0 18px rgb(var(--eldra-accent-rgb) / .10);
 }
 
 .eldra-card-glyph::after {
@@ -446,7 +448,7 @@
 
 /* Leaflet map controls */
 .leaflet-control-zoom {
-  border: 1px solid rgba(201,164,90,0.34) !important;
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.34) !important;
   border-radius: 0 !important;
   background: rgba(20,17,12,0.86) !important;
   box-shadow: 0 12px 32px rgba(0,0,0,0.42), inset 0 0 0 1px rgba(255,238,190,0.04) !important;
@@ -454,15 +456,15 @@
 
 .leaflet-control-zoom a {
   border-radius: 0 !important;
-  border-bottom: 1px solid rgba(201,164,90,0.22) !important;
+  border-bottom: 1px solid rgb(var(--eldra-accent-rgb) / 0.22) !important;
   background: rgba(20,17,12,0.86) !important;
-  color: #fff7df !important;
-  text-shadow: 0 0 10px rgba(201,164,90,0.32);
+  color: rgb(var(--eldra-text-strong-rgb)) !important;
+  text-shadow: 0 0 10px rgb(var(--eldra-accent-rgb) / 0.32);
 }
 
 .leaflet-control-zoom a:hover {
-  background: rgba(201,164,90,0.16) !important;
-  color: #fff7df !important;
+  background: rgb(var(--eldra-accent-rgb) / 0.16) !important;
+  color: rgb(var(--eldra-text-strong-rgb)) !important;
 }
 
 .leaflet-control-zoom a:last-child {
@@ -471,7 +473,7 @@
 
 /* Shared rendered rich text theme: articles, headers, backstories, notes */
 .eldra-rich-content {
-  color: #f5e7bd;
+  color: rgb(var(--eldra-accent-text-rgb));
   font-size: 16px;
   line-height: 1.9;
 }
@@ -482,7 +484,7 @@
 .eldra-rich-content h1,
 .eldra-rich-content h2,
 .eldra-rich-content h3 {
-  color: #fff7df;
+  color: rgb(var(--eldra-text-strong-rgb));
   font-weight: 750;
 }
 
@@ -491,8 +493,8 @@
 .eldra-rich-content h3 { margin: 1rem 0 0.55rem; font-size: 1.25rem; line-height: 1.25; }
 
 .eldra-rich-content p { margin: 0.9rem 0; }
-.eldra-rich-content strong { color: #fff7df; font-weight: 700; }
-.eldra-rich-content em { color: #f5e7bd; }
+.eldra-rich-content strong { color: rgb(var(--eldra-text-strong-rgb)); font-weight: 700; }
+.eldra-rich-content em { color: rgb(var(--eldra-accent-text-rgb)); }
 
 .eldra-rich-content ul,
 .eldra-rich-content ol {
@@ -505,28 +507,28 @@
 .eldra-rich-content blockquote {
   margin: 1rem 0;
   padding: 0.9rem 1rem;
-  border-left: 3px solid rgba(201,164,90,0.62) !important;
-  background: rgba(201,164,90,0.08) !important;
+  border-left: 3px solid rgb(var(--eldra-accent-rgb) / 0.62) !important;
+  background: rgb(var(--eldra-accent-rgb) / 0.08) !important;
   border-radius: 0 !important;
-  color: #e8d9b5 !important;
+  color: rgb(var(--eldra-parchment-rgb)) !important;
   font-style: italic;
 }
 
 .eldra-rich-content hr {
   margin: 1.25rem 0;
   border: 0;
-  border-top: 1px solid rgba(201,164,90,0.34);
+  border-top: 1px solid rgb(var(--eldra-accent-rgb) / 0.34);
 }
 
 .eldra-rich-content mark {
-  background: rgba(201,164,90,0.30);
-  color: #fff7df;
+  background: rgb(var(--eldra-accent-rgb) / 0.30);
+  color: rgb(var(--eldra-text-strong-rgb));
 }
 
 .eldra-rich-content a {
-  color: #f5e7bd;
+  color: rgb(var(--eldra-accent-text-rgb));
   text-decoration: underline;
-  text-decoration-color: rgba(201,164,90,0.75);
+  text-decoration-color: rgb(var(--eldra-accent-rgb) / 0.75);
   text-underline-offset: 4px;
 }
 
@@ -565,7 +567,7 @@
 
 .eldra-well:hover,
 .eldra-well:focus-within {
-  border-color: rgba(201,164,90,0.46);
+  border-color: rgb(var(--eldra-accent-rgb) / 0.46);
   background: rgba(9,17,26,0.62);
 }
 
@@ -579,7 +581,7 @@
    Formalizes the tier CharacterSheetSection.vue previously inlined as a
    literal Tailwind string. Design Language §2/§3. */
 .eldra-quiet {
-  border-bottom: 1px solid rgba(201,164,90,0.14);
+  border-bottom: 1px solid rgb(var(--eldra-accent-rgb) / 0.14);
 }
 
 /* Leather -- persistent shell chrome (a sidebar, a toolbar, a bottom

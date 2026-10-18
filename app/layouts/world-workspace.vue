@@ -19,18 +19,37 @@ watch(showPins, (value) => {
   showPinsCookie.value = value ? 'true' : 'false'
 })
 
+// Character sheet routes default the workspace navigation to its compact
+// icon rail (still expandable) so the sheet gets the width. Covers the
+// legacy sheet (`entities/:id/sheet`) and the V2 sheet, including the
+// canonical `characters/:id/sheet` resolver route (Phase 4B-0).
 function shouldCollapseWorkspaceSidebar(path: any) {
-  return /^\/worlds\/[^/]+\/entities\/[^/]+\/sheet(?:\/|$)/.test(String(path || ''))
+  const value = String(path || '')
+  return /^\/worlds\/[^/]+\/entities\/[^/]+\/sheet(?:\/|$)/.test(value)
+    || /^\/worlds\/[^/]+\/characters\/[^/]+\/sheet(?:-v2)?(?:\/|$)/.test(value)
 }
 
 const leftCollapsed = useState<boolean>('world-workspace-left-collapsed', () => shouldCollapseWorkspaceSidebar(route.path))
 
+// The rail state the user had before a sheet auto-collapsed it, restored on
+// leaving the sheet so other pages keep their own default. Cleared if the
+// user toggles the rail while on the sheet (their latest choice wins).
+// `null` = nothing to restore.
+const preSheetCollapsed = useState<boolean | null>('world-workspace-pre-sheet-collapsed', () => null)
 
 watch(
   () => route.path,
-  (path) => {
-    if (shouldCollapseWorkspaceSidebar(path)) {
+  (path, previousPath) => {
+    const onSheet = shouldCollapseWorkspaceSidebar(path)
+    const wasOnSheet = previousPath !== undefined && shouldCollapseWorkspaceSidebar(previousPath)
+
+    if (onSheet && !wasOnSheet) {
+      // A direct load of a sheet has no prior page: restore to expanded.
+      preSheetCollapsed.value = previousPath === undefined ? false : leftCollapsed.value
       leftCollapsed.value = true
+    } else if (!onSheet && wasOnSheet && preSheetCollapsed.value !== null) {
+      leftCollapsed.value = preSheetCollapsed.value
+      preSheetCollapsed.value = null
     }
   },
   { immediate: true }
@@ -38,6 +57,7 @@ watch(
 
 function toggleWorkspaceSidebar() {
   leftCollapsed.value = !leftCollapsed.value
+  preSheetCollapsed.value = null
 }
 
 // Phase 0 (Beautification Pass): below `md`, WorldWorkspaceSidebar leaves
@@ -74,7 +94,12 @@ function onMobileDrawerKeydown(event: KeyboardEvent) {
 }
 
 let breakpointQuery: MediaQueryList | null = null
+// `md`+ (matches the media query below). Client-only; false during SSR,
+// which is fine -- it only feeds the map viewport inset.
+const isDesktop = ref(false)
+
 function onBreakpointChange(query: MediaQueryList | MediaQueryListEvent) {
+  isDesktop.value = query.matches
   // A drawer left open through a resize/rotation past `md` would otherwise
   // strand the scroll lock below with no visible way to dismiss it, since
   // the hamburger/backdrop are both `md:hidden`.
@@ -124,6 +149,24 @@ const { data: world } = await useFetch(() => `/api/worlds/${worldId.value}`)
 // holds and no Player/Observer holds, per WORLD_ROLE_CAPABILITIES -- there is
 // no dedicated "may enter Build mode" capability in the vocabulary, and the
 // task's own IMPORTANT section forbids inventing one.
+// Theming Architecture, Phase 2: the GM-selected World theme, inherited by
+// everyone in this World (see .github/docs/architecture/theming.md). A
+// failed fetch (e.g. collection not yet provisioned) leaves `selection`
+// null, which resolves to the platform default -- never a broken shell.
+const { data: worldPresentationSettings } = await useFetch(() => `/api/worlds/${worldId.value}/presentation-settings`, {
+  default: () => null
+})
+
+watch(
+  [worldId, worldPresentationSettings],
+  ([id, settings]) => {
+    // Ignore a response still belonging to the previous World mid-switch.
+    if (!id || (settings && String(settings.worldId) !== id)) return
+    setWorldTheme(id, settings)
+  },
+  { immediate: true }
+)
+
 const canBuild = computed(() => Array.isArray(world.value?.capabilities) && world.value.capabilities.includes('world.entity.edit'))
 
 watch(canBuild, (allowed) => {
@@ -161,6 +204,45 @@ const pageKey = computed(() => {
   }
 
   return maybePage || 'world-map'
+})
+
+// Theming Phase 3A: the World Map (and only the World Map) is full-bleed --
+// at `md`+ the map extends behind the workspace sidebar, which floats over
+// it as darkglass instead of taking its own grid column. Every other page
+// keeps the existing two-column grid untouched. Below `md` nothing changes:
+// the sidebar is the same off-canvas drawer on every page.
+const isFullBleedMap = computed(() => pageKey.value === 'world-map')
+
+const sidebarWidth = computed(() => (leftCollapsed.value ? '68px' : '280px'))
+
+const gridStyle = computed(() => ({
+  '--wksp-cols': isFullBleedMap.value ? 'minmax(0,1fr)' : `${sidebarWidth.value} minmax(0,1fr)`
+}))
+
+// Map overlays anchored to the left edge (breadcrumbs, tool bar, layer
+// panel, Leaflet zoom) offset themselves by this so the floating sidebar
+// never covers them. 0 below `md` and on every non-map page.
+const mapInsetClass = computed(() => {
+  if (!isFullBleedMap.value) return ''
+  return leftCollapsed.value ? 'md:[--eldra-map-inset-left:80px]' : 'md:[--eldra-map-inset-left:292px]'
+})
+
+// Screen pixels the floating sidebar covers on the full-bleed map, for the
+// map page to pass to the renderer as `viewportInsets.left` (Phase 3B-1).
+// Mirrors mapInsetClass; 0 on mobile and every non-map page.
+const worldMapInsetLeft = useState<number>('world-map-viewport-inset-left', () => 0)
+watchEffect(() => {
+  worldMapInsetLeft.value = isFullBleedMap.value && isDesktop.value
+    ? (leftCollapsed.value ? 80 : 292)
+    : 0
+})
+
+const sidebarWrapperDesktopClass = computed(() => {
+  if (!isFullBleedMap.value) return 'md:static md:z-auto md:w-auto'
+  return [
+    'md:absolute md:inset-y-0 md:left-0 md:z-40',
+    leftCollapsed.value ? 'md:w-[68px]' : 'md:w-[280px]'
+  ]
 })
 
 const presentationState = useState<{
@@ -225,10 +307,11 @@ const backgroundImageUrl = computed(() => {
 </script>
 
 <template>
-  <div class="h-screen w-screen overflow-hidden text-slate-100 bg-[#0a0d12]">
+  <div class="eldra-workspace-ground h-screen w-screen overflow-hidden text-eldra-text">
     <div
-      class="grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
-      :style="{ '--wksp-cols': leftCollapsed ? '68px minmax(0,1fr)' : '280px minmax(0,1fr)' }"
+      class="relative grid h-full grid-cols-1 md:[grid-template-columns:var(--wksp-cols)]"
+      :class="isFullBleedMap ? 'eldra-map-shell' : ''"
+      :style="gridStyle"
     >
       <!-- Mobile drawer backdrop. Dismiss-by-tap; not rendered at all at
            `md`+, matching the fixed-backdrop convention already used by
@@ -246,13 +329,14 @@ const backgroundImageUrl = computed(() => {
            markup/behavior is byte-for-byte what it was before Phase 0. -->
       <div
         ref="mobileDrawerRef"
-        class="fixed inset-y-0 left-0 z-[100] w-[280px] max-w-[85vw] -translate-x-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 md:pt-0 md:pb-0 md:transition-none"
-        :class="mobileDrawerOpen ? 'translate-x-0' : ''"
+        class="fixed inset-y-0 left-0 z-[100] w-[280px] max-w-[85vw] -translate-x-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-transform duration-300 ease-out md:max-w-none md:translate-x-0 md:pt-0 md:pb-0 md:transition-none"
+        :class="[mobileDrawerOpen ? 'translate-x-0' : '', sidebarWrapperDesktopClass]"
         role="dialog"
         aria-modal="true"
         aria-label="World navigation"
       >
         <WorldWorkspaceSidebar
+          :class="isFullBleedMap ? 'eldra-glass-surface' : ''"
           :world="world"
           :collapsed="leftCollapsed"
           :mode="mode"
@@ -267,7 +351,7 @@ const backgroundImageUrl = computed(() => {
           v-if="mobileDrawerOpen"
           type="button"
           data-drawer-close
-          class="absolute right-3 z-[101] inline-flex h-11 w-11 items-center justify-center rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.86)] text-[#efe2bd] md:hidden"
+          class="absolute right-3 z-[101] inline-flex h-11 w-11 items-center justify-center rounded-none border border-eldra-accent/32 bg-eldra-panel/86 text-eldra-text md:hidden"
           style="top: calc(0.75rem + env(safe-area-inset-top));"
           aria-label="Close navigation"
           @click="closeMobileDrawer"
@@ -283,7 +367,7 @@ const backgroundImageUrl = computed(() => {
         v-if="!mobileDrawerOpen"
         ref="hamburgerButtonRef"
         type="button"
-        class="fixed left-3 z-[90] inline-flex h-11 w-11 items-center justify-center rounded-none border border-[rgba(201,164,90,0.32)] bg-[rgba(20,17,12,0.86)] text-[#efe2bd] shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur transition hover:border-[rgba(201,164,90,0.55)] md:hidden"
+        class="fixed left-3 z-[90] inline-flex h-11 w-11 items-center justify-center rounded-none border border-eldra-accent/32 bg-eldra-panel/86 text-eldra-text shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur transition hover:border-eldra-accent/55 md:hidden"
         style="top: calc(0.75rem + env(safe-area-inset-top));"
         aria-label="Open navigation"
         aria-haspopup="dialog"
@@ -293,8 +377,8 @@ const backgroundImageUrl = computed(() => {
         <UIcon name="i-lucide-menu" class="h-5 w-5" />
       </button>
 
-      <div class="min-w-0 overflow-hidden relative">
-        <div class="absolute inset-0 bg-[linear-gradient(to_bottom,#0b0d12,#0d1117_40%,#10141b)]"></div>
+      <div class="min-w-0 overflow-hidden relative" :class="mapInsetClass">
+        <div class="eldra-workspace-ground absolute inset-0"></div>
 
         <div
           v-if="backgroundImageUrl && presentationMode !== 'neutral'"

@@ -94,8 +94,16 @@ const props = withDefaults(defineProps<{
   groups: readonly CharacterResourceGroup[]
   saving?: boolean
   pendingPoolIds?: ReadonlySet<string>
+  // Phase 4B: 'inline' sets each group's label beside its pools, in one
+  // wrapping row -- the V2 header's compact resource strip.
+  layout?: 'stacked' | 'inline'
+  // Phase 4B: when true, each group's label is a button emitting `select`
+  // (the V2 sheet opens the resource in its inspector).
+  selectable?: boolean
 }>(), {
+  selectable: false,
   saving: false,
+  layout: 'stacked',
   pendingPoolIds: () => new Set()
 })
 
@@ -106,6 +114,7 @@ function poolDisabled(pool: CharacterResourcePool): boolean {
 const emit = defineEmits<{
   expend: [{ groupId: string; poolId: string; amount: number }]
   restore: [{ groupId: string; poolId: string; amount: number }]
+  select: [string]
 }>()
 
 function orbAvailable(pool: CharacterResourcePool, position: number): boolean {
@@ -157,17 +166,33 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
 <template>
   <div
     v-if="groups.length"
-    class="grid gap-2.5"
+    :class="layout === 'inline' ? 'flex flex-wrap items-center gap-x-5 gap-y-2' : 'grid gap-2.5'"
   >
     <div
       v-for="group in groups"
       :key="group.id"
+      :class="layout === 'inline' ? 'flex flex-wrap items-center gap-2' : ''"
     >
-      <div class="text-[0.6rem] uppercase tracking-[0.16em] text-[#9f9278]">
+      <button
+        v-if="selectable"
+        type="button"
+        class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint underline-offset-4 transition hover:text-eldra-text-soft hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-eldra-accent pointer-coarse:min-h-9"
+        :aria-label="`${group.label} details`"
+        @click="emit('select', group.id)"
+      >
+        {{ group.label }}
+      </button>
+      <div
+        v-else
+        class="text-[0.6rem] uppercase tracking-[0.16em] text-eldra-text-faint"
+      >
         {{ group.label }}
       </div>
 
-      <div class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      <div
+        class="flex flex-wrap items-center gap-x-4 gap-y-1.5"
+        :class="layout === 'inline' ? '' : 'mt-1.5'"
+      >
         <div
           v-for="pool in group.pools"
           :key="pool.id"
@@ -175,7 +200,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
         >
           <span
             v-if="pool.label"
-            class="shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#d8ceb8]"
+            class="shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-eldra-text-soft"
           >
             {{ pool.label }}
           </span>
@@ -189,7 +214,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
                inferred here from `pool.label`/`group.label` text. -->
           <span
             v-if="pool.dieFaces"
-            class="shrink-0 rounded-none border border-[rgba(201,164,90,0.4)] px-1 text-[0.6rem] font-semibold tabular-nums text-[#c9a45a]"
+            class="shrink-0 rounded-none border border-eldra-accent/40 px-1 text-[0.6rem] font-semibold tabular-nums text-eldra-accent"
           >
             d{{ pool.dieFaces }}
           </span>
@@ -201,7 +226,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
             v-if="pool.style === 'points'"
             class="flex flex-wrap items-center gap-1.5"
           >
-            <span class="text-sm tabular-nums text-[#d8ceb8]">
+            <span class="text-sm tabular-nums text-eldra-text-soft">
               {{ pool.max - pool.expended }} / {{ pool.max }}
             </span>
             <input
@@ -224,7 +249,7 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
             </button>
             <button
               type="button"
-              class="h-8 rounded-none border border-[rgba(201,164,90,0.5)] bg-[rgba(201,164,90,0.12)] px-2 text-xs font-semibold text-[#fff7df] disabled:cursor-not-allowed disabled:opacity-50"
+              class="h-8 rounded-none border border-eldra-accent/50 bg-eldra-accent/12 px-2 text-xs font-semibold text-eldra-text-strong disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="poolDisabled(pool) || pool.expended <= 0"
               @click="onPointsRestore(group, pool)"
             >
@@ -240,10 +265,10 @@ function onPointsRestore(group: CharacterResourceGroup, pool: CharacterResourceP
               v-for="position in pool.max"
               :key="position"
               type="button"
-              class="size-6 shrink-0 rounded-full border transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed disabled:hover:scale-100"
+              class="size-6 shrink-0 rounded-full border transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-eldra-accent/65 disabled:cursor-not-allowed disabled:hover:scale-100"
               :class="orbAvailable(pool, position)
-                ? 'border-[rgba(201,164,90,0.85)] bg-[rgba(201,164,90,0.55)] shadow-[0_0_6px_rgba(201,164,90,0.35)]'
-                : 'border-[rgba(201,164,90,0.24)] bg-transparent opacity-50'"
+                ? 'border-eldra-accent/85 bg-eldra-accent/55 shadow-[0_0_6px_rgb(var(--eldra-accent-rgb)/0.35)]'
+                : 'border-eldra-accent/24 bg-transparent opacity-50'"
               :disabled="poolDisabled(pool)"
               :aria-label="orbAriaLabel(group, pool, position)"
               :aria-pressed="orbAvailable(pool, position)"

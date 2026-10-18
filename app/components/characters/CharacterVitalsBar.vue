@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CharacterDeathSaves from '~/components/characters/CharacterDeathSaves.vue'
 // CharacterVitalsBar -- Character Sheet Beautification Pass, Phase 3 (see
 // .github/docs/architecture/character-sheet-beauty-pass.md §3.1/§3.2 "T0",
 // §7.2, §7.3, §7.9, §8.1, §11 Phase 3). The single highest-impact change:
@@ -122,7 +123,7 @@ const atZeroHp = computed(() => props.maxHp != null && props.currentHp <= 0)
 // A 150ms color transition only -- "nothing flashes at a table."
 const combatEmphasisClass = computed(() => {
   if (atZeroHp.value) return 'border-t-2 border-t-red-500/70 transition-colors duration-150'
-  if (props.isMyTurn) return 'border-t-2 border-t-[#9ec37d] transition-colors duration-150'
+  if (props.isMyTurn) return 'border-t-2 border-t-eldra-positive transition-colors duration-150'
   return 'transition-colors duration-150'
 })
 
@@ -150,15 +151,8 @@ function formatBonus(value: number | null): string {
 // (app/lib/characters/health.ts) never touches death saves, only Long
 // Rest and Reset do, and neither of those changed here. A character
 // dropped back to 0 HP later will see whatever marks were already there.
-function markDeathSave(kind: 'successes' | 'failures', count: number) {
-  const current = props.deathSaves[kind]
-  const nextCount = current === count ? count - 1 : count
-  emit('mark-death-save', { kind, nextCount })
-}
-
-function resetDeathSaves() {
-  emit('recovery', { type: 'reset-death-saves' })
-}
+// The marks and Reset now live in CharacterDeathSaves.vue (Phase 4B
+// extraction), shared with the V2 sheet header's HP control.
 </script>
 
 <template>
@@ -172,7 +166,7 @@ function resetDeathSaves() {
       class="flex flex-wrap items-start justify-between gap-3"
     >
       <div class="min-w-0">
-        <div class="truncate text-lg font-semibold text-[#fff7df]">
+        <div class="truncate text-lg font-semibold text-eldra-text-strong">
           {{ characterTitle || 'Character' }}
         </div>
         <div class="mt-1 flex flex-wrap items-center gap-1.5">
@@ -198,65 +192,65 @@ function resetDeathSaves() {
       :class="bare ? '' : 'mt-3'"
     >
       <div>
-        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
           HP
         </div>
         <div
           class="text-3xl font-semibold tabular-nums"
-          :class="atZeroHp ? 'text-red-300' : 'text-[#fff7df]'"
+          :class="atZeroHp ? 'text-red-300' : 'text-eldra-text-strong'"
         >
-          {{ currentHp }}<span class="text-lg text-[#9f9278]"> / {{ maxHp ?? '—' }}</span>
+          {{ currentHp }}<span class="text-lg text-eldra-text-faint"> / {{ maxHp ?? '—' }}</span>
         </div>
         <div
           v-if="temporaryHp > 0"
-          class="text-xs text-[#9ec37d]"
+          class="text-xs text-eldra-positive"
         >
           +{{ temporaryHp }} temp
         </div>
       </div>
 
       <div>
-        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
           AC
         </div>
-        <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+        <div class="text-3xl font-semibold tabular-nums text-eldra-text-strong">
           {{ armorClass ?? '—' }}
         </div>
       </div>
 
       <div>
-        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
           Initiative
         </div>
-        <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+        <div class="text-3xl font-semibold tabular-nums text-eldra-text-strong">
           {{ formatBonus(initiative) }}
         </div>
       </div>
 
       <div>
-        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
           Speed
         </div>
-        <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+        <div class="text-3xl font-semibold tabular-nums text-eldra-text-strong">
           {{ speed ?? '—' }}
         </div>
       </div>
 
       <div>
-        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+        <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
           Prof. Bonus
         </div>
-        <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+        <div class="text-3xl font-semibold tabular-nums text-eldra-text-strong">
           {{ formatBonus(proficiencyBonus) }}
         </div>
       </div>
 
       <template v-if="isCaster">
         <div>
-          <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+          <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
             Save DC
           </div>
-          <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+          <div class="text-3xl font-semibold tabular-nums text-eldra-text-strong">
             {{ spellSaveDc ?? '—' }}
           </div>
         </div>
@@ -269,10 +263,10 @@ function resetDeathSaves() {
                is unchanged (still exactly this prop, still Rules Engine
                output) -- this is a presentation-only correction, not a
                vitals bar redesign. -->
-          <div class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+          <div class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
             Spell Atk
           </div>
-          <div class="text-3xl font-semibold tabular-nums text-[#fff7df]">
+          <div class="text-3xl font-semibold tabular-nums text-eldra-text-strong">
             {{ formatBonus(spellAttackBonus) }}
           </div>
         </div>
@@ -286,57 +280,13 @@ function resetDeathSaves() {
            CharacterCommandResources.vue's marks used, same aria-label/
            aria-pressed semantics, same click-to-toggle behavior -- only
            WHERE this lives, and WHEN it renders, changed. -->
-      <div
+      <CharacterDeathSaves
         v-if="atZeroHp"
-        class="flex flex-wrap items-center gap-3"
-      >
-        <div class="flex items-center gap-1.5">
-          <span class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">Fails</span>
-          <div class="flex gap-1">
-            <button
-              v-for="mark in [1, 2, 3]"
-              :key="`failures-${mark}`"
-              type="button"
-              class="size-6 shrink-0 rounded-full border text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
-              :class="mark <= deathSaves.failures
-                ? 'border-red-500 bg-red-950/40'
-                : 'border-[rgba(201,164,90,0.24)] bg-transparent'"
-              :disabled="deathSavesSaving"
-              :aria-label="`Death save failure mark ${mark}`"
-              :aria-pressed="mark <= deathSaves.failures"
-              @click="markDeathSave('failures', mark)"
-            />
-          </div>
-        </div>
-
-        <div class="flex items-center gap-1.5">
-          <span class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">Succ</span>
-          <div class="flex gap-1">
-            <button
-              v-for="mark in [1, 2, 3]"
-              :key="`successes-${mark}`"
-              type="button"
-              class="size-6 shrink-0 rounded-full border text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)] disabled:cursor-not-allowed"
-              :class="mark <= deathSaves.successes
-                ? 'border-[#9ec37d] bg-[rgba(158,195,125,0.22)]'
-                : 'border-[rgba(201,164,90,0.24)] bg-transparent'"
-              :disabled="deathSavesSaving"
-              :aria-label="`Death save success mark ${mark}`"
-              :aria-pressed="mark <= deathSaves.successes"
-              @click="markDeathSave('successes', mark)"
-            />
-          </div>
-        </div>
-
-        <button
-          type="button"
-          class="text-[0.65rem] uppercase tracking-[0.15em] text-[#9f9278] underline-offset-2 hover:text-[#d8ceb8] hover:underline disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="deathSavesSaving || (deathSaves.successes === 0 && deathSaves.failures === 0)"
-          @click="resetDeathSaves"
-        >
-          Reset
-        </button>
-      </div>
+        :death-saves="deathSaves"
+        :saving="deathSavesSaving"
+        @mark-death-save="emit('mark-death-save', $event)"
+        @recovery="emit('recovery', $event)"
+      />
 
       <!-- Conditions: same eldra-gold-chip treatment CharacterConditionsPanel.vue
            uses, so a condition looks identical wherever it appears. -->
@@ -354,7 +304,7 @@ function resetDeathSaves() {
           <span v-if="condition.duration !== null">×{{ condition.duration }}</span>
           <button
             type="button"
-            class="ml-0.5 text-[#9f9278] hover:text-[#d8ceb8]"
+            class="ml-0.5 text-eldra-text-faint hover:text-eldra-text-soft"
             :aria-label="`Remove ${condition.label}`"
             @click="removeCondition(condition.id)"
           >
@@ -367,11 +317,11 @@ function resetDeathSaves() {
            with a "Your turn" label, per §7.6. -->
       <div
         v-if="inEncounter"
-        class="flex items-center gap-1.5 text-xs text-[#d8ceb8]"
+        class="flex items-center gap-1.5 text-xs text-eldra-text-soft"
       >
         <span
           class="h-2 w-2 rounded-full"
-          :class="isMyTurn ? 'bg-[#9ec37d]' : 'bg-[rgba(201,164,90,0.35)]'"
+          :class="isMyTurn ? 'bg-eldra-positive' : 'bg-eldra-accent/35'"
         />
         <span>{{ isMyTurn ? 'Your turn' : `Round ${round ?? '—'}` }}</span>
       </div>

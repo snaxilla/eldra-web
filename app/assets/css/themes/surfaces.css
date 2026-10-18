@@ -1,0 +1,330 @@
+/* Theme-agnostic surface primitives (Theming Architecture, Phase 3A).
+   See .github/docs/architecture/theming.md §3.
+
+   Every value here comes from tokens -- no theme colors are written in this
+   file. A theme changes how these look purely by re-declaring tokens.
+
+   Imported after eldra-fieldguide.css (so these win over the legacy
+   .eldra-ornate-panel fill they are combined with) and before
+   accessibility.css (which must stay last). */
+
+/* ------------------------------------------------------------------
+   Darkglass surface -- major floating panels (workspace sidebar over the
+   map, contextual inspector). Combine with an existing panel class; the
+   doubled selector outranks .eldra-ornate-panel's !important fill.
+------------------------------------------------------------------- */
+
+.eldra-glass-surface,
+.eldra-ornate-panel.eldra-glass-surface {
+  background:
+    var(--eldra-glass-sheen),
+    rgb(var(--eldra-panel-rgb) / var(--eldra-panel-alpha)) !important;
+  border-color: var(--eldra-border) !important;
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur)) saturate(1.08);
+  backdrop-filter: blur(var(--eldra-panel-blur)) saturate(1.08);
+  box-shadow:
+    var(--eldra-shadow-panel),
+    inset 0 1px 0 rgb(var(--eldra-accent-bright-rgb) / 0.06) !important;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .eldra-glass-surface,
+  .eldra-ornate-panel.eldra-glass-surface {
+    background: rgb(var(--eldra-panel-rgb) / 0.96) !important;
+  }
+}
+
+/* Menus, popovers, select lists, tooltips: quieter, more opaque glass so
+   dense item text stays legible over a busy map. No ornament. */
+.eldra-glass-menu {
+  background:
+    rgb(var(--eldra-panel-rgb) / max(var(--eldra-panel-alpha), 0.94)) !important;
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.45);
+}
+
+/* Native form controls inside glass panels take the theme accent instead
+   of the browser default blue. Appearance only -- controls stay native. */
+.eldra-glass-surface :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress) {
+  accent-color: var(--eldra-accent);
+}
+
+/* Sections inside a glass panel (e.g. inspector Details/Summary/
+   Relationships). Deliberately light: the outer glass frame carries the
+   ornament and weight; sections only group content. No ornament here. */
+.eldra-glass-section {
+  position: relative;
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.12);
+  background: rgb(var(--eldra-panel-rgb) / calc(var(--eldra-panel-alpha) * 0.32));
+}
+
+/* Rows/values nested in a glass section. */
+.eldra-glass-row {
+  border: 1px solid rgb(var(--eldra-accent-rgb) / 0.1);
+  background: rgb(var(--eldra-ink-rgb) / 0.22);
+}
+
+/* ------------------------------------------------------------------
+   Ornaments -- purely decorative, never interactive. Use as an empty,
+   aria-hidden child of a positioned, isolated element (Tailwind
+   `relative isolate`), so the frame paints above the panel's background
+   but beneath its content:
+     <span class="eldra-ornament-frame" aria-hidden="true" />
+   Images come from --eldra-ornament-* tokens and are painted with
+   --eldra-ornament-color through a mask, so a theme with no ornaments
+   (images `none`, color transparent) renders nothing.
+------------------------------------------------------------------- */
+
+.eldra-ornament-frame {
+  position: absolute;
+  inset: var(--eldra-ornament-inset);
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--eldra-ornament-color);
+  -webkit-mask-image:
+    var(--eldra-ornament-corner-tl), var(--eldra-ornament-corner-tr),
+    var(--eldra-ornament-corner-bl), var(--eldra-ornament-corner-br);
+  mask-image:
+    var(--eldra-ornament-corner-tl), var(--eldra-ornament-corner-tr),
+    var(--eldra-ornament-corner-bl), var(--eldra-ornament-corner-br);
+  -webkit-mask-position: left top, right top, left bottom, right bottom;
+  mask-position: left top, right top, left bottom, right bottom;
+  -webkit-mask-size: var(--eldra-ornament-size) var(--eldra-ornament-size);
+  mask-size: var(--eldra-ornament-size) var(--eldra-ornament-size);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* Pseudo-element variant for surfaces whose markup we don't own (Nuxt UI
+   modal/slideover content, via app.config slots). The host must already be
+   positioned (Nuxt UI overlays are fixed); `isolation` keeps the frame
+   above the host background and beneath its content. */
+.eldra-ornamented {
+  isolation: isolate;
+}
+
+.eldra-ornamented::after {
+  content: "";
+  position: absolute;
+  inset: var(--eldra-ornament-inset);
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--eldra-ornament-color);
+  -webkit-mask-image:
+    var(--eldra-ornament-corner-tl), var(--eldra-ornament-corner-tr),
+    var(--eldra-ornament-corner-bl), var(--eldra-ornament-corner-br);
+  mask-image:
+    var(--eldra-ornament-corner-tl), var(--eldra-ornament-corner-tr),
+    var(--eldra-ornament-corner-bl), var(--eldra-ornament-corner-br);
+  -webkit-mask-position: left top, right top, left bottom, right bottom;
+  mask-position: left top, right top, left bottom, right bottom;
+  -webkit-mask-size: var(--eldra-ornament-size) var(--eldra-ornament-size);
+  mask-size: var(--eldra-ornament-size) var(--eldra-ornament-size);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* Narrow surfaces (collapsed sidebar). */
+.eldra-ornament-frame--compact {
+  --eldra-ornament-size: 26px;
+  --eldra-ornament-inset: 4px;
+}
+
+.eldra-ornament-divider {
+  display: block;
+  height: 14px;
+  pointer-events: none;
+  background-color: var(--eldra-ornament-color);
+  -webkit-mask: var(--eldra-ornament-divider) center / contain no-repeat;
+  mask: var(--eldra-ornament-divider) center / contain no-repeat;
+}
+
+.eldra-ornament-emblem {
+  display: inline-block;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  pointer-events: none;
+  background-color: var(--eldra-ornament-color);
+  -webkit-mask: var(--eldra-ornament-emblem) center / contain no-repeat;
+  mask: var(--eldra-ornament-emblem) center / contain no-repeat;
+}
+
+/* ------------------------------------------------------------------
+   Display typography -- titles, World and place names only. Never
+   inputs, dense lists, technical text or body copy.
+------------------------------------------------------------------- */
+
+.eldra-display {
+  font-family: var(--eldra-font-display);
+  font-weight: var(--eldra-display-weight);
+  letter-spacing: var(--eldra-display-tracking);
+}
+
+/* ------------------------------------------------------------------
+   Workspace sidebar binding ("leather", eldra-design-language.md §2).
+   Moved here from a hardcoded Tailwind gradient in WorldWorkspaceSidebar
+   so a theme can restyle it. Same resolved colors as before.
+------------------------------------------------------------------- */
+
+.eldra-sidebar-ornate {
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--eldra-leather-rgb, var(--eldra-ink-rgb))),
+    rgb(var(--eldra-charcoal-rgb)) 48%,
+    rgb(var(--eldra-ink-rgb))
+  );
+  border-color: var(--eldra-border);
+  color: var(--eldra-text);
+}
+
+/* ------------------------------------------------------------------
+   Workspace ground -- the neutral backdrop behind ordinary World pages
+   (the full-bleed World Map covers it). Never a map or image.
+------------------------------------------------------------------- */
+
+.eldra-workspace-ground {
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--eldra-ground-top-rgb, var(--eldra-ink-rgb))),
+    rgb(var(--eldra-ground-mid-rgb, var(--eldra-ink-rgb))) 40%,
+    rgb(var(--eldra-ground-bottom-rgb, var(--eldra-charcoal-rgb)))
+  );
+}
+
+/* ------------------------------------------------------------------
+   Map controls -- small floating controls over the map (breadcrumbs,
+   tool bar, zoom). Quiet glass, no ornament (design-language §3).
+   Active state is expressed with aria-pressed, not a color-only ring.
+------------------------------------------------------------------- */
+
+.eldra-map-control {
+  border: 1px solid var(--eldra-border-strong);
+  background: rgb(var(--eldra-panel-rgb) / max(var(--eldra-panel-alpha), 0.8));
+  color: var(--eldra-text-strong);
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  transition:
+    background-color var(--eldra-motion-duration) ease,
+    border-color var(--eldra-motion-duration) ease,
+    color var(--eldra-motion-duration) ease;
+}
+
+.eldra-map-control:hover {
+  border-color: rgb(var(--eldra-accent-rgb) / 0.62);
+  background: linear-gradient(rgb(var(--eldra-accent-rgb) / 0.14), rgb(var(--eldra-accent-rgb) / 0.14)),
+    rgb(var(--eldra-panel-rgb) / 0.92);
+}
+
+.eldra-map-control:focus-visible {
+  outline: 2px solid rgb(var(--eldra-accent-bright-rgb) / 0.85);
+  outline-offset: 2px;
+}
+
+.eldra-map-control[aria-pressed="true"] {
+  border-color: rgb(var(--eldra-accent-rgb) / 0.8);
+  background: linear-gradient(rgb(var(--eldra-accent-rgb) / 0.22), rgb(var(--eldra-accent-rgb) / 0.22)),
+    rgb(var(--eldra-panel-rgb) / 0.94);
+  box-shadow:
+    0 8px 24px rgb(0 0 0 / 0.35),
+    inset 0 0 0 1px rgb(var(--eldra-accent-bright-rgb) / 0.18);
+}
+
+.eldra-map-control .eldra-map-control-icon {
+  color: rgb(var(--eldra-accent-bright-rgb) / 0.9);
+}
+
+/* ------------------------------------------------------------------
+   Rollable controls (Phase 4B, V2 Character Sheet) -- an ability, save,
+   skill, attack, or damage value that starts a real server-side roll.
+   Hover/focus raise an accent edge and reveal the roll indicator
+   (`.eldra-roll-hint`, a die icon); `aria-busy="true"` marks the one
+   control whose roll is in flight. Coarse pointers have no hover, so the
+   indicator stays faintly visible there. Only used where a real roll
+   handler exists.
+------------------------------------------------------------------- */
+
+.eldra-rollable {
+  cursor: pointer;
+  transition:
+    background-color var(--eldra-motion-duration) ease,
+    box-shadow var(--eldra-motion-duration) ease;
+}
+
+.eldra-rollable:hover:not(:disabled) {
+  background-color: rgb(var(--eldra-accent-rgb) / 0.1);
+  box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-rgb) / 0.42);
+}
+
+.eldra-rollable:focus-visible {
+  outline: 2px solid rgb(var(--eldra-accent-bright-rgb) / 0.85);
+  outline-offset: -2px;
+}
+
+.eldra-rollable[aria-busy="true"] {
+  background-color: rgb(var(--eldra-accent-rgb) / 0.14);
+  box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-rgb) / 0.7);
+}
+
+.eldra-roll-hint {
+  color: rgb(var(--eldra-accent-bright-rgb) / 0.9);
+  opacity: 0;
+  transition: opacity var(--eldra-motion-duration) ease;
+}
+
+.eldra-rollable:hover .eldra-roll-hint,
+.eldra-rollable:focus-visible .eldra-roll-hint,
+.eldra-rollable[aria-busy="true"] .eldra-roll-hint {
+  opacity: 1;
+}
+
+.eldra-rollable[aria-busy="true"] .eldra-roll-hint {
+  animation: eldra-roll-spin 0.9s linear infinite;
+}
+
+@media (pointer: coarse) {
+  .eldra-roll-hint {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eldra-rollable[aria-busy="true"] .eldra-roll-hint {
+    animation: none;
+  }
+}
+
+@keyframes eldra-roll-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Section heading inside a V2 sheet column (Phase 4B): small caps label
+   with a hairline rule -- structure without a card per section. */
+.eldra-sheet-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(var(--eldra-accent-text-rgb) / 0.82);
+}
+
+.eldra-sheet-heading::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgb(var(--eldra-accent-rgb) / 0.16);
+}
+
+/* A themed button whose roll/cast is in flight (Phase 4B). */
+.eldra-button[aria-busy="true"] {
+  cursor: progress;
+  box-shadow: inset 0 0 0 1px rgb(var(--eldra-accent-bright-rgb) / 0.7);
+}

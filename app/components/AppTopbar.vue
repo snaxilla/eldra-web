@@ -26,10 +26,10 @@ const pageTitle = computed(() => {
 </script>
 
 <template>
-  <header class="sticky top-0 z-30 bg-transparent">
+  <header class="sticky top-0 z-30 border-b border-eldra-accent/12 bg-eldra-panel-strong/40 backdrop-blur-sm">
     <div class="flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
       <div class="min-w-0">
-        <div class="truncate text-sm font-semibold tracking-tight text-white/92">
+        <div class="eldra-display truncate text-sm text-eldra-text-strong">
           {{ pageTitle }}
         </div>
       </div>
@@ -37,15 +37,17 @@ const pageTitle = computed(() => {
       <div class="flex items-center gap-2">
         <div
           v-if="activeWorld"
-          class="hidden sm:flex items-center gap-2 rounded-full border border-sky-300/20 bg-[rgba(56,189,248,0.08)] px-3 py-1.5 text-xs text-slate-100 backdrop-blur"
+          class="hidden sm:flex items-center gap-2 rounded-none border border-eldra-accent/30 bg-eldra-panel/60 px-3 py-1.5 text-xs text-eldra-text backdrop-blur"
         >
-          <UIcon name="i-lucide-orbit" class="h-3.5 w-3.5 text-sky-300" />
+          <UIcon name="i-lucide-orbit" class="h-3.5 w-3.5 text-eldra-accent" />
           <span class="truncate max-w-[160px]">{{ activeWorld.name }}</span>
         </div>
 
+        <EldraAccessibilityMenu compact />
+
         <NuxtLink
           to="/"
-          class="rounded-full border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:bg-white/[0.08]"
+          class="eldra-map-control rounded-none px-3 py-1.5 text-xs font-medium"
         >
           Switch World
         </NuxtLink>

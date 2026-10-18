@@ -688,6 +688,28 @@ export type ValueDefinition = DefinitionCategorization & {
   label?: string
   tags?: string[]
   formula?: Expression
+  presentation?: ValuePresentation
+}
+
+// Phase 4B (F1) -- a small, optional, PACKAGE-AUTHORED hint for where a
+// Value appears on a Character Sheet, following the same "the package
+// declares, the UI never guesses from ids/labels" posture as
+// ResourcePresentation and ActionPresentation. Presentation metadata ONLY:
+// the evaluator, the dependency graph, validation, persistence, and
+// progression never read it, and a Definition without it is exactly as
+// valid as before.
+//
+// `sheet`: 'summary' places the Value in the sheet header's summary strip
+// (e.g. defenses, speed, proficiency); 'reference' in the reference rail;
+// 'hidden' keeps it out of generic sheet regions. `order` sorts within a
+// placement (ascending; absent sorts last, in declaration order).
+// `emphasis` lets a renderer weight a primary stat above a secondary one.
+// `format` overrides the tag-based signed/unsigned guess for numbers.
+export type ValuePresentation = {
+  sheet?: 'summary' | 'reference' | 'hidden'
+  order?: number
+  emphasis?: 'primary' | 'secondary'
+  format?: 'signed' | 'number'
 }
 
 // §12.5: "kind: 'resource' is declared sugar that the loader expands into

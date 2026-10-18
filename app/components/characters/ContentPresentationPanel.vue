@@ -67,7 +67,7 @@ withDefaults(defineProps<{
   <div class="min-w-0">
     <p
       v-if="!entry"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-4 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-4 text-sm text-eldra-text-faint"
     >
       {{ emptyMessage }}
     </p>
@@ -75,14 +75,14 @@ withDefaults(defineProps<{
     <template v-else>
       <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3
-          class="min-w-0 break-words font-semibold text-[#fff7df]"
+          class="min-w-0 break-words font-semibold text-eldra-text-strong"
           :class="context === 'preview' ? 'text-lg' : 'text-xl'"
         >
           {{ entry.name }}
         </h3>
         <p
           v-if="entry.sourceBook"
-          class="text-xs uppercase tracking-[0.16em] text-[#9f9278]"
+          class="text-xs uppercase tracking-[0.16em] text-eldra-text-faint"
         >
           {{ entry.sourceBook }}<template v-if="entry.sourcePage"> · p.{{ entry.sourcePage }}</template>
         </p>
@@ -96,7 +96,7 @@ withDefaults(defineProps<{
         <p
           v-for="(paragraph, index) in entry.description"
           :key="`description-${index}`"
-          class="break-words text-sm leading-6 text-[#d8ceb8]"
+          class="break-words text-sm leading-6 text-eldra-text-soft"
         >
           {{ paragraph }}
         </p>
@@ -115,10 +115,10 @@ withDefaults(defineProps<{
           :key="item.label"
           class="min-w-0"
         >
-          <dt class="text-xs uppercase tracking-[0.16em] text-[#9f9278]">
+          <dt class="text-xs uppercase tracking-[0.16em] text-eldra-text-faint">
             {{ item.label }}
           </dt>
-          <dd class="mt-0.5 break-words text-sm leading-6 text-[#fff7df]">
+          <dd class="mt-0.5 break-words text-sm leading-6 text-eldra-text-strong">
             {{ item.value }}
           </dd>
         </div>
@@ -133,24 +133,24 @@ withDefaults(defineProps<{
           v-for="(section, index) in entry.sections"
           :key="section.title"
           :open="index === 0"
-          class="group min-w-0 rounded-none border border-[rgba(201,164,90,0.20)] bg-[rgba(20,17,12,0.55)]"
+          class="group min-w-0 rounded-none border border-eldra-accent/20 bg-eldra-panel/55"
         >
           <summary
-            class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-semibold text-[#f5e7bd] marker:hidden focus-visible:ring-2 focus-visible:ring-[rgba(201,164,90,0.65)]"
+            class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm font-semibold text-eldra-accent-text marker:hidden focus-visible:ring-2 focus-visible:ring-eldra-accent/65"
           >
             <span class="min-w-0 break-words">{{ section.title }}</span>
             <!-- Shape, not colour alone: the marker rotates with the open
                  state, so the disclosure is legible without relying on tint. -->
             <span
               aria-hidden="true"
-              class="shrink-0 text-[#9f9278] transition-transform group-open:rotate-90"
+              class="shrink-0 text-eldra-text-faint transition-transform group-open:rotate-90"
             >&#9656;</span>
           </summary>
-          <div class="space-y-2 border-t border-[rgba(201,164,90,0.14)] px-4 py-3">
+          <div class="space-y-2 border-t border-eldra-accent/14 px-4 py-3">
             <p
               v-for="(paragraph, paragraphIndex) in section.paragraphs"
               :key="paragraphIndex"
-              class="break-words text-sm leading-6 text-[#d8ceb8]"
+              class="break-words text-sm leading-6 text-eldra-text-soft"
             >
               {{ paragraph }}
             </p>
@@ -169,7 +169,7 @@ withDefaults(defineProps<{
         <li
           v-for="note in entry.notes"
           :key="note"
-          class="break-words text-xs leading-5 text-[#6f6754]"
+          class="break-words text-xs leading-5 text-eldra-text-ghost"
         >
           {{ note }}
         </li>

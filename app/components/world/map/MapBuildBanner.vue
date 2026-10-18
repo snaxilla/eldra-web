@@ -52,7 +52,7 @@ const copy = computed<BuildToolHudCopy>(() => {
 <template>
   <div
     v-if="show"
-    class="pointer-events-none absolute right-4 top-4 z-20 max-w-xs rounded-none border border-[rgba(201,164,90,0.38)] bg-[rgba(20,17,12,0.86)] px-4 py-3 text-sm text-[#f5e7bd] backdrop-blur shadow-[0_0_24px_rgba(201,164,90,0.12)]"
+    class="pointer-events-none absolute right-4 top-4 z-20 max-w-xs rounded-none border border-eldra-accent/38 bg-eldra-panel/86 px-4 py-3 text-sm text-eldra-accent-text backdrop-blur shadow-[0_0_24px_rgba(201,164,90,0.12)]"
   >
     <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em]">
       <UIcon
@@ -64,14 +64,14 @@ const copy = computed<BuildToolHudCopy>(() => {
 
     <div
       v-if="copy.description"
-      class="mt-1.5 text-[#d8ceb8]"
+      class="mt-1.5 text-eldra-text-soft"
     >
       {{ copy.description }}
     </div>
 
     <div
       v-if="copy.primary || copy.finish || copy.cancel || copy.undo"
-      class="mt-2 space-y-0.5 text-xs text-[#9f9278]"
+      class="mt-2 space-y-0.5 text-xs text-eldra-text-faint"
     >
       <div v-if="copy.primary">{{ copy.primary }}</div>
       <div v-if="copy.finish">{{ copy.finish }}</div>

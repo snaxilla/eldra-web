@@ -69,7 +69,7 @@ withDefaults(defineProps<{
       >
       <div
         v-else
-        class="flex aspect-[4/5] w-full items-center justify-center border border-dashed border-[rgba(201,164,90,0.28)] text-center text-sm text-[#9f9278]"
+        class="flex aspect-[4/5] w-full items-center justify-center border border-dashed border-eldra-accent/28 text-center text-sm text-eldra-text-faint"
       >
         No portrait set
       </div>
@@ -101,12 +101,12 @@ withDefaults(defineProps<{
         :key="row.key"
         class="min-w-0"
       >
-        <dt class="text-[0.65rem] uppercase tracking-[0.2em] text-[#9f9278]">
+        <dt class="text-[0.65rem] uppercase tracking-[0.2em] text-eldra-text-faint">
           {{ row.label }}
         </dt>
         <dd
           class="break-words font-semibold"
-          :class="[compact ? 'text-sm' : 'text-base', row.missing ? 'text-red-300' : 'text-[#fff7df]']"
+          :class="[compact ? 'text-sm' : 'text-base', row.missing ? 'text-red-300' : 'text-eldra-text-strong']"
         >
           {{ row.value }}
         </dd>

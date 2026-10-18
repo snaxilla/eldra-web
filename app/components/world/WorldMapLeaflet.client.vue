@@ -192,6 +192,14 @@ const props = defineProps<{
   editingRoadStyle?: { color?: string; width?: number; opacity?: number; dashPattern?: string } | null
   buildMode?: boolean
   roadMode?: boolean
+  // Screen-space pixels covered by floating workspace panels (Theming
+  // Phase 3B-1: the full-bleed World Map's glass sidebar on the left, the
+  // inspector/editors on the right). Optional; absent/zero keeps the exact
+  // previous behavior. Used only to (a) let maxBounds extend that many
+  // pixels past the map edge so edge content can be panned out from under
+  // a panel, and (b) center the initial view in the visible area. Never
+  // affects map coordinates, emitted coords, or scene data.
+  viewportInsets?: { left?: number; right?: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -624,6 +632,9 @@ async function ensureMap() {
   map.on('zoomend', () => {
     renderRoads()
     renderPins()
+    // Inset padding is constant in screen pixels, so its size in map
+    // units changes with zoom.
+    if (hasViewportInsets()) applyMaxBounds()
   })
 
   markerLayer = L.layerGroup().addTo(map)
@@ -915,6 +926,90 @@ function renderPins() {
   }
 }
 
+function viewportInset(side: 'left' | 'right') {
+  const value = Number(props.viewportInsets?.[side] ?? 0)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+function hasViewportInsets() {
+  return viewportInset('left') > 0 || viewportInset('right') > 0
+}
+
+// currentBounds, widened horizontally by the viewport insets converted to
+// map units at the current zoom (CRS.Simple: 1 unit = 2^zoom px). With no
+// insets this is exactly currentBounds, as before.
+function insetMaxBounds(zoom?: number) {
+  if (!map || !currentBounds || !hasViewportInsets()) return currentBounds
+  const unitsPerPx = 1 / Math.pow(2, zoom ?? map.getZoom())
+  const sw = currentBounds.getSouthWest()
+  const ne = currentBounds.getNorthEast()
+  return L.latLngBounds(
+    [sw.lat, sw.lng - viewportInset('left') * unitsPerPx],
+    [ne.lat, ne.lng + viewportInset('right') * unitsPerPx]
+  )
+}
+
+function applyMaxBounds() {
+  if (!map || !currentBounds) return
+  const bounds = insetMaxBounds()
+  // setMaxBounds() corrects the view with an animated pan; under reduced
+  // motion, settle it instantly first (inset path only -- no-inset
+  // behavior is unchanged).
+  if (hasViewportInsets() && prefersReducedMotion()) map.panInsideBounds(bounds, { animate: false })
+  map.setMaxBounds(bounds)
+}
+
+// The view center that puts `center` in the middle of the area not covered
+// by panels. Passed straight to setView (which clamps synchronously to the
+// already-padded maxBounds) rather than panning afterwards, so no later
+// bounds correction can undo it. Exactly `center` without insets.
+function visibleCenter(center: any, zoom: number) {
+  if (!map || !hasViewportInsets()) return center
+  const shift = (viewportInset('left') - viewportInset('right')) / 2
+  if (!shift) return center
+  return map.unproject(map.project(center, zoom).subtract([shift, 0]), zoom)
+}
+
+// Respects the viewer's Eldra accessibility preference (set on <html> by
+// useEldraThemeRoot) and the OS-level setting.
+function prefersReducedMotion() {
+  if (typeof window === 'undefined') return true
+  return document.documentElement.dataset.eldraMotion === 'reduced'
+    || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+}
+
+const SELECTED_PIN_VISIBLE_MARGIN = 48
+
+// Theming Phase 3B-2: keep the selected pin inside the area not covered by
+// floating panels. Pans only by the distance needed, and not at all when
+// the pin is already visible. Only active with viewport insets (the
+// full-bleed World Map); otherwise nothing covers the map and behavior is
+// unchanged. Never alters pin data or coordinates -- view only.
+function ensureSelectedPinVisible() {
+  if (!map || !L || !currentBounds || !props.selectedPinId || !hasViewportInsets()) return
+  const pin = (resolvedPins.value || []).find((candidate) => String(candidate.id) === String(props.selectedPinId))
+  if (!pin) return
+
+  // Panels may have opened in the same tick as the selection: make sure
+  // maxBounds already allows panning out from under them.
+  applyMaxBounds()
+
+  const point = map.latLngToContainerPoint(pinToLatLng(pin))
+  const size = map.getSize()
+  const margin = SELECTED_PIN_VISIBLE_MARGIN
+  const minX = viewportInset('left') + margin
+  const maxX = size.x - viewportInset('right') - margin
+  const minY = margin
+  const maxY = size.y - margin
+  if (minX > maxX || minY > maxY) return
+
+  const dx = point.x < minX ? point.x - minX : point.x > maxX ? point.x - maxX : 0
+  const dy = point.y < minY ? point.y - minY : point.y > maxY ? point.y - maxY : 0
+  if (!dx && !dy) return
+
+  map.panBy([dx, dy], { animate: !prefersReducedMotion() })
+}
+
 function getCoverZoom(bounds: any) {
   if (!map) return 0
 
@@ -992,19 +1087,36 @@ async function renderMap() {
   const center = currentBounds.getCenter()
   const startZoom = getCoverZoom(currentBounds)
 
-  map.setMaxBounds(currentBounds)
+  // With insets, the padded bounds are computed for the starting zoom up
+  // front: applying the un-padded bounds first would start an animated
+  // correction that later undoes the visible-area centering. Without
+  // insets both calls are exactly what they were before.
+  map.setMaxBounds(insetMaxBounds(startZoom))
   map.options.maxBoundsViscosity = 1.0
-  map.setView(center, startZoom, { animate: false })
+  map.setView(visibleCenter(center, startZoom), startZoom, { animate: false })
 
   renderPins()
 
   requestAnimationFrame(() => {
     if (!map) return
     map.invalidateSize()
-    map.setMaxBounds(currentBounds)
-    map.setView(center, startZoom, { animate: false })
+    // The map has a zoom by now, so the (possibly inset-padded) bounds can
+    // be applied directly -- exactly currentBounds when there are no
+    // insets. Applying the un-padded bounds first would start an animated
+    // pan back to center that undoes the visible-area centering.
+    applyMaxBounds()
+    map.setView(visibleCenter(center, startZoom), startZoom, { animate: false })
   })
 }
+
+watch(
+  () => [viewportInset('left'), viewportInset('right')],
+  () => {
+    applyMaxBounds()
+    // An inspector/editor opening over the selected pin.
+    ensureSelectedPinVisible()
+  }
+)
 
 watch(
   () => [
@@ -1067,6 +1179,7 @@ watch(
   () => props.selectedPinId,
   () => {
     renderPins()
+    ensureSelectedPinVisible()
   }
 )
 
@@ -1157,21 +1270,32 @@ onBeforeUnmount(() => {
 
 :deep(.leaflet-control-zoom) {
   margin-top: 72px !important;
-  margin-left: 16px !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 18px !important;
+  /* --eldra-map-inset-left: width of the floating workspace sidebar on the
+     full-bleed World Map (0 elsewhere) -- keeps zoom clear of it. */
+  margin-left: calc(16px + var(--eldra-map-inset-left, 0px)) !important;
+  border: 1px solid var(--eldra-border-strong) !important;
+  border-radius: var(--eldra-radius) !important;
   overflow: hidden;
+  background: rgb(var(--eldra-panel-rgb) / max(var(--eldra-panel-alpha), 0.8)) !important;
+  -webkit-backdrop-filter: blur(var(--eldra-panel-blur));
+  backdrop-filter: blur(var(--eldra-panel-blur));
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  transition: margin-left var(--eldra-motion-duration) ease;
 }
 
 :deep(.leaflet-control-zoom a) {
-  background: rgba(8, 16, 27, 0.9) !important;
-  color: #e2e8f0 !important;
+  background: transparent !important;
+  color: var(--eldra-text-strong) !important;
   border: 0 !important;
+  border-radius: 0 !important;
+}
+
+:deep(.leaflet-control-zoom a + a) {
+  border-top: 1px solid var(--eldra-border) !important;
 }
 
 :deep(.leaflet-control-zoom a:hover) {
-  background: rgba(20, 30, 48, 0.98) !important;
+  background: rgb(var(--eldra-accent-rgb) / 0.16) !important;
 }
 
 :deep(.eldra-leaflet-pin) {
@@ -1180,16 +1304,16 @@ onBeforeUnmount(() => {
 }
 
 :deep(.eldra-pin-tooltip) {
-  background: rgba(8, 16, 27, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  color: #e2e8f0;
+  background: rgb(var(--eldra-panel-rgb) / 0.92);
+  border: 1px solid var(--eldra-border);
+  border-radius: var(--eldra-radius);
+  color: var(--eldra-text-strong);
   font-size: 12px;
   padding: 4px 10px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
 :deep(.eldra-pin-tooltip::before) {
-  border-top-color: rgba(255, 255, 255, 0.12) !important;
+  border-top-color: var(--eldra-border) !important;
 }
 </style>

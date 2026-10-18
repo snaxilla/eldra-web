@@ -24,12 +24,12 @@ function onLayerToggle(layerId: string, event: Event) {
   <button
     v-if="props.showTrigger"
     type="button"
-    class="eldra-button absolute bottom-6 left-6 z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold backdrop-blur"
+    class="eldra-map-control absolute bottom-6 left-[calc(var(--eldra-map-inset-left,0px)+1.5rem)] z-30 inline-flex items-center gap-2 rounded-none px-4 py-2 text-sm font-semibold"
     @click="emit('close')"
   >
     <UIcon
       name="i-lucide-layers-3"
-      class="h-4 w-4 text-[#f5e7bd]"
+      class="h-4 w-4 text-eldra-accent-text"
     />
     <span>Layers</span>
   </button>
@@ -42,17 +42,20 @@ function onLayerToggle(layerId: string, event: Event) {
   >
     <div
       v-if="open"
-      class="eldra-ornate-panel eldra-frame-corners absolute left-4 top-32 z-30 w-80 rounded-none border p-5 backdrop-blur"
+      class="eldra-ornate-panel eldra-glass-surface isolate absolute top-32 z-30 w-80 rounded-none border p-5 left-[calc(var(--eldra-map-inset-left,0px)+1rem)] transition-[left] duration-200"
     >
-      <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+      <span class="eldra-ornament-frame" aria-hidden="true" />
+
+      <h2 class="eldra-display text-sm uppercase text-eldra-text">
         Map Layers
-      </div>
+      </h2>
+      <span class="eldra-ornament-divider mt-2" aria-hidden="true" />
 
       <div class="mt-4 space-y-2">
         <label
           v-for="layer in props.scene.layers"
           :key="layer.id"
-          class="flex items-center gap-3 text-sm text-[#d8ceb8]"
+          class="flex items-center gap-3 text-sm text-eldra-text-soft"
         >
           <input
             :checked="layer.visible"

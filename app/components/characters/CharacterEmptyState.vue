@@ -32,10 +32,10 @@ withDefaults(defineProps<{
     <UIcon
       v-if="icon"
       :name="icon"
-      :class="compact ? 'mb-1.5 inline-block h-4 w-4 align-[-2px] text-[#9f9278]' : 'mx-auto mb-3 h-8 w-8 text-[#9f9278]'"
+      :class="compact ? 'mb-1.5 inline-block h-4 w-4 align-[-2px] text-eldra-text-faint' : 'mx-auto mb-3 h-8 w-8 text-eldra-text-faint'"
     />
     <p
-      class="text-sm text-[#d8ceb8]"
+      class="text-sm text-eldra-text-soft"
       :class="compact ? '' : 'mx-auto max-w-sm'"
     >
       <slot>{{ message }}</slot>

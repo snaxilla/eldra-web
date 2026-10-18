@@ -43,7 +43,7 @@ function toggleOpen() {
 }
 
 const ELEVATION_CLASSES: Record<'feature' | 'standard' | 'quiet', string> = {
-  feature: 'eldra-ornate-panel eldra-frame-corners border border-[rgba(201,164,90,0.24)] bg-[rgba(10,12,14,0.64)] backdrop-blur',
+  feature: 'eldra-ornate-panel eldra-frame-corners border border-eldra-accent/24 bg-eldra-panel-strong/64 backdrop-blur',
   standard: 'eldra-codex-soft',
   // "Hairline divider only" per section 7.2 -- deliberately not
   // `.eldra-panel-soft`, whose hardcoded blue tone belongs to a different
@@ -80,7 +80,7 @@ const showHeader = computed(() => Boolean(props.heading) || props.collapsible)
         <button
           v-if="collapsible"
           type="button"
-          class="text-[#9f9278] transition hover:text-[#d8ceb8]"
+          class="text-eldra-text-faint transition hover:text-eldra-text-soft"
           :aria-expanded="isOpen"
           @click="toggleOpen"
         >
@@ -92,7 +92,7 @@ const showHeader = computed(() => Boolean(props.heading) || props.collapsible)
         </button>
 
         <slot name="heading">
-          <div class="text-xs uppercase tracking-[0.3em] text-[#9f9278]">
+          <div class="text-xs uppercase tracking-[0.3em] text-eldra-text-faint">
             {{ heading }}
           </div>
         </slot>

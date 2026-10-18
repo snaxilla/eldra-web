@@ -266,7 +266,7 @@ function closeBackgroundLightbox() {
 
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+        <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
           Page Build
         </div>
 
@@ -276,7 +276,7 @@ function closeBackgroundLightbox() {
       </div>
 
       <div
-        class="rounded-none border border-[rgba(201,164,90,0.22)] bg-[rgba(201,164,90,0.08)] px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-[#f5e7bd]"
+        class="rounded-none border border-eldra-accent/22 bg-eldra-accent/8 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-eldra-accent-text"
       >
         {{ pageKey }}
       </div>
@@ -286,7 +286,7 @@ function closeBackgroundLightbox() {
       <div data-page-presentation-preview-column class="min-w-0">
         <button
           type="button"
-          class="group block aspect-square w-full overflow-hidden rounded-none border border-[rgba(201,164,90,0.30)] bg-[rgba(8,17,27,0.54)] text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-[rgba(201,164,90,0.58)]"
+          class="group block aspect-square w-full overflow-hidden rounded-none border border-eldra-accent/30 bg-eldra-well/54 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-eldra-accent/58"
           :class="previewImageUrl ? 'cursor-zoom-in' : 'cursor-default'"
           :disabled="!previewImageUrl"
           @click="openBackgroundLightbox"
@@ -302,12 +302,12 @@ function closeBackgroundLightbox() {
             v-else
             class="flex h-full w-full flex-col items-center justify-center gap-3 p-5 text-center"
           >
-            <UIcon name="i-lucide-image" class="h-8 w-8 text-[#9f9278]" />
+            <UIcon name="i-lucide-image" class="h-8 w-8 text-eldra-text-faint" />
             <div>
-              <div class="text-sm font-semibold text-[#fff7df]">
+              <div class="text-sm font-semibold text-eldra-text-strong">
                 No background selected
               </div>
-              <div class="mt-1 text-xs leading-5 text-[#9f9278]">
+              <div class="mt-1 text-xs leading-5 text-eldra-text-faint">
                 Upload a background to preview it here.
               </div>
             </div>
@@ -325,8 +325,8 @@ function closeBackgroundLightbox() {
             type="button"
             class="rounded-none border px-4 py-2 text-sm transition"
             :class="currentMode === 'immersive'
-              ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-              : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+              ? 'border-eldra-accent/58 bg-eldra-accent/16 text-eldra-text-strong'
+              : 'border-eldra-accent/24 bg-eldra-panel/72 text-eldra-text-soft hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
             :disabled="presentationBusy || loadingPresentation"
             @click="setPresentationMode('immersive')"
           >
@@ -337,8 +337,8 @@ function closeBackgroundLightbox() {
             type="button"
             class="rounded-none border px-4 py-2 text-sm transition"
             :class="currentMode === 'muted'
-              ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-              : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+              ? 'border-eldra-accent/58 bg-eldra-accent/16 text-eldra-text-strong'
+              : 'border-eldra-accent/24 bg-eldra-panel/72 text-eldra-text-soft hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
             :disabled="presentationBusy || loadingPresentation"
             @click="setPresentationMode('muted')"
           >
@@ -349,8 +349,8 @@ function closeBackgroundLightbox() {
             type="button"
             class="rounded-none border px-4 py-2 text-sm transition"
             :class="currentMode === 'neutral'
-              ? 'border-[rgba(201,164,90,0.58)] bg-[rgba(201,164,90,0.16)] text-[#fff7df]'
-              : 'border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] text-[#d8ceb8] hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df]'"
+              ? 'border-eldra-accent/58 bg-eldra-accent/16 text-eldra-text-strong'
+              : 'border-eldra-accent/24 bg-eldra-panel/72 text-eldra-text-soft hover:bg-eldra-accent/10 hover:text-eldra-text-strong'"
             :disabled="presentationBusy || loadingPresentation"
             @click="setPresentationMode('neutral')"
           >
@@ -370,7 +370,7 @@ function closeBackgroundLightbox() {
 
           <button
             type="button"
-            class="rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-[#fff7df] disabled:opacity-50"
+            class="rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-eldra-text-strong disabled:opacity-50"
             :disabled="presentationBusy || loadingPresentation"
             @click="clearBackground"
           >
@@ -378,17 +378,17 @@ function closeBackgroundLightbox() {
           </button>
         </div>
 
-        <p class="mt-4 text-sm leading-7 text-[#b5a88d]">
+        <p class="mt-4 text-sm leading-7 text-eldra-text-dim">
           {{ description }}
         </p>
 
-        <div class="mt-4 rounded-none border border-[rgba(201,164,90,0.16)] bg-[rgba(8,17,27,0.34)] px-3 py-2 text-xs leading-5 text-[#9f9278]">
+        <div class="mt-4 rounded-none border border-eldra-accent/16 bg-eldra-well/34 px-3 py-2 text-xs leading-5 text-eldra-text-faint">
           {{ loadingPresentation ? 'Loading presentation state...' : previewMetaLine }}
         </div>
 
         <div
           v-if="presentationMessage"
-          class="mt-4 rounded-none border border-[rgba(201,164,90,0.24)] bg-[rgba(20,17,12,0.72)] px-4 py-3 text-sm text-[#d8ceb8]"
+          class="mt-4 rounded-none border border-eldra-accent/24 bg-eldra-panel/72 px-4 py-3 text-sm text-eldra-text-soft"
         >
           {{ presentationMessage }}
         </div>
@@ -407,10 +407,10 @@ function closeBackgroundLightbox() {
           class="fixed inset-0 z-[9999] flex items-center justify-center bg-[#050505]/92 p-4 backdrop-blur-sm"
           @click.self="closeBackgroundLightbox"
         >
-          <div class="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-none border border-[rgba(201,164,90,0.32)] bg-[linear-gradient(to_bottom,rgba(16,14,10,0.98),rgba(7,6,4,0.98))] shadow-2xl">
-            <header class="flex items-start justify-between gap-4 border-b border-[rgba(201,164,90,0.22)] px-5 py-4">
+          <div class="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-none border border-eldra-accent/32 bg-[linear-gradient(to_bottom,rgba(16,14,10,0.98),rgba(7,6,4,0.98))] shadow-2xl">
+            <header class="flex items-start justify-between gap-4 border-b border-eldra-accent/22 px-5 py-4">
               <div>
-                <div class="text-xs uppercase tracking-[0.35em] text-[#9f9278]">
+                <div class="text-xs uppercase tracking-[0.35em] text-eldra-text-faint">
                   Background Preview
                 </div>
 
@@ -418,14 +418,14 @@ function closeBackgroundLightbox() {
                   {{ title }}
                 </h3>
 
-                <div class="mt-1 text-xs text-[#9f9278]">
+                <div class="mt-1 text-xs text-eldra-text-faint">
                   {{ previewMetaLine }}
                 </div>
               </div>
 
               <button
                 type="button"
-                class="rounded-none border border-[rgba(201,164,90,0.24)] px-3 py-2 text-sm text-[#d8ceb8] transition hover:bg-[rgba(201,164,90,0.10)] hover:text-white"
+                class="rounded-none border border-eldra-accent/24 px-3 py-2 text-sm text-eldra-text-soft transition hover:bg-eldra-accent/10 hover:text-white"
                 @click="closeBackgroundLightbox"
               >
                 Close

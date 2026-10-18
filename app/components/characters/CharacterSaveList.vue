@@ -74,6 +74,16 @@ const emit = defineEmits<{
   roll: [CharacterSaveRow]
 }>()
 
+// Which row's roll is in flight -- the initiation feedback for the one
+// control the player pressed, cleared when the page's roll settles.
+const rollingKey = ref<string | null>(null)
+watch(() => props.rolling, (rolling) => { if (!rolling) rollingKey.value = null })
+
+function roll(row: CharacterSaveRow) {
+  rollingKey.value = row.key
+  emit('roll', row)
+}
+
 const rows = computed<CharacterSaveRow[]>(() =>
   groupDerivedValues(props.entries).map((group) => {
     const bonus = group.numbers[0] ?? null
@@ -95,7 +105,7 @@ const rows = computed<CharacterSaveRow[]>(() =>
   <div class="min-w-0">
     <p
       v-if="!rows.length"
-      class="rounded-none border border-dashed border-[rgba(201,164,90,0.24)] p-3 text-sm text-[#9f9278]"
+      class="rounded-none border border-dashed border-eldra-accent/24 p-3 text-sm text-eldra-text-faint"
     >
       {{ emptyMessage }}
     </p>
@@ -110,22 +120,23 @@ const rows = computed<CharacterSaveRow[]>(() =>
       >
         <button
           type="button"
-          class="eldra-well grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-none px-2 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50"
+          class="eldra-well eldra-rollable grid min-h-9 w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_0.75rem] items-center gap-2 rounded-none px-2 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-60 pointer-coarse:min-h-11"
           :disabled="rolling"
+          :aria-busy="rollingKey === row.key && rolling ? 'true' : undefined"
           :aria-label="`Roll ${row.label} Save${row.proficient ? ', proficient' : ''}`"
-          @click="emit('roll', row)"
+          @click="roll(row)"
         >
           <span
             v-if="row.proficient !== null"
             class="text-xs"
-            :class="row.proficient ? 'text-[#fff7df]' : 'text-[#6f6754]'"
+            :class="row.proficient ? 'text-eldra-text-strong' : 'text-eldra-text-ghost'"
           >
             <span aria-hidden="true">{{ row.proficient ? '●' : '○' }}</span>
             <span class="sr-only">{{ row.proficient ? 'Proficient' : 'Not proficient' }}</span>
           </span>
           <span v-else />
 
-          <span class="min-w-0 truncate text-sm text-[#d8ceb8]">
+          <span class="min-w-0 truncate text-sm text-eldra-text-soft">
             {{ row.label }}
           </span>
 
@@ -137,8 +148,13 @@ const rows = computed<CharacterSaveRow[]>(() =>
 
           <span
             v-else
-            class="text-right text-sm font-semibold tabular-nums text-[#fff7df]"
+            class="text-right text-sm font-semibold tabular-nums text-eldra-text-strong"
           >{{ row.value }}</span>
+          <UIcon
+            name="i-lucide-dices"
+            class="eldra-roll-hint h-3 w-3"
+            aria-hidden="true"
+          />
         </button>
       </li>
     </ul>

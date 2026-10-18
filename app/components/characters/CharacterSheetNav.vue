@@ -31,15 +31,15 @@ const emit = defineEmits<{
 <template>
   <nav
     v-if="variant === 'tabs'"
-    class="flex flex-wrap items-center gap-1 border-b border-[rgba(201,164,90,0.16)]"
+    class="flex flex-wrap items-center gap-1 border-b border-eldra-accent/16"
     aria-label="Character Sheet sections"
   >
     <button
       v-for="tab in tabs"
       :key="tab.key"
       type="button"
-      class="relative flex min-h-11 items-center gap-1.5 px-3 text-sm text-[#9f9278] transition hover:text-[#d8ceb8]"
-      :class="activeTab === tab.key ? 'font-semibold text-[#fff7df]' : ''"
+      class="relative flex min-h-11 items-center gap-1.5 px-3 text-sm text-eldra-text-faint transition hover:text-eldra-text-soft"
+      :class="activeTab === tab.key ? 'font-semibold text-eldra-text-strong' : ''"
       :aria-current="activeTab === tab.key ? 'page' : undefined"
       @click="emit('select', tab.key)"
     >
@@ -50,7 +50,7 @@ const emit = defineEmits<{
       {{ tab.label }}
       <span
         v-if="activeTab === tab.key"
-        class="absolute inset-x-2 -bottom-px h-0.5 bg-[#c9a45a]"
+        class="absolute inset-x-2 -bottom-px h-0.5 bg-eldra-accent"
       />
     </button>
   </nav>
@@ -64,15 +64,15 @@ const emit = defineEmits<{
       v-for="tab in tabs"
       :key="tab.key"
       type="button"
-      class="flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 border-t-2 py-1.5 text-[0.65rem] text-[#9f9278] transition"
-      :class="activeTab === tab.key ? 'border-t-[#c9a45a] font-semibold text-[#fff7df]' : 'border-t-transparent'"
+      class="flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 border-t-2 py-1.5 text-[0.65rem] text-eldra-text-faint transition"
+      :class="activeTab === tab.key ? 'border-t-eldra-accent font-semibold text-eldra-text-strong' : 'border-t-transparent'"
       :aria-current="activeTab === tab.key ? 'page' : undefined"
       @click="emit('select', tab.key)"
     >
       <UIcon
         :name="tab.icon"
         class="h-5 w-5"
-        :class="activeTab === tab.key ? 'text-[#c9a45a]' : ''"
+        :class="activeTab === tab.key ? 'text-eldra-accent' : ''"
       />
       {{ tab.label }}
     </button>

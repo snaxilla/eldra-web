@@ -98,26 +98,26 @@ const navLinks = computed(() => {
 <template>
   <aside
     v-if="showSidebar"
-    class="hidden lg:flex lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:flex-col lg:border-r lg:border-white/10 lg:bg-[#0f1722] lg:transition-all lg:duration-200"
+    class="hidden lg:flex lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:flex-col lg:border-r lg:border-eldra-accent/18 lg:bg-eldra-panel-strong lg:transition-all lg:duration-200"
     :class="collapsed ? 'lg:w-[92px]' : 'lg:w-[280px]'"
   >
-    <div class="flex h-16 items-center justify-between border-b border-white/10 px-4">
+    <div class="flex h-16 items-center justify-between border-b border-eldra-accent/18 px-4">
       <div v-if="!collapsed" class="min-w-0">
-        <div class="text-lg font-semibold tracking-tight text-white">
+        <div class="eldra-display text-lg text-eldra-text-strong">
           Eldra
         </div>
-        <div class="text-[11px] uppercase tracking-[0.28em] text-slate-400">
+        <div class="text-[11px] uppercase tracking-[0.28em] text-eldra-text-faint">
           World Platform
         </div>
       </div>
 
-      <div v-else class="mx-auto text-lg font-semibold tracking-tight text-white">
+      <div v-else class="mx-auto eldra-display text-lg text-eldra-text-strong">
         E
       </div>
 
       <button
         type="button"
-        class="rounded-xl border border-white/10 bg-white/[0.03] p-2 text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+        class="rounded-xl border border-eldra-accent/18 bg-white/[0.03] p-2 text-eldra-text-soft transition hover:bg-white/[0.06] hover:text-white"
         @click="toggleCollapsed"
       >
         <UIcon :name="collapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'" class="h-4 w-4" />
@@ -127,7 +127,7 @@ const navLinks = computed(() => {
     <div class="px-3 py-4">
       <div
         v-if="!collapsed"
-        class="mb-3 text-[11px] uppercase tracking-[0.28em] text-slate-500"
+        class="mb-3 text-[11px] uppercase tracking-[0.28em] text-eldra-text-faint"
       >
         Workspaces
       </div>
@@ -141,8 +141,8 @@ const navLinks = computed(() => {
           :class="[
             collapsed ? 'items-center justify-center px-3 py-3' : 'flex-col items-center gap-2 px-3 py-3',
             currentWorkspace === item.key
-              ? 'border-sky-500/40 bg-sky-500/10 text-white'
-              : 'border-white/8 bg-white/[0.02] text-slate-300 hover:border-white/12 hover:bg-white/[0.04]'
+              ? 'border-eldra-accent/45 bg-eldra-accent/12 text-white'
+              : 'border-eldra-accent/12 bg-white/[0.02] text-eldra-text-soft hover:border-eldra-accent/22 hover:bg-white/[0.04]'
           ]"
         >
           <UIcon :name="item.icon" class="h-5 w-5" />
@@ -154,7 +154,7 @@ const navLinks = computed(() => {
     <div class="px-3 pt-2">
       <div
         v-if="!collapsed"
-        class="mb-3 text-[11px] uppercase tracking-[0.28em] text-slate-500"
+        class="mb-3 text-[11px] uppercase tracking-[0.28em] text-eldra-text-faint"
       >
         Navigation
       </div>
@@ -166,7 +166,7 @@ const navLinks = computed(() => {
           :to="item.to"
           class="flex rounded-2xl border border-transparent text-sm font-medium transition"
           :class="collapsed ? 'items-center justify-center px-3 py-3' : 'items-center gap-3 px-3 py-3'"
-          active-class="border-sky-500/30 bg-sky-500/10 text-white"
+          active-class="border-eldra-accent/40 bg-eldra-accent/12 text-white"
           :title="collapsed ? item.label : undefined"
         >
           <UIcon :name="item.icon" class="h-5 w-5 shrink-0" />
@@ -176,11 +176,11 @@ const navLinks = computed(() => {
     </div>
 
     <div v-if="!collapsed" class="mt-auto p-4">
-      <div class="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
-        <div class="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+      <div class="rounded-3xl border border-eldra-accent/12 bg-white/[0.03] p-4">
+        <div class="text-[11px] uppercase tracking-[0.28em] text-eldra-text-faint">
           Status
         </div>
-        <div class="mt-2 text-sm text-slate-300">
+        <div class="mt-2 text-sm text-eldra-text-soft">
           Foundation shell active.
         </div>
       </div>

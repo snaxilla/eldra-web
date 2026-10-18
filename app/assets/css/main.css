@@ -1,6 +1,33 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/* Body face (Public Sans), bundled locally from @fontsource/public-sans
+   instead of being downloaded at build time by @nuxt/fonts (disabled via
+   `ui.fonts: false` in nuxt.config.ts). Weights in use: 400/500/600/700.
+   All subsets are declared; browsers fetch only the unicode ranges a page
+   actually uses. */
+@import "@fontsource/public-sans/400.css";
+@import "@fontsource/public-sans/500.css";
+@import "@fontsource/public-sans/600.css";
+@import "@fontsource/public-sans/700.css";
+
+/* Fantasy display face, bundled locally (no build-time font download).
+   Latin subset, display weights only. */
+@import "@fontsource/cinzel/latin-500.css";
+@import "@fontsource/cinzel/latin-600.css";
+
+/* Theme layer -- see .github/docs/architecture/theming.md. Order matters:
+   structural tokens, then theme scopes, then legacy component styles,
+   then theme-agnostic surfaces, then accessibility (always last so a
+   viewer's preferences win over any theme). */
+@import "./themes/tokens.css";
+@import "./themes/fantasy.css";
+
 @import "./eldra-fieldguide.css";
+
+@import "./themes/surfaces.css";
+@import "./themes/nuxt-ui.css";
+@import "./themes/accessibility.css";
 
 @theme static {
   --font-sans: 'Public Sans', sans-serif;
@@ -16,4 +43,45 @@
   --color-green-800: #016538;
   --color-green-900: #0A5331;
   --color-green-950: #052E16;
+
+  /* Antique gold scale centred on the Fantasy accent (#c9a45a). Registered
+     so Nuxt UI can use it as a palette (`primary: 'gold'`) once a theme
+     opts in -- see `nuxtUi` in app/lib/eldra/themes.ts. */
+  --color-gold-50: #FBF7EC;
+  --color-gold-100: #F5ECD2;
+  --color-gold-200: #EAD7A6;
+  --color-gold-300: #DFC17C;
+  --color-gold-400: #D4B06A;
+  --color-gold-500: #C9A45A;
+  --color-gold-600: #B08A43;
+  --color-gold-700: #8C6C35;
+  --color-gold-800: #6B522A;
+  --color-gold-900: #4D3B1F;
+  --color-gold-950: #2C2112;
+}
+
+/* Semantic theme utilities: `border-eldra-accent/30`, `bg-eldra-panel`,
+   `text-eldra-muted`, `font-eldra-display`, ... `inline` keeps them bound to
+   the runtime variables, so they follow the active theme without rebuilds. */
+@theme inline {
+  --color-eldra-accent: rgb(var(--eldra-accent-rgb));
+  --color-eldra-accent-bright: rgb(var(--eldra-accent-bright-rgb));
+  --color-eldra-ink: rgb(var(--eldra-ink-rgb));
+  --color-eldra-panel: rgb(var(--eldra-panel-rgb));
+  --color-eldra-panel-strong: rgb(var(--eldra-panel-strong-rgb));
+  --color-eldra-well: rgb(var(--eldra-well-rgb));
+  --color-eldra-text: rgb(var(--eldra-text-rgb));
+  --color-eldra-text-strong: rgb(var(--eldra-text-strong-rgb));
+  --color-eldra-muted: rgb(var(--eldra-text-muted-rgb));
+  --color-eldra-parchment: rgb(var(--eldra-parchment-rgb));
+  --color-eldra-text-soft: rgb(var(--eldra-text-soft-rgb, var(--eldra-text-rgb)));
+  --color-eldra-text-dim: rgb(var(--eldra-text-dim-rgb, var(--eldra-text-muted-rgb)));
+  --color-eldra-text-faint: rgb(var(--eldra-text-faint-rgb, var(--eldra-text-muted-rgb)));
+  --color-eldra-accent-text: rgb(var(--eldra-accent-text-rgb, var(--eldra-text-strong-rgb)));
+  --color-eldra-text-ghost: rgb(var(--eldra-text-ghost-rgb, var(--eldra-text-muted-rgb)));
+  --color-eldra-positive: rgb(var(--eldra-positive-rgb, 158 195 125));
+  --color-eldra-caution: rgb(var(--eldra-caution-rgb, 224 169 74));
+
+  --font-eldra-display: var(--eldra-font-display);
+  --font-eldra-body: var(--eldra-font-body);
 }
